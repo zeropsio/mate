@@ -38,6 +38,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -62,9 +63,16 @@ import {
   type TaskOnSource,
   TaskSourceChannels,
   type TaskStatus,
+  authorOf,
   cleanTaskText,
   sourceOfRow,
 } from "./taskSources.ts";
+
+/**
+ * The first Mate that reads a task from beyond GitHub (`MateTaskSource` past `github-issue`): an
+ * older one passes such a `task` frame by, so it is never handed one.
+ */
+export const TASK_SOURCES_SINCE = "0.15.158";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -81,6 +89,10 @@ export const DECLINED_FOR = Duration.minutes(30);
 export const TASK_MESSAGES_MAX = 200;
 /** Why a task stopped that waited three days for an answer that never came. */
 export const NO_ANSWER = "nobody answered its question for three days.";
+/** Why a Mate is told to stop a task HQ holds as stopped, where no reason was kept. */
+const STOPPED_ALREADY = "This task was stopped.";
+/** How long a Mate handed a task people stopped is told to stop it on each link, unheard. */
+const STOP_TOLD_FOR_SECS = 24 * 60 * 60;
 /** Why a task's Mate stopped it, where the Mate said no reason. */
 const STOPPED = "people stopped it.";
 /** Why a task failed that its Mates kept turning down, with the last one's reason. */
@@ -247,10 +259,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         Effect.gen(function* () {
           const all = yield* overviews.all;
           const now = yield* Clock.currentTimeMillis;
-          return projectIds.filter((projectId) => {
+          return projectIds.flatMap((projectId) => {
             const entry = all.get(projectId);
             const cooled = (declinedUntil.get(projectId) ?? 0) <= now;
-            return cooled && entry?.presence.online === true && entry.attention?.working === 0;
+            if (!cooled || entry?.presence.online !== true || entry.attention?.working !== 0)
+              return [];
+            // Only a Mate whose overview says it runs a version that reads them takes tasks from
+            // beyond GitHub; one that has not said its version yet takes issues alone.
+            const version = entry.overview?.identity.serverVersion;
+            const everySource =
+              version !== undefined && compareSemverVersions(version, TASK_SOURCES_SINCE) >= 0;
+            return [{ projectId, everySource }];
           });
         });
 
@@ -418,19 +437,25 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working', 'waiting'))
               AND NOT (${heldBy(sql`m.project_id`)})
             ORDER BY m.seq`;
-          const free = yield* freeNow(idle.map((row) => row.project_id));
+          const free = [...(yield* freeNow(idle.map((row) => row.project_id)))];
           if (free.length === 0) continue;
           // An issue's only from the intake's own repository: one it left or stopped gives nobody work.
-          const waiting = yield* sql<TaskRow>`
-            SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task t
+          const waiting = yield* sql<TaskRow & { readonly source_kind: string }>`
+            SELECT ${sql.literal(TASK_COLUMNS)}, source_kind FROM hq_task t
             WHERE app_id::text = ${appId} AND state = 'queued'
               AND (t.source_kind <> 'github-issue'
                 OR EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo))
-            ORDER BY seq LIMIT ${free.length}`;
+            ORDER BY seq LIMIT ${Math.max(free.length * 4, 20)}`;
           let handedAny = false;
           const limits = yield* limitsNow;
-          for (const [index, task] of waiting.entries()) {
-            const projectId = free[index]!;
+          for (const task of waiting) {
+            if (free.length === 0) break;
+            // The first free Mate that reads the task; one none of them reads waits for one.
+            const at = free.findIndex(
+              (mate) => mate.everySource || task.source_kind === "github-issue",
+            );
+            if (at < 0) continue;
+            const projectId = free.splice(at, 1)[0]!.projectId;
             const handed = yield* leader
               .write(sql`
                 UPDATE hq_task SET state = 'assigned', mate_project_id = ${projectId},
@@ -644,17 +669,22 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
       /** Something said about the task, kept and told to its Mate where it hears it now. */
-      const messageTask = (taskId: string, message: MateTaskMessage) =>
+      const messageTask = (taskId: string, said: MateTaskMessage) =>
         Effect.gen(function* () {
+          // The Mate takes a named author only: a blank name is nobody's.
+          const message = { ...said, author: authorOf(said.author) };
           const [kept] = yield* leader.write(sql<{
             readonly heard: boolean;
             readonly mate_project_id: string | null;
           }>`
+            -- The task's row held while the message is kept: a pickup at the same moment either
+            -- sees it (and tells it), or is seen here as taken (and it is told now).
             WITH task AS (
               SELECT t.id, t.mate_project_id, ${hears(sql`t`)} AS heard FROM hq_task t
               WHERE t.id::text = ${taskId}
                 AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
-                  < ${TASK_MESSAGES_MAX}),
+                  < ${TASK_MESSAGES_MAX}
+              FOR UPDATE OF t),
             kept AS (
               INSERT INTO hq_task_message (task_id, id, source, author, text)
               SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
@@ -772,11 +802,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       /**
        * The task is the Mate's: handed to it or taken by it — or, given back while its link was
-       * down, waiting for no other Mate yet, as the Mate it was last handed to.
+       * down, waiting for no other Mate yet, as the Mate it was last handed to — or done by it
+       * while its change waits for review (a review comment wakes it there).
        */
       const owns = (projectId: string) => sql`(
         (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting'))
-        OR (state = 'queued' AND last_mate_project_id = ${projectId}))`;
+        OR (state = 'queued' AND last_mate_project_id = ${projectId})
+        OR (mate_project_id = ${projectId} AND state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
+          WHERE c.app_id = hq_task.app_id AND c.repo = hq_task.change_repo
+            AND c.number = hq_task.change_number AND c.state = 'open')))`;
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
@@ -791,15 +825,47 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           (rows) => rows[0],
         );
 
+      /**
+       * A Mate's word on a task not its own now. One people stopped — dropped before it took it,
+       * or ended by HQ while it was away — or another Mate's since: a Mate working it is told to
+       * stop (the work it does there reaches nobody); its word that it stopped is kept, so it is
+       * not told again. Anything else is passed by.
+       */
+      const strayWord = (projectId: string, word: MateTaskReport) =>
+        Effect.gen(function* () {
+          if (word.state === "stopped") {
+            yield* leader.write(sql`
+              UPDATE hq_task SET stop_heard_at = COALESCE(stop_heard_at, now())
+              WHERE id::text = ${word.taskId} AND state IN ('stopped', 'dropped')
+                AND (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId})`);
+          } else if (word.state !== "declined" && word.state !== "failed") {
+            const [held] = yield* sql<{ readonly why: string | null }>`
+              SELECT COALESCE(stop_reason, detail) AS why FROM hq_task
+              WHERE id::text = ${word.taskId} AND (
+                (state IN ('stopped', 'dropped')
+                  AND (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId}))
+                OR (state IN ('assigned', 'working', 'waiting') AND mate_project_id <> ${projectId}))`;
+            if (held !== undefined)
+              return yield* tellMate(
+                projectId,
+                encodeDown({
+                  type: "task-stop",
+                  taskId: word.taskId,
+                  reason: held.why?.trim() || STOPPED_ALREADY,
+                }),
+              );
+          }
+          yield* Effect.logInfo("a task's word passed by", {
+            projectId,
+            taskId: word.taskId,
+            state: word.state,
+          });
+        });
+
       const report = (projectId: string, word: MateTaskReport) =>
         Effect.gen(function* () {
           const task = yield* ownTask(projectId, word.taskId);
-          if (task === undefined)
-            return yield* Effect.logInfo("a task's word passed by", {
-              projectId,
-              taskId: word.taskId,
-              state: word.state,
-            });
+          if (task === undefined) return yield* strayWord(projectId, word);
           if (word.state === "declined") {
             // Not taken: back to wait for a free Mate, no try against it, this one left alone a
             // while — failed once its Mates have turned it down for `DECLINED_FOR`.
@@ -871,7 +937,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 mate: mate ?? "Mate",
                 question: asked ?? "an answer.",
               }));
-            else if (taken.length > 0 && !waiting && task.state !== "working")
+            // Back on it after it was done (a review woke it): the line keeps saying its change.
+            else if (
+              taken.length > 0 &&
+              !waiting &&
+              task.state !== "working" &&
+              task.state !== "done"
+            )
               yield* pickedUp(word.taskId);
             if (taken.length > 0 && task.state === "queued") {
               yield* structure.touched;
@@ -888,12 +960,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                       ? sql`COALESCE(${word.detail?.trim() || null}, stop_reason, ${STOPPED})`
                       : null
                 },
-                conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
+                conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id),
+                stop_heard_at = ${word.state === "stopped" ? sql`now()` : sql`stop_heard_at`},
+                stop_reason = ${word.state === "done" ? null : sql`stop_reason`},
+                question = ${word.state === "done" ? null : sql`question`}
               WHERE id::text = ${word.taskId} AND ${owns(projectId)}
               RETURNING 1`);
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
-            if (ended.length > 0 && word.state === "done")
+            if (ended.length > 0 && word.state === "done" && task.state !== "done")
               yield* say(word.taskId, ({ mate, change }) => ({
                 kind: "done",
                 mate: mate ?? "Mate",
@@ -965,10 +1040,24 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 SELECT t.id::text AS id, t.stop_reason FROM hq_task t
                 WHERE t.mate_project_id = ${projectId} AND ${hears(sql`t`)}`;
               const said = yield* messagesOf(on.map((task) => task.id));
-              const stops = on.flatMap((task) =>
-                task.stop_reason === null
-                  ? []
-                  : [encodeDown({ type: "task-stop", taskId: task.id, reason: task.stop_reason })],
+              // Stopped by people since it was handed it, and not yet heard to have stopped: a
+              // Mate away meanwhile may still be on it.
+              const ended = yield* sql<{ readonly id: string; readonly why: string | null }>`
+                SELECT id::text AS id, COALESCE(stop_reason, detail) AS why FROM hq_task
+                WHERE (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId})
+                  AND state IN ('stopped', 'dropped') AND stop_heard_at IS NULL
+                  AND updated_at > now() - make_interval(secs => ${STOP_TOLD_FOR_SECS})`;
+              const stops = [
+                ...on.flatMap((task) =>
+                  task.stop_reason === null ? [] : [{ id: task.id, why: task.stop_reason }],
+                ),
+                ...ended,
+              ].map((task) =>
+                encodeDown({
+                  type: "task-stop",
+                  taskId: task.id,
+                  reason: task.why?.trim() || STOPPED_ALREADY,
+                }),
               );
               return Stream.concat(
                 Stream.fromIterable([

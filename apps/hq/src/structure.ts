@@ -1042,7 +1042,9 @@ export const structureLayer = (options: {
               }>`
               SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty,
                 CASE WHEN i.app_id IS NULL THEN NULL ELSE jsonb_build_object('repo', i.repo,
-                  'label', i.label, 'waiting', COALESCE(w.waiting, 0)) END AS intake
+                  'label', i.label, 'waiting', COALESCE(w.waiting, 0))
+                  || CASE WHEN i.public THEN jsonb_build_object('public', true) ELSE '{}'::jsonb END
+                END AS intake
               FROM hq_app a LEFT JOIN hq_intake i ON i.app_id = a.id
               LEFT JOIN (SELECT app_id, count(*) AS waiting FROM hq_task WHERE state = 'queued'
                 GROUP BY app_id) w ON w.app_id = a.id

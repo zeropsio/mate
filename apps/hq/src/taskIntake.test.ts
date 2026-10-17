@@ -4,9 +4,11 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 
-import { attention, automatedPool } from "../test/harness/automated.ts";
+import { attention, automatedPool, mateLinked, overviewAt } from "../test/harness/automated.ts";
+import { addProject } from "../test/harness/mates.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { TASK_SOURCES_SINCE } from "./mateTasks.ts";
 import type { TaskStatus } from "./taskSources.ts";
 
 type Pool = Effect.Success<ReturnType<typeof automatedPool>>;
@@ -184,6 +186,53 @@ describe("HQ's one door for tasks from every source", () => {
             ["m-1", "m-2"],
           );
         }),
+    );
+
+    it.effect(
+      "a task from beyond GitHub goes only to a Mate new enough to read it; an older one still takes issues",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ version: "0.15.157" });
+          addProject(core.fake, "P_NEW");
+          const newer = yield* mateLinked(core, core.owner, "P_NEW", { appId: core.appId });
+          yield* newer.link.send(overviewAt(TASK_SOURCES_SINCE));
+          yield* newer.link.send(attention(0));
+          const taskId = queuedId(yield* ask(core, "schedule:s1/a", "d-1"));
+          const told = yield* newer.link.takeWhere(
+            "the schedule's task",
+            (frame) => frame.type === "task" && (frame["task"] as MateTask).id === taskId,
+          );
+          assert.strictEqual((told["task"] as MateTask).source.kind, "schedule");
+          assert.isFalse((yield* core.robot.link.collected).some((frame) => frame.type === "task"));
+          yield* core.issue(1);
+          const issue = yield* core.robot.link.take("task");
+          assert.strictEqual((issue["task"] as MateTask).source.kind, "github-issue");
+        }),
+    );
+
+    it.effect("a blank author is nobody, in the task and in what is said of it", () =>
+      Effect.gen(function* () {
+        const core = yield* automatedPool();
+        const key = "webhook:w1/blank";
+        const taskId = queuedId(
+          yield* ask(core, key, "d-1", "Down.", {
+            kind: "webhook",
+            name: "Sentry",
+            url: null,
+            title: "Down",
+            author: "  ",
+          }),
+        );
+        const task = yield* taskFrame(core, taskId);
+        assert.isNull((task.source as { author: string | null }).author);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId, state: "accepted", conversationId: "conversation-1" },
+        });
+        yield* core.taskIntake.message(key, { id: "m-1", from: "edit", author: " ", text: "Up." });
+        const message = yield* core.robot.link.take("task-message");
+        assert.isNull((message["message"] as { author: string | null }).author);
+      }),
     );
 
     it.effect(

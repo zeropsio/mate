@@ -176,6 +176,22 @@ describe("an application's signed webhooks", () => {
         }),
     );
 
+    it.effect("a call with no dedupeKey replayed while its task is live is no new task", () =>
+      Effect.gen(function* () {
+        const core = yield* automatedPool({ busy: true });
+        const hook = yield* webhookOf(core);
+        const call = { title: "Checkout down", body: "Down since 10:00." };
+        assert.deepInclude((yield* called(core, hook, call)).body, { status: "queued" });
+        assert.deepStrictEqual((yield* called(core, hook, call)).body, { status: "told" });
+        assert.deepInclude(
+          (yield* called(core, hook, { ...call, body: "Down since 11:00." })).body,
+          { status: "queued", position: 2 },
+        );
+        const rows = yield* taskRows(core, (found) => found.length === 2);
+        assert.strictEqual(rows.length, 2);
+      }),
+    );
+
     it.effect(
       "an automated Mate on a task from elsewhere names it on its row: where it came from, its title and link, no issue number",
       () =>

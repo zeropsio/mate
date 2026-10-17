@@ -1,9 +1,11 @@
 /**
  * Who may hand an issue to an application's automated Mates, or steer its task (`intake.ts`): a
- * person, not a bot; with write, maintain or admin on the repository (GitHub's collaborator
- * permission, asked with the repository's token); whose GitHub profile shows the email of an
- * active member of the Zerops organization (GitHub lets a profile show only a verified email). The
- * answer is kept five minutes per repository and person; GitHub unreachable is no answer
+ * person, not a bot, with write, maintain or admin on the repository (GitHub's collaborator
+ * permission, asked with the repository's token). The repository's access is the trust boundary
+ * the organization connected; nothing else is asked of them. Who in the organization the task is
+ * asked for is attribution only: the active member whose email their GitHub profile shows (GitHub
+ * lets a profile show only a verified email), or nobody — never a reason to refuse. The answer is
+ * kept five minutes per repository and person; GitHub unreachable on the permission is no answer
  * (`undefined`), so nothing is taken in on a guess.
  *
  * @module githubGate
@@ -27,8 +29,8 @@ export interface GithubActor {
 }
 
 export type GateVerdict =
-  /** A member of the organization, its Zerops user. */
-  | { readonly kind: "member"; readonly userId: string }
+  /** One who can write to the repository; the member it maps to by email, or nobody. */
+  | { readonly kind: "writer"; readonly userId: string | null }
   /** A bot: never a trigger, never told why. */
   | { readonly kind: "bot" }
   /** A person who may not, and why, in words for the issue. */
@@ -42,8 +44,6 @@ const KEPT_MAX = 500;
 /** Why a person may not, said on the issue. */
 export const notWriter = (login: string) =>
   `@${login} can't hand issues to Mate here: only people who can write to this repository can.`;
-export const notMember = (login: string) =>
-  `@${login} can't hand issues to Mate here: the public email on their GitHub profile isn't one of a member of this Zerops organization.`;
 
 export class GithubGate extends Context.Service<
   GithubGate,
@@ -73,20 +73,26 @@ export const githubGateLayer = Layer.effect(
         if (permission.status !== 200 && permission.status !== 404) return undefined;
         if (permission.role === undefined || !WRITERS.has(permission.role))
           return { kind: "refused", why: notWriter(login) } as const;
-        const user = yield* github.user(remote, token, login);
-        if (user.status !== 200) return undefined;
-        if (user.bot) return { kind: "bot" } as const;
-        const members = (yield* roles.view).members;
-        const member = members.find(
-          (candidate) =>
-            candidate.kind === "person" &&
-            candidate.status === "ACTIVE" &&
-            user.email !== undefined &&
-            candidate.email === user.email,
+        // Attribution only: a profile GitHub does not show now is nobody's.
+        const user = yield* github
+          .user(remote, token, login)
+          .pipe(Effect.orElseSucceed(() => undefined));
+        if (user?.bot === true) return { kind: "bot" } as const;
+        const email = user?.status === 200 ? user.email : undefined;
+        const members = yield* Effect.orElseSucceed(
+          Effect.map(roles.view, (view) => view.members),
+          () => [],
         );
-        return member === undefined
-          ? ({ kind: "refused", why: notMember(login) } as const)
-          : ({ kind: "member", userId: member.userId } as const);
+        const member =
+          email === undefined
+            ? undefined
+            : members.find(
+                (candidate) =>
+                  candidate.kind === "person" &&
+                  candidate.status === "ACTIVE" &&
+                  candidate.email === email,
+              );
+        return { kind: "writer", userId: member?.userId ?? null } as const;
       }).pipe(
         Effect.catchCause((cause) =>
           Effect.as(Effect.logWarning("a GitHub person not checked", { cause }), undefined),

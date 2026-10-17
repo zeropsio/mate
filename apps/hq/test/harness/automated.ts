@@ -14,10 +14,11 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import { sealRemoteToken } from "../../src/deployKeys.ts";
-import type { MateTasksOptions } from "../../src/mateTasks.ts";
+import { type MateTasksOptions, TASK_SOURCES_SINCE } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
 import { githubFake } from "./githubFake.ts";
 import { addProject, rowsWhere } from "./mates.ts";
+import { overviewOf } from "./overviews.ts";
 import { enrollMate, sessionFor, startCore, untilHealth } from "./runningCore.ts";
 
 type Core = Effect.Success<ReturnType<typeof startCore>>;
@@ -221,6 +222,13 @@ export const commentEvent = (
   ...actingOf(acting),
 });
 
+/** The Mate's overview as its link brings it, saying the version it runs. */
+export const overviewAt = (serverVersion: string) => ({
+  type: "overview",
+  full: true,
+  overview: overviewOf({ identity: { ...overviewOf().identity, serverVersion } }),
+});
+
 let revisions = 0;
 
 /** The Mate's attention as its link brings it: `working` of its chats the agent is on. */
@@ -255,6 +263,8 @@ export const automatedPool = (
     /** The organization keeps no key for its automated Mates' provider. */
     readonly keyless?: boolean;
     readonly scheduleEvery?: Duration.Duration;
+    /** The robot's version, as its overview says; one that reads tasks from every source. */
+    readonly version?: string;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -285,6 +295,7 @@ export const automatedPool = (
     const hook = yield* intakeOn(core, github, owner, appId);
     addProject(core.fake, "P_ROBOT");
     const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
+    yield* robot.link.send(overviewAt(given.version ?? TASK_SOURCES_SINCE));
     yield* robot.link.send(attention(given.busy === true ? 1 : 0));
     const issue = (number: number) =>
       deliver(core, hook, "issues", issueEvent("opened", { number, labels: ["mate"] }));

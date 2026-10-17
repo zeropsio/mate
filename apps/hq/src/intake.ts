@@ -18,9 +18,9 @@
  * form-encoded as a webhook pasted with GitHub's defaults sends it. An issue opened, labelled or
  * reopened carrying the label, in any case, becomes a task through HQ's door (`TaskIntake`): once
  * per delivery and once per issue while it is live; an event of a closed issue makes none. Only a
- * person may hand an issue over (`githubGate.ts`): one who can write to the repository and whose
- * GitHub profile shows a member's email — anyone else is told why on the issue, once per try, and
- * a bot is passed by. A public repository's issues are taken only where its intake says `public`.
+ * person who can write to the repository may hand an issue over (`githubGate.ts`), the task asked
+ * for by the member their GitHub profile's email names, if any — anyone else is told why on the
+ * issue, once per try, and a bot is passed by. A public repository's issues are taken only where its intake says `public`.
  * Closing an issue or removing its label stops its task (`TaskIntake.stop`). After it came in, a
  * comment such a person makes on the issue (not a bot's, not HQ's own) and an edit of the issue
  * are said to its task (`TaskIntake.message`); an edit before any Mate took it rewrites the task.
@@ -53,13 +53,7 @@ import { Structure } from "./structure.ts";
 import { MateTasks } from "./mateTasks.ts";
 import { HQ_MARK, marked } from "./githubChannel.ts";
 import { type GithubActor, GithubGate } from "./githubGate.ts";
-import {
-  TaskIntake,
-  TaskIntakeUnavailable,
-  cleanTaskText,
-  cleanTaskTitle,
-  encodeSource,
-} from "./taskSources.ts";
+import { TaskIntake, TaskIntakeUnavailable, cleanTaskText, cleanTaskTitle } from "./taskSources.ts";
 
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -151,6 +145,13 @@ const IssuesEvent = Schema.Struct({
   label: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   repository: Repository,
   sender: Schema.optionalKey(Actor),
+  /** What an edit changed: a field it left alone is absent. */
+  changes: Schema.optionalKey(
+    Schema.Struct({
+      title: Schema.optionalKey(Schema.Unknown),
+      body: Schema.optionalKey(Schema.Unknown),
+    }),
+  ),
 });
 const decodeIssuesEvent = Schema.decodeUnknownOption(Schema.fromJsonString(IssuesEvent));
 
@@ -471,7 +472,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               )
                 return passed;
               const verdict = yield* verdictOf(target, author);
-              if (verdict.kind !== "member") return passed;
+              if (verdict.kind !== "writer") return passed;
               yield* intake.message(key, {
                 id: `github-comment:${String(comment.id)}`,
                 from: "comment",
@@ -516,9 +517,26 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                 });
                 return { ...passed, moved: taken.kind === "queued" };
               }
-              case "closed":
+              case "closed": {
+                // Its opener withdrawing it, or one who may steer it; anyone else's close is
+                // nobody's word to its task.
+                const opener = issues.issue.user?.login;
+                const closer = actor?.login;
+                const own = closer !== undefined && closer.toLowerCase() === opener?.toLowerCase();
+                const may =
+                  own ||
+                  (actor !== undefined &&
+                    (yield* liveTask(row.app_id, key)) &&
+                    (yield* verdictOf(target, actor)).kind === "writer");
+                if (!may) {
+                  yield* Effect.logInfo("an issue's close passed by: its closer may not steer it", {
+                    appId: row.app_id,
+                  });
+                  return passed;
+                }
                 yield* intake.stop(key, ISSUE_CLOSED);
                 return { ...passed, moved: true };
+              }
               case "unlabeled":
                 if (!named) return passed;
                 yield* intake.stop(key, LABEL_REMOVED);
@@ -526,13 +544,20 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               case "edited": {
                 if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
                 const verdict = yield* verdictOf(target, actor);
-                if (verdict.kind !== "member") return passed;
-                const source = issueSource(repo, issues.issue);
+                if (verdict.kind !== "writer") return passed;
+                // Only what the edit changed is taken: the rest of the issue may read as someone
+                // nobody let steer the task left it.
+                const titled = issues.changes?.title !== undefined;
+                const bodied = issues.changes?.body !== undefined;
+                if (!titled && !bodied) return passed;
+                const title = issueSource(repo, issues.issue).title;
                 const body = cleanTaskText(issues.issue.body ?? "");
-                // Before any Mate took it, the task is the issue as it reads now.
+                // Before any Mate took it, the task reads as the edit left it.
                 const rewritten = yield* leader.write(sql`
-                  UPDATE hq_task SET title = ${source.title}, body = ${body},
-                    source = ${encodeSource(source)}::jsonb, updated_at = now()
+                  UPDATE hq_task SET
+                    title = ${titled ? title : sql`title`},
+                    source = ${titled ? sql`jsonb_set(source, '{title}', to_jsonb(${title}::text))` : sql`source`},
+                    body = ${bodied ? body : sql`body`}, updated_at = now()
                   WHERE app_id::text = ${row.app_id} AND source_key = ${key} AND state = 'queued'
                   RETURNING 1`);
                 if (rewritten.length === 0)
@@ -540,7 +565,9 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     id: `github-edit:${deliveryId}`,
                     from: "edit",
                     author: actor.login,
-                    text: `The issue now reads:\n\n${source.title}\n\n${body}`,
+                    text: bodied
+                      ? `The issue now reads:\n\n${title}\n\n${body}`
+                      : `The issue's title now reads: ${title}`,
                   });
                 return passed;
               }
@@ -554,6 +581,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               yield* authorized(userId, appId);
               const repo = request.repo.toLowerCase();
               const label = request.label.trim();
+              const takesPublic = request.public === true;
               if (!GITHUB_REPO.test(repo)) return yield* refuse("invalid", "repo");
               if (!LABEL.test(label)) return yield* refuse("invalid", "label");
               const { hqRepo, remote } = yield* remoteFor(appId, repo);
@@ -580,7 +608,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     INSERT INTO hq_intake (app_id, repo, hq_repo, label, public_id, sealed, key_id, hook_id,
                       created_by, public)
                     VALUES (${appId}::uuid, ${repo}, ${hqRepo}, ${label}, ${publicId}, ${sealed.sealed},
-                      ${sealed.keyId}, ${heldHook}::bigint, ${userId}, ${request.public === true})
+                      ${sealed.keyId}, ${heldHook}::bigint, ${userId}, ${takesPublic})
                     ON CONFLICT (app_id) DO UPDATE SET repo = EXCLUDED.repo, hq_repo = EXCLUDED.hq_repo,
                       label = EXCLUDED.label, public_id = EXCLUDED.public_id, sealed = EXCLUDED.sealed,
                       key_id = EXCLUDED.key_id, hook_id = EXCLUDED.hook_id, public = EXCLUDED.public,
@@ -611,19 +639,34 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     Effect.logInfo("intake webhook not refreshed", { appId, why: error._tag }),
                   ),
                 );
-                return { appId, repo, label, webhookUrl: url, hook: { kind: "made" } } as const;
+                return {
+                  appId,
+                  repo,
+                  label,
+                  public: takesPublic,
+                  webhookUrl: url,
+                  hook: { kind: "made" },
+                } as const;
               }
               const hook = yield* makeHook(appId, hqRepo, remote, url, secret);
               if ("id" in hook) {
                 yield* leader.write(sql`
                   UPDATE hq_intake SET hook_id = ${hook.id} WHERE app_id::text = ${appId}
                     AND public_id = ${publicId}`);
-                return { appId, repo, label, webhookUrl: url, hook: { kind: "made" } } as const;
+                return {
+                  appId,
+                  repo,
+                  label,
+                  public: takesPublic,
+                  webhookUrl: url,
+                  hook: { kind: "made" },
+                } as const;
               }
               return {
                 appId,
                 repo,
                 label,
+                public: takesPublic,
                 webhookUrl: url,
                 hook: { kind: "paste", secret: Redacted.value(secret), why: hook.why },
               } as const;

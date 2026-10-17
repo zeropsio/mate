@@ -536,6 +536,46 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "a Mate woken by a review comment on its done task's change works it again: its question reaches the issue, and it finishes again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          const word = (report: Record<string, unknown>) =>
+            core.robot.link.send({ type: "task-state", report: { taskId: task.id, ...report } });
+          yield* word({ state: "accepted", conversationId: "conversation-1" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (change.body as { change: { number: number } }).change.number;
+          yield* word({ state: "done" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/comments`,
+            { session: core.owner, body: { body: "Which cups?" } },
+          );
+          yield* core.robot.link.take("task-message");
+          yield* word({ state: "waiting", question: "The blue ones or the red ones?" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "waiting");
+          yield* core.github.seenWhere("the question on the issue", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.startsWith("P_ROBOT is waiting for you"),
+            ),
+          );
+          yield* word({ state: "done" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+        }),
+    );
+
     it.effect("a comment GitHub refuses is tried once more, and never fails the task", () =>
       Effect.gen(function* () {
         const core = yield* withPool();
@@ -647,6 +687,71 @@ describe("tasks for automated Mates", () => {
               ),
             ),
           );
+        }),
+    );
+
+    it.effect(
+      "a Mate that takes a task people stopped before it did is told to stop, and again on each link until it says it stopped",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* deliver(
+            core,
+            core.hook,
+            "issues",
+            issueEvent("closed", { number: 1, labels: ["mate"] }),
+          );
+          yield* core.tasks((rows) => rows[0]?.["state"] === "dropped");
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          assert.deepStrictEqual(yield* core.robot.link.take("task-stop"), {
+            taskId: task.id,
+            reason: ISSUE_CLOSED,
+          });
+          yield* core.robot.link.close;
+          const again = yield* linkOf(core, core.robot.credential);
+          assert.strictEqual((yield* again.link.take("task-stop"))["taskId"], task.id);
+          yield* again.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "stopped" },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT stop_heard_at IS NOT NULL AS heard FROM hq_task",
+            (rows) => rows[0]?.["heard"] === true,
+          );
+        }),
+    );
+
+    it.effect(
+      "a Mate back after HQ ended its stopped task without its word is told to stop it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool({ tasks: { stopWithin: Duration.millis(200) } });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* core.robot.link.close;
+          yield* deliver(
+            core,
+            core.hook,
+            "issues",
+            issueEvent("closed", { number: 1, labels: ["mate"] }),
+          );
+          yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
+          const again = yield* linkOf(core, core.robot.credential);
+          assert.deepStrictEqual(yield* again.link.take("task-stop"), {
+            taskId: task.id,
+            reason: ISSUE_CLOSED,
+          });
         }),
     );
 

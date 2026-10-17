@@ -25,6 +25,7 @@ import {
   TaskIntake,
   TaskIntakeUnavailable,
   TaskSourceChannels,
+  authorOf,
   cleanTaskText,
   cleanTaskTitle,
   encodeSource,
@@ -50,7 +51,9 @@ const askAgainFrom = (kind: MateTaskSource["kind"]): MateTaskMessage["from"] =>
 /** A source's text fields, cleaned as its body is. */
 const cleanSource = (source: MateTaskSource): MateTaskSource => {
   const title = cleanTaskTitle(source.title, "Untitled task");
-  return { ...source, title };
+  return source.kind === "schedule"
+    ? { ...source, title }
+    : { ...source, title, author: authorOf(source.author) };
 };
 
 export const taskIntakeLayer = Layer.effect(
@@ -69,7 +72,7 @@ export const taskIntakeLayer = Layer.effect(
     const message = (sourceKey: string, said: MateTaskMessage) =>
       Effect.gen(function* () {
         const live = yield* liveOf(sourceKey);
-        const clean = { ...said, text: cleanTaskText(said.text) };
+        const clean = { ...said, author: authorOf(said.author), text: cleanTaskText(said.text) };
         for (const task of live) yield* tasks.message(task.id, clean);
         return live.length > 0;
       });
