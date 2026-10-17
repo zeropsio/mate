@@ -238,13 +238,24 @@ export const repoRemotesLayer = Layer.effect(
     const probes = yield* GithubProbes;
     const changes = yield* Changes;
     const githubAuth = yield* GithubAuth;
-    const appUnavailable = () => new RemoteRefused({ reason: "app_unavailable" });
-    /** The app's token for a remote reached through it. */
+    const appUnavailable = (error?: { readonly reason: string }) =>
+      new RemoteRefused({
+        reason: error?.reason === "replaced" ? "repository_changed" : "app_unavailable",
+      });
+    /**
+     * The app's token for a remote reached through it: only for the repository it connected, by
+     * its id on GitHub, never another made under its name.
+     */
     const appTokenOf = Effect.fnUntraced(function* (row: RemoteRow) {
+      // Its app forgotten (`githubApp.ts`): connected through an app again before it works again.
+      if (row.invalid_since !== null)
+        return yield* new RemoteRefused({ reason: "app_not_installed" });
       const identity = remoteIdentity(row.url);
       const token =
         identity?.kind === "github"
-          ? yield* githubAuth.tokenFor(identity.path).pipe(Effect.mapError(appUnavailable))
+          ? yield* githubAuth
+              .tokenFor(identity.path, row.host_repo_id ?? undefined)
+              .pipe(Effect.mapError(appUnavailable))
           : undefined;
       if (token === undefined) return yield* new RemoteRefused({ reason: "app_not_installed" });
       return token;

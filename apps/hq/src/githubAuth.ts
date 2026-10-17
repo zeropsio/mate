@@ -22,7 +22,8 @@ export interface GithubBot {
 
 /** GitHub refused or could not be reached for a token. */
 export class GithubAuthUnavailable extends Data.TaggedError("GithubAuthUnavailable")<{
-  readonly reason: "unreachable" | "refused" | "suspended" | "not_installed";
+  /** `replaced`: GitHub's repository of that name is not the one of the id asked for. */
+  readonly reason: "unreachable" | "refused" | "suspended" | "not_installed" | "replaced";
 }> {}
 
 export class GithubAuth extends Context.Service<
@@ -31,10 +32,13 @@ export class GithubAuth extends Context.Service<
     /**
      * An installation token for `repository` (`owner/name`, case-insensitive) while the app is
      * installed on it; `undefined` when HQ has no app or the app does not reach it. Cached until
-     * shortly before GitHub expires it.
+     * shortly before GitHub expires it. With `id` (the repository's id on GitHub, as a remote
+     * keeps it), only while the repository of that name is still the one of that id: one deleted
+     * and made again is `replaced`, never a token.
      */
     readonly tokenFor: (
       repository: string,
+      id?: string,
     ) => Effect.Effect<Redacted.Redacted | undefined, GithubAuthUnavailable>;
     /** The app's bot, or `undefined` while HQ has no app. */
     readonly bot: Effect.Effect<GithubBot | undefined, GithubAuthUnavailable>;

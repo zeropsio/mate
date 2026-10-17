@@ -135,7 +135,9 @@ describe("the organization's GitHub app", () => {
       "https://zcp-1a2b.prg1.zerops.app/mate/settings",
       "https://zcp-1a2b.prg1.zerops.app/mate/settings",
     ],
-    ["https://evil.test/settings/automation?x=1", "https://mate.zerops.io/settings/automation?x=1"],
+    ["https://evil.test/settings/automation?x=1", "https://mate.zerops.io/settings/automation"],
+    ["https://evil.test//evil.example/x", "https://mate.zerops.io/settings/automation"],
+    ["https://evil.test/\\evil.example/x", "https://mate.zerops.io/settings/automation"],
     ["not a url", "https://mate.zerops.io/settings/automation"],
   ])("the browser goes back from GitHub to %s only on a Mate origin", (asked, back) => {
     assert.strictEqual(trustedReturn(asked), back);
@@ -358,6 +360,20 @@ describe("the organization's GitHub app", () => {
         }),
     );
 
+    it.effect("an event to an address no app holds is refused before a byte of it is read", () =>
+      Effect.gen(function* () {
+        const core = yield* appCore;
+        const { hook } = yield* connected(core);
+        // Past GitHub's 25 MiB, as a caller may claim: no app there is the answer, not the size.
+        const claimed = { "content-length": String(30 * 1024 * 1024) };
+        const nowhere = yield* core.call("POST", `${hook.path.replace(/[^/]+$/u, "")}nobody`, {
+          body: new TextEncoder().encode("{}"),
+          headers: { "content-type": "application/json", "x-github-event": "push", ...claimed },
+        });
+        assert.strictEqual(nowhere.status, 404);
+      }),
+    );
+
     it.effect(
       "the app's webhook takes an event only under its signature, and keeps HQ's installations as GitHub changes them",
       () =>
@@ -538,6 +554,45 @@ describe("the organization's GitHub app", () => {
     );
 
     it.effect(
+      "a repository made again on GitHub under the connected name is not the one connected: HQ acts on it with no token",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* appCore;
+          const { hook } = yield* connected(core);
+          yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+          yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+          const through = yield* core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+            session: core.owner,
+            body: { repository: "acme/tea-shop" },
+          });
+          assert.strictEqual(through.status, 204);
+          const intake = () =>
+            core.call("PUT", `/api/apps/${core.appId}/intake`, {
+              session: core.owner,
+              body: { repo: "acme/tea-shop", label: "mate" },
+            });
+          assert.deepStrictEqual(((yield* intake()).body as HqIntakeView).hook, { kind: "app" });
+          // Deleted and made again on GitHub: the same name, another repository.
+          core.github.state.installations.get(7001)!.repositories[0] = {
+            id: 777,
+            full_name: "acme/tea-shop",
+          };
+          yield* deliver(core, hook, "installation_repositories", {
+            action: "added",
+            installation: { id: 7001 },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT repositories FROM hq_github_installation WHERE id = 7001",
+            (rows) => JSON.stringify(rows[0]?.["repositories"] ?? []).includes("777"),
+          );
+          const refused = yield* intake();
+          assert.strictEqual(refused.status, 409);
+          assert.deepInclude(refused.body as object, { reason: "repository_changed" });
+        }),
+    );
+
+    it.effect(
       "an installation suspended on GitHub lets HQ act on none of its repositories until it is back",
       () =>
         Effect.gen(function* () {
@@ -575,6 +630,43 @@ describe("the organization's GitHub app", () => {
             (rows) => rows[0]?.["suspended"] === false,
           );
           assert.strictEqual((yield* remoteApp()).status, 204);
+        }),
+    );
+
+    it.effect(
+      "a remote through the app, the app forgotten, says on the wire that it no longer works until GitHub is connected again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* appCore;
+          yield* connected(core);
+          yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+          yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+          const through = () =>
+            core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+              session: core.owner,
+              body: { repository: "acme/tea-shop" },
+            });
+          assert.strictEqual((yield* through()).status, 204);
+          const remote = Effect.map(
+            core.call("GET", `/api/apps/${core.appId}/repos`, { session: core.owner }),
+            (answer) =>
+              (
+                answer.body as { repos: ReadonlyArray<{ name: string; remote: unknown }> }
+              ).repos.find((repo) => repo.name === "web")?.remote as {
+                readonly via: string;
+                readonly invalidSince: string | null;
+              },
+          );
+          assert.deepInclude(yield* remote, { via: "app", invalidSince: null });
+          yield* core.call("DELETE", "/api/org/github", { session: core.owner });
+          const gone = yield* remote;
+          assert.strictEqual(gone.via, "app");
+          assert.isString(gone.invalidSince);
+          // Connected again, and the repository through it again: it works again.
+          core.github.state.app.converted = 0;
+          yield* connected(core);
+          assert.strictEqual((yield* through()).status, 204);
+          assert.deepInclude(yield* remote, { via: "app", invalidSince: null });
         }),
     );
 
