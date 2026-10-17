@@ -58,7 +58,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   by that read, for Finish setup's harden to narrow — until its admin, having finished its setup,
  *   asks `POST /api/mates/:projectId/key-check` → `204` to read it again;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
- *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
+ *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`) and each Git environment's
+ *   latest confirmed push with the origin's CI (`gitPushes`).
  * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
  *   the client that set it up. Its stand-up is asked in the write that records it (B3).
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
@@ -1212,12 +1213,14 @@ const routes = (
         Effect.gen(function* () {
           const { projectId } = yield* mate;
           const state = yield* (yield* Structure).mateState(projectId);
+          const changes = yield* Changes;
           return Option.isSome(state)
             ? json(
                 {
                   ...state.value,
                   signers: state.value.signers ?? {},
-                  ...(yield* (yield* Changes).mateChanges(projectId)),
+                  ...(yield* changes.mateChanges(projectId)),
+                  gitPushes: yield* changes.mateGitPushes(projectId),
                 },
                 200,
               )

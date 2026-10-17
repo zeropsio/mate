@@ -2162,8 +2162,8 @@ describe("HQ API", () => {
           );
           // Named as its project is in Zerops (D3).
           const born = { projectId: "P_MATE", name: "P_MATE", face: "face-1" };
-          // A Mate in no application: no changes beside its record.
-          const none = { appId: null, appName: null, changes: [] };
+          // A Mate in no application: no changes or pushes beside its record.
+          const none = { appId: null, appName: null, changes: [], gitPushes: [] };
           assert.deepStrictEqual(yield* self, [
             200,
             { ...born, standupRequestedBy: "owner", closedOff: false, signers: {}, ...none },
@@ -2230,7 +2230,7 @@ describe("HQ API", () => {
             .body as { readonly ticket: string; readonly expiresIn: number };
           assert.strictEqual(ticket.expiresIn, 60);
           const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
-          // A Mate in no application: no changes beside its record.
+          // A Mate in no application: no changes or pushes beside its record.
           const state = {
             projectId: "P_MATE",
             name: "P_MATE",

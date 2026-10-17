@@ -38,6 +38,7 @@ import {
   attachmentPath,
   mergeSubject,
 } from "@t3tools/shared/hqChanges";
+import type { HqPushCi, MateGitPush } from "@t3tools/shared/hqDeploys";
 import {
   RECIPE_REPO,
   RECIPE_TIER_PATHS,
@@ -199,6 +200,13 @@ export class Changes extends Context.Service<
      * name, and there its latest changes per repository, newest first.
      */
     readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
+    /**
+     * In the application HQ holds the Mate in, each Git environment's latest confirmed push per
+     * repository with the CI record on its evidence (`gitCi.ts`); none for a Mate in no application.
+     */
+    readonly mateGitPushes: (
+      projectId: string,
+    ) => Effect.Effect<ReadonlyArray<MateGitPush>, SqlError>;
     /** A picture for the Mate's open change: a raster, kept for its description to show. */
     readonly attach: (
       projectId: string,
@@ -509,6 +517,12 @@ export const changesLayer: Layer.Layer<
       );
 
     /** The application the Mate edits its change `number` of `repo` in: its own change only. */
+    /** The application HQ holds the Mate in, by id and name: none for a Mate in no application. */
+    const matePlaced = (projectId: string) =>
+      sql<{ readonly app_id: string; readonly name: string }>`
+        SELECT placed.app_id::text AS app_id, app.name FROM hq_app_project placed
+        JOIN hq_app app ON app.id = placed.app_id
+        WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
     const mateChange = (projectId: string, repo: string, number: number) =>
       confirmingRefusal(
         Effect.gen(function* () {
@@ -1015,10 +1029,7 @@ export const changesLayer: Layer.Layer<
         }),
       mateChanges: (projectId) =>
         Effect.gen(function* () {
-          const [placed] = yield* sql<{ readonly app_id: string; readonly name: string }>`
-            SELECT placed.app_id::text AS app_id, app.name FROM hq_app_project placed
-            JOIN hq_app app ON app.id = placed.app_id
-            WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
+          const [placed] = yield* matePlaced(projectId);
           if (placed === undefined) return { appId: null, appName: null, changes: [] };
           const rows = yield* sql<
             Pick<
@@ -1046,6 +1057,32 @@ export const changesLayer: Layer.Layer<
               landedHead: row.landed_head,
             })),
           };
+        }),
+      // The newest pushed job per environment and repository, as `gitCi.ts` resumes it.
+      mateGitPushes: (projectId) =>
+        Effect.gen(function* () {
+          const [placed] = yield* matePlaced(projectId);
+          if (placed === undefined) return [];
+          // The newest pushed job per environment and repository, as `gitCi.ts` resumes it.
+          const rows = yield* sql<{
+            readonly environment: string;
+            readonly tier: MateGitPush["tier"];
+            readonly branch: string;
+            readonly repo: string;
+            readonly sha: string;
+            readonly ci: HqPushCi | null;
+          }>`
+            SELECT environment, tier, branch, repo, sha, ci FROM (
+              SELECT DISTINCT ON (e.id, j.repo) e.name AS environment, e.tier, e.branch, j.repo,
+                     j.sha, j.evidence->'ci' AS ci, e.declared_seq
+              FROM hq_environment e
+              JOIN hq_deploy_job j ON j.environment_id = e.id
+                AND j.kind = 'push' AND j.state = 'pushed'
+              WHERE e.app_id = ${placed.app_id}::uuid AND e.target = 'git'
+              ORDER BY e.id, j.repo, j.id DESC
+            ) latest
+            ORDER BY declared_seq, repo`;
+          return rows.map(({ ci, ...push }) => (ci === null ? push : { ...push, ci }));
         }),
       editChange: (projectId, repo, number, edit) =>
         Effect.gen(function* () {

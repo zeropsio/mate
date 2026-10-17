@@ -165,6 +165,27 @@ export const HqPushEvidence = Schema.Struct({
 );
 export type HqPushEvidence = typeof HqPushEvidence.Type;
 
+/**
+ * A Git environment's latest confirmed push of one repository, as a Mate of its application reads
+ * it (`GET /api/mate/self`): the commit the origin took on the environment's branch and `ci`, the
+ * record HQ keeps on that push's evidence, absent where HQ read none.
+ */
+export const MateGitPush = Schema.Struct({
+  environment: Schema.String,
+  tier: Schema.Literals(["stage", "production"]),
+  branch: HqGitBranch,
+  repo: RepoName,
+  sha: Sha,
+  ci: Schema.optionalKey(HqPushCi),
+}).check(
+  Schema.makeFilter((value) =>
+    value.ci === undefined || value.ci.sha === value.sha
+      ? undefined
+      : "Expected CI of the pushed commit",
+  ),
+);
+export type MateGitPush = typeof MateGitPush.Type;
+
 /** Additive push export: existing deploy readers retain their Zerops state contract. */
 export const HqPushOutcome = Schema.Struct({
   ...HqDeployOutcome.fields,

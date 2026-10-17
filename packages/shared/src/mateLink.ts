@@ -51,6 +51,7 @@ import * as Schema from "effect/Schema";
 
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
 import { MateChanges } from "./hqChanges.ts";
+import { MateGitPush } from "./hqDeploys.ts";
 import { ChiefMateOwner, MateAccessMember } from "./mateAccess.ts";
 import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
 
@@ -94,6 +95,12 @@ export const MateState = Schema.Struct({
    */
   ownerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   ...MateChanges.fields,
+  /**
+   * Each Git environment of its application, its latest confirmed push per repository with the
+   * origin's CI, in the application's environment order. Only `GET /api/mate/self` answers it:
+   * absent from the link's state and from an older HQ.
+   */
+  gitPushes: Schema.optionalKey(Schema.Array(MateGitPush)),
 });
 export type MateState = typeof MateState.Type;
 
