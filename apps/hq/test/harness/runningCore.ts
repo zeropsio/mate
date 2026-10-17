@@ -219,8 +219,8 @@ export const startCore = (
     readonly tasks?: MateTasksOptions;
     /** How often HQ looks for schedules due; 30 s. */
     readonly scheduleEvery?: Duration.Duration;
-    /** The organization's GitHub app as the test stands it in (`CoreOptions.github`); none. */
-    readonly github?: CoreOptions["github"];
+    /** The git mirror to GitHub as the test stands it in (`CoreOptions.githubMirror`). */
+    readonly githubMirror?: CoreOptions["githubMirror"];
     /** How often HQ looks at every open change's pull request; a minute. */
     readonly pullRequests?: CoreOptions["pullRequests"];
   } = {},
@@ -269,7 +269,7 @@ export const startCore = (
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
       ...(given.tasks === undefined ? {} : { tasks: given.tasks }),
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
-      ...(given.github === undefined ? {} : { github: given.github }),
+      ...(given.githubMirror === undefined ? {} : { githubMirror: given.githubMirror }),
       ...(given.pullRequests === undefined ? {} : { pullRequests: given.pullRequests }),
     };
     const scope = yield* Scope.make();

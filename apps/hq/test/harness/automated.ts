@@ -266,8 +266,10 @@ export const automatedPool = (
     readonly scheduleEvery?: Duration.Duration;
     /** The robot's version, as its overview says; one that reads tasks from every source. */
     readonly version?: string;
-    /** The organization's GitHub app as the test stands it in; none. */
-    readonly github?: CoreOptions["github"];
+    /** The git mirror to GitHub as the test stands it in. */
+    readonly githubMirror?: CoreOptions["githubMirror"];
+    /** The robot's Zerops project name; `P_ROBOT` by default. */
+    readonly robotName?: string;
     /** How often HQ looks at every open change's pull request. */
     readonly pullRequestsEvery?: Duration.Duration;
   } = {},
@@ -282,7 +284,7 @@ export const automatedPool = (
     const core = yield* startCore(true, {
       githubApi: github.url,
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
-      ...(given.github === undefined ? {} : { github: given.github }),
+      ...(given.githubMirror === undefined ? {} : { githubMirror: given.githubMirror }),
       ...(given.pullRequestsEvery === undefined
         ? {}
         : { pullRequests: { sweepEvery: given.pullRequestsEvery } }),
@@ -303,6 +305,9 @@ export const automatedPool = (
     yield* connectedRepo(core, appId, "web", "acme/tea-shop");
     const hook = yield* intakeOn(core, github, owner, appId);
     addProject(core.fake, "P_ROBOT");
+    const robotAt = core.fake.projects.length - 1;
+    if (given.robotName !== undefined)
+      core.fake.projects[robotAt] = { ...core.fake.projects[robotAt]!, name: given.robotName };
     const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
     yield* robot.link.send(overviewAt(given.version ?? TASK_SOURCES_SINCE));
     yield* robot.link.send(attention(given.busy === true ? 1 : 0));

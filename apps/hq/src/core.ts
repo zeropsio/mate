@@ -45,9 +45,8 @@ import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
 import { githubAppLayer } from "./githubApp.ts";
 import { githubAppRoutes } from "./githubAppRoutes.ts";
-import { GithubAuth, githubAuthAbsentLayer } from "./githubAuth.ts";
-import { GithubEvents, githubEventsLayer } from "./githubEvents.ts";
-import { GithubMirror, githubMirrorAbsentLayer, githubMirrorLayer } from "./githubMirror.ts";
+import { githubEventsLayer } from "./githubEvents.ts";
+import { type GithubMirror, githubMirrorLayer } from "./githubMirror.ts";
 import { type PullRequestsOptions, pullRequestsLayer } from "./pullRequests.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
@@ -109,14 +108,10 @@ export interface CoreOptions {
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
   /**
-   * The organization's GitHub app as tests stand it in: its tokens, the git mirror, its webhook's
-   * events. No app by default (`githubAuthAbsentLayer`, `githubMirrorAbsentLayer`).
+   * The git mirror to GitHub as a test stands it in, for a test of what is built on it without
+   * git on the fake GitHub's side; the real one (`githubMirrorLayer`) by default.
    */
-  readonly github?: {
-    readonly auth?: Layer.Layer<GithubAuth>;
-    readonly mirror?: Layer.Layer<GithubMirror, never, SqlClient.SqlClient>;
-    readonly events?: Layer.Layer<GithubEvents>;
-  };
+  readonly githubMirror?: Layer.Layer<GithubMirror, never, SqlClient.SqlClient>;
   /** How often every open change's pull request is looked at (`pullRequests.ts`); for tests. */
   readonly pullRequests?: PullRequestsOptions;
   /** Discord's REST API, for tests; Discord's own by default. */
@@ -164,6 +159,8 @@ const services = (options: CoreOptions) => {
     hqProjectId: options.hqProjectId,
     ...(options.githubApi === undefined ? {} : { api: options.githubApi }),
   }).pipe(Layer.provide(NodeHttpClient.layerNodeHttp), Layer.provideMerge(githubEventsLayer));
+  // GitHub's default branch upstream for repositories mirrored through the app: one, as the app.
+  const mirror = options.githubMirror ?? githubMirrorLayer().pipe(Layer.provide(githubApp));
   const remotes = repoRemotesLayer.pipe(
     Layer.provide(
       githubProbesLayer.pipe(
@@ -226,15 +223,9 @@ const services = (options: CoreOptions) => {
   ).pipe(
     Layer.provide(remotes),
     Layer.provide(githubApp),
+    Layer.provide(mirror),
     Layer.provideMerge(github),
     Layer.provideMerge(taskSourceChannelsLayer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        options.github?.auth ?? githubAuthAbsentLayer,
-        options.github?.mirror ?? githubMirrorAbsentLayer,
-        options.github?.events ?? githubEventsLayer,
-      ),
-    ),
   );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
@@ -242,8 +233,7 @@ const services = (options: CoreOptions) => {
     taskLimitsLayer,
     sources,
     githubApp,
-    // GitHub's default branch upstream for repositories mirrored through the app.
-    githubMirrorLayer().pipe(Layer.provide(githubApp)),
+    mirror,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,

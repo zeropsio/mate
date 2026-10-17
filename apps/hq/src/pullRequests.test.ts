@@ -5,16 +5,13 @@ import type { HqNavigationApp, HqNavigationProject } from "@t3tools/shared/hqStr
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { automatedPool } from "../test/harness/automated.ts";
+import { automatedPool, deliver, issueEvent } from "../test/harness/automated.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
 import { ticketFor } from "../test/harness/runningCore.ts";
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { GithubAuth } from "./githubAuth.ts";
-import { type GithubEvent, GithubEvents, githubEventsLayer } from "./githubEvents.ts";
 import { GithubMirror } from "./githubMirror.ts";
 import { mateTaskLink } from "./mateTasks.ts";
 import {
@@ -29,24 +26,18 @@ import {
 } from "./pullRequests.ts";
 import { mateNameIn } from "./taskSources.ts";
 
-/** The app's installation token, built from parts so no scanner takes it for one. */
-const APP_TOKEN = ["ghs", "fake", "app", "0123456789"].join("_");
 const HEAD = "a".repeat(40);
 const HEAD_2 = "b".repeat(40);
 
 const NAV = { kind: "navigation" } as const;
 
-let deliveries = 0;
-
 /**
- * A pool whose repository `appdev` is mirrored to `acme/tea-shop` through the app: GitHub gives
- * the app a token for it, the mirror pushes a change's head to `mate/<n>-hotter-tea`, and
- * following GitHub marks a change merged whose pull request merged there (as an import does).
+ * A pool whose repository `web` is reached through the organization's GitHub app (made and
+ * installed on `acme/tea-shop` on the fake GitHub, its events delivered to its webhook) and
+ * mirrored there: the mirror pushes a change's head to `mate/<n>-hotter-tea`, and following
+ * GitHub moves nothing (the fake GitHub has no git).
  */
 const mirroredPool = Effect.gen(function* () {
-  const events = yield* Effect.gen(function* () {
-    return yield* GithubEvents;
-  }).pipe(Effect.provide(githubEventsLayer));
   const mirrored = { pushes: [] as Array<number>, syncs: 0 };
   const mirror = Layer.effect(
     GithubMirror,
@@ -54,7 +45,7 @@ const mirroredPool = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return GithubMirror.of({
         repositoryOf: (_appId, repo) =>
-          Effect.succeed(repo === "appdev" ? "acme/tea-shop" : undefined),
+          Effect.succeed(repo === "web" ? "acme/tea-shop" : undefined),
         pushChange: (appId, repo, number) =>
           Effect.gen(function* () {
             mirrored.pushes.push(number);
@@ -65,64 +56,78 @@ const mirroredPool = Effect.gen(function* () {
               ? undefined
               : { branch: `mate/${String(number)}-hotter-tea`, sha: row.head };
           }).pipe(Effect.orDie),
-        sync: (appId, repo) =>
-          Effect.gen(function* () {
+        // HQ's main holds GitHub's squash already (`githubMergeOnMain`): following it moves nothing.
+        sync: () =>
+          Effect.sync(() => {
             mirrored.syncs += 1;
-            yield* sql`
-              UPDATE hq_change c SET state = 'merged', merged_sha = ${"f".repeat(40)},
-                landed_head = c.head, merged_at = now(), updated_at = now()
-              FROM hq_pull_request pr
-              WHERE c.app_id::text = ${appId} AND c.repo = ${repo} AND c.state = 'open'
-                AND pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
-                AND pr.state = 'merged'`;
-            return { kind: "imported", from: HEAD, to: "f".repeat(40) } as const;
-          }).pipe(Effect.orDie),
+            return { kind: "same", sha: "f".repeat(40) } as const;
+          }),
       });
     }),
   );
-  const core = yield* automatedPool({
-    github: {
-      auth: Layer.succeed(
-        GithubAuth,
-        GithubAuth.of({
-          tokenFor: (repository) =>
-            Effect.succeed(
-              repository.toLowerCase() === "acme/tea-shop" ? Redacted.make(APP_TOKEN) : undefined,
-            ),
-          bot: Effect.succeed({ login: "acme-mate[bot]", userId: 41 }),
-        }),
-      ),
-      mirror,
-      events: Layer.succeed(GithubEvents, events),
-    },
-    pullRequestsEvery: Duration.millis(100),
-  });
-  core.github.state.users.set("nova", { email: "owner@tea.test" });
   // The Mate's project is named under its application, as Zerops names it.
-  const at = core.fake.projects.findIndex((project) => project.id === "P_ROBOT");
-  core.fake.projects[at] = { ...core.fake.projects[at]!, name: "Tea Shop - Juno" };
+  const core = yield* automatedPool({
+    githubMirror: mirror,
+    pullRequestsEvery: Duration.millis(100),
+    robotName: "Tea Shop - Juno",
+  });
+  // The organization's app, made and installed on `acme/tea-shop` through GitHub's pages, and the
+  // application's repository `web` reached through it.
+  core.github.state.installations.set(7001, {
+    account: "acme",
+    repositories: [{ id: 501, full_name: "acme/tea-shop" }],
+  });
+  const asked = yield* core.call("POST", "/api/org/github/manifest", {
+    session: core.owner,
+    body: { owner: "acme", name: "Tea Shop Mate", returnTo: "https://mate.zerops.io/settings" },
+  });
+  const view = asked.body as { readonly state: string; readonly manifest: string };
+  yield* core.call("GET", `/api/github/app/created?code=code-1&state=${view.state}`);
+  yield* core.call(
+    "GET",
+    `/api/github/app/installed?installation_id=7001&setup_action=install&state=${view.state}`,
+  );
+  const hook = {
+    path: new URL(
+      (JSON.parse(view.manifest) as { hook_attributes: { url: string } }).hook_attributes.url,
+    ).pathname,
+    secret: core.github.state.app.webhookSecret,
+  };
+  yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+  const through = yield* core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+    session: core.owner,
+    body: { repository: "acme/tea-shop" },
+  });
+  assert.strictEqual(through.status, 204);
+  core.github.state.users.set("nova", { email: "owner@tea.test" });
   const dispatch = (name: string, payload: object) =>
-    events.dispatch({
-      name,
-      deliveryId: `delivery-${String((deliveries += 1))}`,
-      repository: "acme/tea-shop",
-      payload: { ...payload, repository: { full_name: "acme/tea-shop" } },
-    } satisfies GithubEvent);
+    Effect.gen(function* () {
+      const delivered = yield* deliver(core, hook, name, {
+        repository: { full_name: "acme/tea-shop", private: true },
+        sender: { login: "nova", type: "User" },
+        ...payload,
+      });
+      assert.isBelow(delivered.status, 300);
+    });
+  /** Whether HQ wrote on GitHub as the app: with a token GitHub minted for its installation. */
+  const asTheApp = (authorization: string | undefined) =>
+    core.github.state.minted.some((minted) => authorization === `Bearer ${minted.token}`);
   // What HQ asked of GitHub before: the intake's webhook, made with the person's token.
   const since = core.github.state.seen.length;
-  return { ...core, mirrored, dispatch, since };
+  return { ...core, mirrored, dispatch, since, asTheApp };
 });
 
 type Pool = Effect.Success<typeof mirroredPool>;
 
-/** The robot on issue 1, its change `appdev` 1 described at `head`; the task. */
+/** The robot on issue 1, its change `web` 1 described at `head`; the task. */
 const describedChange = (core: Pool, head = HEAD) =>
   Effect.gen(function* () {
     yield* core.call("POST", "/api/mate/repos", {
       headers: core.robot.auth,
-      body: { name: "appdev" },
+      body: { name: "web" },
     });
-    yield* core.issue(1);
+    // The app's webhook delivers the repository's issues.
+    yield* core.dispatch("issues", issueEvent("opened", { number: 1, labels: ["mate"] }));
     const frame = yield* core.robot.link.takeWhere(
       "the task of issue 1",
       (message) => message.type === "task",
@@ -135,10 +140,10 @@ const describedChange = (core: Pool, head = HEAD) =>
     yield* core.tasks((rows) => rows[0]?.["state"] === "working");
     yield* core.call("POST", "/api/mate/changes", {
       headers: core.robot.auth,
-      body: { repo: "appdev", title: "Hotter tea" },
+      body: { repo: "web", title: "Hotter tea" },
     });
-    yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'appdev' AND number = 1`;
-    const described = yield* core.call("PATCH", "/api/mate/changes/appdev/1", {
+    yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'web' AND number = 1`;
+    const described = yield* core.call("PATCH", "/api/mate/changes/web/1", {
       headers: core.robot.auth,
       body: { body: "Boils the water twice.\n\nAnd pours it slowly." },
     });
@@ -181,12 +186,28 @@ const opened = (core: Pool) =>
     return task;
   });
 
+/**
+ * GitHub's squash as HQ's `main` holds it once it followed GitHub: the fake GitHub has no git, so
+ * its merge names the commit `main` is at.
+ */
+const squashOnMain = (core: Pool) =>
+  Effect.gen(function* () {
+    const [repo] = yield* rowsWhere(
+      core.url,
+      "SELECT main_head FROM hq_repo WHERE name = 'web'",
+      (rows) => typeof rows[0]?.["main_head"] === "string",
+    );
+    const sha = repo!["main_head"] as string;
+    core.github.state.merge = { ...core.github.state.merge, sha };
+    return sha;
+  });
+
 const changeOf = (core: Pool) =>
   Effect.map(
     core.call("GET", `/api/apps/${core.appId}/changes`, { session: core.owner }),
     (answer) =>
       (answer.body as { changes: ReadonlyArray<HqChange> }).changes.find(
-        (change) => change.repo === "appdev",
+        (change) => change.repo === "web",
       )!,
   );
 
@@ -238,7 +259,7 @@ describe("a change's pull request", () => {
       },
       fixes: 1,
       taskLink: "https://mate.zerops.io/mate/P1",
-      changeLink: "https://mate.zerops.io/change/a/appdev/1",
+      changeLink: "https://mate.zerops.io/change/a/web/1",
       requester: { login: "nova" },
     });
     assert.include(body, "Boils the water twice.");
@@ -282,7 +303,7 @@ describe("a change's pull request", () => {
             core.github.state.seen
               .slice(core.since)
               .filter((request) => request.method !== "GET")
-              .every((request) => request.authorization === `Bearer ${APP_TOKEN}`),
+              .every((request) => core.asTheApp(request.authorization)),
           );
           const change = yield* changeOf(core);
           assert.deepStrictEqual(change.pullRequest, {
@@ -359,8 +380,8 @@ describe("a change's pull request", () => {
           yield* opened(core);
           const pull = core.github.state.pulls.get(2)!;
           core.github.state.pulls.set(2, { ...pull, body: `${pull.body}\n\nA reviewer's note.` });
-          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'appdev' AND number = 1`;
-          yield* core.call("PATCH", "/api/mate/changes/appdev/1", {
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'web' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/web/1", {
             headers: core.robot.auth,
             body: { body: "Boils the water three times." },
           });
@@ -393,13 +414,13 @@ describe("a change's pull request", () => {
           const core = yield* mirroredPool;
           core.github.state.users.set("nova", { email: "owner@tea.test" });
           yield* opened(core);
-          const merged = yield* core.call(
-            "POST",
-            `/api/apps/${core.appId}/changes/appdev/1/merge`,
-            { session: core.owner, body: { expectedHead: HEAD } },
-          );
+          const squash = yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
           assert.strictEqual(merged.status, 200);
-          assert.strictEqual((merged.body as HqChange).state, "merged");
+          assert.deepInclude(merged.body as HqChange, { state: "merged", mergedSha: squash });
           const [merge] = yield* asked(core, "PUT", `${PULL}/merge`);
           const asks = merge!.body as Record<string, string>;
           assert.strictEqual(asks["merge_method"], "squash");
@@ -426,11 +447,10 @@ describe("a change's pull request", () => {
           const core = yield* mirroredPool;
           yield* opened(core);
           core.github.state.merge = { status: 405, message: "Required status check is expected." };
-          const refused = yield* core.call(
-            "POST",
-            `/api/apps/${core.appId}/changes/appdev/1/merge`,
-            { session: core.owner, body: { expectedHead: HEAD } },
-          );
+          const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
           assert.strictEqual(refused.status, 409);
           assert.strictEqual((refused.body as { reason: string }).reason, "github_blocked");
           assert.strictEqual((yield* changeOf(core)).state, "open");
@@ -444,11 +464,16 @@ describe("a change's pull request", () => {
         Effect.gen(function* () {
           const core = yield* mirroredPool;
           yield* opened(core);
+          const squash = yield* squashOnMain(core);
           yield* core.dispatch("pull_request", {
             action: "closed",
-            pull_request: { number: 2, merged: true },
+            pull_request: { number: 2, merged: true, merge_commit_sha: squash },
           });
-          assert.strictEqual((yield* changeOf(core)).state, "merged");
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
+          );
           yield* statusSays(core, "Merged in #2.");
         }),
     );
@@ -468,7 +493,11 @@ describe("a change's pull request", () => {
             action: "closed",
             pull_request: { number: 2, merged: false },
           });
-          assert.strictEqual((yield* changeOf(core)).state, "closed");
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "closed",
+          );
           yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
           yield* statusSays(core, "Juno stopped: PR #⁠2 was closed.");
         }),
@@ -479,8 +508,8 @@ describe("a change's pull request", () => {
         const core = yield* mirroredPool;
         yield* opened(core);
         // The test's head is HQ's record alone, never pushed to git: the close reviews none.
-        yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'appdev' AND number = 1`;
-        const closed = yield* core.call("POST", `/api/apps/${core.appId}/changes/appdev/1/close`, {
+        yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+        const closed = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/close`, {
           session: core.owner,
           body: { expectedHead: null },
         });
@@ -532,11 +561,9 @@ describe("a change's pull request", () => {
             author: "nova",
             text: "`src/kettle.ts:3`: Boil it once more.",
           });
-          const listed = yield* core.call(
-            "GET",
-            `/api/apps/${core.appId}/changes/appdev/1/comments`,
-            { session: core.owner },
-          );
+          const listed = yield* core.call("GET", `/api/apps/${core.appId}/changes/web/1/comments`, {
+            session: core.owner,
+          });
           const comments = (listed.body as { comments: ReadonlyArray<HqChangeComment> }).comments;
           assert.deepStrictEqual(
             comments.map((kept) => [kept.authorGithubLogin, kept.body]),
@@ -554,7 +581,7 @@ describe("a change's pull request", () => {
           const heads = ["a", "b", "c", "d"].map((letter) => letter.repeat(40));
           for (const [index, head] of heads.entries()) {
             if (index > 0) {
-              yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'appdev' AND number = 1`;
+              yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'web' AND number = 1`;
               yield* rowsWhere(
                 core.url,
                 "SELECT head_sha FROM hq_pull_request",
@@ -575,6 +602,15 @@ describe("a change's pull request", () => {
                 action: "completed",
                 check_run: { head_sha: head, pull_requests: [] },
               });
+            // GitHub's events are worked after HQ answers them: this head's, before the next.
+            yield* rowsWhere(
+              core.url,
+              "SELECT checks_told_sha, checks_given_up FROM hq_pull_request",
+              (rows) =>
+                index < 3
+                  ? rows[0]?.["checks_told_sha"] === head
+                  : rows[0]?.["checks_given_up"] === true,
+            );
           }
           const told: Array<string> = [];
           for (let message = 0; message < 3; message++)
@@ -594,6 +630,11 @@ describe("a change's pull request", () => {
             core.url,
             "SELECT count(*)::int AS n FROM hq_task_message",
             (rows) => rows[0]?.["n"] === 3,
+          );
+          yield* core.github.seenWhere("handed to a person", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string } | undefined)?.body?.startsWith(CHECKS_GIVEN_UP),
+            ),
           );
           const gaveUp = core.github.state.seen.filter(
             (request) =>

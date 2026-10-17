@@ -2,7 +2,8 @@
 -- kept as (`pullRequests.ts`): one per change, opened by the app's bot on the change's branch.
 -- `head_sha` is the head GitHub was last given; `checks` what GitHub's checks said of it;
 -- `checks_told_sha`/`checks_told` the failing heads its Mate heard of (at most three, then
--- `checks_given_up`); `described` what HQ last wrote of the change into its body.
+-- `checks_given_up`); `described` what HQ last wrote of the change into its body; `merged_sha`
+-- the commit GitHub's merge of it made.
 CREATE TABLE hq_pull_request (
   app_id uuid NOT NULL,
   repo text NOT NULL,
@@ -18,6 +19,7 @@ CREATE TABLE hq_pull_request (
   checks_given_up boolean NOT NULL DEFAULT false,
   first_comment_id bigint,
   described text,
+  merged_sha text,
   opened_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (app_id, repo, number),

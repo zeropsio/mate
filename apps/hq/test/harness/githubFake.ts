@@ -106,7 +106,12 @@ export const githubFake = Effect.gen(function* () {
       { title: string; body: string; head: string; state: "open" | "closed"; merged: boolean }
     >(),
     /** How a merge answers: its status and GitHub's message. */
-    merge: { status: 200, message: "Pull Request successfully merged" },
+    merge: { status: 200, message: "Pull Request successfully merged" } as {
+      status: number;
+      message: string;
+      /** The commit the merge made; one of forty `f`s unless the test names HQ's own. */
+      sha?: string;
+    },
     /** Each issue's state; open unless closed. */
     issues: new Map<number, "open" | "closed">(),
     /** Each commit's check runs, by sha. */
@@ -265,7 +270,11 @@ export const githubFake = Effect.gen(function* () {
                   return answer(
                     state.merge.status,
                     state.merge.status === 200
-                      ? { sha: "f".repeat(40), merged: true, message: state.merge.message }
+                      ? {
+                          sha: state.merge.sha ?? "f".repeat(40),
+                          merged: true,
+                          message: state.merge.message,
+                        }
                       : { message: state.merge.message },
                   );
                 }
