@@ -9,9 +9,9 @@
  * A call is `POST https://<HQ's own domain>/api/intake/webhook/<id>` with JSON
  * `{title, body?, url?, author?, dedupeKey?}`, signed `X-Mate-Signature: sha256=<hex>` — an
  * HMAC-SHA256 of its bytes under the secret, checked in constant time before a byte of it is
- * parsed. It becomes a task through HQ's door (`TaskIntake`) of a `WebhookSource`: one per call,
- * or — given `dedupeKey` — one per key while its task is live, a second call with news being a
- * message to it. `X-Mate-Delivery` names a call its sender may send twice, taken once.
+ * parsed. It becomes a task through HQ's door (`TaskIntake`) of a `WebhookSource`: one per key
+ * while its task is live — its `dedupeKey`, else a hash of its bytes, so a replay is no new task —
+ * a second call with news being a message to it. `X-Mate-Delivery` names a call its sender may send twice, taken once.
  *
  * @module webhooks
  */
@@ -243,7 +243,12 @@ export const webhooksLayer = (options: { readonly hqProjectId: string }) =>
                 author: shortOf(given.author, MATE_TASK_TITLE_MAX),
               },
               body: given.body ?? "",
-              sourceKey: `webhook:${row.id}/${dedupeKey ?? delivery}`,
+              // With no key of its own, a call is the work item its bytes say: replayed while its
+              // task is live, it is no new task.
+              sourceKey: `webhook:${row.id}/${
+                dedupeKey ??
+                `sha256:${NodeCrypto.createHash("sha256").update(call.body).digest("hex")}`
+              }`,
               deliveryId: `webhook:${row.id}:${delivery}`,
               requestedBy: null,
             });
