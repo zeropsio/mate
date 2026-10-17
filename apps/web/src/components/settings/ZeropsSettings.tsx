@@ -25,6 +25,7 @@ import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
 import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
+import { AutomatedMatesSettings } from "./AutomatedMatesSettings";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { signInTokensWords, type SignInTokensCleanup } from "./zeropsSettings.logic";
@@ -246,6 +247,7 @@ export function ZeropsSettings() {
           <div className="px-3 sm:px-4">
             <ZeropsHqCard />
           </div>
+          {admin ? <AutomatedMatesSettings /> : null}
         </SettingsSection>
       ) : null}
     </SettingsPageContainer>
