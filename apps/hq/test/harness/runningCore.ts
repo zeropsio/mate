@@ -7,6 +7,8 @@
  *
  * @module test/harness/runningCore
  */
+import type { MateTasksOptions } from "../../src/mateTasks.ts";
+import { TaskIntake, TaskSourceChannels } from "../../src/taskSources.ts";
 import * as NodeHttp from "node:http";
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
@@ -212,11 +214,8 @@ export const startCore = (
     readonly chiefUpstream?: string;
     /** GitHub's REST API HQ calls for issues and webhooks (`githubFake.ts`); none answers by default. */
     readonly githubApi?: string;
-    /** How long a Mate has to take a task, and how often HQ looks; 60 s and 5 s. */
-    readonly taskAcceptWithin?: Duration.Duration;
-    readonly taskSweepEvery?: Duration.Duration;
-    /** How long a working task's Mate may be offline before it fails; 2 hours. */
-    readonly taskGoneAfter?: Duration.Duration;
+    /** How long a task's steps may take and how often HQ looks at them (`mateTasks.ts`). */
+    readonly tasks?: MateTasksOptions;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -261,9 +260,7 @@ export const startCore = (
       pingEvery: given.pingEvery ?? Duration.millis(300),
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
-      ...(given.taskAcceptWithin === undefined ? {} : { taskAcceptWithin: given.taskAcceptWithin }),
-      ...(given.taskSweepEvery === undefined ? {} : { taskSweepEvery: given.taskSweepEvery }),
-      ...(given.taskGoneAfter === undefined ? {} : { taskGoneAfter: given.taskGoneAfter }),
+      ...(given.tasks === undefined ? {} : { tasks: given.tasks }),
     };
     const scope = yield* Scope.make();
     const platform =
@@ -405,6 +402,9 @@ export const startCore = (
       backup: Context.get(context, Backup),
       official: Context.get(context, Official),
       sessionChecks: Context.get(context, Sessions).checks,
+      /** HQ's door for tasks, and its sources' channels (`taskSources.ts`). */
+      taskIntake: Context.get(context, TaskIntake),
+      taskChannels: Context.get(context, TaskSourceChannels),
       storeDir,
       stagingDir,
     };

@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 
 import {
   attention,
+  automatedPool,
   connectedRepo,
   deliver,
   intakeOn,
@@ -22,61 +23,12 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
+import { ISSUE_CLOSED } from "./intake.ts";
 import { DECLINED_FOR, MATE_AWAY, UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
-/** A fake Nebius key, built from parts so no scanner takes it for one. */
-const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
-
-/**
- * A Core whose application `Tea Shop` takes `acme/tea-shop`'s issues labelled `mate`, with its
- * automated Mate `P_ROBOT` linked and resting.
- */
-const withPool = (
-  given: {
-    readonly taskAcceptWithin?: Duration.Duration;
-    readonly taskGoneAfter?: Duration.Duration;
-    readonly busy?: boolean;
-    /** The organization keeps no key for its automated Mates' provider. */
-    readonly keyless?: boolean;
-  } = {},
-) =>
-  Effect.gen(function* () {
-    const github = yield* githubFake;
-    const core = yield* startCore(true, {
-      githubApi: github.url,
-      ...(given.taskAcceptWithin === undefined && given.taskGoneAfter === undefined
-        ? {}
-        : { taskSweepEvery: Duration.millis(50) }),
-      ...(given.taskAcceptWithin === undefined ? {} : { taskAcceptWithin: given.taskAcceptWithin }),
-      ...(given.taskGoneAfter === undefined ? {} : { taskGoneAfter: given.taskGoneAfter }),
-    });
-    yield* untilHealth(core.call, "active");
-    const owner = yield* sessionFor(core.call, "door-owner");
-    const app = yield* core.call("POST", "/api/apps", {
-      session: owner,
-      body: { name: "Tea Shop" },
-    });
-    const appId = (app.body as { readonly id: string }).id;
-    const keyKept = () =>
-      core.call("PUT", "/api/org/ai-keys/nebius", { session: owner, body: { value: NEBIUS_KEY } });
-    if (given.keyless !== true) yield* keyKept();
-    yield* connectedRepo(core, appId, "web", "acme/tea-shop");
-    const hook = yield* intakeOn(core, github, owner, appId);
-    addProject(core.fake, "P_ROBOT");
-    const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
-    yield* robot.link.send(attention(given.busy === true ? 1 : 0));
-    const issue = (number: number) =>
-      deliver(core, hook, "issues", issueEvent("opened", { number, labels: ["mate"] }));
-    const tasks = (matches: (rows: ReadonlyArray<Record<string, unknown>>) => boolean) =>
-      rowsWhere(
-        core.url,
-        "SELECT id::text AS id, number, state, mate_project_id, attempts, detail, conversation_id FROM hq_task ORDER BY seq",
-        matches,
-      );
-    return { ...core, github, owner, appId, hook, robot, issue, tasks, keyKept };
-  });
+const withPool = automatedPool;
 
 type Link = Effect.Success<ReturnType<typeof withPool>>["robot"]["link"];
 
@@ -245,14 +197,15 @@ describe("tasks for automated Mates", () => {
           mate_project_id: null,
           detail: "it was turned down for 30 minutes. The last reason: Still standing up.",
         });
-        yield* core.github.seenWhere("the failure's comment", (seen) =>
-          seen.some((request) => request.path.endsWith("/comments")),
+        yield* core.github.seenWhere("the failure's word", (seen) =>
+          seen.some((request) =>
+            (request.body as { body?: string })?.body?.startsWith("No automated Mate"),
+          ),
         );
-        assert.deepStrictEqual(yield* core.github.comments, [
-          [
-            "/repos/acme/tea-shop/issues/1/comments",
-            "No automated Mate could take this up: it was turned down for 30 minutes. The last reason: Still standing up.",
-          ],
+        assert.deepStrictEqual((yield* core.github.commentLog).at(-1), [
+          "PATCH",
+          "/repos/acme/tea-shop/issues/comments/101",
+          "No automated Mate could take this up: it was turned down for 30 minutes. The last reason: Still standing up.",
         ]);
       }),
     );
@@ -459,11 +412,10 @@ describe("tasks for automated Mates", () => {
         Effect.gen(function* () {
           const core = yield* withPool();
           const issue = "/repos/acme/tea-shop/issues/1/comments";
-          const commented = (count: number) =>
-            core.github.seenWhere(
-              `${String(count)} comments`,
-              (seen) =>
-                seen.filter((request) => request.path.endsWith("/comments")).length >= count,
+          const status = "/repos/acme/tea-shop/issues/comments/101";
+          const said = (words: string) =>
+            core.github.seenWhere(words, (seen) =>
+              seen.some((request) => (request.body as { body?: string })?.body?.startsWith(words)),
             );
           yield* core.call("POST", "/api/mate/repos", {
             headers: core.robot.auth,
@@ -475,29 +427,32 @@ describe("tasks for automated Mates", () => {
             type: "task-state",
             report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
           });
-          yield* commented(1);
+          yield* said("P_ROBOT picked this up.");
           const change = yield* core.call("POST", "/api/mate/changes", {
             headers: core.robot.auth,
             body: { repo: "appdev", title: "Hotter tea" },
           });
           const number = (change.body as { change: { number: number } }).change.number;
-          yield* commented(2);
+          yield* said("P_ROBOT opened a change for review");
           yield* core.robot.link.send({
             type: "task-state",
             report: { taskId: task.id, state: "failed", detail: "The kettle would not boil." },
           });
-          yield* commented(3);
-          assert.deepStrictEqual(yield* core.github.comments, [
-            [issue, "P_ROBOT picked this up."],
+          yield* said("P_ROBOT couldn't finish this");
+          // One status comment, made once and edited as the task moved.
+          assert.deepStrictEqual(yield* core.github.commentLog, [
+            ["POST", issue, "Queued for an automated Mate: #1 in line."],
+            ["PATCH", status, "P_ROBOT picked this up."],
             [
-              issue,
+              "PATCH",
+              status,
               `P_ROBOT opened a change for review: ${DEFAULT_HOSTED_APP_URL}${changeRoutePath(core.appId, "appdev", number)}`,
             ],
-            [issue, "P_ROBOT couldn't finish this: The kettle would not boil."],
+            ["PATCH", status, "P_ROBOT couldn't finish this: The kettle would not boil."],
           ]);
           assert.isTrue(
             core.github.state.seen
-              .filter((request) => request.path.endsWith("/comments"))
+              .filter((request) => request.path.includes("/comments"))
               .every((request) => request.authorization === `Bearer ${GITHUB_TOKEN}`),
           );
         }),
@@ -515,7 +470,7 @@ describe("tasks for automated Mates", () => {
         });
         yield* core.github.seenWhere(
           "the comment tried twice",
-          (seen) => seen.filter((request) => request.path.endsWith("/comments")).length === 2,
+          (seen) => seen.filter((request) => request.path.endsWith("/comments")).length >= 2,
         );
         const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "working");
         assert.strictEqual(row!["state"], "working");
@@ -526,15 +481,16 @@ describe("tasks for automated Mates", () => {
       Effect.gen(function* () {
         const core = yield* withPool({ taskAcceptWithin: Duration.millis(200) });
         yield* core.issue(1);
-        yield* core.github.seenWhere("the failure's comment", (seen) =>
-          seen.some((request) => request.path.endsWith("/comments")),
+        yield* core.github.seenWhere("the failure's word", (seen) =>
+          seen.some((request) =>
+            (request.body as { body?: string })?.body?.startsWith("No automated Mate"),
+          ),
         );
         // No Mate took it: none is named.
-        assert.deepStrictEqual(yield* core.github.comments, [
-          [
-            "/repos/acme/tea-shop/issues/1/comments",
-            `No automated Mate could take this up: ${UNTAKEN}`,
-          ],
+        assert.deepStrictEqual((yield* core.github.commentLog).at(-1), [
+          "PATCH",
+          "/repos/acme/tea-shop/issues/comments/101",
+          `No automated Mate could take this up: ${UNTAKEN}`,
         ]);
         const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
         assert.strictEqual(row!["mate_project_id"], null);
@@ -554,19 +510,21 @@ describe("tasks for automated Mates", () => {
         yield* core.robot.link.close;
         const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
         assert.deepInclude(row, { mate_project_id: "P_ROBOT", detail: MATE_AWAY });
-        yield* core.github.seenWhere(
-          "the failure's comment",
-          (seen) => seen.filter((request) => request.path.endsWith("/comments")).length === 2,
+        yield* core.github.seenWhere("the failure's word", (seen) =>
+          seen.some((request) =>
+            (request.body as { body?: string })?.body?.startsWith("P_ROBOT couldn't finish"),
+          ),
         );
-        assert.deepStrictEqual((yield* core.github.comments).at(-1), [
-          "/repos/acme/tea-shop/issues/1/comments",
+        assert.deepStrictEqual((yield* core.github.commentLog).at(-1), [
+          "PATCH",
+          "/repos/acme/tea-shop/issues/comments/101",
           `P_ROBOT couldn't finish this: ${MATE_AWAY}`,
         ]);
       }),
     );
 
     it.effect(
-      "an issue closed while its task is handed out is dropped and its Mate is free; one its Mate works on carries on",
+      "closing an issue stops its task at any stage: dropped while no Mate took it, its Mate told to stop once one did",
       () =>
         Effect.gen(function* () {
           const core = yield* withPool();
@@ -586,14 +544,30 @@ describe("tasks for automated Mates", () => {
           });
           yield* core.tasks((rows) => rows[1]?.["state"] === "working");
           yield* closed(2);
-          // A closed issue is no task to take; the Mate already on it carries on.
-          const rows = yield* core.tasks((found) => found.length === 2);
+          const stop = yield* core.robot.link.take("task-stop");
+          assert.deepStrictEqual(stop, { taskId: second.id, reason: ISSUE_CLOSED });
+          // Told again on its next link, until it says it stopped.
+          yield* core.robot.link.close;
+          const again = yield* linkOf(core, core.robot.credential);
+          assert.strictEqual((yield* again.link.take("task-stop"))["taskId"], second.id);
+          yield* again.link.send({
+            type: "task-state",
+            report: { taskId: second.id, state: "stopped" },
+          });
+          const rows = yield* core.tasks((found) => found[1]?.["state"] === "stopped");
           assert.deepStrictEqual(
-            rows.map((row) => [row["number"], row["state"], row["mate_project_id"]]),
+            rows.map((row) => [row["number"], row["state"], row["mate_project_id"], row["detail"]]),
             [
-              [1, "dropped", null],
-              [2, "working", "P_ROBOT"],
+              [1, "dropped", null, ISSUE_CLOSED],
+              [2, "stopped", "P_ROBOT", ISSUE_CLOSED],
             ],
+          );
+          yield* core.github.seenWhere("the stop's word", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.startsWith(
+                `P_ROBOT stopped: ${ISSUE_CLOSED}`,
+              ),
+            ),
           );
         }),
     );

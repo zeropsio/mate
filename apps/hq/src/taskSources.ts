@@ -45,11 +45,17 @@ export type TaskEnqueued =
   /** A live task already holds the key: the ask went to it as a message. */
   | { readonly kind: "told"; readonly taskId: string };
 
+/** HQ could not take a task in now (it is not the leading HQ, or its database is away): ask again. */
+export class TaskIntakeUnavailable extends Schema.TaggedError<TaskIntakeUnavailable>()(
+  "TaskIntakeUnavailable",
+  {},
+) {}
+
 /** HQ's door for sources: in, follow-ups, and stops. */
 export class TaskIntake extends Context.Service<
   TaskIntake,
   {
-    readonly enqueue: (input: TaskEnqueue) => Effect.Effect<TaskEnqueued>;
+    readonly enqueue: (input: TaskEnqueue) => Effect.Effect<TaskEnqueued, TaskIntakeUnavailable>;
     /** A follow-up on the key's live task (dropped, and false, when it has none). */
     readonly message: (sourceKey: string, message: MateTaskMessage) => Effect.Effect<boolean>;
     /** People stopped the key's live task (issue closed, label removed, thread deleted). */

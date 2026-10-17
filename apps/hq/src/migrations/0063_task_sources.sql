@@ -53,3 +53,16 @@ CREATE UNIQUE INDEX hq_task_live_mate ON hq_task (mate_project_id)
   WHERE state IN ('assigned', 'working', 'waiting');
 CREATE INDEX hq_task_change ON hq_task (app_id, change_repo, change_number)
   WHERE change_number IS NOT NULL;
+
+-- What was said about a task after it came in (`MateTaskMessage`): kept until its Mate takes it,
+-- then told on each of its links (the Mate hears each id once).
+CREATE TABLE hq_task_message (
+  task_id uuid NOT NULL REFERENCES hq_task (id) ON DELETE CASCADE,
+  id text NOT NULL CHECK (length(id) BETWEEN 1 AND 300),
+  seq bigint GENERATED ALWAYS AS IDENTITY,
+  source text NOT NULL CHECK (source IN ('comment', 'reply', 'review', 'edit')),
+  author text,
+  text text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (task_id, id)
+);

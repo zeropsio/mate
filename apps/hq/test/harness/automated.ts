@@ -9,13 +9,16 @@ import * as NodeCrypto from "node:crypto";
 
 import { assert } from "@effect/vitest";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import { sealRemoteToken } from "../../src/deployKeys.ts";
+import type { MateTasksOptions } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
-import type { githubFake } from "./githubFake.ts";
-import { enrollMate, type startCore } from "./runningCore.ts";
+import { githubFake } from "./githubFake.ts";
+import { addProject, rowsWhere } from "./mates.ts";
+import { enrollMate, sessionFor, startCore, untilHealth } from "./runningCore.ts";
 
 type Core = Effect.Success<ReturnType<typeof startCore>>;
 
@@ -190,3 +193,60 @@ export const attention = (working: number) => ({
     truncated: false,
   },
 });
+
+/** A fake Nebius key, built from parts so no scanner takes it for one. */
+const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
+
+/**
+ * A Core whose application `Tea Shop` takes `acme/tea-shop`'s issues labelled `mate`, with its
+ * automated Mate `P_ROBOT` linked and resting.
+ */
+export const automatedPool = (
+  given: {
+    readonly taskAcceptWithin?: Duration.Duration;
+    readonly taskGoneAfter?: Duration.Duration;
+    /** HQ's other task times (`MateTasksOptions`): any given, HQ looks at its tasks every 50 ms. */
+    readonly tasks?: MateTasksOptions;
+    readonly busy?: boolean;
+    /** The organization keeps no key for its automated Mates' provider. */
+    readonly keyless?: boolean;
+  } = {},
+) =>
+  Effect.gen(function* () {
+    const github = yield* githubFake;
+    const times: MateTasksOptions = {
+      ...given.tasks,
+      ...(given.taskAcceptWithin === undefined ? {} : { acceptWithin: given.taskAcceptWithin }),
+      ...(given.taskGoneAfter === undefined ? {} : { goneAfter: given.taskGoneAfter }),
+    };
+    const core = yield* startCore(true, {
+      githubApi: github.url,
+      ...(Object.keys(times).length === 0
+        ? {}
+        : { tasks: { sweepEvery: Duration.millis(50), ...times } }),
+    });
+    yield* untilHealth(core.call, "active");
+    const owner = yield* sessionFor(core.call, "door-owner");
+    const app = yield* core.call("POST", "/api/apps", {
+      session: owner,
+      body: { name: "Tea Shop" },
+    });
+    const appId = (app.body as { readonly id: string }).id;
+    const keyKept = () =>
+      core.call("PUT", "/api/org/ai-keys/nebius", { session: owner, body: { value: NEBIUS_KEY } });
+    if (given.keyless !== true) yield* keyKept();
+    yield* connectedRepo(core, appId, "web", "acme/tea-shop");
+    const hook = yield* intakeOn(core, github, owner, appId);
+    addProject(core.fake, "P_ROBOT");
+    const robot = yield* mateLinked(core, owner, "P_ROBOT", { appId });
+    yield* robot.link.send(attention(given.busy === true ? 1 : 0));
+    const issue = (number: number) =>
+      deliver(core, hook, "issues", issueEvent("opened", { number, labels: ["mate"] }));
+    const tasks = (matches: (rows: ReadonlyArray<Record<string, unknown>>) => boolean) =>
+      rowsWhere(
+        core.url,
+        "SELECT id::text AS id, number, state, mate_project_id, attempts, detail, conversation_id FROM hq_task ORDER BY seq",
+        matches,
+      );
+    return { ...core, github, owner, appId, hook, robot, issue, tasks, keyKept };
+  });

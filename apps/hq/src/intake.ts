@@ -25,7 +25,6 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import { MATE_TASK_BODY_MAX, MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 import type { HqIntakeRequest, HqIntakeView } from "@t3tools/shared/hqIntake";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -46,8 +45,18 @@ import { can } from "./permissions.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Structure } from "./structure.ts";
-import { encodeSource } from "./taskSources.ts";
+import { MateTasks } from "./mateTasks.ts";
+import { TaskIntake, type TaskIntakeUnavailable, cleanTaskTitle } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
+
+/** Why an issue's task stopped, as its status line says. */
+export const ISSUE_CLOSED = "the issue was closed.";
+export const LABEL_REMOVED = "the label was removed.";
+const INTAKE_MOVED = "the application's intake moved to another repository.";
+const INTAKE_STOPPED = "the application's intake was stopped.";
+
+/** An issue's work item (`TaskEnqueue.sourceKey`). */
+export const issueKey = (repo: string, number: number) => `github:${repo}#${String(number)}`;
 
 /** Where GitHub delivers an intake's webhooks, below HQ's own address. */
 export const INTAKE_WEBHOOK_PATH = "/api/intake/github";
@@ -137,7 +146,7 @@ export class Intake extends Context.Service<
     readonly receive: (
       publicId: string,
       delivery: Delivery,
-    ) => Effect.Effect<Received, NotLeader | SqlError>;
+    ) => Effect.Effect<Received, NotLeader | SqlError | TaskIntakeUnavailable>;
   }
 >()("@t3tools/hq/intake") {}
 
@@ -164,6 +173,8 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
       const remotes = yield* Remotes;
       const github = yield* GithubIssues;
       const structure = yield* Structure;
+      const intake = yield* TaskIntake;
+      const tasks = yield* MateTasks;
 
       const refuse = (code: AutomationRefused["code"], reason: string) =>
         Effect.fail(new AutomationRefused({ code, reason }));
@@ -249,40 +260,12 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           ),
         );
 
-      /** An issue's task, waiting: once per delivery, once per issue while it is live. */
-      const queue = (appId: string, deliveryId: string, event: typeof IssuesEvent.Type) =>
-        Effect.gen(function* () {
-          const { issue } = event;
-          const title =
-            issue.title.trim().slice(0, MATE_TASK_TITLE_MAX) || `Issue #${String(issue.number)}`;
-          const repo = event.repository.full_name.toLowerCase();
-          const author = issue.user?.login ?? null;
-          const source = encodeSource({
-            kind: "github-issue",
-            repo,
-            number: issue.number,
-            url: issue.html_url,
-            title,
-            author,
-          });
-          const rows = yield* leader.write(sql`
-            INSERT INTO hq_task (app_id, repo, number, title, body, url, author, delivery_id, state,
-              source_kind, source, source_key)
-            VALUES (${appId}::uuid, ${repo}, ${issue.number},
-              ${title}, ${(issue.body ?? "").slice(0, MATE_TASK_BODY_MAX)}, ${issue.html_url},
-              ${author}, ${deliveryId}, 'queued', 'github-issue', ${source}::jsonb,
-              ${`github:${repo}#${String(issue.number)}`})
-            ON CONFLICT DO NOTHING
-            RETURNING 1`);
-          return rows.length > 0;
-        });
-
       /**
        * The tasks `where` names that no Mate took yet, dropped — waiting, or handed out and not
        * taken — saying why; the Mates they were handed to, free again. A statement of a write.
        */
       const dropping = (where: Statement.Fragment, why: string) =>
-        sql<{ readonly was: string | null }>`
+        sql<{ readonly id: string; readonly app_id: string; readonly was: string | null }>`
           WITH gone AS (
             SELECT id, mate_project_id AS was FROM hq_task
             WHERE ${where} AND state IN ('queued', 'assigned')
@@ -290,22 +273,44 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           UPDATE hq_task t SET state = 'dropped', detail = ${why}, mate_project_id = NULL,
             assigned_at = NULL, updated_at = now()
           FROM gone WHERE t.id = gone.id
-          RETURNING gone.was`;
-      /** Every reader of the dropped tasks' Mates told; whether any was dropped. */
-      const dropped = (rows: ReadonlyArray<{ readonly was: string | null }>) =>
+          RETURNING t.id::text AS id, t.app_id::text AS app_id, gone.was`;
+      /** Every reader of the dropped tasks' Mates told, and their sources; whether any was dropped. */
+      const dropped = (
+        rows: ReadonlyArray<{
+          readonly id: string;
+          readonly app_id: string;
+          readonly was: string | null;
+        }>,
+        why: string,
+      ) =>
         Effect.gen(function* () {
           for (const { was } of rows) if (was !== null) yield* structure.mateTouched(was);
+          yield* tasks.dropped(rows, why);
           return rows.length > 0;
         });
 
-      /** The issue's task no Mate took yet, dropped: its issue closed or lost the label. */
-      const drop = (appId: string, repo: string, number: number, why: string) =>
-        Effect.flatMap(
-          leader.write(
-            dropping(sql`app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`, why),
-          ),
-          dropped,
-        );
+      /** An issue's task, as HQ's door takes it in: once per delivery, once per issue while live. */
+      const queue = (appId: string, deliveryId: string, event: typeof IssuesEvent.Type) =>
+        Effect.gen(function* () {
+          const { issue } = event;
+          const repo = event.repository.full_name.toLowerCase();
+          const taken = yield* intake.enqueue({
+            appId,
+            source: {
+              kind: "github-issue",
+              repo,
+              number: issue.number,
+              url: issue.html_url,
+              title: cleanTaskTitle(issue.title, `Issue #${String(issue.number)}`),
+              author: issue.user?.login ?? null,
+            },
+            body: issue.body ?? "",
+            sourceKey: issueKey(repo, issue.number),
+            deliveryId,
+            requestedBy: null,
+          });
+          return taken.kind !== "duplicate";
+        });
 
       return Intake.of({
         receive: (publicId, delivery) =>
@@ -349,11 +354,16 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                 : event.action === "labeled"
                   ? open && named && (yield* queue(row.app_id, delivery.id, event))
                   : event.action === "closed"
-                    ? yield* drop(row.app_id, repo, event.issue.number, "issue closed")
+                    ? yield* Effect.as(
+                        intake.stop(issueKey(repo, event.issue.number), ISSUE_CLOSED),
+                        true,
+                      )
                     : event.action === "unlabeled" && named
-                      ? yield* drop(row.app_id, repo, event.issue.number, "label removed")
+                      ? yield* Effect.as(
+                          intake.stop(issueKey(repo, event.issue.number), LABEL_REMOVED),
+                          true,
+                        )
                       : false;
-            if (moved) yield* structure.touched;
             return { kind: "taken", appId: row.app_id, moved } as const;
           }),
         keep: (userId, appId, request) =>
@@ -396,11 +406,11 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     ? []
                     : yield* dropping(
                         sql`app_id::text = ${appId} AND repo = ${before.repo}`,
-                        "intake moved",
+                        INTAKE_MOVED,
                       );
                 }),
               );
-              yield* dropped(left);
+              yield* dropped(left, INTAKE_MOVED);
               yield* structure.touched;
               // The old repository's webhook goes once nothing delivers to it any more.
               if (before?.hook_id != null && heldHook === null)
@@ -433,10 +443,13 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                 Effect.gen(function* () {
                   yield* sql`DELETE FROM hq_intake WHERE app_id::text = ${appId}`;
                   // What no Mate took yet came from it: nobody takes it now.
-                  return yield* dropping(sql`app_id::text = ${appId}`, "intake stopped");
+                  return yield* dropping(
+                    sql`app_id::text = ${appId} AND source_kind = 'github-issue'`,
+                    INTAKE_STOPPED,
+                  );
                 }),
               );
-              yield* dropped(left);
+              yield* dropped(left, INTAKE_STOPPED);
               yield* structure.touched;
               if (before.hook_id !== null)
                 yield* removeHook(appId, before.hq_repo, Number(before.hook_id));
