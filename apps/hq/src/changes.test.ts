@@ -948,7 +948,7 @@ describe("a Mate's changes in HQ", () => {
           // The answer is the Mate's state on the wire, pushes included.
           const answer = (yield* call("GET", "/api/mate/self", { headers: auth })).body;
           assert.deepStrictEqual(
-            Schema.decodeUnknownSync(MateState)(answer).gitPushes,
+            (yield* Schema.decodeUnknownEffect(MateState)(answer)).gitPushes,
             (answer as { readonly gitPushes: unknown }).gitPushes,
           );
         }),
