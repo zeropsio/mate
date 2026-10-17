@@ -217,7 +217,7 @@ function Harness() {
             admin={ADMIN}
             onOpenMate={nothing}
             pool={[]}
-            sources={{ rows: [], reading: false }}
+            sources={{ rows: [], reading: false, withheld: false }}
             workingOf={() => false}
           />
         </Panel>
@@ -234,7 +234,7 @@ function Harness() {
           <ProjectAutomationView
             onOpenMate={nothing}
             pool={POOL}
-            sources={{ rows: SOURCES.rows.slice(0, 1), reading: false }}
+            sources={{ rows: SOURCES.rows.slice(0, 1), reading: false, withheld: true }}
             workingOf={(id) => WORKING.has(id)}
           />
         </Panel>

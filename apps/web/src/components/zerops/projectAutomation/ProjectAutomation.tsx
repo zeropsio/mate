@@ -102,7 +102,7 @@ export function ProjectAutomation({
   };
   if (key === "unsupported") return null;
   if (!admin) {
-    const { rows } = sourceRows({
+    const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
       slack: WITHHELD,
       discord: WITHHELD,
@@ -116,7 +116,7 @@ export function ProjectAutomation({
       <ProjectAutomationView
         onOpenMate={onOpenMate}
         pool={pool}
-        sources={{ rows, reading: intake.read.intake === undefined }}
+        sources={{ rows, reading: intake.read.intake === undefined, withheld }}
       />
     );
   }
@@ -433,7 +433,12 @@ export function ProjectAutomationView({
   workingOf,
 }: {
   readonly pool: ReadonlyArray<PoolMate>;
-  readonly sources: { readonly rows: ReadonlyArray<SourceRow>; readonly reading: boolean };
+  readonly sources: {
+    readonly rows: ReadonlyArray<SourceRow>;
+    readonly reading: boolean;
+    /** Some sources are refused to the reader: what is shown is not every source. */
+    readonly withheld: boolean;
+  };
   readonly admin?: AutomationControls | undefined;
   readonly onOpenMate: (projectId: string) => void;
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
@@ -470,17 +475,20 @@ export function ProjectAutomationView({
         </div>
       )}
       <h3 className="px-2 pt-2 text-xs font-medium text-muted-foreground">Takes tasks from</h3>
-      {sources.rows.length === 0 ? (
-        <p className="px-2 text-sm text-muted-foreground">
-          {sources.reading ? "Reading…" : "Nowhere yet."}
-        </p>
-      ) : (
+      {sources.rows.length > 0 ? (
         <ul className="grid" data-zerops-surface="project-automation-sources">
           {sources.rows.map((row) => (
             <SourceRowView admin={admin} key={row.key} row={row} />
           ))}
         </ul>
+      ) : sources.reading ? (
+        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+      ) : sources.withheld ? null : (
+        <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
       )}
+      {sources.withheld ? (
+        <p className="px-2 text-xs text-muted-foreground">Owners and admins see every source.</p>
+      ) : null}
       {admin === undefined ? null : (
         <div className="px-2">
           <Menu>

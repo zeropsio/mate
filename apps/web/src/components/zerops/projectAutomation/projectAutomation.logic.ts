@@ -87,12 +87,14 @@ export interface SourceReads {
 const NOT_YET = new Set(["unread", "reading"]);
 
 /**
- * The sources a project takes tasks from, one row each, and whether any is still being read. A
+ * The sources a project takes tasks from, one row each, whether any is still being read, and
+ * whether any is refused to the reader (`withheld`): then what is shown is not every source. A
  * source refused to the reader, or one this HQ predates, has no row; one whose read failed says so.
  */
 export function sourceRows(reads: SourceReads): {
   readonly rows: ReadonlyArray<SourceRow>;
   readonly reading: boolean;
+  readonly withheld: boolean;
 } {
   const rows: Array<SourceRow> = [];
   const { intake } = reads;
@@ -158,7 +160,10 @@ export function sourceRows(reads: SourceReads): {
     [reads.slack, reads.discord, reads.webhooks, reads.schedules].some((setting) =>
       NOT_YET.has(setting.state),
     );
-  return { rows, reading };
+  const withheld = [reads.slack, reads.discord, reads.webhooks, reads.schedules].some(
+    (setting) => setting.state === "withheld",
+  );
+  return { rows, reading, withheld };
 }
 
 /**

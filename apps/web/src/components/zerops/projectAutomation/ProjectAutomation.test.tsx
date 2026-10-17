@@ -83,7 +83,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[NOVA, JUNO]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={(projectId) => projectId === "p-nova"}
       />,
     );
@@ -102,7 +102,7 @@ describe("a project's Automation section", () => {
       <ProjectAutomationView
         onOpenMate={onOpenMate}
         pool={[NOVA]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -120,7 +120,7 @@ describe("a project's Automation section", () => {
         admin={controls()}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -135,7 +135,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -159,7 +159,7 @@ describe("a project's Automation section", () => {
         admin={admin}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -177,7 +177,7 @@ describe("a project's Automation section", () => {
         admin={controls()}
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: false }}
+        sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -189,7 +189,7 @@ describe("a project's Automation section", () => {
       <ProjectAutomationView
         onOpenMate={vi.fn()}
         pool={[NOVA]}
-        sources={{ rows: ROWS, reading: false }}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
@@ -200,12 +200,38 @@ describe("a project's Automation section", () => {
     expect(text).not.toContain("Take tasks from…");
   });
 
+  it("never says a project takes tasks from nowhere while some of its sources are refused to the reader", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: true }}
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).not.toContain("Nowhere yet.");
+    expect(words(root)).toContain("Owners and admins see every source.");
+  });
+
+  it("shows the sources the reader may see, and says Owners and admins see the rest", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: ROWS.slice(0, 1), reading: false, withheld: true }}
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).toContain("GitHub issues labelled “mate” · acme/tea-shop");
+    expect(words(root)).toContain("Owners and admins see every source.");
+  });
+
   it("says it reads its sources until they are read", () => {
     const root = rendered(
       <ProjectAutomationView
         onOpenMate={vi.fn()}
         pool={[]}
-        sources={{ rows: [], reading: true }}
+        sources={{ rows: [], reading: true, withheld: false }}
         workingOf={() => false}
       />,
     );

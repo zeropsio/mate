@@ -129,6 +129,16 @@ describe("a project's sources of tasks", () => {
   });
 });
 
+describe("sources refused to the reader", () => {
+  it.each([
+    ["a source refused to the reader", { ...NONE, slack: { state: "withheld" as const } }, true],
+    ["every source read", NONE, false],
+    ["a source this HQ predates", { ...NONE, slack: { state: "unsupported" as const } }, false],
+  ] as const)("are said where %s", (_case, reads, withheld) => {
+    expect(sourceRows(reads).withheld).toBe(withheld);
+  });
+});
+
 describe("when a schedule runs", () => {
   it.each([
     [{ every: "day", at: "07:30", timeZone: "UTC" }, "Every day 07:30"],
