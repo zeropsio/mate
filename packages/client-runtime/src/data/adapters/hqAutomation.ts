@@ -148,13 +148,22 @@ export function makeAutomationSettings(options: {
         }
       };
     },
-    setIntake: async (key: IntakeKey, repo: string, label: string): Promise<string> => {
+    /** `takesPublic`: it takes a public repository's issues, which anyone can open. */
+    setIntake: async (
+      key: IntakeKey,
+      repo: string,
+      label: string,
+      takesPublic = false,
+    ): Promise<string> => {
       const requestId = options.makeId();
       const id = intakeId(key);
       revealedFor.set(requestId, { key, epoch: epochs.get(id) ?? 0 });
       publish(key, requestId, null);
       try {
-        return await run({ kind: "set-intake", ...key, repo, label }, requestId);
+        return await run(
+          { kind: "set-intake", ...key, repo, label, ...(takesPublic ? { public: true } : {}) },
+          requestId,
+        );
       } finally {
         revealedFor.delete(requestId);
       }
