@@ -45,7 +45,12 @@ export const setIntake: OperationKind<"set-intake"> = {
     (intent: IntentOf<"set-intake">) => intent.appId,
     (read, intent) => {
       const intake = navigationIntake(read, intent.orgId, intent.appId);
-      return intake != null && intake.repo === intent.repo && intake.label === intent.label;
+      // HQ keeps the repository's name lower-cased, as GitHub matches it: any case is the same.
+      return (
+        intake != null &&
+        intake.repo.toLowerCase() === intent.repo.toLowerCase() &&
+        intake.label === intent.label
+      );
     },
   ),
 };
