@@ -633,6 +633,43 @@ describe("the organization's GitHub app", () => {
         }),
     );
 
+    it.effect(
+      "a remote through the app, the app forgotten, says on the wire that it no longer works until GitHub is connected again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* appCore;
+          yield* connected(core);
+          yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+          yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+          const through = () =>
+            core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+              session: core.owner,
+              body: { repository: "acme/tea-shop" },
+            });
+          assert.strictEqual((yield* through()).status, 204);
+          const remote = Effect.map(
+            core.call("GET", `/api/apps/${core.appId}/repos`, { session: core.owner }),
+            (answer) =>
+              (
+                answer.body as { repos: ReadonlyArray<{ name: string; remote: unknown }> }
+              ).repos.find((repo) => repo.name === "web")?.remote as {
+                readonly via: string;
+                readonly invalidSince: string | null;
+              },
+          );
+          assert.deepInclude(yield* remote, { via: "app", invalidSince: null });
+          yield* core.call("DELETE", "/api/org/github", { session: core.owner });
+          const gone = yield* remote;
+          assert.strictEqual(gone.via, "app");
+          assert.isString(gone.invalidSince);
+          // Connected again, and the repository through it again: it works again.
+          core.github.state.app.converted = 0;
+          yield* connected(core);
+          assert.strictEqual((yield* through()).status, 204);
+          assert.deepInclude(yield* remote, { via: "app", invalidSince: null });
+        }),
+    );
+
     it.effect("forgetting the app keeps nothing of it, its installations or its trips", () =>
       Effect.gen(function* () {
         const core = yield* appCore;

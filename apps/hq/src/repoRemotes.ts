@@ -247,6 +247,9 @@ export const repoRemotesLayer = Layer.effect(
      * its id on GitHub, never another made under its name.
      */
     const appTokenOf = Effect.fnUntraced(function* (row: RemoteRow) {
+      // Its app forgotten (`githubApp.ts`): connected through an app again before it works again.
+      if (row.invalid_since !== null)
+        return yield* new RemoteRefused({ reason: "app_not_installed" });
       const identity = remoteIdentity(row.url);
       const token =
         identity?.kind === "github"

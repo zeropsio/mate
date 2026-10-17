@@ -22,7 +22,8 @@
  *   the app's JWT and kept until five minutes before GitHub expires it; a repository HQ does not
  *   know the app reaches is looked for again at most once a minute per account.
  *
- * Forgotten, HQ keeps nothing of the app; deleting it on GitHub is the person's.
+ * Forgotten, HQ keeps nothing of the app, and the remotes reached through it are invalid from then
+ * on (`invalid_since`) until connected through an app again; deleting it on GitHub is the person's.
  *
  * @module githubApp
  */
@@ -798,6 +799,10 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
                   yield* sql`DELETE FROM hq_github_installation`;
                   yield* sql`DELETE FROM hq_github_app_state`;
                   yield* sql`DELETE FROM hq_github_app`;
+                  // Remotes reached through it no longer work: they say so until connected again.
+                  yield* sql`
+                    UPDATE hq_repo_remote SET invalid_since = clock_timestamp()
+                    WHERE via = 'app' AND invalid_since IS NULL`;
                 }),
               ),
             );
