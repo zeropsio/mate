@@ -84,6 +84,7 @@ import {
 import type { LiveJobs } from "./liveJobs.logic";
 import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
 import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
+import type { OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 
@@ -765,6 +766,17 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       operation: ZeropsOperation;
+    }
+  | {
+      /**
+       * An origin the Mate asked the person to deliver finished work back to (`zerops_origin
+       * action=request`): theirs to answer, so it stands after the run and its answer. The row
+       * names the engine's request; its card reads the ask as it stands.
+       */
+      kind: "origin-request";
+      id: string;
+      createdAt: string;
+      requestId: string;
     }
   | {
       /**
@@ -2433,6 +2445,8 @@ export function deriveMessagesTimelineRows(input: {
   isCompacting?: boolean;
   /** Structural visibility only; streamed bytes stay at the leaf. */
   liveLines?: ReadonlyMap<string, boolean>;
+  /** The origins the engine asked of the person, each by the run card it was asked in. */
+  originAsks?: ReadonlyArray<OriginAskPlace>;
   /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
@@ -3396,6 +3410,16 @@ export function deriveMessagesTimelineRows(input: {
           createdAt: item.operation.anchorAt,
           operation: item.operation,
         });
+    }
+    const turnIds = new Set([turn.turnId, ...turn.stretches.map((stretch) => stretch.turnId)]);
+    for (const ask of input.originAsks ?? []) {
+      if (!turnIds.has(ask.turnId)) continue;
+      rows.push({
+        kind: "origin-request",
+        id: `origin-request:${ask.requestId}`,
+        createdAt: ask.createdAt,
+        requestId: ask.requestId,
+      });
     }
     lastEnd = last.endedAt ?? last.startedAt;
   };

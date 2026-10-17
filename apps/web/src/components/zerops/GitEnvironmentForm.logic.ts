@@ -94,11 +94,16 @@ export function gitSetupRepositoryHint(address: string): string {
   return "Enter the full address, like github.com/owner/repo.";
 }
 
-/** Resolve the person's address against HQ's code repositories, never the recipe. */
+/**
+ * Resolve the person's address against HQ's code repositories, never the recipe. An origin ask
+ * names the HQ repository its Mate will wire (`repoName`): a new one takes that name, never the
+ * address's, and only a repository of that name without a remote is reused.
+ */
 export function gitSetupRepository(
   repos: ReadonlyArray<RepoListEntry> | undefined,
   address: string,
   project = "",
+  repoName?: string,
 ) {
   const url = /^https:\/\//i.test(address.trim()) ? address.trim() : `https://${address.trim()}`;
   const guide = gitTokenGuide(url, project);
@@ -110,8 +115,12 @@ export function gitSetupRepository(
     roster.find(
       ({ repo }) => repo.remote != null && sameAddress(repo.remote.url) === sameAddress(url),
     )?.repo ??
-    (roster.length === 1 && roster[0]?.repo.remote == null ? roster[0]?.repo : undefined);
-  const name = existing?.name ?? guide.repository.split("/").at(-1);
+    (repoName === undefined
+      ? roster.length === 1 && roster[0]?.repo.remote == null
+        ? roster[0]?.repo
+        : undefined
+      : roster.find(({ repo }) => repo.name === repoName && repo.remote == null)?.repo);
+  const name = existing?.name ?? repoName ?? guide.repository.split("/").at(-1);
   if (!gitSetupRepoNameValid(name) || name === RECIPE_REPO) return undefined;
   const remote = existing?.remote;
   const sameRemote = remote != null && sameAddress(remote.url) === sameAddress(url);

@@ -63,6 +63,8 @@ type Scene = {
   unheldWork?: ReadonlyArray<string>;
   /** Turns an engine Mate ran: each its engine's card. */
   engineTurns?: ReadonlyArray<string>;
+  /** Origins the engine asked of the person: the request and the turn it was asked in. */
+  originAsks?: ReadonlyArray<{ readonly requestId: string; readonly turn: string }>;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -94,6 +96,15 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.engineTurns === undefined
       ? {}
       : { runCards: Object.fromEntries(scene.engineTurns.map((id) => [turn(id), { runs: [] }])) }),
+    ...(scene.originAsks === undefined
+      ? {}
+      : {
+          originAsks: scene.originAsks.map((ask) => ({
+            requestId: ask.requestId,
+            turnId: turn(ask.turn),
+            createdAt: at(2),
+          })),
+        }),
     ...(scene.unheldWork === undefined
       ? {}
       : {
@@ -4213,5 +4224,50 @@ describe("streamedRecordGrowth", () => {
         },
       ),
     ).toBe(grows);
+  });
+});
+
+// The Mate asks the person whether finished work goes back to the repository it started from
+// (`zerops_origin action=request`): the ask is theirs to answer, after the run that asked.
+describe("deriveMessagesTimelineRows — an origin asked of the person", () => {
+  it("settled: after the run's answer", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1), assistant("a1", "t1", 3)],
+      settled: "t1",
+      originAsks: [{ requestId: "r1", turn: "t1" }],
+    });
+    expect(shape(list).slice(-2)).toEqual(["message:a1", "origin-request:origin-request:r1"]);
+  });
+
+  it("live: after the run's card", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1)],
+      live: "t1",
+      originAsks: [{ requestId: "r1", turn: "t1" }],
+    });
+    expect(shape(list).at(-1)).toBe("origin-request:origin-request:r1");
+  });
+
+  it("stands only in the run that asked it", () => {
+    const list = rows({
+      entries: [
+        user("u1", 0),
+        assistant("a1", "t1", 1),
+        user("u2", 4),
+        tool("w2", "t2", 5),
+        assistant("a2", "t2", 6),
+      ],
+      settled: "t2",
+      originAsks: [{ requestId: "r1", turn: "t1" }],
+    });
+    expect(
+      shape(list).filter((row) => row.startsWith("origin-request") || row.startsWith("message")),
+    ).toEqual([
+      "message:u1",
+      "message:a1",
+      "origin-request:origin-request:r1",
+      "message:u2",
+      "message:a2",
+    ]);
   });
 });
