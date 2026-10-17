@@ -593,6 +593,10 @@ describe("Git token refusals", () => {
     bad_repo: "This repository name is not valid. Choose a code repository with a valid name.",
     bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
     key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
+    app_not_installed:
+      "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
+    app_unavailable:
+      "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
   } satisfies Record<HqRemoteRefusalReason, string>;
   it.each(Object.entries(remoteCases))(
     "Every repository connection refusal explains %s and the next step",

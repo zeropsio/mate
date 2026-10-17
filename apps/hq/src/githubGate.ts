@@ -1,7 +1,8 @@
 /**
  * Who may hand an issue to an application's automated Mates, or steer its task (`intake.ts`): a
  * person, not a bot, with write, maintain or admin on the repository (GitHub's collaborator
- * permission, asked with the repository's token). The repository's access is the trust boundary
+ * permission, asked as the organization's GitHub app where it reaches the repository, else with
+ * the repository's token). The repository's access is the trust boundary
  * the organization connected; nothing else is asked of them. Who in the organization the task is
  * asked for is attribution only: the active member whose email their GitHub profile shows (GitHub
  * lets a profile show only a verified email), or nobody — never a reason to refuse. The answer is

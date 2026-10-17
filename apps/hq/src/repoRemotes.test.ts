@@ -28,6 +28,7 @@ import { Leader } from "./leader.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { ZeropsUnavailable } from "./zerops/api.ts";
 import { Remotes, repoRemotesLayer } from "./repoRemotes.ts";
+import { githubAuthAbsentLayer } from "./githubAuth.ts";
 
 const APP = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -225,6 +226,7 @@ const fixture = Effect.gen(function* () {
       Layer.provideMerge(PgClient.layer({ url: Redacted.make(url) })),
       Layer.provide(roles),
       Layer.provide(leader),
+      Layer.provide(githubAuthAbsentLayer),
       Layer.provide(
         githubProbesLayer.pipe(Layer.provide(gitTransportLayer), Layer.provide(client)),
       ),

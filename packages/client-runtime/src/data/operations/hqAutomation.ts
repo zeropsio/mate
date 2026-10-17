@@ -28,7 +28,7 @@ declare module "../model.ts" {
   interface OperationResults {
     readonly "set-ai-key": HqAiKeyView;
     /** How the webhook stands; a secret to paste is never part of the result. */
-    readonly "set-intake": { readonly hook: "made" | "paste" };
+    readonly "set-intake": { readonly hook: "made" | "paste" | "app" };
   }
 }
 
