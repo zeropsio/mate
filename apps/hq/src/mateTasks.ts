@@ -72,7 +72,7 @@ import {
  * The first Mate that reads a task from beyond GitHub (`MateTaskSource` past `github-issue`): an
  * older one passes such a `task` frame by, so it is never handed one.
  */
-export const TASK_SOURCES_SINCE = "0.15.158";
+export const TASK_SOURCES_SINCE = "0.15.159";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
