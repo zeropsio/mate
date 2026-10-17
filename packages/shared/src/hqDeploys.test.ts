@@ -227,3 +227,44 @@ it("A confirmed push requires the same remote, ref, before and fixed outgoing sh
     "TOKEN_MARKER",
   );
 });
+
+it("A push's CI record belongs to the commit the hand-over confirmed.", () => {
+  const remote = { url: "https://github.com/acme/app.git", repositoryId: "42" };
+  const attempt = {
+    remote,
+    ref: "refs/heads/main",
+    sha: "a".repeat(40),
+    credentialKeptAt: "2026-10-13T10:00:00.000Z",
+    before: null,
+    phase: "submitting",
+  };
+  const confirmed = {
+    remote,
+    ref: attempt.ref,
+    before: null,
+    after: attempt.sha,
+    at: "2026-10-13T10:00:05.000Z",
+    via: "answer",
+  };
+  const ci = {
+    sha: attempt.sha,
+    verdict: "failed",
+    done: 3,
+    total: 4,
+    failed: [{ name: "check_types", url: "https://github.com/acme/app/actions/runs/1/job/2" }],
+    required: null,
+    reason: null,
+    watch: "watching",
+    readAt: "2026-10-13T10:01:00.000Z",
+    until: "2026-10-13T11:00:05.000Z",
+  };
+  const value = { attempt, confirmed, ci, nextActor: "none", nextAction: "Operation ended" };
+  expect(Schema.decodeUnknownSync(Deploys.HqPushEvidence)(value)).toEqual(value);
+  for (const evidence of [
+    { ...value, ci: { ...ci, sha: "c".repeat(40) } },
+    { attempt, ci, nextActor: "hq", nextAction: "Read the remote ref" },
+    { ...value, ci: { ...ci, verdict: "green" } },
+    { ...value, ci: { ...ci, watch: "forever" } },
+  ])
+    expect(Schema.decodeUnknownExit(Deploys.HqPushEvidence)(evidence)._tag).toBe("Failure");
+});

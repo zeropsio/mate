@@ -83,6 +83,7 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FiberMap from "effect/FiberMap";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -118,6 +119,7 @@ import {
   widenedDeployToken,
 } from "./deployTokens.ts";
 import { GitHost } from "./gitHost.ts";
+import { GitCi, gitCiLayer } from "./gitCi.ts";
 import { GitPush, gitPushLayer, type PushEvidence, pushEvidenceForWire } from "./gitPush.ts";
 import { changesLayer } from "./changes.ts";
 import { repoRemotesLayer } from "./repoRemotes.ts";
@@ -492,6 +494,7 @@ export const deploysLayer = (
       const sql = yield* SqlClient.SqlClient;
       const gitHost = yield* GitHost;
       const gitPush = yield* GitPush;
+      const gitCi = yield* GitCi;
       const zerops = yield* ZeropsApi;
       const deploy = yield* ZeropsDeploy;
       const recipes = yield* RecipeTiers;
@@ -2052,6 +2055,7 @@ export const deploysLayer = (
                 if (job.kind === "push") {
                   if (job.state === "unresolved") return;
                   yield* gitPush.run(job, tick);
+                  yield* watchCi(job.id);
                   yield* tick;
                   continue;
                 }
@@ -2099,6 +2103,16 @@ export const deploysLayer = (
 
       /** The leading Core's scope, where each environment's worker runs; none while it leads not. */
       const leading = yield* Ref.make<Scope.Scope | undefined>(undefined);
+      /** Each pushed commit's CI watch, by job, while this Core leads. */
+      const ciWatches = yield* Ref.make<FiberMap.FiberMap<string> | undefined>(undefined);
+      const watchCi = (jobId: string) =>
+        Effect.flatMap(Ref.get(ciWatches), (watches) =>
+          watches === undefined
+            ? Effect.void
+            : Effect.asVoid(
+                FiberMap.run(watches, jobId, gitCi.watch(jobId, tick), { onlyIfMissing: true }),
+              ),
+        );
       const registry = yield* Semaphore.make(1);
       const workers = new Map<string, Fiber.Fiber<void>>();
 
@@ -2272,9 +2286,10 @@ export const deploysLayer = (
       /** What leads now: the rollouts no request ran, and a worker per environment with jobs open. */
       const lead = Effect.gen(function* () {
         yield* Ref.set(leading, yield* Effect.scope);
+        yield* Ref.set(ciWatches, yield* FiberMap.make<string>());
         yield* Effect.addFinalizer(() =>
           Effect.andThen(
-            Ref.set(leading, undefined),
+            Effect.andThen(Ref.set(leading, undefined), Ref.set(ciWatches, undefined)),
             Semaphore.withPermit(
               registry,
               Effect.sync(() => workers.clear()),
@@ -2295,6 +2310,11 @@ export const deploysLayer = (
             SELECT DISTINCT environment_id FROM hq_deploy_job WHERE ended_at IS NULL`;
           for (const { environment_id: environmentId } of open) yield* worked(environmentId);
         }).pipe(Effect.catch((error) => Effect.logWarning("deploy dispatch failed", error)));
+        // The pushes whose CI the previous lead had not finished reading.
+        yield* gitCi.resumable.pipe(
+          Effect.flatMap((ids) => Effect.forEach(ids, watchCi, { discard: true })),
+          Effect.catch((error) => Effect.logWarning("CI watches could not resume", error)),
+        );
         // At takeover, after every event's write, and once git opens (planning reads it): what the
         // table holds, and nothing else.
         yield* Stream.merge(rollouts.woken, gitHost.recorded).pipe(
@@ -2614,22 +2634,17 @@ export const deploysLayer = (
           ),
       });
     }),
-  ).pipe(
-    Layer.provide(
-      options.pushLayer ??
-        gitPushLayer.pipe(
-          Layer.provide(
-            repoRemotesLayer.pipe(
-              Layer.provide(changesLayer),
-              Layer.provide(
-                githubProbesLayer.pipe(
-                  Layer.provide(
-                    gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-    ),
+  ).pipe(Layer.provide(deliveryLayer(options.pushLayer)));
+
+/** The Git writer and its CI reader share the sealed-token custody and the host transport. */
+const deliveryLayer = (pushLayer: DeploysOptions["pushLayer"]) => {
+  const transport = gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
+  const remotes = repoRemotesLayer.pipe(
+    Layer.provide(changesLayer),
+    Layer.provide(githubProbesLayer.pipe(Layer.provide(transport))),
   );
+  return Layer.merge(
+    pushLayer ?? gitPushLayer.pipe(Layer.provide(remotes)),
+    gitCiLayer.pipe(Layer.provide(Layer.merge(remotes, transport))),
+  );
+};

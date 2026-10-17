@@ -19,7 +19,7 @@ import { GitHost } from "./gitHost.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { operationBackoff } from "./operationWatch.ts";
-import type { HqPushEvidence } from "@t3tools/shared/hqDeploys";
+import type { HqPushCi, HqPushEvidence } from "@t3tools/shared/hqDeploys";
 
 export interface PushInput {
   readonly directory: string;
@@ -64,6 +64,8 @@ export interface PushEvidence {
   readonly resetAt?: string;
   readonly at?: string;
   readonly repositoryId?: string | null;
+  /** Written by `gitCi.ts` once the job is pushed. */
+  readonly ci?: HqPushCi;
 }
 /** One surface derivation; child handles and filesystem paths never leave HQ. */
 export const pushEvidenceForWire = (evidence: PushEvidence): HqPushEvidence => {
@@ -90,6 +92,7 @@ export const pushEvidenceForWire = (evidence: PushEvidence): HqPushEvidence => {
           },
         }),
     ...(evidence.observed === undefined ? {} : { observed: evidence.observed }),
+    ...(evidence.ci === undefined ? {} : { ci: evidence.ci }),
     nextActor: evidence.nextActor,
     nextAction: evidence.nextAction,
   };
