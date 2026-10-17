@@ -35,10 +35,10 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { CheckIcon } from "lucide-react";
+import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
@@ -46,6 +46,7 @@ import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
+import { pullRequestStateWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { usePutLive } from "~/zerops/putLive";
 import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
@@ -696,6 +697,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       kind={KIND}
       kindLabel={props.project === undefined ? mate.name : `${mate.name} · ${props.project}`}
       meta={<span>#{pull.number}</span>}
+      elsewhere={
+        pull.pullRequest === undefined ? undefined : (
+          <InlineButton
+            data-zerops-surface="change-pull-request"
+            render={<a href={pull.pullRequest.url} rel="noreferrer" target="_blank" />}
+          >
+            {`PR #${String(pull.pullRequest.number)} on GitHub · ${pullRequestStateWords(pull.pullRequest)}`}
+            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+          </InlineButton>
+        )
+      }
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
@@ -710,10 +722,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   : model.verdict.state === "closing"
                     ? "Closing"
                     : primary.label,
+              // A change on GitHub merges there (squash), and HQ takes the merge from it.
               text:
-                primary.label === "Merge" && props.stage !== undefined
-                  ? `Merge to ${props.stage}`
-                  : undefined,
+                primary.label !== "Merge"
+                  ? undefined
+                  : pull.pullRequest?.state === "open"
+                    ? "Merge on GitHub"
+                    : props.stage !== undefined
+                      ? `Merge to ${props.stage}`
+                      : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
                 else props.onMerge();
