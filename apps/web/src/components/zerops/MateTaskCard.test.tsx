@@ -47,7 +47,17 @@ describe("a task's issue card, as its chain", () => {
     ["says its Mate works on it", { kind: "working", pullRequest: undefined }, "Working"],
     ["says its Mate waits for you", { kind: "waiting" }, "Waiting for you"],
     ["says its change waits for review", { kind: "review" }, "Waiting for review"],
-    ["says it ended", { kind: "ended" }, "Ended"],
+    [
+      "names the pull request its task ended with",
+      { kind: "ended", ended: "merged", pullRequest: { ...pullRequest, state: "merged" } },
+      "PR #14 · merged",
+    ],
+    [
+      "says its task was stopped",
+      { kind: "ended", ended: "stopped", pullRequest: undefined },
+      "Stopped",
+    ],
+    ["holds an empty line for a task before its Mate's most recent", { kind: "earlier" }, " "],
     [
       "names its pull request on GitHub and its checks",
       { kind: "pull-request", pullRequest: { ...pullRequest, state: "open", checks: "passing" } },
@@ -66,7 +76,10 @@ describe("a task's issue card, as its chain", () => {
   ] as const)("%s", (_case, chain, line) => {
     const html = renderToStaticMarkup(<MateTaskCard chain={chain} task={issue} />);
     expect(words(html)).toBe(line);
-    if (chain.kind === "pull-request" || (chain.kind === "working" && chain.pullRequest))
+    if (
+      chain.kind === "pull-request" ||
+      ((chain.kind === "working" || chain.kind === "ended") && chain.pullRequest)
+    )
       expect(chainOf(html)).toContain('href="https://github.com/acme/tea-shop/pull/14"');
   });
 });

@@ -134,9 +134,13 @@ const CHAINS: ReadonlyArray<readonly [string, TaskChain]> = [
     "Working on review comments",
     { kind: "working", pullRequest: { ...PR, state: "open", checks: "failing" } },
   ],
-  ["PR merged", { kind: "pull-request", pullRequest: { ...PR, state: "merged" } }],
   ["PR closed", { kind: "pull-request", pullRequest: { ...PR, state: "closed" } }],
-  ["Ended", { kind: "ended" }],
+  [
+    "Merged on GitHub (ended)",
+    { kind: "ended", ended: "merged", pullRequest: { ...PR, state: "merged" } },
+  ],
+  ["Stopped (ended)", { kind: "ended", ended: "stopped", pullRequest: undefined }],
+  ["A task before its Mate's most recent", { kind: "earlier" }],
 ];
 
 const INTAKE: AppIntakeRead = {

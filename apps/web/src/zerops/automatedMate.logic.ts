@@ -64,14 +64,23 @@ export function pullRequestStateWords(
   return `open · checks ${checks}`;
 }
 
+/** How a task ended (`HqNavigationMateTask.ended`). */
+export type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
+
 /**
- * Where a conversation's task stands now, from the task its Mate is on (HQ's navigation): not read
- * yet; over — its Mate is on no task, or another; its Mate at work on it; waiting for a person's
- * answer; its change waiting for review; or the pull request its change is on GitHub.
+ * Where a conversation's task stands now, from the task its Mate is on or last worked (HQ's
+ * navigation): not read yet; a task before its Mate's most recent one, which HQ no longer names;
+ * ended, how, and the pull request it left; its Mate at work on it; waiting for a person's answer;
+ * its change waiting for review; or the pull request its change is on GitHub.
  */
 export type TaskChain =
   | { readonly kind: "unknown" }
-  | { readonly kind: "ended" }
+  | { readonly kind: "earlier" }
+  | {
+      readonly kind: "ended";
+      readonly ended: TaskEnding;
+      readonly pullRequest: HqPullRequest | undefined;
+    }
   | { readonly kind: "working"; readonly pullRequest: HqPullRequest | undefined }
   | { readonly kind: "waiting" }
   | { readonly kind: "review" }
@@ -87,13 +96,15 @@ function isTaskOf(source: MateTaskSource, task: HqNavigationMateTask): boolean {
 
 export function taskChain(
   source: MateTaskSource,
-  /** The task its Mate is on (`HqNavigationMate.task`): `undefined` while not read. */
+  /** The task its Mate is on or last worked (`HqNavigationMate.task`): `undefined` while not read. */
   current: HqNavigationMateTask | null | undefined,
   /** Its Mate is at work now. */
   working: boolean,
 ): TaskChain {
   if (current === undefined) return { kind: "unknown" };
-  if (current === null || !isTaskOf(source, current)) return { kind: "ended" };
+  if (current === null || !isTaskOf(source, current)) return { kind: "earlier" };
+  if (current.ended !== undefined)
+    return { kind: "ended", ended: current.ended, pullRequest: current.pullRequest };
   if (working) return { kind: "working", pullRequest: current.pullRequest };
   if (current.waiting === true) return { kind: "waiting" };
   return current.pullRequest === undefined
@@ -101,7 +112,18 @@ export function taskChain(
     : { kind: "pull-request", pullRequest: current.pullRequest };
 }
 
-/** The chain's line: its state in a word or two, then its pull request, linked; either may be none. */
+const ENDINGS: Record<TaskEnding, string> = {
+  merged: "Merged",
+  closed: "Closed",
+  done: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+/**
+ * The chain's line: its state in a word or two, then its pull request, linked; either may be none.
+ * A task that ended with its pull request merged or closed lets the pull request say so.
+ */
 export function taskChainLine(chain: TaskChain): {
   readonly status: string | null;
   readonly pullRequest: { readonly words: string; readonly url: string } | null;
@@ -115,9 +137,16 @@ export function taskChainLine(chain: TaskChain): {
         };
   switch (chain.kind) {
     case "unknown":
+    case "earlier":
       return { status: null, pullRequest: null };
     case "ended":
-      return { status: "Ended", pullRequest: null };
+      return {
+        status:
+          chain.pullRequest !== undefined && (chain.ended === "merged" || chain.ended === "closed")
+            ? null
+            : ENDINGS[chain.ended],
+        pullRequest: linked(chain.pullRequest),
+      };
     case "working":
       return { status: "Working", pullRequest: linked(chain.pullRequest) };
     case "waiting":

@@ -2062,6 +2062,21 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
         },
       },
     },
+    {
+      case: "automated, its most recent task ended: free for the next",
+      mate: {
+        automated: true,
+        task: {
+          id: "t4",
+          number: 1,
+          title: "Add a search box",
+          url: "u",
+          ended: "merged" as const,
+          pullRequest: { number: 2, url: "p", state: "merged" as const },
+        },
+      },
+      expected: { task: null },
+    },
   ])("$case", ({ mate, expected }) => {
     expect(mateAutomation(mate)).toEqual(expected);
   });

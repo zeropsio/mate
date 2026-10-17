@@ -57,10 +57,14 @@ export function MateTaskCard({
 }) {
   const link = mateTaskSourceLink(task);
   const line = taskChainLine(chain);
+  const state =
+    chain.kind === "pull-request" || chain.kind === "ended" || chain.kind === "working"
+      ? chain.pullRequest?.state
+      : undefined;
   const PullRequestIcon =
-    chain.kind === "pull-request" && chain.pullRequest.state === "merged"
+    state === "merged"
       ? GitMergeIcon
-      : chain.kind === "pull-request" && chain.pullRequest.state === "closed"
+      : state === "closed"
         ? GitPullRequestClosedIcon
         : GitPullRequestIcon;
   return (
