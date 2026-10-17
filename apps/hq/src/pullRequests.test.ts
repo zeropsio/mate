@@ -404,6 +404,8 @@ describe("a change's pull request", () => {
             report: { taskId: task.id, state: "done" },
           });
           const squash = yield* squashOnMain(core);
+          // A push after GitHub merged moves the change's head past what was merged.
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'web' AND number = 1`;
           yield* core.dispatch("pull_request", {
             action: "closed",
             pull_request: {
@@ -641,6 +643,8 @@ describe("a change's pull request", () => {
           const core = yield* mirroredPool;
           yield* opened(core);
           const squash = yield* squashOnMain(core);
+          // A push after GitHub merged moves the change's head past what was merged.
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'web' AND number = 1`;
           yield* core.dispatch("pull_request", {
             action: "closed",
             pull_request: {
@@ -655,11 +659,16 @@ describe("a change's pull request", () => {
             "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
             (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
           );
-          // The head GitHub merged is kept, whatever the change's head is by then.
+          // The head GitHub merged is the one that landed, whatever the change's head is by then.
           yield* rowsWhere(
             core.url,
             "SELECT merged_sha, merged_head FROM hq_pull_request",
             (rows) => rows[0]?.["merged_sha"] === squash && rows[0]?.["merged_head"] === HEAD,
+          );
+          yield* rowsWhere(
+            core.url,
+            "SELECT landed_head FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["landed_head"] === HEAD,
           );
           yield* statusSays(core, "Merged in #2.");
         }),

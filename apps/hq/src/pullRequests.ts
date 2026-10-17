@@ -405,17 +405,6 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       // One pull request's step at a time: a sweep, an event and a merge never cross.
       const working = yield* Semaphore.make(1);
       const leading = Effect.map(leader.status, (status) => status.state === "active");
-      /**
-       * The change merged by GitHub's merge `mergedSha` of its head `mergedHead`; a `landImported`
-       * that does not take the head yet records the change's own.
-       */
-      const landImported: (
-        appId: string,
-        repo: string,
-        number: number,
-        mergedSha: string,
-        mergedHead?: string,
-      ) => ReturnType<typeof changes.landImported> = changes.landImported;
       /** GitHub user ids by login, for a merge's `Co-authored-by`. */
       const userIds = new Map<string, number>();
 
@@ -757,7 +746,13 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       const landed = (row: PullRow, mergedSha: string, mergedHead: string | null) =>
         Effect.gen(function* () {
           yield* mirror.sync(row.app_id, row.repo);
-          yield* landImported(row.app_id, row.repo, row.number, mergedSha, mergedHead ?? undefined);
+          yield* changes.landImported(
+            row.app_id,
+            row.repo,
+            row.number,
+            mergedSha,
+            mergedHead ?? undefined,
+          );
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("GitHub's merge not followed yet", { pull: row.pr_number, cause }),
