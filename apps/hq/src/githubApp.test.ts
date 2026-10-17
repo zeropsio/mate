@@ -554,6 +554,45 @@ describe("the organization's GitHub app", () => {
     );
 
     it.effect(
+      "a repository made again on GitHub under the connected name is not the one connected: HQ acts on it with no token",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* appCore;
+          const { hook } = yield* connected(core);
+          yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+          yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+          const through = yield* core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+            session: core.owner,
+            body: { repository: "acme/tea-shop" },
+          });
+          assert.strictEqual(through.status, 204);
+          const intake = () =>
+            core.call("PUT", `/api/apps/${core.appId}/intake`, {
+              session: core.owner,
+              body: { repo: "acme/tea-shop", label: "mate" },
+            });
+          assert.deepStrictEqual(((yield* intake()).body as HqIntakeView).hook, { kind: "app" });
+          // Deleted and made again on GitHub: the same name, another repository.
+          core.github.state.installations.get(7001)!.repositories[0] = {
+            id: 777,
+            full_name: "acme/tea-shop",
+          };
+          yield* deliver(core, hook, "installation_repositories", {
+            action: "added",
+            installation: { id: 7001 },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT repositories FROM hq_github_installation WHERE id = 7001",
+            (rows) => JSON.stringify(rows[0]?.["repositories"] ?? []).includes("777"),
+          );
+          const refused = yield* intake();
+          assert.strictEqual(refused.status, 409);
+          assert.deepInclude(refused.body as object, { reason: "repository_changed" });
+        }),
+    );
+
+    it.effect(
       "an installation suspended on GitHub lets HQ act on none of its repositories until it is back",
       () =>
         Effect.gen(function* () {

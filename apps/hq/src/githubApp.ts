@@ -597,18 +597,21 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
        * The repository the app reaches `repository` by: as HQ knows it, else — the app installed on
        * its account — after asking GitHub again, at most once a minute per account.
        */
-      const reach = (repository: string) =>
+      const reach = (repository: string, id?: string) =>
         Effect.gen(function* () {
           const app = yield* madeOrUnavailable;
           if (app === undefined) return undefined;
           const first = yield* known(repository);
-          const found = first.row === undefined ? undefined : { row: first.row, repo: first.repo };
-          if (found !== undefined) return { app, ...found };
-          if (first.owner.length === 0) return undefined;
+          const found =
+            first.row === undefined ? undefined : { app, row: first.row, repo: first.repo };
+          // Another id under the name may be HQ's list behind GitHub's: asked again like a new one.
+          if (found !== undefined && (id === undefined || String(found.repo.id) === id))
+            return found;
+          if (first.owner.length === 0) return found;
           const account = first.owner[0]!.account.toLowerCase();
           const now = yield* Clock.currentTimeMillis;
           const last = listed.get(account);
-          if (last !== undefined && now - last < Duration.toMillis(RELIST_EVERY)) return undefined;
+          if (last !== undefined && now - last < Duration.toMillis(RELIST_EVERY)) return found;
           listed.set(account, now);
           for (const row of first.owner)
             if (!row.suspended) yield* refreshInstallation(app, Number(row.id));
@@ -617,10 +620,12 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
         });
 
       const auth = GithubAuth.of({
-        tokenFor: (repository) =>
+        tokenFor: (repository, id) =>
           Effect.gen(function* () {
-            const reached = yield* reach(repository);
+            const reached = yield* reach(repository, id);
             if (reached === undefined) return undefined;
+            if (id !== undefined && String(reached.repo.id) !== id)
+              return yield* new GithubAuthUnavailable({ reason: "replaced" });
             if (reached.row.suspended)
               return yield* new GithubAuthUnavailable({ reason: "suspended" });
             return yield* installationToken(reached.app, Number(reached.row.id));
