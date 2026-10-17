@@ -176,6 +176,7 @@ export function OrganizationKeyView({
         >
           <Label htmlFor={keyId}>{provider.name} API key</Label>
           <Input
+            aria-describedby={`${keyId}-hint`}
             autoComplete="off"
             autoFocus
             id={keyId}
@@ -186,6 +187,10 @@ export function OrganizationKeyView({
             type="password"
             value={value}
           />
+          {/* The Mates' agents can reach the key: one made for Mate alone, with a limit. */}
+          <p className="text-xs text-muted-foreground" id={`${keyId}-hint`}>
+            Use a key made only for Mate, with a spending limit.
+          </p>
           <div className="flex justify-end gap-2">
             <Button
               onClick={() => {
