@@ -55,6 +55,9 @@ describe("direct push token guide", () => {
         expires_in: "366",
         contents: "write",
         workflows: "write",
+        checks: "read",
+        statuses: "read",
+        actions: "read",
       });
       expect(view.host.querySelectorAll("input")).toHaveLength(1);
       expect(view.host.querySelector("button")).toBeNull();

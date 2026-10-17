@@ -32,7 +32,9 @@ const run = (
   status: string,
   conclusion: string | null = null,
   url = `https://github.com/acme/app/actions/runs/7/job/${name}`,
-): CheckRun => ({ name, status, conclusion, html_url: url });
+  started_at: string | null = "2026-10-17T10:00:00Z",
+  id = 1,
+): CheckRun => ({ id, name, status, conclusion, started_at, html_url: url });
 const status = (context: string, state: string): CommitStatus => ({
   context,
   state,
@@ -139,6 +141,40 @@ describe("the verdict of a pushed commit's CI", () => {
         total: 2,
         failed: [{ name: "unit", url: "https://github.com/acme/app/actions/runs/7/job/unit" }],
       },
+    },
+    {
+      title: "after a fast-forward to main the same check runs again and the newer run decides",
+      runs: [
+        run(
+          "check",
+          "in_progress",
+          null,
+          "https://github.com/acme/app/actions/runs/9/job/check",
+          "2026-10-17T10:20:00Z",
+          20,
+        ),
+        run("check", "completed", "success", undefined, "2026-10-17T10:00:00Z", 10),
+      ],
+      required: null,
+      expected: { verdict: "running", done: 0, total: 1, failed: [] },
+    },
+    {
+      title: "a re-run that passed replaces the failed run of the same check",
+      runs: [
+        run("check", "completed", "failure", undefined, "2026-10-17T10:00:00Z", 10),
+        run("check", "completed", "success", undefined, "2026-10-17T10:30:00Z", 30),
+      ],
+      required: null,
+      expected: { verdict: "passed", done: 1, total: 1, failed: [] },
+    },
+    {
+      title: "runs of one check started the same second are decided by the one GitHub created last",
+      runs: [
+        run("check", "completed", "success", undefined, "2026-10-17T10:00:00Z", 31),
+        run("check", "completed", "failure", undefined, "2026-10-17T10:00:00Z", 30),
+      ],
+      required: null,
+      expected: { verdict: "passed", done: 1, total: 1, failed: [] },
     },
     {
       title: "a push no CI reported on shows none",
@@ -353,6 +389,21 @@ describe("HQ reading the origin's CI after a push", () => {
           ],
           watch: "finished",
         }),
+      ]);
+    }),
+  );
+
+  it.effect("a combined status pending with no statuses counts as no commit statuses", () =>
+    Effect.gen(function* () {
+      const { fiber, saved } = yield* follow({
+        [RULES]: [noRules],
+        [RUNS]: [runs(run("check", "completed", "success"))],
+        // GitHub's answer for a repository whose CI is only Actions.
+        [STATUS]: [json({ state: "pending", total_count: 0, statuses: [] })],
+      });
+      yield* Fiber.join(fiber);
+      expect(saved).toEqual([
+        expect.objectContaining({ verdict: "passed", done: 1, total: 1, watch: "finished" }),
       ]);
     }),
   );

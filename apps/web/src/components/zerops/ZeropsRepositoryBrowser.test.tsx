@@ -117,7 +117,7 @@ it("guides direct GitHub delivery from the code repository URL without connectin
     await enter(host, "https://github.com/acme/widgets");
     const link = host.querySelector<HTMLAnchorElement>('a[href*="personal-access-tokens/new"]');
     expect(link?.getAttribute("href")).toBe(
-      "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write",
+      "https://github.com/settings/personal-access-tokens/new?name=Mate+Shop+%26+Tools&target_name=acme&expires_in=366&contents=write&workflows=write&checks=read&statuses=read&actions=read",
     );
     expect(host.textContent).toContain("Only select repositories");
     expect(host.textContent).toContain("acme/widgets");

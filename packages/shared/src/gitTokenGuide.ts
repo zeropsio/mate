@@ -37,6 +37,10 @@ export function gitTokenGuide(repositoryUrl: string, project: string) {
       expires_in: "366",
       contents: "write",
       workflows: "write",
+      // Optional: HQ shows the CI of the commits it pushes with these.
+      checks: "read",
+      statuses: "read",
+      actions: "read",
     }).toString();
     return {
       kind: "guide",
