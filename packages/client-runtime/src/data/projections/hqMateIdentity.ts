@@ -24,6 +24,8 @@ export interface HqMateIdentity {
   readonly standUp?: { readonly by: string } | undefined;
   readonly madeBy?: string | undefined;
   readonly runsWithoutSignIn?: boolean | undefined;
+  /** It takes tasks from outside, on the organization's key (`HqMate.automated`). */
+  readonly automated?: true | undefined;
 }
 
 export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMateIdentity>>> = {
@@ -95,6 +97,7 @@ export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMate
             projectUrl: zeropsProjectUrl(project.id),
             ...(membership.standUp === undefined ? {} : { standUp: membership.standUp }),
             ...(membership.madeBy === undefined ? {} : { madeBy: membership.madeBy }),
+            ...(project.hq?.mate?.automated === true ? { automated: true as const } : {}),
             ...(overview?.identity?.runsWithoutSignIn === undefined
               ? {}
               : {

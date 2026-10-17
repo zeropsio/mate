@@ -7,11 +7,16 @@ import {
   type ZeropsLogin,
 } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
+import { AtomRegistry } from "effect/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
 import {
   admissionNeedsSignIn,
   agentAdmission,
   admissionProviderStatus,
   engineRunRefusal,
+  mateAdmissionSummary,
 } from "./agentAdmission.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
@@ -784,4 +789,122 @@ it("a native project downgrade closes the composer even while its owner stays si
   expect(downgraded.canSend).toBe(false);
   expect(downgraded.readOnly).toBe(true);
   expect(downgraded.sendBlockReason).toBe("You have Read access to this Mate.");
+});
+
+describe("the menu's sign-in summary", () => {
+  it.each([
+    ["an ordinary Mate nobody signed in asks for a sign-in", false, "Sign in"],
+    ["an automated Mate runs on the organization's key and asks for none", true, null],
+  ] as const)("%s", (_case, automated, action) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    seedHqNavigation(store, "org", {
+      structure: {
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [
+              { projectId: "nova", name: "Nova", kind: "mate", mate: { face: "", automated } },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+      mates: {
+        nova: {
+          presence: { online: true, since: "2026-10-17T00:00:00Z", overview: "live" },
+          identity: {
+            environmentId: EnvironmentId.make("nova-env"),
+            serverVersion: "1",
+            update: null,
+          },
+          logins: {
+            "claude-code": { signedInBy: null, present: false, token: false },
+          },
+        },
+      },
+    });
+    const summary = mateAdmissionSummary.derive(readsOfState(store.state()), {
+      orgId: "org",
+      projectId: "nova",
+      viewerSubject: "viewer",
+      mateName: "Nova",
+    });
+    expect(summary?.actionLabel ?? null).toBe(action);
+  });
+});
+
+describe("an automated Mate's composer", () => {
+  const opencode = (status: "ready" | "error") =>
+    ({
+      instanceId: "opencode",
+      driver: "opencode",
+      enabled: true,
+      installed: true,
+      status,
+      auth: { status: "unknown" },
+    }) as never;
+  const claude = {
+    instanceId: "claudeAgent",
+    driver: "claudeAgent",
+    enabled: true,
+    installed: true,
+    status: "error",
+    auth: { status: "unauthenticated" },
+  } as never;
+  const admit = (providers: ReadonlyArray<never>) =>
+    agentAdmission({
+      owner: { mine: true },
+      automated: true,
+      empty: true,
+      environmentId: "rig",
+      // The thread's model, a subscription agent: nobody may sign it in here.
+      instanceId: "claudeAgent",
+      viewerSubject: "viewer",
+      providers,
+      mateName: "Nova",
+      read: {
+        state: "known",
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+        value: {
+          available: true,
+          agents: [
+            {
+              agentId: "claude-code",
+              credPresent: false,
+              flagOAuth: false,
+              flagToken: false,
+              providerAuth: "unauthenticated",
+              state: "not-authorized",
+            },
+          ],
+        },
+      },
+    });
+
+  it("never asks for a sign-in nor holds its composer for one", () => {
+    expect(admit([claude, opencode("ready")])).toMatchObject({
+      attention: null,
+      holdsComposer: false,
+      canSend: true,
+      sendBlockReason: null,
+    });
+  });
+
+  it.each([
+    ["OpenCode not ready", [claude, opencode("error")]],
+    ["no agent but a subscription one", [claude]],
+  ] as const)(
+    "without a usable agent says it waits for the organization's API key: %s",
+    (_case, providers) => {
+      expect(admit(providers)).toMatchObject({
+        attention: null,
+        holdsComposer: false,
+        canSend: false,
+        sendBlockReason: "Nova waits for your organization's API key.",
+      });
+    },
+  );
 });

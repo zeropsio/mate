@@ -1119,6 +1119,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             attachments: [...attachments],
             sendId: b.envelope.commandId,
             ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
+            ...(command.task === undefined ? {} : { task: command.task }),
             delivery: { state: "queued", at: null },
           }
         : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },

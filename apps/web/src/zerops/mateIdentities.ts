@@ -48,6 +48,8 @@ export interface ZeropsMateIdentity {
   readonly arrivingUntil?: number | undefined;
   /** Its overview says it runs on an agent Mate signs nobody in to (HQ's overview). */
   readonly runsWithoutSignIn?: boolean | undefined;
+  /** It takes tasks from outside, on the organization's API key: nobody signs it in. */
+  readonly automated?: true | undefined;
   /** It is its person's Chief, the organization's rather than one project's (`chief.ts`). */
   readonly chief?: boolean | undefined;
 }
@@ -82,6 +84,7 @@ export function zeropsMateIdentityOf(
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
     ...(candidate.project.hq?.mate?.runsWithoutSignIn === true ? { runsWithoutSignIn: true } : {}),
+    ...(candidate.project.hq?.mate?.automated === true ? { automated: true as const } : {}),
   };
 }
 

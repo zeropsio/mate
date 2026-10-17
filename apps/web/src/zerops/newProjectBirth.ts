@@ -98,6 +98,8 @@ export interface NewProjectAsk {
         readonly managed?: ReadonlyArray<string> | undefined;
         /** The runtimes its workspace brings, from the press (`recipeRuntimes`). */
         readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
+        /** Asked for automated: started over, it is asked for so again. */
+        readonly automated?: true | undefined;
       }
     | undefined;
 }
@@ -558,6 +560,7 @@ export function creationEnds(birth: NewProjectBirth): {
         botName: birth.botName,
         tint: birth.face.tint,
         shape: birth.face.shape,
+        ...(birth.adds.automated === true ? { automated: true as const } : {}),
       },
     },
   };

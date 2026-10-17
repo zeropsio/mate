@@ -16,8 +16,15 @@
  *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
  *   and never on a timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every
  *   link and again at each new revision; `pong` to each of HQ's pings.
- * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
- *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
+ * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks
+ *   and handed on to `ZeropsAutomation` (whether the Mate is automated); who its project lets in
+ *   (`access`), handed on to `ZeropsProjectAccess` with its age; an automated Mate's keys
+ *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged; and the tasks HQ hands an
+ *   automated Mate (`task`), worked by `ZeropsTasks`, whose reports go up as `task-state` — the
+ *   latest task's first on every link — and only on a link whose HQ said in its state that the
+ *   Mate is automated: an HQ from before automated Mates closes a link on a frame it does not
+ *   know. A task told before HQ's first state on a link is held until it comes
+ *   ({@link HQ_TASK_HOLD}), since until then the Mate cannot say whether it is automated.
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
  * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
@@ -85,6 +92,8 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsTasks } from "./ZeropsTasks.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
@@ -157,6 +166,10 @@ export interface ZeropsHqLinkOptions {
   readonly attention: Stream.Stream<MateAttention>;
   /** Hands on who HQ says the project lets in, and how old HQ's read of Zerops is. */
   readonly relayAccess: ZeropsProjectAccess["Service"]["relayed"];
+  /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
+  readonly automation?: Pick<ZeropsAutomation["Service"], "heard" | "keysHeard">;
+  /** Works the tasks HQ hands an automated Mate, and says how each stands (`ZeropsTasks`). */
+  readonly tasks?: ZeropsTasks["Service"];
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
@@ -307,6 +320,16 @@ export const makeZeropsHqLink = (
         }
 
         const usage = options.usage ? yield* options.usage.open(send) : undefined;
+        // Whether HQ's latest state on this link says the Mate is automated: only then are tasks
+        // reported on it.
+        const automatedHere = yield* Ref.make(false);
+        const tasks = options.tasks
+          ? yield* options.tasks.open((report) =>
+              Effect.flatMap(Ref.get(automatedHere), (automated) =>
+                automated ? send({ type: "task-state", report }) : Effect.void,
+              ),
+            )
+          : undefined;
         let requestSerial = 0;
         const policyRequests = new Map<
           string,
@@ -332,6 +355,14 @@ export const makeZeropsHqLink = (
         const openedAt = yield* Clock.currentTimeMillis;
         const family = socket.family?.();
         const answered = yield* Deferred.make<void>();
+        // The tasks' reports, from HQ's first state on, on a link whose HQ does automated Mates.
+        const reporting =
+          tasks === undefined
+            ? Effect.never
+            : Deferred.await(answered).pipe(
+                Effect.andThen(Ref.get(automatedHere)),
+                Effect.flatMap((automated) => (automated ? tasks.run : Effect.never)),
+              );
         const dirty = yield* Ref.make(true);
         // What this link sent of each section, as JSON: a new link starts with nothing sent.
         const sent = new Map<string, string>();
@@ -378,6 +409,8 @@ export const makeZeropsHqLink = (
                 return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
+                  Effect.andThen(Ref.set(automatedHere, message.value.mate.automated === true)),
+                  Effect.andThen(options.automation?.heard(message.value.mate) ?? Effect.void),
                   Effect.andThen(
                     autoUpdatePolicy?.receive(Option.fromUndefinedOr(message.value.autoUpdate)) ??
                       Effect.void,
@@ -385,6 +418,22 @@ export const makeZeropsHqLink = (
                   Effect.andThen(Deferred.succeed(answered, undefined)),
                   Effect.andThen(usage?.state(message.value) ?? Effect.void),
                 );
+              case "provider-keys":
+                return options.automation?.keysHeard(message.value.keys) ?? Effect.void;
+              case "task": {
+                if (tasks === undefined) return Effect.void;
+                const task = message.value.task;
+                // Held beside the frames that follow, for as long as the link lives, until HQ's
+                // first state; HQ tells it again if that never comes.
+                return Effect.asVoid(
+                  Deferred.await(answered).pipe(
+                    Effect.timeoutOrElse({ duration: HQ_TASK_HOLD, orElse: () => Effect.void }),
+                    Effect.andThen(Deferred.isDone(answered)),
+                    Effect.flatMap((stated) => (stated ? tasks.receive(task) : Effect.void)),
+                    Effect.forkChild,
+                  ),
+                );
+              }
               case "access":
                 return options.relayAccess({
                   members: message.value.members,
@@ -399,9 +448,12 @@ export const makeZeropsHqLink = (
         const relayed = yield* Effect.forkScoped(
           Effect.raceFirst(
             relay,
-            Effect.all([overviews, heard, attention, health, ...(usage ? [usage.run] : [])], {
-              concurrency: "unbounded",
-            }),
+            Effect.all(
+              [overviews, heard, attention, health, ...(usage ? [usage.run] : []), reporting],
+              {
+                concurrency: "unbounded",
+              },
+            ),
           ).pipe(Effect.ensuring(quit), Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
         );
         return Option.some({
@@ -488,6 +540,11 @@ export const makeZeropsHqLink = (
 
 /** How long a link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
+/**
+ * How long a task told before HQ's first state on a link waits for it; HQ tells a task again
+ * when the Mate has not answered it.
+ */
+export const HQ_TASK_HOLD = Duration.seconds(30);
 /** A missing correlated answer withholds permission; the deadline never substitutes a policy. */
 export const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
@@ -654,6 +711,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
+        automation: yield* ZeropsAutomation,
+        tasks: yield* ZeropsTasks,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,

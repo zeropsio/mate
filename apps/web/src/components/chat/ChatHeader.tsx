@@ -1,10 +1,12 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus } from "../../zerops/mateStatus.logic";
+import { taskTitle } from "../../zerops/automatedMate.logic";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
   type EditorId,
+  type MateTaskSource,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
   type ThreadId,
@@ -75,6 +77,11 @@ interface ChatHeaderProps {
   activeThreadId: ThreadId;
   draftId?: DraftId;
   activeThreadTitle: string;
+  /**
+   * The task this conversation works, on an automated Mate (`conversationTask`): the conversation
+   * is named by it ("#12 Fix the checkout total"); absent for any other.
+   */
+  activeThreadTask?: MateTaskSource | undefined;
   /**
    * The conversation is still being read: the way out to Zerops waits for it, its place held (the
    * owner, 2026-10-12: "the 'open in zerops' doesn't need to be visible while loading").
@@ -197,6 +204,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   draftId,
   activeThreadTitle,
+  activeThreadTask,
   conversationLoading = false,
   isServerThread,
   activeProjectName,
@@ -326,8 +334,13 @@ export const ChatHeader = memo(function ChatHeader({
   // row shows for the main chat (`agentActivity.ts`): the last task as the
   // person put it, not the chat's title, which names its first task forever.
   // The title stays the rename target.
+  // A task's conversation is named by its task, never by the brief its first message carried.
   const headline =
-    mate === undefined ? activeThreadTitle : (mateActivity?.subject ?? activeThreadTitle);
+    activeThreadTask !== undefined
+      ? taskTitle(activeThreadTask)
+      : mate === undefined
+        ? activeThreadTitle
+        : (mateActivity?.subject ?? activeThreadTitle);
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });

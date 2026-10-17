@@ -125,6 +125,7 @@ import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./zerops/ZeropsSetup.ts";
 import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
+import { ZeropsAutomation } from "./zerops/ZeropsAutomation.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -1232,6 +1233,8 @@ const buildAppUnderTest = (options?: {
             crewLayerInert,
             // No crew is proposed here: no harness test asks for one.
             Layer.mock(ZeropsCrewProposals.ZeropsCrewProposals)({}),
+            // An ordinary Mate: no HQ says it is automated.
+            Layer.mock(ZeropsAutomation)({ automated: Effect.succeed(false) }),
             // The Mate engine inert, whatever the switch says: its doors are V1's to close.
             options?.layers?.mateEngine
               ? Layer.succeed(MateEngine, options.layers.mateEngine)

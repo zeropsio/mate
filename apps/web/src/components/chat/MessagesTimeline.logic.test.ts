@@ -2661,6 +2661,33 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list[1]).toMatchObject({ kind: "event", id: "m0", event: { type: "resumed" } });
   });
 
+  it("draws a task's first message as its issue's card, never the brief's words", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 12,
+      url: "https://github.com/acme/tea-shop/issues/12",
+      title: "Fix the checkout total",
+      author: "nova-dev",
+    } as const;
+    const brief = user("m0", 0, "Work issue #12 in the project, then open a change.");
+    const list = rows({
+      entries: [
+        {
+          ...brief,
+          message: {
+            ...(brief as Extract<typeof brief, { kind: "message" }>).message,
+            task: issue,
+          },
+        },
+        tool("w1", "t1", 1),
+      ] as never,
+      settled: "t1",
+    });
+    expect(list[1]).toMatchObject({ kind: "task-card", id: "m0", task: issue });
+    expect(JSON.stringify(list)).not.toContain("Work issue #12");
+  });
+
   it("draws the server's crew task card as its own row, never the person's bubble", () => {
     const list = rows({
       entries: [

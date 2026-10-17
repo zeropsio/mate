@@ -672,6 +672,8 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
   "default-login",
   /** A login this build does not make: an API key for anything but Claude, or an API key without one. */
   "invalid-login",
+  /** An automated Mate runs on its organization's API key: nobody signs in to it. */
+  "automated",
 ]);
 export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
 

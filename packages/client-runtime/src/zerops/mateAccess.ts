@@ -232,7 +232,10 @@ export function mateOwnerRecords(
   readonly signer: string | undefined;
   /** The Zerops user id HQ makes it the Mate of (`matePerson`): its maker, or its signer. */
   readonly person: string | undefined;
-  /** It runs on an agent Mate signs nobody in to (its overview): it waits on no sign-in. */
+  /**
+   * It runs on an agent Mate signs nobody in to (its overview), or it is automated, on the
+   * organization's key: it waits on no sign-in.
+   */
   readonly runsWithoutSignIn: boolean;
 } {
   const records = matePerson(project);
@@ -280,7 +283,8 @@ export function mateSignedInOnce(project: Pick<MateAccessProject, "hq">): boolea
 function matePerson(project: Pick<MateAccessProject, "hq">) {
   const { signedIn, signer } = mateOwnerSigner(project);
   const mate = project.hq?.mate;
-  const runsWithoutSignIn = mate?.runsWithoutSignIn === true;
+  // An automated Mate's agents run on the organization's key: nobody signs it in, ever.
+  const runsWithoutSignIn = mate?.runsWithoutSignIn === true || mate?.automated === true;
   // Its maker's for good, whatever their role and whoever signs its agent in; a Mate recorded
   // before HQ kept its maker is its signer's (`usageOwner`).
   const person = mate?.madeBy ?? mate?.standupRequestedBy ?? signer ?? undefined;

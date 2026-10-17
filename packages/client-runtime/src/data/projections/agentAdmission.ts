@@ -85,7 +85,14 @@ export function agentAdmission(input: {
    * nobody (`null`); unresolved while HQ has not said (`undefined`).
    */
   readonly owner?: { readonly mine: boolean } | null | undefined;
+  /**
+   * An automated Mate: its agents run on the organization's key, never a person's sign-in — it
+   * raises no sign-in and holds its composer for none; with no agent it can run, its composer
+   * says it waits for the organization's API key (`automatedAgentUsable`).
+   */
+  readonly automated?: boolean | undefined;
 }) {
+  if (input.automated === true) return automatedAdmission(input);
   const colleagues = input.owner?.mine === false;
   const readOnly = colleagues || input.operate === false;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
@@ -157,6 +164,44 @@ export function agentAdmission(input: {
     sendBlockReason: input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null),
     // Signer records establish no client permission, including compact HQ records; HQ's recorded
     // owner does.
+    readOnly,
+    holdsComposer,
+  };
+}
+
+/** An agent an automated Mate can run: one no person signs in to, on and ready. */
+export function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): boolean {
+  return providers.some(
+    (provider) =>
+      agentIdForDriverKind(provider.driver) === undefined &&
+      provider.enabled &&
+      provider.installed &&
+      (provider.status === "ready" || provider.status === "warning"),
+  );
+}
+
+/** `agentAdmission` for an automated Mate: nobody signs it in; the organization's key runs it. */
+function automatedAdmission(input: Parameters<typeof agentAdmission>[0]) {
+  const readOnly = input.owner?.mine === false || input.operate === false;
+  const cold = input.owner === undefined;
+  const usable = automatedAgentUsable(input.providers);
+  const holdsComposer = input.standUpHolds === true;
+  // A subscription agent's status (its sign-in) is nothing of this Mate's: none is said.
+  const found = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
+  const provider = agentIdForDriverKind(found?.driver) === undefined ? found : null;
+  const snapshot = input.read?.state === "known" ? input.read.value : null;
+  return {
+    attention: null,
+    providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
+    explainsRefusal: false,
+    footer: readOnly ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
+    canSend: !readOnly && !cold && !holdsComposer && usable,
+    sendBlockReason:
+      input.operate === false
+        ? MATE_READ_ACCESS_LINE
+        : usable
+          ? null
+          : `${input.mateName} waits for your organization's API key.`,
     readOnly,
     holdsComposer,
   };
@@ -254,6 +299,9 @@ export const mateAdmissionSummary: Projection<
   keyOf: (key) => JSON.stringify([key.orgId, key.projectId, key.mateName]),
   equals: sameValue,
   derive: (read, key) => {
+    // An automated Mate's agents run on the organization's key: nobody is asked to sign it in.
+    const placed = read.fact("placement", key.projectId);
+    if (placed.kind === "known" && placed.value.mate?.automated === true) return null;
     const overview = hqMateOverview.derive(read, key);
     if (
       !hqMatePresence.derive(read, key).live ||

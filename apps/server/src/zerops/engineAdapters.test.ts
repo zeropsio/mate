@@ -48,6 +48,12 @@ describe("engineAdapters", () => {
       { kind: "standup", startedBy: "jan" },
     ],
     [
+      "a task's run, the brief or a wake that continues it, is the task's turn",
+      { kind: "task", taskId: "task-1" },
+      { kind: "person", itemId: "task/r/1/i/1" },
+      { kind: "task", taskId: "task-1" },
+    ],
+    [
       "any other wake is admitted like a stand-up, for the person it continues",
       { kind: "person", subject: "zerops-user:eva" },
       wake("usage-resume"),

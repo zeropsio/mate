@@ -1,4 +1,4 @@
-import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
+import type { HqNavigationMateTask, HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqLifecycleRecord, HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 // @effect-diagnostics nodeBuiltinImport:off -- opaque deletion handles use the existing HQ key and byte encoding.
 /**
@@ -143,6 +143,8 @@ export interface AttachInput {
     readonly standUp?: boolean;
     /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
     readonly serviceId?: string;
+    /** An automated Mate, as the birth intent it was born under may say too. */
+    readonly automated?: boolean;
   };
   /** A stage's or a production's environment, named as given; else named from its project. */
   readonly environment?: { readonly name: string };
@@ -274,6 +276,8 @@ export interface MateRecord {
 /** A Mate's record as it is set up: the caller may ask for its stand-up in the same write (B3). */
 export interface NewMateRecord extends MateRecord {
   readonly standUp?: boolean;
+  /** An automated Mate (`MateState.automated`): set with its record, never changed. */
+  readonly automated?: boolean;
   /** Its zcp service, where its project holds one already: one Mate per project (audit D2). */
   readonly serviceId?: string;
 }
@@ -303,6 +307,13 @@ export interface MateView {
    * tells a Core that keeps no such word — older than this field — by its absence.
    */
   readonly keyWider: boolean;
+  /** Said only of an automated Mate (`MateState.automated`). */
+  readonly automated?: true;
+  /**
+   * An automated Mate's task, assigned or worked on — else the last one whose change still waits
+   * for review, which keeps it from taking more — or none; said only of an automated Mate.
+   */
+  readonly task?: HqNavigationMateTask | null;
 }
 
 /**
@@ -386,6 +397,15 @@ export interface StructureRead {
       | { readonly refused: Reason };
     /** The Mates on their way into it whose attach has not landed yet, oldest first. */
     readonly births: ReadonlyArray<BirthIntent>;
+    /**
+     * Where its automated Mates take tasks from (`intake.ts`), and how many wait for one of them;
+     * none: nowhere.
+     */
+    readonly intake?: {
+      readonly repo: string;
+      readonly label: string;
+      readonly waiting: number;
+    } | null;
   }>;
 }
 
@@ -459,7 +479,12 @@ export class Structure extends Context.Service<
      */
     readonly recordBirth: (
       userId: string,
-      birth: { readonly appId: string; readonly face: string; readonly standUp?: boolean },
+      birth: {
+        readonly appId: string;
+        readonly face: string;
+        readonly standUp?: boolean;
+        readonly automated?: boolean;
+      },
     ) => Effect.Effect<BirthIntent, WriteError>;
     /**
      * Keeps who signed in each login of a Mate as the Mate reports it: a login named here takes
@@ -526,6 +551,11 @@ export class Structure extends Context.Service<
      * (`MateCredentials.keyWider`): every reader is told.
      */
     readonly mateTouched: (projectId: string) => Effect.Effect<void>;
+    /**
+     * What the structure shows changed outside its own writes — an application's intake, a task
+     * that moved (`intake.ts`, `mateTasks.ts`): every reader is told.
+     */
+    readonly touched: Effect.Effect<void>;
     /**
      * Keeps the deploy token of the application's environment `name` (SPEC §3.2b): handed over
      * by whoever may attach its project (`keep_deploy_token`), and kept only once Zerops says it
@@ -766,8 +796,10 @@ export const structureLayer = (options: {
             readonly standup_requested_by: string | null;
             readonly closed_off: boolean;
             readonly signers: Readonly<Record<string, string>>;
+            readonly automated: boolean;
           }>`
-            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off, signers
+            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off, signers,
+              automated
             FROM hq_mate WHERE project_id = ${projectId}`,
           Effect.orElseSucceed(
             Effect.map(
@@ -783,6 +815,8 @@ export const structureLayer = (options: {
               face: row.face,
               standupRequestedBy: row.standup_requested_by,
               closedOff: row.closed_off,
+              // Absent: no automated Mate, as an older HQ says of every one.
+              ...(row.automated ? { automated: true } : {}),
               ...(Object.keys(row.signers).length === 0 ? {} : { signers: row.signers }),
             })),
         );
@@ -994,13 +1028,24 @@ export const structureLayer = (options: {
           return yield* sql.withTransaction(
             Effect.gen(function* () {
               yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`;
+              // Waiting tasks are counted grouped once and joined, and each automated Mate's task
+              // (handed to it or worked on, else the last whose change still waits for review) is
+              // joined below: as subqueries per application and per Mate they raised these reads'
+              // estimates past Postgres's JIT threshold (~80 → ~684,000), compiling every read.
               const apps = yield* sql<{
                 readonly id: string;
                 readonly name: string;
                 readonly empty: boolean;
                 readonly created_by: string;
+                readonly intake: NonNullable<StructureRead["apps"][number]["intake"]> | null;
               }>`
-              SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
+              SELECT a.id::text AS id, a.name, a.created_by, NOT (${appHeld}) AS empty,
+                CASE WHEN i.app_id IS NULL THEN NULL ELSE jsonb_build_object('repo', i.repo,
+                  'label', i.label, 'waiting', COALESCE(w.waiting, 0)) END AS intake
+              FROM hq_app a LEFT JOIN hq_intake i ON i.app_id = a.id
+              LEFT JOIN (SELECT app_id, count(*) AS waiting FROM hq_task WHERE state = 'queued'
+                GROUP BY app_id) w ON w.app_id = a.id
+              ORDER BY a.seq`;
               const births = yield* sql<BirthIntent & { readonly app_id: string }>`
               SELECT id::text AS id, app_id::text AS app_id, face, project_id AS "projectId"
               FROM hq_birth_intent ORDER BY seq`;
@@ -1019,9 +1064,21 @@ export const structureLayer = (options: {
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
                        'closedOff', m.closed_off_at IS NOT NULL, 'setupMarker', NULL,
-                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END END AS mate
+                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END
+                       || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task',
+                         CASE WHEN task.id IS NULL THEN NULL ELSE jsonb_build_object('id', task.id, 'repo', task.repo,
+                           'number', task.number, 'title', task.title, 'url', task.url) END) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
+              LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
+                  t.repo, t.number, t.title, t.url
+                FROM hq_task t
+                WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working')
+                  OR (t.change_number IS NOT NULL AND EXISTS (SELECT 1 FROM hq_change c
+                    WHERE c.app_id = t.app_id AND c.repo = t.change_repo AND c.number = t.change_number
+                      AND c.state = 'open')))
+                ORDER BY t.mate_project_id, (t.state IN ('assigned', 'working')) DESC, t.seq DESC
+              ) task ON task.mate_project_id = m.project_id
               ORDER BY p.seq NULLS LAST, m.seq`;
               setupMarkers.retain(
                 new Set(membership.filter((row) => row.mate !== null).map((row) => row.project_id)),
@@ -1235,6 +1292,7 @@ export const structureLayer = (options: {
                               face,
                               ...(projectId == null ? {} : { projectId }),
                             })),
+                          intake: app.intake,
                         };
                       }),
                   };
@@ -1527,6 +1585,7 @@ export const structureLayer = (options: {
           }),
         mateTouched: (projectId) =>
           Effect.andThen(changed, PubSub.publish(mateChanged, projectId)).pipe(Effect.asVoid),
+        touched: Effect.asVoid(changed),
         // A project Zerops made seconds ago may not be in the recent view yet: a refusal of its
         // facts is confirmed over a fresh read, as every write's is (F22).
         holdPress: confirmed((userId, projectId, press) =>
@@ -1808,7 +1867,7 @@ export const structureLayer = (options: {
                     // write (B3). One with no intent carries its own ask.
                     if (input.mate !== undefined) {
                       yield* sql`
-                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id)
+                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id, automated)
                       SELECT ${input.projectId}, ${input.mate.face},
                         COALESCE(intent.made_by, ${userId}),
                         CASE
@@ -1816,7 +1875,8 @@ export const structureLayer = (options: {
                             CASE WHEN intent.standup THEN intent.made_by END
                           WHEN ${input.mate.standUp === true} THEN ${userId}
                         END,
-                        ${input.mate.serviceId ?? null}, intent.id
+                        ${input.mate.serviceId ?? null}, intent.id,
+                        COALESCE(intent.automated, false) OR ${input.mate.automated === true}
                       FROM (SELECT 1) AS one
                       LEFT JOIN hq_birth_intent AS intent
                         ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
@@ -1986,9 +2046,9 @@ export const structureLayer = (options: {
                   DELETE FROM hq_birth_intent
                   WHERE made_by = ${userId} AND project_id IS NULL AND created_at < now() - interval '7 days'`;
                 return yield* sql<{ readonly id: string }>`
-                  INSERT INTO hq_birth_intent (app_id, face, made_by, standup)
+                  INSERT INTO hq_birth_intent (app_id, face, made_by, standup, automated)
                   VALUES (${birth.appId}::uuid, ${birth.face}, ${userId},
-                    ${birth.standUp === true})
+                    ${birth.standUp === true}, ${birth.automated === true})
                   RETURNING id::text AS id`;
               }),
             );
@@ -2056,9 +2116,10 @@ export const structureLayer = (options: {
                     view,
                   );
                   yield* sql`
-                    INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id)
+                    INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, automated)
                     VALUES (${mate.projectId}, ${mate.face}, ${userId},
-                      ${mate.standUp === true ? userId : null}, ${mate.serviceId ?? null})`;
+                      ${mate.standUp === true ? userId : null}, ${mate.serviceId ?? null},
+                      ${mate.automated === true})`;
                 }),
               ),
               "mate_record_exists",

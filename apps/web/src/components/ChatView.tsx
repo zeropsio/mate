@@ -220,6 +220,7 @@ import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
+import { automatedMateEntries, conversationTask } from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
@@ -2538,12 +2539,28 @@ function ConversationView(props: ChatViewProps) {
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);
+  // The task this conversation works, on an automated Mate: the header names it.
+  const activeThreadMessages = activeThread?.messages;
+  const activeThreadTask = useMemo(
+    () => conversationTask(activeThreadMessages ?? []),
+    [activeThreadMessages],
+  );
+  // An automated Mate runs on the organization's key: no agent a person signs in is offered.
+  const automatedHere =
+    activeThreadEnvironmentId !== null &&
+    (() => {
+      const at = zeropsMateAt(zeropsMates, activeThreadEnvironmentId);
+      return at.kind === "mate" && at.mate.automated === true;
+    })();
   const providerInstanceEntries = useMemo(
     () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+      automatedMateEntries(
+        sortProviderInstanceEntries(
+          applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+        ),
+        automatedHere,
       ),
-    [providerStatuses, settings],
+    [automatedHere, providerStatuses, settings],
   );
   // The composer and picker read the same scoped authentication facts.
   const zeropsAgentAuthRead = useZeropsAgentAuth(activeThreadEnvironmentId);
@@ -3185,6 +3202,7 @@ function ConversationView(props: ChatViewProps) {
   // as an empty conversation's opening (`mateShowsSignIn`).
   const mateSignIn = mateShowsSignIn({
     mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
+    automated: automatedHere,
     signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
     said: timelineEntries.length > 0,
   });
@@ -3338,6 +3356,8 @@ function ConversationView(props: ChatViewProps) {
             ),
     providers: providerStatuses,
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
+    // It runs on the organization's key: no sign-in, and with no agent to run, it says so.
+    automated: automatedHere,
     owner:
       admissionMate.kind === "nobody" || admissionPeople?.owned === false
         ? null
@@ -8408,6 +8428,7 @@ function ConversationView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
+            activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
             activeProjectName={activeProjectDisplayName}
@@ -8835,6 +8856,7 @@ function ConversationView(props: ChatViewProps) {
                               zeropsAgentAvailabilityByInstanceId={
                                 zeropsAgentAvailabilityByInstanceId
                               }
+                              automatedMate={automatedHere}
                               activeContextWindow={activeContextWindow}
                               compactThreadUnavailable={compactThreadUnavailable}
                               compactDisabled={compactDisabled}

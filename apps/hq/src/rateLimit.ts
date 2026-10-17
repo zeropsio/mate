@@ -34,6 +34,9 @@ export const PERSON_ADDRESS_LIMIT: DoorLimit = { capacity: 120, perMinute: 60 };
 /** A person's door, per person its throwaway names. */
 export const PERSON_LIMIT: DoorLimit = { capacity: 20, perMinute: 20 };
 
+/** GitHub's deliveries to an intake's webhook, per address: a busy repository's burst of issues. */
+export const INTAKE_LIMIT: DoorLimit = { capacity: 120, perMinute: 120 };
+
 /** A Chief's reads through HQ's proxy, per credential. */
 export const CHIEF_LIMIT: DoorLimit = { capacity: 120, perMinute: 120 };
 

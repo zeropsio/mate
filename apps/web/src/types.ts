@@ -2,6 +2,7 @@ import type {
   ChatAttachment as ContractChatAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
   CrewCard as ContractCrewCard,
+  MateTaskSource,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointSummary,
   OrchestrationMessage,
@@ -52,6 +53,8 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
   /** On an engine conversation, the crew's typed card this message opens its run with. */
   readonly crewCard?: ContractCrewCard | undefined;
+  /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
+  readonly task?: MateTaskSource | undefined;
   /** On an engine conversation, the message waits in the engine's queue: no run took it yet. */
   readonly queued?: true | undefined;
   /** On an engine conversation, the queued run of a message no agent has yet: it can be withdrawn. */

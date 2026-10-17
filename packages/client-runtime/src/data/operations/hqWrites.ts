@@ -32,6 +32,7 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly face: string;
       readonly standUp?: boolean;
+      readonly automated?: true;
     };
     readonly "bind-birth": {
       readonly orgId: string;

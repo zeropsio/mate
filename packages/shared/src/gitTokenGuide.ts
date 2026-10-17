@@ -41,6 +41,10 @@ export function gitTokenGuide(repositoryUrl: string, project: string) {
       checks: "read",
       statuses: "read",
       actions: "read",
+      // An application's automated Mates take its issues (`hqIntake`): HQ makes the webhook and
+      // answers on the issue with this same token.
+      issues: "write",
+      repository_hooks: "write",
     }).toString();
     return {
       kind: "guide",
@@ -49,7 +53,7 @@ export function gitTokenGuide(repositoryUrl: string, project: string) {
       owner,
       repository,
       tokenUrl: tokenUrl.href,
-      permission: "Contents: Read and write",
+      permission: "Contents, Issues and Webhooks: Read and write",
     } as const;
   }
   if (host === "gitlab.com" || host.startsWith("gitlab.")) {

@@ -439,10 +439,19 @@ describe("HQ scoped socket", () => {
           const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
           const navigationCalls = core.fake.calls.slice(coldCalls);
           const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
-          const structureQueries = queries.filter((query) => /FROM hq_app a ORDER BY/.test(query));
-          // The app's emptiness subquery also mentions hq_change; count it with structure.
+          const structureQueries = queries.filter((query) =>
+            /FROM hq_app a (?:LEFT JOIN hq_intake i ON i\.app_id = a\.id[\s\S]*?)?ORDER BY a\.seq/.test(
+              query,
+            ),
+          );
+          // The app's emptiness subquery also mentions hq_change; count it with structure. An
+          // automated Mate's task reads (`hq_task`: the Mates' one query, the dispatcher's) mention
+          // it too, read once for everyone, never per person.
           const changeQueries = queries.filter(
-            (query) => /\bhq_change\b/.test(query) && !structureQueries.includes(query),
+            (query) =>
+              /\bhq_change\b/.test(query) &&
+              !/\bhq_task\b/.test(query) &&
+              !structureQueries.includes(query),
           );
           process.stdout.write(
             `HQ cold reads: SQL=${queries.length}, sessions=${sessionQueries.length}, structure=${structureQueries.length}, changes=${changeQueries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,

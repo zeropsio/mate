@@ -29,6 +29,7 @@ import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentSignIn.logic";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
+import { automatedMateEntries } from "../../zerops/automatedMate.logic";
 import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";
 import { crewmateMenuItems } from "../zerops/crew/CrewTellComposer.logic";
 import {
@@ -636,6 +637,8 @@ export interface ChatComposerProps {
   zeropsAgentAvailabilityByInstanceId?:
     | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
     | undefined;
+  /** An automated Mate's: it runs on the organization's key, so no agent a person signs in. */
+  automatedMate?: boolean | undefined;
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
@@ -751,6 +754,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
     zeropsAgentAvailabilityByInstanceId,
+    automatedMate = false,
     activeContextWindow,
     compactThreadUnavailable,
     compactDisabled,
@@ -865,10 +869,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // sorted default-first per driver kind for a stable picker order.
   const providerInstanceEntries = useMemo<ReadonlyArray<ProviderInstanceEntry>>(
     () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+      automatedMateEntries(
+        sortProviderInstanceEntries(
+          applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+        ),
+        automatedMate,
       ),
-    [providerStatuses, settings],
+    [automatedMate, providerStatuses, settings],
   );
   const selectedProviderByThreadId = composerDraft.activeProvider ?? null;
   const isZeropsAgentRunnable = useCallback(

@@ -293,6 +293,15 @@ export const HqPersonFacts = Schema.Struct({
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 
 const Decisions = Schema.Record(Schema.String, HqDecision);
+/** The task an automated Mate is on, as its row names it. */
+export const HqNavigationMateTask = Schema.Struct({
+  id: Schema.String,
+  repo: Schema.String,
+  number: Schema.Int,
+  title: Schema.String,
+  url: Schema.String,
+});
+export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({
   face: Schema.String,
   madeBy: Schema.NullOr(Schema.String),
@@ -302,6 +311,10 @@ export const HqNavigationMate = Schema.Struct({
   setupMarker: Schema.NullOr(Schema.Boolean),
   keyWider: Schema.Boolean,
   birthId: Schema.optionalKey(Schema.String),
+  /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
+  automated: Schema.optionalKey(Schema.Boolean),
+  /** The task an automated Mate is on, or none: what its row names while it works. */
+  task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
 });
 /** Bounded environment jobs, retaining the latest live job for each service too. */
 export const HqNavigationJob = Schema.Struct({
@@ -447,6 +460,14 @@ export const HqNavigationRelease = Schema.Union([
   Schema.Struct({ refused: Schema.String }),
 ]);
 
+/** An application's intake as its menu reads it: where its tasks come from, and how many wait. */
+export const HqNavigationIntake = Schema.Struct({
+  repo: Schema.String,
+  label: Schema.String,
+  waiting: Schema.Int,
+});
+export type HqNavigationIntake = typeof HqNavigationIntake.Type;
+
 /** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
@@ -461,6 +482,11 @@ export const HqNavigationApp = Schema.Struct({
   releaseOffer: HqNavigationRelease,
   projectIds: Schema.Array(Schema.String),
   births: Schema.Array(Schema.Unknown),
+  /**
+   * Where the application's automated Mates take tasks from (`HqIntake`), and how many wait for
+   * one of them to be free; null: nowhere. Absent from an older HQ.
+   */
+  intake: Schema.optionalKey(Schema.NullOr(HqNavigationIntake)),
 });
 export type HqNavigationApp = typeof HqNavigationApp.Type;
 /** Additive canonical reader; the legacy app DTO remains usable until consumers migrate. */

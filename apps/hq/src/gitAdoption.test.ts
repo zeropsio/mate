@@ -152,6 +152,7 @@ const fixture = (seed = false) =>
       listRepos: () => Effect.die("Repository reads are outside this fixture"),
       mateRepos: () => Effect.die("Repository reads are outside this fixture"),
       write: () => Effect.die("Remote writes are outside this fixture"),
+      tokenOf: () => Effect.die("Remote tokens are outside this fixture"),
       receipt: () => Effect.succeed(null),
       get: () => Effect.succeed(state.remote),
       connect: () => Effect.succeed(state.remote),

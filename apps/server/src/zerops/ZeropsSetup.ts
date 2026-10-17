@@ -46,7 +46,6 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Semaphore from "effect/Semaphore";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -64,12 +63,15 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import { AUTOMATED_MODEL_SELECTION } from "./ZeropsAutomation.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
+import { taskIdOfConversation } from "./ZeropsTasks.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -271,7 +273,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
-    const settled = yield* Deferred.make<void>();
+    // The wait's end, read by the tasks too: an automated Mate takes none before it.
+    const receipt = yield* ZeropsStandUpReceipt;
     const attempts = yield* Semaphore.make(1);
 
     /* ---------------------------------------------------------- the record */
@@ -503,8 +506,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      */
     const engineConversation = (id?: ConversationId) =>
       Effect.map(engine.conversations, (list) => {
+        // A task's conversation is the task's, never the Mate's own.
         const found = list.views.find((view) =>
-          id === undefined ? view.agent?.profile.kind === "mate" : view.conversationId === id,
+          id === undefined
+            ? view.agent?.profile.kind === "mate" &&
+              taskIdOfConversation(view.conversationId) === undefined
+            : view.conversationId === id,
         );
         return found !== undefined || list.complete ? found : ("unknown" as const);
       });
@@ -581,9 +588,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const hq = yield* reads.hq;
         if (hq.kind !== "linked") return false;
         const asker = hq.mate.standupRequestedBy ?? undefined;
-        const providers = yield* reads.providers;
+        // An automated Mate runs on the organization's key only: its OpenCode, nobody's sign-in.
+        const automated = hq.mate.automated === true;
+        const allProviders = yield* reads.providers;
+        const providers = automated
+          ? allProviders.filter(
+              (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+            )
+          : allProviders;
         const ready = pickReadyAgentWithoutSignIn(providers);
-        const signers = yield* reads.signers;
+        const signers = automated ? {} : yield* reads.signers;
         const requestedBy =
           resuming === undefined
             ? asker
@@ -639,7 +653,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         );
         const defaults = yield* projectDefault;
         let chosen: ModelSelection;
-        if ("agentId" in decision) {
+        if (automated) {
+          chosen = AUTOMATED_MODEL_SELECTION;
+        } else if ("agentId" in decision) {
           chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
         } else if (readyHere !== undefined) {
           chosen = standUpModelSelectionOn(readyHere, mainSelection, defaults);
@@ -779,14 +795,14 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       yield* adoptAtFlip;
       // A Mate the new press did not make has no stand-up of the server's, and never polls.
       if (!marked) {
-        yield* Deferred.succeed(settled, undefined);
+        yield* receipt.settle;
         return;
       }
       const since = yield* Clock.currentTimeMillis;
       while (true) {
         const upMs = (yield* Clock.currentTimeMillis) - since;
         if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(polled.complete))) {
-          yield* Deferred.succeed(settled, undefined);
+          yield* receipt.settle;
           return;
         }
         yield* Effect.sleep(standUpPollDelay(upMs, timings));
@@ -800,7 +816,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     } else {
       // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
       // are known.
-      yield* Deferred.succeed(settled, undefined);
+      yield* receipt.settle;
       const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
       finished = Fiber.join(worker);
     }
@@ -835,7 +851,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       retry,
       finished,
       nextPoll: Effect.suspend(polled.next),
-      awaitStandUp: Deferred.await(settled),
+      awaitStandUp: receipt.await,
     });
   });
 

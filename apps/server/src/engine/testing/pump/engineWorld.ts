@@ -55,6 +55,7 @@ import {
 } from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
+import { principalUserId } from "../../../zerops/ZeropsTurnAdmission.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "../../../zerops/ZeropsMembershipWatch.ts";
 import { makeFakeWorkspaceHistory } from "./fakeWorkspaceHistory.ts";
 import {
@@ -131,14 +132,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
             // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
             // session by its Zerops subject, a wake by the bare Zerops user id it continues.
             const acting = turnPrincipalOf(principal, trigger);
-            const user =
-              acting === null
-                ? null
-                : acting.kind === "session"
-                  ? acting.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
-                    ? acting.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
-                    : null
-                  : acting.startedBy;
+            const user = acting === null ? null : (principalUserId(acting) ?? null);
             return user !== null && /^[^:]+$/.test(user)
               ? Effect.void
               : Effect.fail(

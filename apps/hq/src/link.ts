@@ -8,6 +8,8 @@
  * - **up**, `pong`, source attention (`attention`), and its overview (`overview`): the whole of it first, then the sections that
  *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
  *   A frame whose type HQ does not know is passed by — an older Mate's `summary` among them.
+ * - for an automated Mate, down, the organization's API keys (`provider-keys`, `orgAiKeys.ts`) and
+ *   the task it is handed (`task`, `mateTasks.ts`); up, its word on that task (`task-state`).
  *
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a
@@ -33,6 +35,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
@@ -54,6 +57,8 @@ import { Roles } from "./roles.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
+import { MateTasks } from "./mateTasks.ts";
+import { OrgAiKeys } from "./orgAiKeys.ts";
 
 // Identify a corrupt value frame without inventing a second attention contract.
 const readFrameType = Schema.decodeUnknownOption(
@@ -83,6 +88,30 @@ const isUsage = Schema.is(UsageLinkUp);
 const USAGE_OFFER_GRACE = Duration.millis(250);
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
+/** How long a link's frames HQ could not read wait before it reads them again: 1 s, up to 30 s. */
+const REREAD = Schedule.min([
+  Schedule.exponential(Duration.seconds(1)),
+  Schedule.spaced(Duration.seconds(30)),
+]);
+
+/**
+ * `frames` written down the link for as long as it is open: read again, with a bounded backoff,
+ * each time HQ cannot read them, so a database that fails once never quiets the link for its life.
+ * Never the first to end it.
+ */
+const keptOpen = <E, W>(
+  frames: Stream.Stream<string, E>,
+  write: (frame: string) => Effect.Effect<void, W>,
+) =>
+  Stream.runForEach(frames, write).pipe(
+    Effect.tapCause((cause) =>
+      Effect.logWarning("a Mate's link frames not read; reading again", cause),
+    ),
+    Effect.retry(REREAD),
+    Effect.ignore,
+    Effect.andThen(Effect.never),
+  );
+
 /**
  * Serves the link of the Mate `projectId` holds `credential` for, until either side ends it; says
  * which side ended it.
@@ -106,6 +135,8 @@ export const serveMateLink = (
       const autoUpdate = yield* AutoUpdatePolicy;
       const chiefs = yield* Chiefs;
       const roles = yield* Roles;
+      const aiKeys = yield* OrgAiKeys;
+      const tasks = yield* MateTasks;
       const usage = (yield* UsageLane).ledger;
       /** This link's capture lane once it opens; until then, and if it cannot, none. */
       let sender: UsageSender | undefined;
@@ -247,6 +278,10 @@ export const serveMateLink = (
               }).pipe(Effect.catch(() => close(1011, "the update policy could not be read")));
               continue;
             }
+            if (read.kind === "message" && read.message.type === "task-state") {
+              yield* tasks.report(projectId, read.message.report);
+              continue;
+            }
             if (read.kind === "message" && read.message.type === "health") {
               yield* Queue.offer(latestHealth, read.message.health);
               continue;
@@ -298,6 +333,12 @@ export const serveMateLink = (
         writer.write(frame),
       ).pipe(Effect.ignore, Effect.andThen(Effect.never));
 
+      // An automated Mate's agents run on the organization's keys: at once, and on each change.
+      const providerKeys = keptOpen(aiKeys.framesFor(projectId), writer.write);
+
+      // An automated Mate's task, told again on each link until it takes it (`mateTasks.ts`).
+      const taskFrames = keptOpen(tasks.linkFrames(projectId), writer.write);
+
       // The lane opens beside the link: a lane that cannot open leaves this link without capture,
       // and the Mate's next link tries again (answer 3). One that opens late re-sends the state.
       const capture =
@@ -315,7 +356,17 @@ export const serveMateLink = (
               Effect.andThen(Effect.never),
             );
 
-      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames, capture, healthRelay]);
+      yield* Effect.raceAll([
+        listen,
+        ping,
+        states,
+        recheck,
+        accessFrames,
+        providerKeys,
+        taskFrames,
+        capture,
+        healthRelay,
+      ]);
       return yield* ending;
     }),
   );

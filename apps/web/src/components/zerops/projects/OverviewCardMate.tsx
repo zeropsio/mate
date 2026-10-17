@@ -5,6 +5,7 @@
  * right edge — its time, or its change's *Review* in the time's place. What waits on the viewer is
  * lifted with its buttons, answered in place (`CardMateWrite`).
  */
+import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   mateArrivingUntil,
   matePoseOf,
@@ -43,6 +44,7 @@ import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { MateAutomatedMark } from "../MateAutomatedMark";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { MateFace } from "../primitives";
 import {
@@ -56,6 +58,7 @@ import {
   mateRowDraft,
   mateRowReading,
   mateRowSecond,
+  mateAutomation,
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
@@ -202,6 +205,8 @@ export function OverviewCardMate({
     read: conversationsRead,
     asker: mateAsker(owner),
   });
+  // What is read of the organization's key: an automated Mate at rest may wait for it.
+  const automatedKey = useAutomatedKey();
   const second = mateRowSecond({
     view,
     askLine,
@@ -228,6 +233,7 @@ export function OverviewCardMate({
       change === undefined
         ? undefined
         : { title: change.title, mine: people?.waitsOnViewer !== false },
+    automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
   });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const reading: CardMateReading =
@@ -339,6 +345,7 @@ export function OverviewCardMate({
         )
       }
       previews={previews}
+      mark={candidate.project.hq?.mate?.automated === true ? <MateAutomatedMark /> : undefined}
       name={name}
       onOpen={onOpen}
       reading={reading}

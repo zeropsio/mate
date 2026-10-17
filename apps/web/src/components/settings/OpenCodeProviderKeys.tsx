@@ -4,8 +4,13 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ProviderInstanceConfig } from "@t3tools/contracts";
 import {
+  defaultOpenCodeInstance,
   OPENCODE_KEY_PROVIDERS,
+  openCodeInstancePatch,
+  openCodeKeyIsSet,
   type OpenCodeKeyProvider,
+  withOpenCodeKey,
+  withoutOpenCodeKey,
 } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
 
@@ -15,13 +20,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import {
-  defaultOpenCodeInstance,
-  openCodeInstancePatch,
-  openCodeKeyIsSet,
-  withOpenCodeKey,
-  withoutOpenCodeKey,
-} from "./openCodeKeys.logic";
 
 /**
  * The model providers OpenCode signs in to with an API key, each one line:

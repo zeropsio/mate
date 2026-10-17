@@ -58,6 +58,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
+import { makeOpenCodeTurnUsage } from "../../spi/responseUsage.ts";
 import {
   type OpenCodeThreadSetup,
   type OpenCodeToolInput,
@@ -375,6 +376,8 @@ interface OpenCodeSessionContext {
   readonly toolInputByCallId: Map<string, OpenCodeToolInput>;
   /** Each assistant message's cost as last reported: the session's total is their sum. */
   readonly costByMessageId: Map<string, number>;
+  /** The steps the session and its subagents ran since the last turn ended, for the bill. */
+  readonly turnUsage: ReturnType<typeof makeOpenCodeTurnUsage>;
   readonly client: OpencodeClient;
   readonly server: OpenCodeServerConnection;
   readonly directory: string;
@@ -1104,6 +1107,39 @@ export function makeOpenCodeAdapter(
       }
     });
 
+    /** Before a turn's end: what its steps spent, once, so usage counts OpenCode turns. */
+    const emitTurnUsage = Effect.fn("emitTurnUsage")(function* (
+      context: OpenCodeSessionContext,
+      turnId: TurnId,
+      raw?: unknown,
+    ) {
+      const base = { threadId: context.session.threadId, turnId, raw };
+      const measured = yield* Effect.try({
+        try: () => context.turnUsage.complete(context.openCodeSessionId, turnId),
+        catch: (cause) =>
+          new ProviderAdapterProcessError({
+            provider: PROVIDER,
+            threadId: context.session.threadId,
+            detail: "Exact OpenCode usage accounting failed.",
+            cause,
+          }),
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            yield* emit({
+              ...(yield* buildEventBase(base)),
+              type: "runtime.warning",
+              payload: { message: error.detail, detail: String(error.cause) },
+            });
+            return [];
+          }),
+        ),
+      );
+      for (const payload of measured) {
+        yield* emit({ ...(yield* buildEventBase(base)), type: "turn.usage.completed", payload });
+      }
+    });
+
     const completeOpenCodeTurn = Effect.fn("completeOpenCodeTurn")(function* (
       context: OpenCodeSessionContext,
       turnId: TurnId,
@@ -1147,6 +1183,7 @@ export function makeOpenCodeAdapter(
         yield* Fiber.interrupt(pendingIdleReconciliation.fiber);
       }
       yield* schedulePendingRequestRecovery(context);
+      yield* emitTurnUsage(context, turnId, raw);
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -1326,6 +1363,7 @@ export function makeOpenCodeAdapter(
           class: "transport_error",
         },
       });
+      yield* emitTurnUsage(context, promptAdmission.turnId, promptAdmission.recoveryRaw);
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -1531,6 +1569,7 @@ export function makeOpenCodeAdapter(
         );
       }
       yield* clearPendingOpenCodeRequests(context, { type: "session.abort" });
+      yield* emitTurnUsage(context, turnId, raw);
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -1577,6 +1616,7 @@ export function makeOpenCodeAdapter(
       // run this inside a fiber forked via `Effect.forkIn(context.sessionScope)`;
       // closing that scope triggers the fiber-interrupt finalizer, so any
       // subsequent yield point would unwind and silently drop these emits.
+      if (turnId) yield* emitTurnUsage(context, turnId).pipe(Effect.ignore);
       yield* emit({
         ...(yield* buildEventBase({
           threadId: context.session.threadId,
@@ -2270,6 +2310,10 @@ export function makeOpenCodeAdapter(
         payloadSessionId !== undefined &&
         isOpenCodeChildRequestEvent(event) &&
         (context.relatedSessionIds.has(payloadSessionId) || isKnownPendingTerminalEvent);
+      // Every step of the session and its subagents is billed, shown or suppressed.
+      if (payloadSessionId !== undefined && context.relatedSessionIds.has(payloadSessionId)) {
+        context.turnUsage.observe(event);
+      }
       if (!isParentEvent && !isChildRequestEvent) {
         return;
       }
@@ -2677,6 +2721,7 @@ export function makeOpenCodeAdapter(
             },
           });
           if (activeTurnId) {
+            yield* emitTurnUsage(context, activeTurnId, event);
             yield* emit({
               ...(yield* buildEventBase({
                 threadId: context.session.threadId,
@@ -3010,6 +3055,7 @@ export function makeOpenCodeAdapter(
         textPartsByMessageId: new Map(),
         messageRoleById: new Map(),
         costByMessageId: new Map(),
+        turnUsage: makeOpenCodeTurnUsage(),
         activeTurnId: undefined,
         activeAgent: undefined,
         activeVariant: undefined,
@@ -3425,6 +3471,7 @@ export function makeOpenCodeAdapter(
                         },
                         { clearActiveTurnId: true },
                       );
+                      yield* emitTurnUsage(context, turnId);
                       yield* emit({
                         ...(yield* buildEventBase({ threadId: input.threadId, turnId })),
                         type: "turn.completed",
@@ -3473,6 +3520,7 @@ export function makeOpenCodeAdapter(
                       },
                       { clearActiveTurnId: true },
                     );
+                    yield* emitTurnUsage(context, turnId);
                     yield* emit({
                       ...(yield* buildEventBase({
                         threadId: input.threadId,

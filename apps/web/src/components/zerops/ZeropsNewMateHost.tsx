@@ -31,7 +31,8 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
@@ -48,6 +49,9 @@ import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { automatedKeyState } from "~/zerops/automatedMate.logic";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
@@ -68,9 +72,12 @@ export function ZeropsNewMateHost() {
   const { status } = useZeropsSession();
   // The creation lives here, above the dialog: it runs on after the dialog has closed.
   const create = useEnvironmentCreation();
+  const accountData = useContext(AccountDataContext);
   if (status !== "signed-in") return null;
   return (
     <>
+      {/* The account's data reads the listed Mates; a host mounted without them holds nothing. */}
+      {accountData === null ? null : <HoldAutomatedKey />}
       {asked === null ? null : (
         <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
@@ -79,6 +86,12 @@ export function ZeropsNewMateHost() {
       )}
     </>
   );
+}
+
+/** The organization's key for automated Mates, read once while signed in (`useAutomatedKey`). */
+function HoldAutomatedKey() {
+  useHoldAutomatedKey();
+  return null;
 }
 
 /** How long a hand-over's conversation is kept read from here, across the route changing. */
@@ -163,6 +176,13 @@ function NewMateDialog({
 
   const addOffer = useAddMateOffer()(groupId);
   const { words } = useHqOffers();
+  // Whether the organization holds the API key an automated Mate runs on: said beside the choice.
+  // An HQ that keeps no organization keys can't do automated Mates: the choice is not offered.
+  // Read from the app's root once signed in, it is known before the dialog's first frame.
+  const automation = {
+    key: automatedKeyState(useOrgAiKeys(true).read.keys),
+    admin: roleAtLeast(activeOrganization?.roleCode, "ADMIN"),
+  };
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({
@@ -207,6 +227,13 @@ function NewMateDialog({
       }
       defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
+      automation={automation}
+      defaultAutomated={again?.automated === true}
+      onOpenKeySettings={() => {
+        // The dialog gives way to where the key is set.
+        dismiss();
+        void navigate({ to: "/settings/zerops" });
+      }}
       groupName={group.name}
       // Add lands on the new Mate's page, which takes the focus.
       landsElsewhere
@@ -239,6 +266,7 @@ function NewMateDialog({
               // plan is heard.
               managed: tier === undefined ? undefined : recipeManaged(tier),
               runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
+              ...(choice.automated === true ? { automated: true as const } : {}),
             },
           },
           hq: officialHq(accountHq),

@@ -20,6 +20,7 @@ import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import {
   type CallResultPage,
   type CrewSeam,
+  type MateTaskSource,
   type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
@@ -688,6 +689,8 @@ type MessagesTimelineRowBody =
   | { kind: "notice"; id: string; createdAt: string; noticeId: string }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
+  /** A task's first message on an automated Mate: the issue it brings, never the brief. */
+  | { kind: "task-card"; id: string; createdAt: string; task: MateTaskSource }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
   | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
   | {
@@ -1102,6 +1105,7 @@ function opensRun(row: MessagesTimelineRow): boolean {
   return (
     (row.kind === "background" && row.id.startsWith("woke:")) ||
     row.kind === "crew-card" ||
+    row.kind === "task-card" ||
     (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
   );
 }
@@ -2633,6 +2637,10 @@ export function deriveMessagesTimelineRows(input: {
     }
   };
   const personRow = (entry: MessageEntry, index: number, aside: boolean): MessagesTimelineRow => {
+    const issue = entry.message.task;
+    if (issue !== undefined) {
+      return { kind: "task-card", id: entry.id, createdAt: entry.createdAt, task: issue };
+    }
     const task = crewCardOf(entry.message);
     if (task !== null) {
       return { kind: "crew-card", id: entry.id, createdAt: entry.createdAt, task };

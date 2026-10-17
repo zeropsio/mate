@@ -58,6 +58,9 @@ describe("direct push token guide", () => {
         checks: "read",
         statuses: "read",
         actions: "read",
+        // Automated Mates take the repository's issues and HQ makes its webhook.
+        issues: "write",
+        repository_hooks: "write",
       });
       expect(view.host.querySelectorAll("input")).toHaveLength(1);
       expect(view.host.querySelector("button")).toBeNull();

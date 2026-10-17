@@ -1228,6 +1228,19 @@ describe("creationEnds — a creation that stopped can end", () => {
         },
       },
     },
+    {
+      case: "an automated Mate's Add refused for certain: started over still automated",
+      made: added({
+        adds: { appId: "app-acme", registers: true, automated: true },
+        failed: { reason: "No room.", uncertain: false },
+      }),
+      want: {
+        startOver: {
+          groupId: "app-acme",
+          again: { botName: "Ida", tint: "rose", shape: "seal", automated: true },
+        },
+      },
+    },
     // Run 6's second review: the menu showed the listed Ida beside a failed Ida all session.
     {
       case: "an Add Zerops may have made: dismissed, never started over",

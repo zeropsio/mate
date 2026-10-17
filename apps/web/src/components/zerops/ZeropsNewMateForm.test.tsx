@@ -562,3 +562,124 @@ it.each(["Mastermate", "Chief"])(
     expect(html).toContain("Works on this project only.");
   },
 );
+
+describe("the New Mate dialog's Automated choice", () => {
+  const automatedSwitch = (tree: ReactTestRenderer) =>
+    tree.root.find(
+      (node) =>
+        node.props.id !== undefined &&
+        String(node.props.id).endsWith("-automated") &&
+        node.props.onCheckedChange !== undefined,
+    );
+
+  it("makes an automated Mate once chosen: nobody signs it in, its tasks come from GitHub", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "set", admin: true }, onCreate }));
+    expect(spoken(tree.root)).toContain(
+      "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.",
+    );
+    act(() => {
+      automatedSwitch(tree).props.onCheckedChange(true);
+    });
+    expect(next(tree).steps).toEqual([
+      ["Otto comes up", "about 2–4 min"],
+      ["Otto sets up development, deploying Acme Docs' code", "up to 15 min"],
+      ["Otto takes tasks from your GitHub issues", ""],
+    ]);
+    press(tree);
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Otto", automated: true }),
+    );
+  });
+
+  it("makes an ordinary Mate unless chosen", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "set", admin: true }, onCreate }));
+    press(tree);
+    expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
+  });
+
+  it.each([
+    ["the organization has no key: it says so, and where it is set", "missing", true],
+    ["the organization has its key: nothing more", "set", false],
+    ["not known yet: nothing more", "unknown", false],
+  ] as const)("%s", (_case, key, says) => {
+    const onOpenKeySettings = vi.fn();
+    const tree = mount(form({ automation: { key, admin: true }, onOpenKeySettings }));
+    expect(spoken(tree.root).includes("Your organization has no API key for it yet.")).toBe(says);
+    if (!says) return;
+    act(() => {
+      button(tree, "Set it in Settings › Zerops").props.onClick();
+    });
+    expect(onOpenKeySettings).toHaveBeenCalledOnce();
+  });
+
+  it("tells one who can't set the key who sets it, and sends them nowhere", () => {
+    const onOpenKeySettings = vi.fn();
+    const tree = mount(form({ automation: { key: "missing", admin: false }, onOpenKeySettings }));
+    expect(spoken(tree.root)).toContain(
+      "Your organization has no API key for it yet. An Owner or Admin of your organization sets it.",
+    );
+    expect(buttons(tree)).not.toContain("Set it in Settings › Zerops");
+  });
+
+  // The owner's cardinal sin: the key's note must land in room the first frame already held.
+  it("holds the key note's room from the first frame when the key is not read yet", () => {
+    const note = (tree: ReactTestRenderer) =>
+      tree.root.findAll((node) => node.props["data-zerops-new-mate-key-note"] !== undefined);
+    const tree = mount(form({ automation: { key: "unknown", admin: true } }));
+    expect(note(tree).map((node) => node.props["data-zerops-new-mate-key-note"])).toEqual(["held"]);
+    expect(spoken(tree.root)).not.toContain("Your organization has no API key for it yet.");
+    act(() => {
+      tree.update(form({ automation: { key: "missing", admin: true } }));
+    });
+    expect(note(tree)).toHaveLength(1);
+    expect(spoken(tree.root)).toContain("Your organization has no API key for it yet.");
+    act(() => {
+      tree.update(form({ automation: { key: "set", admin: true } }));
+    });
+    expect(note(tree)).toHaveLength(1);
+    expect(spoken(tree.root)).not.toContain("Your organization has no API key for it yet.");
+  });
+
+  it("draws no key note where the key was read before the dialog opened", () => {
+    const tree = mount(form({ automation: { key: "set", admin: true } }));
+    expect(
+      tree.root.findAll((node) => node.props["data-zerops-new-mate-key-note"] !== undefined),
+    ).toHaveLength(0);
+  });
+
+  it("offers no Automated choice where HQ can't make automated Mates", () => {
+    const tree = mount(form({ automation: { key: "unsupported", admin: true } }));
+    expect(spoken(tree.root)).not.toContain("Automated");
+  });
+
+  it("keeps a choice it already offered, unavailable, once HQ turns out unable to make one", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "unknown", admin: true }, onCreate }));
+    act(() => {
+      automatedSwitch(tree).props.onCheckedChange(true);
+    });
+    act(() => {
+      tree.update(form({ automation: { key: "unsupported", admin: true }, onCreate }));
+    });
+    expect(spoken(tree.root)).toContain("Update HQ to make automated Mates.");
+    expect(automatedSwitch(tree).props.disabled).toBe(true);
+    press(tree);
+    expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
+  });
+
+  it("asks again with Automated chosen where the Add started over was automated", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(
+      form({ automation: { key: "set", admin: true }, defaultAutomated: true, onCreate }),
+    );
+    expect(automatedSwitch(tree).props.checked).toBe(true);
+    press(tree);
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ automated: true }));
+  });
+
+  it("offers no Automated choice where the dialog was given none", () => {
+    expect(spoken(mount(form()).root)).not.toContain("Automated");
+  });
+});

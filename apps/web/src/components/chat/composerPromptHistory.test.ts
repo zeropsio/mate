@@ -133,6 +133,15 @@ describe("buildComposerPromptHistoryEntries", () => {
     ).toEqual(["first"]);
   });
 
+  it("leaves out a task's first message: the brief came with the task, nobody typed it", () => {
+    expect(
+      buildComposerPromptHistoryEntries([
+        { id: "m1", role: "user", text: "first" },
+        { id: "m2", role: "user", text: "Work issue #12 in the project.", task: {} },
+      ]).map((entry) => entry.prompt),
+    ).toEqual(["first"]);
+  });
+
   it("collapses consecutive duplicates onto the newest message id", () => {
     const collapsed = buildComposerPromptHistoryEntries([
       { id: "m1", role: "user", text: "same" },

@@ -19,11 +19,31 @@ const Rate = Schema.Struct({
   provider_specific_entry: Schema.optionalKey(Schema.Struct({ fast: Schema.optionalKey(Price) })),
 });
 const decodeRate = Schema.decodeUnknownOption(Rate);
+/** OpenCode's own catalog: USD per million tokens, by provider id and that provider's model id. */
+export const USAGE_CACHE_RATES_URL = "https://models.dev/api.json";
+const CatalogCost = Schema.Struct({
+  cost: Schema.Struct({
+    cache_read: Schema.optionalKey(Price),
+    cache_write: Schema.optionalKey(Price),
+  }),
+});
+const decodeCatalogCost = Schema.decodeUnknownOption(CatalogCost);
+const decodeRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown));
+/** A `provider/model` row's cache rates as models.dev publishes them for that same provider and model. */
+const catalogCacheRates = (catalog: Readonly<Record<string, unknown>>, model: string) => {
+  const slash = model.indexOf("/");
+  if (slash <= 0) return undefined;
+  const provider = Option.getOrUndefined(decodeRecord(catalog[model.slice(0, slash)]));
+  const models = Option.getOrUndefined(decodeRecord(provider?.models));
+  return Option.getOrUndefined(decodeCatalogCost(models?.[model.slice(slash + 1)]))?.cost;
+};
 import * as Option from "effect/Option";
 export interface AutomaticUsageRate {
   readonly model: string;
   readonly pricingBand: string;
   readonly rates: Readonly<Record<string, string | null>>;
+  /** The sources its rates came from. */
+  readonly provenance: string;
 }
 /** Preserve the published decimal arithmetic until the report's wire/display boundary. */
 const decimalParts = (value: number) => {
@@ -37,18 +57,23 @@ const decimalParts = (value: number) => {
   }
   return { units, scale };
 };
-const priceNanos = (rate: number, multiplier: number) => {
+/** Nanodollars per token; `perTokens` 10^6 reads a per-million rate. */
+const priceNanos = (rate: number, multiplier: number, perTokens = 0) => {
   const a = decimalParts(rate),
     b = decimalParts(multiplier);
-  const units = String(a.units * b.units * 1000000000n).padStart(a.scale + b.scale + 1, "0");
-  const scale = a.scale + b.scale;
+  const scale = a.scale + b.scale + perTokens;
+  const units = String(a.units * b.units * 1000000000n).padStart(scale + 1, "0");
   return scale === 0
     ? units
     : `${units.slice(0, -scale)}.${units.slice(-scale)}`.replace(/0+$/u, "").replace(/\.$/u, "");
 };
-/** Published prices plus the Claude context selector used by our catalog. Exact variant prices win. */
+/**
+ * Published prices plus the Claude context selector used by our catalog. Exact variant prices win.
+ * A cache rate LiteLLM lacks comes from models.dev's same `provider/model`; neither leaves it unpriced.
+ */
 export const automaticUsageRates = (
   document: Readonly<Record<string, unknown>>,
+  catalog: Readonly<Record<string, unknown>> = {},
 ): ReadonlyArray<AutomaticUsageRate> =>
   Object.entries(document).flatMap(([model, value]) => {
     const read = decodeRate(value);
@@ -59,6 +84,13 @@ export const automaticUsageRates = (
     )
       return [];
     const rate = read.value;
+    const fallback = catalogCacheRates(catalog, model);
+    const cacheRate = (multiple: number, published: number | undefined, perMillion?: number) =>
+      published !== undefined
+        ? priceNanos(published, multiple)
+        : perMillion !== undefined
+          ? priceNanos(perMillion, multiple, 6)
+          : null;
     const bands: [string, number, number | undefined][] = [
       ["api-equivalent-baseline", 1, undefined],
       ["standard", 1, undefined],
@@ -81,14 +113,16 @@ export const automaticUsageRates = (
       bands.map(([pricingBand, multiple, cacheWrite]) => ({
         model,
         pricingBand,
+        provenance:
+          (rate.cache_read_input_token_cost === undefined && fallback?.cache_read !== undefined) ||
+          (cacheWrite === undefined && fallback?.cache_write !== undefined)
+            ? `${USAGE_AUTOMATIC_RATES_URL} ${USAGE_CACHE_RATES_URL}`
+            : USAGE_AUTOMATIC_RATES_URL,
         rates: {
           uncachedInput: priceNanos(rate.input_cost_per_token!, multiple),
           output: priceNanos(rate.output_cost_per_token!, multiple),
-          cachedInput:
-            rate.cache_read_input_token_cost === undefined
-              ? null
-              : priceNanos(rate.cache_read_input_token_cost, multiple),
-          cacheCreation: cacheWrite === undefined ? null : priceNanos(cacheWrite, multiple),
+          cachedInput: cacheRate(multiple, rate.cache_read_input_token_cost, fallback?.cache_read),
+          cacheCreation: cacheRate(multiple, cacheWrite, fallback?.cache_write),
         },
       })),
     );
@@ -97,8 +131,9 @@ export const installAutomaticUsageRates = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,
   leader: Leader["Service"],
   document: Readonly<Record<string, unknown>>,
+  catalog: Readonly<Record<string, unknown>> = {},
 ) {
-  const rates = automaticUsageRates(document).toSorted(
+  const rates = automaticUsageRates(document, catalog).toSorted(
     (a, b) => a.model.localeCompare(b.model) || a.pricingBand.localeCompare(b.pricingBand),
   );
   if (rates.length === 0) return false;
@@ -111,14 +146,17 @@ export const installAutomaticUsageRates = Effect.fnUntraced(function* (
       }>`SELECT revision FROM hq_usage_price_policy WHERE id=1`;
       if (policy?.revision === revision) return false;
       yield* sql`INSERT INTO hq_usage_price(revision,model,pricing_band,rates,provenance)
-      SELECT ${revision},row.model,row."pricingBand",row.rates,${USAGE_AUTOMATIC_RATES_URL} FROM jsonb_to_recordset(${json(rates)}::jsonb) AS row(model text,"pricingBand" text,rates jsonb) ON CONFLICT DO NOTHING`;
+      SELECT ${revision},row.model,row."pricingBand",row.rates,row.provenance FROM jsonb_to_recordset(${json(rates)}::jsonb) AS row(model text,"pricingBand" text,rates jsonb,provenance text) ON CONFLICT DO NOTHING`;
       yield* sql`UPDATE hq_usage_price_policy SET revision=${revision} WHERE id=1`;
       yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
       return true;
     }),
   );
 });
-/** One sampled policy per HQ process; a fetch failure retains the last usable PostgreSQL policy. */
+/**
+ * One sampled policy per HQ process; a LiteLLM fetch failure retains the last usable PostgreSQL
+ * policy. models.dev only fills cache rates: without it that day's policy prices from LiteLLM alone.
+ */
 export const makeUsagePriceReader = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,
   leader: Leader["Service"],
@@ -130,12 +168,20 @@ export const makeUsagePriceReader = Effect.fnUntraced(function* (
     const now = yield* Clock.currentTimeMillis;
     if (checked !== undefined && now - checked < Duration.toMillis(Duration.days(1))) return false;
     checked = now;
-    const document = yield* http.get(USAGE_AUTOMATIC_RATES_URL).pipe(
-      Effect.flatMap((response) => response.json),
-      Effect.flatMap(decode),
-      Effect.timeout(Duration.seconds(10)),
+    const fetch = (url: string) =>
+      http.get(url).pipe(
+        Effect.flatMap((response) => response.json),
+        Effect.flatMap(decode),
+        Effect.timeout(Duration.seconds(10)),
+      );
+    const [document, catalog] = yield* Effect.all(
+      [
+        fetch(USAGE_AUTOMATIC_RATES_URL),
+        fetch(USAGE_CACHE_RATES_URL).pipe(Effect.orElseSucceed(() => ({}))),
+      ],
+      { concurrency: 2 },
     );
-    return yield* installAutomaticUsageRates(sql, leader, document);
+    return yield* installAutomaticUsageRates(sql, leader, document, catalog);
   }).pipe(Effect.catch(() => Effect.succeed(false)));
   return ensure;
 });

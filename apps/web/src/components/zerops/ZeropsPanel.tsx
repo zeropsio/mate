@@ -56,6 +56,8 @@ import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
+import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
+import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 
 export function ZeropsPanel({
   threadRef,
@@ -161,8 +163,14 @@ export function ZeropsPanel({
       return error === undefined ? [] : [[agent.agentId, error] as const];
     }),
   );
+  // An automated Mate's agents run on the organization's key: nothing here signs it in.
+  const automatedKey = useAutomatedKey();
   const agents =
-    agentAuthCard === null ? (
+    mateIdentity?.automated === true ? (
+      <p className="text-sm text-muted-foreground" data-zerops-surface="automated-mate-agents">
+        {automatedAgentsLine(mateIdentity.name, automatedKey)}
+      </p>
+    ) : agentAuthCard === null ? (
       agentAuthUnknown === null ? null : (
         <ZeropsAgentAuthUnknown message={agentAuthUnknown} />
       )

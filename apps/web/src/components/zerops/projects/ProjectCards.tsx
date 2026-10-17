@@ -864,6 +864,8 @@ export interface CardMateProps {
   readonly onOpen: (() => void) | undefined;
   /** Its verbs while lifted (`CardMateLiftActions`), or a verb its container needs (Start). */
   readonly actions?: ReactNode;
+  /** The mark after its name: an automated Mate's (`MateAutomatedMark`); absent, none. */
+  readonly mark?: ReactNode;
 }
 
 /**
@@ -879,6 +881,7 @@ export function CardMate({
   line,
   onOpen,
   actions,
+  mark,
 }: CardMateProps) {
   const lifted = reading.lift !== undefined;
   return (
@@ -903,6 +906,7 @@ export function CardMate({
               {name}
             </button>
           )}
+          {mark}
           {previews.map((preview) => (
             <a
               aria-label={`Open ${name}'s ${preview.service} preview`}

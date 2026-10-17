@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { makeClaudeTurnUsage, makeCodexTurnUsage } from "./responseUsage.ts";
+import { makeClaudeTurnUsage, makeCodexTurnUsage, makeOpenCodeTurnUsage } from "./responseUsage.ts";
 
 const model = (input: number, output = 0, costUSD = 0) => ({
   inputTokens: input,
@@ -38,6 +38,42 @@ const raw = (threadId: string, turnId: string, responseId: string, outputTokens:
 const complete = (threadId: string, id: string) => ({
   threadId,
   turn: { id, status: "completed" },
+});
+// OpenCode's shapes: an assistant message names its model; each step-finish part meters one call.
+const assistant = (sessionID: string, id: string, providerID: string, modelID: string) => ({
+  type: "message.updated",
+  properties: {
+    sessionID,
+    info: { id, sessionID, role: "assistant", providerID, modelID, cost: 0, tokens: {} },
+  },
+});
+const step = (
+  sessionID: string,
+  messageID: string,
+  id: string,
+  tokens: { input: number; output: number; reasoning: number; read: number; write?: number },
+  cost: number,
+) => ({
+  type: "message.part.updated",
+  properties: {
+    sessionID,
+    time: 0,
+    part: {
+      id,
+      sessionID,
+      messageID,
+      type: "step-finish",
+      reason: "stop",
+      cost,
+      tokens: {
+        total: tokens.input + tokens.read + (tokens.write ?? 0) + tokens.output + tokens.reasoning,
+        input: tokens.input,
+        output: tokens.output,
+        reasoning: tokens.reasoning,
+        cache: { read: tokens.read, write: tokens.write ?? 0 },
+      },
+    },
+  },
 });
 
 describe("completed native turn accounting", () => {
@@ -273,5 +309,112 @@ describe("completed native turn accounting", () => {
       read(result("next", { model: model(130) }, 0, "new-session"))[0]?.models[0]?.components
         .uncachedInput,
     ).toBe("30");
+  });
+});
+
+describe("OpenCode turn accounting", () => {
+  it("an OpenCode turn counts each step once, under the provider model that ran it, subagents included", () => {
+    const usage = makeOpenCodeTurnUsage();
+    usage.observe(assistant("ses_parent", "msg_a", "nebius", "moonshotai/Kimi-K2.7-Code"));
+    const first = step(
+      "ses_parent",
+      "msg_a",
+      "prt_1",
+      { input: 1000, output: 200, reasoning: 50, read: 300 },
+      0.0012,
+    );
+    usage.observe(first);
+    usage.observe(first);
+    usage.observe(
+      step(
+        "ses_parent",
+        "msg_a",
+        "prt_2",
+        { input: 100, output: 20, reasoning: 0, read: 1200 },
+        0.0004,
+      ),
+    );
+    usage.observe(assistant("ses_child", "msg_c", "nebius", "zai-org/GLM-5.3"));
+    usage.observe(
+      step("ses_child", "msg_c", "prt_3", { input: 40, output: 10, reasoning: 0, read: 0 }, 0),
+    );
+    const [fact, ...rest] = usage.complete("ses_parent", "turn-1");
+    expect(rest).toEqual([]);
+    expect(fact).toEqual({
+      nativeThreadId: "ses_parent",
+      nativeTurnId: "turn-1",
+      parentId: null,
+      nativeCost: {
+        amount: "1600000",
+        scale: 9,
+        currency: "USD",
+        basis: "provider-reported-estimate",
+      },
+      models: [
+        {
+          model: "nebius/moonshotai/Kimi-K2.7-Code",
+          components: {
+            uncachedInput: "1100",
+            cachedInput: "1500",
+            cacheCreation: "0",
+            output: "270",
+            reasoning: "50",
+            inclusiveTotal: "2870",
+          },
+          nativeCost: {
+            amount: "1600000",
+            scale: 9,
+            currency: "USD",
+            basis: "provider-reported-estimate",
+          },
+        },
+        {
+          model: "nebius/zai-org/GLM-5.3",
+          components: {
+            uncachedInput: "40",
+            cachedInput: "0",
+            cacheCreation: "0",
+            output: "10",
+            reasoning: "0",
+            inclusiveTotal: "50",
+          },
+          nativeCost: null,
+        },
+      ],
+    });
+    usage.observe(first);
+    expect(usage.complete("ses_parent", "turn-1")).toEqual([]);
+    expect(usage.complete("ses_parent", "turn-2")).toEqual([]);
+  });
+  it("an OpenCode step that reports no cost leaves the turn's cost unknown, never free", () => {
+    const usage = makeOpenCodeTurnUsage();
+    usage.observe(assistant("ses", "msg", "nebius", "zai-org/GLM-5.3"));
+    usage.observe(step("ses", "msg", "prt", { input: 10, output: 5, reasoning: 0, read: 0 }, 0));
+    const [fact] = usage.complete("ses", "turn");
+    expect(fact?.nativeCost).toBeNull();
+    expect(fact?.models[0]?.nativeCost).toBeNull();
+  });
+  it("a step of a message OpenCode never named stays under an unknown model", () => {
+    const usage = makeOpenCodeTurnUsage();
+    usage.observe(
+      step("ses", "msg_unseen", "prt", { input: 10, output: 5, reasoning: 0, read: 0 }, 0),
+    );
+    expect(usage.complete("ses", "turn")[0]?.models[0]?.model).toBeNull();
+  });
+  it("an OpenCode turn that spent no tokens records nothing", () => {
+    const usage = makeOpenCodeTurnUsage();
+    usage.observe(assistant("ses", "msg", "nebius", "zai-org/GLM-5.3"));
+    usage.observe(step("ses", "msg", "prt", { input: 0, output: 0, reasoning: 0, read: 0 }, 0));
+    expect(usage.complete("ses", "turn")).toEqual([]);
+  });
+  it("an invalid OpenCode meter stays unknown and does not block the steps beside it", () => {
+    const usage = makeOpenCodeTurnUsage();
+    usage.observe(assistant("ses", "msg", "nebius", "zai-org/GLM-5.3"));
+    usage.observe(step("ses", "msg", "bad", { input: -1, output: 5, reasoning: 0, read: 0 }, 0));
+    usage.observe(step("ses", "msg", "good", { input: 10, output: 5, reasoning: 0, read: 0 }, 0));
+    expect(usage.complete("ses", "turn")[0]?.models[0]?.components).toMatchObject({
+      uncachedInput: null,
+      output: "10",
+    });
   });
 });

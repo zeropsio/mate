@@ -50,6 +50,7 @@ import {
   zcpProcessGone,
   type ZeropsSetupTimings,
 } from "./ZeropsSetup.ts";
+import * as ZeropsStandUpReceiptModule from "./ZeropsStandUpReceipt.ts";
 import { procStartTime } from "./zeropsSetupSteps.ts";
 import { type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
@@ -299,7 +300,12 @@ const fakes = (world: World) =>
         }),
       runOf: (found) =>
         Effect.map(Ref.get(world.wokenRuns), (runs) => {
-          const run = "wakeId" in found ? runs[found.wakeId] : runs[found.providerTurnId];
+          const run =
+            "wakeId" in found
+              ? runs[found.wakeId]
+              : "providerTurnId" in found
+                ? runs[found.providerTurnId]
+                : undefined;
           return run === undefined
             ? undefined
             : {
@@ -342,6 +348,7 @@ const FAST: ZeropsSetupTimings = {
 const serverOn = (world: World, database: string, timings: ZeropsSetupTimings = FAST) =>
   Layer.effect(ZeropsSetup, makeZeropsSetup(timings)).pipe(
     Layer.provide(fakes(world)),
+    Layer.provide(ZeropsStandUpReceiptModule.layer),
     Layer.provide(
       ServerConfig.layer({
         cwd: "/var/www",
@@ -607,6 +614,35 @@ describe("ZeropsSetup: the stand-up", () => {
         }),
       );
     }),
+  );
+
+  it.live(
+    "an automated Mate stands up on OpenCode with the organization's key and its model, never on a sign-in",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const automated = ASKED.kind === "linked" ? ASKED.mate : undefined;
+        yield* Ref.set(world.hq, { kind: "linked", mate: { ...automated!, automated: true } });
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.providers, [...CLAUDE_SIGNED_IN, instance("cursor")]);
+        yield* withServer(world, freshDatabase(), () =>
+          Effect.gen(function* () {
+            // The asker's Claude and a ready Cursor are no agent of an automated Mate's.
+            yield* ticks;
+            assert.deepStrictEqual(yield* turnsOf(world), []);
+            yield* Ref.set(world.providers, [
+              ...CLAUDE_SIGNED_IN,
+              instance("cursor"),
+              instance("opencode"),
+            ]);
+            const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length > 0);
+            assert.deepStrictEqual(
+              [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+              ["opencode", "nebius/zai-org/GLM-5.3"],
+            );
+          }),
+        );
+      }),
   );
 
   it.live("the asker's own sign-in comes before a ready Cursor", () =>

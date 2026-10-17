@@ -758,6 +758,16 @@ describe("a Mate on a card", () => {
       second: { kind: "ask", pending: false },
       expected: { text: "Add a cart", tone: "muted" },
     },
+    {
+      case: "an automated Mate's task, in ink",
+      second: { kind: "task", text: "#12 Fix the checkout total", on: true },
+      expected: { text: "#12 Fix the checkout total", tone: "ink" },
+    },
+    {
+      case: "an automated Mate waiting for a task, muted",
+      second: { kind: "task", text: "Waiting for a task", on: false },
+      expected: { text: "Waiting for a task", tone: "muted" },
+    },
     { case: "nothing", second: { kind: "none" }, expected: { text: undefined, tone: "muted" } },
   ] as const)("says the menu row's line 2: $case", ({ second, expected }) => {
     expect(

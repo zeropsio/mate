@@ -59,3 +59,43 @@ it("Claude context selectors preserve published bands and exact variant prices",
     "10000",
   );
 });
+it("a Nebius model without a published cache rate takes models.dev's rate for the same provider and model", () => {
+  const litellm = {
+    "nebius/zai-org/GLM-5.3": { input_cost_per_token: 0.0000014, output_cost_per_token: 0.0000044 },
+    "nebius/acme/tea-model": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
+    "nebius/acme/listed-cache": {
+      input_cost_per_token: 0.000001,
+      output_cost_per_token: 0.000002,
+      cache_read_input_token_cost: 0.0000001,
+    },
+  };
+  const modelsDev = {
+    nebius: {
+      models: {
+        "zai-org/GLM-5.3": {
+          cost: { input: 1.4, output: 4.4, cache_read: 0.35, cache_write: 1.75 },
+        },
+        "acme/listed-cache": { cost: { input: 1, output: 2, cache_read: 0.5 } },
+      },
+    },
+  };
+  const rates = (model: string) =>
+    automaticUsageRates(litellm, modelsDev).find(
+      (rate) => rate.model === model && rate.pricingBand === "api-equivalent-baseline",
+    )?.rates;
+  // $0.35 and $1.75 per million tokens: 350 and 1750 nanodollars per token.
+  assert.deepStrictEqual(rates("nebius/zai-org/GLM-5.3"), {
+    uncachedInput: "1400",
+    output: "4400",
+    cachedInput: "350",
+    cacheCreation: "1750",
+  });
+  // A rate LiteLLM publishes wins; a model neither source prices for cache stays unpriced for it.
+  assert.strictEqual(rates("nebius/acme/listed-cache")?.cachedInput, "100");
+  assert.deepStrictEqual(rates("nebius/acme/tea-model"), {
+    uncachedInput: "1000",
+    output: "2000",
+    cachedInput: null,
+    cacheCreation: null,
+  });
+});

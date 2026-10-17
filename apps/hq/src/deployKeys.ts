@@ -114,6 +114,33 @@ export const sealRemoteToken = (
 export const openRemoteToken = (secret: KeySecretOk, appId: string, repo: string, sealed: Sealed) =>
   openWithData(secret, remoteRow(appId, repo), sealed);
 
+const intakeRow = (appId: string, publicId: string) =>
+  Buffer.from(`hq_intake:${JSON.stringify([appId, publicId])}`, "utf8");
+/** An application's intake webhook secret (`intake.ts`), bound to its application and address. */
+export const sealIntakeSecret = (
+  secret: KeySecretOk,
+  appId: string,
+  publicId: string,
+  value: Redacted.Redacted,
+): Sealed => sealWithData(secret, intakeRow(appId, publicId), value);
+export const openIntakeSecret = (
+  secret: KeySecretOk,
+  appId: string,
+  publicId: string,
+  sealed: Sealed,
+) => openWithData(secret, intakeRow(appId, publicId), sealed);
+
+const aiKeyRow = (provider: string) =>
+  Buffer.from(`hq_org_ai_key:${JSON.stringify([provider])}`, "utf8");
+/** The organization's API key for a provider (`orgAiKeys.ts`), bound to that provider. */
+export const sealAiKey = (
+  secret: KeySecretOk,
+  provider: string,
+  value: Redacted.Redacted,
+): Sealed => sealWithData(secret, aiKeyRow(provider), value);
+export const openAiKey = (secret: KeySecretOk, provider: string, sealed: Sealed) =>
+  openWithData(secret, aiKeyRow(provider), sealed);
+
 /**
  * The pass over the tokens kept before they were sealed (`0028_sealed_deploy_tokens.sql`), run by
  * the leading Core at its start under the lead's lock (`leader.ts`): each plain one sealed under
@@ -172,6 +199,18 @@ export class DeployKeys extends Context.Service<
       repo: string,
       sealed: Sealed,
     ) => Redacted.Redacted | undefined;
+    readonly sealIntake: (
+      appId: string,
+      publicId: string,
+      value: Redacted.Redacted,
+    ) => Sealed | undefined;
+    readonly openIntake: (
+      appId: string,
+      publicId: string,
+      sealed: Sealed,
+    ) => Redacted.Redacted | undefined;
+    readonly sealAiKey: (provider: string, value: Redacted.Redacted) => Sealed | undefined;
+    readonly openAiKey: (provider: string, sealed: Sealed) => Redacted.Redacted | undefined;
   }
 >()("@t3tools/hq/deployKeys") {}
 
@@ -197,6 +236,12 @@ export const deployKeysLayer = (
               open: (projectId, sealed) => openToken(secret, projectId, sealed),
               sealRemote: (appId, repo, token) => sealRemoteToken(secret, appId, repo, token),
               openRemote: (appId, repo, sealed) => openRemoteToken(secret, appId, repo, sealed),
+              sealIntake: (appId, publicId, value) =>
+                sealIntakeSecret(secret, appId, publicId, value),
+              openIntake: (appId, publicId, sealed) =>
+                openIntakeSecret(secret, appId, publicId, sealed),
+              sealAiKey: (provider, value) => sealAiKey(secret, provider, value),
+              openAiKey: (provider, sealed) => openAiKey(secret, provider, sealed),
             }
           : {
               state: secret.state,
@@ -205,6 +250,10 @@ export const deployKeysLayer = (
               open: () => undefined,
               sealRemote: () => undefined,
               openRemote: () => undefined,
+              sealIntake: () => undefined,
+              openIntake: () => undefined,
+              sealAiKey: () => undefined,
+              openAiKey: () => undefined,
             },
       );
     }),

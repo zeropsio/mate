@@ -315,6 +315,26 @@ describe("a ready agent's person from HQ", () => {
   });
 });
 
+describe("an automated Mate's records", () => {
+  it.each([
+    ["automated, nobody signed in", true, true],
+    ["ordinary, nobody signed in", false, false],
+  ] as const)(
+    "an automated Mate waits on nobody's sign-in: its agents run on the organization's key (%s)",
+    (_case, automated, runsWithoutSignIn) => {
+      const placement = placedWith({});
+      const project = {
+        id: PROJECT,
+        hq: { ...placement, mate: { ...placement.mate!, madeBy: "u-maker", automated } },
+      };
+      expect(mateOwnerRecords(project, undefined)).toMatchObject({
+        person: "u-maker",
+        runsWithoutSignIn,
+      });
+    },
+  );
+});
+
 it.each([false, true])(
   "a Mate somebody else signed in, then out, stays its maker's (runsWithoutSignIn: %s)",
   (runsWithoutSignIn) => {

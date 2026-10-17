@@ -239,9 +239,15 @@ export interface MateEngineService {
    * none when the engine cannot say.
    */
   readonly generation: (conversationId: ConversationId) => Effect.Effect<number | undefined>;
-  /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
+  /**
+   * The latest run a wake started, the one a provider turn belongs to, or a task's latest in its
+   * conversation (a person may have run more there since), ended or not.
+   */
   readonly runOf: (
-    find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
+    find:
+      | { readonly wakeId: WakeId }
+      | { readonly providerTurnId: string }
+      | { readonly conversationId: ConversationId; readonly taskId: string },
   ) => Effect.Effect<
     | {
         readonly runId: RunId;

@@ -1104,6 +1104,36 @@ const sentTurn = (run: number) =>
   settled(r(run), "provider.send", { kind: "ok", value: { providerTurnId: `t${run}` } });
 const proofRunning: ReadonlyArray<Step> = [send("go"), prepared(1), opened(1), sentTurn(1)];
 
+describe("decide: a task from outside opens its conversation", () => {
+  const task: Principal = { kind: "task", taskId: "task-1" };
+  const source = {
+    kind: "github-issue" as const,
+    repo: "acme/tea-shop",
+    number: 42,
+    url: "https://github.com/acme/tea-shop/issues/42",
+    title: "The cart forgets its teas",
+    author: "nova",
+  };
+
+  it("a task's brief is a person item carrying the issue it brings, for the task", () => {
+    const scene = play([{ command: send("Work issue #42", { task: source }), by: task }]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.by).toEqual({ kind: "person", principal: task });
+    expect(item?._tag === "ItemOpened" && item.body).toMatchObject({
+      kind: "person",
+      text: "Work issue #42",
+      task: source,
+    });
+    expect(scene.state.runs[r(1)]?.principal).toEqual(task);
+  });
+
+  it("a person's message carries no task", () => {
+    const scene = play([send("hello")]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("task");
+  });
+});
+
 describe("decide: a turn's signals land on its own run", () => {
   it("the provider's own end of a stopped turn never ends the next run", () => {
     const { log, state } = playAll([

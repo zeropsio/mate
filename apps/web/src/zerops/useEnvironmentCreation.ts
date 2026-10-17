@@ -129,11 +129,12 @@ export async function addedMateBirth(
     readonly appId: string;
     readonly face: string;
     readonly standUp: boolean;
+    readonly automated?: true;
   }) => Promise<string>,
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe">;
+    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe" | "automated">;
   },
 ): Promise<string | undefined> {
   const { choice } = input;
@@ -143,6 +144,8 @@ export async function addedMateBirth(
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
     face: choice.face === undefined ? "" : formatMateFace(choice.face),
     standUp: addedMateStandUp(input.role, choice),
+    // Made automated from its birth: the attach that closes it, in any browser, makes it so.
+    ...(choice.automated === true ? { automated: true as const } : {}),
   });
 }
 
@@ -333,7 +336,10 @@ export function useEnvironmentCreation(): (
                 hq,
                 groupId: group.groupId,
                 kind: "mate",
-                mate: { face: choice.face },
+                mate: {
+                  face: choice.face,
+                  ...(choice.automated === true ? { automated: true as const } : {}),
+                },
                 // The person adding a dev Mate with its agent asks for its stand-up — with its
                 // birth intent, which its attach closes; the press's close-off marks it closed
                 // off, after its record (`planEnvironmentCreation`).
