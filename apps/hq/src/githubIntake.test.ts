@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import {
@@ -15,6 +16,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notMember, notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
+import { NO_ANSWER } from "./mateTasks.ts";
 
 type Pool = Effect.Success<ReturnType<typeof automatedPool>>;
 
@@ -184,6 +186,95 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
             author: "nova",
             text: "The issue now reads:\n\nHot tea\n\nOnly the cups.",
           });
+        }),
+    );
+
+    it.effect(
+      "a task waiting for an answer says so on its issue, labelled mate:blocked; a member's answer reaches its Mate, and once it works again the issue says so and the label goes",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* labelled(core, 1);
+          const task = yield* working(core, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "waiting", question: "Which kettle, blue or red?" },
+          });
+          yield* taskRows(core, (rows) => rows[0]?.["state"] === "waiting");
+          const said = (words: string) =>
+            core.github.seenWhere(words, (seen) =>
+              seen.some((request) => (request.body as { body?: string })?.body?.startsWith(words)),
+            );
+          yield* said("P_ROBOT is waiting for you: Which kettle, blue or red?");
+          assert.isTrue(
+            core.github.state.seen.some(
+              (request) =>
+                request.method === "POST" &&
+                request.path === "/repos/acme/tea-shop/issues/1/labels" &&
+                (request.body as { labels: Array<string> }).labels[0] === "mate:blocked",
+            ),
+          );
+          yield* deliver(core, core.hook, "issue_comment", commentEvent(1, "The blue one."));
+          const answer = yield* core.robot.link.take("task-message");
+          assert.deepInclude(answer["message"] as object, { text: "The blue one." });
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "working" },
+          });
+          yield* taskRows(core, (rows) => rows[0]?.["state"] === "working");
+          // Picked up again: the label taken off, as at the first pickup, and the line says so.
+          const removals = (seen: ReadonlyArray<{ method: string; path: string }>) =>
+            seen.filter(
+              (request) =>
+                request.method === "DELETE" &&
+                request.path === "/repos/acme/tea-shop/issues/1/labels/mate%3Ablocked",
+            ).length;
+          yield* core.github.seenWhere("the label taken off", (seen) => removals(seen) === 2);
+          const lines = yield* core.github.seenWhere("the line says so", (seen) =>
+            seen.some(
+              (request, index) =>
+                index > seen.findLastIndex((other) => other.method === "DELETE") &&
+                request.method === "PATCH",
+            ),
+          );
+          assert.strictEqual(
+            (lines.findLast((request) => request.method === "PATCH")!.body as { body: string })
+              .body,
+            `P_ROBOT picked this up.\n\n${HQ_MARK}`,
+          );
+        }),
+    );
+
+    it.effect(
+      "a task left waiting for an answer is asked about again once after a day, and stops after three days, saying why",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({
+            tasks: { remindAfter: Duration.millis(300), giveUpAfter: Duration.millis(1500) },
+          });
+          yield* labelled(core, 1);
+          const task = yield* working(core, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "waiting", question: "Which kettle?" },
+          });
+          const stop = yield* core.robot.link.take("task-stop");
+          assert.deepStrictEqual(stop, { taskId: task.id, reason: NO_ANSWER });
+          const reminders = (yield* core.github.comments).filter(([, words]) =>
+            words.startsWith("Still waiting"),
+          );
+          assert.deepStrictEqual(reminders, [
+            [
+              "/repos/acme/tea-shop/issues/1/comments",
+              "Still waiting for an answer: Which kettle?\n\nAnswer in a comment here.",
+            ],
+          ]);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "stopped" },
+          });
+          const [row] = yield* taskRows(core, (rows) => rows[0]?.["state"] === "stopped");
+          assert.strictEqual(row!["state"], "stopped");
         }),
     );
 

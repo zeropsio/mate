@@ -78,6 +78,8 @@ export const MATE_AWAY = "Its Mate went away mid-task.";
 export const DECLINED_FOR = Duration.minutes(30);
 /** How many messages a task keeps; past them, more are not kept. */
 export const TASK_MESSAGES_MAX = 200;
+/** Why a task stopped that waited three days for an answer that never came. */
+export const NO_ANSWER = "nobody answered its question for three days.";
 /** Why a task's Mate stopped it, where the Mate said no reason. */
 const STOPPED = "people stopped it.";
 /** Why a task failed that its Mates kept turning down, with the last one's reason. */
@@ -174,6 +176,10 @@ export interface MateTasksOptions {
   readonly goneAfter?: Duration.Duration;
   /** How long a stopped task's Mate has to say it stopped before HQ ends it; 10 minutes. */
   readonly stopWithin?: Duration.Duration;
+  /** How long a task waits for a person's answer before its source asks again; a day. */
+  readonly remindAfter?: Duration.Duration;
+  /** How long a task waits for an answer before it stops; three days. */
+  readonly giveUpAfter?: Duration.Duration;
 }
 
 export const mateTasksLayer = (options: MateTasksOptions = {}) =>
@@ -313,6 +319,48 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           Effect.forkIn(layerScope),
           Effect.asVoid,
         );
+      /**
+       * A day into a wait, its source asks again — with a message of its own where its channel
+       * can (an edit tells nobody), else by saying the wait again.
+       */
+      const remind = (taskId: string) =>
+        Effect.gen(function* () {
+          const [task] = yield* sql<{
+            readonly app_id: string;
+            readonly source: unknown;
+            readonly source_key: string;
+            readonly status_ref: string | null;
+            readonly question: string | null;
+          }>`
+            SELECT app_id::text AS app_id, source, source_key, status_ref, question FROM hq_task
+            WHERE id::text = ${taskId}`;
+          const source = sourceOfRow(task?.source);
+          if (task === undefined || source === undefined) return;
+          const channel = yield* channels.of(source.kind);
+          const question = task.question ?? "an answer.";
+          if (channel?.remind === undefined)
+            return yield* say(taskId, ({ mate }) => ({
+              kind: "waiting",
+              mate: mate ?? "Mate",
+              question,
+            }));
+          yield* channel
+            .remind(
+              {
+                taskId,
+                appId: task.app_id,
+                source,
+                sourceKey: task.source_key,
+                ...(task.status_ref === null ? {} : { statusRef: task.status_ref }),
+              },
+              question,
+            )
+            .pipe(telling.withPermits(1), Effect.forkIn(layerScope));
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a task's reminder not said", { taskId, cause }),
+          ),
+        );
       const why = (detail: string | null) =>
         (detail ?? "").trim().slice(0, 2000) || "no reason given.";
       const pickedUp = (taskId: string) =>
@@ -449,6 +497,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       const goneMs = Duration.toMillis(options.goneAfter ?? Duration.hours(2));
       const stopSecs = Duration.toSeconds(options.stopWithin ?? Duration.minutes(10));
+      const remindSecs = Duration.toSeconds(options.remindAfter ?? Duration.days(1));
+      const giveUpSecs = Duration.toSeconds(options.giveUpAfter ?? Duration.days(3));
       /** Since when HQ has seen each working task's Mate offline, where its presence says not. */
       const awaySince = new Map<string, number>();
       /** The working tasks whose Mates have been offline past `goneAfter`. */
@@ -518,6 +568,19 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           yield* stoppedSaid(row.id, true);
           yield* structure.mateTouched(row.mate_project_id);
         }
+        // Waiting for an answer: asked again once after a day, stopped after three.
+        const due = yield* leader.write(sql<{ readonly id: string }>`
+          UPDATE hq_task SET reminded_at = now()
+          WHERE state = 'waiting' AND reminded_at IS NULL AND stop_requested_at IS NULL
+            AND waiting_since < now() - make_interval(secs => ${remindSecs})
+            AND waiting_since >= now() - make_interval(secs => ${giveUpSecs})
+          RETURNING id::text AS id`);
+        for (const row of due) yield* remind(row.id);
+        const unanswered = yield* sql<{ readonly id: string }>`
+          SELECT id::text AS id FROM hq_task
+          WHERE state = 'waiting' AND stop_requested_at IS NULL
+            AND waiting_since < now() - make_interval(secs => ${giveUpSecs})`;
+        for (const row of unanswered) yield* stopTask(row.id, NO_ANSWER);
         // Whatever a wake missed waits at most one sweep.
         yield* wake;
       });
@@ -609,6 +672,42 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             );
         });
 
+      /** People stopped the task: dropped while no Mate took it, else its Mate told to stop. */
+      const stopTask = (taskId: string, reason: string) =>
+        Effect.gen(function* () {
+          const gone = yield* leader.write(sql<{
+            readonly app_id: string;
+            readonly was: string | null;
+          }>`
+            WITH gone AS (
+              SELECT id, mate_project_id AS was FROM hq_task
+              WHERE id::text = ${taskId} AND state IN ('queued', 'assigned')
+              FOR UPDATE)
+            UPDATE hq_task t SET state = 'dropped', detail = ${reason}, mate_project_id = NULL,
+              assigned_at = NULL, updated_at = now()
+            FROM gone WHERE t.id = gone.id
+            RETURNING t.app_id::text AS app_id, gone.was`);
+          for (const row of gone) {
+            if (row.was !== null) yield* structure.mateTouched(row.was);
+            yield* dropped([{ id: taskId, app_id: row.app_id }], reason);
+            yield* structure.touched;
+          }
+          if (gone.length > 0) return;
+          const [taken] = yield* leader.write(sql<{
+            readonly mate_project_id: string;
+            readonly stop_reason: string;
+          }>`
+            UPDATE hq_task SET stop_reason = COALESCE(stop_reason, ${reason}),
+              stop_requested_at = COALESCE(stop_requested_at, now()), updated_at = now()
+            WHERE id::text = ${taskId} AND state IN ('working', 'waiting')
+            RETURNING mate_project_id, stop_reason`);
+          if (taken !== undefined)
+            yield* tellMate(
+              taken.mate_project_id,
+              encodeDown({ type: "task-stop", taskId, reason: taken.stop_reason }),
+            );
+        });
+
       // A person's comment on a task's change: said to the task, for its Mate to hear.
       yield* Effect.forkScoped(
         Stream.runForEach(changes.comments, (comment) =>
@@ -678,8 +777,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
         Effect.map(
-          sql<{ readonly state: string; readonly app_id: string }>`
-            SELECT state, app_id::text AS app_id FROM hq_task
+          sql<{
+            readonly state: string;
+            readonly app_id: string;
+            readonly question: string | null;
+          }>`
+            SELECT state, app_id::text AS app_id, question FROM hq_task
             WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
@@ -716,13 +819,25 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             if (moved !== undefined) yield* queueMoved(task.app_id);
             declinedUntil.set(projectId, (yield* Clock.currentTimeMillis) + acceptMs);
             yield* wake;
-          } else if (word.state === "accepted" || word.state === "working") {
+          } else if (
+            word.state === "accepted" ||
+            word.state === "working" ||
+            word.state === "waiting"
+          ) {
+            const waiting = word.state === "waiting";
+            const question = waiting
+              ? cleanTaskText(word.question ?? "")
+                  .trim()
+                  .slice(0, 2000) || "an answer."
+              : null;
             const taken = yield* leader
               .write(sql`
-                UPDATE hq_task SET state = 'working', updated_at = now(),
+                UPDATE hq_task SET state = ${waiting ? "waiting" : "working"}, updated_at = now(),
                   mate_project_id = ${projectId}, assigned_at = COALESCE(assigned_at, now()),
                   conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id),
-                  told_position = NULL
+                  told_position = NULL, question = ${question},
+                  waiting_since = ${waiting ? sql`CASE WHEN state = 'waiting' THEN waiting_since ELSE now() END` : null},
+                  reminded_at = ${waiting ? sql`CASE WHEN state = 'waiting' THEN reminded_at END` : null}
                 WHERE id::text = ${word.taskId} AND ${owns(projectId)}
                 RETURNING 1`)
               .pipe(
@@ -734,13 +849,26 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                       : Effect.fail(error),
                 }),
               );
+            const firstTaken = task.state === "assigned" || task.state === "queued";
             // Taken once: the first word that moves it from handed (or given back) to worked on —
             // and what was said of it meanwhile, told now.
-            if (taken.length > 0 && task.state !== "working") {
-              yield* pickedUp(word.taskId);
+            if (taken.length > 0 && firstTaken)
               for (const frame of yield* messagesOf([word.taskId]))
                 yield* tellMate(projectId, frame);
-            }
+            // Its source hears it waits for an answer, or that it is worked on again.
+            // (A word said again, as on each link, is no news.)
+            if (
+              taken.length > 0 &&
+              waiting &&
+              (task.state !== "waiting" || task.question !== question)
+            )
+              yield* say(word.taskId, ({ mate, question: asked }) => ({
+                kind: "waiting",
+                mate: mate ?? "Mate",
+                question: asked ?? "an answer.",
+              }));
+            else if (taken.length > 0 && !waiting && task.state !== "working")
+              yield* pickedUp(word.taskId);
             if (taken.length > 0 && task.state === "queued") {
               yield* structure.touched;
               yield* queueMoved(task.app_id);
@@ -817,40 +945,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             yield* wake;
           }).pipe(logged("a task's arrival not told")),
         message: (taskId, message) => messageTask(taskId, message),
-        stop: (taskId, reason) =>
-          Effect.gen(function* () {
-            const gone = yield* leader.write(sql<{
-              readonly app_id: string;
-              readonly was: string | null;
-            }>`
-              WITH gone AS (
-                SELECT id, mate_project_id AS was FROM hq_task
-                WHERE id::text = ${taskId} AND state IN ('queued', 'assigned')
-                FOR UPDATE)
-              UPDATE hq_task t SET state = 'dropped', detail = ${reason}, mate_project_id = NULL,
-                assigned_at = NULL, updated_at = now()
-              FROM gone WHERE t.id = gone.id
-              RETURNING t.app_id::text AS app_id, gone.was`);
-            for (const row of gone) {
-              if (row.was !== null) yield* structure.mateTouched(row.was);
-              yield* dropped([{ id: taskId, app_id: row.app_id }], reason);
-              yield* structure.touched;
-            }
-            if (gone.length > 0) return;
-            const [taken] = yield* leader.write(sql<{
-              readonly mate_project_id: string;
-              readonly stop_reason: string;
-            }>`
-              UPDATE hq_task SET stop_reason = COALESCE(stop_reason, ${reason}),
-                stop_requested_at = COALESCE(stop_requested_at, now()), updated_at = now()
-              WHERE id::text = ${taskId} AND state IN ('working', 'waiting')
-              RETURNING mate_project_id, stop_reason`);
-            if (taken !== undefined)
-              yield* tellMate(
-                taken.mate_project_id,
-                encodeDown({ type: "task-stop", taskId, reason: taken.stop_reason }),
-              );
-          }),
+        stop: (taskId, reason) => stopTask(taskId, reason),
         linkFrames: (projectId) =>
           Stream.unwrap(
             Effect.gen(function* () {
