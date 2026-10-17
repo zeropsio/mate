@@ -309,6 +309,11 @@ export const HqNavigationMateTask = Schema.Struct({
   waiting: Schema.optionalKey(Schema.Literal(true)),
   /** The pull request its change is mirrored to on GitHub; absent where none. */
   pullRequest: Schema.optionalKey(HqPullRequest),
+  /**
+   * How it ended, for the Mate's most recent task while no other is live: the Mate is free and
+   * its row says so, while the task's own conversation still shows where it got to. Absent: live.
+   */
+  ended: Schema.optionalKey(Schema.Literals(["merged", "closed", "done", "failed", "stopped"])),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({
