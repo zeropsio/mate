@@ -651,6 +651,71 @@ describe("tasks for automated Mates", () => {
     );
 
     it.effect(
+      "a Mate that takes a task people stopped before it did is told to stop, and again on each link until it says it stopped",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* deliver(
+            core,
+            core.hook,
+            "issues",
+            issueEvent("closed", { number: 1, labels: ["mate"] }),
+          );
+          yield* core.tasks((rows) => rows[0]?.["state"] === "dropped");
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          assert.deepStrictEqual(yield* core.robot.link.take("task-stop"), {
+            taskId: task.id,
+            reason: ISSUE_CLOSED,
+          });
+          yield* core.robot.link.close;
+          const again = yield* linkOf(core, core.robot.credential);
+          assert.strictEqual((yield* again.link.take("task-stop"))["taskId"], task.id);
+          yield* again.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "stopped" },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT stop_heard_at IS NOT NULL AS heard FROM hq_task",
+            (rows) => rows[0]?.["heard"] === true,
+          );
+        }),
+    );
+
+    it.effect(
+      "a Mate back after HQ ended its stopped task without its word is told to stop it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool({ tasks: { stopWithin: Duration.millis(200) } });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* core.robot.link.close;
+          yield* deliver(
+            core,
+            core.hook,
+            "issues",
+            issueEvent("closed", { number: 1, labels: ["mate"] }),
+          );
+          yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
+          const again = yield* linkOf(core, core.robot.credential);
+          assert.deepStrictEqual(yield* again.link.take("task-stop"), {
+            taskId: task.id,
+            reason: ISSUE_CLOSED,
+          });
+        }),
+    );
+
+    it.effect(
       "a task no Mate took goes when its application's intake stops or moves to another repository; only the intake's own repository's tasks are handed out",
       () =>
         Effect.gen(function* () {

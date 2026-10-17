@@ -6,7 +6,8 @@
 -- comment's id, a Slack message's ts, a Discord message's id). `repo`/`number` stay a GitHub
 -- issue's alone. A task may wait for a person's answer (`waiting`, since `waiting_since`, asking
 -- `question`, reminded once at `reminded_at`) and be stopped by people (`stop_reason`, asked at
--- `stop_requested_at`, ended `stopped` once its Mate says so). `told_position` is the place in its
+-- `stop_requested_at`, ended `stopped` once its Mate says so — heard at `stop_heard_at`; until then
+-- a Mate it was handed to is told to stop on each link). `told_position` is the place in its
 -- application's queue its status line last said.
 ALTER TABLE hq_task
   ADD COLUMN source_kind text NOT NULL DEFAULT 'github-issue',
@@ -19,6 +20,7 @@ ALTER TABLE hq_task
   ADD COLUMN reminded_at timestamptz,
   ADD COLUMN stop_reason text,
   ADD COLUMN stop_requested_at timestamptz,
+  ADD COLUMN stop_heard_at timestamptz,
   ADD COLUMN told_position integer;
 UPDATE hq_task SET
   source = jsonb_build_object('kind', 'github-issue', 'repo', repo, 'number', number, 'url', url,

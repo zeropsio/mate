@@ -81,6 +81,10 @@ export const DECLINED_FOR = Duration.minutes(30);
 export const TASK_MESSAGES_MAX = 200;
 /** Why a task stopped that waited three days for an answer that never came. */
 export const NO_ANSWER = "nobody answered its question for three days.";
+/** Why a Mate is told to stop a task HQ holds as stopped, where no reason was kept. */
+const STOPPED_ALREADY = "This task was stopped.";
+/** How long a Mate handed a task people stopped is told to stop it on each link, unheard. */
+const STOP_TOLD_FOR_SECS = 24 * 60 * 60;
 /** Why a task's Mate stopped it, where the Mate said no reason. */
 const STOPPED = "people stopped it.";
 /** Why a task failed that its Mates kept turning down, with the last one's reason. */
@@ -791,15 +795,47 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           (rows) => rows[0],
         );
 
+      /**
+       * A Mate's word on a task not its own now. One people stopped — dropped before it took it,
+       * or ended by HQ while it was away — or another Mate's since: a Mate working it is told to
+       * stop (the work it does there reaches nobody); its word that it stopped is kept, so it is
+       * not told again. Anything else is passed by.
+       */
+      const strayWord = (projectId: string, word: MateTaskReport) =>
+        Effect.gen(function* () {
+          if (word.state === "stopped") {
+            yield* leader.write(sql`
+              UPDATE hq_task SET stop_heard_at = COALESCE(stop_heard_at, now())
+              WHERE id::text = ${word.taskId} AND state IN ('stopped', 'dropped')
+                AND (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId})`);
+          } else if (word.state !== "declined" && word.state !== "failed") {
+            const [held] = yield* sql<{ readonly why: string | null }>`
+              SELECT COALESCE(stop_reason, detail) AS why FROM hq_task
+              WHERE id::text = ${word.taskId} AND (
+                (state IN ('stopped', 'dropped')
+                  AND (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId}))
+                OR (state IN ('assigned', 'working', 'waiting') AND mate_project_id <> ${projectId}))`;
+            if (held !== undefined)
+              return yield* tellMate(
+                projectId,
+                encodeDown({
+                  type: "task-stop",
+                  taskId: word.taskId,
+                  reason: held.why?.trim() || STOPPED_ALREADY,
+                }),
+              );
+          }
+          yield* Effect.logInfo("a task's word passed by", {
+            projectId,
+            taskId: word.taskId,
+            state: word.state,
+          });
+        });
+
       const report = (projectId: string, word: MateTaskReport) =>
         Effect.gen(function* () {
           const task = yield* ownTask(projectId, word.taskId);
-          if (task === undefined)
-            return yield* Effect.logInfo("a task's word passed by", {
-              projectId,
-              taskId: word.taskId,
-              state: word.state,
-            });
+          if (task === undefined) return yield* strayWord(projectId, word);
           if (word.state === "declined") {
             // Not taken: back to wait for a free Mate, no try against it, this one left alone a
             // while — failed once its Mates have turned it down for `DECLINED_FOR`.
@@ -888,7 +924,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                       ? sql`COALESCE(${word.detail?.trim() || null}, stop_reason, ${STOPPED})`
                       : null
                 },
-                conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
+                conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id),
+                stop_heard_at = ${word.state === "stopped" ? sql`now()` : sql`stop_heard_at`}
               WHERE id::text = ${word.taskId} AND ${owns(projectId)}
               RETURNING 1`);
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
@@ -965,10 +1002,24 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 SELECT t.id::text AS id, t.stop_reason FROM hq_task t
                 WHERE t.mate_project_id = ${projectId} AND ${hears(sql`t`)}`;
               const said = yield* messagesOf(on.map((task) => task.id));
-              const stops = on.flatMap((task) =>
-                task.stop_reason === null
-                  ? []
-                  : [encodeDown({ type: "task-stop", taskId: task.id, reason: task.stop_reason })],
+              // Stopped by people since it was handed it, and not yet heard to have stopped: a
+              // Mate away meanwhile may still be on it.
+              const ended = yield* sql<{ readonly id: string; readonly why: string | null }>`
+                SELECT id::text AS id, COALESCE(stop_reason, detail) AS why FROM hq_task
+                WHERE (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId})
+                  AND state IN ('stopped', 'dropped') AND stop_heard_at IS NULL
+                  AND updated_at > now() - make_interval(secs => ${STOP_TOLD_FOR_SECS})`;
+              const stops = [
+                ...on.flatMap((task) =>
+                  task.stop_reason === null ? [] : [{ id: task.id, why: task.stop_reason }],
+                ),
+                ...ended,
+              ].map((task) =>
+                encodeDown({
+                  type: "task-stop",
+                  taskId: task.id,
+                  reason: task.why?.trim() || STOPPED_ALREADY,
+                }),
               );
               return Stream.concat(
                 Stream.fromIterable([
