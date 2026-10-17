@@ -33,6 +33,7 @@ import {
   changeRoutePath,
 } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -48,6 +49,7 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { HQ_MARK, marked } from "./githubChannel.ts";
+import { GithubAuth } from "./githubAuth.ts";
 import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
@@ -67,6 +69,9 @@ export const MATE_END = "<!-- mate:end -->";
 
 /** How many failing heads of a pull request its Mate hears of before a person takes over. */
 export const CHECK_TRIES = 3;
+
+/** How long a change whose branch holds someone else's pull request waits before HQ looks again. */
+const TAKEN_FOR_MS = 60 * 60 * 1000;
 
 /** Said once on a pull request whose checks still fail after its Mate's tries. */
 export const CHECKS_GIVEN_UP = `Checks still fail after ${String(CHECK_TRIES)} tries; over to a person.`;
@@ -366,6 +371,12 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       const github = yield* GithubIssues;
       const gate = yield* GithubGate;
       const remotes = yield* Remotes;
+      const auth = yield* GithubAuth;
+      /**
+       * Changes whose branch on GitHub holds a pull request HQ did not open, and until when they
+       * are not tried again: they stay unmirrored, and HQ's log says why.
+       */
+      const taken = new Map<string, number>();
       const mirror = yield* GithubMirror;
       const events = yield* GithubEvents;
       // One pull request's step at a time: a sweep, an event and a merge never cross.
@@ -496,6 +507,12 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           if (row !== undefined && change.state === "closed") return yield* closeOnGithub(row);
           if (change.state !== "open" || change.head === null) return;
           if (row === undefined && !change.ready) return;
+          if (
+            row === undefined &&
+            (taken.get(`${appId}/${repo}/${String(number)}`) ?? 0) >
+              (yield* Clock.currentTimeMillis)
+          )
+            return;
           const app = yield* asApp(appId, repo, repository);
           if (app === undefined) return;
           const { section } = sectionOf(appId, repo, number, repository, facts);
@@ -543,21 +560,32 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             base,
             body: section,
           });
-          // Opened before, its record lost: the open one of its branch is it.
+          // Opened before, its record lost: the open one of its branch is it — only one the app's
+          // bot opened from the repository itself. Anyone else's holds the branch: never taken.
+          const bot = made.pull === undefined && made.status === 422 ? yield* auth.bot : undefined;
+          const found =
+            bot === undefined
+              ? undefined
+              : (yield* github.pullsOf(app.remote, app.token, pushed.branch)).find(
+                  (candidate) => candidate.state === "open",
+                );
           const pull =
             made.pull ??
-            (made.status === 422
-              ? (yield* github.pullsOf(app.remote, app.token, pushed.branch)).find(
-                  (found) => found.state === "open",
-                )
+            (found !== undefined && found.author === bot?.login && found.sameRepository
+              ? found
               : undefined);
-          if (pull === undefined)
-            return yield* Effect.logWarning("a change's pull request not opened", {
-              appId,
-              repo,
-              number,
-              status: made.status,
-            });
+          if (pull === undefined) {
+            taken.set(
+              `${appId}/${repo}/${String(number)}`,
+              (yield* Clock.currentTimeMillis) + TAKEN_FOR_MS,
+            );
+            return yield* Effect.logWarning(
+              found === undefined
+                ? "a change's pull request not opened"
+                : "a change's branch on GitHub holds a pull request someone else opened",
+              { appId, repo, number, status: made.status, pull: found?.number },
+            );
+          }
           const kept = yield* leader.write(sql`
             INSERT INTO hq_pull_request (app_id, repo, number, github_repo, pr_number, url,
               head_sha, described)
@@ -939,6 +967,14 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               UPDATE hq_pull_request SET head_sha = ${pushed.sha}, checks = NULL
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`);
           }
+          // GitHub merges it into the repository's default branch, or not at all.
+          const [base, now] = yield* Effect.all([
+            github.defaultBranch(app.remote, app.token),
+            github.pull(app.remote, app.token, row.pr_number),
+          ]).pipe(Effect.orElseSucceed(() => [undefined, undefined] as const));
+          if (base?.branch === undefined || now?.pull === undefined)
+            return yield* refuse("github_unreachable");
+          if (now.pull.base !== base.branch) return yield* refuse("github_wrong_base");
           const facts = yield* factsOf(appId, repo, number);
           const { login } =
             facts === undefined

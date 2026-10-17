@@ -77,6 +77,8 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
     "GitHub won't merge its pull request yet: the repository's rules or required checks hold it back. See the pull request on GitHub.",
   github_refused: "GitHub refused to merge its pull request. See the pull request on GitHub.",
   github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
+  github_wrong_base:
+    "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
 
 /** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */

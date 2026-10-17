@@ -442,6 +442,75 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "a pull request someone else opened on the change's branch is never taken for the change's own",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Not the Mate's",
+            body: "",
+            head: "mate/1-hotter-tea",
+            state: "open",
+            merged: false,
+            author: "zoe",
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core);
+          yield* core.github.seenWhere("the branch's pull requests read", (seen) =>
+            seen.some((request) => request.method === "GET" && request.path.includes("/pulls?")),
+          );
+          // What HQ does with what it read happens at once; nothing may follow it.
+          yield* Effect.sleep(Duration.millis(300));
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_pull_request", (rows) => rows.length === 0);
+          assert.isFalse(
+            core.github.state.seen.some((request) =>
+              request.path.startsWith("/repos/acme/tea-shop/issues/9/"),
+            ),
+          );
+        }),
+    );
+
+    it.effect(
+      "the pull request the app's bot opened before, its record lost, is the change's own",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Hotter tea",
+            body: "",
+            head: "mate/1-hotter-tea",
+            state: "open",
+            merged: false,
+            author: `${core.github.state.app.slug}[bot]`,
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core);
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 9,
+          );
+        }),
+    );
+
+    it.effect(
+      "Merge in Mate refuses a pull request moved to merge into another branch than the default one",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          core.github.state.pulls.set(2, { ...core.github.state.pulls.get(2)!, base: "dev" });
+          const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(refused.status, 409);
+          assert.strictEqual((refused.body as { reason: string }).reason, "github_wrong_base");
+          assert.isFalse(core.github.state.seen.some((request) => request.method === "PUT"));
+        }),
+    );
+
+    it.effect(
       "GitHub refusing the merge refuses it in Mate in plain words, and nothing moves",
       () =>
         Effect.gen(function* () {

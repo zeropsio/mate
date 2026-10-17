@@ -103,7 +103,24 @@ export const githubFake = Effect.gen(function* () {
     /** Each pull request opened, by number. */
     pulls: new Map<
       number,
-      { title: string; body: string; head: string; state: "open" | "closed"; merged: boolean }
+      {
+        title: string;
+        body: string;
+        head: string;
+        state: "open" | "closed";
+        merged: boolean;
+        /** Who opened it: the app's bot when its token asked; `nova` otherwise. */
+        author?: string;
+        /** The branch it merges into; `main`. */
+        base?: string;
+        /** Its head's repository; the repository's own (501) unless a fork's. */
+        headRepoId?: number;
+        /** Its head's commit, and once merged, the merge's. */
+        headSha?: string;
+        mergeSha?: string;
+        /** Who closed it. */
+        closedBy?: { readonly login: string; readonly type?: string };
+      }
     >(),
     /** How a merge answers: its status and GitHub's message. */
     merge: { status: 200, message: "Pull Request successfully merged" } as {
@@ -134,6 +151,10 @@ export const githubFake = Effect.gen(function* () {
       merged: pull.merged,
       body: pull.body,
       title: pull.title,
+      user: { login: pull.author ?? "nova" },
+      head: { ref: pull.head, sha: pull.headSha, repo: { id: pull.headRepoId ?? 501 } },
+      base: { ref: pull.base ?? "main", repo: { id: 501 } },
+      merge_commit_sha: pull.mergeSha ?? null,
     };
   };
   const { url } = yield* Effect.acquireRelease(
@@ -238,8 +259,24 @@ export const githubFake = Effect.gen(function* () {
                 return answer(200, { default_branch: "main" });
               if (request.method === "POST" && bare.endsWith("/pulls")) {
                 const body = JSON.parse(text) as { title: string; body: string; head: string };
+                // GitHub keeps one open pull request per branch.
+                if (
+                  [...state.pulls.values()].some(
+                    (pull) => pull.head === body.head && pull.state === "open",
+                  )
+                )
+                  return answer(422, { message: "A pull request already exists" });
                 const number = state.pullNumber++;
-                state.pulls.set(number, { ...body, state: "open", merged: false });
+                state.pulls.set(number, {
+                  ...body,
+                  state: "open",
+                  merged: false,
+                  author: state.minted.some(
+                    (minted) => `Bearer ${minted.token}` === request.headers["authorization"],
+                  )
+                    ? `${state.app.slug}[bot]`
+                    : "nova",
+                });
                 return answer(201, pullJson(number));
               }
               if (request.method === "GET" && bare.endsWith("/pulls"))
@@ -259,14 +296,22 @@ export const githubFake = Effect.gen(function* () {
                   const edit = JSON.parse(text) as {
                     title?: string;
                     body?: string;
-                    state?: "closed";
+                    state?: "closed" | "open";
                   };
+                  // A merged pull request is neither closed nor opened again.
+                  if (pull.merged && edit.state !== undefined)
+                    return answer(422, { message: "Validation Failed" });
                   state.pulls.set(number, { ...pull, ...edit });
                   return answer(200, pullJson(number));
                 }
                 if (request.method === "PUT" && pullAt[2] !== undefined) {
                   if (state.merge.status === 200)
-                    state.pulls.set(number, { ...pull, state: "closed", merged: true });
+                    state.pulls.set(number, {
+                      ...pull,
+                      state: "closed",
+                      merged: true,
+                      mergeSha: state.merge.sha ?? "f".repeat(40),
+                    });
                   return answer(
                     state.merge.status,
                     state.merge.status === 200
@@ -280,8 +325,15 @@ export const githubFake = Effect.gen(function* () {
                 }
               }
               if (request.method === "POST" && bare.endsWith("/assignees")) return answer(201, {});
-              if (issueAt !== null && request.method === "GET")
-                return answer(200, { state: state.issues.get(Number(issueAt[1])) ?? "open" });
+              if (issueAt !== null && request.method === "GET") {
+                const pull = state.pulls.get(Number(issueAt[1]));
+                return answer(
+                  200,
+                  pull === undefined
+                    ? { state: state.issues.get(Number(issueAt[1])) ?? "open" }
+                    : { state: pull.state, closed_by: pull.closedBy ?? null },
+                );
+              }
               if (issueAt !== null && request.method === "PATCH") {
                 state.issues.set(Number(issueAt[1]), "closed");
                 return answer(200, {});

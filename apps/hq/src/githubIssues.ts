@@ -45,12 +45,21 @@ const decodeUser = Schema.decodeUnknownOption(
   ),
 );
 
+const PullEnd = Schema.Struct({
+  ref: Schema.optionalKey(Schema.String),
+  sha: Schema.optionalKey(Schema.String),
+  repo: Schema.optionalKey(Schema.NullOr(Schema.Struct({ id: Schema.Number }))),
+});
 const PullRead = Schema.Struct({
   number: Schema.Number,
   html_url: Schema.String,
   state: Schema.String,
   merged: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   body: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  user: Schema.optionalKey(Schema.NullOr(Schema.Struct({ login: Schema.String }))),
+  head: Schema.optionalKey(PullEnd),
+  base: Schema.optionalKey(PullEnd),
+  merge_commit_sha: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 const decodePull = Schema.decodeUnknownOption(Schema.fromJsonString(PullRead));
 const decodePulls = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(PullRead)));
@@ -61,7 +70,16 @@ const decodeMerged = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ sha: Schema.optionalKey(Schema.String) })),
 );
 const decodeState = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Struct({ state: Schema.String })),
+  Schema.fromJsonString(
+    Schema.Struct({
+      state: Schema.String,
+      closed_by: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({ login: Schema.String, type: Schema.optionalKey(Schema.String) }),
+        ),
+      ),
+    }),
+  ),
 );
 const decodeRepository = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ default_branch: Schema.optionalKey(Schema.String) })),
@@ -88,6 +106,15 @@ export interface GithubPull {
   readonly state: "open" | "closed";
   readonly merged: boolean;
   readonly body: string;
+  /** Who opened it. */
+  readonly author: string | undefined;
+  /** Its head's commit, and the branch it merges into. */
+  readonly headSha: string | undefined;
+  readonly base: string | undefined;
+  /** Its head is a branch of the repository itself, not of a fork. */
+  readonly sameRepository: boolean;
+  /** Once merged: the commit the merge made. */
+  readonly mergeSha: string | undefined;
 }
 
 const pullOf = (read: typeof PullRead.Type): GithubPull => ({
@@ -96,6 +123,12 @@ const pullOf = (read: typeof PullRead.Type): GithubPull => ({
   state: read.state === "open" ? "open" : "closed",
   merged: read.merged === true,
   body: read.body ?? "",
+  author: read.user?.login,
+  headSha: read.head?.sha,
+  base: read.base?.ref,
+  sameRepository:
+    read.head?.repo != null && read.base?.repo != null && read.head.repo.id === read.base.repo.id,
+  mergeSha: read.merge_commit_sha ?? undefined,
 });
 
 /** One check of a commit, as GitHub reports it. */
@@ -174,13 +207,17 @@ export class GithubIssues extends Context.Service<
       number: number,
       content: "eyes" | "rocket",
     ) => Effect.Effect<number, HostUnreachable>;
-    /** Whether the issue `number` is open. */
+    /** Whether the issue (or pull request) `number` is open, and who closed it. */
     readonly issueState: (
       remote: RemoteIdentity,
       token: Redacted.Redacted,
       number: number,
     ) => Effect.Effect<
-      { readonly status: number; readonly state: string | undefined },
+      {
+        readonly status: number;
+        readonly state: string | undefined;
+        readonly closedBy: { readonly login: string; readonly type?: string } | undefined;
+      },
       HostUnreachable
     >;
     /** The issue `number` closed as done (`completed`); its status. */
@@ -234,7 +271,7 @@ export class GithubIssues extends Context.Service<
       edit: {
         readonly title?: string;
         readonly body?: string;
-        readonly state?: "closed";
+        readonly state?: "closed" | "open";
       },
     ) => Effect.Effect<number, HostUnreachable>;
     /**
@@ -397,13 +434,15 @@ export const githubIssuesLayer = (api?: string) =>
             (reply) => reply.status,
           ),
         issueState: (remote, token, number) =>
-          Effect.map(send("GET", `${repo(remote)}/issues/${String(number)}`, token), (reply) => ({
-            status: reply.status,
-            state:
-              reply.status === 200
-                ? Option.getOrUndefined(decodeState(reply.body))?.state
-                : undefined,
-          })),
+          Effect.map(send("GET", `${repo(remote)}/issues/${String(number)}`, token), (reply) => {
+            const read =
+              reply.status === 200 ? Option.getOrUndefined(decodeState(reply.body)) : undefined;
+            return {
+              status: reply.status,
+              state: read?.state,
+              closedBy: read?.closed_by ?? undefined,
+            };
+          }),
         closeIssue: (remote, token, number) =>
           Effect.map(
             send("PATCH", `${repo(remote)}/issues/${String(number)}`, token, {

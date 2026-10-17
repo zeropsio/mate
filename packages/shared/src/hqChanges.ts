@@ -661,7 +661,7 @@ export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sh
  * change nothing, is on `main` already, shares no history with it, has nothing pushed; `main` kept
  * moving; or the change is merged or closed. A change mirrored to a pull request merges on GitHub:
  * GitHub's rules (branch protection, required checks) held it back, GitHub refused it otherwise, or
- * did not answer.
+ * did not answer; or its pull request was moved to merge into another branch.
  */
 export const MERGE_REFUSALS = [
   "head_moved",
@@ -675,6 +675,7 @@ export const MERGE_REFUSALS = [
   "github_blocked",
   "github_refused",
   "github_unreachable",
+  "github_wrong_base",
 ] as const;
 
 /** A merge's subject on `main`, as Gitea's squash wrote it: what a release reads as the task. */
