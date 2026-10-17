@@ -182,18 +182,20 @@ export function connectionMissing(
 }
 
 /**
- * Whether a project's page shows its Automation section: never where HQ predates automated Mates;
- * to an Owner or Admin always — they set it up there — and to anyone else once it holds something
- * to read: an automated Mate, or a source.
+ * How a project's page shows its Automation section: to an Owner or Admin always — they set it up
+ * there — and where HQ predates automated Mates, in its place, that HQ needs updating (never
+ * painted, then taken away); to anyone else once it holds something to read: an automated Mate,
+ * or a source.
  */
-export function automationShown(input: {
+export function automationSection(input: {
   readonly admin: boolean;
   readonly key: AutomatedKeyState;
   readonly pool: number;
   readonly sources: number;
-}): boolean {
-  if (input.key === "unsupported") return false;
-  return input.admin || input.pool > 0 || input.sources > 0;
+}): "shown" | "update" | "hidden" {
+  if (input.admin) return input.key === "unsupported" ? "update" : "shown";
+  if (input.key === "unsupported") return "hidden";
+  return input.pool > 0 || input.sources > 0 ? "shown" : "hidden";
 }
 
 /**

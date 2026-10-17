@@ -254,6 +254,14 @@ function Harness() {
             workingOf={() => false}
           />
         </Panel>
+        <Panel title="An HQ older than automated Mates">
+          <ProjectAutomationView
+            onOpenMate={nothing}
+            pool={[]}
+            sources={{ rows: [], reading: false, withheld: false }}
+            update
+          />
+        </Panel>
         <Panel title="A member reads it">
           <ProjectAutomationView
             onOpenMate={nothing}

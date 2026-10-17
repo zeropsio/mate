@@ -280,6 +280,22 @@ describe("a project's Automation section", () => {
     expect(words(root)).toContain("Owners and admins see every source.");
   });
 
+  it("keeps its place where HQ predates automated Mates, saying HQ needs updating", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        admin={controls()}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        update
+        workingOf={() => false}
+      />,
+    );
+    expect(words(root)).toContain("Update HQ to set up automated Mates.");
+    expect(words(root)).not.toContain("Take tasks from…");
+    expect(words(root)).not.toContain("Add an automated Mate");
+  });
+
   it("says it reads its sources until they are read", () => {
     const root = rendered(
       <ProjectAutomationView

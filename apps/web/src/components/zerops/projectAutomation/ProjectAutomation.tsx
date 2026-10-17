@@ -46,7 +46,7 @@ import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
-  automationShown,
+  automationSection,
   connectionMissing,
   poolMateLine,
   SOURCE_KINDS,
@@ -103,8 +103,8 @@ export function ProjectAutomation({
   const onOpenMate = (projectId: string) => {
     openMate({ projectId });
   };
-  if (key === "unsupported") return null;
   if (!admin) {
+    if (key === "unsupported") return null;
     const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
       slack: WITHHELD,
@@ -114,7 +114,8 @@ export function ProjectAutomation({
       slackConnected: undefined,
       discordConnected: undefined,
     });
-    if (!automationShown({ admin, key, pool: pool.length, sources: rows.length })) return null;
+    if (automationSection({ admin, key, pool: pool.length, sources: rows.length }) === "hidden")
+      return null;
     return (
       <ProjectAutomationView
         onOpenMate={onOpenMate}
@@ -123,6 +124,15 @@ export function ProjectAutomation({
       />
     );
   }
+  if (automationSection({ admin, key, pool: 0, sources: 0 }) === "update")
+    return (
+      <ProjectAutomationView
+        onOpenMate={onOpenMate}
+        pool={[]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        update
+      />
+    );
   return (
     <AdminAutomation
       addMate={addMate}
@@ -466,7 +476,10 @@ export function ProjectAutomationView({
   admin,
   onOpenMate,
   workingOf,
+  update = false,
 }: {
+  /** HQ predates automated Mates: the section keeps its place, saying HQ needs updating. */
+  readonly update?: boolean;
   readonly pool: ReadonlyArray<PoolMate>;
   readonly sources: {
     readonly rows: ReadonlyArray<SourceRow>;
@@ -481,6 +494,30 @@ export function ProjectAutomationView({
   return (
     <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
       <h2 className="ov-side-name">Automation</h2>
+      {update ? (
+        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+      ) : (
+        <AutomationBody
+          admin={admin}
+          onOpenMate={onOpenMate}
+          pool={pool}
+          sources={sources}
+          workingOf={workingOf}
+        />
+      )}
+    </section>
+  );
+}
+
+function AutomationBody({
+  pool,
+  sources,
+  admin,
+  onOpenMate,
+  workingOf,
+}: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
+  return (
+    <>
       {pool.length === 0 ? (
         <p className="px-2 text-sm text-muted-foreground">
           No automated Mates yet. They take tasks from the sources below and open a change for each.
@@ -546,7 +583,7 @@ export function ProjectAutomationView({
           </Menu>
         </div>
       )}
-    </section>
+    </>
   );
 }
 

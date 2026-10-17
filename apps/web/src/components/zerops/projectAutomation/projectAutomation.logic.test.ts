@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  automationShown,
+  automationSection,
   connectionMissing,
   poolMateLine,
   scheduleWhen,
@@ -166,21 +166,35 @@ describe("a channel's form where its app is not connected", () => {
 
 describe("whether a project's page shows its Automation section", () => {
   it.each([
-    ["to an Admin with nothing set up", { admin: true, key: "set", pool: 0, sources: 0 }, true],
-    ["to a member with nothing set up", { admin: false, key: "set", pool: 0, sources: 0 }, false],
-    ["to a member once it has a pool", { admin: false, key: "set", pool: 1, sources: 0 }, true],
+    ["to an Admin with nothing set up", { admin: true, key: "set", pool: 0, sources: 0 }, "shown"],
+    [
+      "to a member with nothing set up",
+      { admin: false, key: "set", pool: 0, sources: 0 },
+      "hidden",
+    ],
+    ["to a member once it has a pool", { admin: false, key: "set", pool: 1, sources: 0 }, "shown"],
     [
       "to a member once it has a source",
       { admin: false, key: "missing", pool: 0, sources: 1 },
-      true,
+      "shown",
     ],
     [
-      "never where HQ predates automated Mates",
-      { admin: true, key: "unsupported", pool: 1, sources: 1 },
-      false,
+      "to an Admin while the key is not read yet",
+      { admin: true, key: "unknown", pool: 0, sources: 0 },
+      "shown",
     ],
-  ] as const)("%s", (_case, input, shown) => {
-    expect(automationShown(input)).toBe(shown);
+    [
+      "to an Admin where HQ predates automated Mates: in its place, that HQ needs updating",
+      { admin: true, key: "unsupported", pool: 0, sources: 0 },
+      "update",
+    ],
+    [
+      "to a member where HQ predates automated Mates: nothing",
+      { admin: false, key: "unsupported", pool: 0, sources: 0 },
+      "hidden",
+    ],
+  ] as const)("%s", (_case, input, section) => {
+    expect(automationSection(input)).toBe(section);
   });
 });
 
