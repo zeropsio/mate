@@ -795,6 +795,48 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "page-pr",
+    label: "The change's page, mirrored to GitHub",
+    page: true,
+    node: (
+      <Change
+        frame="page"
+        over={{
+          description: harnessDescription({ after: 0 }),
+          pullRequest: {
+            number: 14,
+            url: "https://github.com/acme/tea-shop/pull/14",
+            state: "open",
+            checks: "passing",
+          },
+        }}
+        readout={detail({ commits: commits(3) })}
+      />
+    ),
+  },
+  {
+    id: "page-pr-merged",
+    label: "The change's page, merged on GitHub",
+    page: true,
+    node: (
+      <Change
+        frame="page"
+        over={{
+          merged: true,
+          mergedAt: minutesAgo(2),
+          state: "closed",
+          pullRequest: {
+            number: 14,
+            url: "https://github.com/acme/tea-shop/pull/14",
+            state: "merged",
+            checks: "passing",
+          },
+        }}
+        readout={detail({ commits: commits(3) })}
+      />
+    ),
+  },
+  {
     id: "page-settle",
     label: "The change's page, its reads landing after 1.5 s",
     page: true,

@@ -502,6 +502,49 @@ describe("ChangeReviewView: an open change", () => {
     });
   });
 
+  describe("a change mirrored to a pull request on GitHub", () => {
+    const pullRequest = { number: 14, url: "https://github.com/acme/tea-shop/pull/14" };
+    const prLink = (html: string) =>
+      /<a[^>]*href="https:\/\/github.com\/acme\/tea-shop\/pull\/14"[^>]*>(.*?)<\/a>/u.exec(
+        html,
+      )?.[1] ?? null;
+
+    it.each([
+      [{ state: "open", checks: "passing" }, "PR #14 on GitHub · open · checks passing"],
+      [{ state: "open" }, "PR #14 on GitHub · open"],
+    ] as const)("links its pull request by its title: %o", (state, words) => {
+      const html = render({ ...open, pullRequest: { ...pullRequest, ...state } }, files);
+      const link = prLink(html);
+      expect(link === null ? null : textOf(link)).toBe(words);
+    });
+
+    it("says its Merge merges it on GitHub", () => {
+      const html = render(
+        { ...open, pullRequest: { ...pullRequest, state: "open", checks: "passing" } },
+        files,
+        { stage: "appstage" },
+      );
+      expect(textOf(footOf(html))).toContain("Merge on GitHub");
+      expect(textOf(footOf(html))).not.toContain("Merge to appstage");
+    });
+
+    it("a merged pull request shows as merged on GitHub", () => {
+      const html = render(merged({}), files);
+      expect(prLink(html)).toBeNull();
+      const mirrored = render(
+        { ...merged({}), pullRequest: { ...pullRequest, state: "merged" } },
+        files,
+      );
+      expect(textOf(prLink(mirrored) ?? "")).toBe("PR #14 on GitHub · merged");
+    });
+
+    it("a change mirrored to no pull request names none, and merges as ever", () => {
+      const html = render(open, files, { stage: "appstage" });
+      expect(prLink(html)).toBeNull();
+      expect(textOf(footOf(html))).toContain("Merge to appstage");
+    });
+  });
+
   // Guide 0.8: a verb this person cannot finish is not offered.
   it("offers neither where HQ's rule does not, and says what merging takes", () => {
     const html = render(open, files, {

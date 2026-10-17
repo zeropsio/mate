@@ -6,6 +6,9 @@ import {
   automatedKeyState,
   automatedMateEntries,
   conversationTask,
+  pullRequestStateWords,
+  taskChain,
+  taskChainLine,
   taskTitle,
 } from "./automatedMate.logic";
 
@@ -102,5 +105,119 @@ describe("New Mate's note on the key an automated Mate runs on", () => {
     { key: "unsupported", admin: true, note: { kind: "update" } },
   ] as const)("with the key $key, admin $admin", ({ key, admin, note }) => {
     expect(newMateKeyNote(key, admin)).toEqual(note);
+  });
+});
+
+describe("a task's chain: where its conversation's task stands now", () => {
+  const onIt = {
+    id: "t1",
+    repo: "acme/tea-shop",
+    number: 12,
+    title: "Fix the checkout total",
+    url: "https://github.com/acme/tea-shop/issues/12",
+  };
+  const pr = { number: 14, url: "https://github.com/acme/tea-shop/pull/14" };
+  it.each([
+    {
+      case: "holds its line while the Mate's task is not read",
+      current: undefined,
+      working: false,
+      line: { status: null, pullRequest: null },
+    },
+    {
+      case: "says it ended once its Mate is on no task",
+      current: null,
+      working: false,
+      line: { status: "Ended", pullRequest: null },
+    },
+    {
+      case: "says it ended once its Mate is on another task",
+      current: { ...onIt, id: "t2", number: 13, title: "Another" },
+      working: false,
+      line: { status: "Ended", pullRequest: null },
+    },
+    {
+      case: "says its Mate works on it",
+      current: onIt,
+      working: true,
+      line: { status: "Working", pullRequest: null },
+    },
+    {
+      case: "says its Mate waits for you where it asked something",
+      current: { ...onIt, waiting: true as const },
+      working: false,
+      line: { status: "Waiting for you", pullRequest: null },
+    },
+    {
+      case: "says its change waits for review where it has no pull request",
+      current: onIt,
+      working: false,
+      line: { status: "Waiting for review", pullRequest: null },
+    },
+    {
+      case: "names its open pull request and its checks, linked",
+      current: {
+        ...onIt,
+        pullRequest: { ...pr, state: "open" as const, checks: "passing" as const },
+      },
+      working: false,
+      line: { status: null, pullRequest: { words: "PR #14 · open · checks passing", url: pr.url } },
+    },
+    {
+      case: "names its pull request while its Mate works on it again",
+      current: {
+        ...onIt,
+        pullRequest: { ...pr, state: "open" as const, checks: "failing" as const },
+      },
+      working: true,
+      line: {
+        status: "Working",
+        pullRequest: { words: "PR #14 · open · checks failing", url: pr.url },
+      },
+    },
+    {
+      case: "names its merged pull request",
+      current: { ...onIt, pullRequest: { ...pr, state: "merged" as const } },
+      working: false,
+      line: { status: null, pullRequest: { words: "PR #14 · merged", url: pr.url } },
+    },
+    {
+      case: "names its pull request closed unmerged",
+      current: { ...onIt, pullRequest: { ...pr, state: "closed" as const } },
+      working: false,
+      line: { status: null, pullRequest: { words: "PR #14 · closed", url: pr.url } },
+    },
+  ])("$case", ({ current, working, line }) => {
+    expect(taskChainLine(taskChain(issue, current, working))).toEqual(line);
+  });
+
+  it("knows a task from elsewhere by its link, else by its title", () => {
+    const slack = {
+      kind: "slack-thread",
+      workspace: "Acme",
+      channel: "support",
+      url: "https://acme.slack.com/archives/C1/p1",
+      title: "Update the price list",
+      author: "Nova",
+    } as const;
+    const schedule = { kind: "schedule", name: "Weekly", title: "Update dependencies" } as const;
+    const nav = (over: object) => ({ id: "t", title: "Other", url: null, ...over });
+    expect(taskChain(slack, nav({ url: slack.url }), true).kind).toBe("working");
+    expect(taskChain(slack, nav({ url: "https://acme.slack.com/x" }), true).kind).toBe("ended");
+    expect(taskChain(schedule, nav({ title: "Update dependencies" }), true).kind).toBe("working");
+    expect(taskChain(schedule, nav({}), true).kind).toBe("ended");
+  });
+});
+
+describe("a pull request's state in words", () => {
+  it.each([
+    [{ state: "open", checks: "passing" }, "open · checks passing"],
+    [{ state: "open", checks: "failing" }, "open · checks failing"],
+    [{ state: "open", checks: "pending" }, "open · checks running"],
+    [{ state: "open" }, "open"],
+    [{ state: "merged", checks: "passing" }, "merged"],
+    [{ state: "closed" }, "closed"],
+  ] as const)("%o reads “%s”", (pullRequest, words) => {
+    expect(pullRequestStateWords(pullRequest)).toBe(words);
   });
 });

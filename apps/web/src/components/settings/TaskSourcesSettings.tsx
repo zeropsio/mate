@@ -9,37 +9,35 @@
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
-import type {
-  AppSetting,
-  OrgSetting,
-  SettingValue,
-  TaskSourceSettingValue,
-  TaskSourceWrite,
-} from "@t3tools/client-runtime/data";
-import type {
-  HqScheduleRequest,
-  HqChannelView,
-  HqDiscordView,
-  HqScheduleRule,
-  HqScheduleView,
-  HqTaskLimitsView,
-  HqWebhookView,
-} from "@t3tools/shared/hqIntake";
+import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
+import type { HqDiscordView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import {
-  useAppTaskSource,
-  useOrgTaskSource,
-  type TaskSourceControls,
-} from "~/zerops/useTaskSourceSettings";
+import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
-import { CopyLine, HeldRoom, IntakeRoom, OutLink } from "./automationParts";
+import {
+  CopyLine,
+  HeldRoom,
+  IntakeRoom,
+  OutLink,
+  pressWords,
+  Problem,
+  TextField,
+  WITHHELD,
+  working,
+} from "./automationParts";
+import {
+  AppChannelView,
+  AppSchedulesView,
+  AppWebhooksView,
+} from "../zerops/projectAutomation/sourceForms";
+
+// A project's sources' forms live on its page (`projectAutomation/sourceForms`); importable from here.
+export { AppChannelView, AppSchedulesView, AppWebhooksView };
 import {
   DiscordMark,
   IntegrationAction,
@@ -51,16 +49,11 @@ import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
-  channelLine,
   limitsLine,
   readLimits,
-  scheduleLine,
-  scheduleNextLine,
-  sectionState,
   slackLine,
   taskSourceProblem,
   taskSourcesUnsupported,
-  workingWords,
 } from "./taskSourcesSettings.logic";
 
 const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
@@ -116,7 +109,6 @@ export function TaskSourcesUnsupported() {
 
 // ── the parts every section shares ──────────────────────────────────────────────────────────
 
-const WITHHELD = "Only the organization's Owner and Admins see this.";
 const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 
 /**
@@ -134,63 +126,6 @@ function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): stri
     default:
       return "Reading…";
   }
-}
-
-/**
- * What a part says while its setting is not known — reading, refused, or HQ's failure with *Read
- * again* — in the room its form takes. `quiet`: its section's status line says it already.
- */
-function NotKnown({
-  setting,
-  onAgain,
-  quiet = false,
-  template,
-}: {
-  readonly setting: SettingValue<unknown>;
-  readonly onAgain: () => void;
-  readonly quiet?: boolean;
-  /** The part's final shape, whose room is held; absent: one field's. */
-  readonly template?: ReactNode;
-}) {
-  const state = sectionState(setting);
-  const said =
-    state === "failed" && setting.state === "failed" ? (
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {quiet ? (
-          <span />
-        ) : (
-          <p className="text-xs text-muted-foreground" role="alert">
-            {setting.words}
-          </p>
-        )}
-        <Button onClick={onAgain} size="sm" variant="secondary">
-          Read again
-        </Button>
-      </div>
-    ) : quiet ? null : state === "withheld" ? (
-      <p className="text-xs text-muted-foreground">{WITHHELD}</p>
-    ) : (
-      <p className="text-xs text-muted-foreground">Reading…</p>
-    );
-  return template === undefined ? (
-    <IntakeRoom>{said}</IntakeRoom>
-  ) : (
-    <HeldRoom template={template}>{said}</HeldRoom>
-  );
-}
-
-/** A write's refusal or lost answer, under the part it was made from. */
-function Problem({
-  read,
-}: {
-  readonly read: { readonly action: Parameters<typeof taskSourceProblem>[0] };
-}) {
-  const problem = taskSourceProblem(read.action);
-  return problem === null ? null : (
-    <p className="text-xs text-destructive-foreground" role="alert">
-      {problem}
-    </p>
-  );
 }
 
 /**
@@ -296,19 +231,6 @@ function SourceAction({
   );
 }
 
-/** A press's words: what it does, or the write it started, while that is under way. */
-function pressWords(
-  action: TaskSourceSettingValue<"hqSlack">["action"],
-  verbs: ReadonlyArray<TaskSourceWrite["kind"]>,
-  words: string,
-): string {
-  return action.kind === "working" && verbs.includes(action.verb)
-    ? workingWords(action.verb)
-    : words;
-}
-
-const working = (action: TaskSourceSettingValue<"hqSlack">["action"]) => action.kind === "working";
-
 function Step({ n, children }: { readonly n: number; readonly children: ReactNode }) {
   return (
     <li className="flex gap-2 text-xs text-foreground">
@@ -340,39 +262,6 @@ function SecretField({
         size="sm"
         spellCheck={false}
         type="password"
-        value={value}
-      />
-    </div>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  describedBy,
-  width = "min-w-40 flex-1",
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  /** The line under the form that explains the field. */
-  readonly describedBy?: string;
-  readonly width?: string;
-}) {
-  const id = useId();
-  return (
-    <div className={`grid gap-1.5 ${width}`}>
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        {...(describedBy === undefined ? {} : { "aria-describedby": describedBy })}
-        autoComplete="off"
-        id={id}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        size="sm"
-        spellCheck={false}
         value={value}
       />
     </div>
@@ -540,87 +429,6 @@ function SlackSteps({
         </form>
       </Step>
     </ol>
-  );
-}
-
-// ── an application's channel, on Slack or Discord ───────────────────────────────────────────
-
-export function AppChannelRow({
-  appId,
-  family,
-  source,
-}: {
-  readonly appId: string;
-  readonly family: "hqAppSlack" | "hqAppDiscord";
-  readonly source: "slack" | "discord";
-}) {
-  const controls = useAppTaskSource(family, appId);
-  return <AppChannelView controls={controls} source={source} />;
-}
-
-export function AppChannelView({
-  controls,
-  source,
-}: {
-  readonly controls: Controls<"hqAppSlack" | "hqAppDiscord">;
-  readonly source: "slack" | "discord";
-}) {
-  const { read, write, again } = controls;
-  const [channelId, setChannelId] = useState("");
-  const setting = read.setting;
-  if (setting.state !== "known")
-    return (
-      <>
-        <NotKnown onAgain={again} setting={setting} />
-        <Problem read={read} />
-      </>
-    );
-  const held: HqChannelView | null = setting.held.channel;
-  return (
-    <>
-      {held !== null ? (
-        <IntakeRoom>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{channelLine(held)}</p>
-            <Button
-              disabled={working(read.action)}
-              onClick={() => {
-                write({ kind: "channel-stop", source });
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {pressWords(read.action, ["channel-stop"], "Stop")}
-            </Button>
-          </div>
-        </IntakeRoom>
-      ) : (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const typed = channelId.trim();
-            if (typed.length === 0) return;
-            write({ kind: "channel", source, channelId: typed });
-          }}
-        >
-          <TextField
-            label="Channel ID, from the channel's details"
-            onChange={setChannelId}
-            value={channelId}
-            width="w-72"
-          />
-          <Button
-            disabled={working(read.action) || channelId.trim().length === 0}
-            size="sm"
-            type="submit"
-          >
-            {pressWords(read.action, ["channel"], "Take tasks")}
-          </Button>
-        </form>
-      )}
-      <Problem read={read} />
-    </>
   );
 }
 
@@ -867,116 +675,6 @@ export function WebhooksSettingsView({
   );
 }
 
-export function AppWebhooksRow({ appId, name }: { readonly appId: string; readonly name: string }) {
-  const controls = useAppTaskSource("hqAppWebhooks", appId);
-  return <AppWebhooksView controls={controls} name={name} />;
-}
-
-export function AppWebhooksView({
-  controls,
-  name,
-}: {
-  readonly controls: Controls<"hqAppWebhooks">;
-  readonly name: string;
-}) {
-  const { read, write, again } = controls;
-  const [hookName, setHookName] = useState("");
-  const setting = read.setting;
-  const busy = working(read.action);
-  return (
-    <>
-      {setting.state !== "known" ? (
-        <NotKnown onAgain={again} setting={setting} />
-      ) : (
-        <>
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const typed = hookName.trim();
-              if (typed.length === 0) return;
-              write({ kind: "webhook-make", name: typed });
-              setHookName("");
-            }}
-          >
-            <TextField
-              label={`${name}'s new webhook`}
-              onChange={setHookName}
-              value={hookName}
-              width="w-56"
-            />
-            <Button disabled={busy || hookName.trim().length === 0} size="sm" type="submit">
-              {pressWords(read.action, ["webhook-make"], "Make webhook")}
-            </Button>
-          </form>
-          {read.revealed === null ? null : <WebhookMade view={read.revealed} />}
-          {setting.held.length === 0 ? null : (
-            <ul className="grid gap-1.5" data-zerops-surface="settings-webhooks-list">
-              {setting.held.map((hook) => (
-                <WebhookLine
-                  busy={busy}
-                  hook={hook}
-                  key={hook.id}
-                  onDelete={() => {
-                    write({ kind: "webhook-delete", webhookId: hook.id });
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      <Problem read={read} />
-    </>
-  );
-}
-
-function WebhookMade({ view }: { readonly view: HqWebhookView }) {
-  return (
-    <div className="grid gap-1.5" data-zerops-surface="settings-webhook-made">
-      <p className="text-xs text-foreground">
-        {`${view.name} is made. Its secret is shown once: keep it where the caller signs with it.`}
-      </p>
-      <CopyLine copy="Copy URL" label="URL" value={view.url} />
-      {view.secret === undefined ? null : (
-        <CopyLine copy="Copy secret" label="Secret" value={view.secret} />
-      )}
-    </div>
-  );
-}
-
-function WebhookLine({
-  hook,
-  busy,
-  onDelete,
-}: {
-  readonly hook: HqWebhookView;
-  readonly busy: boolean;
-  readonly onDelete: () => void;
-}) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: hook.name });
-  return (
-    <li className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 truncate text-xs text-foreground">{hook.name}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-        {hook.url}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(hook.url, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : "Copy URL"}
-      </Button>
-      <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
-        Delete
-      </Button>
-    </li>
-  );
-}
-
 // ── schedules ───────────────────────────────────────────────────────────────────────────────
 
 export function SchedulesSettingsView({
@@ -996,264 +694,6 @@ export function SchedulesSettingsView({
         <AppRows apps={apps}>{children}</AppRows>
       </div>
     </SettingsRow>
-  );
-}
-
-export function AppSchedulesRow({
-  appId,
-  name,
-}: {
-  readonly appId: string;
-  readonly name: string;
-}) {
-  const controls = useAppTaskSource("hqAppSchedules", appId);
-  return <AppSchedulesView controls={controls} name={name} />;
-}
-
-const DAY_CHOICES = [
-  [1, "Monday"],
-  [2, "Tuesday"],
-  [3, "Wednesday"],
-  [4, "Thursday"],
-  [5, "Friday"],
-  [6, "Saturday"],
-  [0, "Sunday"],
-] as const;
-const EVERY_CHOICES = [
-  ["day", "Every day"],
-  ["weekday", "Every weekday"],
-  ["week", "Every week"],
-] as const;
-
-const browserTimeZone = () => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-};
-
-const moment = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-export function AppSchedulesView({
-  controls,
-  name,
-}: {
-  readonly controls: Controls<"hqAppSchedules">;
-  readonly name: string;
-}) {
-  const { read, write, again } = controls;
-  const setting = read.setting;
-  const busy = working(read.action);
-  const make = (request: HqScheduleRequest) => {
-    write({ kind: "schedule-make", request });
-  };
-  return (
-    <>
-      {setting.state !== "known" ? (
-        <NotKnown
-          onAgain={again}
-          setting={setting}
-          template={<ScheduleForm action={{ kind: "idle" }} name={name} onMake={() => {}} />}
-        />
-      ) : (
-        <>
-          <ScheduleForm action={read.action} name={name} onMake={make} />
-          {setting.held.length === 0 ? null : (
-            <ul className="grid gap-1.5" data-zerops-surface="settings-schedules-list">
-              {setting.held.map((schedule) => (
-                <ScheduleLine
-                  busy={busy}
-                  key={schedule.id}
-                  onDelete={() => {
-                    write({ kind: "schedule-delete", scheduleId: schedule.id });
-                  }}
-                  schedule={schedule}
-                />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      <Problem read={read} />
-    </>
-  );
-}
-
-/** A new schedule's form: its name, how often and when, in which time zone, and its brief. */
-function ScheduleForm({
-  name,
-  action,
-  onMake,
-}: {
-  readonly name: string;
-  readonly action: TaskSourceSettingValue<"hqAppSchedules">["action"];
-  readonly onMake: (request: HqScheduleRequest) => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [every, setEvery] = useState<HqScheduleRule["every"]>("week");
-  const [day, setDay] = useState(1);
-  const [at, setAt] = useState("09:00");
-  const [timeZone, setTimeZone] = useState(browserTimeZone);
-  const briefId = useId();
-  const busy = working(action);
-  const ready =
-    title.trim().length > 0 &&
-    brief.trim().length > 0 &&
-    /^([01]\d|2[0-3]):[0-5]\d$/u.test(at) &&
-    timeZone.trim().length > 0;
-  return (
-    <form
-      className="grid gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!ready) return;
-        onMake({
-          name: title.trim(),
-          brief: brief.trim(),
-          rule: {
-            every,
-            ...(every === "week" ? { day } : {}),
-            at,
-            timeZone: timeZone.trim(),
-          },
-        });
-        setTitle("");
-        setBrief("");
-      }}
-    >
-      <div className="flex flex-wrap items-end gap-2">
-        <TextField
-          label={`${name}'s new schedule`}
-          onChange={setTitle}
-          value={title}
-          width="w-48"
-        />
-        <div className="grid w-36 gap-1.5">
-          <Label>Repeats</Label>
-          <Select
-            onValueChange={(next) => {
-              if (next === "day" || next === "weekday" || next === "week") setEvery(next);
-            }}
-            value={every}
-          >
-            <SelectTrigger aria-label="Repeats" size="sm">
-              <SelectValue>{EVERY_CHOICES.find(([value]) => value === every)?.[1]}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              {EVERY_CHOICES.map(([value, words]) => (
-                <SelectItem key={value} value={value}>
-                  {words}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        </div>
-        {/* Always in its place: choosing how often never moves the fields after it. */}
-        <div className="grid w-32 gap-1.5">
-          <Label>On</Label>
-          <Select
-            disabled={every !== "week"}
-            onValueChange={(next) => {
-              if (typeof next === "number") setDay(next);
-            }}
-            value={day}
-          >
-            <SelectTrigger aria-label="On" size="sm">
-              <SelectValue>
-                {every === "week"
-                  ? DAY_CHOICES.find(([value]) => value === day)?.[1]
-                  : every === "day"
-                    ? "Each day"
-                    : "Mon–Fri"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              {DAY_CHOICES.map(([value, words]) => (
-                <SelectItem key={value} value={value}>
-                  {words}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        </div>
-        <TimeField onChange={setAt} value={at} />
-        <TextField label="Time zone" onChange={setTimeZone} value={timeZone} width="w-40" />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor={briefId}>Brief</Label>
-        <Textarea
-          id={briefId}
-          onChange={(event) => {
-            setBrief(event.target.value);
-          }}
-          placeholder="Update the dependencies, check the build, and open a change."
-          size="sm"
-          value={brief}
-        />
-      </div>
-      <div className="flex justify-end">
-        <Button disabled={busy || !ready} size="sm" type="submit">
-          {pressWords(action, ["schedule-make"], "Add schedule")}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function TimeField({
-  value,
-  onChange,
-}: {
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="grid w-28 gap-1.5">
-      <Label htmlFor={id}>At</Label>
-      <Input
-        id={id}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        size="sm"
-        type="time"
-        value={value}
-      />
-    </div>
-  );
-}
-
-function ScheduleLine({
-  schedule,
-  busy,
-  onDelete,
-}: {
-  readonly schedule: HqScheduleView;
-  readonly busy: boolean;
-  readonly onDelete: () => void;
-}) {
-  return (
-    <li className="flex min-w-0 items-center gap-2">
-      <div className="grid min-w-0 flex-1">
-        <p className="truncate text-xs text-foreground">{schedule.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {`${scheduleLine(schedule.rule)} · ${scheduleNextLine(schedule.nextAt, moment)}`}
-        </p>
-      </div>
-      <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
-        Delete
-      </Button>
-    </li>
   );
 }
 

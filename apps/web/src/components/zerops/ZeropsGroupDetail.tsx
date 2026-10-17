@@ -150,6 +150,7 @@ import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
+import { ProjectAutomation } from "./projectAutomation/ProjectAutomation";
 import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
@@ -616,6 +617,13 @@ function KnownGroupAside({
         onMirror={() => {
           setMirroring(true);
         }}
+        automation={
+          <ProjectAutomation
+            groupId={groupId}
+            name={groupName}
+            repos={flow.codeRepos ?? flow.repos}
+          />
+        }
       />
       {mirroring && groupName !== undefined ? (
         <GitMirrorDialog
@@ -658,6 +666,7 @@ export function ZeropsGroupPane({
   withheldNotice,
   firstDeployOf,
   onMirror,
+  automation,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   /** The repositories a Mate ships code to: the ones its Repositories section may name. */
@@ -696,6 +705,8 @@ export function ZeropsGroupPane({
   readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
   /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
   readonly onMirror?: (() => void) | undefined;
+  /** Its Automation section (`ProjectAutomation`), between its repositories and its history. */
+  readonly automation?: React.ReactNode;
 }) {
   const deployed = useMemo(
     () =>
@@ -845,6 +856,7 @@ export function ZeropsGroupPane({
           )}
         </SideSection>
       )}
+      {automation}
       <SideSection title="History">
         {repo === undefined ? (
           <EmptyState

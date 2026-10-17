@@ -16,15 +16,18 @@ import { useCallback } from "react";
 import { useAddMateOffer } from "./useHqOffers";
 
 /**
- * An Add started over: the Mate's own name, the face it was asked with, and whether it was asked
- * for automated.
+ * What an Add is asked with: started over, the Mate's own name and the face it was asked with;
+ * and whether it is asked for automated — started over, or from a project's pool of automated
+ * Mates.
  */
-export interface NewMateAgain {
-  readonly botName: string;
-  readonly tint: MateTintId;
-  readonly shape: MateShapeId;
-  readonly automated?: true;
-}
+export type NewMateAgain =
+  | {
+      readonly botName: string;
+      readonly tint: MateTintId;
+      readonly shape: MateShapeId;
+      readonly automated?: true;
+    }
+  | { readonly botName?: undefined; readonly automated: true };
 
 interface NewMateDialogState {
   /**
