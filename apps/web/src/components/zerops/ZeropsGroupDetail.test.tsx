@@ -163,7 +163,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
 function render(
   stops: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
-    "environments" | "withheldNotice" | "firstDeployOf" | "repos"
+    "environments" | "withheldNotice" | "firstDeployOf" | "repos" | "onMirror"
   > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
     environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
@@ -299,6 +299,21 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("Repositories");
     expect(markup).toContain("medusadev → github.com/acme/medusa");
     expect(markup).not.toContain("mailpit");
+  });
+
+  it("offers mirroring a project's code from its page once it has a repository", () => {
+    const environments = [environment("stage", "stage")];
+    const mailpit = {
+      name: "mailpit",
+      mainHead: null,
+      updatedAt: "2026-10-13T10:00:00Z",
+      remote: null,
+    };
+    const onMirror = () => undefined;
+    expect(render({ environments, repos: [], onMirror })).not.toContain("Mirror code");
+    const markup = render({ environments, repos: [mailpit], onMirror });
+    expect(markup).toContain("Repositories");
+    expect(markup).toContain("Mirror code to GitHub or GitLab…");
   });
 
   it("draws every line's content", () => {

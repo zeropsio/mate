@@ -3,6 +3,7 @@ import { Card } from "../ui/card";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import { GitMirrorDialog } from "./GitMirrorDialog";
 import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
@@ -532,6 +533,8 @@ function KnownGroupAside({
   const names = useHistoryNames();
   const { withheldNotice } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(flow);
+  // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
+  const [mirroring, setMirroring] = useState(false);
   const offered = useEnvironmentOffers()(groupId);
   const addEnvironment = useAddEnvironment();
   const openPutLive = useOpenPutLive();
@@ -581,35 +584,49 @@ function KnownGroupAside({
         releasing: flow.release.inFlight,
       });
   return (
-    <ZeropsGroupPane
-      readFailures={
-        <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
-      }
-      environments={environments}
-      repos={flow.repos}
-      codeRepos={flow.codeRepos}
-      slots={slots}
-      onAdd={(tier) => {
-        if (tier === "production") openPutLive(groupId);
-        else addEnvironment(groupId, tier);
-      }}
-      onFinish={(projectId) => {
-        const entry = halfMadeHere.find((candidate) => candidate.projectId === projectId);
-        if (entry !== undefined) finishing.finish(entry);
-      }}
-      finishing={finishing.finishing.has(groupId)}
-      history={history}
-      groupId={groupId}
-      name={groupName}
-      names={names}
-      onSetUp={openProjects}
-      release={release}
-      onOpenChange={openChange}
-      repo={repo}
-      tags={tags}
-      withheldNotice={withheldNotice}
-      firstDeployOf={firstDeployOf}
-    />
+    <>
+      <ZeropsGroupPane
+        readFailures={
+          <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+        }
+        environments={environments}
+        repos={flow.repos}
+        codeRepos={flow.codeRepos}
+        slots={slots}
+        onAdd={(tier) => {
+          if (tier === "production") openPutLive(groupId);
+          else addEnvironment(groupId, tier);
+        }}
+        onFinish={(projectId) => {
+          const entry = halfMadeHere.find((candidate) => candidate.projectId === projectId);
+          if (entry !== undefined) finishing.finish(entry);
+        }}
+        finishing={finishing.finishing.has(groupId)}
+        history={history}
+        groupId={groupId}
+        name={groupName}
+        names={names}
+        onSetUp={openProjects}
+        release={release}
+        onOpenChange={openChange}
+        repo={repo}
+        tags={tags}
+        withheldNotice={withheldNotice}
+        firstDeployOf={firstDeployOf}
+        onMirror={() => {
+          setMirroring(true);
+        }}
+      />
+      {mirroring && groupName !== undefined ? (
+        <GitMirrorDialog
+          appId={groupId}
+          appName={groupName}
+          onClose={() => {
+            setMirroring(false);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -640,6 +657,7 @@ export function ZeropsGroupPane({
   tags,
   withheldNotice,
   firstDeployOf,
+  onMirror,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   /** The repositories a Mate ships code to: the ones its Repositories section may name. */
@@ -676,6 +694,8 @@ export function ZeropsGroupPane({
   readonly withheldNotice?: (projectId: string) => string | null;
   /** Where a stage that runs nothing stands on its first deploy (`useStageFirstDeploys`). */
   readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
+  /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
+  readonly onMirror?: (() => void) | undefined;
 }) {
   const deployed = useMemo(
     () =>
@@ -809,10 +829,20 @@ export function ZeropsGroupPane({
         </SideSection>
       )}
 
-      {/* Only what mirrors somewhere: connecting one is the project menu's. */}
-      {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
+      {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
+      {(codeRepos ?? repos ?? []).length === 0 ||
+      (onMirror === undefined && connectedRepos(codeRepos ?? repos).length === 0) ? null : (
         <SideSection title="Repositories">
-          <GitRemoteLines repos={codeRepos ?? repos} />
+          {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
+            <GitRemoteLines repos={codeRepos ?? repos} />
+          )}
+          {onMirror === undefined ? null : (
+            <div className="px-2 py-1">
+              <Button onClick={onMirror} size="sm" variant="secondary">
+                Mirror code to GitHub or GitLab…
+              </Button>
+            </div>
+          )}
         </SideSection>
       )}
       <SideSection title="History">
