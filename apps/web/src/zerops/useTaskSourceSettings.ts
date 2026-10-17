@@ -2,7 +2,8 @@
  * Where automated Mates take tasks from besides GitHub, read and written through the account
  * (`makeTaskSourceSettings`): the organization's Slack app, Discord application and limits per
  * task, and an application's channels, webhooks and schedules. A screen demands what it shows; a
- * webhook's secret lives only while the screen that made it stays open.
+ * webhook's secret lives only while the screen that made it stays open. The organization's GitHub
+ * app is read and made the same way (`useGithubApp`).
  */
 import {
   makeTaskSourceSettings,
@@ -15,6 +16,7 @@ import {
   type TaskSourceWrite,
 } from "@t3tools/client-runtime/data";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
+import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
@@ -120,5 +122,24 @@ export function useAppTaskSource<F extends AppSetting>(
     again: () => {
       if (host !== null && key !== null) host.again(family, key);
     },
+  };
+}
+
+export interface GithubAppControls extends TaskSourceControls<"hqGithub"> {
+  /**
+   * Asks HQ for the manifest GitHub makes the organization's app from: the answer to post to
+   * GitHub, or `null` where HQ refused or did not answer — its words are `read.action`'s.
+   */
+  readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
+}
+
+/** The organization's GitHub app, read while `shown`; made and forgotten from here. */
+export function useGithubApp(shown = true): GithubAppControls {
+  const controls = useOrgTaskSource("hqGithub", shown);
+  const { host, orgId } = useHost();
+  return {
+    ...controls,
+    manifest: async (request) =>
+      host === null || orgId === null ? null : host.githubManifest({ orgId }, request),
   };
 }

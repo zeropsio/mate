@@ -46,6 +46,12 @@ export function useGitTargetOperations(appId: string) {
             disconnect: async (repo: string) => {
               await operations.run({ kind: "disconnect-git-remote", ...scope, repo }, options);
             },
+            viaApp: async (repo: string, repository: string) => {
+              await operations.run(
+                { kind: "connect-git-remote-via-app", orgId: scope.orgId, appId, repo, repository },
+                options,
+              );
+            },
             updateAddress: async (repo: string, url: string) => {
               await operations.run(
                 { kind: "update-git-remote-address", ...scope, repo, url },

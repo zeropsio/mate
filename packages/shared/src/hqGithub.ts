@@ -46,6 +46,8 @@ export const HqGithubView = Schema.Union([
     state: Schema.Literal("connected"),
     /** The app's slug; its bot is `<slug>[bot]`. */
     slug: Schema.String,
+    /** The app's name as GitHub shows it ("Acme Mate"); absent from an HQ that keeps none. */
+    name: Schema.optionalKey(Schema.String),
     /** What GitHub shows as the author of everything it writes: `<slug>[bot]`. */
     botLogin: Schema.String,
     /** The account that owns the app (an organization or a person). */

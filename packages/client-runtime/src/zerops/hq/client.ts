@@ -1,6 +1,12 @@
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
+import {
+  HqGithubManifestView,
+  HqGithubView,
+  type HqGithubManifestRequest,
+  type HqRepoRemoteViaAppRequest,
+} from "@t3tools/shared/hqGithub";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
@@ -462,6 +468,24 @@ export interface HqApi {
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits?: () => Promise<HqTaskLimitsView>;
   readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
+  /** The organization's GitHub app, connected or not, never its key (`GET /api/org/github`). */
+  readonly github?: () => Promise<HqGithubView>;
+  /**
+   * The manifest GitHub makes the organization's app from (`POST /api/org/github/manifest`): the
+   * browser posts it to `postUrl` as a form, and GitHub's page takes over.
+   */
+  readonly githubManifest?: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView>;
+  /** HQ forgets the organization's GitHub app (`DELETE /api/org/github`); it stays on GitHub. */
+  readonly githubDisconnect?: () => Promise<void>;
+  /**
+   * A repository mirrors to one the organization's GitHub app is installed on, with no token
+   * (`PUT /api/apps/:appId/repos/:repo/remote/app`).
+   */
+  readonly repoRemoteViaApp?: (
+    appId: string,
+    repo: string,
+    request: HqRepoRemoteViaAppRequest,
+  ) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
@@ -703,6 +727,8 @@ const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookVie
 const readSchedule = decoded(HqScheduleView);
 const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
 const readTaskLimits = decoded(HqTaskLimitsView);
+const readGithub = decoded(HqGithubView);
+const readGithubManifest = decoded(HqGithubManifestView);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
@@ -1459,6 +1485,25 @@ export function makeHqApi(input: {
           true,
         ),
       ),
+    github: async () => readGithub(await authorized("/api/org/github")),
+    githubManifest: async (request) =>
+      readGithubManifest(
+        await authorized(
+          "/api/org/github/manifest",
+          { method: "POST", body: JSON.stringify(request satisfies HqGithubManifestRequest) },
+          true,
+        ),
+      ),
+    githubDisconnect: async () => {
+      await authorized("/api/org/github", { method: "DELETE" }, true);
+    },
+    repoRemoteViaApp: async (appId, repo, request) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app`,
+        { method: "PUT", body: JSON.stringify(request satisfies HqRepoRemoteViaAppRequest) },
+        true,
+      );
+    },
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(

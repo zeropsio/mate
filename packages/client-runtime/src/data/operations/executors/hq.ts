@@ -87,6 +87,7 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
+  Partial<Pick<HqApi, "repoRemoteViaApp">> &
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
@@ -701,6 +702,29 @@ export function makeHqExecutor(ports: {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqApp", id: intent.appId }],
             outcome: { kind: "succeeded", evidence: "HQ answered the write." },
+          };
+        }
+        if (intent.kind === "connect-git-remote-via-app") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.repoRemoteViaApp === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to mirror through the organization's GitHub app.",
+            });
+          yield* Effect.tryPromise({
+            try: () =>
+              api.repoRemoteViaApp!(intent.appId, intent.repo, { repository: intent.repository }),
+            catch: faultOf,
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
+            outcome: { kind: "pending" },
           };
         }
         if (!("orgId" in intent))

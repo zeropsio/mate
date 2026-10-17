@@ -8,6 +8,7 @@ export type SettingsPath =
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/zerops"
+  | "/settings/automation"
   | "/settings/team"
   | "/settings/archived";
 
@@ -35,6 +36,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/source-control": "Source Control",
   "/settings/connections": "Environments",
   "/settings/zerops": "Zerops",
+  "/settings/automation": "Automation",
   "/settings/team": "Team",
   "/settings/archived": "Archive",
 };
@@ -269,6 +271,36 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "zerops-sign-in-tokens",
     title: "Sign-in tokens",
     to: "/settings/zerops",
+  },
+  {
+    id: "automation-model-key",
+    title: "Model key",
+    to: "/settings/automation",
+    searchTerms: ["automated mates nebius token factory api key opencode organization"],
+  },
+  {
+    id: "automation-github",
+    title: "GitHub",
+    to: "/settings/automation",
+    searchTerms: ["connect github app bot issues installation automated mates"],
+  },
+  {
+    id: "automation-slack",
+    title: "Slack",
+    to: "/settings/automation",
+    searchTerms: ["automated mates tasks channel workspace"],
+  },
+  {
+    id: "automation-discord",
+    title: "Discord",
+    to: "/settings/automation",
+    searchTerms: ["automated mates tasks channel server"],
+  },
+  {
+    id: "automation-limits",
+    title: "Limits per task",
+    to: "/settings/automation",
+    searchTerms: ["automated mates minutes cost budget"],
   },
   {
     id: "archive",

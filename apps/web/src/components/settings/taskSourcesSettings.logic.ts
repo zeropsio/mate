@@ -80,7 +80,10 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
       return "Connecting…";
     case "slack-disconnect":
     case "discord-disconnect":
+    case "github-disconnect":
       return "Disconnecting…";
+    case "github-manifest":
+      return "Opening GitHub…";
     case "webhook-make":
     case "schedule-make":
       return "Making…";

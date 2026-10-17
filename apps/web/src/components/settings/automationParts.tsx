@@ -1,13 +1,14 @@
 /**
- * The parts Settings › Zerops › HQ's automated Mates and the sources of their tasks share: the room
- * a form takes while its part says something else, the intake's public-repository choice, and a
- * line that copies a value.
+ * The parts Settings › Automation and the sources of automated Mates' tasks share: the room a form
+ * takes while its part says something else, the intake's public-repository choice, a line that
+ * copies a value, and a link to another site.
  */
+import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -124,5 +125,21 @@ export function CopyLine({
         {isCopied ? "Copied" : copy}
       </Button>
     </div>
+  );
+}
+
+/** A link to another site, opened beside Mate: a word that acts, with the arrow that says it leaves. */
+export function OutLink({
+  href,
+  children,
+}: {
+  readonly href: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
+      {children}
+      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+    </InlineButton>
   );
 }

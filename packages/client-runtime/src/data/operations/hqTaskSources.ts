@@ -4,7 +4,9 @@
  * webhooks and schedules, and the limits on each task — which HQ answers at once. A token or a
  * signing secret is never part of the recorded intent: it goes to the executor alone
  * (`makeTaskSourceSettings`). Each shows done once a read of its setting started after HQ's
- * answer lands (`taskSourceSetting`).
+ * answer lands (`taskSourceSetting`). The organization's GitHub app is made and forgotten the same
+ * way: the manifest HQ answers goes back to the screen that asked for it alone, never into a
+ * record, since it binds GitHub's return to that one request.
  *
  * @module data/operations/hqTaskSources
  */
@@ -31,7 +33,16 @@ export type TaskSourceWrite =
   | { readonly kind: "webhook-delete"; readonly webhookId: string }
   | { readonly kind: "schedule-make"; readonly request: HqScheduleRequest }
   | { readonly kind: "schedule-delete"; readonly scheduleId: string }
-  | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsView };
+  | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsView }
+  /** HQ's manifest for the app goes to the screen that asked, never into the record. */
+  | {
+      readonly kind: "github-manifest";
+      /** The GitHub organization to own it; `null`: the person's own account. */
+      readonly owner: string | null;
+      readonly name: string;
+      readonly returnTo: string;
+    }
+  | { readonly kind: "github-disconnect" };
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -65,6 +76,9 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqAppSchedules";
     case "task-limits":
       return "hqTaskLimits";
+    case "github-manifest":
+    case "github-disconnect":
+      return "hqGithub";
   }
 }
 

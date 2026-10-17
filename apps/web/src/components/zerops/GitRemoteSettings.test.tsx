@@ -24,6 +24,15 @@ const remote = {
 };
 const repos = [{ name: "api", mainHead: "a".repeat(40), updatedAt: remote.keptAt, remote }];
 const actions = { replaceToken: vi.fn(), disconnect: vi.fn(), connect: vi.fn() };
+/** The field a label names, as a person finds it. */
+function labelled(host: HTMLElement, label: string): HTMLInputElement {
+  const id = [...host.querySelectorAll("label")]
+    .find((node) => node.textContent === label)
+    ?.getAttribute("for");
+  const input = id ? host.querySelector<HTMLInputElement>(`[id="${id}"]`) : null;
+  expect(input, label).not.toBeNull();
+  return input!;
+}
 describe("Repositories in a project page's column", () => {
   it("names only the repositories that mirror somewhere, one quiet line each", () => {
     const html = renderToStaticMarkup(
@@ -57,8 +66,7 @@ describe("Application repositories", () => {
     const html = renderToStaticMarkup(
       <GitRemoteSettings appId="shop" repos={repos} appName="Shop" actions={actions} />,
     );
-    expect(html).toContain("github.com/acme/api");
-    expect(html).toContain("Expiry not reported");
+    expect(html).toContain("Mirrors to github.com/acme/api · with a token");
     expect(html).not.toMatch(/<button|Candidate token|No expiry|GitHub token owner/);
     expect(actions.replaceToken).not.toHaveBeenCalled();
     expect(actions.disconnect).not.toHaveBeenCalled();
@@ -75,7 +83,7 @@ describe("Application repositories", () => {
         />,
       );
       expect(html).toContain(
-        `${expiresAt < remote.keptAt ? "Token expired" : "Token expires"} ${expiresAt.slice(0, 10)}`,
+        `with a token that ${expiresAt < remote.keptAt ? "expired" : "expires"} ${expiresAt.slice(0, 10)}`,
       );
       expect(html).not.toContain("Expiry not reported");
     },
@@ -130,24 +138,29 @@ describe("Application repositories", () => {
       repos: [{ ...repos[0]!, remote: null }],
       environments: [],
       shows: [
-        "Connect a GitHub repository to release this project to a Git branch.",
-        ">Connect repository<",
+        "Mirror a repository to GitHub, and Mate&#x27;s changes to it open there for review.",
+        ">Verify and mirror<",
       ],
-      hides: ["api ·"],
+      hides: ["Mirrors to"],
     },
     {
       title: "a connected remote lists every code repository",
       repos: [...repos, { ...repos[0]!, name: "web", remote: null }],
       environments: [],
-      shows: ["api · github.com/acme/api", "web · No remote connected"],
-      hides: ["Connect a GitHub repository"],
+      shows: [
+        'aria-label="api"',
+        "Mirrors to github.com/acme/api",
+        'aria-label="web"',
+        "Not mirrored",
+      ],
+      hides: ["Mirror a repository to GitHub"],
     },
     {
       title: "a Git environment lists every code repository before any remote is connected",
       repos: [{ ...repos[0]!, remote: null }],
       environments: [{ name: "Production", target: { kind: "git" } }],
-      shows: ["api · No remote connected"],
-      hides: ["Connect a GitHub repository"],
+      shows: ['aria-label="api"', "Not mirrored"],
+      hides: ["Mirror a repository to GitHub"],
     },
     {
       title: "a project with no code repository says so instead of offering a connection",
@@ -208,7 +221,7 @@ it("candidate token is cleared before verification and failed verification keeps
     const button = (text: string) =>
       [...container.querySelectorAll("button")].find((node) => node.textContent === text)!;
     await act(async () => button("Replace token").click());
-    const input = container.querySelector<HTMLInputElement>('input[aria-label="Candidate token"]')!;
+    const input = labelled(container, "Access token");
     const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
     const props = Reflect.get(input, key) as {
       onChange: (event: { target: { value: string } }) => void;
@@ -330,7 +343,7 @@ it.each([
     const button = (text: string) =>
       [...container.querySelectorAll("button")].find((node) => node.textContent === text)!;
     await act(async () => button("Replace token").click());
-    const input = container.querySelector<HTMLInputElement>('input[aria-label="Candidate token"]')!;
+    const input = labelled(container, "Access token");
     const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
     const props = Reflect.get(input, key) as {
       onChange: (event: { target: { value: string } }) => void;
@@ -372,7 +385,7 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
       });
     };
     const fill = async (label: string, value: string) => {
-      const input = host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+      const input = labelled(host, label);
       expect(input).not.toBeNull();
       const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
       const props = Reflect.get(input, key) as {
@@ -404,18 +417,18 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
         await click("Confirm disconnect");
         expect(supplied.disconnect).toHaveBeenCalledWith("api");
       } else {
-        // An unconnected project folds its repositories behind the one line's action.
-        if (action === "connect") await click("Connect repository");
+        // An unmirrored repository shows its token form plainly where no GitHub app is there.
+        if (action !== "connect")
+          await click(action === "replace" ? "Replace token" : "Review address");
+        if (action !== "replace") await fill("Repository URL", probe.remote.url);
+        const input = await fill("Access token", "transient-candidate");
         await click(
-          action === "connect"
-            ? "Connect repository"
-            : action === "replace"
-              ? "Replace token"
-              : "Review address",
+          action === "address"
+            ? "Verify address"
+            : action === "connect"
+              ? "Verify and mirror"
+              : "Verify and keep token",
         );
-        if (action !== "replace") await fill("Repository HTTPS URL", probe.remote.url);
-        const input = await fill("Candidate token", "transient-candidate");
-        await click(action === "address" ? "Verify address" : "Verify and keep token");
         expect(input.value).toBe("");
         expect(host.innerHTML).not.toContain("transient-candidate");
         if (action === "connect")
@@ -470,7 +483,7 @@ it.each(["settled", "pending"] as const)(
     try {
       await render("eva");
       await click("Replace token");
-      const input = host.querySelector<HTMLInputElement>('input[aria-label="Candidate token"]')!;
+      const input = labelled(host, "Access token");
       const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
       const inputProps = Reflect.get(input, key) as {
         onChange: (event: { target: { value: string } }) => void;
@@ -484,7 +497,7 @@ it.each(["settled", "pending"] as const)(
       await render("cyd");
       if (state === "pending")
         await act(async () => finish({ ok: false, reason: "Eva's token was refused." }));
-      expect(host.textContent).toContain("appdev · github.com/acme/api");
+      expect(host.textContent).toContain("Mirrors to github.com/acme/api");
       expect(host.querySelector('[role="status"]')).toBeNull();
       expect(host.querySelector('input[type="password"]')).toBeNull();
       expect(
@@ -552,15 +565,15 @@ it("a refreshed disconnect record clears only its project's repository controls"
       publish(appId, true);
     }
     await render("cyd");
-    expect(host.textContent).toContain("appdev · github.com/acme/api");
+    expect(host.textContent).toContain("Mirrors to github.com/acme/api");
     publish("cyd", false);
     await render("cyd");
-    expect(host.textContent).toContain("appdev · No remote connected");
+    expect(host.textContent).toContain("Not mirrored");
     expect([...host.querySelectorAll("button")].map((node) => node.textContent)).toEqual([
-      "Connect repository",
+      "Verify and mirror",
     ]);
     await render("eva");
-    expect(host.textContent).toContain("appdev · github.com/acme/api");
+    expect(host.textContent).toContain("Mirrors to github.com/acme/api");
     expect([...host.querySelectorAll("button")].map((node) => node.textContent)).toEqual([
       "Replace token",
       "Review address",
@@ -571,4 +584,150 @@ it("a refreshed disconnect record clears only its project's repository controls"
     registry.dispose();
     vi.unstubAllGlobals();
   }
+});
+
+describe("mirroring through the organization's GitHub app", () => {
+  const app = {
+    kind: "connected",
+    name: "Acme Mate",
+    repositories: ["acme/api", "acme/tea-shop"],
+    installUrl: "https://github.com/apps/acme-mate/installations/new",
+  } as const;
+  const unmirrored = [{ ...repos[0]!, name: "appdev", remote: null }];
+  const offers = {
+    connect_remote: { allow: true },
+    replace_remote_token: { allow: true },
+    disconnect_remote: { allow: true },
+  };
+
+  async function mount(props: Partial<Parameters<typeof GitRemoteSettings>[0]>) {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const render = async (next: Partial<Parameters<typeof GitRemoteSettings>[0]>) =>
+      act(async () =>
+        root.render(
+          <GitRemoteSettings
+            appId="shop"
+            appName="Shop"
+            repos={unmirrored}
+            can={offers}
+            {...next}
+          />,
+        ),
+      );
+    await render(props);
+    const buttons = () => [...host.querySelectorAll("button")].map((node) => node.textContent);
+    const click = async (label: string) =>
+      act(async () =>
+        [...host.querySelectorAll("button")].find((node) => node.textContent === label)!.click(),
+      );
+    return {
+      host,
+      buttons,
+      click,
+      render,
+      unmount: async () => {
+        await act(async () => root.unmount());
+        vi.unstubAllGlobals();
+      },
+    };
+  }
+
+  it("offers the app's repositories and Mirror here, with a token behind its own disclosure", async () => {
+    const viaApp = vi.fn(async () => {});
+    const view = await mount({ github: app, actions: { ...actions, viaApp } });
+    try {
+      expect(view.host.textContent).toContain("Not mirrored");
+      expect(view.host.textContent).toContain("GitHub repository");
+      expect(view.buttons()).toContain("Mirror here");
+      expect(view.host.querySelector('input[type="password"]')).toBeNull();
+      await view.click("Mirror here");
+      expect(viaApp).toHaveBeenCalledWith("appdev", "acme/api");
+      expect(actions.connect).not.toHaveBeenCalled();
+      await view.click("Use a token instead");
+      expect(view.host.querySelector('input[type="password"]')).not.toBeNull();
+      expect(view.host.textContent).toContain("Repository URL");
+      expect(labelled(view.host, "Repository URL").placeholder).toBe(
+        "https://github.com/owner/name",
+      );
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("says Saving… while HQ mirrors it, then where it mirrors to and through which app", async () => {
+    let finish!: () => void;
+    const viaApp = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = await mount({ github: app, actions: { ...actions, viaApp } });
+    try {
+      await view.click("Mirror here");
+      expect(view.host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe("Saving…");
+      expect(view.host.textContent).not.toContain("Waiting for HQ");
+      await view.render({
+        github: app,
+        actions: { ...actions, viaApp },
+        repos: [
+          {
+            ...unmirrored[0]!,
+            remote: { ...remote, url: "https://github.com/acme/api", via: "app" },
+          },
+        ],
+      });
+      await act(async () => finish());
+      expect(view.host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe(
+        "Mirrors to github.com/acme/api · through Acme Mate",
+      );
+      expect(view.buttons()).not.toContain("Replace token");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("points to Settings › Automation where no GitHub app is connected, beside the token form", async () => {
+    const onOpenAutomation = vi.fn();
+    const view = await mount({ github: { kind: "none" }, actions, onOpenAutomation });
+    try {
+      expect(view.host.querySelector('input[type="password"]')).not.toBeNull();
+      expect(view.host.textContent).toContain(
+        "Or connect GitHub in Settings › Automation to mirror without a token.",
+      );
+      await view.click("Settings › Automation");
+      expect(onOpenAutomation).toHaveBeenCalledTimes(1);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("offers a token mirror the app reaches to move to the app", async () => {
+    const viaApp = vi.fn(async () => {});
+    const view = await mount({ github: app, actions: { ...actions, viaApp }, repos });
+    try {
+      expect(view.host.textContent).toContain("Mirrors to github.com/acme/api · with a token");
+      await view.click("Use Acme Mate instead");
+      expect(viaApp).toHaveBeenCalledWith("api", "acme/api");
+      await view.render({
+        github: { ...app, repositories: ["acme/tea-shop"] },
+        actions: { ...actions, viaApp },
+        repos,
+      });
+      expect(view.buttons()).not.toContain("Use Acme Mate instead");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("paints nothing of a repository until the app is read", async () => {
+    const view = await mount({ github: null, actions });
+    try {
+      expect(view.host.textContent).toBe("Reading repositories…");
+    } finally {
+      await view.unmount();
+    }
+  });
 });
