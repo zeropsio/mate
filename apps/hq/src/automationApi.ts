@@ -30,6 +30,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } from "./api.ts";
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
+import { MateTasks } from "./mateTasks.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Writes } from "./writes.ts";
 
@@ -154,6 +155,7 @@ export const automationRoutes = Layer.mergeAll(
           case "ping":
             return json({}, 200);
           case "taken":
+            if (received.moved) yield* (yield* MateTasks).wake;
             return json({}, 202);
         }
       }),

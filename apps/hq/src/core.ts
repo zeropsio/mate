@@ -32,6 +32,7 @@ import { chiefRoutes } from "./chiefApi.ts";
 import { automationRoutes } from "./automationApi.ts";
 import { orgAiKeysLayer } from "./orgAiKeys.ts";
 import { intakeLayer } from "./intake.ts";
+import { mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
@@ -88,6 +89,9 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
+  /** How long a Mate has to take a task, and how often HQ looks (`mateTasks.ts`); for tests. */
+  readonly taskAcceptWithin?: Duration.Duration;
+  readonly taskSweepEvery?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -147,6 +151,10 @@ const services = (options: CoreOptions) => {
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
     orgAiKeysLayer,
+    mateTasksLayer({
+      ...(options.taskAcceptWithin === undefined ? {} : { acceptWithin: options.taskAcceptWithin }),
+      ...(options.taskSweepEvery === undefined ? {} : { sweepEvery: options.taskSweepEvery }),
+    }),
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
       Layer.provide(remotes),
       Layer.provide(github),

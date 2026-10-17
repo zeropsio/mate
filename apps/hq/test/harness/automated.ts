@@ -26,7 +26,8 @@ export const linkOf = (core: Core, credential: string) =>
       headers: { authorization: `Mate ${credential}` },
     })).body as { readonly ticket: string };
     const link = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
-    const state = yield* link.next("state");
+    // Its first state, leaving whatever else came first where it is.
+    const state = yield* link.take("state");
     return { link, state };
   });
 
@@ -104,7 +105,8 @@ export const intakeOn = (
     assert.strictEqual(kept.status, 200);
     const view = kept.body as HqIntakeView;
     const made = github.state.seen.findLast((request) => request.path.endsWith("/hooks"));
-    const secret = (made?.body as { config: { secret: string } }).config.secret;
+    assert.isDefined(made, "the webhook HQ made");
+    const secret = (made!.body as { config: { secret: string } }).config.secret;
     return { path: new URL(view.webhookUrl).pathname, secret };
   });
 
@@ -157,4 +159,21 @@ export const issueEvent = (
   },
   ...(label === undefined ? {} : { label: { name: label } }),
   repository: { full_name: "acme/tea-shop" },
+});
+
+let revisions = 0;
+
+/** The Mate's attention as its link brings it: `working` of its chats the agent is on. */
+export const attention = (working: number) => ({
+  type: "attention",
+  attention: {
+    source: { environmentId: "env-1", epoch: 1, incarnation: "run-1", revision: (revisions += 1) },
+    mainThreadId: null,
+    lastThreadId: null,
+    working,
+    waiting: 0,
+    results: [],
+    questions: [],
+    truncated: false,
+  },
 });

@@ -8,6 +8,8 @@
  * - **up**, `pong`, source attention (`attention`), and its overview (`overview`): the whole of it first, then the sections that
  *   changed, kept by `mateOverviews.ts` for whoever may observe the Mate on their structure socket.
  *   A frame whose type HQ does not know is passed by — an older Mate's `summary` among them.
+ * - for an automated Mate, down, the organization's API keys (`provider-keys`, `orgAiKeys.ts`) and
+ *   the task it is handed (`task`, `mateTasks.ts`); up, its word on that task (`task-state`).
  *
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a
@@ -54,6 +56,7 @@ import { Roles } from "./roles.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
+import { MateTasks } from "./mateTasks.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 
 // Identify a corrupt value frame without inventing a second attention contract.
@@ -108,6 +111,7 @@ export const serveMateLink = (
       const chiefs = yield* Chiefs;
       const roles = yield* Roles;
       const aiKeys = yield* OrgAiKeys;
+      const tasks = yield* MateTasks;
       const usage = (yield* UsageLane).ledger;
       /** This link's capture lane once it opens; until then, and if it cannot, none. */
       let sender: UsageSender | undefined;
@@ -249,6 +253,10 @@ export const serveMateLink = (
               }).pipe(Effect.catch(() => close(1011, "the update policy could not be read")));
               continue;
             }
+            if (read.kind === "message" && read.message.type === "task-state") {
+              yield* tasks.report(projectId, read.message.report);
+              continue;
+            }
             if (read.kind === "message" && read.message.type === "health") {
               yield* Queue.offer(latestHealth, read.message.health);
               continue;
@@ -306,6 +314,11 @@ export const serveMateLink = (
         writer.write(frame),
       ).pipe(Effect.ignore, Effect.andThen(Effect.never));
 
+      // An automated Mate's task, told again on each link until it takes it (`mateTasks.ts`).
+      const taskFrames = Stream.runForEach(tasks.linkFrames(projectId), (frame) =>
+        writer.write(frame),
+      ).pipe(Effect.ignore, Effect.andThen(Effect.never));
+
       // The lane opens beside the link: a lane that cannot open leaves this link without capture,
       // and the Mate's next link tries again (answer 3). One that opens late re-sends the state.
       const capture =
@@ -330,6 +343,7 @@ export const serveMateLink = (
         recheck,
         accessFrames,
         providerKeys,
+        taskFrames,
         capture,
         healthRelay,
       ]);

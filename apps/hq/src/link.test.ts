@@ -38,6 +38,7 @@ import { serveMateLink } from "./link.ts";
 import { MateCredentials } from "./mateCredentials.ts";
 import { Roles } from "./roles.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
+import { MateTasks } from "./mateTasks.ts";
 import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
 import { liveSocketsLayer } from "./stream.ts";
 import { Structure } from "./structure.ts";
@@ -411,6 +412,10 @@ describe("serveMateLink: who ended a link, and with what code", () => {
           Chiefs.of({ ownerOf: () => Effect.succeed(null) } as unknown as Chiefs["Service"]),
         ),
         Layer.succeed(Roles, Roles.of({ views: Stream.never } as unknown as Roles["Service"])),
+        Layer.succeed(
+          MateTasks,
+          MateTasks.of({ linkFrames: () => Stream.never } as unknown as MateTasks["Service"]),
+        ),
         Layer.succeed(
           OrgAiKeys,
           OrgAiKeys.of({ framesFor: () => Stream.never } as unknown as OrgAiKeys["Service"]),

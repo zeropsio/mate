@@ -212,6 +212,9 @@ export const startCore = (
     readonly chiefUpstream?: string;
     /** GitHub's REST API HQ calls for issues and webhooks (`githubFake.ts`); none answers by default. */
     readonly githubApi?: string;
+    /** How long a Mate has to take a task, and how often HQ looks; 60 s and 5 s. */
+    readonly taskAcceptWithin?: Duration.Duration;
+    readonly taskSweepEvery?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -256,6 +259,8 @@ export const startCore = (
       pingEvery: given.pingEvery ?? Duration.millis(300),
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
+      ...(given.taskAcceptWithin === undefined ? {} : { taskAcceptWithin: given.taskAcceptWithin }),
+      ...(given.taskSweepEvery === undefined ? {} : { taskSweepEvery: given.taskSweepEvery }),
     };
     const scope = yield* Scope.make();
     const platform =
