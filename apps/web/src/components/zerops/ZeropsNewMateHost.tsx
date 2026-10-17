@@ -49,9 +49,7 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
-
-/** The provider whose organization key automated Mates run on (decision 1: Nebius by default). */
-const AUTOMATED_KEY_PROVIDER = "nebius";
+import { automatedKeyState } from "~/zerops/automatedMate.logic";
 
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
@@ -168,15 +166,9 @@ function NewMateDialog({
   const addOffer = useAddMateOffer()(groupId);
   const { words } = useHqOffers();
   // Whether the organization holds the API key an automated Mate runs on: said beside the choice.
-  const aiKeys = useOrgAiKeys(true).read.keys;
-  const automation = {
-    key:
-      aiKeys.state !== "known"
-        ? ("unknown" as const)
-        : aiKeys.keys.some((key) => key.provider === AUTOMATED_KEY_PROVIDER && key.set)
-          ? ("set" as const)
-          : ("missing" as const),
-  };
+  // An HQ that keeps no organization keys can't do automated Mates: the choice is not offered.
+  const aiKey = automatedKeyState(useOrgAiKeys(true).read.keys);
+  const automation = aiKey === "unsupported" ? undefined : { key: aiKey };
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({

@@ -7,7 +7,9 @@
 import type { HqAiKeyView, HqIntakeView } from "@t3tools/shared/hqIntake";
 import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
 import {
+  AI_KEYS_UNSUPPORTED,
   aiKeysId,
+  aiKeysLink,
   aiKeysScope,
   intakeId,
   type AiKeysKey,
@@ -47,7 +49,8 @@ function actionOf<Verb extends string>(
 
 export interface OrgAiKeysRead {
   readonly keys:
-    | { readonly state: "unread" | "reading" | "withheld" }
+    /** `unsupported`: this HQ keeps no organization keys — it can't do automated Mates. */
+    | { readonly state: "unread" | "reading" | "withheld" | "unsupported" }
     | {
         readonly state: "known";
         readonly keys: ReadonlyArray<HqAiKeyView>;
@@ -64,6 +67,8 @@ const keysOf = (read: ProjectionReads, key: AiKeysKey): OrgAiKeysRead["keys"] =>
   if (fact.kind === "known")
     return { state: "known", keys: fact.value, stale: stream.fault !== null };
   if (fact.kind === "withheld") return { state: "withheld" };
+  if (read.stream(aiKeysLink(key)).fault?.code === AI_KEYS_UNSUPPORTED)
+    return { state: "unsupported" };
   if (stream.fault !== null) return { state: "failed", words: stream.fault.message };
   return {
     state: stream.phase === "baselining" || stream.phase === "connecting" ? "reading" : "unread",

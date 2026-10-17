@@ -5,7 +5,7 @@
  * or the URL and secret to paste, held only while the screen that set it stays open.
  */
 import type { HqAiKeyView, HqIntakeView } from "@t3tools/shared/hqIntake";
-import type { ScopeKey } from "../model.ts";
+import type { LinkKey, ScopeKey } from "../model.ts";
 import type { FamilySpec } from "./spec.ts";
 
 export interface AiKeysKey {
@@ -21,6 +21,13 @@ export interface IntakeKey {
 export const intakeId = (key: IntakeKey): string => JSON.stringify([key.orgId, key.appId]);
 export const intakeRevealScope = (key: IntakeKey): ScopeKey =>
   `hq:${key.orgId}:intake-reveal:${intakeId(key)}`;
+
+/** The link the keys are read on: its fault is the read's own. */
+export const aiKeysLink = (key: AiKeysKey): LinkKey =>
+  `hq:ai-keys-${encodeURIComponent(aiKeysId(key))}`;
+
+/** The keys' read fault where HQ keeps no organization keys: it predates automated Mates. */
+export const AI_KEYS_UNSUPPORTED = "unsupported";
 
 export const aiKeyRequestScope = (key: AiKeysKey): ScopeKey =>
   `hq:${key.orgId}:ai-key-request:${aiKeysId(key)}`;

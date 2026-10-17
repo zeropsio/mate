@@ -88,6 +88,31 @@ describe("the organization's API keys", () => {
     r.close();
   });
 
+  it.each([
+    {
+      case: "HQ answers that it has no such address",
+      api: {
+        aiKeys: async (): Promise<ReadonlyArray<HqAiKeyView>> => {
+          throw new HqError({
+            kind: "refused",
+            code: "not_found",
+            status: 404,
+            message: "Not found.",
+          });
+        },
+      },
+    },
+    { case: "this client's HQ reads no keys", api: {} },
+  ])("an HQ that keeps no organization keys can't do automated Mates: $case", async ({ api }) => {
+    const r = rig(api);
+    const read = waitFor(r.store, () => r.keys().keys.state === "unsupported");
+    const release = r.host.demandKeys(ORG);
+    await read;
+    expect(r.keys().keys).toEqual({ state: "unsupported" });
+    release();
+    r.close();
+  });
+
   it("asks for an update where HQ does not keep organization keys yet", async () => {
     const r = rig({});
     await r.host.setKey(ORG, "nebius", KEY);

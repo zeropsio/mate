@@ -13,8 +13,10 @@ import * as Result from "effect/Result";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import {
+  AI_KEYS_UNSUPPORTED,
   aiKeyRequestScope,
   aiKeysId,
+  aiKeysLink,
   aiKeysScope,
   intakeId,
   intakeRevealScope,
@@ -34,6 +36,12 @@ import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import { credentialFailure } from "./hqGitCredentialReads.ts";
 
 type AutomationApi = AutomationWrites & Pick<HqApi, "aiKeys">;
+
+const UNSUPPORTED = new HqError({
+  kind: "refused",
+  code: AI_KEYS_UNSUPPORTED,
+  message: "Update HQ to set up automated Mates.",
+});
 
 interface KeyReads {
   count: number;
@@ -66,7 +74,7 @@ export function makeAutomationSettings(options: {
     else {
       const made: KeyReads = { count: 1, again: true };
       const scope = aiKeysScope(key);
-      const link: LinkKey = `hq:ai-keys-${encodeURIComponent(id)}`;
+      const link = aiKeysLink(key);
       const prior = store.state().facts.get(`hqAiKeys:${id}`)?.revision;
       let sequence = prior?.kind === "mate-link" ? prior.sequence : 0;
       made.fiber = Effect.runFork(
@@ -94,16 +102,18 @@ export function makeAutomationSettings(options: {
                       const answer = yield* Effect.result(
                         Effect.tryPromise({
                           try: () =>
-                            api.aiKeys === undefined
-                              ? Promise.reject(
-                                  new HqError({
-                                    kind: "refused",
-                                    code: "unsupported",
-                                    message: "Update HQ to set up automated Mates.",
-                                  }),
-                                )
-                              : api.aiKeys(),
-                          catch: credentialFailure,
+                            api.aiKeys === undefined ? Promise.reject(UNSUPPORTED) : api.aiKeys(),
+                          catch: (cause) =>
+                            // An HQ with no such address keeps no organization keys: it predates
+                            // automated Mates, which nothing then offers.
+                            cause === UNSUPPORTED ||
+                            (cause instanceof HqError && cause.status === 404)
+                              ? ({
+                                  outcome: "definitive-refusal",
+                                  message: UNSUPPORTED.message,
+                                  code: AI_KEYS_UNSUPPORTED,
+                                } satisfies StreamFault)
+                              : credentialFailure(cause),
                         }),
                       );
                       if (closed || reads.get(id) !== made) return yield* Effect.never;

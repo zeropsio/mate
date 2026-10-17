@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { automatedMateEntries, conversationTask, taskTitle } from "./automatedMate.logic";
+import {
+  automatedKeyState,
+  automatedMateEntries,
+  conversationTask,
+  taskTitle,
+} from "./automatedMate.logic";
 
 const issue = {
   kind: "github-issue",
@@ -43,5 +48,32 @@ describe("a task's conversation", () => {
     ["an empty conversation is no task's", [], null],
   ] as const)("%s", (_case, messages, task) => {
     expect(conversationTask(messages)).toEqual(task);
+  });
+});
+
+describe("the organization's key for automated Mates", () => {
+  const nebius = (set: boolean) => ({ provider: "nebius", set, setAt: null });
+  it.each([
+    { case: "not read yet", keys: { state: "unread" }, key: "unknown" },
+    { case: "being read", keys: { state: "reading" }, key: "unknown" },
+    { case: "its read failed", keys: { state: "failed", words: "HQ is down." }, key: "unknown" },
+    {
+      case: "an HQ older than automated Mates",
+      keys: { state: "unsupported" },
+      key: "unsupported",
+    },
+    {
+      case: "set",
+      keys: { state: "known", keys: [nebius(true)], stale: false },
+      key: "set",
+    },
+    {
+      case: "not set",
+      keys: { state: "known", keys: [nebius(false)], stale: false },
+      key: "missing",
+    },
+    { case: "none listed", keys: { state: "known", keys: [], stale: false }, key: "missing" },
+  ] as const)("reads $case as $key", ({ keys, key }) => {
+    expect(automatedKeyState(keys)).toBe(key);
   });
 });

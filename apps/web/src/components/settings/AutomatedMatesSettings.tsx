@@ -15,6 +15,7 @@ import { useId, useMemo, useState } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useHqAppReleases } from "~/zerops/useHqAppDetail";
+import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 
 import { Button } from "../ui/button";
@@ -36,28 +37,34 @@ const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
 export function AutomatedMatesSettings() {
+  const { read, setKey, removeKey, again } = useOrgAiKeys(true);
+  // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
+  if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
   return (
     <>
-      {NEBIUS === undefined ? null : <OrganizationKeyRow provider={NEBIUS} />}
+      {NEBIUS === undefined ? null : (
+        <OrganizationKeyView
+          onAgain={again}
+          onRemove={removeKey}
+          onSet={setKey}
+          provider={NEBIUS}
+          read={read}
+        />
+      )}
       <TasksFromGithub />
     </>
   );
 }
 
-function OrganizationKeyRow({
-  provider,
-}: {
-  readonly provider: (typeof OPENCODE_KEY_PROVIDERS)[number];
-}) {
-  const { read, setKey, removeKey, again } = useOrgAiKeys(true);
+/** In the settings' place, where this HQ can't do automated Mates. */
+export function AutomatedMatesUnsupported() {
   return (
-    <OrganizationKeyView
-      onAgain={again}
-      onRemove={removeKey}
-      onSet={setKey}
-      provider={provider}
-      read={read}
-    />
+    <p
+      className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
+      data-zerops-surface="settings-automated-unsupported"
+    >
+      Update HQ to set up automated Mates.
+    </p>
   );
 }
 
