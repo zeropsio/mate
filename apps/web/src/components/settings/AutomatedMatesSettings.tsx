@@ -10,8 +10,9 @@ import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useAtomValue } from "@effect/atom-react";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetailHold, useHqAppReleases } from "~/zerops/useHqAppDetail";
@@ -30,8 +31,6 @@ import {
 } from "./automatedMatesSettings.logic";
 import { tasksWaitingWords } from "../zerops/SidebarMateRow.logic";
 import { SettingsRow } from "./settingsLayout";
-import { CopyLine, IntakeRoom, PublicChoice } from "./automationParts";
-import { TaskSourcesSettings } from "./TaskSourcesSettings";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 
@@ -54,7 +53,6 @@ export function AutomatedMatesSettings() {
         />
       )}
       <TasksFromGithub />
-      <TaskSourcesSettings />
     </>
   );
 }
@@ -235,7 +233,7 @@ function TasksFromGithub() {
         <ul className="grid gap-3 px-3 pb-3 sm:px-4">
           <li className="grid gap-2">
             <p className="text-sm font-medium text-muted-foreground">Reading…</p>
-            <IntakeRoom choice>{null}</IntakeRoom>
+            <IntakeRoom>{null}</IntakeRoom>
           </li>
         </ul>
       ) : (
@@ -304,15 +302,12 @@ export function AppIntakeView({
   readonly reposFailure?: string | undefined;
   readonly onReadAgain?: (() => void) | undefined;
   readonly read: AppIntakeRead;
-  /** `takesPublic`: it takes a public repository's issues too. */
-  readonly onSet: (repo: string, label: string, takesPublic: boolean) => void;
+  readonly onSet: (repo: string, label: string) => void;
   readonly onStop: () => void;
 }) {
   const [repo, setRepo] = useState<string | null>(null);
   const [label, setLabel] = useState(DEFAULT_INTAKE_LABEL);
-  const [takesPublic, setTakesPublic] = useState(false);
   const labelId = useId();
-  const publicId = useId();
   const chosen = repo ?? choices[0] ?? null;
   const working = read.action.kind === "working";
   const problem =
@@ -321,11 +316,11 @@ export function AppIntakeView({
     <li className="grid gap-2" data-zerops-intake-app={appId}>
       <p className="text-sm font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
-        <IntakeRoom choice>
+        <IntakeRoom>
           <p className="text-xs text-muted-foreground">Reading…</p>
         </IntakeRoom>
       ) : read.intake !== null ? (
-        <IntakeRoom choice>
+        <IntakeRoom>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
@@ -338,7 +333,7 @@ export function AppIntakeView({
           </div>
         </IntakeRoom>
       ) : !reposRead && reposFailure !== undefined ? (
-        <IntakeRoom choice>
+        <IntakeRoom>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground" role="alert">
               {reposFailure}
@@ -351,64 +346,60 @@ export function AppIntakeView({
           </div>
         </IntakeRoom>
       ) : !reposRead ? (
-        <IntakeRoom choice>
+        <IntakeRoom>
           <p className="text-xs text-muted-foreground">Reading its repositories…</p>
         </IntakeRoom>
       ) : chosen === null ? (
-        <IntakeRoom choice>
+        <IntakeRoom>
           <p className="text-xs text-muted-foreground">
             Mirror its code to GitHub to take tasks from its issues.
           </p>
         </IntakeRoom>
       ) : (
         <form
-          className="grid gap-2"
+          className="flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             const typed = label.trim();
             if (typed.length === 0) return;
-            onSet(chosen, typed, takesPublic);
+            onSet(chosen, typed);
           }}
         >
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="grid min-w-56 gap-1.5">
-              <Label>Repository</Label>
-              <Select
-                onValueChange={(next) => {
-                  if (typeof next === "string") setRepo(next);
-                }}
-                value={chosen}
-              >
-                <SelectTrigger aria-label={`${name}'s GitHub repository`} size="sm">
-                  <SelectValue>{chosen}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {choices.map((choice) => (
-                    <SelectItem key={choice} value={choice}>
-                      {choice}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </div>
-            <div className="grid w-32 gap-1.5">
-              <Label htmlFor={labelId}>Label</Label>
-              <Input
-                id={labelId}
-                onChange={(event) => {
-                  setLabel(event.target.value);
-                }}
-                size="sm"
-                spellCheck={false}
-                value={label}
-              />
-            </div>
-            <Button disabled={working || label.trim().length === 0} size="sm" type="submit">
-              Take tasks
-            </Button>
+          <div className="grid min-w-56 gap-1.5">
+            <Label>Repository</Label>
+            <Select
+              onValueChange={(next) => {
+                if (typeof next === "string") setRepo(next);
+              }}
+              value={chosen}
+            >
+              <SelectTrigger aria-label={`${name}'s GitHub repository`} size="sm">
+                <SelectValue>{chosen}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {choices.map((choice) => (
+                  <SelectItem key={choice} value={choice}>
+                    {choice}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           </div>
-          {/* Off unless asked: anyone can write a public repository's issues. */}
-          <PublicChoice checked={takesPublic} id={publicId} onChange={setTakesPublic} />
+          <div className="grid w-32 gap-1.5">
+            <Label htmlFor={labelId}>Label</Label>
+            <Input
+              id={labelId}
+              onChange={(event) => {
+                setLabel(event.target.value);
+              }}
+              size="sm"
+              spellCheck={false}
+              value={label}
+            />
+          </div>
+          <Button disabled={working || label.trim().length === 0} size="sm" type="submit">
+            Take tasks
+          </Button>
         </form>
       )}
       {read.answer === null ? null : <IntakeAnswer answer={read.answer} />}
@@ -418,6 +409,27 @@ export function AppIntakeView({
         </p>
       )}
     </li>
+  );
+}
+
+/**
+ * The room an intake row's form takes, held under whatever the row says instead — reading, taking
+ * tasks, nothing to take them from — so the row paints in its final shape from the first frame
+ * and never grows as what it reads lands (the cardinal sin).
+ */
+function IntakeRoom({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="grid">
+      <div
+        aria-hidden
+        className="invisible col-start-1 row-start-1 grid gap-1.5"
+        data-zerops-intake-room=""
+      >
+        <Label>Repository</Label>
+        <Input readOnly size="sm" tabIndex={-1} />
+      </div>
+      <div className="col-start-1 row-start-1 self-start">{children}</div>
+    </div>
   );
 }
 
@@ -433,6 +445,34 @@ function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
           <p className="text-xs text-muted-foreground">{answer.hook.why}</p>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function CopyLine({
+  label,
+  copy,
+  value,
+}: {
+  readonly label: string;
+  /** The press's words: what it copies. */
+  readonly copy: string;
+  readonly value: string;
+}) {
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{value}</code>
+      <Button
+        onClick={() => {
+          copyToClipboard(value, undefined);
+        }}
+        size="sm"
+        variant="ghost"
+      >
+        {isCopied ? "Copied" : copy}
+      </Button>
     </div>
   );
 }

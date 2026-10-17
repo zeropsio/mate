@@ -62,11 +62,7 @@ export const keySecretOf = (raw: Option.Option<Redacted.Redacted>): KeySecret =>
 const rowOf = (projectId: string) => Buffer.from(`hq_deploy_token:${projectId}`, "utf8");
 
 /** Authenticated row data binds the ciphertext to its owning storage domain. */
-export const sealWithData = (
-  secret: KeySecretOk,
-  data: Uint8Array,
-  token: Redacted.Redacted,
-): Sealed => {
+const sealWithData = (secret: KeySecretOk, data: Uint8Array, token: Redacted.Redacted): Sealed => {
   const nonce = NodeCrypto.randomBytes(NONCE_BYTES);
   const cipher = NodeCrypto.createCipheriv("aes-256-gcm", Redacted.value(secret.key), nonce);
   cipher.setAAD(data);
@@ -75,7 +71,7 @@ export const sealWithData = (
 };
 
 /** Opens only under the same key and authenticated row data, with unchanged ciphertext. */
-export const openWithData = (
+const openWithData = (
   secret: KeySecretOk,
   data: Uint8Array,
   sealed: Sealed,
@@ -134,25 +130,6 @@ export const openIntakeSecret = (
   sealed: Sealed,
 ) => openWithData(secret, intakeRow(appId, publicId), sealed);
 
-const secretRow = (table: string, parts: ReadonlyArray<string>) =>
-  Buffer.from(`${table}:${JSON.stringify(parts)}`, "utf8");
-/**
- * A secret of a row of `table` (a webhook's, a Slack app's), bound to that table and the row's
- * `parts`: copied onto another row, or read as another table's, it does not open.
- */
-export const sealSecret = (
-  secret: KeySecretOk,
-  table: string,
-  parts: ReadonlyArray<string>,
-  value: Redacted.Redacted,
-): Sealed => sealWithData(secret, secretRow(table, parts), value);
-export const openSecret = (
-  secret: KeySecretOk,
-  table: string,
-  parts: ReadonlyArray<string>,
-  sealed: Sealed,
-) => openWithData(secret, secretRow(table, parts), sealed);
-
 const aiKeyRow = (provider: string) =>
   Buffer.from(`hq_org_ai_key:${JSON.stringify([provider])}`, "utf8");
 /** The organization's API key for a provider (`orgAiKeys.ts`), bound to that provider. */
@@ -163,24 +140,6 @@ export const sealAiKey = (
 ): Sealed => sealWithData(secret, aiKeyRow(provider), value);
 export const openAiKey = (secret: KeySecretOk, provider: string, sealed: Sealed) =>
   openWithData(secret, aiKeyRow(provider), sealed);
-
-/** What the organization's Slack app hands HQ (`slack.ts`): its bot token and signing secret. */
-export type SlackSecret = "bot_token" | "signing_secret";
-const slackRow = (what: SlackSecret, publicId: string) =>
-  Buffer.from(`hq_slack:${JSON.stringify([what, publicId])}`, "utf8");
-/** One of the Slack app's secrets, bound to which it is and to its events address. */
-export const sealSlackSecret = (
-  secret: KeySecretOk,
-  what: SlackSecret,
-  publicId: string,
-  value: Redacted.Redacted,
-): Sealed => sealWithData(secret, slackRow(what, publicId), value);
-export const openSlackSecret = (
-  secret: KeySecretOk,
-  what: SlackSecret,
-  publicId: string,
-  sealed: Sealed,
-) => openWithData(secret, slackRow(what, publicId), sealed);
 
 /**
  * The pass over the tokens kept before they were sealed (`0028_sealed_deploy_tokens.sql`), run by
@@ -252,27 +211,6 @@ export class DeployKeys extends Context.Service<
     ) => Redacted.Redacted | undefined;
     readonly sealAiKey: (provider: string, value: Redacted.Redacted) => Sealed | undefined;
     readonly openAiKey: (provider: string, sealed: Sealed) => Redacted.Redacted | undefined;
-    readonly sealSlack: (
-      what: SlackSecret,
-      publicId: string,
-      value: Redacted.Redacted,
-    ) => Sealed | undefined;
-    readonly openSlack: (
-      what: SlackSecret,
-      publicId: string,
-      sealed: Sealed,
-    ) => Redacted.Redacted | undefined;
-    /** A secret of a row of `table`, bound to it and the row's `parts` (`sealSecret`). */
-    readonly sealSecret: (
-      table: string,
-      parts: ReadonlyArray<string>,
-      value: Redacted.Redacted,
-    ) => Sealed | undefined;
-    readonly openSecret: (
-      table: string,
-      parts: ReadonlyArray<string>,
-      sealed: Sealed,
-    ) => Redacted.Redacted | undefined;
   }
 >()("@t3tools/hq/deployKeys") {}
 
@@ -304,11 +242,6 @@ export const deployKeysLayer = (
                 openIntakeSecret(secret, appId, publicId, sealed),
               sealAiKey: (provider, value) => sealAiKey(secret, provider, value),
               openAiKey: (provider, sealed) => openAiKey(secret, provider, sealed),
-              sealSlack: (what, publicId, value) => sealSlackSecret(secret, what, publicId, value),
-              openSlack: (what, publicId, sealed) =>
-                openSlackSecret(secret, what, publicId, sealed),
-              sealSecret: (table, parts, value) => sealSecret(secret, table, parts, value),
-              openSecret: (table, parts, sealed) => openSecret(secret, table, parts, sealed),
             }
           : {
               state: secret.state,
@@ -321,10 +254,6 @@ export const deployKeysLayer = (
               openIntake: () => undefined,
               sealAiKey: () => undefined,
               openAiKey: () => undefined,
-              sealSlack: () => undefined,
-              openSlack: () => undefined,
-              sealSecret: () => undefined,
-              openSecret: () => undefined,
             },
       );
     }),

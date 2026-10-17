@@ -328,7 +328,6 @@ export const makeZeropsApiHttp = (
               canCreateProjects: row.canCreateProjects,
               canViewFinances: row.canViewFinances === true,
               canEditFinances: row.canEditFinances === true,
-              ...(row.user.email ? { email: row.user.email.trim().toLowerCase() } : {}),
             })),
           ),
         ),

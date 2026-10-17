@@ -92,10 +92,9 @@ describe("automated Mates' secrets", () => {
                 type: "task-state",
                 report: { taskId: (task["task"] as { id: string }).id, state: "accepted" },
               });
-              // The queued line and the picked line, each tried twice.
               yield* github.seenWhere(
-                "each status line tried twice",
-                (seen) => seen.filter((request) => request.path.endsWith("/comments")).length >= 4,
+                "the comment tried twice",
+                (seen) => seen.filter((request) => request.path.endsWith("/comments")).length === 2,
               );
               yield* core.stop;
               return hook.secret;
@@ -103,7 +102,7 @@ describe("automated Mates' secrets", () => {
           );
           // What failed was logged, so the log was read.
           assert.include(text, "intake webhook not made");
-          assert.include(text, "a task's status not said");
+          assert.include(text, "a task's comment not posted");
           for (const value of [KEY, GITHUB_TOKEN, secret]) assert.notInclude(text, value);
         }),
     );

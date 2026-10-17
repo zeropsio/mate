@@ -1855,31 +1855,6 @@ describe("the crew on an engine conversation's record", () => {
     expect(drawn?.messages[1]).not.toHaveProperty("task");
   });
 
-  it("a follow-up told to a task's Mate carries who said it and where, for its row; a typed one carries none", () => {
-    const comment = {
-      id: "c1",
-      from: "comment",
-      author: "nova-dev",
-      text: "Keep the old rounding for invoices.",
-    } as const;
-    const drawn = thread(
-      held({
-        runs: [engineRun("thread-ada", 1)],
-        items: [
-          personItem(run1, 1, "nova-dev (comment): Keep the old rounding for invoices.", {
-            taskMessage: comment,
-          }),
-          personItem(run1, 2, "Also check the tax line"),
-        ],
-      }),
-    );
-    expect(drawn?.messages).toMatchObject([
-      { role: "user", taskMessage: comment },
-      { role: "user", text: "Also check the tax line" },
-    ]);
-    expect(drawn?.messages[1]).not.toHaveProperty("taskMessage");
-  });
-
   it("draws a crew card as its run's opening card, typed, never as the agent's answer", () => {
     const drawn = thread(
       held({

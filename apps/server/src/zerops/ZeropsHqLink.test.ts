@@ -230,9 +230,6 @@ const rig = (
               Effect.sync(() => void taken.push(task.id)).pipe(
                 Effect.andThen(send({ taskId: task.id, state: "accepted" })),
               ),
-            message: (taskId, message) =>
-              Effect.sync(() => void taken.push(`${taskId}:${message.id}`)),
-            stop: (taskId, reason) => Effect.sync(() => void taken.push(`${taskId}:${reason}`)),
             run: send({ taskId: "task-0", state: "done" }).pipe(Effect.andThen(Effect.never)),
           }),
       },
@@ -453,30 +450,6 @@ describe("ZeropsHqLink", () => {
           { type: "task-state", report: { taskId: "task-1", state: "accepted" } },
         ]);
         assert.deepStrictEqual(taken, ["task-1"]);
-      }),
-    ),
-  );
-
-  it.live("hands a task's follow-ups and its stop on once HQ said who the Mate is", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { enrollment, sockets, until, taken } = yield* rig({ everyMs: 10 });
-        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
-        const socket = yield* until(() => sockets[0]);
-        socket.emit("open");
-        socket.hear({
-          type: "task-message",
-          taskId: "task-1",
-          message: { id: "m-1", from: "comment", author: "nova", text: "Also the teapot." },
-        });
-        socket.hear({ type: "ping" });
-        yield* until(() => socket.sent.find((message) => message.type === "pong"));
-        assert.deepStrictEqual(taken, []);
-        socket.hear({ type: "state", mate: { ...STATE, automated: true } });
-        yield* until(() => (taken.length > 0 ? taken : undefined));
-        socket.hear({ type: "task-stop", taskId: "task-1", reason: "The issue was closed." });
-        yield* until(() => (taken.length > 1 ? taken : undefined));
-        assert.deepStrictEqual(taken, ["task-1:m-1", "task-1:The issue was closed."]);
       }),
     ),
   );

@@ -474,26 +474,6 @@ export {
   type AutomationAction,
   type OrgAiKeysRead,
 } from "./projections/hqAutomation.ts";
-export {
-  makeTaskSourceSettings,
-  TASK_SOURCES_UNSUPPORTED,
-  type TaskSourceSettings,
-} from "./adapters/hqTaskSources.ts";
-export type {
-  AppSetting,
-  AppSettingKey,
-  OrgSetting,
-  OrgSettingKey,
-  TaskSourceSetting,
-} from "./families/hqTaskSources.ts";
-export type { TaskSourceWrite } from "./operations/hqTaskSources.ts";
-export {
-  taskSourceSetting,
-  type SettingValue,
-  type TaskSourceSettingKey,
-  type TaskSourceSettingRead,
-  type TaskSourceSettingValue,
-} from "./projections/hqTaskSources.ts";
 export { gitCredentials } from "./projections/gitCredentials.ts";
 
 export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";

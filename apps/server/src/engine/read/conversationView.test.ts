@@ -69,31 +69,6 @@ describe("a conversation's view", () => {
     ),
   );
 
-  it.effect("names a task's conversation by its brief, never by a follow-up on it", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const w = yield* world;
-        yield* w.tell({ _tag: "Send", text: "Add a search box to the tea list" });
-        yield* w.agent((agent, thread) => agent.finish(thread));
-        yield* w.tell({
-          _tag: "Send",
-          text: "nova (comment): Keep the green tea first.",
-          taskMessage: {
-            id: "m-1",
-            from: "comment",
-            author: "nova",
-            text: "Keep the green tea first.",
-          },
-        });
-        yield* w.agent((agent, thread) => agent.finish(thread));
-        const view = yield* viewOf(w);
-        assert.strictEqual(view?.lastPerson?.text, "nova (comment): Keep the green tea first.");
-        assert.strictEqual(view?.lastAsked?.text, "Add a search box to the tea list");
-        yield* w.shutdown;
-      }),
-    ),
-  );
-
   it.effect.each([
     { case: "a compaction", text: "/compact", maintenance: true },
     { case: "a slash command", text: "/mcp", maintenance: false },

@@ -2688,41 +2688,6 @@ describe("deriveMessagesTimelineRows", () => {
     expect(JSON.stringify(list)).not.toContain("Work issue #12");
   });
 
-  it("draws a follow-up told to a task's Mate as its author's, from where they said it, never as the viewer's words", () => {
-    const issue = {
-      kind: "github-issue",
-      repo: "acme/tea-shop",
-      number: 12,
-      url: "https://github.com/acme/tea-shop/issues/12",
-      title: "Fix the checkout total",
-      author: "nova-dev",
-    } as const;
-    const comment = {
-      id: "c1",
-      from: "comment",
-      author: "ida-ops",
-      text: "Keep the old rounding for invoices.",
-    } as const;
-    const brief = user("m0", 0, "Work issue #12 in the project, then open a change.");
-    const heard = user("m1", 2, "ida-ops (comment): Keep the old rounding for invoices.");
-    const message = (entry: typeof brief) =>
-      (entry as Extract<typeof brief, { kind: "message" }>).message;
-    const list = rows({
-      entries: [
-        { ...brief, message: { ...message(brief), task: issue } },
-        tool("w1", "t1", 1),
-        { ...heard, message: { ...message(heard), taskMessage: comment } },
-        tool("w2", "t2", 3),
-      ] as never,
-      settled: "t2",
-    });
-    expect(list.find((row) => row.id === "m1")).toMatchObject({
-      kind: "task-message",
-      message: comment,
-    });
-    expect(JSON.stringify(list)).not.toContain("ida-ops (comment)");
-  });
-
   it("draws the server's crew task card as its own row, never the person's bubble", () => {
     const list = rows({
       entries: [

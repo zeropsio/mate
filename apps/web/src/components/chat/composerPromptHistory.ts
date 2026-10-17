@@ -27,8 +27,6 @@ export interface ComposerPromptHistoryMessage {
   readonly crewCard?: unknown;
   /** A task's issue (`ChatMessage.task`): its brief came with the task, so it is not history. */
   readonly task?: unknown;
-  /** A task's follow-up (`ChatMessage.taskMessage`): someone else said it, so it is not history. */
-  readonly taskMessage?: unknown;
 }
 
 export interface ComposerPromptHistoryEntry {
@@ -167,12 +165,7 @@ export function buildComposerPromptHistoryEntries(
 ): ComposerPromptHistoryEntry[] {
   const entries: ComposerPromptHistoryEntry[] = [];
   for (const message of messages) {
-    if (
-      message.role !== "user" ||
-      message.crewCard !== undefined ||
-      message.task !== undefined ||
-      message.taskMessage !== undefined
-    )
+    if (message.role !== "user" || message.crewCard !== undefined || message.task !== undefined)
       continue;
     const prompt = recallableComposerPrompt(message.text);
     if (prompt.length === 0) continue;

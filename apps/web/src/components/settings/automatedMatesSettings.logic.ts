@@ -46,9 +46,8 @@ export function aiKeyLine(
 }
 
 /** Where an application's automated Mates take tasks from, in a line. */
-export function intakeLine(intake: Pick<HqNavigationIntake, "repo" | "label" | "public">): string {
-  const line = `Takes issues labelled “${intake.label}” from ${intake.repo}`;
-  return intake.public === true ? `${line}, a public repository` : line;
+export function intakeLine(intake: Pick<HqNavigationIntake, "repo" | "label">): string {
+  return `Takes issues labelled “${intake.label}” from ${intake.repo}`;
 }
 
 /** What HQ answered as the intake was set: the webhook it made, or what to paste. */

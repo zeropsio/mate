@@ -456,9 +456,6 @@ export const failure = (error: {
       return Effect.succeed(json({ code: "mate_credential_required" }, 401));
     case "NotLeader":
       return Effect.succeed(unavailable("not_active"));
-    // A task's source asks again (`taskSources.ts`); why HQ could not take it is logged there.
-    case "TaskIntakeUnavailable":
-      return Effect.succeed(unavailable("unavailable"));
     case "ZeropsUnavailable":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),

@@ -35,11 +35,7 @@ export function makeAutomationExecutor(options: {
               return api.setIntake === undefined
                 ? null
                 : api
-                    .setIntake(intent.appId, {
-                      repo: intent.repo,
-                      label: intent.label,
-                      ...(intent.public === true ? { public: true } : {}),
-                    })
+                    .setIntake(intent.appId, { repo: intent.repo, label: intent.label })
                     .then((view) => {
                       options.revealed(requestId, view);
                       return { result: { hook: view.hook.kind }, handle: intent.appId };

@@ -29,11 +29,6 @@ it("makes the named Mates automated on the task set now, their application's tas
     task: { number: 12, title: "Fix the checkout total", repo: "acme/tea-shop" },
   });
   expect(values[2].value.mate).toEqual({ face: "" });
-  wire.set({ task: { number: 12, title: "Fix the checkout total", waiting: true }, waiting: 2 });
-  expect(
-    JSON.parse(wire.map(frame([{ key: "project:Nova", value: { mate: { face: "" } } }]))).values[0]
-      .value.mate.task,
-  ).toMatchObject({ number: 12, waiting: true });
   wire.set({ task: null, waiting: 0 });
   expect(
     JSON.parse(wire.map(frame([{ key: "project:Nova", value: { mate: { face: "" } } }]))).values[0]

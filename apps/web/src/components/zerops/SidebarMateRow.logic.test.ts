@@ -2033,14 +2033,6 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
       },
       expected: { task: { number: 12, title: "Fix it" } },
     },
-    {
-      case: "automated, on a task from Slack that waits for a person's answer",
-      mate: {
-        automated: true,
-        task: { id: "t2", title: "Update the price list", url: null, waiting: true as const },
-      },
-      expected: { task: { title: "Update the price list", waiting: true } },
-    },
   ])("$case", ({ mate, expected }) => {
     expect(mateAutomation(mate)).toEqual(expected);
   });
@@ -2135,32 +2127,6 @@ describe("mateRowSecond — an automated Mate's line", () => {
       case: "an automated Mate whose task's change waits on the viewer says so in ink",
       over: { automated: { task }, view: view("needs") },
       line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: true },
-    },
-    {
-      case: "an automated Mate whose task waits for a person's answer says it waits for you, in ink",
-      over: {
-        automated: { task: { ...task, waiting: true } },
-        view: view("needs", { kind: "words", text: "Which currency?", tone: "muted" }),
-      },
-      line: { kind: "task", text: "#12 Fix the checkout total · waiting for you", on: true },
-    },
-    {
-      case: "an automated Mate whose task waits for an answer says so once its words are read",
-      over: { automated: { task: { ...task, waiting: true } }, view: view("unread") },
-      line: { kind: "task", text: "#12 Fix the checkout total · waiting for you", on: true },
-    },
-    {
-      case: "an automated Mate whose task waits for an answer but is at work again says its step",
-      over: {
-        automated: { task: { ...task, waiting: true } },
-        view: view("working", { kind: "pending" }),
-      },
-      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
-    },
-    {
-      case: "an automated Mate on a task from elsewhere names it by its title",
-      over: { automated: { task: { title: "Update the price list" } } },
-      line: { kind: "task", text: "Update the price list · waiting for review", on: false },
     },
     {
       case: "an automated Mate at rest with no task and no organization key says it waits for the key",

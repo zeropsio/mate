@@ -47,21 +47,9 @@ import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import {
   HqAiKeyView,
-  HqChannelView,
-  HqDiscordView,
   HqIntakeView,
-  HqScheduleView,
-  HqSlackView,
-  HqTaskLimitsView,
-  HqWebhookView,
   type HqAiKeyRequest,
-  type HqChannelRequest,
-  type HqDiscordAllowRequest,
-  type HqDiscordConnectRequest,
   type HqIntakeRequest,
-  type HqScheduleRequest,
-  type HqSlackConnectRequest,
-  type HqWebhookRequest,
 } from "@t3tools/shared/hqIntake";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
@@ -422,46 +410,6 @@ export interface HqApi {
   readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
   readonly removeAiKey?: (provider: string) => Promise<void>;
-  /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
-  readonly slack?: () => Promise<HqSlackView>;
-  /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
-  readonly slackManifest?: () => Promise<unknown>;
-  /** Connects the organization's Slack app by its bot token and signing secret, both sealed. */
-  readonly connectSlack?: (request: HqSlackConnectRequest) => Promise<HqSlackView>;
-  readonly disconnectSlack?: () => Promise<void>;
-  /** The organization's Discord application, its interactions URL and allowlist (`GET /api/org/discord`). */
-  readonly discord?: () => Promise<HqDiscordView>;
-  /** Connects the organization's Discord application; its bot token is sealed. */
-  readonly connectDiscord?: (request: HqDiscordConnectRequest) => Promise<HqDiscordView>;
-  readonly disconnectDiscord?: () => Promise<void>;
-  /** The Discord users allowed to start and steer tasks (`PUT /api/org/discord/allow`). */
-  readonly allowDiscord?: (request: HqDiscordAllowRequest) => Promise<HqDiscordView>;
-  /**
-   * The channel an application takes tasks from on Slack or Discord (`GET
-   * /api/apps/:appId/{slack,discord}`), `null` for none.
-   */
-  readonly appChannel?: (
-    appId: string,
-    source: "slack" | "discord",
-  ) => Promise<HqChannelView | null>;
-  readonly setAppChannel?: (
-    appId: string,
-    source: "slack" | "discord",
-    request: HqChannelRequest,
-  ) => Promise<HqChannelView>;
-  readonly stopAppChannel?: (appId: string, source: "slack" | "discord") => Promise<void>;
-  /** An application's signed webhooks, never their secrets (`GET /api/apps/:appId/webhooks`). */
-  readonly webhooks?: (appId: string) => Promise<ReadonlyArray<HqWebhookView>>;
-  /** Makes a signed webhook: its answer carries the secret, this once. */
-  readonly makeWebhook?: (appId: string, request: HqWebhookRequest) => Promise<HqWebhookView>;
-  readonly deleteWebhook?: (appId: string, webhookId: string) => Promise<void>;
-  /** An application's schedules (`GET /api/apps/:appId/schedules`). */
-  readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
-  readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
-  readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
-  /** The organization's limits on each task (`GET /api/org/task-limits`). */
-  readonly taskLimits?: () => Promise<HqTaskLimitsView>;
-  readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
@@ -693,16 +641,6 @@ const readChangeDetail = decoded(ChangeDetailResponse);
 const readIntakeView = decoded(HqIntakeView);
 const readAiKeys = decoded(Schema.Array(HqAiKeyView));
 const readAiKey = decoded(HqAiKeyView);
-const readSlack = decoded(HqSlackView);
-const readDiscord = decoded(HqDiscordView);
-const readChannel = decoded(HqChannelView);
-const readAppChannel = decoded(Schema.NullOr(HqChannelView));
-const readWebhook = decoded(HqWebhookView);
-/** HQ answers an application's lists wrapped: `{ webhooks }`, `{ schedules }`. */
-const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
-const readSchedule = decoded(HqScheduleView);
-const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
-const readTaskLimits = decoded(HqTaskLimitsView);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
@@ -1364,101 +1302,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    slack: async () => readSlack(await authorized("/api/org/slack")),
-    slackManifest: async () => bodyOf(await authorized("/api/org/slack/manifest")),
-    connectSlack: async (request) =>
-      readSlack(
-        await authorized(
-          "/api/org/slack",
-          { method: "PUT", body: JSON.stringify(request satisfies HqSlackConnectRequest) },
-          true,
-        ),
-      ),
-    disconnectSlack: async () => {
-      await authorized("/api/org/slack", { method: "DELETE" }, true);
-    },
-    discord: async () => readDiscord(await authorized("/api/org/discord")),
-    connectDiscord: async (request) =>
-      readDiscord(
-        await authorized(
-          "/api/org/discord",
-          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordConnectRequest) },
-          true,
-        ),
-      ),
-    disconnectDiscord: async () => {
-      await authorized("/api/org/discord", { method: "DELETE" }, true);
-    },
-    allowDiscord: async (request) =>
-      readDiscord(
-        await authorized(
-          "/api/org/discord/allow",
-          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordAllowRequest) },
-          true,
-        ),
-      ),
-    appChannel: async (appId, source) =>
-      readAppChannel(await authorized(`/api/apps/${encodeURIComponent(appId)}/${source}`)),
-    setAppChannel: async (appId, source, request) =>
-      readChannel(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/${source}`,
-          { method: "PUT", body: JSON.stringify(request satisfies HqChannelRequest) },
-          true,
-        ),
-      ),
-    stopAppChannel: async (appId, source) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/${source}`,
-        { method: "DELETE" },
-        true,
-      );
-    },
-    webhooks: async (appId) =>
-      (await readWebhooks(await authorized(`/api/apps/${encodeURIComponent(appId)}/webhooks`)))
-        .webhooks,
-    makeWebhook: async (appId, request) =>
-      readWebhook(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/webhooks`,
-          { method: "POST", body: JSON.stringify(request satisfies HqWebhookRequest) },
-          true,
-        ),
-      ),
-    deleteWebhook: async (appId, webhookId) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/webhooks/${encodeURIComponent(webhookId)}`,
-        { method: "DELETE" },
-        true,
-      );
-    },
-    schedules: async (appId) =>
-      (await readSchedules(await authorized(`/api/apps/${encodeURIComponent(appId)}/schedules`)))
-        .schedules,
-    makeSchedule: async (appId, request) =>
-      readSchedule(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/schedules`,
-          { method: "POST", body: JSON.stringify(request satisfies HqScheduleRequest) },
-          true,
-        ),
-      ),
-    deleteSchedule: async (appId, scheduleId) => {
-      await authorized(
-        `/api/apps/${encodeURIComponent(appId)}/schedules/${encodeURIComponent(scheduleId)}`,
-        { method: "DELETE" },
-        true,
-      );
-    },
-    taskLimits: async () => readTaskLimits(await authorized("/api/org/task-limits")),
-    setTaskLimits: async (limits) =>
-      readTaskLimits(
-        await authorized(
-          "/api/org/task-limits",
-          { method: "PUT", body: JSON.stringify(limits satisfies HqTaskLimitsView) },
-          true,
-        ),
-      ),
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(

@@ -291,11 +291,7 @@ const DECISIONS = new Map<string, MateDecision>([
 const automated = (
   appId: string,
   appName: string,
-  task: {
-    readonly number?: number;
-    readonly title: string;
-    readonly waiting?: true;
-  } | null,
+  task: { readonly number: number; readonly title: string } | null,
 ): HqPlacement => ({
   appId,
   appName,
@@ -306,21 +302,13 @@ const automated = (
     task:
       task === null
         ? null
-        : task.number === undefined
-          ? {
-              id: `task-${task.title}`,
-              title: task.title,
-              url: "https://acme.slack.com/archives/C042/p1",
-              label: "#support on Slack",
-              ...(task.waiting === true ? { waiting: true as const } : {}),
-            }
-          : {
-              id: `task-${String(task.number)}`,
-              repo: "acme/tea-shop",
-              number: task.number,
-              title: task.title,
-              url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
-            },
+        : {
+            id: `task-${String(task.number)}`,
+            repo: "acme/tea-shop",
+            number: task.number,
+            title: task.title,
+            url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
+          },
   },
 });
 
@@ -406,12 +394,6 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
     automated("tea-shop", "Tea Shop", { number: 7, title: "Show the tea's origin" }),
   ),
   candidate("tea-sol", "Sol", automated("tea-shop", "Tea Shop", null)),
-  // One whose task from Slack waits for a person's answer.
-  candidate(
-    "tea-lea",
-    "Lea",
-    automated("tea-shop", "Tea Shop", { title: "Update the price list", waiting: true }),
-  ),
   candidate("tea-ida", "Ida", group("tea-shop", "Tea Shop").mate()),
 
   // A name longer than any width here, and a project that is only a Mate:
@@ -454,18 +436,6 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       subject: "Work issue #9 in the project, check it, then open a change for review.",
       snippet: "Opened a change for review: Show the tea's origin on its page.",
       hours: 3,
-      face: "idle",
-    }),
-  ],
-  [
-    "tea-lea",
-    activity({
-      id: "tea-lea",
-      task: "Work the ask from #support in the project, check it, then open a change for review.",
-      subject:
-        "Work the ask from #support in the project, check it, then open a change for review.",
-      snippet: "Which currency should the new prices use?",
-      hours: 0.5,
       face: "idle",
     }),
   ],

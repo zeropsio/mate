@@ -14,118 +14,41 @@ export const MATE_TASK_TITLE_MAX = 256;
 /** How much of the issue's text a task carries; the rest stays on GitHub, a link away. */
 export const MATE_TASK_BODY_MAX = 16_000;
 
-const SourceTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_TASK_TITLE_MAX));
-
-/** A GitHub issue labelled for the application's automated Mates. */
-export const GithubIssueSource = Schema.Struct({
+/** Where a task came from: the issue it brings, as its card draws it. */
+export const MateTaskSource = Schema.Struct({
   kind: Schema.Literal("github-issue"),
   /** `owner/name`. */
   repo: TrimmedNonEmptyString,
   number: PositiveInt,
   url: TrimmedNonEmptyString,
-  title: SourceTitle,
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_TASK_TITLE_MAX)),
   /** The GitHub login that opened the issue, or none known. */
   author: Schema.NullOr(TrimmedNonEmptyString),
 });
-export type GithubIssueSource = typeof GithubIssueSource.Type;
-
-/** A Slack message that mentioned Mate in a channel mapped to the application: its thread. */
-export const SlackThreadSource = Schema.Struct({
-  kind: Schema.Literal("slack-thread"),
-  /** The workspace's name, as people know it. */
-  workspace: TrimmedNonEmptyString,
-  /** The channel's name, without `#`. */
-  channel: TrimmedNonEmptyString,
-  /** The thread's permalink. */
-  url: TrimmedNonEmptyString,
-  /** The ask's first line. */
-  title: SourceTitle,
-  /** The person's display name, or none known. */
-  author: Schema.NullOr(TrimmedNonEmptyString),
-});
-export type SlackThreadSource = typeof SlackThreadSource.Type;
-
-/** A Discord `/mate` command in a channel mapped to the application: the thread the bot opened. */
-export const DiscordThreadSource = Schema.Struct({
-  kind: Schema.Literal("discord-thread"),
-  /** The server's (guild's) name. */
-  server: TrimmedNonEmptyString,
-  /** The channel's name, without `#`. */
-  channel: TrimmedNonEmptyString,
-  /** The thread's link. */
-  url: TrimmedNonEmptyString,
-  title: SourceTitle,
-  author: Schema.NullOr(TrimmedNonEmptyString),
-});
-export type DiscordThreadSource = typeof DiscordThreadSource.Type;
-
-/** A call on one of the application's signed webhooks (Sentry, PagerDuty, a Jira rule…). */
-export const WebhookSource = Schema.Struct({
-  kind: Schema.Literal("webhook"),
-  /** The webhook's name, as the application's settings name it. */
-  name: TrimmedNonEmptyString,
-  /** A link the caller gave to what it is about, or none. */
-  url: Schema.NullOr(TrimmedNonEmptyString),
-  title: SourceTitle,
-  author: Schema.NullOr(TrimmedNonEmptyString),
-});
-export type WebhookSource = typeof WebhookSource.Type;
-
-/** A schedule of the application's ("every Monday at 9:00 …"): one task each time it is due. */
-export const ScheduleSource = Schema.Struct({
-  kind: Schema.Literal("schedule"),
-  /** The schedule's name. */
-  name: TrimmedNonEmptyString,
-  title: SourceTitle,
-});
-export type ScheduleSource = typeof ScheduleSource.Type;
-
-/** Where a task came from, as its card draws it. */
-export const MateTaskSource = Schema.Union([
-  GithubIssueSource,
-  SlackThreadSource,
-  DiscordThreadSource,
-  WebhookSource,
-  ScheduleSource,
-]);
 export type MateTaskSource = typeof MateTaskSource.Type;
-
-/** What a task may spend before its Mate stops it and says where it got to. */
-export const MateTaskLimits = Schema.Struct({
-  /** Minutes of the agent at work on it. */
-  minutes: PositiveInt,
-  /** US dollars of model use, as the provider reports it; none: no cost limit. */
-  costUsd: Schema.NullOr(Schema.Number.check(Schema.isGreaterThan(0))),
-});
-export type MateTaskLimits = typeof MateTaskLimits.Type;
 
 /** A task as HQ hands it to a Mate. */
 export const MateTask = Schema.Struct({
   /** HQ's id of the task: the same task handed twice is one task. */
   id: TrimmedNonEmptyString,
   source: MateTaskSource,
-  /** The ask's text (the issue's, the message's, the call's, the schedule's), cut to `MATE_TASK_BODY_MAX`. */
+  /** The issue's text, cut to `MATE_TASK_BODY_MAX`. */
   body: Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX)),
-  /** What it may spend; absent from an older HQ: the Mate's own defaults. */
-  limits: Schema.optionalKey(MateTaskLimits),
 });
 export type MateTask = typeof MateTask.Type;
 
 /**
- * How a task stands, as its Mate says: taken (`accepted`), worked on (`working`), waiting for a
- * person's answer (`waiting`, with its `question`), finished (`done`), not finished (`failed`),
- * stopped because people stopped it (`stopped`: the issue closed, the label removed, a `task-stop`)
- * — or not taken now (`declined`: it is busy, or its key has not come yet), which hands the task
- * back to wait for a free Mate and never counts as a try. A change the Mate opens while on a task is
- * the task's change: HQ links them, since a Mate works one task at a time.
+ * How a task stands, as its Mate says: taken (`accepted`), worked on (`working`), finished
+ * (`done`) or not (`failed`) — or not taken now (`declined`: it is busy, or its key has not come
+ * yet), which hands the task back to wait for a free Mate and never counts as a try. A change the
+ * Mate opens while on a task is the task's change: HQ links them, since a Mate works one task at
+ * a time.
  */
 export const MateTaskStateKind = Schema.Literals([
   "accepted",
   "working",
-  "waiting",
   "done",
   "failed",
-  "stopped",
   "declined",
 ]);
 export type MateTaskStateKind = typeof MateTaskStateKind.Type;
@@ -135,65 +58,7 @@ export const MateTaskReport = Schema.Struct({
   state: MateTaskStateKind,
   /** The conversation the Mate works it in, once it has one. */
   conversationId: Schema.optionalKey(TrimmedNonEmptyString),
-  /** Why it failed or stopped, in words a person reads. */
+  /** Why it failed, in words a person reads. */
   detail: Schema.optionalKey(Schema.String),
-  /** What it asks a person, while `waiting`: posted where the task came from. */
-  question: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
 });
 export type MateTaskReport = typeof MateTaskReport.Type;
-
-/**
- * Something said about a task after its Mate took it — a comment on its issue, a reply in its
- * thread, a review comment on its change, an edit of the issue — told to its Mate, which hears it
- * in the task's own conversation. Only what a person allowed to steer it said (HQ's gate).
- */
-export const MateTaskMessage = Schema.Struct({
-  /** HQ's id of the message: told twice, heard once. */
-  id: TrimmedNonEmptyString,
-  from: Schema.Literals(["comment", "reply", "review", "edit"]),
-  author: Schema.NullOr(TrimmedNonEmptyString),
-  text: Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX)),
-});
-export type MateTaskMessage = typeof MateTaskMessage.Type;
-
-/**
- * Where a task came from, in people's words: "acme/tea-shop#12", "#support on Slack", "#dev on
- * Discord", "the Sentry webhook", "the Weekly upkeep schedule".
- */
-export function mateTaskSourceLabel(source: MateTaskSource): string {
-  switch (source.kind) {
-    case "github-issue":
-      return `${source.repo}#${String(source.number)}`;
-    case "slack-thread":
-      return `#${source.channel} on Slack`;
-    case "discord-thread":
-      return `#${source.channel} on Discord`;
-    case "webhook":
-      return `the ${source.name} webhook`;
-    case "schedule":
-      return `the ${source.name} schedule`;
-  }
-}
-
-/** The way out to where a task came from, and the words on it; none for a schedule's. */
-export function mateTaskSourceLink(
-  source: MateTaskSource,
-): { readonly url: string; readonly words: string } | null {
-  switch (source.kind) {
-    case "github-issue":
-      return { url: source.url, words: "Open on GitHub" };
-    case "slack-thread":
-      return { url: source.url, words: "Open in Slack" };
-    case "discord-thread":
-      return { url: source.url, words: "Open in Discord" };
-    case "webhook":
-      return source.url === null ? null : { url: source.url, words: "Open" };
-    case "schedule":
-      return null;
-  }
-}
-
-/** Who asked, where the source knows: an issue's author, a message's sender. */
-export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
-  return source.kind === "schedule" ? null : source.author;
-}

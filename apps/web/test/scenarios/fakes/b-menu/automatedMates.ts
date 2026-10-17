@@ -10,8 +10,6 @@ const readRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schem
 export interface WiredTask {
   readonly number: number;
   readonly title: string;
-  /** It waits for a person's answer (HQ's `task.waiting`). */
-  readonly waiting?: true;
 }
 
 /**
@@ -44,8 +42,6 @@ export function automatedMatesWire(projectIds: ReadonlyArray<string>) {
                   number: task.number,
                   title: task.title,
                   url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
-                  label: `acme/tea-shop#${String(task.number)}`,
-                  ...(task.waiting === true ? { waiting: true } : {}),
                 },
         },
       };

@@ -70,21 +70,6 @@ describe("B: automated Mates in the menu", () => {
           expect(yield* rows(), "ASSERTION: a task starting moves no row of the menu").toEqual(
             idle,
           );
-          // Its agent asks a person something: the task waits for them, and still nothing moves.
-          wire.set({
-            task: { number: 12, title: "Fix the checkout total", waiting: true },
-            waiting: 2,
-          });
-          yield* face("violet:seal");
-          yield* s.menu.text(
-            "Nova",
-            "#12 Fix the checkout total · waiting for you",
-            "sidebar-mate-task",
-          );
-          expect(
-            yield* rows(),
-            "ASSERTION: a task starting to wait for a person moves no row of the menu",
-          ).toEqual(idle);
           // The task ends: it waits for its next.
           wire.set({ task: null, waiting: 2 });
           yield* face("sky:seal");

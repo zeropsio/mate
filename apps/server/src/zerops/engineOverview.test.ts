@@ -26,7 +26,6 @@ import { rowStateOf } from "../engine/read/conversationRow.ts";
 import { chatsSource, engineAttentionReads, engineShellOf } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
-import { taskConversationId } from "./ZeropsTasks.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
 const c = ConversationId.make("thread-main");
@@ -311,23 +310,6 @@ describe("HQ's overview of a Mate on the engine", () => {
       role: "assistant",
       text: "The number is 42.",
     });
-  });
-
-  it.each([
-    [
-      "the words before its question",
-      "Two carts hold teas.\n\nQUESTION: Which one stays?",
-      "Two carts hold teas.",
-    ],
-    ["its question alone, never the mark", "QUESTION: Which one stays?", "Which one stays?"],
-  ])("previews a task's agent asking a person by %s", (_, text, preview) => {
-    const shell = engineShellOf(
-      view({
-        conversationId: taskConversationId("task-1"),
-        lastAgent: { text, at: T("2026-10-07T10:04:00.000Z") },
-      }),
-    );
-    assert.strictEqual(shell.latestMessagePreview?.text, preview);
   });
 
   it("a crewmate's conversation is the crew's: never one of the person's chats, its line reads its run", () => {

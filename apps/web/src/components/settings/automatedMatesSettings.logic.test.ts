@@ -50,12 +50,6 @@ describe("where an application's tasks come from", () => {
     );
   });
 
-  it("says where the application's automated Mates take tasks from is a public repository", () => {
-    expect(intakeLine({ repo: "acme/tea-shop", label: "mate", public: true })).toBe(
-      "Takes issues labelled “mate” from acme/tea-shop, a public repository",
-    );
-  });
-
   it.each([
     [{ kind: "made" } as const, "Webhook made on acme/tea-shop"],
     [

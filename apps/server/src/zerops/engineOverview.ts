@@ -41,7 +41,6 @@ import {
   type MateEngineService,
   type ViewRun,
 } from "../engine/MateEngine.ts";
-import { taskIdOfConversation, taskQuestionOf } from "./ZeropsTasks.ts";
 
 /** The project an engine conversation's shell names: the engine keeps no V1 project. */
 export const ENGINE_PROJECT_ID = ProjectId.make("mate-engine");
@@ -136,16 +135,6 @@ const waitsOnCard = (view: ConversationView): boolean => {
   return state.kind === "waiting" && isCardAsk(state.on);
 };
 
-/**
- * The agent's words as a summary: a task's agent asking a person ends on a `QUESTION:` line the
- * task's source shows; a summary drops it, or reads the question alone when nothing came before.
- */
-const summaryOf = (view: ConversationView, text: string): string => {
-  if (taskIdOfConversation(view.conversationId) === undefined) return text;
-  const { question, rest } = taskQuestionOf(text);
-  return question === undefined || rest !== "" ? rest : question;
-};
-
 export const engineShellOf = (view: ConversationView): OrchestrationThreadShell => {
   const at = iso(view.updatedAt);
   const run = latestRunOf(view);
@@ -160,7 +149,7 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
   // Its title, from what the person typed: a page's request for them never names it.
   const personLine = titleOf(view.lastAsked?.text);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
-  const agentText = agent === null ? null : messagePreviewText(summaryOf(view, agent.text));
+  const agentText = agent === null ? null : messagePreviewText(agent.text);
   const personText = person === null ? null : userAskPreviewText(person);
   const latest =
     agent !== null && agentText !== null && (person === null || agent.at >= person.at)

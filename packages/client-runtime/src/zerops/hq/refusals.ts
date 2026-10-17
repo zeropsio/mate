@@ -170,65 +170,6 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
- * Discord application, an application's channel, webhooks and schedules, the limits on each task
- * (`AutomationRefused` in `apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`) —
- * in words: what is wrong, and what the person does.
- */
-const AUTOMATION_WORDS = {
-  // An intake (GitHub).
-  repo_not_connected: "Connect this repository to the project in HQ first.",
-  repo: "That is no GitHub repository. Name it as owner/name.",
-  label: "A label has 1 to 50 characters.",
-  hq_address_unknown:
-    "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
-  // Slack.
-  slack_unavailable: "HQ could not set Slack up just now. Try again.",
-  bot_token: "That is not a bot token. Copy it again from the app's settings.",
-  bot_token_refused: "Slack refused that bot token. Install the app again and copy its new token.",
-  signing_secret: "That is not a signing secret. Copy it again from Basic Information.",
-  slack_unreachable: "HQ could not reach Slack. Try again in a moment.",
-  slack_not_connected: "Connect Slack first.",
-  channel: "That is not a Slack channel ID. Copy it from the channel's details.",
-  not_in_channel: "Invite @Mate to the channel first, then try again.",
-  // Slack and Discord.
-  channel_not_found:
-    "There is no such channel the bot can see. Copy the ID from the channel's details, and add the bot first.",
-  channel_taken: "Another project takes tasks from that channel already.",
-  // Discord.
-  discord_unreachable: "HQ could not reach Discord. Try again in a moment.",
-  application_id:
-    "That application ID does not match the bot token. Copy both again from the Developer Portal.",
-  public_key:
-    "That public key does not match the application. Copy it again from General Information.",
-  commands_refused:
-    "Discord refused Mate's /mate command. Check the bot token and the application, then connect again.",
-  user_ids: "A Discord user ID is a number of up to 20 digits, and the list holds at most 500.",
-  channel_id: "That is not a Discord channel ID. Copy it with Developer Mode on.",
-  not_connected: "Connect Discord first.",
-  channel_kind: "Mate opens threads only in a text or forum channel. Choose one of those.",
-  // Webhooks and schedules.
-  name: "A name has at most 80 characters.",
-  too_many: "A project holds at most 20 of these. Delete one first.",
-  webhook_not_found: "That webhook is gone already.",
-  brief: "A brief has at most 16,000 characters.",
-  day: "Choose the day of the week it runs on.",
-  time_zone: "HQ does not know that time zone. Use one like Europe/Prague.",
-  rule: "HQ could not work out when this runs. Check the time and the time zone.",
-  schedule_not_found: "That schedule is gone already.",
-  // The limits on each task.
-  minutes: "Minutes are a whole number from 1 to 1,440.",
-  cost: "Cost is an amount above $0 and at most $10,000, or empty for none.",
-} as const;
-
-/** Every reason of automated Mates' sources this build has words for. */
-export const AUTOMATION_REFUSALS = Object.keys(AUTOMATION_WORDS) as ReadonlyArray<
-  keyof typeof AUTOMATION_WORDS
->;
-const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_WORDS =>
-  Object.hasOwn(AUTOMATION_WORDS, reason);
-
-/**
  * Why HQ did not enroll a Mate (`MateRefused` in `apps/hq/src/mateCredentials.ts`; zcp's
  * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
  * again on its own, which it does for every refusal but `not_this_projects_mate`.
@@ -331,7 +272,6 @@ export function hqRefusalWords(refusal: {
     if (isReleaseRefusal(reason)) return RELEASE_WORDS[reason];
     const words = STRUCTURE_WORDS[reason];
     if (words !== undefined) return words;
-    if (isAutomationRefusal(reason)) return AUTOMATION_WORDS[reason];
   }
   if (refusal.gitSetup)
     return "Mate could not complete Git setup. Review the settings and try again.";

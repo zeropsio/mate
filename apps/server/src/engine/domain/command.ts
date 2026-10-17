@@ -25,7 +25,6 @@ import type {
   ItemActor,
   ItemBody,
   KnownEngineEvent,
-  MateTaskMessage,
   MateTaskSource,
   Principal,
   RecordedCrewSeam,
@@ -203,8 +202,6 @@ export type Command =
       readonly fromPanel?: true;
       /** A task's brief: the issue it brings, drawn as its card (the person item's `task`). */
       readonly task?: MateTaskSource;
-      /** A follow-up told to a task's Mate: drawn as its author's (the person item's `taskMessage`). */
-      readonly taskMessage?: MateTaskMessage;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */

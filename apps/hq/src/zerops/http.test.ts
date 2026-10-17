@@ -129,7 +129,6 @@ describe("makeZeropsApiHttp", () => {
           canViewFinances: false,
           canEditFinances: false,
           avatarUrl: "https://avatar.test/member",
-          email: "token-abc@zerops.io",
         },
       ]);
       assert.strictEqual(api.requests(), 1);
