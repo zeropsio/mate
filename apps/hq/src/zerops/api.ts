@@ -31,6 +31,8 @@ export interface ZeropsMember {
   /** Whether they see the org's billing (its costs whole), and change it; absent: no. */
   readonly canViewFinances?: boolean;
   readonly canEditFinances?: boolean;
+  /** Their sign-in email, as Zerops verified it; absent: not read. Who a Slack user is (`slack.ts`). */
+  readonly email?: string | null;
 }
 
 export interface ZeropsProject {
