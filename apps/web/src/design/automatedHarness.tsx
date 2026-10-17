@@ -10,7 +10,12 @@
  * Fixtures only. Nothing here ships — `design-automated.html` is not `index.html`, and no route
  * imports this module.
  */
-import type { AppIntakeRead, OrgAiKeysRead } from "@t3tools/client-runtime/data";
+import type {
+  AppIntakeRead,
+  OrgAiKeysRead,
+  TaskSourceSettingValue,
+} from "@t3tools/client-runtime/data";
+import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,7 +26,18 @@ import {
   OrganizationKeyView,
 } from "~/components/settings/AutomatedMatesSettings";
 import { SettingsSection } from "~/components/settings/settingsLayout";
-import { MateTaskCard } from "~/components/zerops/MateTaskCard";
+import {
+  AppChannelView,
+  AppSchedulesView,
+  AppWebhooksView,
+  DiscordSettingsView,
+  SchedulesSettingsView,
+  SlackSettingsView,
+  TaskLimitsView,
+  TaskSourcesUnsupported,
+  WebhooksSettingsView,
+} from "~/components/settings/TaskSourcesSettings";
+import { MateTaskCard, MateTaskMessageRow } from "~/components/zerops/MateTaskCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -69,6 +85,41 @@ const MADE: AppIntakeRead = {
 };
 
 const nothing = () => {};
+
+/** A part's controls over a fixture of what is read; its presses do nothing. */
+const controls = (setting: unknown, revealed: HqWebhookView | null = null) => ({
+  read: { setting, action: { kind: "idle" }, revealed } as TaskSourceSettingValue<never>,
+  write: nothing,
+  again: nothing,
+});
+const known = (value: unknown) => ({ state: "known", value, stale: false });
+const APPS = [
+  { id: "tea-shop", name: "Tea Shop" },
+  { id: "shop-front", name: "Shop Front" },
+];
+const SLACK_OFF = {
+  connected: false,
+  workspace: null,
+  eventsUrl: "https://hq-acme.zerops.app/api/intake/slack/acme",
+};
+const DISCORD_OFF = {
+  connected: false,
+  interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
+  inviteUrl: null,
+  allowed: [],
+};
+const HOOK = {
+  id: "w1",
+  name: "Sentry",
+  url: "https://hq-acme.zerops.app/api/intake/webhook/9f2c41",
+  createdAt: "2026-10-17T09:00:00.000Z",
+};
+const channelOf = (appId: string) =>
+  controls(
+    known({
+      channel: appId === "tea-shop" ? { appId, channelId: "C042", channel: "support" } : null,
+    }),
+  );
 
 function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
@@ -157,8 +208,8 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
-        <Panel title="A task's first message">
-          <div className="max-w-2xl">
+        <Panel title="A task's first message, and a follow-up">
+          <div className="grid max-w-2xl gap-3">
             <MateTaskCard
               task={{
                 kind: "github-issue",
@@ -169,7 +220,82 @@ function Harness() {
                 author: "nova-dev",
               }}
             />
+            <MateTaskMessageRow
+              message={{
+                id: "c1",
+                from: "comment",
+                author: "ida-ops",
+                text: "Keep the old rounding for invoices, only the cart total changes.",
+              }}
+            />
           </div>
+        </Panel>
+        <Panel title="Settings › Zerops › HQ — tasks from elsewhere">
+          <SettingsSection title="HQ">
+            <SlackSettingsView
+              apps={APPS}
+              controls={controls(known(SLACK_OFF))}
+              manifest={controls(known("{}"))}
+            />
+            <SlackSettingsView
+              apps={APPS}
+              channel={channelOf}
+              controls={controls(known({ ...SLACK_OFF, connected: true, workspace: "Acme" }))}
+            />
+            <DiscordSettingsView apps={APPS} controls={controls(known(DISCORD_OFF))} />
+            <DiscordSettingsView
+              apps={APPS}
+              channel={(appId) => channelOf(appId === "tea-shop" ? "shop-front" : "tea-shop")}
+              controls={controls(
+                known({
+                  ...DISCORD_OFF,
+                  connected: true,
+                  inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
+                  allowed: ["123456789012345678"],
+                }),
+              )}
+            />
+            <WebhooksSettingsView apps={APPS}>
+              {(app) => (
+                <AppWebhooksView
+                  controls={
+                    app.id === "tea-shop"
+                      ? controls(known([HOOK]), { ...HOOK, secret: SECRET })
+                      : controls(known([]))
+                  }
+                  name={app.name}
+                />
+              )}
+            </WebhooksSettingsView>
+            <SchedulesSettingsView apps={APPS.slice(0, 1)}>
+              {(app) => (
+                <AppSchedulesView
+                  controls={controls(
+                    known([
+                      {
+                        id: "s1",
+                        name: "Weekly upkeep",
+                        brief: "Update the dependencies and open a change.",
+                        rule: { every: "week", day: 1, at: "09:00", timeZone: "Europe/Prague" },
+                        nextAt: "2026-10-19T07:00:00.000Z",
+                      },
+                    ]),
+                  )}
+                  name={app.name}
+                />
+              )}
+            </SchedulesSettingsView>
+            <TaskLimitsView controls={controls(known({ minutes: 60, costUsd: 5 }))} />
+          </SettingsSection>
+        </Panel>
+        <Panel title="Tasks from elsewhere — reading, and an older HQ">
+          <SettingsSection title="HQ">
+            <SlackSettingsView apps={APPS} controls={controls({ state: "reading" })} />
+            <ul className="grid gap-3 px-3 pb-3 sm:px-4">
+              <AppChannelView controls={controls({ state: "reading" })} source="slack" />
+            </ul>
+            <TaskSourcesUnsupported />
+          </SettingsSection>
         </Panel>
       </div>
     </div>
