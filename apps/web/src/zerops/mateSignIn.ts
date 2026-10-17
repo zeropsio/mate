@@ -8,10 +8,12 @@
 export function mateShowsSignIn(input: {
   /** A Mate lives where the conversation is. */
   readonly mate: boolean;
+  /** It is automated: the organization's key runs it, and nobody ever signs it in. */
+  readonly automated?: boolean | undefined;
   /** No agent is signed in (`zeropsAgentSignInRequired`). */
   readonly signInRequired: boolean;
   /** Something is said in it already. */
   readonly said: boolean;
 }): boolean {
-  return input.mate && input.signInRequired && !input.said;
+  return input.mate && input.automated !== true && input.signInRequired && !input.said;
 }

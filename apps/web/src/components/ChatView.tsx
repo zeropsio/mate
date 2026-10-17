@@ -3198,6 +3198,7 @@ function ConversationView(props: ChatViewProps) {
   // as an empty conversation's opening (`mateShowsSignIn`).
   const mateSignIn = mateShowsSignIn({
     mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
+    automated: automatedHere,
     signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
     said: timelineEntries.length > 0,
   });
@@ -3351,6 +3352,8 @@ function ConversationView(props: ChatViewProps) {
             ),
     providers: providerStatuses,
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
+    // It runs on the organization's key: no sign-in, and with no agent to run, it says so.
+    automated: automatedHere,
     owner:
       admissionMate.kind === "nobody" || admissionPeople?.owned === false
         ? null

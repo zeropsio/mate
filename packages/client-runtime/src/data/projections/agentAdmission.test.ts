@@ -833,3 +833,78 @@ describe("the menu's sign-in summary", () => {
     expect(summary?.actionLabel ?? null).toBe(action);
   });
 });
+
+describe("an automated Mate's composer", () => {
+  const opencode = (status: "ready" | "error") =>
+    ({
+      instanceId: "opencode",
+      driver: "opencode",
+      enabled: true,
+      installed: true,
+      status,
+      auth: { status: "unknown" },
+    }) as never;
+  const claude = {
+    instanceId: "claudeAgent",
+    driver: "claudeAgent",
+    enabled: true,
+    installed: true,
+    status: "error",
+    auth: { status: "unauthenticated" },
+  } as never;
+  const admit = (providers: ReadonlyArray<never>) =>
+    agentAdmission({
+      owner: { mine: true },
+      automated: true,
+      empty: true,
+      environmentId: "rig",
+      // The thread's model, a subscription agent: nobody may sign it in here.
+      instanceId: "claudeAgent",
+      viewerSubject: "viewer",
+      providers,
+      mateName: "Nova",
+      read: {
+        state: "known",
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+        value: {
+          available: true,
+          agents: [
+            {
+              agentId: "claude-code",
+              credPresent: false,
+              flagOAuth: false,
+              flagToken: false,
+              providerAuth: "unauthenticated",
+              state: "not-authorized",
+            },
+          ],
+        },
+      },
+    });
+
+  it("never asks for a sign-in nor holds its composer for one", () => {
+    expect(admit([claude, opencode("ready")])).toMatchObject({
+      attention: null,
+      holdsComposer: false,
+      canSend: true,
+      sendBlockReason: null,
+    });
+  });
+
+  it.each([
+    ["OpenCode not ready", [claude, opencode("error")]],
+    ["no agent but a subscription one", [claude]],
+  ] as const)(
+    "without a usable agent says it waits for the organization's API key: %s",
+    (_case, providers) => {
+      expect(admit(providers)).toMatchObject({
+        attention: null,
+        holdsComposer: false,
+        canSend: false,
+        sendBlockReason: "Nova waits for your organization's API key.",
+      });
+    },
+  );
+});
