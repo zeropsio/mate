@@ -41,7 +41,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { CopyLine, IntakeRoom } from "./AutomatedMatesSettings";
+import { CopyLine, IntakeRoom } from "./automationParts";
 import { SettingsRow } from "./settingsLayout";
 import {
   allowlistAfter,
