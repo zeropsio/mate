@@ -39,6 +39,16 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     },
   );
 
+  it.each([
+    ["github_unavailable", "HQ could not set the GitHub app up just now. Try again."],
+    [
+      "repository_changed",
+      "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
+    ],
+  ])("says why HQ refused the GitHub app's setting, %s, and what to do", (reason, expected) => {
+    expect(hqRefusalWords({ code: "conflict", reason })).toBe(expected);
+  });
+
   it("tells a person to invite Mate to a Slack channel it is not in", () => {
     expect(hqRefusalWords({ code: "conflict", reason: "not_in_channel" })).toBe(
       "Invite @Mate to the channel first, then try again.",

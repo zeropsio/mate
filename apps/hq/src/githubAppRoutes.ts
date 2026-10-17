@@ -8,8 +8,8 @@
  * - `GET /api/github/app/created?code&state` and `GET /api/github/app/installed?installation_id&
  *   setup_action&state`: where GitHub sends the browser; `302` on, or a plain page saying what
  *   went wrong with the way back to Mate.
- * - `POST /api/github/app/webhook/:publicId`: the app's events, limited per address. Past 25 MiB
- *   `413`; no app there `404`; a signature that does not hold `401 unauthorized`; `ping` `200`;
+ * - `POST /api/github/app/webhook/:publicId`: the app's events, limited per address. No app there
+ *   `404`, before a byte is read; past 25 MiB `413`; a signature that does not hold `401 unauthorized`; `ping` `200`;
  *   anything else read `202` at once, worked after.
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` `HqRepoRemoteViaAppRequest` → `204`, by a
  *   structure writer: the repository's remote is one the app reaches, with no token kept; HQ then
@@ -165,9 +165,12 @@ export const githubAppRoutes = Layer.mergeAll(
       Effect.gen(function* () {
         yield* knock("intake");
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const body = yield* deliveryBytes;
         const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
-        const received = yield* (yield* GithubApp).receive(publicId, {
+        const app = yield* GithubApp;
+        // Nothing of an event is read where no app listens.
+        if (!(yield* app.listensAt(publicId))) return json({ code: "not_found" }, 404);
+        const body = yield* deliveryBytes;
+        const received = yield* app.receive(publicId, {
           event: request.headers["x-github-event"],
           id: request.headers["x-github-delivery"],
           signature: request.headers["x-hub-signature-256"],

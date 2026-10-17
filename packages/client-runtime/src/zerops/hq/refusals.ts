@@ -175,8 +175,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
 
 /**
  * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
- * Discord application, an application's channel, webhooks and schedules, the limits on each task
- * (`AutomationRefused` in `apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`) —
+ * Discord application, its GitHub app, an application's channel, webhooks and schedules, the limits
+ * on each task (`AutomationRefused` in
+ * `apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
  * in words: what is wrong, and what the person does.
  */
 const AUTOMATION_WORDS = {
@@ -186,6 +187,10 @@ const AUTOMATION_WORDS = {
   label: "A label has 1 to 50 characters.",
   hq_address_unknown:
     "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
+  repository_changed:
+    "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
+  // The organization's GitHub app (`apps/hq/src/githubApp.ts`).
+  github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
   // Slack.
   slack_unavailable: "HQ could not set Slack up just now. Try again.",
   bot_token: "That is not a bot token. Copy it again from the app's settings.",

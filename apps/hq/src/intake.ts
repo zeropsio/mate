@@ -669,7 +669,17 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               if (sealed === undefined) return yield* refuse("conflict", "no_key_secret");
               const url = yield* webhookUrl(publicId);
               // The app's own webhook delivers where it reaches the repository: no hook of HQ's.
-              const viaApp = yield* appDelivers(repo);
+              const viaApp = yield* remotes.tokenOf({ appId, repo: hqRepo }).pipe(
+                Effect.map((use) => use.as === "app"),
+                // The repository connected through the app is gone from GitHub: no intake on it.
+                Effect.catchTags({
+                  RemoteRefused: (error) =>
+                    error.reason === "repository_changed"
+                      ? refuse("conflict", "repository_changed")
+                      : Effect.succeed(false),
+                  ProbeRefused: () => Effect.succeed(false),
+                }),
+              );
               const heldHook =
                 !viaApp && kept !== undefined && before?.hook_id != null ? before.hook_id : null;
               const left = yield* leader.write(
