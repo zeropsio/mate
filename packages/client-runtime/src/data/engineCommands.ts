@@ -279,6 +279,27 @@ export const engineAnswerVaultAsk =
       summary: input.outcome,
     });
 
+/** How an origin the Mate asked the person for ended, on its card: never a token. */
+export interface OriginAskAnswerInput {
+  readonly threadId: string;
+  readonly requestId: string;
+  readonly outcome: "connected" | "declined";
+}
+
+/**
+ * An origin asked of the person, answered: the outcome alone — the person's client connected it
+ * in HQ itself. The engine words the record, so the summary sent is only the outcome's name.
+ */
+export const engineAnswerOriginAsk =
+  (environmentId: string, input: OriginAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: { kind: "origin", outcome: input.outcome },
+      summary: input.outcome,
+    });
+
 /** A question closed unanswered: the engine takes it only when its agent does not wait on it. */
 export const engineDismissUserInput =
   (environmentId: string, input: Command<"thread.user-input.dismiss">) => (host: MateEngineHost) =>

@@ -263,6 +263,49 @@ describe("an engine conversation as the thread the view draws", () => {
     });
   });
 
+  const mateOrigin = {
+    kind: "origin",
+    url: "https://github.com/zeropsio/mate",
+    repo: "appdev",
+    reason: "So finished work lands back on GitHub.",
+  } as const;
+  it.each([
+    {
+      name: "open: waiting on the person",
+      request: engineRequest(run1, 1, mateOrigin),
+      said: { state: "open", answer: null },
+    },
+    {
+      name: "connected: who and when",
+      request: engineRequest(run1, 1, mateOrigin, {
+        state: "answered",
+        answerable: true,
+        answer: { by: ana, at: 9, summary: "Connected as appdev" },
+      }),
+      said: { state: "connected", answer: { by: ana, at: 9 } },
+    },
+    {
+      name: "declined: who and when",
+      request: engineRequest(run1, 1, mateOrigin, {
+        state: "declined",
+        answerable: false,
+        answer: { by: ana, at: 9, summary: "Declined" },
+      }),
+      said: { state: "declined", answer: { by: ana, at: 9 } },
+    },
+  ])("an origin asked of the person is one card in its run, $name", ({ request, said }) => {
+    const state = held({ runs: [engineRun("thread-ada", 1)], requests: [request] });
+    const activities = thread(state)?.activities ?? [];
+    expect(activities.map((activity) => activity.kind)).toEqual(["origin.requested"]);
+    expect(activities[0]?.payload).toEqual({
+      requestId: request.id,
+      url: "https://github.com/zeropsio/mate",
+      repo: "appdev",
+      reason: "So finished work lands back on GitHub.",
+      ...said,
+    });
+  });
+
   it("an answered question shows what the person answered and the pictures attached to it", () => {
     const preview = {
       type: "image" as const,
