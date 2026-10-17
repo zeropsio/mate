@@ -447,6 +447,28 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
       ),
     );
 
+    it.effect(
+      "a repository HQ made but nobody wrote to takes the history of the GitHub repository it connects to",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            const tree = native(f.hqDir, ["mktree"], "");
+            const unwritten = native(f.hqDir, ["commit-tree", tree, "-m", "Initial commit"]);
+            native(f.hqDir, ["update-ref", "refs/heads/main", unwritten]);
+            const theirs = commitIn(f.github, [], "readme");
+            native(f.github, ["update-ref", "refs/heads/main", theirs]);
+            assert.deepStrictEqual(yield* f.mirror.sync(f.appId, "appdev"), {
+              kind: "imported",
+              from: unwritten,
+              to: theirs,
+            });
+            assert.strictEqual(refIn(f.hqDir, "refs/heads/main"), theirs);
+            assert.strictEqual(refIn(f.github, "refs/heads/main"), theirs);
+          }),
+        ),
+    );
+
     it.effect("diverged histories move nothing, and the repository says since when", () =>
       Effect.scoped(
         Effect.gen(function* () {

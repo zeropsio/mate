@@ -1603,6 +1603,40 @@ describe("a mirror on another host", () => {
     }),
   );
 
+  it.live("a main that never held a file takes a mirror's history in its place", () =>
+    fixture(async (git, dir, events) => {
+      const main = await write(git, {}, null);
+      const { path, remote } = await mirrorOf(dir);
+      const theirs = await commitThere(path, null, "readme");
+      await native(path, ["update-ref", "refs/heads/main", theirs]);
+      expect(await value(git.fetchTip(repo, remote, "main"))).toBe(theirs);
+      expect(await value(git.holdsNothing(repo, main))).toBe(true);
+      expect(await value(git.holdsNothing(repo, theirs))).toBe(false);
+      const before = events.length;
+      expect(await value(git.fastForwardMain(repo, theirs, main))).toEqual({ kind: "moved" });
+      expect(await native(dir, ["rev-parse", "main"])).toBe(theirs);
+      expect(events.slice(before)).toEqual([
+        { kind: "main_moved", repo, old: main, new: theirs, by: "import" },
+      ]);
+    }),
+  );
+
+  it.live("a main that once held a file is never replaced by a mirror's history", () =>
+    fixture(async (git, dir) => {
+      const first = await write(git, { app: "1" }, null);
+      const emptied = await write(git, { app: null }, first);
+      const { path, remote } = await mirrorOf(dir);
+      const theirs = await commitThere(path, null, "readme");
+      await native(path, ["update-ref", "refs/heads/main", theirs]);
+      await value(git.fetchTip(repo, remote, "main"));
+      expect(await value(git.holdsNothing(repo, emptied))).toBe(false);
+      expect(await value(git.fastForwardMain(repo, theirs, emptied))).toEqual({
+        kind: "not_fast_forward",
+      });
+      expect(await native(dir, ["rev-parse", "main"])).toBe(emptied);
+    }),
+  );
+
   it.live("main never moves backwards or sideways to a mirror's tip", () =>
     fixture(async (git, dir, events) => {
       const first = await write(git, { app: "1" }, null);

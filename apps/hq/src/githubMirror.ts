@@ -201,13 +201,22 @@ export const githubMirrorLayer = (
               : yield* git.fetchTip(at, remote, branch);
           const outcome: MirrorSync = yield* Effect.gen(function* () {
             if (tip === main) return { kind: "same", sha: main ?? "" } as const;
-            if (main !== null && (tip === null || (yield* git.isAncestor(at, tip, main)))) {
+            const behind =
+              tip === null || (main !== null && (yield* git.isAncestor(at, tip, main)));
+            // A repository HQ made and nobody wrote to (its empty root commit) takes GitHub's
+            // history in its place: connecting it to a repository with code loses nothing.
+            const unwritten =
+              !behind && main !== null && tip !== null && (yield* git.holdsNothing(at, main));
+            if (main !== null && behind) {
               const pushed = yield* git.pushRef(at, remote, branch, main, tip);
               if (pushed.kind === "rejected")
                 return yield* unavailable("busy", `GitHub's ${branch} moved meanwhile`);
               return { kind: "pushed", sha: main } as const;
             }
-            if (tip !== null && (main === null || (yield* git.isAncestor(at, main, tip)))) {
+            if (
+              tip !== null &&
+              (main === null || unwritten || (yield* git.isAncestor(at, main, tip)))
+            ) {
               const moved = yield* git.fastForwardMain(at, tip, main);
               if (moved.kind !== "moved") return yield* unavailable("busy", "main moved meanwhile");
               return { kind: "imported", from: main ?? "", to: tip } as const;
