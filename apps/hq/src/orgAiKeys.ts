@@ -28,6 +28,7 @@ import { DeployKeys } from "./deployKeys.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
+import { Structure } from "./structure.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 /** A key as a provider's API takes it: printable, no spaces, at most 1 KiB. */
@@ -52,7 +53,8 @@ export class OrgAiKeys extends Context.Service<
     ) => Effect.Effect<HqMateAiKey, AutomationRefused | SqlError>;
     /**
      * The `provider-keys` frames of an automated Mate's link: the keys now, then again each time
-     * one changes. None for an ordinary Mate.
+     * one changes — and once its record says automated, where it did not as the link opened. None
+     * for an ordinary Mate.
      */
     readonly framesFor: (projectId: string) => Stream.Stream<string, SqlError>;
   }
@@ -69,6 +71,7 @@ export const orgAiKeysLayer = Layer.effect(
     const leader = yield* Leader;
     const roles = yield* Roles;
     const keys = yield* DeployKeys;
+    const structure = yield* Structure;
     const ticks = yield* SubscriptionRef.make(0);
     const changed = SubscriptionRef.update(ticks, (tick) => tick + 1);
 
@@ -155,8 +158,13 @@ export const orgAiKeysLayer = Layer.effect(
             baseUrl: provider.baseUrl,
           };
         }),
+      // Read again on each key change and each move of the Mate's record: one HQ names automated
+      // after its link opened gets them there too, once.
       framesFor: (projectId) =>
-        SubscriptionRef.changes(ticks).pipe(
+        Stream.merge(
+          SubscriptionRef.changes(ticks),
+          Stream.filter(structure.mateChanges, (changed) => changed === projectId),
+        ).pipe(
           Stream.mapEffect(() =>
             Effect.gen(function* () {
               const [mate] = yield* sql<{ readonly automated: boolean }>`

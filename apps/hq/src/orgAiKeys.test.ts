@@ -180,5 +180,37 @@ describe("the organization's API keys", () => {
           );
         }),
     );
+
+    it.effect(
+      "a Mate HQ names automated only after its link opened gets the organization's keys on that link",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true);
+          yield* untilHealth(core.call, "active");
+          const owner = yield* sessionFor(core.call, "door-owner");
+          yield* core.call("PUT", "/api/org/ai-keys/nebius", {
+            session: owner,
+            body: { value: KEY },
+          });
+          addProject(core.fake, "P_ROBOT");
+          const robot = yield* mateLinked(core, owner, "P_ROBOT", { automated: false });
+          // Its record says automated once its state moves, as a birth's attach lands it.
+          yield* core.sql`UPDATE hq_mate SET automated = true WHERE project_id = 'P_ROBOT'`;
+          yield* core.call("POST", "/api/mates/P_ROBOT/closed-off", { session: owner });
+          yield* robot.link.takeWhere(
+            "its automated state",
+            (frame) =>
+              frame.type === "state" &&
+              (frame["mate"] as { readonly automated?: boolean }).automated === true,
+          );
+          yield* robot.link.takeWhere(
+            "the key on the same link",
+            (frame) =>
+              frame.type === "provider-keys" &&
+              JSON.stringify((frame as unknown as { keys: unknown }).keys) ===
+                JSON.stringify([{ env: "NEBIUS_API_KEY", value: KEY }]),
+          );
+        }),
+    );
   });
 });
