@@ -33,7 +33,8 @@ const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
   showInteractionModeToggle: false,
 } as const;
-const OPENCODE_VERSION_PROBE_TIMEOUT = "4 seconds";
+/** A Mate's first OpenCode launch sets itself up before it answers its version (over 4 s, seen live). */
+const OPENCODE_VERSION_PROBE_TIMEOUT = "20 seconds";
 
 class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{
   readonly cause?: unknown;
