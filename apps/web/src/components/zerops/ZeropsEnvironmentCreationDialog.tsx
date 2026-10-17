@@ -62,6 +62,8 @@ export interface EnvironmentCreationChoice {
   readonly face?: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /** A Mate made automated: it takes tasks from GitHub issues, on the organization's API key. */
+  readonly automated?: true;
 }
 
 export interface ZeropsEnvironmentCreationFormProps {
@@ -111,6 +113,10 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onSetupChange?: (() => void) | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
+  /** A Mate's Automated choice, and whether its organization holds the key (`ZeropsNewMateForm`). */
+  readonly automation?: { readonly key: "set" | "missing" | "unknown" } | undefined;
+  /** Leaves the dialog for where the organization's API key is set. */
+  readonly onOpenKeySettings?: (() => void) | undefined;
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
@@ -164,16 +170,19 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, recipe, face, userRoles }) => {
+      onCreate={({ name, recipe, face, userRoles, automated }) => {
         onCreate({
           name,
           withAgent: true,
           recipe,
           face,
           ...(userRoles === undefined ? {} : { userRoles }),
+          ...(automated === true ? { automated } : {}),
         });
       }}
       access={props.access}
+      automation={props.automation}
+      onOpenKeySettings={props.onOpenKeySettings}
       forecast={props.forecast}
       proposeAnotherName={props.proposeAnotherName}
       takenBotNames={takenBotNames}

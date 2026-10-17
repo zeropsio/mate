@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
 import { cn } from "~/lib/utils";
 import {
   faceName,
@@ -60,7 +61,15 @@ export interface NewMateChoice {
   readonly face: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /** Made automated: it takes tasks from GitHub issues, on the organization's API key. */
+  readonly automated?: true;
 }
+
+/** The Automated choice's one line. */
+export const NEW_MATE_AUTOMATED_LINE =
+  "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.";
+/** Beside the choice, where the organization holds no API key for automated Mates yet. */
+export const NEW_MATE_NO_KEY_LINE = "Your organization has no API key for it yet.";
 
 export interface ZeropsNewMateFormProps {
   readonly groupName: string;
@@ -88,6 +97,13 @@ export interface ZeropsNewMateFormProps {
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
+  /**
+   * The Automated choice, and whether the organization holds the API key it runs on: `missing`
+   * says so beside the choice, with the way to where it is set. Absent: no choice offered.
+   */
+  readonly automation?: { readonly key: "set" | "missing" | "unknown" } | undefined;
+  /** Leaves the dialog for where the organization's API key is set (Settings › Zerops). */
+  readonly onOpenKeySettings?: (() => void) | undefined;
 }
 
 /** A room that opens and gives itself back in one move: a grid row from 0fr to 1fr. */
@@ -109,8 +125,11 @@ export function ZeropsNewMateForm({
   onCreate,
   access,
   forecast,
+  automation,
+  onOpenKeySettings,
 }: ZeropsNewMateFormProps) {
   const id = useId();
+  const [automated, setAutomated] = useState(false);
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
@@ -164,7 +183,13 @@ export function ZeropsNewMateForm({
     if (named.length > 0) setHeldName(named);
   };
   const create = (choice: EnvironmentRecipeChoice) => {
-    onCreate({ name: bot, recipe: choice, face, ...(userRoles.length === 0 ? {} : { userRoles }) });
+    onCreate({
+      name: bot,
+      recipe: choice,
+      face,
+      ...(userRoles.length === 0 ? {} : { userRoles }),
+      ...(automated ? { automated: true as const } : {}),
+    });
   };
   const press = () => {
     if (closed !== undefined) return;
@@ -269,18 +294,49 @@ export function ZeropsNewMateForm({
                   />
                 </div>
               </MateFacePicker>
+              {automation === undefined ? null : (
+                <div
+                  className="flex items-start justify-between gap-4"
+                  data-zerops-surface="new-mate-automated"
+                >
+                  <div className="grid min-w-0 gap-1">
+                    <Label htmlFor={`${id}-automated`}>Automated</Label>
+                    <p className="text-sm text-muted-foreground" id={`${id}-automated-line`}>
+                      {NEW_MATE_AUTOMATED_LINE}
+                    </p>
+                    {automation.key === "missing" ? (
+                      <p className="text-sm text-muted-foreground" data-zerops-new-mate-no-key="">
+                        {NEW_MATE_NO_KEY_LINE}{" "}
+                        {onOpenKeySettings === undefined ? (
+                          "Set it in Settings › Zerops."
+                        ) : (
+                          <InlineButton onClick={onOpenKeySettings} type="button">
+                            Set it in Settings › Zerops
+                          </InlineButton>
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Switch
+                    aria-describedby={`${id}-automated-line`}
+                    checked={automated}
+                    id={`${id}-automated`}
+                    onCheckedChange={setAutomated}
+                  />
+                </div>
+              )}
               {/* What happens once it is added, both ways the project may read: learning it has
                   nothing to deploy changes the words and moves nothing. */}
               <WhatHappensNext
                 versions={[
                   {
                     key: "recipe",
-                    next: newMateNext({ groupName, botName, recipe: "recipe" }),
+                    next: newMateNext({ groupName, botName, recipe: "recipe", automated }),
                     shown: recipe !== "none",
                   },
                   {
                     key: "none",
-                    next: newMateNext({ groupName, botName, recipe: "none" }),
+                    next: newMateNext({ groupName, botName, recipe: "none", automated }),
                     shown: recipe === "none",
                   },
                 ]}

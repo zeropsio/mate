@@ -48,6 +48,10 @@ import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
+
+/** The provider whose organization key automated Mates run on (decision 1: Nebius by default). */
+const AUTOMATED_KEY_PROVIDER = "nebius";
 
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
@@ -163,6 +167,16 @@ function NewMateDialog({
 
   const addOffer = useAddMateOffer()(groupId);
   const { words } = useHqOffers();
+  // Whether the organization holds the API key an automated Mate runs on: said beside the choice.
+  const aiKeys = useOrgAiKeys(true).read.keys;
+  const automation = {
+    key:
+      aiKeys.state !== "known"
+        ? ("unknown" as const)
+        : aiKeys.keys.some((key) => key.provider === AUTOMATED_KEY_PROVIDER && key.set)
+          ? ("set" as const)
+          : ("missing" as const),
+  };
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({
@@ -207,6 +221,12 @@ function NewMateDialog({
       }
       defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
+      automation={automation}
+      onOpenKeySettings={() => {
+        // The dialog gives way to where the key is set.
+        dismiss();
+        void navigate({ to: "/settings/zerops" });
+      }}
       groupName={group.name}
       // Add lands on the new Mate's page, which takes the focus.
       landsElsewhere

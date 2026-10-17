@@ -28,6 +28,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   beginPress,
+  pressRegistration,
   finishSetupView,
   FINISHED_SETUP_LINE,
   forgetPress,
@@ -2218,5 +2219,34 @@ describe("birthPresses — the presses that make a Mate, whose conversation the 
     expect(birthPresses([press("p-added", false), press("p-finishing", true)])).toEqual([
       "p-added",
     ]);
+  });
+});
+
+describe("pressRegistration — an automated Mate's attach", () => {
+  it.each([
+    ["an automated Mate is attached automated", { automated: true as const }, true],
+    ["an ordinary Mate is attached as it always was", {}, false],
+  ])("%s", async (_case, automation, automated) => {
+    const run = vi.fn(async () => ({}) as never);
+    const register = pressRegistration(
+      {
+        client: {} as never,
+        operations: { run, untilEnvironment: vi.fn() as never },
+        organizationId: "org",
+      },
+      {
+        hq: { projectId: "hq", address: "https://hq.example" },
+        kind: "mate",
+        groupId: "shop",
+        mate: { face: { tint: "rose", shape: "seal" }, ...automation },
+        standUp: true,
+      },
+    );
+    await register("nova");
+    const attach = run.mock.calls
+      .map((call) => (call as unknown as [{ kind: string; attach?: { mate?: object } }])[0])
+      .find((intent) => intent.kind === "attach-project");
+    expect(attach?.attach?.mate).toMatchObject({ face: "rose:seal", standUp: true });
+    expect("automated" in (attach?.attach?.mate ?? {})).toBe(automated);
   });
 });

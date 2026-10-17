@@ -50,6 +50,26 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
     expect(recorded).toHaveBeenCalledWith({ appId: "app-g", face: "rose:seal", standUp });
   });
 
+  it("records an automated Mate's birth as automated, so whichever browser finishes it makes it so", async () => {
+    const recorded = record();
+    await addedMateBirth(recorded, {
+      groupId: "app-g",
+      role: "dev",
+      choice: {
+        withAgent: true,
+        recipe: { kind: "tier", tier: "mate", yaml: "services: []" },
+        face: { tint: "rose", shape: "seal" },
+        automated: true,
+      },
+    });
+    expect(recorded).toHaveBeenCalledWith({
+      appId: "app-g",
+      face: "rose:seal",
+      standUp: true,
+      automated: true,
+    });
+  });
+
   it.each([
     { case: "a stage, its agent and all", role: "stage" as const, withAgent: true },
     { case: "a production", role: "prod" as const, withAgent: false },

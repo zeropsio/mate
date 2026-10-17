@@ -496,6 +496,7 @@ export function makeHqExecutor(ports: {
               appId: intent.appId,
               face: intent.face,
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
+              ...(intent.automated === true ? { automated: true as const } : {}),
             }),
           ),
           ({ id }) => answered(requestId, id, { birthId: id }),

@@ -66,6 +66,25 @@ describe("newMateNext — what happens once a Mate is added", () => {
       note: KEEP_TAB_OPEN_LINE,
     },
     {
+      case: "an automated Mate: nobody signs it in, and it takes tasks from GitHub",
+      input: { groupName: "Beviro", botName: "Wren", recipe: "recipe", automated: true },
+      steps: [
+        ["Wren comes up", "about 2–4 min"],
+        ["Wren sets up development, deploying Beviro's code", "up to 15 min"],
+        ["Wren takes tasks from your GitHub issues", undefined],
+      ],
+      note: KEEP_TAB_OPEN_LINE,
+    },
+    {
+      case: "an automated first Mate, nothing to deploy: it waits for a task",
+      input: { groupName: "Beviro", botName: "Wren", recipe: "none", automated: true },
+      steps: [
+        ["Wren comes up", "about 2–4 min"],
+        ["Wren takes tasks from your GitHub issues", undefined],
+      ],
+      note: KEEP_TAB_OPEN_LINE,
+    },
+    {
       case: "a name typed with stray spaces reads as the Mate will be called",
       input: { groupName: "Beviro", botName: "  Mira   Lin ", recipe: "none" },
       steps: [

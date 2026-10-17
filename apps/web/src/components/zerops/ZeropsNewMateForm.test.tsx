@@ -562,3 +562,59 @@ it.each(["Mastermate", "Chief"])(
     expect(html).toContain("Works on this project only.");
   },
 );
+
+describe("the New Mate dialog's Automated choice", () => {
+  const automatedSwitch = (tree: ReactTestRenderer) =>
+    tree.root.find(
+      (node) =>
+        node.props.id !== undefined &&
+        String(node.props.id).endsWith("-automated") &&
+        node.props.onCheckedChange !== undefined,
+    );
+
+  it("makes an automated Mate once chosen: nobody signs it in, its tasks come from GitHub", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "set" }, onCreate }));
+    expect(spoken(tree.root)).toContain(
+      "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.",
+    );
+    act(() => {
+      automatedSwitch(tree).props.onCheckedChange(true);
+    });
+    expect(next(tree).steps).toEqual([
+      ["Otto comes up", "about 2–4 min"],
+      ["Otto sets up development, deploying Acme Docs' code", "up to 15 min"],
+      ["Otto takes tasks from your GitHub issues", ""],
+    ]);
+    press(tree);
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Otto", automated: true }),
+    );
+  });
+
+  it("makes an ordinary Mate unless chosen", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "set" }, onCreate }));
+    press(tree);
+    expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
+  });
+
+  it.each([
+    ["the organization has no key: it says so, and where it is set", "missing", true],
+    ["the organization has its key: nothing more", "set", false],
+    ["not known yet: nothing more", "unknown", false],
+  ] as const)("%s", (_case, key, says) => {
+    const onOpenKeySettings = vi.fn();
+    const tree = mount(form({ automation: { key }, onOpenKeySettings }));
+    expect(spoken(tree.root).includes("Your organization has no API key for it yet.")).toBe(says);
+    if (!says) return;
+    act(() => {
+      button(tree, "Set it in Settings › Zerops").props.onClick();
+    });
+    expect(onOpenKeySettings).toHaveBeenCalledOnce();
+  });
+
+  it("offers no Automated choice where the dialog was given none", () => {
+    expect(spoken(mount(form()).root)).not.toContain("Automated");
+  });
+});
