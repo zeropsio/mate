@@ -61,6 +61,7 @@ import {
   type TaskOnSource,
   TaskSourceChannels,
   type TaskStatus,
+  cleanTaskText,
   sourceOfRow,
 } from "./taskSources.ts";
 
@@ -575,6 +576,68 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
+      /** Something said about the task, kept and told to its Mate where it hears it now. */
+      const messageTask = (taskId: string, message: MateTaskMessage) =>
+        Effect.gen(function* () {
+          const [kept] = yield* leader.write(sql<{
+            readonly heard: boolean;
+            readonly mate_project_id: string | null;
+          }>`
+            WITH task AS (
+              SELECT t.id, t.mate_project_id, ${hears(sql`t`)} AS heard FROM hq_task t
+              WHERE t.id::text = ${taskId}
+                AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
+                  < ${TASK_MESSAGES_MAX}),
+            kept AS (
+              INSERT INTO hq_task_message (task_id, id, source, author, text)
+              SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
+              FROM task ON CONFLICT DO NOTHING RETURNING task_id)
+            SELECT task.heard, task.mate_project_id FROM task JOIN kept ON kept.task_id = task.id`);
+          if (kept === undefined) return;
+          // Told now to a Mate on it — or done with it, its change still waiting for review —
+          // and kept for one that has not taken it yet.
+          if (kept.mate_project_id !== null && kept.heard)
+            yield* tellMate(
+              kept.mate_project_id,
+              messageFrame({
+                task_id: taskId,
+                id: message.id,
+                source: message.from,
+                author: message.author,
+                text: message.text,
+              }),
+            );
+        });
+
+      // A person's comment on a task's change: said to the task, for its Mate to hear.
+      yield* Effect.forkScoped(
+        Stream.runForEach(changes.comments, (comment) =>
+          logged("a review comment not told")(
+            Effect.gen(function* () {
+              const [task] = yield* sql<{ readonly id: string }>`
+                SELECT id::text AS id FROM hq_task
+                WHERE app_id::text = ${comment.appId} AND change_repo = ${comment.repo}
+                  AND change_number = ${comment.number} AND mate_project_id IS NOT NULL
+                ORDER BY seq DESC LIMIT 1`;
+              if (task === undefined) return;
+              const author = yield* Effect.orElseSucceed(
+                Effect.map(
+                  roles.view,
+                  (view) =>
+                    view.members.find((member) => member.userId === comment.userId)?.name ?? null,
+                ),
+                () => null,
+              );
+              yield* messageTask(task.id, {
+                id: `review:${comment.commentId}`,
+                from: "review",
+                author,
+                text: cleanTaskText(comment.body),
+              });
+            }),
+          ),
+        ),
+      );
       yield* Effect.forkScoped(
         Stream.runForEach(changes.taskChanges, (taskId) =>
           say(taskId, ({ mate, change }) =>
@@ -582,6 +645,16 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           ),
         ),
       );
+
+      /**
+       * Whether the task's Mate hears what is said of it now: on it, or done with it while its
+       * change waits for review (a review comment is for the Mate that made the change).
+       */
+      const hears = (task: Statement.Fragment) => sql`(
+        ${task}.state IN ('working', 'waiting')
+        OR (${task}.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
+          WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
+            AND c.number = ${task}.change_number AND c.state = 'open')))`;
 
       /** The messages kept of `taskIds`, in the order they came, as frames. */
       const messagesOf = (taskIds: ReadonlyArray<string>) =>
@@ -743,38 +816,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             yield* structure.touched;
             yield* wake;
           }).pipe(logged("a task's arrival not told")),
-        message: (taskId, message) =>
-          Effect.gen(function* () {
-            const [kept] = yield* leader.write(sql<{
-              readonly state: string;
-              readonly mate_project_id: string | null;
-            }>`
-              WITH task AS (
-                SELECT id, state, mate_project_id FROM hq_task WHERE id::text = ${taskId}
-                  AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
-                    < ${TASK_MESSAGES_MAX}),
-              kept AS (
-                INSERT INTO hq_task_message (task_id, id, source, author, text)
-                SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
-                FROM task ON CONFLICT DO NOTHING RETURNING task_id)
-              SELECT task.state, task.mate_project_id FROM task JOIN kept ON kept.task_id = task.id`);
-            if (kept === undefined) return;
-            // Told now to a Mate on it; kept for one that has not taken it yet.
-            if (
-              kept.mate_project_id !== null &&
-              (kept.state === "working" || kept.state === "waiting")
-            )
-              yield* tellMate(
-                kept.mate_project_id,
-                messageFrame({
-                  task_id: taskId,
-                  id: message.id,
-                  source: message.from,
-                  author: message.author,
-                  text: message.text,
-                }),
-              );
-          }),
+        message: (taskId, message) => messageTask(taskId, message),
         stop: (taskId, reason) =>
           Effect.gen(function* () {
             const gone = yield* leader.write(sql<{
@@ -817,10 +859,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               const handed = yield* sql<TaskRow>`
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
-              // On it: what was said of it, and whether people stopped it.
+              // On it, or its change waiting for review: what was said of it, and whether people
+              // stopped it.
               const on = yield* sql<{ readonly id: string; readonly stop_reason: string | null }>`
-                SELECT id::text AS id, stop_reason FROM hq_task
-                WHERE mate_project_id = ${projectId} AND state IN ('working', 'waiting')`;
+                SELECT t.id::text AS id, t.stop_reason FROM hq_task t
+                WHERE t.mate_project_id = ${projectId} AND ${hears(sql`t`)}`;
               const said = yield* messagesOf(on.map((task) => task.id));
               const stops = on.flatMap((task) =>
                 task.stop_reason === null

@@ -458,6 +458,48 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "a member's review comment on a task's change reaches the Mate that made it in the task's conversation, also once it said it was done",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (change.body as { change: { number: number } }).change.number;
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          const posted = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/comments`,
+            { session: core.owner, body: { body: "Rename the kettle\u200B first." } },
+          );
+          assert.strictEqual(posted.status, 200);
+          const message = yield* core.robot.link.take("task-message");
+          assert.strictEqual(message["taskId"], task.id);
+          assert.deepInclude(message["message"] as object, {
+            from: "review",
+            author: "owner",
+            text: "Rename the kettle first.",
+          });
+        }),
+    );
+
     it.effect("a comment GitHub refuses is tried once more, and never fails the task", () =>
       Effect.gen(function* () {
         const core = yield* withPool();

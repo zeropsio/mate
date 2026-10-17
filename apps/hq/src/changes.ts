@@ -116,6 +116,16 @@ type MateError = ChangeRefused | NotLeader | SqlError | ZeropsError;
 
 type ReadError = ChangeRefused | SqlError | ZeropsError;
 
+/** A person's comment on a change, as it was kept. */
+export interface ChangeCommented {
+  readonly appId: string;
+  readonly repo: string;
+  readonly number: number;
+  readonly commentId: string;
+  readonly userId: string;
+  readonly body: string;
+}
+
 export class Changes extends Context.Service<
   Changes,
   {
@@ -307,6 +317,8 @@ export class Changes extends Context.Service<
      * by id, as they are.
      */
     readonly taskChanges: Stream.Stream<string>;
+    /** Each comment a person posted on a change (`postComment`), once it is kept (`mateTasks.ts`). */
+    readonly comments: Stream.Stream<ChangeCommented>;
     /**
      * Where each application's releases and its repositories' `main` last moved, by id
      * (`releaseRevisions`): what the structure socket carries, beside each application's changes.
@@ -474,6 +486,7 @@ export const changesLayer: Layer.Layer<
     const making = yield* Semaphore.make(1);
     const ticks = yield* SubscriptionRef.make(0);
     const taskChanged = yield* PubSub.unbounded<string>();
+    const commented = yield* PubSub.unbounded<ChangeCommented>();
     /** After a write that changed a change's record has committed. */
     const touched = <A, E, R>(write: Effect.Effect<A, E, R>) =>
       Effect.tap(write, () => SubscriptionRef.update(ticks, (n) => n + 1));
@@ -1174,6 +1187,7 @@ export const changesLayer: Layer.Layer<
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
       taskChanges: Stream.fromPubSub(taskChanged),
+      comments: Stream.fromPubSub(commented),
       navigation: readChangeNavigationSource(sql),
       releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),
       readable: (userId) =>
@@ -1444,9 +1458,21 @@ export const changesLayer: Layer.Layer<
                   number,
                   data: { commentId: comment.id, userId },
                 });
-                return comment;
+                return { comment, appId: change.appId, repo: change.repo };
               }),
             ),
+          ).pipe(
+            Effect.tap(({ comment, appId: app, repo: at }) =>
+              PubSub.publish(commented, {
+                appId: app,
+                repo: at,
+                number,
+                commentId: comment.id,
+                userId,
+                body,
+              }),
+            ),
+            Effect.map(({ comment }) => comment),
           );
         }),
       mergeChange: (userId, appId, repo, number, expectedHead) =>
