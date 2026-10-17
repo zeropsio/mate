@@ -73,11 +73,11 @@ export function worktreeLayout(cwd: string) {
     git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
   );
   const main = NodePath.dirname(common);
-  return {
-    common,
-    main,
-    roots: [NodePath.resolve(main, "../z3-wt"), NodePath.join(main, ".claude/worktrees")],
-  };
+  const roots = [NodePath.resolve(main, "../z3-wt"), NodePath.join(main, ".claude/worktrees")];
+  // roots[0] is where new lanes are created; WT_ROOT moves it, the older roots stay managed.
+  const wtRoot = process.env.WT_ROOT;
+  if (wtRoot) roots.unshift(NodePath.resolve(wtRoot, NodePath.basename(main)));
+  return { common, main, roots };
 }
 
 export function inspectWorktree(cwd: string, worktree: Worktree) {
