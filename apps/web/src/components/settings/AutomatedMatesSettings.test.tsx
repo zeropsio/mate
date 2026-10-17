@@ -3,8 +3,10 @@
  * every state it can be in, painted in its final shape from the first frame.
  */
 import type { AppIntakeRead } from "@t3tools/client-runtime/data";
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { create } from "react-test-renderer";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { AppIntakeView } from "./AutomatedMatesSettings";
 
@@ -62,5 +64,39 @@ describe("an application's intake row in Settings", () => {
 
   it("holds no extra room where it shows the form", () => {
     expect(row({})).not.toContain("data-zerops-intake-room");
+  });
+});
+
+describe("an application whose repositories could not be read", () => {
+  it("says why, and reads them again when asked", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const onReadAgain = vi.fn();
+    const props = {
+      appId: "tea-shop",
+      choices: [],
+      name: "Tea Shop",
+      onSet: nothing,
+      onStop: nothing,
+      read: NONE,
+      reposRead: false,
+      reposFailure: "HQ is not answering right now.",
+      onReadAgain,
+    };
+    expect(shown(row(props))).toContain("HQ is not answering right now.");
+    expect(shown(row(props))).not.toContain("Reading its repositories…");
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(<AppIntakeView {...props} />);
+    });
+    const again = tree!.root.find(
+      (node) => node.type === "button" && JSON.stringify(node.props.children) === '"Read again"',
+    );
+    act(() => {
+      again.props.onClick();
+    });
+    expect(onReadAgain).toHaveBeenCalledOnce();
+    act(() => {
+      tree!.unmount();
+    });
   });
 });

@@ -14,7 +14,8 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqNavigationAtom } from "~/state/zerops";
-import { useHqAppReleases } from "~/zerops/useHqAppDetail";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
+import { useHqAppDetailHold, useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 
@@ -243,7 +244,10 @@ function AppIntakes({
   readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
 }) {
   const appIds = useMemo(() => apps.map((app) => app.id), [apps]);
-  const { repos } = useHqAppReleases(appIds);
+  // Each application's repositories, held while the rows are drawn: nothing else may hold them.
+  useHqAppDetailHold(appIds);
+  const { repos, failures } = useHqAppReleases(appIds);
+  const retryDetail = useAccountDataOptional()?.retryDetail;
   return (
     <ul className="grid gap-3 px-3 pb-3 sm:px-4">
       {apps.map((app) => (
@@ -252,6 +256,8 @@ function AppIntakes({
           choices={intakeRepoChoices(repos.get(app.id))}
           key={app.id}
           name={app.name}
+          onReadAgain={() => retryDetail?.({ family: "hqAppDetail", ownerId: app.id })}
+          reposFailure={failures.get(app.id)}
           reposRead={repos.has(app.id)}
         />
       ))}
@@ -264,6 +270,8 @@ function AppIntakeRow(props: {
   readonly name: string;
   readonly choices: ReadonlyArray<string>;
   readonly reposRead: boolean;
+  readonly reposFailure: string | undefined;
+  readonly onReadAgain: () => void;
 }) {
   const { read, set, stop } = useAppIntake(props.appId);
   return <AppIntakeView {...props} onSet={set} onStop={stop} read={read} />;
@@ -275,14 +283,19 @@ export function AppIntakeView({
   name,
   choices,
   reposRead,
+  reposFailure,
   read,
   onSet,
   onStop,
+  onReadAgain,
 }: {
   readonly appId: string;
   readonly name: string;
   readonly choices: ReadonlyArray<string>;
   readonly reposRead: boolean;
+  /** HQ's reason its repositories could not be read: said, with *Read again*. */
+  readonly reposFailure?: string | undefined;
+  readonly onReadAgain?: (() => void) | undefined;
   readonly read: AppIntakeRead;
   readonly onSet: (repo: string, label: string) => void;
   readonly onStop: () => void;
@@ -312,6 +325,19 @@ export function AppIntakeView({
             <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
               Stop taking tasks
             </Button>
+          </div>
+        </IntakeRoom>
+      ) : !reposRead && reposFailure !== undefined ? (
+        <IntakeRoom>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground" role="alert">
+              {reposFailure}
+            </p>
+            {onReadAgain === undefined ? null : (
+              <Button onClick={onReadAgain} size="sm" variant="secondary">
+                Read again
+              </Button>
+            )}
           </div>
         </IntakeRoom>
       ) : !reposRead ? (

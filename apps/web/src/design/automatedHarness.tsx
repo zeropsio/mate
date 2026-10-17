@@ -128,6 +128,17 @@ function Harness() {
                 reposRead
               />
               <AppIntakeView
+                appId="shop-front"
+                choices={[]}
+                name="Shop Front — its repositories not read"
+                onReadAgain={nothing}
+                onSet={nothing}
+                onStop={nothing}
+                read={NONE}
+                reposFailure="HQ is not answering right now."
+                reposRead={false}
+              />
+              <AppIntakeView
                 appId="notes"
                 choices={[]}
                 name="Notes — no GitHub mirror"
