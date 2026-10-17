@@ -124,6 +124,7 @@ const withSlack = Effect.gen(function* () {
   const slack = yield* slackFake;
   const url = yield* (yield* TempPostgres).createMigratedDatabase;
   const intake = yield* fakeIntake;
+  const world = acme();
   const registered: Array<TaskSourceChannel> = [];
   const logged: Array<string> = [];
   const services = slackLayer({ hqProjectId: "HQ" }).pipe(
@@ -137,7 +138,7 @@ const withSlack = Effect.gen(function* () {
         }),
         deployKeysLayer(keySecretOf(Option.some(Redacted.make(TEST_KEY_SECRET)))),
         rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
-          Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(acme()))),
+          Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
         ),
         doorRateLimitLayer,
       ),
@@ -233,6 +234,7 @@ const withSlack = Effect.gen(function* () {
 
   return {
     slack,
+    world,
     url,
     intake,
     registered,
@@ -570,6 +572,32 @@ describe("Slack", () => {
             (yield* hq.slack.callsOf("chat.postMessage")).map((call) => call.params["text"]),
             Array.from({ length: 4 }, () => REPLIES.notMember),
           );
+        }),
+    );
+
+    it.effect(
+      "a Slack user no member's email names makes HQ read the organization afresh at most once in ten minutes",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const reads = () => hq.world.calls.filter((call) => call.startsWith("members:")).length;
+          hq.slack.state.users.set("U0PAT", { email: "pat@acme.test", name: "Pat" });
+          hq.slack.state.users.set("U0KIM", { email: "kim@acme.test", name: "Kim" });
+          const ask = (user: string) =>
+            Effect.andThen(
+              hq.post(hq.event(mention("<@U0MATE> deploy everything", { user }))),
+              hq.service.drained,
+            );
+          const before = reads();
+          yield* ask("U0PAT");
+          assert.strictEqual(reads(), before + 1);
+          yield* ask("U0PAT");
+          yield* ask("U0PAT");
+          assert.strictEqual(reads(), before + 1);
+          yield* ask("U0KIM");
+          assert.strictEqual(reads(), before + 2);
+          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
         }),
     );
 

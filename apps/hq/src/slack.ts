@@ -84,6 +84,11 @@ const SIGNING_SECRET = /^[\x21-\x7e]{1,256}$/u;
 /** A channel's id: public `C…`, private `G…` (older) or `C…`. */
 const CHANNEL_ID = /^[CG][A-Z0-9]{2,40}$/u;
 
+/** How often a Slack user no member's email names may make HQ read the organization afresh. */
+const FRESH_READ_EVERY_MS = 10 * 60 * 1000;
+/** More Slack users than this remembered at once is a flood: the memory starts over. */
+const FRESH_READ_USERS = 10_000;
+
 /** The reaction that says HQ heard an ask or a reply. */
 const HEARD = "eyes";
 
@@ -265,6 +270,8 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
       const intake = yield* TaskIntake;
       const channels = yield* TaskSourceChannels;
       const work = yield* FiberSet.make();
+      /** When HQ last read the organization afresh for a Slack user its view did not name. */
+      const freshReads = new Map<string, number>();
       // One status message per task: two moves of it never both post one.
       const statusLock = yield* Semaphore.make(1);
 
@@ -420,10 +427,17 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
                 member.status === ZEROPS_ACTIVE_MEMBER_STATUS &&
                 member.email?.trim().toLowerCase() === email,
             );
-          // One the view kept does not list may have joined since: read now before saying no.
+          // One the view kept does not list may have joined since: read now before saying no —
+          // once per Slack user in ten minutes, so nobody's mentions make HQ read Zerops at will.
+          const now = yield* Clock.currentTimeMillis;
+          const readFresh = (freshReads.get(user) ?? -Infinity) <= now - FRESH_READ_EVERY_MS;
+          if (readFresh) {
+            if (freshReads.size >= FRESH_READ_USERS) freshReads.clear();
+            freshReads.set(user, now);
+          }
           const member =
             named((yield* roles.view).members) ??
-            named((yield* roles.readSince(yield* Clock.currentTimeMillis)).members);
+            (readFresh ? named((yield* roles.readSince(now)).members) : undefined);
           return member === undefined
             ? ({ kind: "stranger" } as const)
             : ({ kind: "member", userId: member.userId, name: answer.value.name } as const);
