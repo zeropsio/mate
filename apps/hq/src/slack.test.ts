@@ -467,7 +467,7 @@ describe("Slack", () => {
     );
 
     it.effect(
-      "@Mate in a mapped channel, by a member of the organization, asks for a task keyed by its thread, in plain words, and the ask is marked as heard",
+      "@Mate in a mapped channel, by a member of the workspace, asks for a task keyed by its thread, in plain words, for the Zerops member of their email, and the ask is marked as heard",
       () =>
         Effect.gen(function* () {
           const hq = yield* withSlack;
@@ -513,24 +513,28 @@ describe("Slack", () => {
     );
 
     it.effect(
-      "someone who is no member of the organization is told only members can ask Mate, and nothing is asked",
+      "someone of another workspace, deactivated or a stranger to this one is told only the workspace's members can ask Mate, and nothing is asked, whatever their email",
       () =>
         Effect.gen(function* () {
           const hq = yield* withSlack;
           yield* hq.connected;
-          hq.slack.state.users.set("U0STRANGER", { email: "someone@elsewhere.test", name: "Pat" });
-          hq.slack.state.users.set("U0NOMAIL", { email: null, name: "Kim" });
-          for (const user of ["U0STRANGER", "U0NOMAIL"])
+          const outsiders = {
+            U0PARTNER: { teamId: "T0PARTNER" },
+            U0DELETED: { deleted: true },
+            U0STRANGER: { stranger: true },
+          };
+          for (const [user, odd] of Object.entries(outsiders)) {
+            hq.slack.state.users.set(user, { email: "nova@acme.test", name: "Nova?", ...odd });
             yield* hq.post(hq.event(mention("<@U0MATE> deploy everything", { user })));
+          }
           yield* hq.service.drained;
           assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
-          const replies = yield* hq.slack.callsOf("chat.postMessage");
           assert.deepStrictEqual(
-            replies.map((call) => [call.params["thread_ts"], call.params["text"]]),
-            [
-              ["1700000000.000100", REPLIES.notMember],
-              ["1700000000.000100", REPLIES.notMember],
-            ],
+            (yield* hq.slack.callsOf("chat.postMessage")).map((call) => [
+              call.params["thread_ts"],
+              call.params["text"],
+            ]),
+            Array.from({ length: 3 }, () => ["1700000000.000100", REPLIES.notMember]),
           );
         }),
     );
@@ -550,54 +554,79 @@ describe("Slack", () => {
       }),
     );
 
-    it.effect(
-      "a Slack user with a member's email is no member while Slack has not confirmed it, the user is deleted, a stranger or of another workspace",
-      () =>
-        Effect.gen(function* () {
-          const hq = yield* withSlack;
-          yield* hq.connected;
-          const lookalikes = {
-            U0UNCONFIRMED: { emailConfirmed: false },
-            U0DELETED: { deleted: true },
-            U0STRANGER: { stranger: true },
-            U0PARTNER: { teamId: "T0PARTNER" },
-          };
-          for (const [user, odd] of Object.entries(lookalikes)) {
-            hq.slack.state.users.set(user, { email: "nova@acme.test", name: "Nova?", ...odd });
-            yield* hq.post(hq.event(mention("<@U0MATE> deploy everything", { user })));
-          }
-          yield* hq.service.drained;
-          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
-          assert.deepStrictEqual(
-            (yield* hq.slack.callsOf("chat.postMessage")).map((call) => call.params["text"]),
-            Array.from({ length: 4 }, () => REPLIES.notMember),
-          );
-        }),
+    it.effect("a guest of the workspace may not ask, nor steer a task", () =>
+      Effect.gen(function* () {
+        const hq = yield* withSlack;
+        yield* hq.connected;
+        hq.slack.state.users.set("U0GUEST", { email: "nova@acme.test", name: "Gus", guest: true });
+        hq.slack.state.users.set("U0SINGLE", {
+          email: "nova@acme.test",
+          name: "Sid",
+          guest: "single-channel",
+        });
+        for (const user of ["U0GUEST", "U0SINGLE"])
+          yield* hq.post(hq.event(mention("<@U0MATE> deploy everything", { user })));
+        yield* hq.service.drained;
+        assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
+        assert.deepStrictEqual(
+          (yield* hq.slack.callsOf("chat.postMessage")).map((call) => call.params["text"]),
+          [REPLIES.notMember, REPLIES.notMember],
+        );
+        yield* hq.post(hq.event(mention("<@U0MATE> brew more tea", { ts: "1700000000.000300" })));
+        yield* Queue.take(hq.intake.enqueued);
+        yield* hq.post(
+          hq.event({
+            type: "message",
+            channel: "C0SUPPORT",
+            user: "U0GUEST",
+            text: "Make it coffee",
+            ts: "1700000000.000400",
+            thread_ts: "1700000000.000300",
+          }),
+        );
+        yield* hq.service.drained;
+        assert.strictEqual(yield* Queue.size(hq.intake.messages), 0);
+      }),
     );
 
     it.effect(
-      "a Slack user no member's email names makes HQ read the organization afresh at most once in ten minutes",
+      "a workspace member whose email no Zerops member has asks, and the task names no asker",
       () =>
         Effect.gen(function* () {
           const hq = yield* withSlack;
           yield* hq.connected;
-          const reads = () => hq.world.calls.filter((call) => call.startsWith("members:")).length;
-          hq.slack.state.users.set("U0PAT", { email: "pat@acme.test", name: "Pat" });
-          hq.slack.state.users.set("U0KIM", { email: "kim@acme.test", name: "Kim" });
-          const ask = (user: string) =>
-            Effect.andThen(
-              hq.post(hq.event(mention("<@U0MATE> deploy everything", { user }))),
-              hq.service.drained,
+          const unnamed = {
+            U0PAT: { email: "pat@elsewhere.test" },
+            U0KIM: { email: null },
+            // Nova's address, but Slack never confirmed it is this user's.
+            U0UNCONFIRMED: { email: "nova@acme.test", emailConfirmed: false },
+          };
+          let ts = 500;
+          for (const [user, odd] of Object.entries(unnamed)) {
+            ts += 1;
+            hq.slack.state.users.set(user, { name: user, ...odd });
+            yield* hq.post(
+              hq.event(
+                mention("<@U0MATE> brew more tea", { user, ts: `1700000000.000${String(ts)}` }),
+              ),
             );
-          const before = reads();
-          yield* ask("U0PAT");
-          assert.strictEqual(reads(), before + 1);
-          yield* ask("U0PAT");
-          yield* ask("U0PAT");
-          assert.strictEqual(reads(), before + 1);
-          yield* ask("U0KIM");
-          assert.strictEqual(reads(), before + 2);
-          assert.strictEqual(yield* Queue.size(hq.intake.enqueued), 0);
+          }
+          const asked = [
+            yield* Queue.take(hq.intake.enqueued),
+            yield* Queue.take(hq.intake.enqueued),
+            yield* Queue.take(hq.intake.enqueued),
+          ];
+          assert.deepStrictEqual(
+            asked.map((ask) => [
+              ask.source.kind === "slack-thread" ? ask.source.author : null,
+              ask.requestedBy,
+            ]),
+            [
+              ["U0PAT", null],
+              ["U0KIM", null],
+              ["U0UNCONFIRMED", null],
+            ],
+          );
         }),
     );
 

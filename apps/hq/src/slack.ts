@@ -17,9 +17,11 @@
  *   most five minutes off — before a byte of it is parsed; Slack's URL check is answered too,
  *   and before the app is connected only it, so an app made from the manifest checks its address
  *   at once. Every event is answered at once and worked after, as Slack waits three seconds.
- * - `@Mate <ask>` in a mapped channel, by a member of the organization (the Slack user's email,
- *   a member's verified one): a task for the channel's application (`TaskIntake.enqueue`) keyed by
- *   its thread (`slack:<team>/<channel>/<thread ts>`). Anyone else is told only members can ask.
+ * - `@Mate <ask>` in a mapped channel, by a member of the connected workspace (no guest, no
+ *   deactivated user, no Slack Connect partner's): a task for the channel's application
+ *   (`TaskIntake.enqueue`) keyed by its thread (`slack:<team>/<channel>/<thread ts>`), asked for
+ *   the Zerops member whose verified email is the one Slack confirmed for them, or for nobody
+ *   named. Anyone else is told only the workspace's members can ask.
  *   A reply or a mention in a thread whose task lives, by a member, is told to it
  *   (`TaskIntake.message`) and marked 👀; the bot's own words and other bots' never are. The
  *   ask deleted stops its task (`TaskIntake.stop`); anyone else's message deleted, nothing.
@@ -54,12 +56,16 @@ import { Roles, confirmingRefusal } from "./roles.ts";
 import { SlackApi, type SlackAnswer, type SlackUnreachable } from "./slackApi.ts";
 import { REPLIES, askOf, questionText, statusText, titleOf } from "./slackText.ts";
 import { TaskIntake, TaskSourceChannels, type TaskOnSource } from "./taskSources.ts";
-import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
+import type { ZeropsError } from "./zerops/api.ts";
 
 /** Where Slack sends the organization's events, below HQ's own address. */
 export const SLACK_EVENTS_PATH = "/api/intake/slack";
 
-/** What the bot may do: hear mentions and its channels' threads, answer there, know who asked. */
+/**
+ * What the bot may do: hear mentions and its channels' threads, answer there, know who asked —
+ * their workspace (`users:read`), and their email (`users:read.email`), only to name the Zerops
+ * member a task is asked for.
+ */
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
   "chat:write",
@@ -83,11 +89,6 @@ const BOT_TOKEN = /^xoxb-[\x21-\x7e]{1,1000}$/u;
 const SIGNING_SECRET = /^[\x21-\x7e]{1,256}$/u;
 /** A channel's id: public `C…`, private `G…` (older) or `C…`. */
 const CHANNEL_ID = /^[CG][A-Z0-9]{2,40}$/u;
-
-/** How often a Slack user no member's email names may make HQ read the organization afresh. */
-const FRESH_READ_EVERY_MS = 10 * 60 * 1000;
-/** More Slack users than this remembered at once is a flood: the memory starts over. */
-const FRESH_READ_USERS = 10_000;
 
 /** The reaction that says HQ heard an ask or a reply. */
 const HEARD = "eyes";
@@ -253,7 +254,7 @@ const PERSON_SUBTYPES = new Set([undefined, "thread_broadcast", "file_share"]);
 
 /** Who wrote a message, as the gate answers. */
 type Asker =
-  | { readonly kind: "member"; readonly userId: string; readonly name: string | null }
+  | { readonly kind: "member"; readonly userId: string | null; readonly name: string | null }
   | { readonly kind: "bot" | "stranger" | "unchecked" };
 
 const randomId = (bytes: number) => NodeCrypto.randomBytes(bytes).toString("base64url");
@@ -270,8 +271,6 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
       const intake = yield* TaskIntake;
       const channels = yield* TaskSourceChannels;
       const work = yield* FiberSet.make();
-      /** When HQ last read the organization afresh for a Slack user its view did not name. */
-      const freshReads = new Map<string, number>();
       // One status message per task: two moves of it never both post one.
       const statusLock = yield* Semaphore.make(1);
 
@@ -409,38 +408,36 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
         besides("reaction", api.react(link.token, { channel, ts, name: HEARD }));
 
       /** Who the Slack user is to the organization: a member by their verified email, or not. */
+      /**
+       * Who the Slack user is: a member of the connected workspace may ask — never a guest, a
+       * deactivated user, a Slack Connect partner's or a bot — and the task is asked for the Zerops
+       * member whose verified email is the one Slack confirmed for them, where there is one.
+       */
       const gate = (link: Connection, user: string) =>
         Effect.gen(function* () {
           const answer = yield* api.user(link.token, user);
           if (!answer.ok) return { kind: "unchecked" } as const;
-          if (answer.value.bot) return { kind: "bot" } as const;
-          // A member's email counts only as Slack confirmed it, on a person of this workspace:
-          // never on a deactivated user or a Slack Connect partner's.
-          if (answer.value.away || !answer.value.teams.includes(link.teamId))
+          const found = answer.value;
+          if (found.bot) return { kind: "bot" } as const;
+          if (found.away || found.guest || !found.teams.includes(link.teamId))
             return { kind: "stranger" } as const;
-          const email = answer.value.email?.toLowerCase();
-          if (email === undefined) return { kind: "stranger" } as const;
-          const named = (members: ReadonlyArray<ZeropsMember>) =>
-            members.find(
-              (member) =>
-                member.kind === "person" &&
-                member.status === ZEROPS_ACTIVE_MEMBER_STATUS &&
-                member.email?.trim().toLowerCase() === email,
-            );
-          // One the view kept does not list may have joined since: read now before saying no —
-          // once per Slack user in ten minutes, so nobody's mentions make HQ read Zerops at will.
-          const now = yield* Clock.currentTimeMillis;
-          const readFresh = (freshReads.get(user) ?? -Infinity) <= now - FRESH_READ_EVERY_MS;
-          if (readFresh) {
-            if (freshReads.size >= FRESH_READ_USERS) freshReads.clear();
-            freshReads.set(user, now);
-          }
+          const email = found.email?.toLowerCase();
+          // Who it is asked for, from the view HQ keeps; none known is no refusal.
           const member =
-            named((yield* roles.view).members) ??
-            (readFresh ? named((yield* roles.readSince(now)).members) : undefined);
-          return member === undefined
-            ? ({ kind: "stranger" } as const)
-            : ({ kind: "member", userId: member.userId, name: answer.value.name } as const);
+            email === undefined
+              ? undefined
+              : yield* roles.view.pipe(
+                  Effect.map((view) =>
+                    view.members.find(
+                      (candidate) =>
+                        candidate.kind === "person" &&
+                        candidate.status === ZEROPS_ACTIVE_MEMBER_STATUS &&
+                        candidate.email?.trim().toLowerCase() === email,
+                    ),
+                  ),
+                  Effect.orElseSucceed(() => undefined),
+                );
+          return { kind: "member", userId: member?.userId ?? null, name: found.name } as const;
         }).pipe(Effect.orElseSucceed((): Asker => ({ kind: "unchecked" })));
 
       const messageOf = (

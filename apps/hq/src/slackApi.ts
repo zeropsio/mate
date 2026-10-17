@@ -52,6 +52,8 @@ export interface SlackUser {
   readonly bot: boolean;
   /** Deactivated, or of a workspace that shares only a channel with this one (Slack Connect). */
   readonly away: boolean;
+  /** A guest of the workspace, of some channels or of one. */
+  readonly guest: boolean;
   /** The workspaces the user belongs to. */
   readonly teams: ReadonlyArray<string>;
 }
@@ -101,6 +103,8 @@ const answers = {
       is_email_confirmed: Schema.optionalKey(Schema.Boolean),
       is_stranger: Schema.optionalKey(Schema.Boolean),
       deleted: Schema.optionalKey(Schema.Boolean),
+      is_restricted: Schema.optionalKey(Schema.Boolean),
+      is_ultra_restricted: Schema.optionalKey(Schema.Boolean),
       enterprise_user: Schema.optionalKey(
         Schema.Struct({ teams: Schema.optionalKey(Schema.Array(Schema.String)) }),
       ),
@@ -186,6 +190,7 @@ export const slackApiLayer = (api: string = SLACK_API) =>
             ),
             bot: found.is_bot === true,
             away: found.deleted === true || found.is_stranger === true,
+            guest: found.is_restricted === true || found.is_ultra_restricted === true,
             teams: [
               ...new Set(
                 [
