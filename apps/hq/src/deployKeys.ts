@@ -62,7 +62,11 @@ export const keySecretOf = (raw: Option.Option<Redacted.Redacted>): KeySecret =>
 const rowOf = (projectId: string) => Buffer.from(`hq_deploy_token:${projectId}`, "utf8");
 
 /** Authenticated row data binds the ciphertext to its owning storage domain. */
-const sealWithData = (secret: KeySecretOk, data: Uint8Array, token: Redacted.Redacted): Sealed => {
+export const sealWithData = (
+  secret: KeySecretOk,
+  data: Uint8Array,
+  token: Redacted.Redacted,
+): Sealed => {
   const nonce = NodeCrypto.randomBytes(NONCE_BYTES);
   const cipher = NodeCrypto.createCipheriv("aes-256-gcm", Redacted.value(secret.key), nonce);
   cipher.setAAD(data);
@@ -71,7 +75,7 @@ const sealWithData = (secret: KeySecretOk, data: Uint8Array, token: Redacted.Red
 };
 
 /** Opens only under the same key and authenticated row data, with unchanged ciphertext. */
-const openWithData = (
+export const openWithData = (
   secret: KeySecretOk,
   data: Uint8Array,
   sealed: Sealed,
