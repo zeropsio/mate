@@ -19,7 +19,9 @@ CREATE TABLE hq_repo_mirror (
 );
 
 -- A change's branch on GitHub, `mate/<number>-<slug of its title>`: named on its first push and
--- kept, with the commit last pushed there, which the next push is leased against.
+-- kept, with the commit last pushed there, which the next push is leased against; and, once
+-- GitHub's branch and the change's head hold commits the other does not, the head it diverged at
+-- and since when (nothing is pushed while the head is still that one).
 CREATE TABLE hq_change_mirror (
   app_id uuid NOT NULL,
   repo text NOT NULL,
@@ -27,6 +29,9 @@ CREATE TABLE hq_change_mirror (
   branch text NOT NULL,
   pushed_sha text NOT NULL,
   pushed_at timestamptz NOT NULL DEFAULT now(),
+  diverged_head text,
+  diverged_since timestamptz,
+  CHECK ((diverged_head IS NULL) = (diverged_since IS NULL)),
   PRIMARY KEY (app_id, repo, number),
   FOREIGN KEY (app_id, repo, number) REFERENCES hq_change(app_id, repo, number) ON DELETE CASCADE
 );

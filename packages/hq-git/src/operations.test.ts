@@ -1637,6 +1637,36 @@ describe("a mirror on another host", () => {
     }),
   );
 
+  it.live("a change's branch takes commits added on top of it elsewhere, only forward", () =>
+    fixture(async (git, dir, events) => {
+      const main = await write(git, { app: "1" }, null);
+      const head = await branch(git, dir, main, { mate: "work" });
+      const { path, remote } = await mirrorOf(dir);
+      await value(git.pushRef(repo, remote, "mate/1-work", head, null));
+      const theirs = await commitThere(path, head, "suggestion");
+      await native(path, ["update-ref", "refs/heads/mate/1-work", theirs]);
+      expect(await value(git.fetchTip(repo, remote, "mate/1-work"))).toBe(theirs);
+      expect(await value(git.fastForwardChange(repo, "alice", 1, theirs, main))).toEqual({
+        kind: "stale",
+      });
+      expect(await value(git.fastForwardChange(repo, "alice", 1, main, head))).toEqual({
+        kind: "not_fast_forward",
+      });
+      const before = events.length;
+      expect(await value(git.fastForwardChange(repo, "alice", 1, theirs, head))).toEqual({
+        kind: "moved",
+      });
+      expect(await native(dir, ["rev-parse", "refs/heads/mate/alice/1"])).toBe(theirs);
+      expect(events.slice(before)).toEqual([
+        {
+          kind: "pushed",
+          repo,
+          updates: [{ ref: "refs/heads/mate/alice/1", oldSha: head, newSha: theirs }],
+        },
+      ]);
+    }),
+  );
+
   it.live("main never moves backwards or sideways to a mirror's tip", () =>
     fixture(async (git, dir, events) => {
       const first = await write(git, { app: "1" }, null);

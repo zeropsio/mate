@@ -332,6 +332,18 @@ export interface HqGit {
     expected: string | null,
   ) => Effect.Effect<FastForward, GitError>;
   /**
+   * The change's branch moved forward to `sha` by CAS from `expected` — commits added on top of it
+   * elsewhere (its pull request's branch on GitHub), fetched already — emitting `pushed` as a push
+   * of it does; never backwards or sideways.
+   */
+  readonly fastForwardChange: (
+    repo: Repo,
+    mateId: string,
+    number: number,
+    sha: string,
+    expected: string,
+  ) => Effect.Effect<FastForward, GitError>;
+  /**
    * `sha` pushed to the remote's `refs/heads/<branch>`, leased against `expected` (null: the branch
    * must not exist yet), and only forward from it: HQ never force-pushes.
    */

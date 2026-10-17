@@ -24,8 +24,9 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { Changes, changesLayer } from "./changes.ts";
 import { GithubAuth } from "./githubAuth.ts";
 import { GithubEvents, githubEventsLayer } from "./githubEvents.ts";
-import { GithubMirror, changeBranch, githubMirrorLayer } from "./githubMirror.ts";
+import { GithubMirror, changeBranch, changesToPush, githubMirrorLayer } from "./githubMirror.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { MateTasks } from "./mateTasks.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 
@@ -85,6 +86,34 @@ const commitIn = (dir: string, parents: ReadonlyArray<string>, file: string) => 
   return native(dir, ["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", file]);
 };
 
+/** `commitIn` as someone on GitHub writes it: a person's name and GitHub's noreply address. */
+const commitAs = (
+  dir: string,
+  parents: ReadonlyArray<string>,
+  file: string,
+  author: { readonly name: string; readonly email: string },
+) => {
+  const env = {
+    PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+    HOME: dir,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_AUTHOR_NAME: author.name,
+    GIT_AUTHOR_EMAIL: author.email,
+    GIT_COMMITTER_NAME: "GitHub",
+    GIT_COMMITTER_EMAIL: "noreply@github.com",
+  };
+  const run = (args: ReadonlyArray<string>, input = "") =>
+    NodeChildProcess.execFileSync("git", ["-C", dir, ...args], {
+      input,
+      encoding: "utf8",
+      env,
+    }).trim();
+  const blob = run(["hash-object", "-w", "--stdin"], file);
+  const tree = run(["mktree"], `100644 blob ${blob}\t${file}\n`);
+  return run(["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", file]);
+};
+
 const refIn = (dir: string, ref: string) =>
   native(dir, ["for-each-ref", "--format=%(objectname)", ref]) || null;
 
@@ -140,6 +169,7 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     const github = NodePath.join(root, "github.git");
     native(root, ["init", "--bare", "-b", "main", github]);
     const auth = { installed: true, asked: [] as Array<string> };
+    const told: Array<{ readonly taskId: string; readonly message: unknown }> = [];
     const context = yield* Layer.build(
       githubMirrorLayer({ gitUrl: () => github, sweepEvery }).pipe(
         Layer.provideMerge(changesLayer),
@@ -158,6 +188,14 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
               bot: Effect.succeed({ login: "acme-mate[bot]", userId: 1 }),
             }),
           ),
+        ),
+        Layer.provide(
+          Layer.succeed(MateTasks, {
+            message: (taskId: string, message: unknown) =>
+              Effect.sync(() => {
+                told.push({ taskId, message });
+              }),
+          } as unknown as MateTasks["Service"]),
         ),
         Layer.provideMerge(Layer.succeed(Roles, roles)),
         Layer.provideMerge(gitHostLayer({ rootDir: NodePath.join(root, "hq") })),
@@ -253,8 +291,29 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
           WHERE app_id::text = ${appId} AND repo = 'appdev' AND number = ${number}`,
         (rows) => rows[0],
       );
+    /** A task done by `nova` whose change is change 1, waiting for review. */
+    const task = Effect.map(
+      sql<{ readonly id: string }>`
+        INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state,
+          mate_project_id, change_repo, change_number, source_kind, source, source_key)
+        VALUES (${appId}::uuid, 'acme/tea-shop', 7, 'Add a search box', '',
+          'https://example.test/7', 'delivery-7', 'done', 'nova', 'appdev', 1, 'github-issue',
+          '{}'::jsonb, 'github:acme/tea-shop#7')
+        RETURNING id::text AS id`,
+      (rows) => rows[0]!.id,
+    );
+    /** The change's head as HQ recorded it, once it is `head`. */
+    const headIs = (head: string) =>
+      sql<{ readonly head: string | null }>`SELECT head FROM hq_change WHERE number = 1`.pipe(
+        Effect.filterOrFail((rows) => rows[0]?.head === head),
+        Effect.retry(Schedule.spaced(Duration.millis(50))),
+        Effect.timeout(Duration.seconds(10)),
+      );
     return {
       sql,
+      told,
+      task,
+      headIs,
       git,
       host,
       mirror,
@@ -538,6 +597,81 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
           assert.strictEqual(refIn(f.github, "refs/heads/mate/1-add-a-search-box"), reviewer);
         }),
       ),
+    );
+
+    it.effect(
+      "commits a reviewer adds to a change's branch on GitHub come into Mate's copy, and its Mate is told once",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Add a search box");
+            const taskId = yield* f.task;
+            const first = yield* f.push("search.ts");
+            // Once HQ kept what it pushed there (after the push's own follow, in turn).
+            yield* f.mirror.pushChange(f.appId, "appdev", 1);
+            assert.strictEqual(refIn(f.github, "refs/heads/mate/1-add-a-search-box"), first);
+            const suggested = commitAs(f.github, [first], "Apply suggestion", {
+              name: "Juno Reviewer",
+              email: "7+juno-reviews@users.noreply.github.com",
+            });
+            native(f.github, ["update-ref", "refs/heads/mate/1-add-a-search-box", suggested]);
+            const delivered = {
+              name: "push",
+              deliveryId: "delivery-suggestion",
+              repository: REPOSITORY,
+              payload: {
+                ref: "refs/heads/mate/1-add-a-search-box",
+                after: suggested,
+                repository: { default_branch: "main" },
+              },
+            };
+            yield* f.events.dispatch(delivered);
+            assert.strictEqual(refIn(f.hqDir, "refs/heads/mate/nova/1"), suggested);
+            yield* f.headIs(suggested);
+            assert.deepStrictEqual(f.told, [
+              {
+                taskId,
+                message: {
+                  id: `github-commits:${suggested}`,
+                  from: "review",
+                  author: "juno-reviews",
+                  text: `juno-reviews added commits to your change on GitHub (${suggested.slice(0, 7)} Apply suggestion). Pull Mate's copy of your branch before your next push.`,
+                },
+              },
+            ]);
+            // The same news again tells nobody again, and the next push goes on from it.
+            yield* f.events.dispatch({ ...delivered, deliveryId: "delivery-again" });
+            assert.strictEqual(f.told.length, 1);
+            assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 1), {
+              branch: "mate/1-add-a-search-box",
+              sha: suggested,
+            });
+          }),
+        ),
+    );
+
+    it.effect(
+      "a change whose branch on GitHub diverged says so, and is tried again only when either side moves",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Add a search box");
+            const first = yield* f.push("search.ts");
+            yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), first);
+            const reviewer = commitIn(f.github, [first], "reviewer");
+            native(f.github, ["update-ref", "refs/heads/mate/1-add-a-search-box", reviewer]);
+            yield* f.push("search.css");
+            yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
+            const change = yield* f.changes.change(f.appId, "appdev", 1);
+            assert.isString(change.mirrorDivergedSince);
+            assert.deepStrictEqual(yield* changesToPush(f.sql, f.appId, "appdev"), []);
+            // Mate's side moving makes it worth trying again.
+            yield* f.sql`UPDATE hq_change SET head = ${first} WHERE number = 1`;
+            assert.deepStrictEqual(yield* changesToPush(f.sql, f.appId, "appdev"), [1]);
+          }),
+        ),
     );
 
     it.effect(

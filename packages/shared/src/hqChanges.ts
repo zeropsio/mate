@@ -216,6 +216,11 @@ export const HqChange = Schema.Struct({
    */
   pullRequest: Schema.optionalKey(HqPullRequest),
   /**
+   * Since when its branch on GitHub holds commits its head here does not, and its head commits
+   * GitHub's does not: nothing is pushed there until either side moves. Absent while they follow.
+   */
+  mirrorDivergedSince: Schema.optionalKey(HqTargetTimestamp),
+  /**
    * The last receipt zcp wrote on it, whole; `null` for a single-part application's change. Added
    * after the rest: an older HQ's change has no key.
    */

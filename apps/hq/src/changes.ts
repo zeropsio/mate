@@ -464,6 +464,10 @@ const CHANGE_COLUMNS = [
       'checks', pr.checks) FROM hq_pull_request pr
     WHERE pr.app_id = hq_change.app_id AND pr.repo = hq_change.repo
       AND pr.number = hq_change.number) AS pull_request`,
+  // Its branch on GitHub diverged (`githubMirror.ts`): since when.
+  `(SELECT to_char(m.diverged_since AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    FROM hq_change_mirror m WHERE m.app_id = hq_change.app_id AND m.repo = hq_change.repo
+      AND m.number = hq_change.number) AS mirror_diverged_since`,
 ].join(", ");
 
 /** A change's pull request as `CHANGE_COLUMNS` reads it. */
@@ -504,6 +508,7 @@ interface ChangeRow {
   readonly ready: boolean;
   readonly comments: number;
   readonly pull_request: PullRequestRow | null;
+  readonly mirror_diverged_since: string | null;
 }
 
 const COMMENT_COLUMNS = [
@@ -554,6 +559,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   ready: row.ready,
   comments: row.comments,
   ...(row.pull_request === null ? {} : { pullRequest: pullRequestOf(row.pull_request) }),
+  ...(row.mirror_diverged_since === null ? {} : { mirrorDivergedSince: row.mirror_diverged_since }),
   receipt: row.receipt,
 });
 
