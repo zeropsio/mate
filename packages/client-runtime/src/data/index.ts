@@ -465,6 +465,15 @@ export type {
 } from "./operations/mateWorkspace.ts";
 
 export { makeGitCredentials } from "./adapters/hqGitCredentials.ts";
+export { makeAutomationSettings, type AutomationSettings } from "./adapters/hqAutomation.ts";
+export { aiKeysId, intakeId, type AiKeysKey, type IntakeKey } from "./families/hqAutomation.ts";
+export {
+  appIntake,
+  orgAiKeys,
+  type AppIntakeRead,
+  type AutomationAction,
+  type OrgAiKeysRead,
+} from "./projections/hqAutomation.ts";
 export { gitCredentials } from "./projections/gitCredentials.ts";
 
 export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
