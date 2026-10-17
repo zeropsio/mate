@@ -38,6 +38,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -66,6 +67,12 @@ import {
   cleanTaskText,
   sourceOfRow,
 } from "./taskSources.ts";
+
+/**
+ * The first Mate that reads a task from beyond GitHub (`MateTaskSource` past `github-issue`): an
+ * older one passes such a `task` frame by, so it is never handed one.
+ */
+export const TASK_SOURCES_SINCE = "0.15.158";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -252,10 +259,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         Effect.gen(function* () {
           const all = yield* overviews.all;
           const now = yield* Clock.currentTimeMillis;
-          return projectIds.filter((projectId) => {
+          return projectIds.flatMap((projectId) => {
             const entry = all.get(projectId);
             const cooled = (declinedUntil.get(projectId) ?? 0) <= now;
-            return cooled && entry?.presence.online === true && entry.attention?.working === 0;
+            if (!cooled || entry?.presence.online !== true || entry.attention?.working !== 0)
+              return [];
+            // Only a Mate whose overview says it runs a version that reads them takes tasks from
+            // beyond GitHub; one that has not said its version yet takes issues alone.
+            const version = entry.overview?.identity.serverVersion;
+            const everySource =
+              version !== undefined && compareSemverVersions(version, TASK_SOURCES_SINCE) >= 0;
+            return [{ projectId, everySource }];
           });
         });
 
@@ -423,19 +437,25 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working', 'waiting'))
               AND NOT (${heldBy(sql`m.project_id`)})
             ORDER BY m.seq`;
-          const free = yield* freeNow(idle.map((row) => row.project_id));
+          const free = [...(yield* freeNow(idle.map((row) => row.project_id)))];
           if (free.length === 0) continue;
           // An issue's only from the intake's own repository: one it left or stopped gives nobody work.
-          const waiting = yield* sql<TaskRow>`
-            SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task t
+          const waiting = yield* sql<TaskRow & { readonly source_kind: string }>`
+            SELECT ${sql.literal(TASK_COLUMNS)}, source_kind FROM hq_task t
             WHERE app_id::text = ${appId} AND state = 'queued'
               AND (t.source_kind <> 'github-issue'
                 OR EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo))
-            ORDER BY seq LIMIT ${free.length}`;
+            ORDER BY seq LIMIT ${Math.max(free.length * 4, 20)}`;
           let handedAny = false;
           const limits = yield* limitsNow;
-          for (const [index, task] of waiting.entries()) {
-            const projectId = free[index]!;
+          for (const task of waiting) {
+            if (free.length === 0) break;
+            // The first free Mate that reads the task; one none of them reads waits for one.
+            const at = free.findIndex(
+              (mate) => mate.everySource || task.source_kind === "github-issue",
+            );
+            if (at < 0) continue;
+            const projectId = free.splice(at, 1)[0]!.projectId;
             const handed = yield* leader
               .write(sql`
                 UPDATE hq_task SET state = 'assigned', mate_project_id = ${projectId},
