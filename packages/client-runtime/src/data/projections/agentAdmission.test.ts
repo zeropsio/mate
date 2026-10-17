@@ -7,11 +7,16 @@ import {
   type ZeropsLogin,
 } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
+import { AtomRegistry } from "effect/reactivity";
+import { EnvironmentId } from "@t3tools/contracts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
 import {
   admissionNeedsSignIn,
   agentAdmission,
   admissionProviderStatus,
   engineRunRefusal,
+  mateAdmissionSummary,
 } from "./agentAdmission.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
@@ -784,4 +789,47 @@ it("a native project downgrade closes the composer even while its owner stays si
   expect(downgraded.canSend).toBe(false);
   expect(downgraded.readOnly).toBe(true);
   expect(downgraded.sendBlockReason).toBe("You have Read access to this Mate.");
+});
+
+describe("the menu's sign-in summary", () => {
+  it.each([
+    ["an ordinary Mate nobody signed in asks for a sign-in", false, "Sign in"],
+    ["an automated Mate runs on the organization's key and asks for none", true, null],
+  ] as const)("%s", (_case, automated, action) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    seedHqNavigation(store, "org", {
+      structure: {
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [
+              { projectId: "nova", name: "Nova", kind: "mate", mate: { face: "", automated } },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+      mates: {
+        nova: {
+          presence: { online: true, since: "2026-10-17T00:00:00Z", overview: "live" },
+          identity: {
+            environmentId: EnvironmentId.make("nova-env"),
+            serverVersion: "1",
+            update: null,
+          },
+          logins: {
+            "claude-code": { signedInBy: null, present: false, token: false },
+          },
+        },
+      },
+    });
+    const summary = mateAdmissionSummary.derive(readsOfState(store.state()), {
+      orgId: "org",
+      projectId: "nova",
+      viewerSubject: "viewer",
+      mateName: "Nova",
+    });
+    expect(summary?.actionLabel ?? null).toBe(action);
+  });
 });

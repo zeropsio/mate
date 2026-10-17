@@ -254,6 +254,9 @@ export const mateAdmissionSummary: Projection<
   keyOf: (key) => JSON.stringify([key.orgId, key.projectId, key.mateName]),
   equals: sameValue,
   derive: (read, key) => {
+    // An automated Mate's agents run on the organization's key: nobody is asked to sign it in.
+    const placed = read.fact("placement", key.projectId);
+    if (placed.kind === "known" && placed.value.mate?.automated === true) return null;
     const overview = hqMateOverview.derive(read, key);
     if (
       !hqMatePresence.derive(read, key).live ||
