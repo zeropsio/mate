@@ -175,11 +175,11 @@ function NewMateDialog({
   const { words } = useHqOffers();
   // Whether the organization holds the API key an automated Mate runs on: said beside the choice.
   // An HQ that keeps no organization keys can't do automated Mates: the choice is not offered.
-  const aiKey = automatedKeyState(useOrgAiKeys(true).read.keys);
-  const automation =
-    aiKey === "unsupported"
-      ? undefined
-      : { key: aiKey, admin: roleAtLeast(activeOrganization?.roleCode, "ADMIN") };
+  // Read from the app's root once signed in, it is known before the dialog's first frame.
+  const automation = {
+    key: automatedKeyState(useOrgAiKeys(true).read.keys),
+    admin: roleAtLeast(activeOrganization?.roleCode, "ADMIN"),
+  };
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({

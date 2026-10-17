@@ -10,7 +10,7 @@ import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useAtomValue } from "@effect/atom-react";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqNavigationAtom } from "~/state/zerops";
@@ -223,7 +223,13 @@ function TasksFromGithub() {
       title="Tasks from GitHub"
     >
       {apps === null ? (
-        <p className="px-3 pb-3 text-xs text-muted-foreground sm:px-4">Reading…</p>
+        // An application's row in its shape, until HQ says which there are.
+        <ul className="grid gap-3 px-3 pb-3 sm:px-4">
+          <li className="grid gap-2">
+            <p className="text-sm font-medium text-muted-foreground">Reading…</p>
+            <IntakeRoom>{null}</IntakeRoom>
+          </li>
+        </ul>
       ) : (
         <AppIntakes apps={apps} />
       )}
@@ -292,24 +298,32 @@ export function AppIntakeView({
     <li className="grid gap-2" data-zerops-intake-app={appId}>
       <p className="text-sm font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
-        <p className="text-xs text-muted-foreground">Reading…</p>
+        <IntakeRoom>
+          <p className="text-xs text-muted-foreground">Reading…</p>
+        </IntakeRoom>
       ) : read.intake !== null ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
-              .filter((part) => part !== undefined)
-              .join(" · ")}
-          </p>
-          <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
-            Stop taking tasks
-          </Button>
-        </div>
+        <IntakeRoom>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
+                .filter((part) => part !== undefined)
+                .join(" · ")}
+            </p>
+            <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
+              Stop taking tasks
+            </Button>
+          </div>
+        </IntakeRoom>
       ) : !reposRead ? (
-        <p className="text-xs text-muted-foreground">Reading its repositories…</p>
+        <IntakeRoom>
+          <p className="text-xs text-muted-foreground">Reading its repositories…</p>
+        </IntakeRoom>
       ) : chosen === null ? (
-        <p className="text-xs text-muted-foreground">
-          Mirror its code to GitHub to take tasks from its issues.
-        </p>
+        <IntakeRoom>
+          <p className="text-xs text-muted-foreground">
+            Mirror its code to GitHub to take tasks from its issues.
+          </p>
+        </IntakeRoom>
       ) : (
         <form
           className="flex flex-wrap items-end gap-2"
@@ -364,6 +378,27 @@ export function AppIntakeView({
         </p>
       )}
     </li>
+  );
+}
+
+/**
+ * The room an intake row's form takes, held under whatever the row says instead — reading, taking
+ * tasks, nothing to take them from — so the row paints in its final shape from the first frame
+ * and never grows as what it reads lands (the cardinal sin).
+ */
+function IntakeRoom({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="grid">
+      <div
+        aria-hidden
+        className="invisible col-start-1 row-start-1 grid gap-1.5"
+        data-zerops-intake-room=""
+      >
+        <Label>Repository</Label>
+        <Input readOnly size="sm" tabIndex={-1} />
+      </div>
+      <div className="col-start-1 row-start-1 self-center">{children}</div>
+    </div>
   );
 }
 

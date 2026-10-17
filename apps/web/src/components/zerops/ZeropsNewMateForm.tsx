@@ -36,7 +36,7 @@ import {
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
 import { cn } from "~/lib/utils";
-import { newMateKeyNote } from "~/zerops/automatedMate.logic";
+import { newMateKeyNote, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 import {
   faceName,
   newMateDoorTitle,
@@ -73,6 +73,8 @@ export const NEW_MATE_AUTOMATED_LINE =
 export const NEW_MATE_NO_KEY_LINE = "Your organization has no API key for it yet.";
 /** After it, for one who can't set the key: who does. */
 const NEW_MATE_KEY_SETTER_LINE = "An Owner or Admin of your organization sets it.";
+/** In its place, where HQ turned out older than automated Mates after the choice was offered. */
+const NEW_MATE_UPDATE_HQ_LINE = "Update HQ to make automated Mates.";
 
 export interface ZeropsNewMateFormProps {
   readonly groupName: string;
@@ -103,11 +105,10 @@ export interface ZeropsNewMateFormProps {
   /**
    * The Automated choice, whether the organization holds the API key it runs on, and whether the
    * viewer may set it (an Owner or Admin): `missing` says so beside the choice — with the way to
-   * where it is set for one who can, else who sets it. Absent: no choice offered.
+   * where it is set for one who can, else who sets it. Absent, or `unsupported` (an HQ older
+   * than automated Mates) when the dialog opens: no choice offered.
    */
-  readonly automation?:
-    | { readonly key: "set" | "missing" | "unknown"; readonly admin: boolean }
-    | undefined;
+  readonly automation?: { readonly key: AutomatedKeyState; readonly admin: boolean } | undefined;
   /** Leaves the dialog for where the organization's API key is set (Settings › Zerops). */
   readonly onOpenKeySettings?: (() => void) | undefined;
 }
@@ -135,7 +136,16 @@ export function ZeropsNewMateForm({
   onOpenKeySettings,
 }: ZeropsNewMateFormProps) {
   const id = useId();
-  const [automated, setAutomated] = useState(false);
+  const [chosenAutomated, setAutomated] = useState(false);
+  // Whether it is offered, and whether the key's note holds its room, are decided by the first
+  // frame: what is read after it changes the words, never what is there (the cardinal sin).
+  const [offersAutomated] = useState(
+    () => automation !== undefined && automation.key !== "unsupported",
+  );
+  const [holdsKeyNote] = useState(() => automation?.key === "unknown");
+  // An HQ found unable to make one after the choice was offered: it stays, unavailable.
+  const automatedUnavailable = automation === undefined || automation.key === "unsupported";
+  const automated = chosenAutomated && !automatedUnavailable;
   const keyNote =
     automation === undefined ? null : newMateKeyNote(automation.key, automation.admin);
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
@@ -302,7 +312,7 @@ export function ZeropsNewMateForm({
                   />
                 </div>
               </MateFacePicker>
-              {automation === undefined ? null : (
+              {!offersAutomated ? null : (
                 <div
                   className="flex items-start justify-between gap-4"
                   data-zerops-surface="new-mate-automated"
@@ -312,24 +322,51 @@ export function ZeropsNewMateForm({
                     <p className="text-sm text-muted-foreground" id={`${id}-automated-line`}>
                       {NEW_MATE_AUTOMATED_LINE}
                     </p>
-                    {keyNote?.kind === "missing" ? (
-                      <p className="text-sm text-muted-foreground" data-zerops-new-mate-no-key="">
-                        {NEW_MATE_NO_KEY_LINE}{" "}
-                        {!keyNote.canSet ? (
-                          NEW_MATE_KEY_SETTER_LINE
-                        ) : onOpenKeySettings === undefined ? (
-                          "Set it in Settings › Zerops."
-                        ) : (
-                          <InlineButton onClick={onOpenKeySettings} type="button">
-                            Set it in Settings › Zerops
-                          </InlineButton>
+                    {keyNote === null && !holdsKeyNote ? null : (
+                      // One cell: a note held from the first frame lands in the room the
+                      // longest one it can be takes, so nothing under it moves.
+                      <div
+                        className="grid"
+                        data-zerops-new-mate-key-note={holdsKeyNote ? "held" : "shown"}
+                      >
+                        {holdsKeyNote ? (
+                          <p aria-hidden className="invisible col-start-1 row-start-1 text-sm">
+                            {NEW_MATE_NO_KEY_LINE}{" "}
+                            {automation?.admin === true
+                              ? "Set it in Settings › Zerops"
+                              : NEW_MATE_KEY_SETTER_LINE}
+                          </p>
+                        ) : null}
+                        {keyNote === null ? null : (
+                          <p
+                            className="col-start-1 row-start-1 text-sm text-muted-foreground"
+                            data-zerops-new-mate-no-key=""
+                          >
+                            {keyNote.kind === "update" ? (
+                              NEW_MATE_UPDATE_HQ_LINE
+                            ) : (
+                              <>
+                                {NEW_MATE_NO_KEY_LINE}{" "}
+                                {!keyNote.canSet ? (
+                                  NEW_MATE_KEY_SETTER_LINE
+                                ) : onOpenKeySettings === undefined ? (
+                                  "Set it in Settings › Zerops."
+                                ) : (
+                                  <InlineButton onClick={onOpenKeySettings} type="button">
+                                    Set it in Settings › Zerops
+                                  </InlineButton>
+                                )}
+                              </>
+                            )}
+                          </p>
                         )}
-                      </p>
-                    ) : null}
+                      </div>
+                    )}
                   </div>
                   <Switch
                     aria-describedby={`${id}-automated-line`}
                     checked={automated}
+                    disabled={automatedUnavailable}
                     id={`${id}-automated`}
                     onCheckedChange={setAutomated}
                   />

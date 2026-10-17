@@ -623,6 +623,52 @@ describe("the New Mate dialog's Automated choice", () => {
     expect(buttons(tree)).not.toContain("Set it in Settings › Zerops");
   });
 
+  // The owner's cardinal sin: the key's note must land in room the first frame already held.
+  it("holds the key note's room from the first frame when the key is not read yet", () => {
+    const note = (tree: ReactTestRenderer) =>
+      tree.root.findAll((node) => node.props["data-zerops-new-mate-key-note"] !== undefined);
+    const tree = mount(form({ automation: { key: "unknown", admin: true } }));
+    expect(note(tree).map((node) => node.props["data-zerops-new-mate-key-note"])).toEqual(["held"]);
+    expect(spoken(tree.root)).not.toContain("Your organization has no API key for it yet.");
+    act(() => {
+      tree.update(form({ automation: { key: "missing", admin: true } }));
+    });
+    expect(note(tree)).toHaveLength(1);
+    expect(spoken(tree.root)).toContain("Your organization has no API key for it yet.");
+    act(() => {
+      tree.update(form({ automation: { key: "set", admin: true } }));
+    });
+    expect(note(tree)).toHaveLength(1);
+    expect(spoken(tree.root)).not.toContain("Your organization has no API key for it yet.");
+  });
+
+  it("draws no key note where the key was read before the dialog opened", () => {
+    const tree = mount(form({ automation: { key: "set", admin: true } }));
+    expect(
+      tree.root.findAll((node) => node.props["data-zerops-new-mate-key-note"] !== undefined),
+    ).toHaveLength(0);
+  });
+
+  it("offers no Automated choice where HQ can't make automated Mates", () => {
+    const tree = mount(form({ automation: { key: "unsupported", admin: true } }));
+    expect(spoken(tree.root)).not.toContain("Automated");
+  });
+
+  it("keeps a choice it already offered, unavailable, once HQ turns out unable to make one", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(form({ automation: { key: "unknown", admin: true }, onCreate }));
+    act(() => {
+      automatedSwitch(tree).props.onCheckedChange(true);
+    });
+    act(() => {
+      tree.update(form({ automation: { key: "unsupported", admin: true }, onCreate }));
+    });
+    expect(spoken(tree.root)).toContain("Update HQ to make automated Mates.");
+    expect(automatedSwitch(tree).props.disabled).toBe(true);
+    press(tree);
+    expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
+  });
+
   it("offers no Automated choice where the dialog was given none", () => {
     expect(spoken(mount(form()).root)).not.toContain("Automated");
   });
