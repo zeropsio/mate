@@ -46,6 +46,11 @@ CREATE TABLE hq_task (
   assigned_at timestamptz,
   attempts integer NOT NULL DEFAULT 0,
   detail text,
+  -- The Mate it was last handed to: given back while that Mate's link was down, its late word is
+  -- still taken while the task waits for no other Mate.
+  last_mate_project_id text,
+  -- Since when its Mates have turned it down, from the first refusal: it fails after 30 minutes.
+  declined_since timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK ((state IN ('assigned', 'working')) = (mate_project_id IS NOT NULL AND assigned_at IS NOT NULL)
