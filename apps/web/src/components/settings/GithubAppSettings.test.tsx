@@ -72,7 +72,7 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
         onPost={onPost}
         organization="Acme"
         returnTo={RETURN_TO}
-        returned={false}
+        returned={null}
         {...props}
         controls={controls}
       />,
@@ -200,9 +200,35 @@ describe("the GitHub section once the app is connected", () => {
   });
 
   it("confirms the connection in one line once GitHub brings the person back", async () => {
-    const { host } = await render({ controls: connected, returned: true });
+    const { host } = await render({ controls: connected, returned: "connected" });
     expect(host.querySelector('[role="status"]')?.textContent).toBe(
       "GitHub is connected. Mate acts there as acme-mate[bot] from now on.",
     );
   });
+});
+
+it("says GitHub asked an owner to approve the app when it brings the person back without it", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <GithubAppView
+        admin
+        controls={{
+          read: read(known({ ...CONNECTED, installations: [] })),
+          disconnect: vi.fn(),
+          manifest: vi.fn(),
+        }}
+        onPost={vi.fn()}
+        organization="Acme"
+        returnTo={RETURN_TO}
+        returned="requested"
+      />,
+    ),
+  );
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(
+    "GitHub asked an owner of acme to approve the app; it's installed once they do.",
+  );
+  await act(async () => root.unmount());
 });

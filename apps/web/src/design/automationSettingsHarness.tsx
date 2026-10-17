@@ -117,7 +117,7 @@ function Automation({
       onPost={nothing}
       organization="Acme"
       returnTo="https://acme.example/mate/settings/automation?github=connected"
-      returned={false}
+      returned={null}
     />
   );
   return (

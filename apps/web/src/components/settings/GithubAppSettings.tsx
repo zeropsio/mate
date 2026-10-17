@@ -24,7 +24,9 @@ import {
   appOwner,
   defaultAppName,
   GITHUB_ONE_LINE,
+  githubReturnLine,
   githubReturnTo,
+  type GithubReturn,
   githubSection,
   githubStatus,
   postManifest,
@@ -44,8 +46,8 @@ export function GithubAppSettings({
   returned,
 }: {
   readonly admin: boolean;
-  /** GitHub brought the person back here once the app was made. */
-  readonly returned: boolean;
+  /** How GitHub brought the person back here, if it did. */
+  readonly returned: GithubReturn;
 }) {
   const { read, write, manifest } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
@@ -85,7 +87,7 @@ export function GithubAppView({
   /** The Zerops organization's name: the app's first name. */
   readonly organization: string | null;
   readonly returnTo: string;
-  readonly returned: boolean;
+  readonly returned: GithubReturn;
   /** Hands GitHub the manifest: the page leaves for GitHub's. */
   readonly onPost: (view: HqGithubManifestView) => void;
 }) {
@@ -95,6 +97,7 @@ export function GithubAppView({
   const [confirming, setConfirming] = useState(false);
   const working = read.action.kind === "working";
   const problem = taskSourceProblem(read.action);
+  const back = githubReturnLine(returned, section);
   const toggle = () => {
     setOpen((was) => !was);
     setConfirming(false);
@@ -105,19 +108,15 @@ export function GithubAppView({
       <span className="text-destructive-foreground" role="alert">
         {problem}
       </span>
+    ) : back !== null ? (
+      <span role="status">{back}</span>
     ) : section.kind === "connected" ? (
-      returned ? (
-        <span role="status">
-          GitHub is connected. Mate acts there as {section.botLogin} from now on.
-        </span>
-      ) : (
-        <>
-          Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
-          {section.installations.length === 0
-            ? " · installed nowhere yet"
-            : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
-        </>
-      )
+      <>
+        Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
+        {section.installations.length === 0
+          ? " · installed nowhere yet"
+          : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
+      </>
     ) : section.kind === "none" ? (
       section.connect ? (
         GITHUB_ONE_LINE

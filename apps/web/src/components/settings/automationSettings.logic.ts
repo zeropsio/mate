@@ -28,6 +28,8 @@ export type GithubSection =
   | {
       readonly kind: "connected";
       readonly botLogin: string;
+      /** The account that owns the app. */
+      readonly owner: string;
       readonly installUrl: string;
       readonly installations: ReadonlyArray<{
         readonly id: number;
@@ -69,6 +71,7 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
       return {
         kind: "connected",
         botLogin: view.botLogin,
+        owner: view.owner,
         installUrl: view.installUrl,
         installations: view.installations.map((installation) => ({
           id: installation.id,
@@ -81,6 +84,18 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
       };
     }
   }
+}
+
+/** How GitHub brought the person back here: the app made, or an owner's approval asked for. */
+export type GithubReturn = "connected" | "requested" | null;
+
+/** The one line said on the return from GitHub; `null` where there is nothing true to say. */
+export function githubReturnLine(returned: GithubReturn, section: GithubSection): string | null {
+  if (returned === "requested")
+    return `GitHub asked an owner of ${section.kind === "connected" ? section.owner : "the organization"} to approve the app; it's installed once they do.`;
+  if (returned === "connected" && section.kind === "connected")
+    return `GitHub is connected. Mate acts there as ${section.botLogin} from now on.`;
+  return null;
 }
 
 /** The section's state line. */
