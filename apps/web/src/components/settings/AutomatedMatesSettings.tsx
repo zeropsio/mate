@@ -5,9 +5,7 @@
  * what HQ answered as it was set: the webhook it made, or the URL and secret to paste, the secret
  * shown this once.
  */
-import type { AppIntakeRead, OrgAiKeysRead } from "@t3tools/client-runtime/data";
-import type { HqIntakeView } from "@t3tools/shared/hqIntake";
-import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
+import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useAtomValue } from "@effect/atom-react";
 import { useId, useMemo, useState } from "react";
@@ -21,17 +19,14 @@ import { useAppIntake, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import {
-  aiKeyLine,
-  intakeAnswerLine,
-  intakeLine,
-  intakeRepoChoices,
-} from "./automatedMatesSettings.logic";
-import { tasksWaitingWords } from "../zerops/SidebarMateRow.logic";
+import { aiKeyLine, intakeRepoChoices } from "./automatedMatesSettings.logic";
 import { SettingsRow } from "./settingsLayout";
-import { CopyLine, IntakeRoom, PublicChoice } from "./automationParts";
+import { IntakeRoom } from "./automationParts";
 import { TaskSourcesSettings } from "./TaskSourcesSettings";
+import { AppIntakeView } from "../zerops/projectAutomation/sourceForms";
+
+// Moved to the project page's Automation section; kept importable from here.
+export { AppIntakeView };
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 
@@ -282,157 +277,4 @@ function AppIntakeRow(props: {
 }) {
   const { read, set, stop } = useAppIntake(props.appId);
   return <AppIntakeView {...props} onSet={set} onStop={stop} read={read} />;
-}
-
-/** One application's intake: where it takes tasks from, or the choice of where, from what is read. */
-export function AppIntakeView({
-  appId,
-  name,
-  choices,
-  reposRead,
-  reposFailure,
-  read,
-  onSet,
-  onStop,
-  onReadAgain,
-}: {
-  readonly appId: string;
-  readonly name: string;
-  readonly choices: ReadonlyArray<string>;
-  readonly reposRead: boolean;
-  /** HQ's reason its repositories could not be read: said, with *Read again*. */
-  readonly reposFailure?: string | undefined;
-  readonly onReadAgain?: (() => void) | undefined;
-  readonly read: AppIntakeRead;
-  /** `takesPublic`: it takes a public repository's issues too. */
-  readonly onSet: (repo: string, label: string, takesPublic: boolean) => void;
-  readonly onStop: () => void;
-}) {
-  const [repo, setRepo] = useState<string | null>(null);
-  const [label, setLabel] = useState(DEFAULT_INTAKE_LABEL);
-  const [takesPublic, setTakesPublic] = useState(false);
-  const labelId = useId();
-  const publicId = useId();
-  const chosen = repo ?? choices[0] ?? null;
-  const working = read.action.kind === "working";
-  const problem =
-    read.action.kind === "failed" || read.action.kind === "unresolved" ? read.action.words : null;
-  return (
-    <li className="grid gap-2" data-zerops-intake-app={appId}>
-      <p className="text-sm font-medium text-foreground">{name}</p>
-      {read.intake === undefined ? (
-        <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">Reading…</p>
-        </IntakeRoom>
-      ) : read.intake !== null ? (
-        <IntakeRoom choice>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
-                .filter((part) => part !== undefined)
-                .join(" · ")}
-            </p>
-            <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
-              Stop taking tasks
-            </Button>
-          </div>
-        </IntakeRoom>
-      ) : !reposRead && reposFailure !== undefined ? (
-        <IntakeRoom choice>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground" role="alert">
-              {reposFailure}
-            </p>
-            {onReadAgain === undefined ? null : (
-              <Button onClick={onReadAgain} size="sm" variant="secondary">
-                Read again
-              </Button>
-            )}
-          </div>
-        </IntakeRoom>
-      ) : !reposRead ? (
-        <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">Reading its repositories…</p>
-        </IntakeRoom>
-      ) : chosen === null ? (
-        <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">
-            Mirror its code to GitHub to take tasks from its issues.
-          </p>
-        </IntakeRoom>
-      ) : (
-        <form
-          className="grid gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const typed = label.trim();
-            if (typed.length === 0) return;
-            onSet(chosen, typed, takesPublic);
-          }}
-        >
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="grid min-w-56 gap-1.5">
-              <Label>Repository</Label>
-              <Select
-                onValueChange={(next) => {
-                  if (typeof next === "string") setRepo(next);
-                }}
-                value={chosen}
-              >
-                <SelectTrigger aria-label={`${name}'s GitHub repository`} size="sm">
-                  <SelectValue>{chosen}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {choices.map((choice) => (
-                    <SelectItem key={choice} value={choice}>
-                      {choice}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </div>
-            <div className="grid w-32 gap-1.5">
-              <Label htmlFor={labelId}>Label</Label>
-              <Input
-                id={labelId}
-                onChange={(event) => {
-                  setLabel(event.target.value);
-                }}
-                size="sm"
-                spellCheck={false}
-                value={label}
-              />
-            </div>
-            <Button disabled={working || label.trim().length === 0} size="sm" type="submit">
-              Take tasks
-            </Button>
-          </div>
-          {/* Off unless asked: anyone can write a public repository's issues. */}
-          <PublicChoice checked={takesPublic} id={publicId} onChange={setTakesPublic} />
-        </form>
-      )}
-      {read.answer === null ? null : <IntakeAnswer answer={read.answer} />}
-      {problem === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
-          {problem}
-        </p>
-      )}
-    </li>
-  );
-}
-
-/** HQ's answer as the intake was set: the webhook it made, or the URL and secret to paste. */
-function IntakeAnswer({ answer }: { readonly answer: HqIntakeView }) {
-  return (
-    <div className="grid gap-1.5" data-zerops-surface="settings-intake-answer">
-      <p className="text-xs text-foreground">{intakeAnswerLine(answer)}</p>
-      {answer.hook.kind === "paste" ? (
-        <>
-          <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />
-          <CopyLine copy="Copy secret" label="Secret" value={answer.hook.secret} />
-          <p className="text-xs text-muted-foreground">{answer.hook.why}</p>
-        </>
-      ) : null}
-    </div>
-  );
 }
