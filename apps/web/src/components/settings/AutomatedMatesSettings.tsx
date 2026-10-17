@@ -202,30 +202,47 @@ export function OrganizationKeyView({
 
 function TasksFromGithub() {
   const navigation = useAtomValue(hqNavigationAtom);
+  // HQ's applications once its navigation is read; until then the row says it is reading.
+  const structure = navigation.structure;
   const apps = useMemo(
-    () => (navigation.structure?.apps ?? []).map((app) => ({ id: app.id, name: app.name })),
-    [navigation.structure],
+    () =>
+      structure === null ? null : structure.apps.map((app) => ({ id: app.id, name: app.name })),
+    [structure],
   );
-  const appIds = useMemo(() => apps.map((app) => app.id), [apps]);
-  const { repos } = useHqAppReleases(appIds);
   return (
     <SettingsRow
       data-zerops-surface="settings-tasks-from-github"
       description="Each application's automated Mates take the issues carrying its label from one of its GitHub repositories, and say on GitHub how each went."
       title="Tasks from GitHub"
     >
-      <ul className="grid gap-3 px-3 pb-3 sm:px-4">
-        {apps.map((app) => (
-          <AppIntakeRow
-            appId={app.id}
-            choices={intakeRepoChoices(repos.get(app.id))}
-            key={app.id}
-            name={app.name}
-            reposRead={repos.has(app.id)}
-          />
-        ))}
-      </ul>
+      {apps === null ? (
+        <p className="px-3 pb-3 text-xs text-muted-foreground sm:px-4">Reading…</p>
+      ) : (
+        <AppIntakes apps={apps} />
+      )}
     </SettingsRow>
+  );
+}
+
+function AppIntakes({
+  apps,
+}: {
+  readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+}) {
+  const appIds = useMemo(() => apps.map((app) => app.id), [apps]);
+  const { repos } = useHqAppReleases(appIds);
+  return (
+    <ul className="grid gap-3 px-3 pb-3 sm:px-4">
+      {apps.map((app) => (
+        <AppIntakeRow
+          appId={app.id}
+          choices={intakeRepoChoices(repos.get(app.id))}
+          key={app.id}
+          name={app.name}
+          reposRead={repos.has(app.id)}
+        />
+      ))}
+    </ul>
   );
 }
 
