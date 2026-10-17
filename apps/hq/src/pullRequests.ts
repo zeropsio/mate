@@ -33,6 +33,7 @@ import {
   changeRoutePath,
 } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -47,7 +48,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { ChangeRefused, Changes } from "./changes.ts";
-import { HQ_MARK, marked } from "./githubChannel.ts";
+import { HQ_MARK, marked, quieted } from "./githubChannel.ts";
+import { GithubAuth } from "./githubAuth.ts";
 import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
@@ -68,12 +70,19 @@ export const MATE_END = "<!-- mate:end -->";
 /** How many failing heads of a pull request its Mate hears of before a person takes over. */
 export const CHECK_TRIES = 3;
 
+/** How long a change whose branch holds someone else's pull request waits before HQ looks again. */
+const TAKEN_FOR_MS = 60 * 60 * 1000;
+
 /** Said once on a pull request whose checks still fail after its Mate's tries. */
 export const CHECKS_GIVEN_UP = `Checks still fail after ${String(CHECK_TRIES)} tries; over to a person.`;
 
 /** A pull request's first comment: what its Mate does with it, said once. */
 export const firstComment = (mate: string) =>
   `${mate} will fix failing checks and answer review comments from people with write access to this repository. Add \`(aside)\` to a comment to keep it from ${mate}.`;
+
+/** Said on a pull request one who may not close it closed, as HQ opens it again. */
+export const closersOnly = (mate: string) =>
+  `Only people with write access close ${mate}'s pull requests.`;
 
 /** Why a task ends whose pull request was closed unmerged. */
 export const pullClosed = (number: number) => `PR #${String(number)} was closed.`;
@@ -124,6 +133,21 @@ const previewLines = (receipt: ChangeReceipt | null) =>
       : [],
   );
 
+/**
+ * A Mate's words as a pull request's body shows them: they read the same, but close no issue
+ * (`Fixes #3`, `closes owner/repo#4`, `resolved <issue link>`), link none and ping nobody — a word
+ * joiner, unseen, breaks each closing keyword and reference (`quieted`). Only HQ's own `Fixes #n`
+ * line closes the task's issue.
+ */
+export const inert = (text: string) =>
+  quieted(text).replace(
+    /\b(c)(lose[sd]?)\b|\b(f)(ix(?:e[sd])?)\b|\b(r)(esolve[sd]?)\b/giu,
+    (_word, ...parts: ReadonlyArray<string | undefined>) => {
+      const [c, close, f, fix, r, resolve] = parts;
+      return `${c ?? f ?? r ?? ""}\u2060${close ?? fix ?? resolve ?? ""}`;
+    },
+  );
+
 /** HQ's part of a pull request's body, markers included. */
 export const pullSection = (facts: PullFacts) => {
   const checked = checkedLines(facts.receipt);
@@ -141,7 +165,7 @@ export const pullSection = (facts: PullFacts) => {
     MATE_START,
     "## What it does",
     "",
-    facts.description.trim() === "" ? "_Not described yet._" : facts.description.trim(),
+    facts.description.trim() === "" ? "_Not described yet._" : inert(facts.description.trim()),
     ...(checked.length === 0 ? [] : ["", "## How it was checked", "", ...checked]),
     ...(preview.length === 0 ? [] : ["", "## Try it", "", ...preview]),
     ...(facts.fixes === null ? [] : ["", `Fixes #${String(facts.fixes)}`]),
@@ -247,10 +271,12 @@ interface PullRow {
   readonly checks_given_up: boolean;
   readonly described: string | null;
   readonly merged_sha: string | null;
+  readonly merged_head: string | null;
 }
 
 const PULL_COLUMNS = `app_id::text AS app_id, repo, number, github_repo, pr_number, url, state,
-  head_sha, checks, checks_told_sha, checks_told, checks_given_up, described, merged_sha`;
+  head_sha, checks, checks_told_sha, checks_told, checks_given_up, described, merged_sha,
+  merged_head`;
 
 interface ChangeFactsRow {
   readonly state: string;
@@ -288,7 +314,9 @@ const readPullEvent = decode(
       number: Schema.Number,
       merged: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
       merge_commit_sha: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      head: Schema.optionalKey(Schema.Struct({ sha: Schema.optionalKey(Schema.String) })),
     }),
+    sender: Schema.optionalKey(Actor),
   }),
 );
 const readReview = decode(
@@ -366,6 +394,12 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       const github = yield* GithubIssues;
       const gate = yield* GithubGate;
       const remotes = yield* Remotes;
+      const auth = yield* GithubAuth;
+      /**
+       * Changes whose branch on GitHub holds a pull request HQ did not open, and until when they
+       * are not tried again: they stay unmirrored, and HQ's log says why.
+       */
+      const taken = new Map<string, number>();
       const mirror = yield* GithubMirror;
       const events = yield* GithubEvents;
       // One pull request's step at a time: a sweep, an event and a merge never cross.
@@ -480,7 +514,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
         );
 
       /** Open the change's pull request, or keep it as the change is now. */
-      const keep = (appId: string, repo: string, number: number) =>
+      const keep = (appId: string, repo: string, number: number, reconcile: boolean) =>
         Effect.gen(function* () {
           const repository = yield* mirror.repositoryOf(appId, repo);
           if (repository === undefined) return;
@@ -490,12 +524,36 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const { row: change } = facts;
           // Merged on GitHub, not yet here: followed again.
           if (row?.state === "merged" && row.merged_sha !== null && facts.row.state === "open")
-            return yield* landed(row, row.merged_sha);
+            return yield* landed(row, row.merged_sha, row.merged_head);
+          // Closed on GitHub, its change not yet here: closed now.
+          if (row?.state === "closed" && facts.row.state === "open")
+            return yield* closedUnmerged(row);
           if (row !== undefined && row.state !== "open") return;
           // Closed in Mate while GitHub did not answer: closed there now.
           if (row !== undefined && change.state === "closed") return yield* closeOnGithub(row);
           if (change.state !== "open" || change.head === null) return;
+          // What GitHub says of it now, on the timed sweep: a merge or a close whose event never
+          // came is followed as the event would have been.
+          if (row !== undefined && reconcile) {
+            const app = yield* asApp(appId, repo, repository);
+            const now =
+              app === undefined
+                ? undefined
+                : yield* github.pull(app.remote, app.token, row.pr_number);
+            if (app !== undefined && now?.pull?.merged === true)
+              return yield* mergedOnGithub(row, now.pull.mergeSha, now.pull.headSha);
+            if (app !== undefined && now?.pull?.state === "closed") {
+              const issue = yield* github.issueState(app.remote, app.token, row.pr_number);
+              return yield* closedOnGithub(row, issue.closedBy);
+            }
+          }
           if (row === undefined && !change.ready) return;
+          if (
+            row === undefined &&
+            (taken.get(`${appId}/${repo}/${String(number)}`) ?? 0) >
+              (yield* Clock.currentTimeMillis)
+          )
+            return;
           const app = yield* asApp(appId, repo, repository);
           if (app === undefined) return;
           const { section } = sectionOf(appId, repo, number, repository, facts);
@@ -543,21 +601,32 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             base,
             body: section,
           });
-          // Opened before, its record lost: the open one of its branch is it.
+          // Opened before, its record lost: the open one of its branch is it — only one the app's
+          // bot opened from the repository itself. Anyone else's holds the branch: never taken.
+          const bot = made.pull === undefined && made.status === 422 ? yield* auth.bot : undefined;
+          const found =
+            bot === undefined
+              ? undefined
+              : (yield* github.pullsOf(app.remote, app.token, pushed.branch)).find(
+                  (candidate) => candidate.state === "open",
+                );
           const pull =
             made.pull ??
-            (made.status === 422
-              ? (yield* github.pullsOf(app.remote, app.token, pushed.branch)).find(
-                  (found) => found.state === "open",
-                )
+            (found !== undefined && found.author === bot?.login && found.sameRepository
+              ? found
               : undefined);
-          if (pull === undefined)
-            return yield* Effect.logWarning("a change's pull request not opened", {
-              appId,
-              repo,
-              number,
-              status: made.status,
-            });
+          if (pull === undefined) {
+            taken.set(
+              `${appId}/${repo}/${String(number)}`,
+              (yield* Clock.currentTimeMillis) + TAKEN_FOR_MS,
+            );
+            return yield* Effect.logWarning(
+              found === undefined
+                ? "a change's pull request not opened"
+                : "a change's branch on GitHub holds a pull request someone else opened",
+              { appId, repo, number, status: made.status, pull: found?.number },
+            );
+          }
           const kept = yield* leader.write(sql`
             INSERT INTO hq_pull_request (app_id, repo, number, github_repo, pr_number, url,
               head_sha, described)
@@ -585,20 +654,69 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           if (change.task_id !== null) yield* toldOpened(change.task_id);
         });
 
-      /** The pull request closed on GitHub, with a line saying why; recorded closed here. */
+      /**
+       * The pull request closed on GitHub, and only then a line saying so; recorded closed here.
+       * GitHub refusing because it is merged or closed already records what it is, once: nothing
+       * is asked of GitHub again for it. GitHub not answering leaves it for the sweep.
+       */
       const closeOnGithub = (row: PullRow) =>
         Effect.gen(function* () {
           const app = yield* asApp(row.app_id, row.repo, row.github_repo);
           if (app === undefined) return;
-          yield* github.comment(app.remote, app.token, row.pr_number, marked("Closed in Mate."));
           const closed = yield* github.editPull(app.remote, app.token, row.pr_number, {
             state: "closed",
           });
-          if (closed !== 200) return;
-          yield* closedUnmerged(row);
+          if (closed === 200) {
+            yield* github
+              .comment(app.remote, app.token, row.pr_number, marked("Closed in Mate."))
+              .pipe(Effect.ignore);
+            return yield* closedUnmerged(row);
+          }
+          const now = yield* github.pull(app.remote, app.token, row.pr_number);
+          if (now.pull?.merged === true)
+            return yield* mergedOnGithub(row, now.pull.mergeSha, now.pull.headSha);
+          if (now.pull?.state === "closed") return yield* closedUnmerged(row);
         });
 
-      /** The pull request is closed unmerged: recorded, its change closed, its task stopped. */
+      /**
+       * The pull request was closed unmerged on GitHub by `closer`: by one who may (a person with
+       * write, or another app), its change closes and its task stops; by anyone else, it is opened
+       * again with a line saying who may close it, and nothing moves. GitHub not saying who may
+       * leaves it for the sweep.
+       */
+      const closedOnGithub = (
+        row: PullRow,
+        closer: { readonly login: string; readonly type?: string | undefined } | undefined,
+      ) =>
+        Effect.gen(function* () {
+          if (row.state !== "open") return;
+          const app = yield* asApp(row.app_id, row.repo, row.github_repo);
+          if (app === undefined || closer === undefined) return;
+          const bot = yield* auth.bot;
+          const verdict =
+            closer.login === bot?.login
+              ? ({ kind: "bot" } as const)
+              : yield* gate.verdict(app.remote, app.token, closer);
+          if (verdict === undefined) return;
+          if (verdict.kind !== "refused") return yield* closedUnmerged(row);
+          const opened = yield* github.editPull(app.remote, app.token, row.pr_number, {
+            state: "open",
+          });
+          if (opened !== 200) return;
+          const facts = yield* factsOf(row.app_id, row.repo, row.number);
+          yield* github.comment(
+            app.remote,
+            app.token,
+            row.pr_number,
+            marked(closersOnly(facts?.mate ?? "Mate")),
+          );
+        });
+
+      /**
+       * The pull request is closed unmerged: recorded, its change closed, its task stopped — each
+       * step once, and a record closed with its change still open (a write that stopped between
+       * them) finished.
+       */
       const closedUnmerged = (row: PullRow) =>
         Effect.gen(function* () {
           const ended = yield* leader.write(sql<{ readonly mate_project_id: string }>`
@@ -608,12 +726,13 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               AND pr.number = ${row.number} AND pr.state = 'open'
               AND c.app_id = pr.app_id AND c.repo = pr.repo AND c.number = pr.number
             RETURNING c.mate_project_id`);
-          if (ended.length === 0) return;
-          yield* changes.closeOnGithub(row.app_id, row.repo, row.number, {
+          const closedNow = yield* changes.closeOnGithub(row.app_id, row.repo, row.number, {
             by: "github",
             pullRequest: row.pr_number,
           });
-          yield* moved(ended[0]!.mate_project_id);
+          const mate = closedNow?.mateProjectId ?? ended[0]?.mate_project_id;
+          if (mate === undefined) return;
+          yield* moved(mate);
           const task = yield* taskOf(row);
           if (task !== undefined) yield* tasks.stop(task, pullClosed(row.pr_number));
         });
@@ -624,10 +743,16 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        * change merged by it (`Changes.landImported`). Either failing leaves it for the next try
        * (the sweep); one merged already stays as it is.
        */
-      const landed = (row: PullRow, mergedSha: string) =>
+      const landed = (row: PullRow, mergedSha: string, mergedHead: string | null) =>
         Effect.gen(function* () {
           yield* mirror.sync(row.app_id, row.repo);
-          yield* changes.landImported(row.app_id, row.repo, row.number, mergedSha);
+          yield* changes.landImported(
+            row.app_id,
+            row.repo,
+            row.number,
+            mergedSha,
+            mergedHead ?? undefined,
+          );
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("GitHub's merge not followed yet", { pull: row.pr_number, cause }),
@@ -638,18 +763,23 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        * The pull request is merged as `mergedSha`: recorded, its change merged here, and its task's
        * status line says so.
        */
-      const mergedOnGithub = (row: PullRow, mergedSha: string | undefined) =>
+      const mergedOnGithub = (
+        row: PullRow,
+        mergedSha: string | undefined,
+        mergedHead: string | undefined,
+      ) =>
         Effect.gen(function* () {
           const ended = yield* leader.write(sql<{ readonly mate_project_id: string }>`
             UPDATE hq_pull_request pr SET state = 'merged',
-              merged_sha = COALESCE(${mergedSha ?? null}, pr.merged_sha), updated_at = now()
+              merged_sha = COALESCE(${mergedSha ?? null}, pr.merged_sha),
+              merged_head = COALESCE(${mergedHead ?? null}, pr.merged_head), updated_at = now()
             FROM hq_change c
             WHERE pr.app_id::text = ${row.app_id} AND pr.repo = ${row.repo}
               AND pr.number = ${row.number} AND pr.state = 'open'
               AND c.app_id = pr.app_id AND c.repo = pr.repo AND c.number = pr.number
             RETURNING c.mate_project_id`);
           const sha = mergedSha ?? row.merged_sha;
-          if (sha !== null) yield* landed(row, sha);
+          if (sha !== null) yield* landed(row, sha, mergedHead ?? row.merged_head);
           if (ended.length === 0) return;
           yield* moved(ended[0]!.mate_project_id);
           const task = yield* taskOf(row);
@@ -672,14 +802,18 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           (rows) => rows[0]?.id,
         );
 
-      /** Every open change a pull request is due for, or whose pull request may have moved. */
-      const keepAll = Effect.gen(function* () {
-        if (!(yield* leading)) return;
-        const due = yield* sql<{
-          readonly app_id: string;
-          readonly repo: string;
-          readonly number: number;
-        }>`
+      /**
+       * Every open change a pull request is due for, or whose pull request may have moved;
+       * `reconcile`, also what GitHub says of each open one.
+       */
+      const keepAll = (reconcile: boolean) =>
+        Effect.gen(function* () {
+          if (!(yield* leading)) return;
+          const due = yield* sql<{
+            readonly app_id: string;
+            readonly repo: string;
+            readonly number: number;
+          }>`
           SELECT c.app_id::text AS app_id, c.repo, c.number
           FROM hq_change c
           LEFT JOIN hq_pull_request pr
@@ -688,15 +822,16 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             (pr.app_id IS NULL AND c.state = 'open' AND c.head IS NOT NULL
               AND c.ready_head = c.head)
             OR (pr.state = 'open' AND c.state IN ('open', 'closed'))
-            OR (pr.state = 'merged' AND c.state = 'open' AND pr.merged_sha IS NOT NULL))
+            OR (pr.state = 'merged' AND c.state = 'open' AND pr.merged_sha IS NOT NULL)
+            OR (pr.state = 'closed' AND c.state = 'open'))
           ORDER BY c.app_id, c.repo, c.number`;
-        for (const change of due)
-          yield* keep(change.app_id, change.repo, change.number).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("a change's pull request not kept", { change, cause }),
-            ),
-          );
-      }).pipe(working.withPermits(1));
+          for (const change of due)
+            yield* keep(change.app_id, change.repo, change.number, reconcile).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("a change's pull request not kept", { change, cause }),
+              ),
+            );
+        }).pipe(working.withPermits(1));
 
       /** A comment said on a pull request, kept and told where its author may steer the Mate. */
       const heard = (
@@ -814,8 +949,12 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const row = yield* pullOnGithub(event.repository, read.pull_request.number);
           if (row === undefined) return;
           if (read.pull_request.merged === true)
-            yield* mergedOnGithub(row, read.pull_request.merge_commit_sha ?? undefined);
-          else yield* closedUnmerged(row);
+            yield* mergedOnGithub(
+              row,
+              read.pull_request.merge_commit_sha ?? undefined,
+              read.pull_request.head?.sha,
+            );
+          else yield* closedOnGithub(row, read.sender);
         }),
       );
       yield* listen("pull_request_review", (event) =>
@@ -883,15 +1022,16 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       // On every move of a change, and every minute for any missed.
       yield* Effect.forkScoped(
         Stream.runForEach(changes.changes.pipe(Stream.debounce(Duration.millis(100))), () =>
-          keepAll.pipe(
+          keepAll(false).pipe(
             Effect.catchCause((cause) =>
               Effect.logWarning("changes' pull requests not kept", { cause }),
             ),
           ),
         ),
       );
+      // The timed sweep also asks GitHub how each open pull request stands.
       yield* Effect.forkScoped(
-        keepAll.pipe(
+        keepAll(true).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("changes' pull requests not kept", { cause }),
           ),
@@ -939,6 +1079,14 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               UPDATE hq_pull_request SET head_sha = ${pushed.sha}, checks = NULL
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`);
           }
+          // GitHub merges it into the repository's default branch, or not at all.
+          const [base, now] = yield* Effect.all([
+            github.defaultBranch(app.remote, app.token),
+            github.pull(app.remote, app.token, row.pr_number),
+          ]).pipe(Effect.orElseSucceed(() => [undefined, undefined] as const));
+          if (base?.branch === undefined || now?.pull === undefined)
+            return yield* refuse("github_unreachable");
+          if (now.pull.base !== base.branch) return yield* refuse("github_wrong_base");
           const facts = yield* factsOf(appId, repo, number);
           const { login } =
             facts === undefined
@@ -972,19 +1120,39 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             });
             return yield* refuse("github_refused");
           }
-          yield* mergedOnGithub(row, merged.sha);
-          return yield* changes.change(appId, repo, number);
+          // The head GitHub merged is the one it was asked to: `sha` holds it to it.
+          yield* mergedOnGithub(row, merged.sha, expectedHead);
+          return yield* answered(appId, repo, number);
+        });
+
+      /**
+       * A mirrored change as a merge on GitHub left it: merged here, or — HQ not having followed
+       * GitHub yet — refused as such, for the sweep to finish.
+       */
+      const answered = (appId: string, repo: string, number: number) =>
+        Effect.gen(function* () {
+          const change = yield* changes.change(appId, repo, number);
+          if (change.state !== "merged") return yield* refuse("github_landing");
+          return change;
         });
 
       return PullRequests.of({
         merge: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {
-            const row = yield* pullOf(appId, repo, number);
-            const repository =
-              row?.state === "open" ? yield* mirror.repositoryOf(appId, repo) : undefined;
-            if (row === undefined || repository === undefined)
+            // A change mirrored to GitHub merges there and only there: never by HQ's own squash.
+            const repository = yield* mirror.repositoryOf(appId, repo);
+            if (repository === undefined)
               return yield* changes.mergeChange(userId, appId, repo, number, expectedHead);
-            return yield* mergeOnGithub(userId, row, expectedHead).pipe(working.withPermits(1));
+            return yield* Effect.gen(function* () {
+              yield* changes.personMay(userId, appId, "merge_change");
+              const row = yield* pullOf(appId, repo, number);
+              if (row === undefined) return yield* refuse("github_no_pull");
+              if (row.state === "closed") return yield* refuse("github_closed");
+              if (row.state === "open") return yield* mergeOnGithub(userId, row, expectedHead);
+              // Merged on GitHub already: followed now, if it was not.
+              if (row.merged_sha !== null) yield* landed(row, row.merged_sha, row.merged_head);
+              return yield* answered(appId, repo, number);
+            }).pipe(working.withPermits(1));
           }),
         close: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {

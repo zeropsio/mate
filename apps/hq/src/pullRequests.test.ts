@@ -12,13 +12,15 @@ import { rowsWhere } from "../test/harness/mates.ts";
 import { ticketFor } from "../test/harness/runningCore.ts";
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { GithubMirror } from "./githubMirror.ts";
+import { GithubMirror, GithubMirrorUnavailable } from "./githubMirror.ts";
 import { mateTaskLink } from "./mateTasks.ts";
 import {
   CHECKS_GIVEN_UP,
   MATE_END,
   MATE_START,
   checksFailed,
+  closersOnly,
+  pullClosed,
   firstComment,
   mergeMessage,
   pullSection,
@@ -38,7 +40,7 @@ const NAV = { kind: "navigation" } as const;
  * GitHub moves nothing (the fake GitHub has no git).
  */
 const mirroredPool = Effect.gen(function* () {
-  const mirrored = { pushes: [] as Array<number>, syncs: 0 };
+  const mirrored = { pushes: [] as Array<number>, syncs: 0, unreachable: false };
   const mirror = Layer.effect(
     GithubMirror,
     Effect.gen(function* () {
@@ -58,9 +60,11 @@ const mirroredPool = Effect.gen(function* () {
           }).pipe(Effect.orDie),
         // HQ's main holds GitHub's squash already (`githubMergeOnMain`): following it moves nothing.
         sync: () =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             mirrored.syncs += 1;
-            return { kind: "same", sha: "f".repeat(40) } as const;
+            return mirrored.unreachable
+              ? Effect.fail(new GithubMirrorUnavailable({ reason: "unreachable" }))
+              : Effect.succeed({ kind: "same", sha: "f".repeat(40) } as const);
           }),
         follow: () => Effect.void,
       });
@@ -121,7 +125,7 @@ const mirroredPool = Effect.gen(function* () {
 type Pool = Effect.Success<typeof mirroredPool>;
 
 /** The robot on issue 1, its change `web` 1 described at `head`; the task. */
-const describedChange = (core: Pool, head = HEAD) =>
+const describedChange = (core: Pool, head = HEAD, described = true) =>
   Effect.gen(function* () {
     yield* core.call("POST", "/api/mate/repos", {
       headers: core.robot.auth,
@@ -144,11 +148,12 @@ const describedChange = (core: Pool, head = HEAD) =>
       body: { repo: "web", title: "Hotter tea" },
     });
     yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'web' AND number = 1`;
-    const described = yield* core.call("PATCH", "/api/mate/changes/web/1", {
+    if (!described) return task;
+    const words = yield* core.call("PATCH", "/api/mate/changes/web/1", {
       headers: core.robot.auth,
       body: { body: "Boils the water twice.\n\nAnd pours it slowly." },
     });
-    assert.strictEqual(described.status, 200);
+    assert.strictEqual(words.status, 200);
     return task;
   });
 
@@ -240,6 +245,28 @@ describe("a change's pull request", () => {
     assert.strictEqual(mateNameIn("Juno", "Tea Shop"), "Juno");
     assert.strictEqual(mateNameIn("Other - Juno", "Tea Shop"), "Other - Juno");
     assert.strictEqual(mateNameIn("Tea Shop - ", "Tea Shop"), "Tea Shop -");
+  });
+
+  it("a Mate's description in its pull request closes no issue and pings nobody; HQ's own Fixes line still does", () => {
+    const body = pullSection({
+      mate: "Juno",
+      description:
+        "Fixes #3, closes acme/samovar#4, resolved https://github.com/acme/tea-shop/issues/5. Thanks @nova and @acme/tea.",
+      receipt: null,
+      fixes: 1,
+      taskLink: null,
+      changeLink: "https://mate.zerops.io/change/a/web/1",
+      requester: null,
+    });
+    const description = body.slice(0, body.indexOf("Fixes #1"));
+    assert.notMatch(description, /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b/iu);
+    assert.notMatch(description, /#\d|@[\w-]/u);
+    // It reads the same once the unseen joiners are taken out.
+    assert.include(
+      description.replaceAll("\u2060", ""),
+      "Fixes #3, closes acme/samovar#4, resolved https://github.com/acme/tea-shop/issues/5. Thanks @nova and @acme/tea.",
+    );
+    assert.include(body, "\nFixes #1\n");
   });
 
   it("a body links its issue, its task, and who asked, and says how it was checked", () => {
@@ -345,6 +372,8 @@ describe("a change's pull request", () => {
             (project) => project.mate?.task?.pullRequest?.checks === "pending",
           );
           assert.deepStrictEqual(row.mate?.task?.pullRequest, pending);
+          // A live task never says it ended.
+          assert.notProperty(row.mate?.task ?? {}, "ended");
           const app = yield* nextScopeValue<HqNavigationApp>(
             watching,
             NAV,
@@ -356,6 +385,45 @@ describe("a change's pull request", () => {
             Array.isArray(app.changes) ? app.changes[0]?.pullRequest : undefined,
             pending,
           );
+          yield* watching.close;
+        }),
+    );
+
+    it.effect(
+      "a free Mate's row keeps its last task, saying how it ended, with its pull request",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          const task = yield* opened(core);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          const squash = yield* squashOnMain(core);
+          // A push after GitHub merged moves the change's head past what was merged.
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'web' AND number = 1`;
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: {
+              number: 2,
+              merged: true,
+              merge_commit_sha: squash,
+              head: { sha: HEAD },
+            },
+          });
+          const row = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.ended !== undefined,
+          );
+          assert.strictEqual(row.mate?.task?.id, task.id);
+          assert.strictEqual(row.mate?.task?.ended, "merged");
+          assert.deepInclude(row.mate?.task?.pullRequest ?? {}, { number: 2, state: "merged" });
           yield* watching.close;
         }),
     );
@@ -442,6 +510,115 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "a pull request someone else opened on the change's branch is never taken for the change's own",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Not the Mate's",
+            body: "",
+            head: "mate/1-hotter-tea",
+            state: "open",
+            merged: false,
+            author: "zoe",
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core);
+          yield* core.github.seenWhere("the branch's pull requests read", (seen) =>
+            seen.some((request) => request.method === "GET" && request.path.includes("/pulls?")),
+          );
+          // What HQ does with what it read happens at once; nothing may follow it.
+          yield* Effect.sleep(Duration.millis(300));
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_pull_request", (rows) => rows.length === 0);
+          assert.isFalse(
+            core.github.state.seen.some((request) =>
+              request.path.startsWith("/repos/acme/tea-shop/issues/9/"),
+            ),
+          );
+        }),
+    );
+
+    it.effect(
+      "the pull request the app's bot opened before, its record lost, is the change's own",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Hotter tea",
+            body: "",
+            head: "mate/1-hotter-tea",
+            state: "open",
+            merged: false,
+            author: `${core.github.state.app.slug}[bot]`,
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core);
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 9,
+          );
+        }),
+    );
+
+    it.effect(
+      "Merge in Mate refuses a pull request moved to merge into another branch than the default one",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          core.github.state.pulls.set(2, { ...core.github.state.pulls.get(2)!, base: "dev" });
+          const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(refused.status, 409);
+          assert.strictEqual((refused.body as { reason: string }).reason, "github_wrong_base");
+          assert.isFalse(core.github.state.seen.some((request) => request.method === "PUT"));
+        }),
+    );
+
+    it.effect(
+      "Merge in Mate never squashes a mirrored change in HQ: before its pull request is open, it refuses",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* describedChange(core, HEAD, false);
+          const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(refused.status, 409);
+          assert.strictEqual((refused.body as { reason: string }).reason, "github_no_pull");
+          assert.strictEqual((yield* changeOf(core)).state, "open");
+        }),
+    );
+
+    it.effect(
+      "a merge GitHub made that HQ could not follow yet answers so, and the sweep finishes it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* squashOnMain(core);
+          core.mirrored.unreachable = true;
+          const answer = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(answer.status, 409);
+          assert.strictEqual((answer.body as { reason: string }).reason, "github_landing");
+          assert.strictEqual(core.github.state.pulls.get(2)?.merged, true);
+          core.mirrored.unreachable = false;
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged",
+          );
+        }),
+    );
+
+    it.effect(
       "GitHub refusing the merge refuses it in Mate in plain words, and nothing moves",
       () =>
         Effect.gen(function* () {
@@ -466,14 +643,32 @@ describe("a change's pull request", () => {
           const core = yield* mirroredPool;
           yield* opened(core);
           const squash = yield* squashOnMain(core);
+          // A push after GitHub merged moves the change's head past what was merged.
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'web' AND number = 1`;
           yield* core.dispatch("pull_request", {
             action: "closed",
-            pull_request: { number: 2, merged: true, merge_commit_sha: squash },
+            pull_request: {
+              number: 2,
+              merged: true,
+              merge_commit_sha: squash,
+              head: { sha: HEAD },
+            },
           });
           yield* rowsWhere(
             core.url,
             "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
             (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
+          );
+          // The head GitHub merged is the one that landed, whatever the change's head is by then.
+          yield* rowsWhere(
+            core.url,
+            "SELECT merged_sha, merged_head FROM hq_pull_request",
+            (rows) => rows[0]?.["merged_sha"] === squash && rows[0]?.["merged_head"] === HEAD,
+          );
+          yield* rowsWhere(
+            core.url,
+            "SELECT landed_head FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["landed_head"] === HEAD,
           );
           yield* statusSays(core, "Merged in #2.");
         }),
@@ -504,6 +699,94 @@ describe("a change's pull request", () => {
         }),
     );
 
+    it.effect(
+      "a pull request merged on GitHub whose event never came is found by the sweep, and its change merged here",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const squash = yield* squashOnMain(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            merged: true,
+            mergeSha: squash,
+            headSha: HEAD,
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
+          );
+          yield* statusSays(core, "Merged in #2.");
+        }),
+    );
+
+    it.effect(
+      "a pull request closed on GitHub whose event never came is found by the sweep: its change closes and its Mate is told to stop",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            closedBy: { login: "nova", type: "User" },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "closed",
+          );
+          const stop = yield* core.robot.link.takeWhere(
+            "told to stop",
+            (frame) => frame.type === "task-stop",
+          );
+          assert.deepInclude(stop, { taskId: task.id, reason: pullClosed(2) });
+        }),
+    );
+
+    it.effect(
+      "a pull request recorded closed while its change stayed open is finished by the sweep",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* core.sql`UPDATE hq_pull_request SET state = 'closed'`;
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "closed",
+          );
+        }),
+    );
+
+    it.effect(
+      "a pull request closed by someone who cannot write is opened again, saying who may close it, and its change stays open",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.roles.set("zoe", "triage");
+          yield* opened(core);
+          core.github.state.pulls.set(2, { ...core.github.state.pulls.get(2)!, state: "closed" });
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: { number: 2, merged: false },
+            sender: { login: "zoe", type: "User" },
+          });
+          yield* core.github.seenWhere("said who may close it", (seen) =>
+            seen.some(
+              (request) =>
+                request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+                (request.body as { body: string }).body.startsWith(closersOnly("Juno")),
+            ),
+          );
+          assert.strictEqual(core.github.state.pulls.get(2)?.state, "open");
+          assert.strictEqual((yield* changeOf(core)).state, "open");
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        }),
+    );
+
     it.effect("Close in Mate closes the pull request on GitHub with a line saying so", () =>
       Effect.gen(function* () {
         const core = yield* mirroredPool;
@@ -531,6 +814,49 @@ describe("a change's pull request", () => {
           ),
         );
       }),
+    );
+
+    it.effect(
+      "Close in Mate of a pull request GitHub merged meanwhile records it merged, says nothing on it, and never tries again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            merged: true,
+            mergeSha: "e".repeat(40),
+            headSha: HEAD,
+          });
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/close`, {
+            session: core.owner,
+            body: { expectedHead: null },
+          });
+          assert.strictEqual(closed.status, 200);
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, merged_sha FROM hq_pull_request",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === "e".repeat(40),
+          );
+          // Sweeps run every 100 ms here: none of them asks GitHub again.
+          yield* Effect.sleep(Duration.millis(400));
+          const closes = core.github.state.seen.filter(
+            (request) =>
+              request.method === "PATCH" &&
+              request.path === PULL &&
+              (request.body as { state?: string }).state === "closed",
+          );
+          assert.strictEqual(closes.length, 1);
+          assert.isFalse(
+            core.github.state.seen.some(
+              (request) =>
+                request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+                (request.body as { body: string }).body.startsWith("Closed in Mate."),
+            ),
+          );
+        }),
     );
 
     it.effect(

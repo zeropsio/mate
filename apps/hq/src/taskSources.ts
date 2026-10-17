@@ -178,6 +178,8 @@ export const navigationTaskOf = (task: {
   readonly waiting: boolean;
   /** Its change's pull request on GitHub, where it has one. */
   readonly pullRequest?: HqNavigationMateTask["pullRequest"] | undefined;
+  /** How it ended, for a Mate's most recent task while none is live. */
+  readonly ended?: HqNavigationMateTask["ended"] | undefined;
 }): HqNavigationMateTask => ({
   id: task.id,
   ...(task.source.kind === "github-issue"
@@ -188,6 +190,7 @@ export const navigationTaskOf = (task: {
   label: mateTaskSourceLabel(task.source),
   ...(task.waiting ? { waiting: true as const } : {}),
   ...(task.pullRequest === undefined ? {} : { pullRequest: task.pullRequest }),
+  ...(task.ended === undefined ? {} : { ended: task.ended }),
 });
 
 /** A task's source as its row keeps it: JSON, for `::jsonb`. */

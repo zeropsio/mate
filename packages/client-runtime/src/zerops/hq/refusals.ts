@@ -77,6 +77,12 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
     "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
   github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
   github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
+  github_no_pull: "Its pull request on GitHub isn't open yet. Try again in a minute.",
+  github_closed: "Its pull request was closed on GitHub.",
+  github_landing:
+    "It was merged on GitHub; Mate is still bringing main up to date. It shows as merged shortly.",
+  github_wrong_base:
+    "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
 
 /** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
