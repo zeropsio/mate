@@ -100,7 +100,9 @@ describe("the GitHub section where no app is connected", () => {
     expect(host.textContent).toContain("Not connected");
     expect(field("App name")).toBeNull();
     await act(async () => button("Connect")!.click());
-    expect(host.textContent).toContain("appear as your organization's bot, never a person");
+    expect(host.textContent).toContain(
+      "Everything Mate writes on GitHub appears as your organization's bot, never a person.",
+    );
     expect(field("GitHub organization")?.placeholder).toBe("Your own account");
     expect(field("App name")?.value).toBe("Acme Mate");
     expect(button("Create GitHub app")).toBeDefined();
