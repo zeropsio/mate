@@ -135,7 +135,9 @@ describe("the organization's GitHub app", () => {
       "https://zcp-1a2b.prg1.zerops.app/mate/settings",
       "https://zcp-1a2b.prg1.zerops.app/mate/settings",
     ],
-    ["https://evil.test/settings/automation?x=1", "https://mate.zerops.io/settings/automation?x=1"],
+    ["https://evil.test/settings/automation?x=1", "https://mate.zerops.io/settings/automation"],
+    ["https://evil.test//evil.example/x", "https://mate.zerops.io/settings/automation"],
+    ["https://evil.test/\\evil.example/x", "https://mate.zerops.io/settings/automation"],
     ["not a url", "https://mate.zerops.io/settings/automation"],
   ])("the browser goes back from GitHub to %s only on a Mate origin", (asked, back) => {
     assert.strictEqual(trustedReturn(asked), back);

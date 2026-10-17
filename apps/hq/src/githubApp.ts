@@ -157,7 +157,8 @@ export const appJwt = (githubId: number, pem: Redacted.Redacted, nowMs: number) 
 
 /**
  * Where the browser goes back to: a Mate page on Mate's hosted origin, a Mate's own (`*.zerops.app`)
- * or one served locally; anything else goes to the same page on Mate's hosted origin.
+ * or one served locally; anything else goes to Settings › Automation on Mate's hosted origin,
+ * carrying nothing of what was asked.
  */
 export const trustedReturn = (raw: string) => {
   const fallback = `${DEFAULT_HOSTED_APP_URL}/settings/automation`;
@@ -172,8 +173,7 @@ export const trustedReturn = (raw: string) => {
   const local =
     url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   const mates = url.protocol === "https:" && url.hostname.endsWith(".zerops.app");
-  if (url.origin === hosted.origin || local || mates) return url.toString();
-  return new URL(`${url.pathname}${url.search}`, hosted).toString();
+  return url.origin === hosted.origin || local || mates ? url.toString() : fallback;
 };
 
 /** `url` with `name=value` among its query. */
