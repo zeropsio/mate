@@ -20,6 +20,7 @@ import {
   MATE_START,
   checksFailed,
   closersOnly,
+  pullClosed,
   firstComment,
   mergeMessage,
   pullSection,
@@ -604,6 +605,68 @@ describe("a change's pull request", () => {
           );
           yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
           yield* statusSays(core, "Juno stopped: PR #⁠2 was closed.");
+        }),
+    );
+
+    it.effect(
+      "a pull request merged on GitHub whose event never came is found by the sweep, and its change merged here",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const squash = yield* squashOnMain(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            merged: true,
+            mergeSha: squash,
+            headSha: HEAD,
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
+          );
+          yield* statusSays(core, "Merged in #2.");
+        }),
+    );
+
+    it.effect(
+      "a pull request closed on GitHub whose event never came is found by the sweep: its change closes and its Mate is told to stop",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            closedBy: { login: "nova", type: "User" },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "closed",
+          );
+          const stop = yield* core.robot.link.takeWhere(
+            "told to stop",
+            (frame) => frame.type === "task-stop",
+          );
+          assert.deepInclude(stop, { taskId: task.id, reason: pullClosed(2) });
+        }),
+    );
+
+    it.effect(
+      "a pull request recorded closed while its change stayed open is finished by the sweep",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* core.sql`UPDATE hq_pull_request SET state = 'closed'`;
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "closed",
+          );
         }),
     );
 
