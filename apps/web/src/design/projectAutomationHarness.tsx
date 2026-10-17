@@ -56,9 +56,24 @@ const ADMIN: AutomationControls = {
   onAddMate: nothing,
   onTakeFrom: nothing,
   onEdit: nothing,
+  onAskStop: nothing,
+  onKeep: nothing,
+  pressOf: () => ({ kind: "idle" }),
   onStop: nothing,
   onReadAgain: nothing,
   onOpenSettings: nothing,
+};
+/** A schedule's Remove asking, GitHub's Stop under way, Slack's refused. */
+const PRESSING: AutomationControls = {
+  ...ADMIN,
+  pressOf: (row) =>
+    row.kind === "schedule"
+      ? { kind: "asking" }
+      : row.kind === "github"
+        ? { kind: "working" }
+        : row.kind === "slack"
+          ? { kind: "refused", words: "HQ is not answering right now." }
+          : { kind: "idle" },
 };
 
 const POOL: ReadonlyArray<PoolMate> = [
@@ -210,6 +225,15 @@ function Harness() {
             pool={POOL}
             sources={SOURCES}
             workingOf={(id) => WORKING.has(id)}
+          />
+        </Panel>
+        <Panel title="Remove asking, Stop under way, Stop refused">
+          <ProjectAutomationView
+            admin={PRESSING}
+            onOpenMate={nothing}
+            pool={[]}
+            sources={SOURCES}
+            workingOf={() => false}
           />
         </Panel>
         <Panel title="Nothing set up yet">

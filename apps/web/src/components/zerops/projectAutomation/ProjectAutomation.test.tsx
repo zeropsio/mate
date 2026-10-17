@@ -42,11 +42,16 @@ const ROWS: ReadonlyArray<SourceRow> = [
   },
 ];
 
-function controls(): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
+function controls(
+  press: AutomationControls["pressOf"] = () => ({ kind: "idle" }),
+): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
   return {
     onAddMate: vi.fn(),
     onTakeFrom: vi.fn(),
     onEdit: vi.fn(),
+    onAskStop: vi.fn(),
+    onKeep: vi.fn(),
+    pressOf: press as never,
     onStop: vi.fn(),
     onReadAgain: vi.fn(),
     onOpenSettings: vi.fn(),
@@ -146,10 +151,59 @@ describe("a project's Automation section", () => {
       buttons(github, "Stop")[0]?.props.onClick();
     });
     expect(admin.onEdit).toHaveBeenCalledWith(ROWS[0]);
-    expect(admin.onStop).toHaveBeenCalledWith(ROWS[0]);
+    // Stop asks before it stops.
+    expect(admin.onAskStop).toHaveBeenCalledWith(ROWS[0]);
+    expect(admin.onStop).not.toHaveBeenCalled();
     // A schedule is removed; webhooks are each deleted in their form, never all at once.
     expect(buttons(sourceRow(root, "schedule"), "Remove")).toHaveLength(1);
     expect(buttons(sourceRow(root, "webhook"), "Stop")).toHaveLength(0);
+  });
+
+  it("asks on the row before it stops a source, and stops it only once confirmed", () => {
+    const admin = controls((row) =>
+      row.key === "schedule:s1" ? { kind: "asking" } : { kind: "idle" },
+    );
+    const root = rendered(
+      <ProjectAutomationView
+        admin={admin}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const schedule = sourceRow(root, "schedule");
+    expect(words(schedule)).toContain("Remove this schedule and its brief?");
+    act(() => {
+      buttons(schedule, "Keep")[0]?.props.onClick();
+    });
+    expect(admin.onKeep).toHaveBeenCalledOnce();
+    act(() => {
+      buttons(schedule, "Remove")[0]?.props.onClick();
+    });
+    expect(admin.onStop).toHaveBeenCalledWith(ROWS[3]);
+  });
+
+  it("shows a stop under way on its row, and HQ's refusal there", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        admin={controls((row) =>
+          row.key === "github"
+            ? { kind: "working" }
+            : row.key === "slack"
+              ? { kind: "refused", words: "HQ refused it." }
+              : { kind: "idle" },
+        )}
+        onOpenMate={vi.fn()}
+        pool={[]}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const stopping = buttons(sourceRow(root, "github"), "Stopping…");
+    expect(stopping).toHaveLength(1);
+    expect(stopping[0]?.props.disabled).toBe(true);
+    expect(words(sourceRow(root, "slack"))).toContain("HQ refused it.");
   });
 
   it("says a channel takes no tasks while its app isn't connected, with the way to connect it", () => {

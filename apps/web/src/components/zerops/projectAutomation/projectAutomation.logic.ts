@@ -195,3 +195,46 @@ export function automationShown(input: {
   if (input.key === "unsupported") return false;
   return input.admin || input.pool > 0 || input.sources > 0;
 }
+
+/**
+ * Where a source row's Stop (or a schedule's Remove) stands: at rest; asking whether to, on the
+ * row; under way; or refused, in HQ's words, on the row it was pressed on.
+ */
+export type RowPress =
+  | { readonly kind: "idle" }
+  | { readonly kind: "asking" }
+  | { readonly kind: "working" }
+  | { readonly kind: "refused"; readonly words: string };
+
+export function sourceRowPress(input: {
+  readonly key: string;
+  /** The row whose Stop asks now; `null`: none. */
+  readonly asking: string | null;
+  /** The row whose Stop was confirmed last; `null`: none. */
+  readonly pressed: string | null;
+  /** Where the write of that row's source stands. */
+  readonly action:
+    | { readonly kind: "idle" | "working" | "done" }
+    | { readonly kind: "failed" | "unresolved"; readonly words: string };
+}): RowPress {
+  if (input.asking === input.key) return { kind: "asking" };
+  if (input.pressed !== input.key) return { kind: "idle" };
+  const { action } = input;
+  if (action.kind === "working") return { kind: "working" };
+  if (action.kind === "failed" || action.kind === "unresolved")
+    return { kind: "refused", words: action.words };
+  return { kind: "idle" };
+}
+
+/** What a row's Stop asks, says on its press, and says while it works. */
+export function stopWords(kind: "github" | "slack" | "discord" | "schedule"): {
+  readonly ask: string;
+  readonly verb: string;
+  readonly working: string;
+} {
+  if (kind === "schedule")
+    return { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" };
+  if (kind === "github")
+    return { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" };
+  return { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" };
+}

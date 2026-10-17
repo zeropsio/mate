@@ -50,7 +50,10 @@ import {
   connectionMissing,
   poolMateLine,
   SOURCE_KINDS,
+  sourceRowPress,
   sourceRows,
+  stopWords,
+  type RowPress,
   type SourceKind,
   type SourceRow,
 } from "./projectAutomation.logic";
@@ -205,6 +208,19 @@ function AdminAutomation({
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
   const [open, setOpen] = useState<SourceKind | null>(null);
+  // The row whose Stop asks now, and the one whose Stop was confirmed last.
+  const [asking, setAsking] = useState<string | null>(null);
+  const [pressed, setPressed] = useState<string | null>(null);
+  const actionOf = (row: SourceRow) =>
+    row.kind === "github"
+      ? intake.read.action
+      : row.kind === "slack"
+        ? slack.read.action
+        : row.kind === "discord"
+          ? discord.read.action
+          : row.kind === "schedule"
+            ? schedules.read.action
+            : { kind: "idle" as const };
   const connected = {
     slack:
       orgSlack.read.setting.state === "known" ? orgSlack.read.setting.held.connected : undefined,
@@ -234,9 +250,21 @@ function AdminAutomation({
           onAddMate: addMate,
           onTakeFrom: setOpen,
           onEdit: (row) => {
+            setAsking(null);
+            setPressed(null);
             setOpen(row.kind === "failed" ? row.source : row.kind);
           },
+          onAskStop: (row) => {
+            setAsking(row.key);
+          },
+          onKeep: () => {
+            setAsking(null);
+          },
+          pressOf: (row) =>
+            sourceRowPress({ key: row.key, asking, pressed, action: actionOf(row) }),
           onStop: (row) => {
+            setAsking(null);
+            setPressed(row.key);
             if (row.kind === "github") intake.stop();
             else if (row.kind === "slack") slack.write({ kind: "channel-stop", source: "slack" });
             else if (row.kind === "discord")
@@ -416,7 +444,14 @@ export interface AutomationControls {
   readonly onAddMate: (() => void) | undefined;
   readonly onTakeFrom: (kind: SourceKind) => void;
   readonly onEdit: (row: SourceRow) => void;
+  /** Stop (or a schedule's Remove), pressed: the row asks before anything stops. */
+  readonly onAskStop: (row: SourceRow) => void;
+  /** *Keep*, answered on a row that asks. */
+  readonly onKeep: () => void;
+  /** Stop, confirmed on its row. */
   readonly onStop: (row: SourceRow) => void;
+  /** Where a row's Stop stands (`sourceRowPress`). */
+  readonly pressOf: (row: SourceRow) => RowPress;
   readonly onReadAgain: (source: Exclude<SourceKind, "github">) => void;
   readonly onOpenSettings: () => void;
 }
@@ -523,6 +558,7 @@ function SourceRowView({
   readonly admin: AutomationControls | undefined;
 }) {
   const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
+  const press: RowPress = admin === undefined ? { kind: "idle" } : admin.pressOf(row);
   return (
     <li
       className="flex min-h-8 min-w-0 items-center gap-1 px-2 py-0.5"
@@ -542,6 +578,11 @@ function SourceRowView({
         {disconnected ? (
           <span className="truncate text-xs text-muted-foreground">
             {row.kind === "slack" ? "Slack" : "Discord"} isn't connected: no tasks come in.
+          </span>
+        ) : null}
+        {press.kind === "refused" ? (
+          <span className="text-xs text-destructive-foreground" role="alert">
+            {press.words}
           </span>
         ) : null}
       </span>
@@ -571,19 +612,56 @@ function SourceRowView({
           >
             Edit
           </Button>
-          {row.kind === "webhook" ? null : (
-            <Button
-              onClick={() => {
-                admin.onStop(row);
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {row.kind === "schedule" ? "Remove" : "Stop"}
-            </Button>
-          )}
+          {row.kind === "webhook" ? null : <StopControl admin={admin} kind={row.kind} row={row} />}
         </>
       )}
     </li>
+  );
+}
+
+/**
+ * A row's Stop, or a schedule's Remove: it asks on the row first — stopping a source ends its
+ * tasks coming in, removing a schedule deletes its brief — then says it works, held while it does.
+ */
+function StopControl({
+  row,
+  kind,
+  admin,
+}: {
+  readonly row: SourceRow;
+  readonly kind: "github" | "slack" | "discord" | "schedule";
+  readonly admin: AutomationControls;
+}) {
+  const words = stopWords(kind);
+  const press = admin.pressOf(row);
+  if (press.kind === "asking")
+    return (
+      <span className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground">{words.ask}</span>
+        <Button onClick={admin.onKeep} size="sm" variant="ghost">
+          Keep
+        </Button>
+        <Button
+          onClick={() => {
+            admin.onStop(row);
+          }}
+          size="sm"
+          variant="destructive"
+        >
+          {words.verb}
+        </Button>
+      </span>
+    );
+  return (
+    <Button
+      disabled={press.kind === "working"}
+      onClick={() => {
+        admin.onAskStop(row);
+      }}
+      size="sm"
+      variant="ghost"
+    >
+      {press.kind === "working" ? words.working : words.verb}
+    </Button>
   );
 }

@@ -5,7 +5,9 @@ import {
   connectionMissing,
   poolMateLine,
   scheduleWhen,
+  sourceRowPress,
   sourceRows,
+  stopWords,
   type SourceReads,
 } from "./projectAutomation.logic";
 
@@ -179,5 +181,53 @@ describe("whether a project's page shows its Automation section", () => {
     ],
   ] as const)("%s", (_case, input, shown) => {
     expect(automationShown(input)).toBe(shown);
+  });
+});
+
+describe("Stop and Remove on a source's row", () => {
+  it.each([
+    [
+      "rests while nothing was pressed on it",
+      { asking: null, pressed: null, action: { kind: "idle" } },
+      { kind: "idle" },
+    ],
+    [
+      "asks first, once pressed",
+      { asking: "slack", pressed: null, action: { kind: "idle" } },
+      { kind: "asking" },
+    ],
+    [
+      "shows its stop under way",
+      { asking: null, pressed: "slack", action: { kind: "working", verb: "channel-stop" } },
+      { kind: "working" },
+    ],
+    [
+      "says HQ's refusal on it",
+      { asking: null, pressed: "slack", action: { kind: "failed", words: "HQ refused it." } },
+      { kind: "refused", words: "HQ refused it." },
+    ],
+    [
+      "rests once its stop is done",
+      { asking: null, pressed: "slack", action: { kind: "done", verb: "channel-stop" } },
+      { kind: "idle" },
+    ],
+    [
+      "never wears another row's press",
+      { asking: null, pressed: "github", action: { kind: "working", verb: "stop" } },
+      { kind: "idle" },
+    ],
+  ] as const)("%s", (_case, input, press) => {
+    expect(sourceRowPress({ key: "slack", ...input })).toEqual(press);
+  });
+
+  it.each([
+    ["github", { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" }],
+    ["slack", { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" }],
+    [
+      "schedule",
+      { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" },
+    ],
+  ] as const)("a %s row asks and works in its own words", (kind, words) => {
+    expect(stopWords(kind)).toEqual(words);
   });
 });
