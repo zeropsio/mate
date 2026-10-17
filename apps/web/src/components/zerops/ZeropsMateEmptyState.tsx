@@ -167,7 +167,9 @@ export function useMateEmptyState({
     environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
   // A sign-in just accepted holds the sign-in on screen until its agent is ready
   // (`signInBeingFinished`): the question then comes with a composer that runs.
+  // An automated Mate runs on the organization's key: nobody signs it in, ever.
   const signInRequired =
+    mate.automated !== true &&
     agentAuth !== null &&
     (zeropsAgentSignInRequired(agentAuth, providers) || signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
@@ -226,7 +228,7 @@ export function useMateEmptyState({
         }
       : undefined,
     signIn:
-      agentAuth === null ? null : (
+      agentAuth === null || mate.automated === true ? null : (
         <ZeropsAgentSignIn
           environmentId={environmentId}
           mateName={mate.name}

@@ -161,8 +161,13 @@ export function ZeropsPanel({
       return error === undefined ? [] : [[agent.agentId, error] as const];
     }),
   );
+  // An automated Mate's agents run on the organization's key: nothing here signs it in.
   const agents =
-    agentAuthCard === null ? (
+    mateIdentity?.automated === true ? (
+      <p className="text-sm text-muted-foreground" data-zerops-surface="automated-mate-agents">
+        {`${mateIdentity.name} runs on your organization's API key. Nobody signs in to it.`}
+      </p>
+    ) : agentAuthCard === null ? (
       agentAuthUnknown === null ? null : (
         <ZeropsAgentAuthUnknown message={agentAuthUnknown} />
       )

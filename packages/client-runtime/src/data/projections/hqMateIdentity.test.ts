@@ -71,6 +71,24 @@ describe("HQ's Mate identity", () => {
     });
   });
 
+  it.each([
+    ["an automated Mate is named automated wherever HQ names it", true, { automated: true }],
+    ["an ordinary Mate is not", undefined, {}],
+  ] as const)("%s", (_case, automated, expected) => {
+    const base = seed();
+    const app = base.structure.apps[0];
+    const project = app.projects[0];
+    seedHqNavigation(fixture.store, ORG, {
+      ...base,
+      structure: {
+        ...base.structure,
+        apps: [{ ...app, projects: [{ ...project, mate: { ...project.mate, automated } }] }],
+      },
+    });
+    const quill = fixture.registry.get(fixture.identities).quill;
+    expect({ automated: quill?.automated }).toEqual({ automated: undefined, ...expected });
+  });
+
   it("renames and changes the face everywhere HQ names the Mate", () => {
     seedHqNavigation(fixture.store, ORG, seed());
     expect(fixture.registry.get(fixture.identities).quill?.name).toBe("Quill");

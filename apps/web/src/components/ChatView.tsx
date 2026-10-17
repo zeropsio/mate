@@ -220,6 +220,7 @@ import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
+import { automatedMateEntries } from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
@@ -2537,12 +2538,22 @@ function ConversationView(props: ChatViewProps) {
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);
+  // An automated Mate runs on the organization's key: no agent a person signs in is offered.
+  const automatedHere =
+    activeThreadEnvironmentId !== null &&
+    (() => {
+      const at = zeropsMateAt(zeropsMates, activeThreadEnvironmentId);
+      return at.kind === "mate" && at.mate.automated === true;
+    })();
   const providerInstanceEntries = useMemo(
     () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+      automatedMateEntries(
+        sortProviderInstanceEntries(
+          applyProviderInstanceSettings(deriveProviderInstanceEntries(providerStatuses), settings),
+        ),
+        automatedHere,
       ),
-    [providerStatuses, settings],
+    [automatedHere, providerStatuses, settings],
   );
   // The composer and picker read the same scoped authentication facts.
   const zeropsAgentAuthRead = useZeropsAgentAuth(activeThreadEnvironmentId);
@@ -8830,6 +8841,7 @@ function ConversationView(props: ChatViewProps) {
                               zeropsAgentAvailabilityByInstanceId={
                                 zeropsAgentAvailabilityByInstanceId
                               }
+                              automatedMate={automatedHere}
                               activeContextWindow={activeContextWindow}
                               compactThreadUnavailable={compactThreadUnavailable}
                               compactDisabled={compactDisabled}
