@@ -99,26 +99,32 @@ const REFUSALS = {
   openCodeNotReady: "This Mate's OpenCode is not ready yet.",
   settingUp: "This Mate is still setting itself up.",
   busy: "This Mate is still at work on something else.",
+  notNow: "This Mate could not start the task now.",
 } as const;
 
-/** Why a task's run ended without finishing, in words a person reads on the issue. */
+/**
+ * Why a task's run ended without finishing, in a plain sentence by how it ended: it goes onto a
+ * public issue, so never the provider's or the agent's own words (an address, a path, a key's
+ * prefix); those stay in the Mate's conversation.
+ */
 const failureOf = (end: RunEnd): string | undefined => {
   switch (end.kind) {
     case "completed":
       return undefined;
     case "failed":
+      return end.admission === undefined
+        ? "The agent could not finish the run."
+        : "The Mate could not start its agent.";
     case "crashed":
-      return end.reason;
+      return "The agent stopped unexpectedly.";
     case "stopped":
-      return "Someone stopped the work in Mate.";
+      return "The run was stopped.";
     case "usage-limit":
       return "The organization's API key hit its usage limit.";
     case "cut-by-restart":
-      return end.notContinued === undefined
-        ? "The Mate restarted mid-task and did not carry on."
-        : `The Mate restarted mid-task and did not carry on: ${end.notContinued}`;
+      return "The Mate restarted and the run could not go on.";
     default:
-      return "The work ended in a way this Mate does not know.";
+      return "The run ended in a way this Mate does not know.";
   }
 };
 
@@ -155,8 +161,12 @@ export const taskReportOf = (
   }
   const ended = view.lastEnded;
   if (isTasks(ended, taskId)) {
-    // A continuation (a restart's, a usage limit's) is armed to start in the same commit.
+    // A continuation (a restart's, a usage limit's) is armed to start in the same commit, and a
+    // usage limit holds the queue until the engine resumes the run by itself.
     if (view.runDue === true || view.turnDue === true) return { ...base, state: "working" };
+    if (ended.end?.kind === "usage-limit" && view.pausedUntil !== null) {
+      return { ...base, state: "working" };
+    }
     const failure = ended.end === null ? undefined : failureOf(ended.end);
     return failure === undefined
       ? { ...base, state: "done" }
@@ -245,14 +255,8 @@ export const make = Effect.gen(function* () {
         CommandId.make(`task:${task.id}`),
         principal,
       );
-      if (result._tag === "Rejected") {
-        return Option.some<MateTaskReport>({
-          taskId: task.id,
-          state: "failed",
-          conversationId,
-          detail: result.rejection.detail ?? "The Mate's engine did not take the task.",
-        });
-      }
+      // Refused now (an update draining it, say): another Mate, or this one later, takes it.
+      if (result._tag === "Rejected") return refused(REFUSALS.notNow);
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
       return Option.some<MateTaskReport>({ taskId: task.id, state: "accepted", conversationId });
     }).pipe(

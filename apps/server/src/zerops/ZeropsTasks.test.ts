@@ -6,6 +6,7 @@ import {
   RunId,
   type ServerProvider,
   type CommandId,
+  type CommandResult,
   type ConversationAgent,
   type MateTask,
   type MateTaskReport,
@@ -121,6 +122,8 @@ const rig = (
     readonly keySet?: boolean;
     /** The brief's delivery could not be recorded: the server went away with it. */
     readonly unrecorded?: boolean;
+    /** The engine refused the brief, in its own words. */
+    readonly rejected?: boolean;
     /** The provider instances as their probes read them; a ready OpenCode by default. */
     readonly providers?: ReadonlyArray<ServerProvider>;
     /** Whether the setup's wait for the stand-up ended; it has by default. */
@@ -153,9 +156,15 @@ const rig = (
           return true;
         }).pipe(Effect.tap(() => PubSub.publish(changes, conversationId))),
       deliver: (conversationId, command, commandId, principal) =>
-        Effect.suspend(() => {
+        Effect.suspend((): Effect.Effect<CommandResult, DeliveryUnrecorded> => {
           if (options.unrecorded === true) {
             return Effect.fail(new DeliveryUnrecorded({ conversationId, message: "gone" }));
+          }
+          if (options.rejected === true) {
+            return Effect.succeed({
+              _tag: "Rejected",
+              rejection: { reason: "unknown", detail: "drain at /home/zerops/.t3 held" },
+            });
           }
           delivered.push({ conversationId, command, commandId, principal });
           // The brief's run is queued at once, as the engine queues a sent message.
@@ -165,7 +174,7 @@ const rig = (
               activeRun: run(conversationId, principal, "queued"),
             }),
           );
-          return Effect.succeed({ _tag: "Accepted" as const, seq: 1 });
+          return Effect.succeed({ _tag: "Accepted", seq: 1 });
         }),
     });
     const automation = Layer.mock(ZeropsAutomation)({
@@ -407,6 +416,16 @@ describe("an automated Mate takes a task from outside", () => {
       }),
   );
 
+  it.effect("declines a task the engine would not take now, in a plain sentence", () =>
+    Effect.gen(function* () {
+      const { link, sent } = yield* rig({ rejected: true });
+      yield* link.receive(task("task-1"));
+      assert.deepStrictEqual(sent, [
+        { taskId: "task-1", state: "declined", detail: "This Mate could not start the task now." },
+      ]);
+    }),
+  );
+
   it.effect("a task whose conversation cannot be read now goes unanswered: HQ tells it again", () =>
     Effect.gen(function* () {
       const { delivered, link, sent, unreadable } = yield* rig();
@@ -441,16 +460,41 @@ describe("an automated Mate says how its task stands", () => {
     }),
   );
 
+  // The issue is public: the provider's own words stay in the Mate's conversation.
   it.effect.each([
     {
-      title: "says failed, with the agent's reason, when the task's run fails",
-      end: { kind: "failed", reason: "The agent could not reach Nebius.", next: null } as RunEnd,
-      detail: "The agent could not reach Nebius.",
+      title:
+        "says failed in a plain sentence, never the provider's words, when the task's run fails",
+      end: {
+        kind: "failed",
+        reason: "upstream 401 from api.nebius.example: key nb-acme-… rejected",
+        next: null,
+      } as RunEnd,
+      detail: "The agent could not finish the run.",
+    },
+    {
+      title: "says failed in a plain sentence when the agent's process crashed",
+      end: { kind: "crashed", reason: "opencode exited with SIGSEGV at /home/zerops" } as RunEnd,
+      detail: "The agent stopped unexpectedly.",
     },
     {
       title: "says failed when a person stopped the task's run",
       end: { kind: "stopped", by: { kind: "person", subject: "zerops-user:nova" } } as RunEnd,
-      detail: "Someone stopped the work in Mate.",
+      detail: "The run was stopped.",
+    },
+    {
+      title: "says failed when a restart cut the run and it could not go on",
+      end: {
+        kind: "cut-by-restart",
+        continuedBy: null,
+        notContinued: "the session file at /home/zerops/.local was gone",
+      } as RunEnd,
+      detail: "The Mate restarted and the run could not go on.",
+    },
+    {
+      title: "says failed when the organization's key hit its usage limit for good",
+      end: { kind: "usage-limit", resetsAt: null } as RunEnd,
+      detail: "The organization's API key hit its usage limit.",
     },
   ])("$title", ({ end, detail }) =>
     Effect.gen(function* () {
@@ -485,6 +529,27 @@ describe("an automated Mate says how its task stands", () => {
           }),
         }),
         runDue: true,
+      });
+      yield* settle;
+      assert.strictEqual(sent.at(-1)?.state, "working");
+    }),
+  );
+
+  it.effect("a usage limit the engine resumes by itself keeps the task working", () =>
+    Effect.gen(function* () {
+      const { link, move, sent } = yield* rig();
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      yield* link.receive(task("task-1"));
+      const id = taskConversationId("task-1");
+      yield* move(id, {
+        ...view(id, {
+          lastEnded: run(id, principalOf("task-1"), "ended", {
+            kind: "usage-limit",
+            resetsAt: 99,
+          }),
+        }),
+        pausedUntil: 99,
       });
       yield* settle;
       assert.strictEqual(sent.at(-1)?.state, "working");
