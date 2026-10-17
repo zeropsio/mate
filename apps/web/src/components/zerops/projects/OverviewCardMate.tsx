@@ -43,6 +43,7 @@ import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { MateAutomatedMark } from "../MateAutomatedMark";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { MateFace } from "../primitives";
 import {
@@ -56,6 +57,7 @@ import {
   mateRowDraft,
   mateRowReading,
   mateRowSecond,
+  mateAutomation,
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
@@ -228,6 +230,7 @@ export function OverviewCardMate({
       change === undefined
         ? undefined
         : { title: change.title, mine: people?.waitsOnViewer !== false },
+    automated: mateAutomation(candidate.project.hq?.mate),
   });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const reading: CardMateReading =
@@ -339,6 +342,7 @@ export function OverviewCardMate({
         )
       }
       previews={previews}
+      mark={candidate.project.hq?.mate?.automated === true ? <MateAutomatedMark /> : undefined}
       name={name}
       onOpen={onOpen}
       reading={reading}
