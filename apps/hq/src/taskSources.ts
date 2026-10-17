@@ -76,12 +76,43 @@ export interface TaskOnSource {
 /** The one status line a source keeps for a task, edited as the task moves. */
 export type TaskStatus =
   | { readonly kind: "queued"; readonly position: number }
-  | { readonly kind: "picked"; readonly mate: string }
+  /** `link`: where its conversation is followed in Mate. */
+  | { readonly kind: "picked"; readonly mate: string; readonly link?: string }
   | { readonly kind: "waiting"; readonly mate: string; readonly question: string }
-  | { readonly kind: "change"; readonly mate: string; readonly link: string }
-  | { readonly kind: "done"; readonly mate: string; readonly link: string | null }
+  | {
+      readonly kind: "change";
+      readonly mate: string;
+      readonly link: string;
+      readonly pullRequest?: TaskPullRequest;
+    }
+  | {
+      readonly kind: "done";
+      readonly mate: string;
+      readonly link: string | null;
+      readonly pullRequest?: TaskPullRequest;
+    }
+  /** Its change's pull request was merged (on GitHub, or by Merge in Mate). */
+  | { readonly kind: "merged"; readonly mate: string; readonly pullRequest: TaskPullRequest }
   | { readonly kind: "failed"; readonly mate: string | null; readonly why: string }
   | { readonly kind: "stopped"; readonly mate: string | null; readonly why: string };
+
+/** The pull request a task's change is mirrored to on GitHub, as its status line names it. */
+export interface TaskPullRequest {
+  readonly number: number;
+  readonly url: string;
+}
+
+/**
+ * A Mate's own name in its application: its Zerops project is named `"<application> - <name>"`
+ * (`client-runtime` `nameUnderApp`), and a status line, a pull request or a commit names it by
+ * what follows; a name of any other shape is said whole.
+ */
+export const mateNameIn = (projectName: string, appName: string | null | undefined) => {
+  const whole = projectName.trim();
+  const prefix = `${appName?.trim() ?? ""} - `;
+  if (appName == null || appName.trim() === "" || !whole.startsWith(prefix)) return whole;
+  return whole.slice(prefix.length).trim() || whole;
+};
 
 /** How a source hears back about its tasks. Every call is best-effort: a failure never moves a task. */
 export interface TaskSourceChannel {
@@ -145,6 +176,8 @@ export const navigationTaskOf = (task: {
   readonly id: string;
   readonly source: MateTaskSource;
   readonly waiting: boolean;
+  /** Its change's pull request on GitHub, where it has one. */
+  readonly pullRequest?: HqNavigationMateTask["pullRequest"] | undefined;
 }): HqNavigationMateTask => ({
   id: task.id,
   ...(task.source.kind === "github-issue"
@@ -154,6 +187,7 @@ export const navigationTaskOf = (task: {
   url: mateTaskSourceLink(task.source)?.url ?? null,
   label: mateTaskSourceLabel(task.source),
   ...(task.waiting ? { waiting: true as const } : {}),
+  ...(task.pullRequest === undefined ? {} : { pullRequest: task.pullRequest }),
 });
 
 /** A task's source as its row keeps it: JSON, for `::jsonb`. */
