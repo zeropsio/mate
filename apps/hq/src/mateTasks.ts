@@ -30,6 +30,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
@@ -112,6 +113,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const remotes = yield* Remotes;
       const github = yield* GithubIssues;
       const layerScope = yield* Effect.scope;
+      // One comment at a time, in the order the task moved: GitHub shows them so.
+      const telling = yield* Semaphore.make(1);
       const acceptMs = Duration.toMillis(options.acceptWithin ?? Duration.seconds(60));
       const told = yield* PubSub.unbounded<{
         readonly projectId: string;
@@ -190,6 +193,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           Effect.catchCause((cause) =>
             Effect.logWarning("a task's comment not posted", { taskId, cause }),
           ),
+          telling.withPermits(1),
           Effect.forkIn(layerScope),
           Effect.asVoid,
         );
