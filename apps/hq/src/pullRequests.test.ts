@@ -62,6 +62,7 @@ const mirroredPool = Effect.gen(function* () {
             mirrored.syncs += 1;
             return { kind: "same", sha: "f".repeat(40) } as const;
           }),
+        follow: () => Effect.void,
       });
     }),
   );

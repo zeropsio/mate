@@ -13,9 +13,8 @@
  *   anything else read `202` at once, worked after.
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` `HqRepoRemoteViaAppRequest` → `204`, by a
  *   structure writer: the repository's remote is one the app reaches, with no token kept; HQ then
- *   follows GitHub's default branch (`GithubMirror.sync`) — `409 { code: "mirror_diverged" }` where
- *   neither history contains the other, `409 { code: "mirror_<reason>" }` where it could not, the
- *   remote kept either way.
+ *   follows GitHub's default branch in the background (`GithubMirror.follow`), and the repository
+ *   says what it found (`divergedSince` where neither history contains the other).
  *
  * @module githubAppRoutes
  */
@@ -205,22 +204,10 @@ export const githubAppRoutes = Layer.mergeAll(
             if (reached === undefined)
               return yield* new RemoteRefused({ reason: "app_not_installed" });
             yield* (yield* Remotes).connectViaApp(userId, ref, reached);
-            const synced = yield* (yield* GithubMirror).sync(ref.appId, ref.repo).pipe(
-              Effect.map((sync) =>
-                sync.kind === "diverged"
-                  ? json({ code: "mirror_diverged", mate: sync.mate, github: sync.github }, 409)
-                  : undefined,
-              ),
-              Effect.catchTags({
-                GithubMirrorUnavailable: (error) =>
-                  Effect.succeed(
-                    error.reason === "not_mirrored"
-                      ? undefined
-                      : json({ code: `mirror_${error.reason}` }, 409),
-                  ),
-              }),
-            );
-            return synced ?? HttpServerResponse.empty({ status: 204 });
+            // Connected whatever GitHub's side says now: HQ follows it after answering, and what
+            // it finds shows on the repository (`divergedSince`).
+            yield* (yield* GithubMirror).follow(ref.appId, ref.repo);
+            return HttpServerResponse.empty({ status: 204 });
           }),
         );
       }),

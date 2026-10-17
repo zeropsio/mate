@@ -54,6 +54,11 @@ export class GithubMirror extends Context.Service<
       repo: string,
     ) => Effect.Effect<MirrorSync, GithubMirrorUnavailable | SqlError>;
     /**
+     * `sync` in the background, outliving whoever asked (a repository just connected): what it
+     * finds shows on the repository (`diverged`), a failure is logged and tried again by the sweep.
+     */
+    readonly follow: (appId: string, repo: string) => Effect.Effect<void>;
+    /**
      * Push the change's head to its branch on GitHub (`mate/<number>-<slug>`, named once); its
      * name and the sha pushed, or `undefined` where the change has no head or the repo no mirror.
      */
@@ -75,6 +80,7 @@ export const githubMirrorAbsentLayer = Layer.succeed(
     repositoryOf: () => Effect.succeed(undefined),
     sync: () => Effect.fail(new GithubMirrorUnavailable({ reason: "not_mirrored" })),
     pushChange: () => Effect.succeed(undefined),
+    follow: () => Effect.void,
   }),
 );
 
@@ -425,6 +431,13 @@ export const githubMirrorLayer = (
         sweep.pipe(Effect.repeat(Schedule.spaced(options.sweepEvery ?? Duration.minutes(1)))),
       );
 
-      return GithubMirror.of({ repositoryOf, sync, pushChange });
+      const layerScope = yield* Effect.scope;
+      const followLater = (appId: string, repo: string) =>
+        quietly("a mirrored repository not followed", { appId, repo }, sync(appId, repo)).pipe(
+          Effect.forkIn(layerScope),
+          Effect.asVoid,
+        );
+
+      return GithubMirror.of({ repositoryOf, sync, pushChange, follow: followLater });
     }),
   );

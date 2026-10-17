@@ -27,16 +27,23 @@ import {
   appJwt,
   trustedReturn,
 } from "./githubApp.ts";
+import { githubMirrorAbsentLayer } from "./githubMirror.ts";
 import { TASK_SOURCES_SINCE } from "./mateTasks.ts";
 
 const RETURN = "https://mate.zerops.io/settings/automation";
 /** A fake Nebius key, built from parts so no scanner takes it for one. */
 const NEBIUS_KEY = ["v1", "fake", "nebius", "key", "0123456789"].join(".");
 
-/** A Core with the application `Tea Shop`, and GitHub faked. */
+/**
+ * A Core with the application `Tea Shop`, and GitHub faked. The fake GitHub has no git, so the
+ * mirror is stood in: what following GitHub does on connecting is the mirror's own tests'.
+ */
 const appCore = Effect.gen(function* () {
   const github = yield* githubFake;
-  const core = yield* startCore(true, { githubApi: github.url });
+  const core = yield* startCore(true, {
+    githubApi: github.url,
+    githubMirror: githubMirrorAbsentLayer,
+  });
   yield* untilHealth(core.call, "active");
   const owner = yield* sessionFor(core.call, "door-owner");
   const made = yield* core.call("POST", "/api/apps", {
