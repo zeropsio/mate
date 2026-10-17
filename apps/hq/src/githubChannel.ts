@@ -31,6 +31,17 @@ export const BLOCKED_LABEL = "mate:blocked";
 /** What marks a comment as HQ's own: unseen on GitHub, and stripped from any person's text. */
 export const HQ_MARK = "<!-- zerops-mate -->";
 
+/**
+ * Words from a Mate or a reason, as an issue shows them: they read the same, but ping nobody
+ * (`@user`, `@org/team`) and link no other issue (`#12`, `GH-12`, `owner/repo#12`) — a word
+ * joiner, unseen, keeps GitHub from taking them as such.
+ */
+export const quieted = (text: string) =>
+  text
+    .replace(/@(?=[\w-])/gu, "@\u2060")
+    .replace(/#(?=\d)/gu, "#\u2060")
+    .replace(/\b(GH)-(?=\d)/giu, "$1\u2060-");
+
 /** A status line's words on the issue: plain sentences, the Mate by name. */
 export const statusWords = (status: TaskStatus): string => {
   switch (status.kind) {
@@ -39,7 +50,7 @@ export const statusWords = (status: TaskStatus): string => {
     case "picked":
       return `${status.mate} picked this up.`;
     case "waiting":
-      return `${status.mate} is waiting for you: ${status.question}\n\nAnswer in a comment here.`;
+      return `${status.mate} is waiting for you: ${quieted(status.question)}\n\nAnswer in a comment here.`;
     case "change":
       return `${status.mate} opened a change for review: ${status.link}`;
     case "done":
@@ -48,12 +59,12 @@ export const statusWords = (status: TaskStatus): string => {
         : `${status.mate} is done; its change: ${status.link}`;
     case "failed":
       return status.mate === null
-        ? `No automated Mate could take this up: ${status.why}`
-        : `${status.mate} couldn't finish this: ${status.why}`;
+        ? `No automated Mate could take this up: ${quieted(status.why)}`
+        : `${status.mate} couldn't finish this: ${quieted(status.why)}`;
     case "stopped":
       return status.mate === null
-        ? `Stopped: ${status.why}`
-        : `${status.mate} stopped: ${status.why}`;
+        ? `Stopped: ${quieted(status.why)}`
+        : `${status.mate} stopped: ${quieted(status.why)}`;
   }
 };
 
@@ -151,7 +162,9 @@ export const githubChannelLayer = Layer.effectDiscard(
               issue.remote,
               issue.token,
               issue.number,
-              marked(`Still waiting for an answer: ${question}\n\nAnswer in a comment here.`),
+              marked(
+                `Still waiting for an answer: ${quieted(question)}\n\nAnswer in a comment here.`,
+              ),
             )
             .pipe(
               Effect.filterOrFail(
