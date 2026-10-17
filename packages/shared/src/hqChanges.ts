@@ -372,6 +372,16 @@ export type RepoListEntry = typeof RepoListEntry.Type;
 export const RepoListResponse = Schema.Struct({ repos: Schema.Array(RepoListEntry) });
 export type RepoListResponse = typeof RepoListResponse.Type;
 
+/**
+ * One repository of the Mate's application as the Mate reads it: the address of the origin its
+ * person connected, never the token HQ keeps for it; none before one is connected.
+ */
+export const MateRepo = Schema.Struct({
+  name: RepoName,
+  origin: Schema.optionalKey(Schema.Struct({ url: HqRemoteUrl })),
+});
+export type MateRepo = typeof MateRepo.Type;
+
 /** `POST /api/mate/repos`: the repository of this name in the Mate's application, made if new. */
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
 

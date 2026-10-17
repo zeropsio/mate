@@ -108,6 +108,7 @@ const fixture = Effect.gen(function* () {
   const remotes = Remotes.of({
     changes: Stream.empty,
     listRepos: () => Effect.die("Repository reads are outside this fixture"),
+    mateRepos: () => Effect.die("Repository reads are outside this fixture"),
     write: () => Effect.die("Remote writes are outside this fixture"),
     receipt: () => Effect.succeed(null),
     get: (ref) => Effect.sync(() => remoteRows.get(ref.repo)),

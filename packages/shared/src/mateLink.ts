@@ -50,7 +50,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
-import { MateChanges } from "./hqChanges.ts";
+import { MateChanges, MateRepo } from "./hqChanges.ts";
 import { MateGitPush } from "./hqDeploys.ts";
 import { ChiefMateOwner, MateAccessMember } from "./mateAccess.ts";
 import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
@@ -101,6 +101,11 @@ export const MateState = Schema.Struct({
    * absent from the link's state and from an older HQ.
    */
   gitPushes: Schema.optionalKey(Schema.Array(MateGitPush)),
+  /**
+   * Each repository of its application by name, with its connected origin's address. Only `GET
+   * /api/mate/self` answers it: absent from the link's state and from an older HQ.
+   */
+  repos: Schema.optionalKey(Schema.Array(MateRepo)),
 });
 export type MateState = typeof MateState.Type;
 

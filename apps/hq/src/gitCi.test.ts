@@ -245,6 +245,7 @@ const remotes = (refused?: RemoteRefused) =>
     Remotes.of({
       changes: Stream.empty,
       listRepos: () => Effect.die("not read by CI"),
+      mateRepos: () => Effect.die("not read by CI"),
       write: () => Effect.die("not written by CI"),
       receipt: () => Effect.succeed(null),
       get: () => Effect.succeed(undefined),
