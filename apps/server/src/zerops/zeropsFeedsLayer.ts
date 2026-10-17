@@ -30,6 +30,7 @@ import { engineAdaptersLayer } from "./engineAdapters.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsAutomationModule from "./ZeropsAutomation.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import * as ZeropsHqLinkModule from "./ZeropsHqLink.ts";
@@ -286,6 +287,9 @@ const liveLayer = Layer.mergeAll(
   // Who signed each login in, as this server saw it: one store, written by the login walker
   // and read by the gate, the feeds, the setup and the link to HQ.
   Layer.provide(ZeropsSignInsModule.layer),
+  // Whether the Mate is automated, as HQ says over the link: one instance, read by the gate, the
+  // logins and the tasks.
+  Layer.provideMerge(ZeropsAutomationModule.layer),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

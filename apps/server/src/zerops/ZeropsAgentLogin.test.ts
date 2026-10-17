@@ -490,6 +490,30 @@ it.effect("outside a Zerops environment, start and cancel both fail as unavailab
   ),
 );
 
+it.effect("an automated Mate answers every sign-in with a refusal: nobody signs in to it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const feed = yield* makeFeed({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        automated: Effect.succeed(true),
+      });
+
+      for (const agentId of ["claude-code", "codex"] as const) {
+        const error = yield* Effect.flip(feed.start(agentId, "thread-1", "user-test"));
+        assert.equal(reasonOf(error), "automated");
+        assert.equal(
+          error.message,
+          "An automated Mate runs on your organization's API key; nobody signs in to it.",
+        );
+      }
+      assert.deepEqual(yield* Ref.get(fakeTerminal.opened), []);
+    }),
+  ),
+);
+
 // Real wall-clock time (`excludeTestServices: true` opts out of the default
 // virtual TestClock, matching `ZeropsAgentAuthIo.test.ts`'s own established
 // pattern for anything depending on a real debounce/timer delay) — the

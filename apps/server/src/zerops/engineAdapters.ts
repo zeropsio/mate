@@ -42,8 +42,8 @@ import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 /**
- * A person at the keyboard is their session; a crew wake is crew's, every other wake a stand-up's
- * kind, for the person it continues. The engine is never a run's principal: none.
+ * A person at the keyboard is their session; a crew wake is crew's, a task's run the task's, every
+ * other wake a stand-up's kind, for the person it continues. The engine is never a run's principal: none.
  */
 export const turnPrincipalOf = (
   principal: Principal,
@@ -62,6 +62,8 @@ export const turnPrincipalOf = (
       return { kind: "crew", startedBy: principal.startedBy };
     case "standup":
       return { kind: "standup", startedBy: principal.startedBy };
+    case "task":
+      return { kind: "task", taskId: principal.taskId };
     default:
       return null;
   }

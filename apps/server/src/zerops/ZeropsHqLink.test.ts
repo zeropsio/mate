@@ -169,6 +169,8 @@ const rig = (
     const hq = { refusing: false, tickets: 0 };
     /** What HQ relayed of the project's access, as the link handed it on. */
     const relayed: Array<unknown> = [];
+    /** What the link handed `ZeropsAutomation`: HQ's word on the Mate, and its keys. */
+    const automation: Array<unknown> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
         asked.push(request.headers.authorization);
@@ -215,6 +217,10 @@ const rig = (
         Effect.sync(() => {
           relayed.push(access);
         }),
+      automation: {
+        heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
+        keysHeard: (keys) => Effect.sync(() => void automation.push({ keys })),
+      },
       reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -243,6 +249,7 @@ const rig = (
       enrollmentRead: Deferred.await(enrollmentRead),
       reads,
       relayed,
+      automation,
     };
   });
 
@@ -376,6 +383,23 @@ describe("ZeropsHqLink", () => {
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
+  it.live("hands on HQ's word that the Mate is automated, and the organization's keys", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, automation } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const automated: MateState = { ...STATE, automated: true };
+        socket.hear({ type: "state", mate: automated });
+        const keys = [{ env: "NEBIUS_API_KEY", value: ["nb", "acme", "fixture"].join("-") }];
+        socket.hear({ type: "provider-keys", keys });
+        yield* until(() => automation[1]);
+        assert.deepStrictEqual(automation, [{ heard: automated }, { keys }]);
+      }),
+    ),
+  );
+
   it.live("keeps HQ's state with the application and the changes it carries", () =>
     Effect.scoped(
       Effect.gen(function* () {

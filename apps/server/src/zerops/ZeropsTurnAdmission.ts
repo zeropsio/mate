@@ -65,6 +65,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry, threadProfileFor } from "../spi/threadToolPolicy.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
+import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -84,16 +85,21 @@ import {
  * - `standup`: the stand-up this server starts for the person who asked for
  *   it (`ZeropsSetup`), `startedBy` theirs — no session of theirs sends it.
  *
+ * - `task`: a task from outside an automated Mate took (`ZeropsTasks`), by
+ *   HQ's id: it runs for nobody, on the organization's key only.
+ *
  * Neither `crew` nor `standup` has a session the membership watch would end:
  * each is admitted only while this project opens for its person (X3).
  */
 export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
   | { readonly kind: "crew"; readonly startedBy: string }
-  | { readonly kind: "standup"; readonly startedBy: string };
+  | { readonly kind: "standup"; readonly startedBy: string }
+  | { readonly kind: "task"; readonly taskId: string };
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): string | undefined {
+  if (principal.kind === "task") return undefined;
   if (principal.kind !== "session") return principal.startedBy;
   return principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
     ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
@@ -221,6 +227,7 @@ export const make = Effect.gen(function* () {
   const providerInstances = yield* ProviderInstances;
   const zeropsLogins = yield* ZeropsLogins;
   const policies = yield* Effect.serviceOption(ThreadToolPolicyRegistry);
+  const automation = yield* ZeropsAutomation;
 
   /** The thread the command acts on, when it names one and the projection has it. */
   const threadOf = (command: OrchestrationCommand) =>
@@ -356,6 +363,30 @@ export const make = Effect.gen(function* () {
   const refuse = (message: string) => new OrchestrationDispatchCommandError({ message });
 
   /**
+   * An automated Mate runs on the organization's key only, and so does a task's run wherever it
+   * is: a Claude Code or Codex sign-in, the default one or a subscription login, runs neither.
+   */
+  const refuseSubscription = Effect.fnUntraced(function* (
+    instanceId: string | undefined,
+    principal: TurnPrincipal,
+  ) {
+    if (instanceId === undefined) return;
+    if (principal.kind !== "task" && !(yield* automation.automated)) return;
+    const login = yield* zeropsLogins.resolve(instanceId);
+    const subscription =
+      login === undefined
+        ? (yield* agentIdOf(instanceId)) !== undefined
+        : login.kind === "subscription";
+    if (subscription) return yield* refuse(AUTOMATED_MATE_SIGNS_NOBODY_IN);
+  });
+
+  /** Whether the principal runs for a person outside their session, whose access is asked. */
+  const forSomeoneAway = (
+    principal: TurnPrincipal,
+  ): principal is Extract<TurnPrincipal, { readonly startedBy: string }> =>
+    principal.kind === "crew" || principal.kind === "standup";
+
+  /**
    * The checks, in order. Archiving, restoring and deleting start no turn
    * but are checked against a crewmate's conversation; every other command
    * that starts no turn passes untouched, without a read.
@@ -396,7 +427,8 @@ export const make = Effect.gen(function* () {
         return yield* refuse(CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? instanceId));
       }
     }
-    if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
+    if (forSomeoneAway(principal)) yield* refuseWithoutAccess(principal.startedBy);
+    yield* refuseSubscription(instanceIdOf(command, thread), principal);
     yield* refuseSomeoneElsesAgent(instanceIdOf(command, thread), principal);
   });
 
@@ -411,13 +443,15 @@ export const make = Effect.gen(function* () {
     principal,
   }) {
     if (!isZeropsEnvironment(config)) return;
-    if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
+    if (forSomeoneAway(principal)) yield* refuseWithoutAccess(principal.startedBy);
+    yield* refuseSubscription(instanceId, principal);
     yield* refuseSomeoneElsesAgent(instanceId, principal);
   });
 
   const admitGeneration: ZeropsTurnAdmission["Service"]["admitGeneration"] = Effect.fnUntraced(
     function* ({ instanceId, subject }) {
       if (!isZeropsEnvironment(config)) return;
+      yield* refuseSubscription(instanceId, { kind: "session", subject });
       yield* refuseSomeoneElsesAgent(instanceId, { kind: "session", subject });
     },
   );

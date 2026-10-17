@@ -96,6 +96,7 @@ import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomeTarget } from "./zeropsLoginHomes.ts";
+import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
 
 /** How long a burst of terminal output coalesces into one stall countdown — mirrors the GUI walker's `STALL_TIMEOUT_MS`. */
@@ -280,6 +281,10 @@ export interface ZeropsAgentLoginOptions {
   readonly credentialsHeld?: Stream.Stream<ReadonlyArray<readonly [string, boolean]>>;
   /** Defaults to {@link CREDENTIAL_GONE_AFTER}; shortened by tests on a live clock. */
   readonly credentialGoneAfter?: Duration.Duration;
+  /**
+   * Whether this Mate is automated (`ZeropsAutomation`): one signs nobody in. Absent, it never is.
+   */
+  readonly automated?: Effect.Effect<boolean>;
 }
 
 interface FeedState {
@@ -328,6 +333,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       signIns,
       credentialsHeld,
       credentialGoneAfter = CREDENTIAL_GONE_AFTER,
+      automated = Effect.succeed(false),
     } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
@@ -637,6 +643,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       login?: LoginTarget,
     ): Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
+        if (yield* automated) {
+          return yield* new ZeropsAgentLoginError({
+            reason: "automated",
+            detail: AUTOMATED_MATE_SIGNS_NOBODY_IN,
+          });
+        }
         const key = login?.id ?? agentId;
         const existing = sessions.get(key);
         if (existing !== undefined) {
@@ -827,6 +839,7 @@ export const layer = Layer.effect(
     const zeropsLogins = yield* ZeropsLogins;
     const config = yield* ServerConfig;
     const signIns = yield* ZeropsSignIns;
+    const automation = yield* ZeropsAutomation;
     return yield* make({
       terminalManager,
       zeropsAgentAuth,
@@ -835,6 +848,7 @@ export const layer = Layer.effect(
       homes: yield* makeLoginHomes(config.homeDir),
       signIns,
       credentialsHeld: credentialsHeldOf(zeropsAgentAuth, zeropsLogins),
+      automated: automation.automated,
     });
   }),
 );

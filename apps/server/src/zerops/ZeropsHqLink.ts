@@ -16,8 +16,10 @@
  *   something it is made of moves — a domain event, the crew's snapshot, a login, the update line —
  *   and never on a timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every
  *   link and again at each new revision; `pong` to each of HQ's pings.
- * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks;
- *   and who its project lets in (`access`), handed on to `ZeropsProjectAccess` with its age.
+ * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks
+ *   and handed on to `ZeropsAutomation` (whether the Mate is automated); who its project lets in
+ *   (`access`), handed on to `ZeropsProjectAccess` with its age; an automated Mate's keys
+ *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged.
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
  * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
@@ -85,6 +87,7 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
@@ -157,6 +160,8 @@ export interface ZeropsHqLinkOptions {
   readonly attention: Stream.Stream<MateAttention>;
   /** Hands on who HQ says the project lets in, and how old HQ's read of Zerops is. */
   readonly relayAccess: ZeropsProjectAccess["Service"]["relayed"];
+  /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
+  readonly automation?: Pick<ZeropsAutomation["Service"], "heard" | "keysHeard">;
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
@@ -378,6 +383,7 @@ export const makeZeropsHqLink = (
                 return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
+                  Effect.andThen(options.automation?.heard(message.value.mate) ?? Effect.void),
                   Effect.andThen(
                     autoUpdatePolicy?.receive(Option.fromUndefinedOr(message.value.autoUpdate)) ??
                       Effect.void,
@@ -385,6 +391,8 @@ export const makeZeropsHqLink = (
                   Effect.andThen(Deferred.succeed(answered, undefined)),
                   Effect.andThen(usage?.state(message.value) ?? Effect.void),
                 );
+              case "provider-keys":
+                return options.automation?.keysHeard(message.value.keys) ?? Effect.void;
               case "access":
                 return options.relayAccess({
                   members: message.value.members,
@@ -654,6 +662,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
+        automation: yield* ZeropsAutomation,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,
