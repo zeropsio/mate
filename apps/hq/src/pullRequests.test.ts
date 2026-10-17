@@ -1,0 +1,609 @@
+import { assert, describe, it } from "@effect/vitest";
+import type { MateTask } from "@t3tools/contracts";
+import type { HqChange, HqChangeComment } from "@t3tools/shared/hqChanges";
+import type { HqNavigationApp, HqNavigationProject } from "@t3tools/shared/hqStream";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import { automatedPool } from "../test/harness/automated.ts";
+import { rowsWhere } from "../test/harness/mates.ts";
+import { ticketFor } from "../test/harness/runningCore.ts";
+import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
+import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { GithubAuth } from "./githubAuth.ts";
+import { type GithubEvent, GithubEvents, githubEventsLayer } from "./githubEvents.ts";
+import { GithubMirror } from "./githubMirror.ts";
+import { mateTaskLink } from "./mateTasks.ts";
+import {
+  CHECKS_GIVEN_UP,
+  MATE_END,
+  MATE_START,
+  checksFailed,
+  firstComment,
+  mergeMessage,
+  pullSection,
+  withSection,
+} from "./pullRequests.ts";
+import { mateNameIn } from "./taskSources.ts";
+
+/** The app's installation token, built from parts so no scanner takes it for one. */
+const APP_TOKEN = ["ghs", "fake", "app", "0123456789"].join("_");
+const HEAD = "a".repeat(40);
+const HEAD_2 = "b".repeat(40);
+
+const NAV = { kind: "navigation" } as const;
+
+let deliveries = 0;
+
+/**
+ * A pool whose repository `appdev` is mirrored to `acme/tea-shop` through the app: GitHub gives
+ * the app a token for it, the mirror pushes a change's head to `mate/<n>-hotter-tea`, and
+ * following GitHub marks a change merged whose pull request merged there (as an import does).
+ */
+const mirroredPool = Effect.gen(function* () {
+  const events = yield* Effect.gen(function* () {
+    return yield* GithubEvents;
+  }).pipe(Effect.provide(githubEventsLayer));
+  const mirrored = { pushes: [] as Array<number>, syncs: 0 };
+  const mirror = Layer.effect(
+    GithubMirror,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return GithubMirror.of({
+        repositoryOf: (_appId, repo) =>
+          Effect.succeed(repo === "appdev" ? "acme/tea-shop" : undefined),
+        pushChange: (appId, repo, number) =>
+          Effect.gen(function* () {
+            mirrored.pushes.push(number);
+            const [row] = yield* sql<{ readonly head: string | null }>`
+              SELECT head FROM hq_change
+              WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
+            return row?.head == null
+              ? undefined
+              : { branch: `mate/${String(number)}-hotter-tea`, sha: row.head };
+          }).pipe(Effect.orDie),
+        sync: (appId, repo) =>
+          Effect.gen(function* () {
+            mirrored.syncs += 1;
+            yield* sql`
+              UPDATE hq_change c SET state = 'merged', merged_sha = ${"f".repeat(40)},
+                landed_head = c.head, merged_at = now(), updated_at = now()
+              FROM hq_pull_request pr
+              WHERE c.app_id::text = ${appId} AND c.repo = ${repo} AND c.state = 'open'
+                AND pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
+                AND pr.state = 'merged'`;
+            return { kind: "imported", from: HEAD, to: "f".repeat(40) } as const;
+          }).pipe(Effect.orDie),
+      });
+    }),
+  );
+  const core = yield* automatedPool({
+    github: {
+      auth: Layer.succeed(
+        GithubAuth,
+        GithubAuth.of({
+          tokenFor: (repository) =>
+            Effect.succeed(
+              repository.toLowerCase() === "acme/tea-shop" ? Redacted.make(APP_TOKEN) : undefined,
+            ),
+          bot: Effect.succeed({ login: "acme-mate[bot]", userId: 41 }),
+        }),
+      ),
+      mirror,
+      events: Layer.succeed(GithubEvents, events),
+    },
+    pullRequestsEvery: Duration.millis(100),
+  });
+  core.github.state.users.set("nova", { email: "owner@tea.test" });
+  // The Mate's project is named under its application, as Zerops names it.
+  const at = core.fake.projects.findIndex((project) => project.id === "P_ROBOT");
+  core.fake.projects[at] = { ...core.fake.projects[at]!, name: "Tea Shop - Juno" };
+  const dispatch = (name: string, payload: object) =>
+    events.dispatch({
+      name,
+      deliveryId: `delivery-${String((deliveries += 1))}`,
+      repository: "acme/tea-shop",
+      payload: { ...payload, repository: { full_name: "acme/tea-shop" } },
+    } satisfies GithubEvent);
+  // What HQ asked of GitHub before: the intake's webhook, made with the person's token.
+  const since = core.github.state.seen.length;
+  return { ...core, mirrored, dispatch, since };
+});
+
+type Pool = Effect.Success<typeof mirroredPool>;
+
+/** The robot on issue 1, its change `appdev` 1 described at `head`; the task. */
+const describedChange = (core: Pool, head = HEAD) =>
+  Effect.gen(function* () {
+    yield* core.call("POST", "/api/mate/repos", {
+      headers: core.robot.auth,
+      body: { name: "appdev" },
+    });
+    yield* core.issue(1);
+    const frame = yield* core.robot.link.takeWhere(
+      "the task of issue 1",
+      (message) => message.type === "task",
+    );
+    const task = frame["task"] as MateTask;
+    yield* core.robot.link.send({
+      type: "task-state",
+      report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+    });
+    yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+    yield* core.call("POST", "/api/mate/changes", {
+      headers: core.robot.auth,
+      body: { repo: "appdev", title: "Hotter tea" },
+    });
+    yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'appdev' AND number = 1`;
+    const described = yield* core.call("PATCH", "/api/mate/changes/appdev/1", {
+      headers: core.robot.auth,
+      body: { body: "Boils the water twice.\n\nAnd pours it slowly." },
+    });
+    assert.strictEqual(described.status, 200);
+    return task;
+  });
+
+/** What HQ asked of GitHub at `path` with `method`, once it did. */
+const asked = (core: Pool, method: string, path: string) =>
+  Effect.map(
+    core.github.seenWhere(`${method} ${path}`, (seen) =>
+      seen.some((request) => request.method === method && request.path === path),
+    ),
+    (seen) => seen.filter((request) => request.method === method && request.path === path),
+  );
+
+const PULL = "/repos/acme/tea-shop/pulls/2";
+const STATUS = "/repos/acme/tea-shop/issues/comments/101";
+
+/** The issue's status line once it reads `words`. */
+const statusSays = (core: Pool, words: string) =>
+  core.github.seenWhere(words, (seen) =>
+    seen.some(
+      (request) =>
+        request.method === "PATCH" &&
+        request.path === STATUS &&
+        (request.body as { body: string }).body.startsWith(words),
+    ),
+  );
+
+const opened = (core: Pool) =>
+  Effect.gen(function* () {
+    const task = yield* describedChange(core);
+    yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
+    yield* rowsWhere(
+      core.url,
+      "SELECT pr_number FROM hq_pull_request",
+      (rows) => rows.length === 1,
+    );
+    return task;
+  });
+
+const changeOf = (core: Pool) =>
+  Effect.map(
+    core.call("GET", `/api/apps/${core.appId}/changes`, { session: core.owner }),
+    (answer) =>
+      (answer.body as { changes: ReadonlyArray<HqChange> }).changes.find(
+        (change) => change.repo === "appdev",
+      )!,
+  );
+
+describe("a change's pull request", () => {
+  it("HQ's part of the body is replaced whole, and what people wrote around it stays", () => {
+    const section = `${MATE_START}\nnew\n${MATE_END}`;
+    assert.strictEqual(
+      withSection(`Note above\n\n${MATE_START}\nold\n${MATE_END}\n\nNote below`, section),
+      `Note above\n\n${section}\n\nNote below`,
+    );
+    assert.strictEqual(withSection("", section), section);
+    assert.strictEqual(withSection("A person's words", section), `${section}\n\nA person's words`);
+  });
+
+  it("a merge's commit says the change's summary and credits who asked and its task", () => {
+    assert.strictEqual(
+      mergeMessage({
+        description: "Boils the water twice.\n\nAnd pours it slowly.",
+        coAuthor: { login: "nova", id: 7 },
+        taskLink: "https://mate.zerops.io/mate/P1",
+      }),
+      "Boils the water twice.\n\nCo-authored-by: nova <7+nova@users.noreply.github.com>\nMate-Task: https://mate.zerops.io/mate/P1",
+    );
+    assert.strictEqual(mergeMessage({ description: "", coAuthor: null, taskLink: null }), "");
+  });
+
+  it("a Mate is named by its own name, never its application's prefix", () => {
+    assert.strictEqual(mateNameIn("Tea Shop - Juno", "Tea Shop"), "Juno");
+    assert.strictEqual(mateNameIn("Juno", "Tea Shop"), "Juno");
+    assert.strictEqual(mateNameIn("Other - Juno", "Tea Shop"), "Other - Juno");
+    assert.strictEqual(mateNameIn("Tea Shop - ", "Tea Shop"), "Tea Shop -");
+  });
+
+  it("a body links its issue, its task, and who asked, and says how it was checked", () => {
+    const body = pullSection({
+      mate: "Juno",
+      description: "Boils the water twice.",
+      receipt: {
+        at: "2026-10-17T10:00:00.000Z",
+        parts: [
+          {
+            setup: "web",
+            previewHostname: "webstage",
+            deploy: "ok",
+            workspaceClean: true,
+            verified: true,
+          },
+        ],
+      },
+      fixes: 1,
+      taskLink: "https://mate.zerops.io/mate/P1",
+      changeLink: "https://mate.zerops.io/change/a/appdev/1",
+      requester: { login: "nova" },
+    });
+    assert.include(body, "Boils the water twice.");
+    assert.include(body, "`web`: deployed to its stage and verified");
+    assert.include(body, "Fixes #1");
+    assert.include(body, "Juno · [Mate task](https://mate.zerops.io/mate/P1) · Requested by @nova");
+  });
+
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a described change of a repository mirrored through the app opens a pull request by the app's bot, ready for review, saying what it does, fixing its issue, assigned to who asked, its first comment saying what its Mate will do",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const [made] = yield* asked(core, "POST", "/repos/acme/tea-shop/pulls");
+          const pull = made!.body as {
+            title: string;
+            head: string;
+            base: string;
+            body: string;
+            draft: boolean;
+          };
+          assert.deepStrictEqual(
+            { title: pull.title, head: pull.head, base: pull.base, draft: pull.draft },
+            { title: "Hotter tea", head: "mate/1-hotter-tea", base: "main", draft: false },
+          );
+          assert.include(pull.body, "Boils the water twice.");
+          assert.include(pull.body, "Fixes #1");
+          assert.include(
+            pull.body,
+            `Juno · [Mate task](${mateTaskLink("P_ROBOT")}) · Requested by @nova`,
+          );
+          const [assigned] = yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/assignees");
+          assert.deepStrictEqual(assigned!.body, { assignees: ["nova"] });
+          const [first] = yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
+          assert.isTrue((first!.body as { body: string }).body.startsWith(firstComment("Juno")));
+          yield* statusSays(core, "**Juno** opened #2 for review.");
+          // The bot writes everything on GitHub: never the person's token.
+          assert.isTrue(
+            core.github.state.seen
+              .slice(core.since)
+              .filter((request) => request.method !== "GET")
+              .every((request) => request.authorization === `Bearer ${APP_TOKEN}`),
+          );
+          const change = yield* changeOf(core);
+          assert.deepStrictEqual(change.pullRequest, {
+            number: 2,
+            url: "https://github.com/acme/tea-shop/pull/2",
+            state: "open",
+          });
+        }),
+    );
+
+    it.effect(
+      "the menu reads a change's pull request, on the change and on its automated Mate's task, with its checks",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          yield* opened(core);
+          core.github.state.checkRuns.set(HEAD, [
+            { name: "test", status: "in_progress", conclusion: null },
+          ]);
+          yield* core.dispatch("check_run", {
+            action: "completed",
+            check_run: { head_sha: HEAD, pull_requests: [] },
+          });
+          const pending = {
+            number: 2,
+            url: "https://github.com/acme/tea-shop/pull/2",
+            state: "open" as const,
+            checks: "pending" as const,
+          };
+          const row = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.pullRequest?.checks === "pending",
+          );
+          assert.deepStrictEqual(row.mate?.task?.pullRequest, pending);
+          const app = yield* nextScopeValue<HqNavigationApp>(
+            watching,
+            NAV,
+            `app:${core.appId}`,
+            (read) =>
+              Array.isArray(read.changes) && read.changes[0]?.pullRequest?.checks === "pending",
+          );
+          assert.deepStrictEqual(
+            Array.isArray(app.changes) ? app.changes[0]?.pullRequest : undefined,
+            pending,
+          );
+          yield* watching.close;
+        }),
+    );
+
+    it.effect(
+      "the issue's status line names the Mate by its own name and links where to follow it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* describedChange(core);
+          yield* statusSays(
+            core,
+            `**Juno** is on it — [follow along](${mateTaskLink("P_ROBOT")}).`,
+          );
+        }),
+    );
+
+    it.effect(
+      "a later push and a new description edit only the pull request's Mate part, keeping what people wrote",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const pull = core.github.state.pulls.get(2)!;
+          core.github.state.pulls.set(2, { ...pull, body: `${pull.body}\n\nA reviewer's note.` });
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD_2} WHERE repo = 'appdev' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/appdev/1", {
+            headers: core.robot.auth,
+            body: { body: "Boils the water three times." },
+          });
+          const edited = yield* core.github.seenWhere("the body edited", (seen) =>
+            seen.some(
+              (request) =>
+                request.method === "PATCH" &&
+                request.path === PULL &&
+                (request.body as { body?: string }).body?.includes("three times") === true,
+            ),
+          );
+          const body = (
+            edited.findLast((request) => request.path === PULL)!.body as { body: string }
+          ).body;
+          assert.include(body, "A reviewer's note.");
+          assert.notInclude(body, "Boils the water twice.");
+          yield* rowsWhere(
+            core.url,
+            "SELECT head_sha FROM hq_pull_request",
+            (rows) => rows[0]?.["head_sha"] === HEAD_2,
+          );
+          assert.isTrue(core.mirrored.pushes.length >= 2);
+        }),
+    );
+
+    it.effect(
+      "Merge in Mate merges the pull request on GitHub at the head the person saw, crediting who asked, and the change is merged once HQ follows GitHub; the issue says so and closes",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.users.set("nova", { email: "owner@tea.test" });
+          yield* opened(core);
+          const merged = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/1/merge`,
+            { session: core.owner, body: { expectedHead: HEAD } },
+          );
+          assert.strictEqual(merged.status, 200);
+          assert.strictEqual((merged.body as HqChange).state, "merged");
+          const [merge] = yield* asked(core, "PUT", `${PULL}/merge`);
+          const asks = merge!.body as Record<string, string>;
+          assert.strictEqual(asks["merge_method"], "squash");
+          assert.strictEqual(asks["sha"], HEAD);
+          assert.strictEqual(asks["commit_title"], "Hotter tea (#2)");
+          assert.include(asks["commit_message"]!, "Boils the water twice.");
+          assert.include(
+            asks["commit_message"]!,
+            "Co-authored-by: nova <1000+nova@users.noreply.github.com>",
+          );
+          assert.include(asks["commit_message"]!, `Mate-Task: ${mateTaskLink("P_ROBOT")}`);
+          assert.isAtLeast(core.mirrored.syncs, 1);
+          yield* statusSays(core, "Merged in #2.");
+          yield* asked(core, "POST", "/repos/acme/tea-shop/issues/1/reactions");
+          const [closed] = yield* asked(core, "PATCH", "/repos/acme/tea-shop/issues/1");
+          assert.deepStrictEqual(closed!.body, { state: "closed", state_reason: "completed" });
+        }),
+    );
+
+    it.effect(
+      "GitHub refusing the merge refuses it in Mate in plain words, and nothing moves",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          core.github.state.merge = { status: 405, message: "Required status check is expected." };
+          const refused = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/1/merge`,
+            { session: core.owner, body: { expectedHead: HEAD } },
+          );
+          assert.strictEqual(refused.status, 409);
+          assert.strictEqual((refused.body as { reason: string }).reason, "github_blocked");
+          assert.strictEqual((yield* changeOf(core)).state, "open");
+          assert.strictEqual(core.mirrored.syncs, 0);
+        }),
+    );
+
+    it.effect(
+      "a pull request merged on GitHub merges its change in Mate and says so on its issue",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: { number: 2, merged: true },
+          });
+          assert.strictEqual((yield* changeOf(core)).state, "merged");
+          yield* statusSays(core, "Merged in #2.");
+        }),
+    );
+
+    it.effect(
+      "a pull request closed unmerged on GitHub closes its change and ends its task stopped",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: { number: 2, merged: false },
+          });
+          assert.strictEqual((yield* changeOf(core)).state, "closed");
+          yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
+          yield* statusSays(core, "Juno stopped: PR #⁠2 was closed.");
+        }),
+    );
+
+    it.effect("Close in Mate closes the pull request on GitHub with a line saying so", () =>
+      Effect.gen(function* () {
+        const core = yield* mirroredPool;
+        yield* opened(core);
+        // The test's head is HQ's record alone, never pushed to git: the close reviews none.
+        yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'appdev' AND number = 1`;
+        const closed = yield* core.call("POST", `/api/apps/${core.appId}/changes/appdev/1/close`, {
+          session: core.owner,
+          body: { expectedHead: null },
+        });
+        assert.strictEqual(closed.status, 200);
+        const edits = yield* core.github.seenWhere("closed on GitHub", (seen) =>
+          seen.some(
+            (request) =>
+              request.method === "PATCH" &&
+              request.path === PULL &&
+              (request.body as { state?: string }).state === "closed",
+          ),
+        );
+        assert.isTrue(
+          edits.some(
+            (request) =>
+              request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+              (request.body as { body: string }).body.startsWith("Closed in Mate."),
+          ),
+        );
+      }),
+    );
+
+    it.effect(
+      "a review comment by a person who can write reaches the change's conversation and its task's Mate, with its file and line; a bot's, an aside or a reader's does not",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.roles.set("zoe", "read");
+          yield* opened(core);
+          const comment = (id: number, login: string, body: string, type = "User") =>
+            core.dispatch("pull_request_review_comment", {
+              action: "created",
+              pull_request: { number: 2 },
+              comment: { id, body, path: "src/kettle.ts", line: 3, user: { login, type } },
+            });
+          yield* comment(1, "zoe", "A reader's thought.");
+          yield* comment(2, "lint[bot]", "A bot's thought.", "Bot");
+          yield* comment(3, "nova", "Just thinking (aside).");
+          yield* comment(4, "nova", "Boil it once more.");
+          // GitHub delivers it again: it is kept once.
+          yield* comment(4, "nova", "Boil it once more.");
+          const said = yield* core.robot.link.takeWhere(
+            "the review comment",
+            (message) => message.type === "task-message",
+          );
+          assert.deepStrictEqual(said["message"], {
+            id: "github:review_comment:4",
+            from: "review",
+            author: "nova",
+            text: "`src/kettle.ts:3`: Boil it once more.",
+          });
+          const listed = yield* core.call(
+            "GET",
+            `/api/apps/${core.appId}/changes/appdev/1/comments`,
+            { session: core.owner },
+          );
+          const comments = (listed.body as { comments: ReadonlyArray<HqChangeComment> }).comments;
+          assert.deepStrictEqual(
+            comments.map((kept) => [kept.authorGithubLogin, kept.body]),
+            [["nova", "`src/kettle.ts:3`: Boil it once more."]],
+          );
+        }),
+    );
+
+    it.effect(
+      "failing checks on the pull request's head reach its task's Mate once per head, three heads at most, then a person is told",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const heads = ["a", "b", "c", "d"].map((letter) => letter.repeat(40));
+          for (const [index, head] of heads.entries()) {
+            if (index > 0) {
+              yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'appdev' AND number = 1`;
+              yield* rowsWhere(
+                core.url,
+                "SELECT head_sha FROM hq_pull_request",
+                (rows) => rows[0]?.["head_sha"] === head,
+              );
+            }
+            core.github.state.checkRuns.set(head, [
+              {
+                name: "test",
+                status: "completed",
+                conclusion: "failure",
+                details_url: "https://ci.test/1",
+              },
+              { name: "lint", status: "completed", conclusion: "success" },
+            ]);
+            for (let twice = 0; twice < 2; twice++)
+              yield* core.dispatch("check_run", {
+                action: "completed",
+                check_run: { head_sha: head, pull_requests: [] },
+              });
+          }
+          const told: Array<string> = [];
+          for (let message = 0; message < 3; message++)
+            told.push(
+              (
+                (yield* core.robot.link.takeWhere(
+                  "checks failed",
+                  (frame) => frame.type === "task-message",
+                ))["message"] as { text: string }
+              ).text,
+            );
+          assert.deepStrictEqual(
+            told,
+            [0, 1, 2].map(() => checksFailed(2, ["test"], "https://ci.test/1")),
+          );
+          yield* rowsWhere(
+            core.url,
+            "SELECT count(*)::int AS n FROM hq_task_message",
+            (rows) => rows[0]?.["n"] === 3,
+          );
+          const gaveUp = core.github.state.seen.filter(
+            (request) =>
+              request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+              (request.body as { body: string }).body.startsWith(CHECKS_GIVEN_UP),
+          );
+          assert.strictEqual(gaveUp.length, 1);
+          const change = yield* changeOf(core);
+          assert.strictEqual(change.pullRequest?.checks, "failing");
+        }),
+    );
+  });
+});

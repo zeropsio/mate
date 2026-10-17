@@ -295,6 +295,8 @@ export const statusWords = (status: TaskStatus): string => {
         return `${status.mate ?? "Mate"} couldn't finish this: ${status.why}`;
       case "stopped":
         return `Stopped: ${status.why}`;
+      case "merged":
+        return `Merged: ${status.pullRequest.url}`;
     }
   })();
   return words.length <= MESSAGE_MAX ? words : `${words.slice(0, MESSAGE_MAX - 1)}…`;

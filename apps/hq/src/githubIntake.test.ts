@@ -19,7 +19,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
-import { NO_ANSWER } from "./mateTasks.ts";
+import { NO_ANSWER, mateTaskLink } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -352,7 +352,7 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
           assert.strictEqual(
             (lines.findLast((request) => request.method === "PATCH")!.body as { body: string })
               .body,
-            `P_ROBOT picked this up.\n\n${HQ_MARK}`,
+            `**P_ROBOT** is on it — [follow along](${mateTaskLink("P_ROBOT")}).\n\n${HQ_MARK}`,
           );
         }),
     );

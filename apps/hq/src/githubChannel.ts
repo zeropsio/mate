@@ -3,7 +3,8 @@
  * organization's GitHub app where it reaches the issue's repository, else with the token of the
  * application's repository whose remote it is (`Remotes.tokenOf`):
  *
- * - at intake, 👀 on the issue;
+ * - at intake, 👀 on the issue; once its change's pull request is merged, 🚀 (GitHub has no ✅
+ *   reaction), and the issue closed as done where the merge's `Fixes` did not close it;
  * - ONE status comment, made once and edited as the task moves (its id is the task's
  *   `status_ref`): its place in the queue, the Mate that picked it up, the question it waits on
  *   (and the label `mate:blocked` while it waits), the change it opened, how it ended. A comment
@@ -49,15 +50,23 @@ export const statusWords = (status: TaskStatus): string => {
     case "queued":
       return `Queued for an automated Mate: #${String(status.position)} in line.`;
     case "picked":
-      return `${status.mate} picked this up.`;
+      return status.link === undefined
+        ? `**${status.mate}** is on it.`
+        : `**${status.mate}** is on it — [follow along](${status.link}).`;
     case "waiting":
       return `${status.mate} is waiting for you: ${quieted(status.question)}\n\nAnswer in a comment here.`;
     case "change":
-      return `${status.mate} opened a change for review: ${status.link}`;
+      return status.pullRequest === undefined
+        ? `${status.mate} opened a change for review: ${status.link}`
+        : `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`;
     case "done":
-      return status.link === null
-        ? `${status.mate} is done.`
-        : `${status.mate} is done; its change: ${status.link}`;
+      return status.pullRequest !== undefined
+        ? `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`
+        : status.link === null
+          ? `${status.mate} is done.`
+          : `${status.mate} is done; its change: ${status.link}`;
+    case "merged":
+      return `Merged in #${String(status.pullRequest.number)}.`;
     case "failed":
       return status.mate === null
         ? `No automated Mate could take this up: ${quieted(status.why)}`
@@ -134,6 +143,17 @@ export const githubChannelLayer = Layer.effectDiscard(
               : status.kind === "queued" || status.kind === "change"
                 ? undefined
                 : false;
+          if (status.kind === "merged") {
+            yield* github
+              .react(issue.remote, issue.token, issue.number, "rocket")
+              .pipe(Effect.ignore);
+            // `Fixes #n` closes it on GitHub's own merge; a merge it did not close it in, HQ does.
+            const now = yield* github.issueState(issue.remote, issue.token, issue.number);
+            if (now.state === "open")
+              yield* twice(github.closeIssue(issue.remote, issue.token, issue.number), (answer) =>
+                [200, 410].includes(answer),
+              ).pipe(Effect.ignore);
+          }
           if (blocked !== undefined)
             yield* github
               .label(issue.remote, issue.token, issue.number, BLOCKED_LABEL, blocked)

@@ -1070,11 +1070,15 @@ export const structureLayer = (options: {
                        'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END
                        || CASE WHEN NOT m.automated THEN '{}'::jsonb ELSE jsonb_build_object('automated', true, 'task',
                          CASE WHEN task.id IS NULL THEN NULL ELSE jsonb_build_object('id', task.id,
-                           'source', task.source, 'waiting', task.state = 'waiting') END) END END AS mate
+                           'source', task.source, 'waiting', task.state = 'waiting')
+                           || CASE WHEN task_pr.pr_number IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
+                             'pullRequest', jsonb_strip_nulls(jsonb_build_object('number', task_pr.pr_number,
+                               'url', task_pr.url, 'state', task_pr.state, 'checks', task_pr.checks))) END
+                         END) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
-                  t.source, t.state
+                  t.source, t.state, t.app_id, t.change_repo, t.change_number
                 FROM hq_task t
                 WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working', 'waiting')
                   OR (t.change_number IS NOT NULL AND EXISTS (SELECT 1 FROM hq_change c
@@ -1082,6 +1086,8 @@ export const structureLayer = (options: {
                       AND c.state = 'open')))
                 ORDER BY t.mate_project_id, (t.state IN ('assigned', 'working', 'waiting')) DESC, t.seq DESC
               ) task ON task.mate_project_id = m.project_id
+              LEFT JOIN hq_pull_request task_pr ON task_pr.app_id = task.app_id
+                AND task_pr.repo = task.change_repo AND task_pr.number = task.change_number
               ORDER BY p.seq NULLS LAST, m.seq`;
               setupMarkers.retain(
                 new Set(membership.filter((row) => row.mate !== null).map((row) => row.project_id)),
@@ -1089,7 +1095,12 @@ export const structureLayer = (options: {
               for (const row of membership) {
                 // A task's row is read as its source names it: its label, its link, whether it waits.
                 const task = row.mate?.task as
-                  | { readonly id: string; readonly source: unknown; readonly waiting: boolean }
+                  | {
+                      readonly id: string;
+                      readonly source: unknown;
+                      readonly waiting: boolean;
+                      readonly pullRequest?: HqNavigationMateTask["pullRequest"];
+                    }
                   | null
                   | undefined;
                 if (row.mate != null && task != null) {
@@ -1099,7 +1110,12 @@ export const structureLayer = (options: {
                     task:
                       source === undefined
                         ? null
-                        : navigationTaskOf({ id: task.id, source, waiting: task.waiting }),
+                        : navigationTaskOf({
+                            id: task.id,
+                            source,
+                            waiting: task.waiting,
+                            pullRequest: task.pullRequest,
+                          }),
                   };
                 }
                 if (row.mate === null || row.mate.closedOff || row.record === null) continue;
