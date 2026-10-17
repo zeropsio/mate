@@ -440,7 +440,9 @@ describe("HQ scoped socket", () => {
           const navigationCalls = core.fake.calls.slice(coldCalls);
           const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
           const structureQueries = queries.filter((query) =>
-            /FROM hq_app a (?:LEFT JOIN hq_intake i ON i\.app_id = a\.id )?ORDER BY/.test(query),
+            /FROM hq_app a (?:LEFT JOIN hq_intake i ON i\.app_id = a\.id[\s\S]*?)?ORDER BY a\.seq/.test(
+              query,
+            ),
           );
           // The app's emptiness subquery also mentions hq_change; count it with structure. An
           // automated Mate's task reads (`hq_task`: the Mates' one query, the dispatcher's) mention
