@@ -1660,6 +1660,7 @@ const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/zerops/ZeropsSetup.ts",
   "apps/server/src/zerops/ZeropsSignOut.ts",
   "apps/server/src/zerops/ZeropsStandUpRelay.ts",
+  "apps/server/src/zerops/ZeropsTasks.ts",
   "apps/server/src/zerops/engineAdapters.ts",
   "apps/server/src/zerops/engineOverview.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",

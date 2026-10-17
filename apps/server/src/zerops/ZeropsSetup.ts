@@ -64,12 +64,14 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import { AUTOMATED_MODEL_SELECTION } from "./ZeropsAutomation.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
+import { taskIdOfConversation } from "./ZeropsTasks.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -503,8 +505,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      */
     const engineConversation = (id?: ConversationId) =>
       Effect.map(engine.conversations, (list) => {
+        // A task's conversation is the task's, never the Mate's own.
         const found = list.views.find((view) =>
-          id === undefined ? view.agent?.profile.kind === "mate" : view.conversationId === id,
+          id === undefined
+            ? view.agent?.profile.kind === "mate" &&
+              taskIdOfConversation(view.conversationId) === undefined
+            : view.conversationId === id,
         );
         return found !== undefined || list.complete ? found : ("unknown" as const);
       });
@@ -581,9 +587,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const hq = yield* reads.hq;
         if (hq.kind !== "linked") return false;
         const asker = hq.mate.standupRequestedBy ?? undefined;
-        const providers = yield* reads.providers;
+        // An automated Mate runs on the organization's key only: its OpenCode, nobody's sign-in.
+        const automated = hq.mate.automated === true;
+        const allProviders = yield* reads.providers;
+        const providers = automated
+          ? allProviders.filter(
+              (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+            )
+          : allProviders;
         const ready = pickReadyAgentWithoutSignIn(providers);
-        const signers = yield* reads.signers;
+        const signers = automated ? {} : yield* reads.signers;
         const requestedBy =
           resuming === undefined
             ? asker
@@ -639,7 +652,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         );
         const defaults = yield* projectDefault;
         let chosen: ModelSelection;
-        if ("agentId" in decision) {
+        if (automated) {
+          chosen = AUTOMATED_MODEL_SELECTION;
+        } else if ("agentId" in decision) {
           chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
         } else if (readyHere !== undefined) {
           chosen = standUpModelSelectionOn(readyHere, mainSelection, defaults);

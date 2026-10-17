@@ -19,7 +19,10 @@
  * - **Down:** the Mate's state as HQ holds it (its record, its birth), kept here for whoever asks
  *   and handed on to `ZeropsAutomation` (whether the Mate is automated); who its project lets in
  *   (`access`), handed on to `ZeropsProjectAccess` with its age; an automated Mate's keys
- *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged.
+ *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged; and the tasks HQ hands an
+ *   automated Mate (`task`), worked by `ZeropsTasks`, whose reports go up as `task-state` — the
+ *   latest task's first on every link. A task told before HQ's first state on a link waits for
+ *   HQ to tell it again: until then the Mate cannot say whether it is automated.
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
  * where it answers there ({@link HQ_LINK_ADDRESS_ORDER}): the Zerops L7 cuts a WebSocket on a
@@ -88,6 +91,7 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsTasks } from "./ZeropsTasks.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
@@ -162,6 +166,8 @@ export interface ZeropsHqLinkOptions {
   readonly relayAccess: ZeropsProjectAccess["Service"]["relayed"];
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
   readonly automation?: Pick<ZeropsAutomation["Service"], "heard" | "keysHeard">;
+  /** Works the tasks HQ hands an automated Mate, and says how each stands (`ZeropsTasks`). */
+  readonly tasks?: ZeropsTasks["Service"];
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
@@ -312,6 +318,9 @@ export const makeZeropsHqLink = (
         }
 
         const usage = options.usage ? yield* options.usage.open(send) : undefined;
+        const tasks = options.tasks
+          ? yield* options.tasks.open((report) => send({ type: "task-state", report }))
+          : undefined;
         let requestSerial = 0;
         const policyRequests = new Map<
           string,
@@ -393,6 +402,13 @@ export const makeZeropsHqLink = (
                 );
               case "provider-keys":
                 return options.automation?.keysHeard(message.value.keys) ?? Effect.void;
+              case "task": {
+                if (tasks === undefined) return Effect.void;
+                const task = message.value.task;
+                return Deferred.isDone(answered).pipe(
+                  Effect.flatMap((stated) => (stated ? tasks.receive(task) : Effect.void)),
+                );
+              }
               case "access":
                 return options.relayAccess({
                   members: message.value.members,
@@ -407,9 +423,19 @@ export const makeZeropsHqLink = (
         const relayed = yield* Effect.forkScoped(
           Effect.raceFirst(
             relay,
-            Effect.all([overviews, heard, attention, health, ...(usage ? [usage.run] : [])], {
-              concurrency: "unbounded",
-            }),
+            Effect.all(
+              [
+                overviews,
+                heard,
+                attention,
+                health,
+                ...(usage ? [usage.run] : []),
+                ...(tasks ? [tasks.run] : []),
+              ],
+              {
+                concurrency: "unbounded",
+              },
+            ),
           ).pipe(Effect.ensuring(quit), Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
         );
         return Option.some({
@@ -663,6 +689,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         automation: yield* ZeropsAutomation,
+        tasks: yield* ZeropsTasks,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,

@@ -171,6 +171,8 @@ const rig = (
     const relayed: Array<unknown> = [];
     /** What the link handed `ZeropsAutomation`: HQ's word on the Mate, and its keys. */
     const automation: Array<unknown> = [];
+    /** The tasks the link handed on; each is answered `accepted`. */
+    const taken: Array<string> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
         asked.push(request.headers.authorization);
@@ -221,6 +223,16 @@ const rig = (
         heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
         keysHeard: (keys) => Effect.sync(() => void automation.push({ keys })),
       },
+      tasks: {
+        open: (send) =>
+          Effect.succeed({
+            receive: (task) =>
+              Effect.sync(() => void taken.push(task.id)).pipe(
+                Effect.andThen(send({ taskId: task.id, state: "accepted" })),
+              ),
+            run: Effect.never,
+          }),
+      },
       reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -250,6 +262,7 @@ const rig = (
       reads,
       relayed,
       automation,
+      taken,
     };
   });
 
@@ -396,6 +409,41 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "provider-keys", keys });
         yield* until(() => automation[1]);
         assert.deepStrictEqual(automation, [{ heard: automated }, { keys }]);
+      }),
+    ),
+  );
+
+  it.live("works a task HQ tells once HQ said who the Mate is, and sends how it stands", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, taken } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const task = {
+          id: "task-1",
+          source: {
+            kind: "github-issue",
+            repo: "acme/tea-shop",
+            number: 42,
+            url: "https://github.com/acme/tea-shop/issues/42",
+            title: "The cart forgets its teas",
+            author: null,
+          },
+          body: "",
+        };
+        // Before HQ's state the Mate cannot say whether it is automated: HQ tells it again.
+        socket.hear({ type: "task", task });
+        socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+        socket.hear({ type: "task", task });
+        const report = yield* until(() =>
+          socket.sent.find((message) => message.type === "task-state"),
+        );
+        assert.deepStrictEqual(report, {
+          type: "task-state",
+          report: { taskId: "task-1", state: "accepted" },
+        });
+        assert.deepStrictEqual(taken, ["task-1"]);
       }),
     ),
   );

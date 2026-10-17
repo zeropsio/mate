@@ -14,6 +14,12 @@
  * @module ZeropsAutomation
  */
 import {
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
+  type ModelSelection,
+} from "@t3tools/contracts";
+import {
+  automatedOpenCodeModel,
   defaultOpenCodeInstance,
   OPENCODE_KEY_PROVIDERS,
   openCodeInstancePatch,
@@ -34,6 +40,20 @@ import { ServerSettingsService } from "../serverSettings.ts";
 /** What an automated Mate answers a sign-in, or a run on one: nobody's subscription runs it. */
 export const AUTOMATED_MATE_SIGNS_NOBODY_IN =
   "An automated Mate runs on your organization's API key; nobody signs in to it.";
+
+const OPENCODE = ProviderDriverKind.make("opencode");
+
+/** The provider an automated Mate's agents run on with the organization's key: Nebius first. */
+const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
+
+/**
+ * What an automated Mate's agents run on — its stand-up and every task: the default OpenCode
+ * instance, where the organization's key is set, on the provider's model for automated work.
+ */
+export const AUTOMATED_MODEL_SELECTION: ModelSelection = {
+  instanceId: defaultInstanceIdForDriver(OPENCODE),
+  model: automatedOpenCodeModel(AUTOMATED_PROVIDER),
+};
 
 /** The keys HQ hands an automated Mate, by the variable each provider reads. */
 export type ProviderKeys = Extract<MateLinkDown, { readonly type: "provider-keys" }>["keys"];
@@ -102,10 +122,7 @@ export const make = Effect.gen(function* () {
     });
 
   const keySet = settings.getSettings.pipe(
-    Effect.map((current) => {
-      const provider = OPENCODE_KEY_PROVIDERS[0];
-      return provider !== undefined && openCodeKeyIsSet(defaultOpenCodeInstance(current), provider);
-    }),
+    Effect.map((current) => openCodeKeyIsSet(defaultOpenCodeInstance(current), AUTOMATED_PROVIDER)),
     Effect.orElseSucceed(() => false),
   );
 

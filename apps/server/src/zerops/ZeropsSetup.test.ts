@@ -609,6 +609,35 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  it.live(
+    "an automated Mate stands up on OpenCode with the organization's key and its model, never on a sign-in",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const automated = ASKED.kind === "linked" ? ASKED.mate : undefined;
+        yield* Ref.set(world.hq, { kind: "linked", mate: { ...automated!, automated: true } });
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.providers, [...CLAUDE_SIGNED_IN, instance("cursor")]);
+        yield* withServer(world, freshDatabase(), () =>
+          Effect.gen(function* () {
+            // The asker's Claude and a ready Cursor are no agent of an automated Mate's.
+            yield* ticks;
+            assert.deepStrictEqual(yield* turnsOf(world), []);
+            yield* Ref.set(world.providers, [
+              ...CLAUDE_SIGNED_IN,
+              instance("cursor"),
+              instance("opencode"),
+            ]);
+            const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length > 0);
+            assert.deepStrictEqual(
+              [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+              ["opencode", "nebius/zai-org/GLM-5.3"],
+            );
+          }),
+        );
+      }),
+  );
+
   it.live("the asker's own sign-in comes before a ready Cursor", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
