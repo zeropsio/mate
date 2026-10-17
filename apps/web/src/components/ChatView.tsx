@@ -224,6 +224,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import {
@@ -2621,6 +2622,9 @@ function ConversationView(props: ChatViewProps) {
     conversationProviderStatus.supportsConversationRollback !== false;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  // The origins the engine asked of the person, by run card: a key, so streaming draws nothing.
+  const originAskKey = useMemo(() => originAskPlacesKey(threadActivities), [threadActivities]);
+  const originAsks = useMemo(() => originAskPlaces(originAskKey), [originAskKey]);
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
@@ -8482,6 +8486,7 @@ function ConversationView(props: ChatViewProps) {
                   isWorking,
                   workingStepLabel,
                   isCompacting,
+                  originAsks,
                   isStopping,
                   activeTurnStartedAt: activeWorkStartedAt,
                   listRef: legendListRef,

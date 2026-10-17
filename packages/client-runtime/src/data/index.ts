@@ -647,6 +647,8 @@ export {
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  ORIGIN_ASK_ACTIVITY_KIND,
+  type OriginAskActivityPayload,
   VAULT_ASK_ACTIVITY_KIND,
   type VaultAskActivityPayload,
   type EngineCardCounts,

@@ -21,6 +21,7 @@ const NOOP_OPEN_AGENTS = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const EMPTY_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
+const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
@@ -234,6 +235,8 @@ import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
+import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
+import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
@@ -369,6 +372,8 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
+  /** The origins the engine asked of the person, each by its run card (`originAskPlaces`). */
+  originAsks?: ReadonlyArray<OriginAskPlace>;
   /** A person's Stop is in force (`conversationStop`). */
   isStopping?: boolean;
   activeTurnStartedAt: string | null;
@@ -476,6 +481,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   workingStepLabel = null,
   isCompacting = false,
+  originAsks = EMPTY_ORIGIN_ASKS,
   isStopping = false,
   activeTurnStartedAt,
   agentPanelModel,
@@ -677,10 +683,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         cardPaging,
         liveLines,
         isCompacting,
+        originAsks,
       }),
     [
       cardPaging,
       liveLines,
+      originAsks,
       isCompacting,
       runCards,
       nowMs,
@@ -2835,6 +2843,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
+      {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
@@ -3947,6 +3956,24 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
+        threadRef={ctx.threadRef}
+      />
+    </div>
+  );
+});
+
+/** An origin the Mate asked the person for, after its run: the card that connects it. */
+const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "origin-request" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <OriginAskCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
+        requestId={row.requestId}
         threadRef={ctx.threadRef}
       />
     </div>

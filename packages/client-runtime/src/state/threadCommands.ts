@@ -33,6 +33,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
   engineContinueAfterLimit,
   engineCreateThread,
+  engineAnswerOriginAsk,
   engineAnswerVaultAsk,
   engineSetArchived,
   engineSetInteractionMode,
@@ -45,6 +46,7 @@ import {
   engineRespondToUserInput,
   engineStartTurn,
   viaEngine,
+  type OriginAskAnswerInput,
   type VaultAskAnswerInput,
 } from "../data/engineCommands.ts";
 
@@ -166,6 +168,17 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:answer-vault-ask",
       execute: (input: VaultAskAnswerInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineAnswerVaultAsk(environmentId, input)),
+      scheduler,
+      concurrency,
+    }),
+    /**
+     * An origin the Mate asked the person to deliver finished work back to, answered on its card:
+     * connected (the card connected it in HQ itself) or declined. Only the outcome travels.
+     */
+    answerOriginAsk: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:answer-origin-ask",
+      execute: (input: OriginAskAnswerInput, registry, environmentId) =>
+        viaEngine(registry, environmentId, engineAnswerOriginAsk(environmentId, input)),
       scheduler,
       concurrency,
     }),

@@ -657,6 +657,53 @@ function vaultAskActivity(
   );
 }
 
+/** The activity an origin asked of the person is: one card in its run, its state as it stands. */
+export const ORIGIN_ASK_ACTIVITY_KIND = "origin.requested";
+
+/**
+ * What the card for an origin asked of the person reads: where the agent would deliver finished
+ * work back to, the HQ repository it names, and how the ask stands — open, connected or declined
+ * (who and when), or closed some other way. Never a token: the engine holds none.
+ */
+export interface OriginAskActivityPayload {
+  readonly requestId: string;
+  readonly url: string;
+  readonly repo: string;
+  readonly reason: string | null;
+  readonly state: "open" | "connected" | "declined" | "closed";
+  readonly answer: { readonly by: Principal; readonly at: number } | null;
+}
+
+const ORIGIN_ASK_STATES: Readonly<Record<string, OriginAskActivityPayload["state"]>> = {
+  open: "open",
+  answered: "connected",
+  declined: "declined",
+};
+
+function originAskActivity(
+  request: Request,
+  ask: Extract<RequestAsk, { readonly kind: "origin" }>,
+  card: string | null,
+): OrchestrationThreadActivity {
+  const payload: OriginAskActivityPayload = {
+    requestId: request.id,
+    url: ask.url,
+    repo: ask.repo,
+    reason: ask.reason,
+    state: ORIGIN_ASK_STATES[request.state] ?? "closed",
+    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+  };
+  return activity(
+    `${request.id}#origin`,
+    ORIGIN_ASK_ACTIVITY_KIND,
+    "Origin requested",
+    { ...payload },
+    card,
+    request.at,
+    request.seq,
+  );
+}
+
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
 function requestActivities(
   request: Request,
@@ -665,6 +712,7 @@ function requestActivities(
   const { ask } = request;
   const card = cardOf(request.runId);
   if (ask.kind === "vault") return [vaultAskActivity(request, ask, card)];
+  if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(

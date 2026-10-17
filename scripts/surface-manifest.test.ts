@@ -199,6 +199,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-vault",
   "zerops-addresses",
   "zerops-vault-request",
+  "zerops-origin-request",
   "zerops-review",
   "zerops-service-map",
   "zerops-quick-actions",

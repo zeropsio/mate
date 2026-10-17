@@ -577,6 +577,48 @@
       "captures": []
     },
     {
+      "id": "zerops-origin-request",
+      "title": "Zerops origin request card",
+      "components": [
+        "apps/web/src/components/zerops/origin/OriginAskCard.tsx",
+        "apps/web/src/components/zerops/origin/OriginAskCardContainer.tsx",
+        "apps/web/src/components/zerops/origin/OriginGitSheet.tsx",
+        "apps/web/src/components/zerops/origin/originAsk.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_origin action=request"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/shared/hqChanges"],
+      "reverseStates": [
+        {
+          "action": "Connect",
+          "reverse": "none: closing the Git sheet before production is added leaves the ask open on its card; an added Git environment is removed where the application lists them."
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: the engine closes the ask declined; the Mate can ask again."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the origin request yet."
+      },
+      "tests": ["apps/web/src/components/zerops/origin/OriginAskCard.test.tsx"],
+      "captures": []
+    },
+    {
       "id": "zerops-review",
       "title": "Zerops review",
       "components": [
