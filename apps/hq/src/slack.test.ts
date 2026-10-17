@@ -615,7 +615,8 @@ describe("Slack", () => {
             yield* Queue.take(hq.intake.enqueued),
             yield* Queue.take(hq.intake.enqueued),
           ];
-          assert.deepStrictEqual(
+          // Each event is worked after Slack's answer, so the three asks arrive in any order.
+          assert.sameDeepMembers(
             asked.map((ask) => [
               ask.source.kind === "slack-thread" ? ask.source.author : null,
               ask.requestedBy,
