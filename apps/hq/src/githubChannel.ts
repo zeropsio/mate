@@ -1,8 +1,10 @@
 /**
- * How a GitHub issue's task hears back (`TaskSourceChannel` of `github-issue`), with the token of
- * the application's repository whose remote the issue's repository is:
+ * How a GitHub issue's task hears back (`TaskSourceChannel` of `github-issue`), as the
+ * organization's GitHub app where it is installed on the issue's repository (`GithubAuth`), else
+ * with the token of the application's repository whose remote the issue's repository is:
  *
- * - at intake, 👀 on the issue;
+ * - at intake, 👀 on the issue; once its change's pull request is merged, 🚀 (GitHub has no ✅
+ *   reaction), and the issue closed as done where the merge's `Fixes` did not close it;
  * - ONE status comment, made once and edited as the task moves (its id is the task's
  *   `status_ref`): its place in the queue, the Mate that picked it up, the question it waits on
  *   (and the label `mate:blocked` while it waits), the change it opened, how it ended. A comment
@@ -20,6 +22,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { GithubAuth } from "./githubAuth.ts";
 import { GithubIssues } from "./githubIssues.ts";
 import { remoteIdentity } from "./gitTransport.ts";
 import { Remotes } from "./repoRemotes.ts";
@@ -48,15 +51,23 @@ export const statusWords = (status: TaskStatus): string => {
     case "queued":
       return `Queued for an automated Mate: #${String(status.position)} in line.`;
     case "picked":
-      return `${status.mate} picked this up.`;
+      return status.link === undefined
+        ? `**${status.mate}** is on it.`
+        : `**${status.mate}** is on it — [follow along](${status.link}).`;
     case "waiting":
       return `${status.mate} is waiting for you: ${quieted(status.question)}\n\nAnswer in a comment here.`;
     case "change":
-      return `${status.mate} opened a change for review: ${status.link}`;
+      return status.pullRequest === undefined
+        ? `${status.mate} opened a change for review: ${status.link}`
+        : `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`;
     case "done":
-      return status.link === null
-        ? `${status.mate} is done.`
-        : `${status.mate} is done; its change: ${status.link}`;
+      return status.pullRequest !== undefined
+        ? `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`
+        : status.link === null
+          ? `${status.mate} is done.`
+          : `${status.mate} is done; its change: ${status.link}`;
+    case "merged":
+      return `Merged in #${String(status.pullRequest.number)}.`;
     case "failed":
       return status.mate === null
         ? `No automated Mate could take this up: ${quieted(status.why)}`
@@ -77,12 +88,21 @@ export const githubChannelLayer = Layer.effectDiscard(
     const remotes = yield* Remotes;
     const github = yield* GithubIssues;
     const channels = yield* TaskSourceChannels;
+    const auth = yield* GithubAuth;
 
-    /** The issue's repository as the application holds it, with its token; none where it holds none. */
+    /**
+     * The issue's repository, with the app's token where the app reaches it, else as the
+     * application holds it, with its token; none where neither does. GitHub not giving the app a
+     * token now is none: never a person's token in the app's place.
+     */
     const issueOf = (task: TaskOnSource) =>
       Effect.gen(function* () {
         if (task.source.kind !== "github-issue") return undefined;
         const repo = task.source.repo;
+        const installed = yield* auth.tokenFor(repo);
+        const asApp = remoteIdentity(`https://github.com/${repo}`);
+        if (installed !== undefined && asApp !== undefined)
+          return { remote: asApp, token: installed, number: task.source.number };
         const rows = yield* sql<{ readonly repo: string; readonly url: string }>`
           SELECT repo, url FROM hq_repo_remote WHERE app_id::text = ${task.appId} ORDER BY repo`;
         const found = rows.find((row) => remoteIdentity(row.url)?.path === repo);
@@ -133,6 +153,17 @@ export const githubChannelLayer = Layer.effectDiscard(
               : status.kind === "queued" || status.kind === "change"
                 ? undefined
                 : false;
+          if (status.kind === "merged") {
+            yield* github
+              .react(issue.remote, issue.token, issue.number, "rocket")
+              .pipe(Effect.ignore);
+            // `Fixes #n` closes it on GitHub's own merge; a merge it did not close it in, HQ does.
+            const now = yield* github.issueState(issue.remote, issue.token, issue.number);
+            if (now.state === "open")
+              yield* twice(github.closeIssue(issue.remote, issue.token, issue.number), (answer) =>
+                [200, 410].includes(answer),
+              ).pipe(Effect.ignore);
+          }
           if (blocked !== undefined)
             yield* github
               .label(issue.remote, issue.token, issue.number, BLOCKED_LABEL, blocked)

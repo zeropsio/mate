@@ -24,7 +24,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
 import { ISSUE_CLOSED } from "./intake.ts";
-import { DECLINED_FOR, MATE_AWAY, UNTAKEN } from "./mateTasks.ts";
+import { DECLINED_FOR, MATE_AWAY, UNTAKEN, mateTaskLink } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -463,7 +463,7 @@ describe("tasks for automated Mates", () => {
             type: "task-state",
             report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
           });
-          yield* said("P_ROBOT picked this up.");
+          yield* said("**P_ROBOT** is on it");
           const change = yield* core.call("POST", "/api/mate/changes", {
             headers: core.robot.auth,
             body: { repo: "appdev", title: "Hotter tea" },
@@ -478,7 +478,7 @@ describe("tasks for automated Mates", () => {
           // One status comment, made once and edited as the task moved.
           assert.deepStrictEqual(yield* core.github.commentLog, [
             ["POST", issue, "Queued for an automated Mate: #1 in line."],
-            ["PATCH", status, "P_ROBOT picked this up."],
+            ["PATCH", status, `**P_ROBOT** is on it — [follow along](${mateTaskLink("P_ROBOT")}).`],
             [
               "PATCH",
               status,

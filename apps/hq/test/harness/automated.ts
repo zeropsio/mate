@@ -13,6 +13,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
+import type { CoreOptions } from "../../src/core.ts";
 import { sealRemoteToken } from "../../src/deployKeys.ts";
 import { type MateTasksOptions, TASK_SOURCES_SINCE } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
@@ -265,6 +266,10 @@ export const automatedPool = (
     readonly scheduleEvery?: Duration.Duration;
     /** The robot's version, as its overview says; one that reads tasks from every source. */
     readonly version?: string;
+    /** The organization's GitHub app as the test stands it in; none. */
+    readonly github?: CoreOptions["github"];
+    /** How often HQ looks at every open change's pull request. */
+    readonly pullRequestsEvery?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -277,6 +282,10 @@ export const automatedPool = (
     const core = yield* startCore(true, {
       githubApi: github.url,
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
+      ...(given.github === undefined ? {} : { github: given.github }),
+      ...(given.pullRequestsEvery === undefined
+        ? {}
+        : { pullRequests: { sweepEvery: given.pullRequestsEvery } }),
       ...(Object.keys(times).length === 0
         ? {}
         : { tasks: { sweepEvery: Duration.millis(50), ...times } }),

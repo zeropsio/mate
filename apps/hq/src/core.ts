@@ -22,6 +22,7 @@ import * as PgClient from "@effect/sql-pg/PgClient";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as SqlClient from "effect/sql/SqlClient";
 import type * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -42,6 +43,10 @@ import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
+import { GithubAuth, githubAuthAbsentLayer } from "./githubAuth.ts";
+import { GithubEvents, githubEventsLayer } from "./githubEvents.ts";
+import { GithubMirror, githubMirrorAbsentLayer } from "./githubMirror.ts";
+import { type PullRequestsOptions, pullRequestsLayer } from "./pullRequests.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
 import { webhooksLayer } from "./webhooks.ts";
@@ -101,6 +106,17 @@ export interface CoreOptions {
   readonly drainFor?: Duration.Duration;
   /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
   readonly githubApi?: string;
+  /**
+   * The organization's GitHub app as tests stand it in: its tokens, the git mirror, its webhook's
+   * events. No app by default (`githubAuthAbsentLayer`, `githubMirrorAbsentLayer`).
+   */
+  readonly github?: {
+    readonly auth?: Layer.Layer<GithubAuth>;
+    readonly mirror?: Layer.Layer<GithubMirror, never, SqlClient.SqlClient>;
+    readonly events?: Layer.Layer<GithubEvents>;
+  };
+  /** How often every open change's pull request is looked at (`pullRequests.ts`); for tests. */
+  readonly pullRequests?: PullRequestsOptions;
   /** Discord's REST API, for tests; Discord's own by default. */
   readonly discordApi?: string;
   /** Slack's Web API, for tests; Slack's own by default. */
@@ -178,6 +194,10 @@ const services = (options: CoreOptions) => {
       Layer.provide(githubGateLayer),
     ),
     githubChannelLayer,
+    pullRequestsLayer(options.pullRequests).pipe(
+      Layer.provide(door),
+      Layer.provide(githubGateLayer),
+    ),
     webhooksLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
     schedulesLayer(
       options.scheduleEvery === undefined ? {} : { every: options.scheduleEvery },
@@ -198,6 +218,13 @@ const services = (options: CoreOptions) => {
     Layer.provide(remotes),
     Layer.provideMerge(github),
     Layer.provideMerge(taskSourceChannelsLayer),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        options.github?.auth ?? githubAuthAbsentLayer,
+        options.github?.mirror ?? githubMirrorAbsentLayer,
+        options.github?.events ?? githubEventsLayer,
+      ),
+    ),
   );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
