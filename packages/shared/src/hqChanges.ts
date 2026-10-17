@@ -620,6 +620,11 @@ export const HqChangeComment = Schema.Struct({
   authorMateProjectId: Schema.NullOr(Schema.String).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(null)),
   ),
+  /**
+   * The GitHub login of one said on the change's pull request on GitHub, for one said there; then
+   * neither of the others is set.
+   */
+  authorGithubLogin: Schema.optionalKey(Schema.String),
   body: CommentBody,
   createdAt: Instant,
 });
@@ -649,7 +654,9 @@ export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sh
 /**
  * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would
  * change nothing, is on `main` already, shares no history with it, has nothing pushed; `main` kept
- * moving; or the change is merged or closed.
+ * moving; or the change is merged or closed. A change mirrored to a pull request merges on GitHub:
+ * GitHub's rules (branch protection, required checks) held it back, GitHub refused it otherwise, or
+ * did not answer.
  */
 export const MERGE_REFUSALS = [
   "head_moved",
@@ -660,6 +667,9 @@ export const MERGE_REFUSALS = [
   "no_change",
   "main_moved",
   "change_not_open",
+  "github_blocked",
+  "github_refused",
+  "github_unreachable",
 ] as const;
 
 /** A merge's subject on `main`, as Gitea's squash wrote it: what a release reads as the task. */

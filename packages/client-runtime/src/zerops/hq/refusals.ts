@@ -73,6 +73,10 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   no_change: "Nothing was pushed to it yet.",
   main_moved: "Other changes kept landing on main meanwhile. Try again.",
   change_not_open: "This change is merged or closed already.",
+  github_blocked:
+    "GitHub won't merge its pull request yet: the repository's rules or required checks hold it back. See the pull request on GitHub.",
+  github_refused: "GitHub refused to merge its pull request. See the pull request on GitHub.",
+  github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
 };
 
 /** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
