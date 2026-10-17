@@ -769,6 +769,14 @@ const working = (
     return { ...harness, id };
   });
 
+/** Time passing a minute at a time, each minute's work let run. */
+const minutes = (count: number) =>
+  Effect.forEach(
+    Array.from({ length: count }),
+    () => TestClock.adjust("1 minute").pipe(Effect.andThen(settle)),
+    { discard: true },
+  );
+
 /** The agent's last words, as the view holds them once said whole. */
 const said = (text: string, at = 4) => ({ lastAgent: { text, at } });
 
@@ -1022,6 +1030,38 @@ describe("a task stops at its limits", () => {
         yield* settle;
         assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/2`)]);
       }),
+  );
+
+  it.effect("the time the Mate was down never counts toward a task's minutes limit", () =>
+    Effect.gen(function* () {
+      const ledger = new Map<string, TaskEntry>();
+      const id = taskConversationId("task-1");
+      // 20 minutes of work, then the Mate goes down with the run on.
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* working("task-1", { ledger });
+          yield* minutes(20);
+        }),
+      );
+      yield* TestClock.adjust("45 minutes");
+      // Back up: its recovery ended the run now, and continued the task in a new one.
+      const back = 65 * 60_000;
+      const cut = {
+        ...run(id, principalOf("task-1"), "ended", { kind: "cut-by-restart", continuedBy: null }),
+        startedAt: 0,
+        endedAt: back,
+      };
+      const again = yield* rig({ ledger });
+      yield* Effect.forkScoped(again.link.run);
+      yield* settle;
+      const next = { ...run(id, principalOf("task-1"), "running", null, 2), startedAt: back };
+      yield* again.move(id, view(id, { activeRun: next, lastEnded: cut }));
+      yield* settle;
+      yield* minutes(39);
+      assert.deepStrictEqual(stopsOf(again.delivered), []);
+      yield* minutes(1);
+      assert.deepStrictEqual(stopsOf(again.delivered), [RunId.make(`${id}/r/2`)]);
+    }),
   );
 
   it.effect(

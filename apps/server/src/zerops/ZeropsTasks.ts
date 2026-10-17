@@ -166,6 +166,8 @@ export const taskQuestionOf = (
 export const DEFAULT_TASK_LIMITS: MateTaskLimits = { minutes: 60, costUsd: null };
 
 const MINUTE_MS = 60_000;
+/** How often a task's run on is seen live, and so how much of it a restart may leave uncounted. */
+const LIVE_EVERY_MS = MINUTE_MS;
 
 /** The limit a task reached, in the plain sentence its source shows. */
 const limitWords = (limit: "minutes" | "cost", limits: MateTaskLimits): string =>
@@ -402,11 +404,25 @@ export const make = Effect.gen(function* () {
         ended.endedAt !== null &&
         entry?.runMs[ended.id] === undefined
       ) {
-        const ms = Math.max(0, ended.endedAt - ended.startedAt);
-        entry = yield* ledger.update(taskId, (kept) => ({
-          ...kept,
-          runMs: { ...kept.runMs, [ended.id]: ms },
-        }));
+        // A run a restart cut ended at the recovery: it ran until it was last seen live.
+        const seen = entry?.liveAt?.[ended.id] ?? ended.startedAt;
+        const until =
+          ended.end?.kind === "cut-by-restart" ? Math.min(ended.endedAt, seen) : ended.endedAt;
+        const ms = Math.max(0, until - ended.startedAt);
+        entry = yield* ledger.update(taskId, (kept) => {
+          const { [ended.id]: _counted, ...liveAt } = kept.liveAt ?? {};
+          return { ...kept, runMs: { ...kept.runMs, [ended.id]: ms }, liveAt };
+        });
+      }
+      const running = isTasks(view.activeRun, taskId) ? view.activeRun : undefined;
+      if (running !== undefined && running.startedAt !== null) {
+        const seen = entry?.liveAt?.[running.id];
+        if (seen === undefined || now - seen >= LIVE_EVERY_MS) {
+          entry = yield* ledger.update(taskId, (kept) => ({
+            ...kept,
+            liveAt: { ...kept.liveAt, [running.id]: now },
+          }));
+        }
       }
       const own = [view.activeRun, ...view.queued].filter((run): run is ViewRun =>
         isTasks(run, taskId),
@@ -441,12 +457,12 @@ export const make = Effect.gen(function* () {
         );
         return;
       }
-      const live = isTasks(view.activeRun, taskId) && view.activeRun.startedAt !== null;
-      if (!live) return yield* FiberMap.remove(deadlines, taskId);
+      if (running?.startedAt == null) return yield* FiberMap.remove(deadlines, taskId);
+      // Read again when its minutes run out, and each minute before: seen live till then.
       yield* FiberMap.run(
         deadlines,
         taskId,
-        Effect.sleep(Duration.millis(leftMs)).pipe(
+        Effect.sleep(Duration.millis(Math.min(leftMs, LIVE_EVERY_MS))).pipe(
           Effect.andThen(Queue.offer(moved, view.conversationId)),
         ),
       );

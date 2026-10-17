@@ -31,6 +31,11 @@ const TaskEntry = Schema.Struct({
   limitHit: Schema.optionalKey(Schema.Literals(["minutes", "cost"])),
   /** Each ended run of the task's, by its id: how long it ran. */
   runMs: Schema.Record(Schema.String, Schema.Number),
+  /**
+   * When each run of the task's on now was last seen live, by its id, at most a minute apart: a
+   * run a restart cut ends at the recovery, so the time the Mate was down is never its own.
+   */
+  liveAt: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
   /** US dollars in billionths (the usage record's scale 9), summed over the counted turns. */
   costNano: Schema.String,
   /** The provider turns counted in `costNano`: a turn's usage told twice counts once. */
