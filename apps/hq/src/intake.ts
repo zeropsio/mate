@@ -18,9 +18,9 @@
  * form-encoded as a webhook pasted with GitHub's defaults sends it. An issue opened, labelled or
  * reopened carrying the label, in any case, becomes a task through HQ's door (`TaskIntake`): once
  * per delivery and once per issue while it is live; an event of a closed issue makes none. Only a
- * person may hand an issue over (`githubGate.ts`): one who can write to the repository and whose
- * GitHub profile shows a member's email — anyone else is told why on the issue, once per try, and
- * a bot is passed by. A public repository's issues are taken only where its intake says `public`.
+ * person who can write to the repository may hand an issue over (`githubGate.ts`), the task asked
+ * for by the member their GitHub profile's email names, if any — anyone else is told why on the
+ * issue, once per try, and a bot is passed by. A public repository's issues are taken only where its intake says `public`.
  * Closing an issue or removing its label stops its task (`TaskIntake.stop`). After it came in, a
  * comment such a person makes on the issue (not a bot's, not HQ's own) and an edit of the issue
  * are said to its task (`TaskIntake.message`); an edit before any Mate took it rewrites the task.
@@ -471,7 +471,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               )
                 return passed;
               const verdict = yield* verdictOf(target, author);
-              if (verdict.kind !== "member") return passed;
+              if (verdict.kind !== "writer") return passed;
               yield* intake.message(key, {
                 id: `github-comment:${String(comment.id)}`,
                 from: "comment",
@@ -526,7 +526,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               case "edited": {
                 if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
                 const verdict = yield* verdictOf(target, actor);
-                if (verdict.kind !== "member") return passed;
+                if (verdict.kind !== "writer") return passed;
                 const source = issueSource(repo, issues.issue);
                 const body = cleanTaskText(issues.issue.body ?? "");
                 // Before any Mate took it, the task is the issue as it reads now.

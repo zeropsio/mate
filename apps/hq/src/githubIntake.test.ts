@@ -14,7 +14,7 @@ import {
 import { rowsWhere } from "../test/harness/mates.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
-import { notMember, notWriter } from "./githubGate.ts";
+import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
 import { NO_ANSWER } from "./mateTasks.ts";
 
@@ -67,28 +67,52 @@ const working = (core: Pool, number: number) =>
 describe("who may hand an issue to automated Mates, and steer its task", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "an issue counts only when the person who labelled it can write to the repository and shows a member's email on GitHub; anyone else is told why, and nothing waits",
+      "an issue counts only when the person who labelled it can write to the repository; anyone else is told why, and nothing waits",
       () =>
         Effect.gen(function* () {
           const core = yield* automatedPool({ busy: true });
           core.github.state.roles.set("zoe", "triage");
           core.github.state.roles.set("kai", "maintain");
+          core.github.state.roles.set("ada", "admin");
+          // A writer whose profile shows no email, or one of nobody in the organization, counts.
           core.github.state.users.set("kai", { email: "kai@elsewhere.test" });
+          core.github.state.users.set("ada", { email: null });
           yield* labelled(core, 1, { sender: "zoe" });
           yield* labelled(core, 2, { sender: "kai" });
-          yield* labelled(core, 3);
-          const [row] = yield* taskRows(core, (rows) => rows.length === 1);
-          // Asked for the member whose email nova's profile shows.
-          assert.deepInclude(row, { number: 3, state: "queued", requested_by: "owner" });
-          yield* core.github.seenWhere("both told why", (seen) =>
-            ["1", "2"].every((number) =>
-              seen.some(
-                (request) => request.path === `/repos/acme/tea-shop/issues/${number}/comments`,
-              ),
-            ),
+          yield* labelled(core, 3, { sender: "ada" });
+          const rows = yield* taskRows(core, (found) => found.length === 2);
+          assert.deepStrictEqual(
+            rows.map((row) => row["number"]),
+            [2, 3],
+          );
+          yield* core.github.seenWhere("told why", (seen) =>
+            seen.some((request) => request.path === "/repos/acme/tea-shop/issues/1/comments"),
           );
           assert.deepStrictEqual(yield* refusals(core, 1), [notWriter("zoe")]);
-          assert.deepStrictEqual(yield* refusals(core, 2), [notMember("kai")]);
+          for (const number of [2, 3])
+            assert.isFalse(
+              (yield* refusals(core, number)).some((words) => words.includes("can't")),
+            );
+        }),
+    );
+
+    it.effect(
+      "a task is asked for by the member whose email the labeller's GitHub profile shows, and by nobody where it shows none of a member's",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ busy: true });
+          core.github.state.roles.set("kai", "write");
+          core.github.state.users.set("kai", { email: "kai@elsewhere.test" });
+          yield* labelled(core, 1);
+          yield* labelled(core, 2, { sender: "kai" });
+          const rows = yield* taskRows(core, (found) => found.length === 2);
+          assert.deepStrictEqual(
+            rows.map((row) => [row["number"], row["requested_by"]]),
+            [
+              [1, "owner"],
+              [2, null],
+            ],
+          );
         }),
     );
 
