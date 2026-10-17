@@ -18,6 +18,8 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly repo: string;
       readonly label: string;
+      /** It takes a public repository's issues (`HqIntakeRequest.public`); absent: it does not. */
+      readonly public?: true;
     };
     readonly "stop-intake": { readonly orgId: string; readonly appId: string };
     readonly "set-ai-key": { readonly orgId: string; readonly provider: string };

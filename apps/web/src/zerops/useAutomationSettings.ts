@@ -96,8 +96,8 @@ export function useAppIntake(appId: string) {
   }, [host, key]);
   return {
     read,
-    set: (repo: string, label: string) => {
-      if (host !== null && key !== null) void host.setIntake(key, repo, label);
+    set: (repo: string, label: string, takesPublic = false) => {
+      if (host !== null && key !== null) void host.setIntake(key, repo, label, takesPublic);
     },
     stop: () => {
       if (host !== null && key !== null) void host.stopIntake(key);

@@ -20,10 +20,11 @@
  *   and handed on to `ZeropsAutomation` (whether the Mate is automated); who its project lets in
  *   (`access`), handed on to `ZeropsProjectAccess` with its age; an automated Mate's keys
  *   (`provider-keys`), handed on to `ZeropsAutomation`, never logged; and the tasks HQ hands an
- *   automated Mate (`task`), worked by `ZeropsTasks`, whose reports go up as `task-state` — the
- *   latest task's first on every link — and only on a link whose HQ said in its state that the
- *   Mate is automated: an HQ from before automated Mates closes a link on a frame it does not
- *   know. A task told before HQ's first state on a link is held until it comes
+ *   automated Mate (`task`), the follow-ups people say on them (`task-message`) and their stops
+ *   (`task-stop`), worked by `ZeropsTasks`, whose reports go up as `task-state` — the latest
+ *   task's first on every link — and only on a link whose HQ said in its state that the Mate is
+ *   automated: an HQ from before automated Mates closes a link on a frame it does not know. A
+ *   task's frame told before HQ's first state on a link is held until it comes
  *   ({@link HQ_TASK_HOLD}), since until then the Mate cannot say whether it is automated.
  *
  * A link that closes or never opens is tried again after a growing wait. HQ is reached over IPv6
@@ -392,6 +393,20 @@ export const makeZeropsHqLink = (
         const attention = Stream.runForEach(options.attention, (value) =>
           send({ type: "attention", attention: value }),
         );
+        /**
+         * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
+         * for as long as the link lives, until HQ's first state; HQ tells it again if that never
+         * comes.
+         */
+        const onceStated = (heard: Effect.Effect<void>) =>
+          Effect.asVoid(
+            Deferred.await(answered).pipe(
+              Effect.timeoutOrElse({ duration: HQ_TASK_HOLD, orElse: () => Effect.void }),
+              Effect.andThen(Deferred.isDone(answered)),
+              Effect.flatMap((stated) => (stated ? heard : Effect.void)),
+              Effect.forkChild,
+            ),
+          );
         const relay = Stream.fromQueue(events).pipe(
           Stream.takeWhile((event) => event._tag === "message"),
           Stream.runForEach((event) => {
@@ -423,16 +438,17 @@ export const makeZeropsHqLink = (
               case "task": {
                 if (tasks === undefined) return Effect.void;
                 const task = message.value.task;
-                // Held beside the frames that follow, for as long as the link lives, until HQ's
-                // first state; HQ tells it again if that never comes.
-                return Effect.asVoid(
-                  Deferred.await(answered).pipe(
-                    Effect.timeoutOrElse({ duration: HQ_TASK_HOLD, orElse: () => Effect.void }),
-                    Effect.andThen(Deferred.isDone(answered)),
-                    Effect.flatMap((stated) => (stated ? tasks.receive(task) : Effect.void)),
-                    Effect.forkChild,
-                  ),
-                );
+                return onceStated(tasks.receive(task));
+              }
+              case "task-message": {
+                if (tasks === undefined) return Effect.void;
+                const { taskId, message: said } = message.value;
+                return onceStated(tasks.message(taskId, said));
+              }
+              case "task-stop": {
+                if (tasks === undefined) return Effect.void;
+                const { taskId, reason } = message.value;
+                return onceStated(tasks.stop(taskId, reason));
               }
               case "access":
                 return options.relayAccess({
