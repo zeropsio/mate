@@ -36,7 +36,7 @@ import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
-import type { TaskEntry } from "./ZeropsTaskLedger.ts";
+import { emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import { taskConversationId, ZeropsTasks } from "./ZeropsTasks.ts";
 
@@ -138,10 +138,14 @@ const rig = (
     readonly standUpSettled?: boolean;
     /** What the Mate kept of its tasks: shared by two rigs, the same Mate started again. */
     readonly ledger?: Map<string, TaskEntry>;
+    /** The conversations the engine holds as the Mate starts: a restart's record. */
+    readonly held?: ReadonlyArray<ConversationView>;
   } = {},
 ) =>
   Effect.gen(function* () {
-    const views = new Map<ConversationId, ConversationView>();
+    const views = new Map<ConversationId, ConversationView>(
+      (options.held ?? []).map((held) => [held.conversationId, held]),
+    );
     const unreadable = new Set<ConversationId>();
     const assigned: Array<{ conversationId: ConversationId; agent: ConversationAgent }> = [];
     const delivered: Array<Delivered> = [];
@@ -968,6 +972,58 @@ describe("people steer a task its Mate works", () => {
           detail: "The issue was closed.",
         },
       ]);
+    }),
+  );
+});
+
+describe("a stop always lands", () => {
+  it.effect.each([
+    { title: "people stopped", entry: { stopped: "The issue was closed." } },
+    { title: "that spent its minutes", entry: { runMs: { "task-task-1/r/1": 60 * 60_000 } } },
+  ])("a run the Mate's restart continued on a task $title stops at once", ({ entry }) =>
+    Effect.gen(function* () {
+      const id = taskConversationId("task-1");
+      const ledger = new Map<string, TaskEntry>([["task-1", { ...emptyTaskEntry, ...entry }]]);
+      const continued = {
+        ...run(id, principalOf("task-1"), "running", null, 2),
+        startedAt: 0,
+      };
+      const cut = run(id, principalOf("task-1"), "ended", {
+        kind: "cut-by-restart",
+        continuedBy: null,
+      });
+      const { delivered } = yield* rig({
+        ledger,
+        held: [view(id, { activeRun: continued, lastEnded: cut })],
+      });
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/2`)]);
+    }),
+  );
+
+  it.effect("a stop for a task this Mate never took is answered once and stops nothing", () =>
+    Effect.gen(function* () {
+      const { delivered, link, sent } = yield* rig();
+      yield* link.stop("task-9", "The issue was closed.");
+      yield* link.stop("task-9", "The issue was closed.");
+      assert.deepStrictEqual(delivered, []);
+      assert.deepStrictEqual(sent, [
+        { taskId: "task-9", state: "stopped", detail: "The issue was closed." },
+      ]);
+    }),
+  );
+
+  it.effect("a stop for a task already stopped changes nothing and is not answered again", () =>
+    Effect.gen(function* () {
+      const { delivered, link, sent } = yield* working("task-1");
+      yield* link.stop("task-1", "The issue was closed.");
+      yield* settle;
+      const [stops, said] = [delivered.length, sent.length];
+      yield* link.stop("task-1", "The label was removed.");
+      yield* settle;
+      assert.strictEqual(delivered.length, stops);
+      assert.strictEqual(sent.length, said);
+      assert.strictEqual(sent.at(-1)?.detail, "The issue was closed.");
     }),
   );
 });

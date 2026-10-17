@@ -22,7 +22,7 @@
  *   the answer, a follow-up, resumes it.
  * - **Stopped:** a `task-stop` stops every run of the task's and is kept (`ZeropsTaskLedger`): the
  *   task says `stopped` with HQ's reason from then on, takes no more messages and, told again,
- *   never starts.
+ *   never starts; a run the Mate's restart continued on it is stopped as the Mate starts.
  * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end; reaching
  *   either stops its runs and the task says `failed` with the limit, and a follow-up past one
@@ -331,7 +331,10 @@ export interface TaskLink {
   readonly receive: (task: MateTask) => Effect.Effect<void>;
   /** HQ's `task-message` frame: heard once in the task's conversation, then how it stands. */
   readonly message: (taskId: string, message: MateTaskMessage) => Effect.Effect<void>;
-  /** HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason. */
+  /**
+   * HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason — once per
+   * link; a stop told again, or for a task this Mate never took, changes nothing else.
+   */
   readonly stop: (taskId: string, reason: string) => Effect.Effect<void>;
   /** The latest task's report, then each report that moved, for as long as the link runs. */
   readonly run: Effect.Effect<void>;
@@ -497,6 +500,20 @@ export const make = Effect.gen(function* () {
     Effect.forever(
       Effect.flatMap(Queue.takeAll(moved), (ids) =>
         Effect.forEach(new Set(ids), readMoved, { discard: true }),
+      ),
+    ),
+  );
+  // What the record held as the Mate started, read once after following it: a run its restart
+  // continued on a task people stopped, or past its limits, is stopped before it works on.
+  yield* Effect.forkScoped(
+    Effect.flatMap(engine.conversations, (list) =>
+      Effect.forEach(
+        [
+          ...list.views.flatMap((view) => (atWork(view) ? [view.conversationId] : [])),
+          ...list.unread,
+        ],
+        (id) => (taskIdOfConversation(id) === undefined ? Effect.void : Queue.offer(moved, id)),
+        { discard: true },
       ),
     ),
   );
@@ -681,7 +698,13 @@ export const make = Effect.gen(function* () {
       return {
         receive: (task) => Effect.flatMap(take(task), answer),
         message: (taskId, message) => Effect.flatMap(hear(taskId, message), answer),
-        stop: (taskId, reason) => Effect.flatMap(stopTask(taskId, reason), answer),
+        // Answered only when it moved what this link said: HQ answers a word on a stopped task
+        // with a stop, so one answer each would never end.
+        stop: (taskId, reason) =>
+          Effect.flatMap(
+            stopTask(taskId, reason),
+            Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
+          ),
         // Following the reports first, so a move between the first read and them is heard.
         run: Effect.scoped(
           Effect.gen(function* () {
