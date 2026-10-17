@@ -160,10 +160,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         SELECT 1 FROM hq_task t JOIN hq_change c ON c.app_id = t.app_id
           AND c.repo = t.change_repo AND c.number = t.change_number
         WHERE t.mate_project_id = ${mate} AND c.state = 'open')`;
+      /**
+       * The automated Mates, by project, as their records say: only their links and attention move
+       * a task, while every Mate's overview moves often.
+       */
+      let automated: ReadonlySet<string> = new Set();
       /** The Mates held so, as last read: their rows read that task until it is let go. */
       let held: ReadonlySet<string> = new Set();
       /** A change moved: every Mate it holds or let go told, and HQ looks again for free Mates. */
       const changeMoved = Effect.gen(function* () {
+        // An HQ with no automated Mate has nothing a change could hold or let go.
+        if (automated.size === 0 && held.size === 0) return;
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT m.project_id FROM hq_mate m WHERE m.automated AND ${heldBy(sql`m.project_id`)}`;
         const now = new Set(rows.map((row) => row.project_id));
@@ -348,8 +355,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               assigned_at = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.assigned_at END
             FROM back WHERE t.id = back.id
             RETURNING t.id::text AS id, back.was AS mate_project_id, t.state`);
+          const now = yield* Clock.currentTimeMillis;
           for (const row of moved) {
-            if (row.mate_project_id !== null) yield* structure.mateTouched(row.mate_project_id);
+            if (row.mate_project_id !== null) {
+              // A Mate that let a task's time run out rests as one that declined it would: it is
+              // not handed it straight back while its link may already be gone.
+              declinedUntil.set(row.mate_project_id, now + acceptMs);
+              yield* structure.mateTouched(row.mate_project_id);
+            }
             if (row.state === "failed") yield* untaken(row.id);
           }
           if (moved.length > 0) yield* structure.touched;
@@ -389,6 +402,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
        */
       const sweep = Effect.gen(function* () {
         if (!(yield* leading)) return;
+        // Most HQs hold no live task: one read, and none of the writes below, each sweep.
+        const [live] = yield* sql<{ readonly any: boolean }>`
+          SELECT EXISTS (SELECT 1 FROM hq_task WHERE state IN ('assigned', 'working')) AS any`;
+        if (live?.any !== true) {
+          if (automated.size > 0) yield* wake;
+          return;
+        }
         yield* giveBack("overdue");
         yield* giveBack("orphaned");
         const failed = yield* leader.write(sql<{ readonly id: string }>`
@@ -410,11 +430,6 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         yield* wake;
       });
 
-      /**
-       * The automated Mates, by project, as their records say: only their links and attention move
-       * a task, while every Mate's overview moves often.
-       */
-      let automated: ReadonlySet<string> = new Set();
       const readAutomated = Effect.map(
         sql<{ readonly project_id: string }>`SELECT project_id FROM hq_mate WHERE automated`,
         (rows) => {
