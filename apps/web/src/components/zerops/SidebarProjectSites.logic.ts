@@ -123,7 +123,12 @@ export function projectSitesStatus(input: {
           )
         : undefined;
   if (prodChip?.state === "releasing") {
-    const word = prodChip.next === undefined ? "Deploying" : "Releasing";
+    const word =
+      prodChip.next === undefined
+        ? "Deploying"
+        : prodChip.rollsBackTo === undefined
+          ? "Releasing"
+          : "Rolling back";
     return status("busy", word, chipFace(prodChip).words, PRODUCTION);
   }
   if (production?.building === true) {

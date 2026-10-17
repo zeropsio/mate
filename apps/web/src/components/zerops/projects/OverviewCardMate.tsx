@@ -139,6 +139,7 @@ export function OverviewCardMate({
     reviewWaits,
     mine,
     pose,
+    updating: watch.updating,
   });
   // Going, or still coming up, as its row says it: no time, and its own line.
   const view = deleting

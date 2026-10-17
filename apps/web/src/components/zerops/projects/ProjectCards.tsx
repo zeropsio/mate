@@ -29,12 +29,13 @@ import {
   type ReactNode,
 } from "react";
 
-import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { formatElapsed } from "~/components/ui/progress.logic";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
@@ -44,7 +45,6 @@ import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from ".
 import {
   cardChangeRows,
   cardReady,
-  cardReleasing,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -53,13 +53,16 @@ import {
   placeLines,
   readyLine,
   readyTitle,
-  releasingTitle,
   type CardChange,
   type CardMateReading,
   type PlaceLine,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
-import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import type {
+  ProjectsFlowGroup,
+  StageSettingUp,
+  ZeropsProjectsFlowProps,
+} from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
@@ -149,7 +152,7 @@ export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }
 
-/** A place's words, `·` between, in its state's ink. */
+/** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
 export function PlaceWords({ line }: { readonly line: PlaceLine }) {
   return (
     <span className="ov-place-words" data-dot={line.dot}>
@@ -163,7 +166,21 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
           <span>{word}</span>
         </Fragment>
       ))}
+      {line.clock === undefined ? null : <PlaceClock clock={line.clock} />}
     </span>
+  );
+}
+
+/** How long a place's wait has run: it ticks here alone, never the card. */
+function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]> }) {
+  const nowMs = useSecondsNowMs(true);
+  return (
+    <>
+      <span aria-hidden="true" className="ov-sep">
+        ·
+      </span>
+      <span className="tabular-nums">{formatElapsed(nowMs - clock.since)}</span>
+    </>
   );
 }
 
@@ -173,6 +190,20 @@ export function ServicesHeld() {
     <p aria-hidden="true" className="ov-panel-services" data-zerops-services-held="">
       <span className="ov-service">{"\u200b"}</span>
     </p>
+  );
+}
+
+/**
+ * A button's room while what it opens is on its way: the button it becomes, unseen and out of
+ * reach — production's first release brings its History as it lands, into the room it held.
+ */
+export function ActionHeld({ children }: { readonly children: string }) {
+  return (
+    <span aria-hidden="true" className="contents invisible" data-zerops-action-held="" inert>
+      <Button tabIndex={-1} variant="secondary">
+        {children}
+      </Button>
+    </span>
   );
 }
 
@@ -243,6 +274,22 @@ const NEW_STAGE: PlaceLine = {
   trouble: false,
   addresses: [],
 };
+
+/**
+ * A stage's line while it is being added: the step under way, and how long the adding has run —
+ * the words its own reading takes over once the adding ends. A card's line has no room for what it
+ * usually takes.
+ */
+function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): PlaceLine {
+  const since = settingUp?.startedAtMs ?? null;
+  return {
+    ...line,
+    dot: "unknown",
+    words: [settingUp?.step ?? "Setting up…"],
+    trouble: false,
+    clock: since === null ? undefined : { since },
+  };
+}
 
 /**
  * What a place says where the page gives it nothing more: its name and its line — and, for a stage
@@ -570,26 +617,28 @@ function ProjectCard<T>({
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
   );
+  // A release on its way is production's line alone ("Releasing v0.1.0"): the run's card said it
+  // twice, there and in a block of its own.
   const ready = cardReady(flow);
-  const releasing = ready === undefined ? cardReleasing(flow) : undefined;
-  const releaseDoor =
-    ready === undefined && releasing === undefined ? null : props.renderReleaseVerb?.(entry);
+  const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
   // The page's door decides whether a release is offered here at all (Put it live releases the
   // production it makes); where the page gives none, the card says what the flow says.
-  const releaseShown =
-    (ready !== undefined || releasing !== undefined) &&
-    (props.renderReleaseVerb === undefined || drawn(releaseDoor));
+  const releaseShown = props.renderReleaseVerb === undefined || drawn(releaseDoor);
+  // A stage being added says how far it has got on its own line, where the stage stands.
+  const settingUp = props.stageSettingUp?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
   const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
   // No stage yet: where one would stand, the way to add it — or that one is being set up.
   const stageSetUp =
     flow.stages.length > 0
       ? undefined
-      : flow.creatingStages.length > 0
+      : flow.creatingStages.length > 0 || settingUp !== undefined
         ? ("creating" as const)
         : props.setUpStage?.(entry);
   const addMate = page === undefined ? props.addMate?.(entry) : undefined;
-  const lines = placeLines({ flow, ...placeFacts, nowMs });
+  const lines = placeLines({ flow, ...placeFacts, nowMs }).map((line) =>
+    line.kind === "stage" && settingUp !== undefined ? settingUpLine(line, settingUp) : line,
+  );
   // Production first — what a person runs for others — then each stage behind it.
   const places = [
     ...lines.filter((line) => line.kind === "production"),
@@ -649,6 +698,9 @@ function ProjectCard<T>({
           <section
             className="ov-sec"
             data-zerops-place={line.kind}
+            data-zerops-setting-up={
+              line.kind === "stage" && settingUp !== undefined ? "true" : undefined
+            }
             key={`${line.kind}:${line.projectId ?? line.name}`}
           >
             {setUp === undefined ? (
@@ -660,19 +712,21 @@ function ProjectCard<T>({
         );
       })}
       {stageSetUp === undefined ? null : (
-        <section className="ov-sec" data-zerops-place="stage">
+        <section
+          className="ov-sec"
+          data-zerops-place="stage"
+          data-zerops-setting-up={stageSetUp === "creating" ? "true" : undefined}
+        >
           {stageSetUp === "creating" ? (
-            <PlainPanel held line={{ ...NEW_STAGE, dot: "unknown", words: ["Setting up…"] }} />
+            <PlainPanel held line={settingUpLine(NEW_STAGE, settingUp)} />
           ) : (
             <SetUpPanel line={NEW_STAGE} onSetUp={stageSetUp} />
           )}
         </section>
       )}
-      {!releaseShown ? null : (
+      {ready === undefined || !releaseShown ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
-          <p className="ov-ready-title">
-            {ready !== undefined ? readyTitle(ready) : releasingTitle(releasing ?? "")}
-          </p>
+          <p className="ov-ready-title">{readyTitle(ready)}</p>
           {readyWhere === undefined ? null : <p className="ov-ready-line">{readyWhere}</p>}
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
@@ -888,7 +942,7 @@ export interface CardMateChoice {
 
 /**
  * A lifted Mate's buttons: a plan's Approve plan and Change it…, a question's options and
- * Answer…, a failure's Ask <Mate> to fix it, a change's Review change. Change it… and Answer…
+ * Answer…, a failure's Ask <Mate> to fix it, a change's Review. Change it… and Answer…
  * open a reply in the card; Escape gives the buttons back. What its conversation answers in
  * place (`useMateWrite`) is the page's: `busy` while a send is on its way, `error` when it failed.
  */
@@ -997,7 +1051,7 @@ export function CardMateLiftActions({
     case "fix":
       return <Button onClick={onFix}>Ask {name} to fix it</Button>;
     case "review":
-      return <Button onClick={(event) => onReview(event.currentTarget)}>Review change</Button>;
+      return <Button onClick={(event) => onReview(event.currentTarget)}>{REVIEW_LABEL}</Button>;
   }
 }
 

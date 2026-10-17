@@ -410,6 +410,7 @@ import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayo
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
+import { RightPanelPage, RightPanelPageEdgeScope } from "./RightPanelPage";
 import {
   resolveEffectiveEnvMode,
   resolveLocalCheckoutBranchMismatch,
@@ -8163,7 +8164,7 @@ function ConversationView(props: ChatViewProps) {
     }
     kind satisfies never;
   };
-  const rightPanelContent =
+  const rightPanelPageBody =
     activeThreadRef && activeRightPanelSurface ? (
       <Suspense fallback={<Loading label="The panel" shape="room" />}>
         {(() => {
@@ -8248,16 +8249,18 @@ function ConversationView(props: ChatViewProps) {
                       hidden={surface.id !== activeRightPanelSurface.id}
                       key={`${zeropsChrome.threadRef?.environmentId}:${service ?? ""}`}
                     >
-                      <ZeropsDataPanel
-                        maximized={rightPanelMaximized}
-                        onAddContext={addTerminalContextToDraft}
-                        onOpenService={openDataSurface}
-                        onToggleMaximized={
-                          canMaximizeRightPanel ? toggleRightPanelMaximized : undefined
-                        }
-                        service={service}
-                        threadRef={zeropsChrome.threadRef}
-                      />
+                      <RightPanelPageEdgeScope hidden={surface.id !== activeRightPanelSurface.id}>
+                        <ZeropsDataPanel
+                          maximized={rightPanelMaximized}
+                          onAddContext={addTerminalContextToDraft}
+                          onOpenService={openDataSurface}
+                          onToggleMaximized={
+                            canMaximizeRightPanel ? toggleRightPanelMaximized : undefined
+                          }
+                          service={service}
+                          threadRef={zeropsChrome.threadRef}
+                        />
+                      </RightPanelPageEdgeScope>
                     </div>
                   );
                 });
@@ -8341,6 +8344,13 @@ function ConversationView(props: ChatViewProps) {
         })()}
       </Suspense>
     ) : null;
+  // Every page opens the same way, its head painted before the page itself has read anything.
+  const rightPanelContent =
+    rightPanelPageBody === null || activeRightPanelSurface === null ? null : (
+      <RightPanelPage kind={activeRightPanelSurface.kind} mate={diffMateName}>
+        {rightPanelPageBody}
+      </RightPanelPage>
+    );
 
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,

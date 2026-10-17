@@ -14,6 +14,7 @@ import type { VaultView } from "@t3tools/client-runtime/data";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { RightPanelPage } from "~/components/RightPanelPage";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
@@ -98,25 +99,27 @@ function Harness() {
         terminalLabelsById={new Map()}
         widthStorageKey="mate:design-vault:panel-width"
       >
-        <VaultPanelBody
-          actor={ACTOR}
-          impactOf={(scope, write) => vaultFixtureImpact(VIEW, scope, write)}
-          onRestart={() => new Promise((resolve) => setTimeout(resolve, 1200))}
-          onWrite={async () => {
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            return FAIL
-              ? { ok: false, code: "projectEnvDuplicateKey", message: null }
-              : { ok: true };
-          }}
-          pending={new Map()}
-          restarting={new Set()}
-          view={VIEW}
-          who={
-            ACTOR === "mate"
-              ? { kind: "mate", name: "Fen", tint: "olive" }
-              : { kind: "environment", name: "prod" }
-          }
-        />
+        <RightPanelPage kind="vault" mate="Fen">
+          <VaultPanelBody
+            actor={ACTOR}
+            impactOf={(scope, write) => vaultFixtureImpact(VIEW, scope, write)}
+            onRestart={() => new Promise((resolve) => setTimeout(resolve, 1200))}
+            onWrite={async () => {
+              await new Promise((resolve) => setTimeout(resolve, 600));
+              return FAIL
+                ? { ok: false, code: "projectEnvDuplicateKey", message: null }
+                : { ok: true };
+            }}
+            pending={new Map()}
+            restarting={new Set()}
+            view={VIEW}
+            who={
+              ACTOR === "mate"
+                ? { kind: "mate", name: "Fen", tint: "olive" }
+                : { kind: "environment", name: "prod" }
+            }
+          />
+        </RightPanelPage>
       </RightPanelTabs>
     </div>
   );

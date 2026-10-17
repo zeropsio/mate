@@ -210,7 +210,8 @@ export function ZeropsHqUpdate({
         {hqUpdateTriggerLabel(trigger, busy)}
       </Button>
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogPopup className="max-w-md" keepMounted={busy}>
+        {/* The update runs on while the app is used: nothing behind the dialog blurs. */}
+        <DialogPopup backdrop="plain" className="max-w-md" keepMounted={busy}>
           {open || busy ? (
             <ZeropsHqUpdatePanel
               answering={answering}

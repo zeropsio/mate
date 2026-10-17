@@ -6,6 +6,7 @@ import {
   RIGHT_PANEL_KIND_META,
   launcherActions,
   resolveRightPanelAvailability,
+  rightPanelPageHead,
   type RightPanelAvailabilityInput,
 } from "./rightPanelKinds";
 
@@ -320,4 +321,35 @@ describe("right panel kinds", () => {
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });
+});
+
+describe("a side-panel page's head", () => {
+  it("every page the launcher opens heads itself with a title and one line saying what it shows", () => {
+    const kinds = launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
+      ({ kind }) => kind,
+    );
+    expect(kinds.length).toBeGreaterThan(10);
+    for (const kind of kinds) {
+      const head = rightPanelPageHead(kind, "Nova");
+      expect(head?.title, kind).toMatch(/\S/u);
+      expect(head?.line, kind).toMatch(/\S/u);
+    }
+  });
+
+  it("the Chief's overview and an open file wear their own heads, not the panel page's", () => {
+    expect(rightPanelPageHead("overview", "Nova")).toBeNull();
+    expect(rightPanelPageHead("file", "Nova")).toBeNull();
+  });
+
+  it.each([
+    { kind: "terminal", mate: "Nova", line: "A shell on Nova's computer." },
+    { kind: "terminal", mate: undefined, line: "A shell on this Mate's computer." },
+    { kind: "mcp", mate: "Nova", line: "Tools Nova can use, with each of its coding agents." },
+    { kind: "vault", mate: "Nova", line: "Settings and secrets your apps read." },
+  ] as const)(
+    "a page's line names the Mate once its name is known: $kind for $mate reads $line",
+    ({ kind, mate, line }) => {
+      expect(rightPanelPageHead(kind, mate)?.line).toBe(line);
+    },
+  );
 });

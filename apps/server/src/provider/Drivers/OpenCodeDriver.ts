@@ -13,6 +13,8 @@
  * @module provider/Drivers/OpenCodeDriver
  */
 import { OpenCodeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { mergePathValues } from "@t3tools/shared/shell";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -69,6 +71,22 @@ function isOpenCodeNativeCommandPath(commandPath: string): boolean {
   );
 }
 
+/**
+ * Puts the official installer's `~/.opencode/bin` on PATH after the inherited entries, as zcp's
+ * OpenCode adapter looks: PATH first, then the installer's location. A Mate container's image installs
+ * OpenCode there and only a login shell's rc adds it to PATH, so the supervised server never found it.
+ */
+export function withOpenCodeInstallerPath(
+  environment: NodeJS.ProcessEnv,
+  homeDir: string,
+  platform: NodeJS.Platform,
+  pathService: Path.Path,
+): NodeJS.ProcessEnv {
+  if (platform === "win32") return environment;
+  const installerBin = pathService.join(homeDir, ".opencode", "bin");
+  return { ...environment, PATH: mergePathValues(environment.PATH, installerBin, platform) };
+}
+
 const UPDATE = makePackageManagedProviderMaintenanceResolver({
   provider: DRIVER_KIND,
   npmPackageName: "opencode-ai",
@@ -108,7 +126,12 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = withOpenCodeInstallerPath(
+        mergeProviderInstanceEnvironment(environment),
+        serverConfig.homeDir,
+        yield* HostProcessPlatform,
+        pathService,
+      );
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

@@ -300,7 +300,7 @@ describe("a ready agent's person from HQ", () => {
   it.each([
     ["ready: its maker", true, {}, "u-maker"],
     ["not ready, nobody signed in: its maker, whatever their role", false, {}, "u-maker"],
-    ["signed in: the signer first", true, { codex: "u-signer" }, "u-signer"],
+    ["signed in by somebody else: still its maker", true, { codex: "u-signer" }, "u-maker"],
   ] as const)("%s", (_case, ready, signers, person) => {
     const placement = placedWith(signers);
     const project = {
@@ -316,7 +316,7 @@ describe("a ready agent's person from HQ", () => {
 });
 
 it.each([false, true])(
-  "a signed-out Mate keeps its last signer over its maker (runsWithoutSignIn: %s)",
+  "a Mate somebody else signed in, then out, stays its maker's (runsWithoutSignIn: %s)",
   (runsWithoutSignIn) => {
     const hq: HqPlacement = {
       ...placedWith({}),
@@ -339,7 +339,7 @@ it.each([false, true])(
       named: true,
       signedIn: false,
       signer: "u-eva",
-      person: "u-eva",
+      person: "u-maker",
       runsWithoutSignIn,
     });
   },

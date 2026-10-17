@@ -72,6 +72,21 @@ export function mateRestarting(reachability: Reachability | null): boolean {
   return reachability.kind === "ready" && reachability.notice?.level === "restarting";
 }
 
+/**
+ * Whether a Mate's link says its update is restarting it, as the conversation's banner says it
+ * ("… is updating to the new version"): on its way, never past its cap — then its link's own words.
+ */
+export function mateUpdating(reachability: Reachability | null): boolean {
+  if (reachability === null) return false;
+  const level =
+    reachability.kind === "container"
+      ? reachability.container
+      : reachability.kind === "ready"
+        ? reachability.notice
+        : null;
+  return level?.level === "updating" && !level.overdue;
+}
+
 /** Where a restart is, for the beat it ends on: how many restarts came back while watched. */
 export interface RestartBeat {
   readonly waiting: boolean;

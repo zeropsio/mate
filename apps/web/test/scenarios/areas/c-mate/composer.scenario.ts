@@ -27,19 +27,20 @@ describe("C: agent selection and contextual drafts", () => {
           yield* s.then.conversation.appears;
           const openHeaderReview = (page: typeof s.page) =>
             Effect.promise(async () => {
-              const header = page.locator(
-                '[class~="@container/header-actions"] button[aria-label="Review Add the order summary"]',
-              );
+              const button =
+                '[class~="@container/header-actions"] button[aria-label="Review Add the order summary"]';
+              await page.waitForSelector(button, { visible: true, timeout: 8000 });
+              const header = page.locator(button);
               expect(
                 await page.$eval(
                   '[class~="@container/header-actions"]',
                   (node) => node.textContent,
                 ),
                 "ASSERTION: review waits in the conversation header",
-              ).toContain("Review work");
+              ).toContain("Review");
               await header.click();
             });
-          yield* chat.then.text("Review work");
+          yield* chat.then.text("Review");
           yield* openHeaderReview(s.page);
           yield* chat.then.text("What it does");
           yield* chat.then.text(change.description);
@@ -48,7 +49,7 @@ describe("C: agent selection and contextual drafts", () => {
           yield* colleague.given.signedIn;
           const theirs = mateChat({ ...s, ...colleague });
           yield* theirs.when.openReadOnly("Ada");
-          yield* theirs.then.text("Review work");
+          yield* theirs.then.text("Review");
           yield* openHeaderReview(colleague.page);
           yield* theirs.then.text("What it does");
           yield* theirs.then.text(change.description);

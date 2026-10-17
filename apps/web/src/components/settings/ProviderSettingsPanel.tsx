@@ -1,5 +1,8 @@
 import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { useEnvironmentProjectRef } from "../../zerops/useZeropsFeeds";
+import { zeropsMateAt } from "../../zerops/mateIdentities";
+import { useOpenMate } from "../../zerops/useOpenMate";
+import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -98,8 +101,11 @@ import {
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  namedProviderEnvironment,
   providerEditorEmpty,
+  providersWithoutOpenMate,
   type ProviderEnvironmentAccess,
+  type ProvidersWithoutOpenMate,
   type ProviderOperateAccess,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
@@ -220,15 +226,21 @@ export function ProviderSettingsPanel(target: ProviderSettingsTarget) {
 function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
   const { environments, isReady } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const mates = useZeropsMateDirectory();
+  const openMate = useOpenMate();
   // Only the Mates the app is connected to: a tab never wakes one to read
-  // its agents.
+  // its agents. Each is called by its Mate's name, never its server's address.
   const options = useMemo(
     () =>
       buildProviderEnvironmentOptions(
-        environments.filter((environment) => environment.connection.phase === "connected"),
+        environments
+          .filter((environment) => environment.connection.phase === "connected")
+          .map((environment) =>
+            namedProviderEnvironment(environment, zeropsMateAt(mates, environment.environmentId)),
+          ),
         primaryEnvironmentId,
       ),
-    [environments, primaryEnvironmentId],
+    [environments, mates, primaryEnvironmentId],
   );
   // Raw user intent; the effective selection is re-derived every render so a
   // device that drops out of the list (it leaves the catalog, or its socket
@@ -270,7 +282,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
             {options.map((environment) => {
               const Icon = providerEnvironmentIcon(environment);
               const selected = environment.environmentId === effectiveEnvironmentId;
-              const detail = providerEnvironmentDetail(environment);
+              const detail = environment.project ?? providerEnvironmentDetail(environment);
               const statusText = connectionStatusText(environment.connection);
               return (
                 <Tooltip key={environment.environmentId}>
@@ -322,16 +334,14 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
         </SettingsSection>
       ) : null}
       {options.length === 0 && !targetEnvironmentMissing ? (
-        <SettingsSection {...searchableSetting("providers")}>
-          <SettingsRow
-            title={isReady ? "No connected devices" : "Loading devices"}
-            description={
-              isReady
-                ? "Connect an execution environment before configuring providers."
-                : "Reading connected execution environments."
-            }
-          />
-        </SettingsSection>
+        <NoOpenMateSection
+          state={providersWithoutOpenMate({
+            isReady,
+            phases: environments.map((environment) => environment.connection.phase),
+            directory: mates,
+          })}
+          onOpen={(projectId) => openMate({ projectId })}
+        />
       ) : null}
 
       {selectedEnvironment ? (
@@ -348,6 +358,61 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
         />
       ) : null}
     </>
+  );
+}
+
+/** Each Mate has its own coding agents: with none open, the way on is to open one. */
+function NoOpenMateSection({
+  state,
+  onOpen,
+}: {
+  readonly state: ProvidersWithoutOpenMate;
+  readonly onOpen: (projectId: string) => void;
+}) {
+  // No spinner while finding or connecting: either can last, and a repainting
+  // animation would run the whole time.
+  if (state.kind !== "open") {
+    return (
+      <SettingsSection {...searchableSetting("providers")}>
+        <SettingsRow
+          title={state.kind === "finding" ? "Finding your Mates" : "Connecting to your Mates"}
+          description={
+            state.kind === "finding"
+              ? "Each Mate has its own coding agents."
+              : "Their coding agents show here once connected."
+          }
+        />
+      </SettingsSection>
+    );
+  }
+  return (
+    <SettingsSection {...searchableSetting("providers")}>
+      <SettingsRow
+        title={state.mates.length === 0 ? "No Mates yet" : "No Mate open"}
+        description={
+          state.mates.length === 0
+            ? "Each Mate has its own coding agents. Make a Mate from the menu first."
+            : "Each Mate has its own coding agents. Open one to set them up."
+        }
+      />
+      {state.mates.map((mate) => (
+        <SettingsRow
+          key={mate.projectId}
+          title={mate.name}
+          description={mate.project}
+          control={
+            <Button
+              aria-label={`Open ${mate.name}`}
+              size="sm"
+              variant="secondary"
+              onClick={() => onOpen(mate.projectId)}
+            >
+              Open
+            </Button>
+          }
+        />
+      ))}
+    </SettingsSection>
   );
 }
 

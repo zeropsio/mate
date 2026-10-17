@@ -31,15 +31,9 @@ import {
 } from "./McpServers.logic";
 import { useMcpServers, type McpAction, type McpActionResult } from "./useMcpServers";
 import { Badge } from "~/components/ui/badge";
-import { useKnownMate } from "~/zerops/useZeropsMates";
-
-/** Who the page speaks of where the Mate's name is not known. */
-const NO_NAME = "this Mate";
+import { RightPanelPageEdge } from "~/components/RightPanelPage";
 
 export const MCP_WORDS = {
-  title: "MCP servers",
-  line: (mate: string) =>
-    `Tools ${mate} can use. A server added here works with each of ${mate}'s coding agents.`,
   builtIn: "Built in",
   readFailed: "Couldn't read the servers:",
   tryAgain: "Try again",
@@ -84,23 +78,12 @@ export function McpPanel(props: {
     environmentId: props.environmentId,
     threadId: props.threadId,
   });
-  const mate = useKnownMate(props.environmentId);
-  return (
-    <McpPanelBody
-      act={act}
-      driver={props.driver}
-      mateName={mate?.name}
-      onRetry={refresh}
-      state={state}
-    />
-  );
+  return <McpPanelBody act={act} driver={props.driver} onRetry={refresh} state={state} />;
 }
 
 export function McpPanelBody(props: {
   readonly state: McpTabState;
   readonly driver: ProviderDriverKind | null;
-  /** The Mate whose tools these are, by name; unknown, the page says "this Mate". */
-  readonly mateName?: string | undefined;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly onRetry: () => void;
 }) {
@@ -124,17 +107,12 @@ export function McpPanelBody(props: {
         className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-3 pb-8"
         data-mcp-panel
       >
-        <div className="mt-1 flex h-7 items-center gap-2">
-          <h2 className="font-semibold text-base leading-6">{MCP_WORDS.title}</h2>
-          <span className="grow" />
-          {/* The spinner's place is kept, so its coming and going moves nothing. */}
+        {/* The spinner's place at the head's edge is kept, so its coming and going moves nothing. */}
+        <RightPanelPageEdge>
           <span className="flex size-4 items-center justify-center" data-mcp-busy={state.busy}>
             {state.busy ? <Spinner size="sm" tone="muted" /> : null}
           </span>
-        </div>
-        <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">
-          {MCP_WORDS.line(props.mateName ?? NO_NAME)}
-        </p>
+        </RightPanelPageEdge>
 
         {state.error === null ? null : (
           <p className="mt-3 text-line leading-4.5 text-destructive-foreground" role="alert">

@@ -18,6 +18,7 @@ import {
   conversationCue,
   mateReachable,
   mateRestarting,
+  mateUpdating,
   movedCue,
   restartBeat,
   type RestartBeat,
@@ -37,13 +38,14 @@ export function useChangeCue<T>(
   return cue;
 }
 
-/** A Mate's link as its face reads it: restarting, or reachable with nothing to say. */
+/** A Mate's link as its face reads it: restarting, updating, or reachable with nothing to say. */
 interface MateLink {
   readonly restarting: boolean;
+  readonly updating: boolean;
   readonly ready: boolean;
 }
 
-const NO_LINK: MateLink = { restarting: false, ready: false };
+const NO_LINK: MateLink = { restarting: false, updating: false, ready: false };
 
 const descriptorsAtom = Atom.make((get) => {
   const { machines, containers } = get(shownMateLinksAtom);
@@ -56,18 +58,25 @@ const mateLinkAtom = Atom.family((environmentId: EnvironmentId | null) =>
     if (environmentId === null) return NO_LINK;
     const { machines, index } = get(descriptorsAtom);
     const reachability = resolveEnvironment(machines, index, environmentId)?.reachability ?? null;
-    return { restarting: mateRestarting(reachability), ready: mateReachable(reachability) };
+    return {
+      restarting: mateRestarting(reachability),
+      updating: mateUpdating(reachability),
+      ready: mateReachable(reachability),
+    };
   }).pipe(
     Atom.withEquality(
       (left: MateLink, right: MateLink) =>
-        left.restarting === right.restarting && left.ready === right.ready,
+        left.restarting === right.restarting &&
+        left.updating === right.updating &&
+        left.ready === right.ready,
     ),
   ),
 );
 
 /**
  * What a Mate's face watches change while it is on screen, wherever it is drawn (`mateFace`): its
- * restart and its return, a move to another project, its arrival for good.
+ * restart and its return, a move to another project, its arrival for good — and whether its
+ * update is restarting it, which its row says (`mateRowReading`).
  */
 export function useMateFaceWatch(input: {
   readonly environmentId: EnvironmentId | null;
@@ -75,7 +84,11 @@ export function useMateFaceWatch(input: {
   /** Its arrival window stands (`mateArrivingUntil`). */
   readonly arriving: boolean;
   readonly connected: boolean;
-}): { readonly restarting: boolean; readonly watched: MateFaceWatched } {
+}): {
+  readonly restarting: boolean;
+  readonly updating: boolean;
+  readonly watched: MateFaceWatched;
+} {
   const moved = useChangeCue(input.projectId, () => undefined, movedCue);
   // Its arrival window (`mateArrivingUntil`) is HQ's fact, not the clock's: it goes once somebody
   // signs the Mate in.
@@ -93,6 +106,7 @@ export function useMateFaceWatch(input: {
   if (nextBeat !== beat) setBeat(nextBeat);
   return {
     restarting: link.restarting,
+    updating: link.updating,
     watched: { backs: nextBeat.backs, moved, arrived },
   };
 }

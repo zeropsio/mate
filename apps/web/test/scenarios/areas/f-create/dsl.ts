@@ -148,20 +148,13 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       yield* fill("Its first Mate", "Nova");
     }),
     submitProject: click("Create Garden with Nova"),
-    /** Shop's card in the overview: its ··· holds Add Mate and Add stage; its Production, Put it live. */
+    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Put it live. */
     openAdd: (role: "Mate" | "stage" | "production") =>
       Effect.gen(function* () {
         yield* Effect.promise(() => page.goto(`${s.web.origin}/zerops`));
-        // Production is put live from its sheet, opened from Shop's card; its own form — a name,
-        // an agent, a Git branch — is the sheet's quiet way out.
-        if (role === "production") {
-          yield* click("Put it live");
-          yield* text("Put Shop live");
-          yield* click("Set up production yourself…");
-          return;
-        }
         // The page's ··· for Shop — on its card, or its row among the projects without work —
-        // never the menu heading's of the same name.
+        // never the menu heading's of the same name. Shop holds only its setup files, so its
+        // card's Production offers no Put it live (it waits for a change); the ··· still does.
         yield* Effect.promise(async () => {
           const more = await page.waitForFunction(
             () =>
@@ -174,6 +167,14 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           );
           await (more.asElement() as ElementHandle<Element>).click();
         });
+        // Production is put live from its sheet; its own form — a name, an agent, a Git branch —
+        // is the sheet's quiet way out.
+        if (role === "production") {
+          yield* click('Put it live[role="menuitem"]');
+          yield* text("Put Shop live");
+          yield* click("Set up production yourself…");
+          return;
+        }
         // The menu's item, not the card's own Add stage beneath the open menu.
         yield* click(`Add ${role}[role="menuitem"]`);
       }),
@@ -243,6 +244,25 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           );
         }
       }),
+    /**
+     * The stage being added has come up as far as its adding goes: its card's Stage section no
+     * longer says how far the adding has got, and its own reading speaks there.
+     */
+    stageAdded: Effect.promise(async () => {
+      try {
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-zerops-place="stage"]') !== null &&
+            document.querySelector('[data-zerops-place="stage"][data-zerops-setting-up]') === null,
+          { timeout: 15_000, polling: "raf" },
+        );
+      } catch (cause) {
+        throw new Error(
+          `The stage is still being added\n${await page.evaluate(() => document.body.innerText)}`,
+          { cause },
+        );
+      }
+    }),
     /** The Mate stands on its project's card in the overview. */
     mateAppearsInProject: (name: string, group: string) =>
       Effect.promise(async () => {

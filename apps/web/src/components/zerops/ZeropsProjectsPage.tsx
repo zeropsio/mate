@@ -179,7 +179,11 @@ import {
   useMatesLinkedInHq,
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
-import { creationSettled, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import {
+  creationNow,
+  creationSettled,
+  ZeropsEnvironmentCreation,
+} from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -1880,6 +1884,11 @@ export function ZeropsProjectsContent({
         );
         return;
       }
+      // A stage added is its card's Stage line from here: its own reading says the rest.
+      if (role === "stage" && !outcome.awaitingAgent) {
+        setCreation(null);
+        return;
+      }
       if (outcome.awaitingAgent) {
         // The imports were accepted; the rest is the birth's, which the Mate's
         // card shows and whose connect lands the person in the conversation.
@@ -2704,6 +2713,14 @@ export function ZeropsProjectsContent({
                   openPutLive(group.groupId);
                 }
         }
+        // A stage being added says how far it has got on its card's Stage line, where it stands.
+        stageSettingUp={({ group }) =>
+          creation?.tier === "stage" &&
+          creation.outcome === undefined &&
+          creation.groupId === group.groupId
+            ? creationNow(creation.progress, "stage")
+            : undefined
+        }
         setUpStage={({ group }) =>
           !addableTiers(group).includes("stage") || groupIsEmpty(group)
             ? undefined
@@ -2728,17 +2745,10 @@ export function ZeropsProjectsContent({
             production.kind === "ready-to-release" || production.kind === "deploy-failed"
               ? production.candidate
               : undefined;
-          // A release on its way keeps its door, which opens its progress.
-          if (candidate === undefined && production.kind !== "releasing") return null;
+          if (candidate === undefined) return null;
           // Production being made by Put it live is released by it: nothing asks for a release.
           if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
-          return (
-            <ZeropsReleaseVerb
-              groupId={group.groupId}
-              label={REVIEW_RELEASE_LABEL}
-              offered={candidate !== undefined}
-            />
-          );
+          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />;
         }}
         placementNotice={placementNotice(
           placementStatus,
@@ -2875,7 +2885,9 @@ export function ZeropsProjectsContent({
           )}
         </WithDraftPeople>
       )}
+      {/* A stage's adding is said on its card's Stage line; only its failure stands here. */}
       {creation === null ||
+      (creation.tier === "stage" && creation.outcome?.kind !== "failed") ||
       creationRunsAtAddress(creation, deployments, groupTree.groups) ? null : (
         <ZeropsEnvironmentCreation
           name={creation.name}

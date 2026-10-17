@@ -134,7 +134,7 @@ export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
 export { balanceScope } from "./families/organizationBalance.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
-export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
+export type { Invitee, InviteeCheck, ResentInvitation } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 export { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
 export type {

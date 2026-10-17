@@ -7,16 +7,30 @@ import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
 import { environmentRecipe } from "./recipe.ts";
 
-/** Where the card's Mates stood, each time it changed, from the card's top. */
+/** What a stage's adding showed, each time it changed. */
+interface AddingFrame {
+  /** Where the card's Mates stood, from the card's top. */
+  readonly mates: number;
+  /** Its Stage section said how far the adding had got. */
+  readonly inSection: boolean;
+  /** A card of its own at the page's foot said it. */
+  readonly atFoot: boolean;
+}
+
 function recordMatesTop(cardAt: string) {
-  const tops: number[] = [];
-  (window as unknown as { matesTops: number[] }).matesTops = tops;
+  const frames: AddingFrame[] = [];
+  (window as unknown as { addingFrames: AddingFrame[] }).addingFrames = frames;
   const sample = () => {
     const card = document.querySelector(cardAt);
     const mates = card?.querySelector('[aria-label="Project Mates"]');
     if (card instanceof HTMLElement && mates instanceof HTMLElement) {
-      const top = Math.round(mates.getBoundingClientRect().top - card.getBoundingClientRect().top);
-      if (tops.at(-1) !== top) tops.push(top);
+      const frame: AddingFrame = {
+        mates: Math.round(mates.getBoundingClientRect().top - card.getBoundingClientRect().top),
+        inSection:
+          card.querySelector('[data-zerops-place="stage"][data-zerops-setting-up]') !== null,
+        atFoot: document.querySelector('[data-zerops-surface="environment-creation"]') !== null,
+      };
+      if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
     }
     requestAnimationFrame(sample);
   };
@@ -48,18 +62,27 @@ describe("owner-reported layout regressions", () => {
           yield* c.fill("Environment", "Shop-b");
           yield* c.click("Add stage to Shop");
           yield* c.environmentAppears("Shop-b", "stage");
-          yield* c.text("Shop-b is set up");
+          yield* c.stageAdded;
           // What a settled card might still move shows within a beat.
           yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_500)));
-          const tops = yield* Effect.promise(() =>
-            s.page.evaluate(() => (window as unknown as { matesTops: number[] }).matesTops),
+          const frames = yield* Effect.promise(() =>
+            s.page.evaluate(
+              () => (window as unknown as { addingFrames: AddingFrame[] }).addingFrames,
+            ),
           );
+          const tops = frames.map((frame) => frame.mates);
+          const trace = frames.map((frame) => JSON.stringify(frame)).join("\n");
           // Its first top is before the press; the press may give the stage its room, once.
-          expect(tops.length, `The card is watched: ${tops.join(", ")}`).toBeGreaterThan(0);
+          expect(tops.length, `The card is watched:\n${trace}`).toBeGreaterThan(0);
           expect(
             new Set(tops.slice(1)).size,
-            `Its Mates stand where the press put them: ${tops.join(", ")}`,
+            `Its Mates stand where the press put them:\n${trace}`,
           ).toBeLessThanOrEqual(1);
+          // The run's progress stood in a card of its own at the page's foot, below the fold.
+          expect(
+            frames.some((frame) => frame.inSection) && frames.every((frame) => !frame.atFoot),
+            `How far the adding got is said in the card's Stage section, never at the page's foot:\n${trace}`,
+          ).toBe(true);
         }),
       90_000,
     );

@@ -7,6 +7,7 @@ import {
   mateHeaderCues,
   mateRestarting,
   mateRowCues,
+  mateUpdating,
   movedCue,
   restartBeat,
   standUpDoneCue,
@@ -64,6 +65,19 @@ describe("which events a Mate's faces greet", () => {
     [null, false],
   ])("reads %o as restarting: %s", (reachability, restarting) => {
     expect(mateRestarting(reachability)).toBe(restarting);
+  });
+
+  // The conversation's banner says "updating" for the same verdicts, and nothing past its cap.
+  it.each<[Reachability | null, boolean]>([
+    [{ kind: "container", container: { level: "updating", overdue: false } }, true],
+    [{ kind: "ready", notice: { level: "updating", overdue: false } }, true],
+    [{ kind: "container", container: { level: "updating", overdue: true } }, false],
+    [{ kind: "ready", notice: { level: "restarting", by: "you", overdue: false } }, false],
+    [{ kind: "reconnecting" }, false],
+    [{ kind: "ready", notice: null }, false],
+    [null, false],
+  ])("reads %o as its update restarting it: %s", (reachability, updating) => {
+    expect(mateUpdating(reachability)).toBe(updating);
   });
 
   it("orders the header's events, the conversation first", () => {

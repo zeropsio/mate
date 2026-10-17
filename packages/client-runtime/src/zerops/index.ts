@@ -404,6 +404,8 @@ export {
   type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
+  addressComing,
+  addressOffered,
   comingLine,
   FIRST_DEPLOY_FAILED,
   FIRST_DEPLOY_ON_ITS_WAY,
@@ -486,6 +488,7 @@ export {
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
+  rollbackOnItsWay,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
 export { formatRunClock } from "./runClock.ts";

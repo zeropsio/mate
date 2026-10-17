@@ -11,6 +11,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import {
+  addressOffered as addressOfferedBy,
   formatRunClock,
   stageMarks,
   stageStandings,
@@ -42,6 +43,7 @@ import {
   productionChip,
   productionMenu,
   releaseFailureOf,
+  rollbacksOf,
   stageStopChip,
   stopServing,
   type ProductionChip,
@@ -49,13 +51,14 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
-import { CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
   historyOffered,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
+  releaseLineOpens,
   rollBackTarget,
   type CardMateReading,
   type CardStage,
@@ -69,6 +72,8 @@ import { Button } from "~/components/ui/button";
 export interface PlaceItem {
   readonly project: { readonly id: string; readonly status?: string | undefined };
   readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
+  /** Ports its public address would open that are not on yet; absent while its services are unread. */
+  readonly routeOffers?: ReadonlyArray<unknown> | undefined;
   readonly services?:
     | {
         readonly hostnames: ReadonlyArray<string>;
@@ -131,6 +136,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               releases: read.releases,
               environmentInputs: read.environmentInputs,
             }),
+            rollbacks: rollbacksOf(read.releases),
           }
         : { kind: "waiting" };
     const deploymentsOf = (id: string) => {
@@ -161,17 +167,34 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
     const stageChips = new Map<string, ProductionChip | undefined>();
     const down = new Map<string, ReadonlyArray<string>>();
+    const addressOffered = new Map<string, boolean>();
     if (prodStop !== undefined) down.set(prodStop.projectId, downOf(prodServing));
     for (const stop of entry.flow.stages) {
-      const serving = servingOf(itemOf(entry, stop.projectId));
+      const item = itemOf(entry, stop.projectId);
+      const serving = servingOf(item);
       down.set(stop.projectId, downOf(serving));
+      const offered = item === undefined ? undefined : addressOfferedBy(item);
+      if (offered !== undefined) addressOffered.set(stop.projectId, offered);
       stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
     }
     const since =
       prodStop === undefined
         ? undefined
         : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
-    return { read, releases, chip, stageChips, down, since, prodItem, prodStop };
+    // The release on its way, where it is a roll back: production's line says what it goes back to.
+    const rollsBackTo = chip?.rollsBackTo;
+    return {
+      read,
+      releases,
+      chip,
+      stageChips,
+      down,
+      addressOffered,
+      rollsBackTo,
+      since,
+      prodItem,
+      prodStop,
+    };
   };
 
   /**
@@ -202,8 +225,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
-    const { chip, stageChips, down, since } = placesOf(entry);
-    return { chip, stageChips, down, since, releaseOnStage: stageOf(entry)?.runsRelease };
+    const { chip, stageChips, down, addressOffered, rollsBackTo, since } = placesOf(entry);
+    return {
+      chip,
+      stageChips,
+      down,
+      addressOffered,
+      rollsBackTo,
+      since,
+      releaseOnStage: stageOf(entry)?.runsRelease,
+    };
   };
 
   const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
@@ -334,9 +365,13 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           </Button>
         )}
         {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
-            history stands beside the card. */}
-        {!historyOffered({ releases: releases.length, runs: stop?.version !== undefined }) ||
-        input.onPage === true ? null : (
+            history stands beside the card. Its first release on its way holds History's room, so
+            the release lands moving nothing (the run's card grew 42 px as it landed) — through the
+            beat production's chip names what it runs before the flow's releases say it. */}
+        {input.onPage === true ? null : historyOffered({
+            releases: releases.length,
+            runs: stop?.version !== undefined,
+          }) ? (
           <Button
             onClick={() => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId } });
@@ -345,11 +380,34 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           >
             History
           </Button>
-        )}
+        ) : entry.flow.production.kind === "releasing" ||
+          (line.dot === "running" && (chip?.version ?? stop?.version) !== undefined) ? (
+          <ActionHeld>History</ActionHeld>
+        ) : null}
       </>
     ) : null;
+    // A release on its way is production's line alone: the line opens its review, as the card's
+    // own block of it did — a roll back's by the release it goes back to.
+    const opens = releaseLineOpens(line, entry.flow.production, places.rollsBackTo);
     return (
-      <PlacePanel actions={actions} groupId={groupId} model={model} roomy={input.onPage === true} />
+      <PlacePanel
+        actions={actions}
+        groupId={groupId}
+        model={model}
+        onOpenLine={
+          opens === undefined
+            ? undefined
+            : (from) => {
+                openReview(
+                  opens.kind === "release"
+                    ? { kind: "release", groupId }
+                    : { kind: "rollback", groupId, tag: opens.tag },
+                  { from },
+                );
+              }
+        }
+        roomy={input.onPage === true}
+      />
     );
   };
 

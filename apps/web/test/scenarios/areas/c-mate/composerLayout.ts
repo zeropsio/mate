@@ -143,7 +143,13 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
   );
   if (state === "notice") yield* chat.then.text("Resume with less context");
   // What waits for review stands in the conversation's header (2026-10-13), not on the composer.
-  if (state === "review") yield* chat.then.text("Review work");
+  if (state === "review")
+    yield* Effect.promise(() =>
+      s.page.waitForSelector('.chat-header-review [data-zerops-surface="sidebar-project-review"]', {
+        visible: true,
+        timeout: 8000,
+      }),
+    );
 
   return { s, chat, noticeArrives };
 });

@@ -86,7 +86,7 @@ describe("usage source access and current-owner grouping", () => {
     { agent: "an agent that waits on a sign-in", runsWithoutSignIn: false },
     { agent: "a sign-in-free agent", runsWithoutSignIn: true },
   ])(
-    "a Mate Zerops names no OWNER of is its maker's until somebody signs it in, on $agent",
+    "a Mate Zerops names no OWNER of stays its maker's whoever signs it in later, on $agent",
     ({ runsWithoutSignIn }) => {
       const input = {
         facts: {
@@ -100,9 +100,54 @@ describe("usage source access and current-owner grouping", () => {
         standupRequestedBy: null,
       };
       assert.strictEqual(usageOwner(input), "carol");
-      assert.strictEqual(usageOwner({ ...input, everSignedIn: { codex: "bob" } }), "bob");
+      assert.strictEqual(usageOwner({ ...input, everSignedIn: { codex: "bob" } }), "carol");
+      assert.strictEqual(
+        usageOwner({ ...input, everSignedIn: { "claude-code": "bob", codex: "alice" } }),
+        "carol",
+      );
     },
   );
+  it("a Mate recorded before HQ kept its maker is its stand-up asker's, else its signer's", () => {
+    const input = {
+      facts: {
+        ...facts,
+        projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+      },
+      projectId: "P",
+      everSignedIn: { codex: "bob" },
+      runsWithoutSignIn: false,
+      madeBy: null,
+      standupRequestedBy: "carol",
+    };
+    assert.strictEqual(usageOwner(input), "carol");
+    assert.strictEqual(usageOwner({ ...input, standupRequestedBy: null }), "bob");
+  });
+  it("an integration token recorded as a Mate's maker never owns it", () => {
+    const input = {
+      facts: {
+        ...facts,
+        members: [
+          ...facts.members,
+          {
+            userId: "token-1",
+            clientUserId: "C-token-1",
+            name: "CI",
+            kind: "token" as const,
+            status: "ACTIVE",
+            roleCode: "ADMIN",
+            canCreateProjects: true,
+          },
+        ],
+        projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+      },
+      projectId: "P",
+      everSignedIn: { codex: "bob" },
+      runsWithoutSignIn: false,
+      madeBy: "token-1",
+      standupRequestedBy: null,
+    };
+    assert.strictEqual(usageOwner(input), "bob");
+  });
   it("an explicit OWNER resolves canonically and cannot fall through to login history", () => {
     const input = {
       facts,

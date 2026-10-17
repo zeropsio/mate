@@ -150,6 +150,23 @@ describe("the environment tag", () => {
       },
     },
     {
+      title: "says Rolling back while a roll back goes out, by the release it goes back to",
+      prodChip: {
+        label: "prod",
+        state: "releasing",
+        version: "v2.4.0",
+        next: "v2.4.1",
+        rollsBackTo: "v2.3.0",
+      },
+      line: lineWith({ production: {} }),
+      expected: {
+        tone: "busy",
+        word: "Rolling back",
+        sentence: "Production v2.4.0, rolling back to v2.3.0",
+        section: "production",
+      },
+    },
+    {
       title: "says Deploying while production deploys",
       prodChip: healthy,
       line: lineWith({ production: { chip: healthy, building: true } }),

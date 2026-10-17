@@ -6,6 +6,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import {
   DIALOG_BACKDROP_CLASS,
+  DIALOG_BACKDROP_PLAIN_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
   DIALOG_VIEWPORT_CLASS,
@@ -35,11 +36,18 @@ function DialogClose(props: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
-function DialogBackdrop({ className, ...props }: DialogPrimitive.Backdrop.Props) {
+function DialogBackdrop({
+  className,
+  plain = false,
+  ...props
+}: DialogPrimitive.Backdrop.Props & {
+  /** The tint without the blur. */
+  plain?: boolean;
+}) {
   return (
     <DialogPrimitive.Backdrop
       forceRender
-      className={cn(DIALOG_BACKDROP_CLASS, className)}
+      className={cn(plain ? DIALOG_BACKDROP_PLAIN_CLASS : DIALOG_BACKDROP_CLASS, className)}
       data-slot="dialog-backdrop"
       {...props}
     />
@@ -62,16 +70,19 @@ function DialogPopup({
   showCloseButton = true,
   bottomStickOnMobile = true,
   keepMounted = false,
+  backdrop = "blur",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
   keepMounted?: boolean;
+  /** `plain` tints the app behind without blurring it, for a dialog that follows work in the background. */
+  backdrop?: "blur" | "plain";
 }) {
   const held = useHeldHeight(props.ref);
   return (
     <DialogPortal keepMounted={keepMounted}>
-      <DialogBackdrop />
+      <DialogBackdrop plain={backdrop === "plain"} />
       <DialogViewport
         className={cn(bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12")}
       >

@@ -162,7 +162,7 @@ describe("WaitingList — what waits on you, each with its buttons", () => {
 
   it.each([
     {
-      words: "Review change",
+      words: "Review",
       target: { kind: "change", groupId: "ledger", repository: "app", number: 31 },
     },
     { words: "Review release", target: { kind: "release", groupId: "tea" } },

@@ -32,6 +32,7 @@ vi.mock("~/zerops/deletingMates", () => ({
 vi.mock("~/zerops/useMateMoments", () => ({
   useMateFaceWatch: () => ({
     restarting: false,
+    updating: false,
     watched: { backs: 0, moved: undefined, arrived: undefined },
   }),
 }));

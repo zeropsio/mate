@@ -63,7 +63,7 @@ vi.mock("../StopReadAgain", async () => {
 });
 
 // The shared minute clock runs a window timer: a card reads a fixed now here.
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
+vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0, useSecondsNowMs: () => 0 }));
 
 // Base UI's popover portals out of a node render: here it draws its trigger, and its popup while
 // open, in place.
@@ -411,10 +411,13 @@ describe("a card's release on its way", () => {
       inFlight: "v0.1.0",
     },
   });
-  it("keeps the release's place while it goes out, its door opening its progress", () => {
+  // The run's card said it twice: "Releasing v0.1.0" on production's line and "Putting v0.1.0
+  // live" in a block of its own, with a "Releasing…" button (the owner, 2026-10-16).
+  it("says a release on its way once, on production's line, with no block of its own", () => {
     const html = section(render({ groups: [goingOut] }), 'data-zerops-group="aaa"');
-    expect(html).toContain("Putting v0.1.0 live");
-    expect(html).toContain('data-test-release-verb="true"');
+    expect(html).toContain("Releasing v0.1.0");
+    expect(html).not.toContain("Putting v0.1.0 live");
+    expect(html).not.toContain('data-test-release-verb="true"');
   });
   // The onboarding run: "Release" asked of the person while Put it live was making production.
   it("offers no release where the page's door is withheld, as while Put it live makes production", () => {
@@ -454,6 +457,28 @@ describe("a card's stage", () => {
     expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
       "Add stage",
     );
+  });
+
+  // The run's Add stage: its progress stood in a 1434 px card of its own at the page's foot, below
+  // the fold, saying "Starting its services" while the Stage line above said "Deploying…".
+  it.each([
+    { case: "before the platform lists it", groups: [entry([WREN])] },
+    {
+      case: "once the platform lists it",
+      groups: [entry([WREN, STAGE], { stops: [{ ...STAGE_STOP }] })],
+    },
+  ])("says a stage being added on its own line, where the stage stands: $case", ({ groups }) => {
+    const html = section(
+      render({
+        groups,
+        setUpStage: () => "busy",
+        stageSettingUp: () => ({ step: "Starting the stage's services", startedAtMs: 0 }),
+      }),
+      'data-zerops-place="stage"',
+    );
+    expect(html).toContain("Starting the stage&#x27;s services");
+    expect(html).not.toContain("Add stage");
+    expect(html).not.toContain("Not deployed yet");
   });
 });
 

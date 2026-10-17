@@ -55,6 +55,42 @@ describe("migrate", () => {
         ),
     );
     it.effect(
+      "a Mate signed in by somebody other than its maker before makers kept their Mates stays the signer's",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const files = treeMigrations();
+            yield* migrate(files.filter((file) => file.name < "0061_"));
+            const [app] =
+              yield* sql`INSERT INTO hq_app (name, created_by) VALUES ('Shop Front', 'maker') RETURNING id::text`;
+            for (const projectId of [
+              "signed-by-other",
+              "signed-by-maker",
+              "never-signed",
+              "legacy",
+            ])
+              yield* sql`INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+            VALUES (${projectId}, ${app!.id}::uuid, 'mate', 'maker')`;
+            yield* sql`INSERT INTO hq_mate (project_id, face, made_by, signers) VALUES
+              ('signed-by-other', '', 'maker', '{"codex":"colleague"}'::jsonb),
+              ('signed-by-maker', '', 'maker', '{"claude-code":"maker","codex":"colleague"}'::jsonb),
+              ('never-signed', '', 'maker', '{}'::jsonb),
+              ('legacy', '', NULL, '{"claude-code":"colleague"}'::jsonb)`;
+            yield* migrate(files);
+            assert.deepStrictEqual(
+              yield* sql`SELECT project_id, made_by FROM hq_mate ORDER BY project_id`,
+              [
+                { project_id: "legacy", made_by: "colleague" },
+                { project_id: "never-signed", made_by: "maker" },
+                { project_id: "signed-by-maker", made_by: "maker" },
+                { project_id: "signed-by-other", made_by: "colleague" },
+              ],
+            );
+          }),
+        ),
+    );
+    it.effect(
       "applies the files in name order, several statements each, and records every one",
       () =>
         withSql(
