@@ -80,6 +80,10 @@ export const CHECKS_GIVEN_UP = `Checks still fail after ${String(CHECK_TRIES)} t
 export const firstComment = (mate: string) =>
   `${mate} will fix failing checks and answer review comments from people with write access to this repository. Add \`(aside)\` to a comment to keep it from ${mate}.`;
 
+/** Said on a pull request one who may not close it closed, as HQ opens it again. */
+export const closersOnly = (mate: string) =>
+  `Only people with write access close ${mate}'s pull requests.`;
+
 /** Why a task ends whose pull request was closed unmerged. */
 export const pullClosed = (number: number) => `PR #${String(number)} was closed.`;
 
@@ -293,7 +297,9 @@ const readPullEvent = decode(
       number: Schema.Number,
       merged: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
       merge_commit_sha: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      head: Schema.optionalKey(Schema.Struct({ sha: Schema.optionalKey(Schema.String) })),
     }),
+    sender: Schema.optionalKey(Actor),
   }),
 );
 const readReview = decode(
@@ -626,6 +632,40 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           yield* closedUnmerged(row);
         });
 
+      /**
+       * The pull request was closed unmerged on GitHub by `closer`: by one who may (a person with
+       * write, or another app), its change closes and its task stops; by anyone else, it is opened
+       * again with a line saying who may close it, and nothing moves. GitHub not saying who may
+       * leaves it for the sweep.
+       */
+      const closedOnGithub = (
+        row: PullRow,
+        closer: { readonly login: string; readonly type?: string | undefined } | undefined,
+      ) =>
+        Effect.gen(function* () {
+          if (row.state !== "open") return;
+          const app = yield* asApp(row.app_id, row.repo, row.github_repo);
+          if (app === undefined || closer === undefined) return;
+          const bot = yield* auth.bot;
+          const verdict =
+            closer.login === bot?.login
+              ? ({ kind: "bot" } as const)
+              : yield* gate.verdict(app.remote, app.token, closer);
+          if (verdict === undefined) return;
+          if (verdict.kind !== "refused") return yield* closedUnmerged(row);
+          const opened = yield* github.editPull(app.remote, app.token, row.pr_number, {
+            state: "open",
+          });
+          if (opened !== 200) return;
+          const facts = yield* factsOf(row.app_id, row.repo, row.number);
+          yield* github.comment(
+            app.remote,
+            app.token,
+            row.pr_number,
+            marked(closersOnly(facts?.mate ?? "Mate")),
+          );
+        });
+
       /** The pull request is closed unmerged: recorded, its change closed, its task stopped. */
       const closedUnmerged = (row: PullRow) =>
         Effect.gen(function* () {
@@ -843,7 +883,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           if (row === undefined) return;
           if (read.pull_request.merged === true)
             yield* mergedOnGithub(row, read.pull_request.merge_commit_sha ?? undefined);
-          else yield* closedUnmerged(row);
+          else yield* closedOnGithub(row, read.sender);
         }),
       );
       yield* listen("pull_request_review", (event) =>

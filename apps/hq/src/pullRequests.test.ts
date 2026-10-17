@@ -19,6 +19,7 @@ import {
   MATE_END,
   MATE_START,
   checksFailed,
+  closersOnly,
   firstComment,
   mergeMessage,
   pullSection,
@@ -570,6 +571,32 @@ describe("a change's pull request", () => {
           );
           yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
           yield* statusSays(core, "Juno stopped: PR #⁠2 was closed.");
+        }),
+    );
+
+    it.effect(
+      "a pull request closed by someone who cannot write is opened again, saying who may close it, and its change stays open",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.roles.set("zoe", "triage");
+          yield* opened(core);
+          core.github.state.pulls.set(2, { ...core.github.state.pulls.get(2)!, state: "closed" });
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: { number: 2, merged: false },
+            sender: { login: "zoe", type: "User" },
+          });
+          yield* core.github.seenWhere("said who may close it", (seen) =>
+            seen.some(
+              (request) =>
+                request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+                (request.body as { body: string }).body.startsWith(closersOnly("Juno")),
+            ),
+          );
+          assert.strictEqual(core.github.state.pulls.get(2)?.state, "open");
+          assert.strictEqual((yield* changeOf(core)).state, "open");
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
         }),
     );
 
