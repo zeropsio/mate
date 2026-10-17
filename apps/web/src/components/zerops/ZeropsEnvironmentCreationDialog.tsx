@@ -115,6 +115,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly forecast?: ReactNode;
   /** A Mate's Automated choice, and whether its organization holds the key (`ZeropsNewMateForm`). */
   readonly automation?: ZeropsNewMateFormProps["automation"];
+  /** The Automated choice made already: an Add started over that was automated. */
+  readonly defaultAutomated?: boolean | undefined;
   /** Leaves the dialog for where the organization's API key is set. */
   readonly onOpenKeySettings?: (() => void) | undefined;
   readonly git?:
@@ -182,6 +184,7 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       }}
       access={props.access}
       automation={props.automation}
+      defaultAutomated={props.defaultAutomated}
       onOpenKeySettings={props.onOpenKeySettings}
       forecast={props.forecast}
       proposeAnotherName={props.proposeAnotherName}

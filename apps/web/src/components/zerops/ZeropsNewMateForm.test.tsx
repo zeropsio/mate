@@ -669,6 +669,16 @@ describe("the New Mate dialog's Automated choice", () => {
     expect(onCreate.mock.calls[0]?.[0]).not.toHaveProperty("automated");
   });
 
+  it("asks again with Automated chosen where the Add started over was automated", () => {
+    const onCreate = vi.fn<(choice: EnvironmentCreationChoice) => void>();
+    const tree = mount(
+      form({ automation: { key: "set", admin: true }, defaultAutomated: true, onCreate }),
+    );
+    expect(automatedSwitch(tree).props.checked).toBe(true);
+    press(tree);
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ automated: true }));
+  });
+
   it("offers no Automated choice where the dialog was given none", () => {
     expect(spoken(mount(form()).root)).not.toContain("Automated");
   });

@@ -109,6 +109,8 @@ export interface ZeropsNewMateFormProps {
    * than automated Mates) when the dialog opens: no choice offered.
    */
   readonly automation?: { readonly key: AutomatedKeyState; readonly admin: boolean } | undefined;
+  /** The Automated choice made already: an Add started over that was automated. */
+  readonly defaultAutomated?: boolean | undefined;
   /** Leaves the dialog for where the organization's API key is set (Settings › Zerops). */
   readonly onOpenKeySettings?: (() => void) | undefined;
 }
@@ -133,10 +135,11 @@ export function ZeropsNewMateForm({
   access,
   forecast,
   automation,
+  defaultAutomated = false,
   onOpenKeySettings,
 }: ZeropsNewMateFormProps) {
   const id = useId();
-  const [chosenAutomated, setAutomated] = useState(false);
+  const [chosenAutomated, setAutomated] = useState(defaultAutomated);
   // Whether it is offered, and whether the key's note holds its room, are decided by the first
   // frame: what is read after it changes the words, never what is there (the cardinal sin).
   const [offersAutomated] = useState(

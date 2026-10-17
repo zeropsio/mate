@@ -225,6 +225,7 @@ function NewMateDialog({
       defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
       defaultWithAgent
       automation={automation}
+      defaultAutomated={again?.automated === true}
       onOpenKeySettings={() => {
         // The dialog gives way to where the key is set.
         dismiss();
@@ -262,6 +263,7 @@ function NewMateDialog({
               // plan is heard.
               managed: tier === undefined ? undefined : recipeManaged(tier),
               runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
+              ...(choice.automated === true ? { automated: true as const } : {}),
             },
           },
           hq: officialHq(accountHq),
