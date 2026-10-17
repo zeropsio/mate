@@ -647,17 +647,28 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           if (change.task_id !== null) yield* toldOpened(change.task_id);
         });
 
-      /** The pull request closed on GitHub, with a line saying why; recorded closed here. */
+      /**
+       * The pull request closed on GitHub, and only then a line saying so; recorded closed here.
+       * GitHub refusing because it is merged or closed already records what it is, once: nothing
+       * is asked of GitHub again for it. GitHub not answering leaves it for the sweep.
+       */
       const closeOnGithub = (row: PullRow) =>
         Effect.gen(function* () {
           const app = yield* asApp(row.app_id, row.repo, row.github_repo);
           if (app === undefined) return;
-          yield* github.comment(app.remote, app.token, row.pr_number, marked("Closed in Mate."));
           const closed = yield* github.editPull(app.remote, app.token, row.pr_number, {
             state: "closed",
           });
-          if (closed !== 200) return;
-          yield* closedUnmerged(row);
+          if (closed === 200) {
+            yield* github
+              .comment(app.remote, app.token, row.pr_number, marked("Closed in Mate."))
+              .pipe(Effect.ignore);
+            return yield* closedUnmerged(row);
+          }
+          const now = yield* github.pull(app.remote, app.token, row.pr_number);
+          if (now.pull?.merged === true)
+            return yield* mergedOnGithub(row, now.pull.mergeSha, now.pull.headSha);
+          if (now.pull?.state === "closed") return yield* closedUnmerged(row);
         });
 
       /**

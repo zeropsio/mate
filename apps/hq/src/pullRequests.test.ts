@@ -663,6 +663,49 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "Close in Mate of a pull request GitHub merged meanwhile records it merged, says nothing on it, and never tries again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          core.github.state.pulls.set(2, {
+            ...core.github.state.pulls.get(2)!,
+            state: "closed",
+            merged: true,
+            mergeSha: "e".repeat(40),
+            headSha: HEAD,
+          });
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/close`, {
+            session: core.owner,
+            body: { expectedHead: null },
+          });
+          assert.strictEqual(closed.status, 200);
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, merged_sha FROM hq_pull_request",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === "e".repeat(40),
+          );
+          // Sweeps run every 100 ms here: none of them asks GitHub again.
+          yield* Effect.sleep(Duration.millis(400));
+          const closes = core.github.state.seen.filter(
+            (request) =>
+              request.method === "PATCH" &&
+              request.path === PULL &&
+              (request.body as { state?: string }).state === "closed",
+          );
+          assert.strictEqual(closes.length, 1);
+          assert.isFalse(
+            core.github.state.seen.some(
+              (request) =>
+                request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+                (request.body as { body: string }).body.startsWith("Closed in Mate."),
+            ),
+          );
+        }),
+    );
+
+    it.effect(
       "a review comment by a person who can write reaches the change's conversation and its task's Mate, with its file and line; a bot's, an aside or a reader's does not",
       () =>
         Effect.gen(function* () {
