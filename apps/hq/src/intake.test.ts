@@ -57,7 +57,7 @@ describe("an application's intake", () => {
             events: Array<string>;
             config: { url: string; content_type: string; secret: string };
           };
-          assert.deepStrictEqual(body.events, ["issues"]);
+          assert.deepStrictEqual(body.events, ["issues", "issue_comment"]);
           assert.deepInclude(body.config, { url: view.webhookUrl, content_type: "json" });
           assert.isAtLeast(body.config.secret.length, 32);
           // The secret is GitHub's and HQ's: never in what HQ answers.

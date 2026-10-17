@@ -7,9 +7,19 @@
  *
  * @module taskSources
  */
-import type { MateTaskMessage, MateTaskSource } from "@t3tools/contracts";
+import {
+  MATE_TASK_BODY_MAX,
+  MATE_TASK_TITLE_MAX,
+  type MateTaskMessage,
+  MateTaskSource,
+  mateTaskSourceLabel,
+  mateTaskSourceLink,
+} from "@t3tools/contracts";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 /** What a source asks of HQ once a person it lets in asked for work. */
 export interface TaskEnqueue {
@@ -35,11 +45,17 @@ export type TaskEnqueued =
   /** A live task already holds the key: the ask went to it as a message. */
   | { readonly kind: "told"; readonly taskId: string };
 
+/** HQ could not take a task in now (it is not the leading HQ, or its database is away): ask again. */
+export class TaskIntakeUnavailable extends Schema.TaggedError<TaskIntakeUnavailable>()(
+  "TaskIntakeUnavailable",
+  {},
+) {}
+
 /** HQ's door for sources: in, follow-ups, and stops. */
 export class TaskIntake extends Context.Service<
   TaskIntake,
   {
-    readonly enqueue: (input: TaskEnqueue) => Effect.Effect<TaskEnqueued>;
+    readonly enqueue: (input: TaskEnqueue) => Effect.Effect<TaskEnqueued, TaskIntakeUnavailable>;
     /** A follow-up on the key's live task (dropped, and false, when it has none). */
     readonly message: (sourceKey: string, message: MateTaskMessage) => Effect.Effect<boolean>;
     /** People stopped the key's live task (issue closed, label removed, thread deleted). */
@@ -53,6 +69,8 @@ export interface TaskOnSource {
   readonly appId: string;
   readonly source: MateTaskSource;
   readonly sourceKey: string;
+  /** Where its status line lives, once `status` made it and answered where; absent before. */
+  readonly statusRef?: string;
 }
 
 /** The one status line a source keeps for a task, edited as the task moves. */
@@ -70,8 +88,17 @@ export interface TaskSourceChannel {
   readonly kind: MateTaskSource["kind"];
   /** At once, on intake: a reaction on the ask, where the source has one. */
   readonly acknowledge: (task: TaskOnSource) => Effect.Effect<void>;
-  /** The one status line, made the first time and edited after. */
-  readonly status: (task: TaskOnSource, status: TaskStatus) => Effect.Effect<void>;
+  /**
+   * The one status line, made the first time and edited after: the call that makes it answers
+   * where it lives (a comment's id, a message's ts), which HQ keeps as the task's `status_ref` and
+   * hands back in `statusRef`.
+   */
+  readonly status: (task: TaskOnSource, status: TaskStatus) => Effect.Effect<string | void>;
+  /**
+   * Once, a day after a task began waiting for an answer: a new message on the source that asks
+   * again (an edit tells nobody). Absent: HQ says the waiting status again instead.
+   */
+  readonly remind?: (task: TaskOnSource, question: string) => Effect.Effect<void>;
 }
 
 /** The registered channels, by source kind: each source's layer registers its own. */
@@ -82,3 +109,48 @@ export class TaskSourceChannels extends Context.Service<
     readonly of: (kind: MateTaskSource["kind"]) => Effect.Effect<TaskSourceChannel | undefined>;
   }
 >()("@t3tools/hq/taskSources/TaskSourceChannels") {}
+
+/** Zero-width and bidirectional-control characters: they hide or reorder what a person reads. */
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u061C]/gu;
+
+/**
+ * A person's text as a Mate may read it: no HTML comments (unseen on GitHub, read by an agent), no
+ * zero-width or bidi characters, cut to `max`.
+ */
+export const cleanTaskText = (text: string, max = MATE_TASK_BODY_MAX) =>
+  text
+    .replace(/<!--[\s\S]*?(?:-->|$)/gu, "")
+    .replace(INVISIBLE, "")
+    .slice(0, max);
+
+/** A task's title, cleaned the same way, or `fallback` where nothing is left of it. */
+export const cleanTaskTitle = (title: string, fallback: string) =>
+  cleanTaskText(title, MATE_TASK_TITLE_MAX * 4)
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, MATE_TASK_TITLE_MAX) || fallback;
+
+const decodeSource = Schema.decodeUnknownOption(MateTaskSource);
+
+/** A task's source as its row keeps it (`hq_task.source`), read; none where it does not decode. */
+export const sourceOfRow = (raw: unknown): MateTaskSource | undefined =>
+  Option.getOrUndefined(decodeSource(raw));
+
+/** The task an automated Mate is on, as its menu row names it. */
+export const navigationTaskOf = (task: {
+  readonly id: string;
+  readonly source: MateTaskSource;
+  readonly waiting: boolean;
+}): HqNavigationMateTask => ({
+  id: task.id,
+  ...(task.source.kind === "github-issue"
+    ? { repo: task.source.repo, number: task.source.number }
+    : {}),
+  title: task.source.title,
+  url: mateTaskSourceLink(task.source)?.url ?? null,
+  label: mateTaskSourceLabel(task.source),
+  ...(task.waiting ? { waiting: true as const } : {}),
+});
+
+/** A task's source as its row keeps it: JSON, for `::jsonb`. */
+export const encodeSource = Schema.encodeSync(Schema.fromJsonString(MateTaskSource));

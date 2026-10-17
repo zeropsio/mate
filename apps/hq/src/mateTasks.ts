@@ -1,6 +1,7 @@
 /**
  * Tasks from outside, handed to an application's automated Mates (`hq_task`, `@t3tools/contracts`
- * `MateTask`): the leading Core's dispatcher.
+ * `MateTask`): the leading Core's dispatcher. Tasks come in through one door (`taskIntake.ts`),
+ * whatever their source (`taskSources.ts`).
  *
  * - A Mate is free while it is automated, of the application's projects, online, on no task, no
  *   change of its last task waits for review (its copy of the code holds that work), and its agents
@@ -16,18 +17,23 @@
  * - A Mate that turns its task down gives it back with no try against it; once its Mates have
  *   turned it down for 30 minutes it fails, with the last reason.
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
- *   then done or failed — its Mate free again. A word of a task not its own — never handed to it,
- *   or handed to another since — is passed by.
+ *   then done, failed or stopped — its Mate free again. A word of a task not its own — never handed
+ *   to it, or handed to another since — is passed by.
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it; one whose
  *   Mate has been offline for 2 hours while on it fails, saying so.
- * - GitHub hears from the Mate by name, on the issue, with the repository's token: once it takes
- *   the issue up, once it opens its change for review (with the change's address in Mate), and
- *   once it could not finish, with why. A comment GitHub refuses is tried once more, then logged;
- *   it never moves the task.
+ * - What is said about a task after it came in (`message`) is kept, and told to its Mate
+ *   (`task-message`) once it took it — then, and on each link it opens while on it (it hears each
+ *   once). People stopping a task (`stop`) drop it while no Mate took it; one a Mate took, its Mate
+ *   is told to stop (`task-stop`, again on each link) and it ends `stopped` on the Mate's word, or
+ *   on HQ's after `stopWithin` (10 minutes).
+ * - The task's source hears how it stands on ONE status line HQ keeps there through its channel
+ *   (`TaskSourceChannels`): its place in the queue (kept true as the queue moves), the Mate that
+ *   picked it up, the change it opened, and how it ended — the Mate by name, plain sentences only.
+ *   One line at a time, in the order the task moved; a channel's failure never moves a task.
  *
  * @module mateTasks
  */
-import type { MateTask, MateTaskReport } from "@t3tools/contracts";
+import type { MateTask, MateTaskLimits, MateTaskMessage, MateTaskReport } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
@@ -39,7 +45,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
-import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -47,14 +52,19 @@ import type { SqlError } from "effect/sql/SqlError";
 import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
-import { GithubIssues } from "./githubIssues.ts";
-import { remoteIdentity } from "./gitTransport.ts";
-import { Leader } from "./leader.ts";
+import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
-import { Remotes } from "./repoRemotes.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
+import { DEFAULT_TASK_LIMITS, readTaskLimits } from "./taskLimits.ts";
+import {
+  type TaskOnSource,
+  TaskSourceChannels,
+  type TaskStatus,
+  cleanTaskText,
+  sourceOfRow,
+} from "./taskSources.ts";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -67,6 +77,12 @@ export const MATE_GONE = "Its Mate is gone.";
 export const MATE_AWAY = "Its Mate went away mid-task.";
 /** How long a task's Mates may turn it down before it fails. */
 export const DECLINED_FOR = Duration.minutes(30);
+/** How many messages a task keeps; past them, more are not kept. */
+export const TASK_MESSAGES_MAX = 200;
+/** Why a task stopped that waited three days for an answer that never came. */
+export const NO_ANSWER = "nobody answered its question for three days.";
+/** Why a task's Mate stopped it, where the Mate said no reason. */
+const STOPPED = "people stopped it.";
 /** Why a task failed that its Mates kept turning down, with the last one's reason. */
 const declinedTooLong = (reason: string | undefined) =>
   `it was turned down for 30 minutes. The last reason: ${reason?.trim() || "none given."}`;
@@ -77,46 +93,80 @@ const declinedTooLong = (reason: string | undefined) =>
  */
 const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
 
+/** What a status line may name of its task. */
+export interface TaskFacts {
+  /** Its Mate's name, where one took it (or was last handed it). */
+  readonly mate: string | null;
+  /** Its change's address in Mate, once it has one. */
+  readonly change: string | null;
+  readonly detail: string | null;
+  readonly question: string | null;
+}
+
 export class MateTasks extends Context.Service<
   MateTasks,
   {
-    /** Look again for free Mates: a task waits (`intake.ts`). */
+    /** Look again for free Mates: a task waits (`taskIntake.ts`). */
     readonly wake: Effect.Effect<void>;
-    /** The `task` frames of the Mate's link: its task now, if it has not taken it, then each one. */
+    /** The frames of the Mate's link: its task now, what it must hear of it, then each one. */
     readonly linkFrames: (projectId: string) => Stream.Stream<string, SqlError>;
     /** The Mate's word on its task (`task-state`). */
     readonly report: (projectId: string, report: MateTaskReport) => Effect.Effect<void>;
+    /** A task came in: its source acknowledges it, and its status line says its place. */
+    readonly arrived: (taskId: string) => Effect.Effect<void>;
+    /** Something said about the task, kept and told to its Mate once it took it. */
+    readonly message: (
+      taskId: string,
+      message: MateTaskMessage,
+    ) => Effect.Effect<void, SqlError | NotLeader>;
+    /** People stopped the task: dropped while no Mate took it, else its Mate told to stop. */
+    readonly stop: (taskId: string, reason: string) => Effect.Effect<void, SqlError | NotLeader>;
+    /**
+     * Tasks dropped outside this service (an intake stopped or moved): their status lines say so,
+     * and the queue they left moves up.
+     */
+    readonly dropped: (
+      tasks: ReadonlyArray<{ readonly id: string; readonly app_id: string }>,
+      why: string,
+    ) => Effect.Effect<void>;
   }
 >()("@t3tools/hq/mateTasks") {}
 
 interface TaskRow {
   readonly id: string;
   readonly app_id: string;
-  readonly repo: string;
-  readonly number: number;
-  readonly title: string;
+  readonly source: unknown;
   readonly body: string;
-  readonly url: string;
-  readonly author: string | null;
 }
 
-const TASK_COLUMNS =
-  "id::text AS id, app_id::text AS app_id, repo, number, title, body, url, author";
-
-const taskOf = (row: TaskRow): MateTask => ({
-  id: row.id,
-  source: {
-    kind: "github-issue",
-    repo: row.repo,
-    number: row.number,
-    url: row.url,
-    title: row.title,
-    author: row.author,
-  },
-  body: row.body,
-});
+const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
+
+/** A task as its Mate is told it, with what it may spend; none where its source does not read. */
+const taskOf = (row: TaskRow, limits: MateTaskLimits): MateTask | undefined => {
+  const source = sourceOfRow(row.source);
+  return source === undefined ? undefined : { id: row.id, source, body: row.body, limits };
+};
+/** Its `task` frame, or none (`taskOf`). */
+const taskFrame = (row: TaskRow, limits: MateTaskLimits) => {
+  const task = taskOf(row, limits);
+  return task === undefined ? undefined : encodeDown({ type: "task", task });
+};
+
+interface MessageRow {
+  readonly task_id: string;
+  readonly id: string;
+  readonly source: MateTaskMessage["from"];
+  readonly author: string | null;
+  readonly text: string;
+}
+const messageFrame = (row: MessageRow) =>
+  encodeDown({
+    type: "task-message",
+    taskId: row.task_id,
+    message: { id: row.id, from: row.source, author: row.author, text: row.text },
+  });
 
 export interface MateTasksOptions {
   /** How long a Mate has to take a task it was handed; 60 s. */
@@ -125,6 +175,12 @@ export interface MateTasksOptions {
   readonly sweepEvery?: Duration.Duration;
   /** How long a working task's Mate may be offline before the task fails; 2 hours. */
   readonly goneAfter?: Duration.Duration;
+  /** How long a stopped task's Mate has to say it stopped before HQ ends it; 10 minutes. */
+  readonly stopWithin?: Duration.Duration;
+  /** How long a task waits for a person's answer before its source asks again; a day. */
+  readonly remindAfter?: Duration.Duration;
+  /** How long a task waits for an answer before it stops; three days. */
+  readonly giveUpAfter?: Duration.Duration;
 }
 
 export const mateTasksLayer = (options: MateTasksOptions = {}) =>
@@ -137,20 +193,23 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const structure = yield* Structure;
       const changes = yield* Changes;
       const roles = yield* Roles;
-      const remotes = yield* Remotes;
-      const github = yield* GithubIssues;
       const aiKeys = yield* OrgAiKeys;
+      const channels = yield* TaskSourceChannels;
       const layerScope = yield* Effect.scope;
-      // One comment at a time, in the order the task moved: GitHub shows them so.
+      // One status line at a time, in the order the task moved: its source shows them so.
       const telling = yield* Semaphore.make(1);
       const acceptMs = Duration.toMillis(options.acceptWithin ?? Duration.seconds(60));
       const told = yield* PubSub.unbounded<{
         readonly projectId: string;
         readonly frame: string;
       }>();
+      const tellMate = (projectId: string, frame: string) =>
+        Effect.asVoid(PubSub.publish(told, { projectId, frame }));
       const wakes = yield* Queue.sliding<void>(1);
       const wake = Effect.asVoid(Queue.offer(wakes, undefined));
       const leading = Effect.map(leader.status, (status) => status.state === "active");
+      /** What each task may spend, as the organization says now (`taskLimits.ts`). */
+      const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
 
       /**
        * Whether the Mate's last task's change still waits for review: its copy of the code holds
@@ -196,84 +255,148 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         });
 
       /**
-       * A comment on the task's issue, from its Mate by name, with the repository's token: beside
-       * whatever moved the task, tried once more where GitHub refuses it, never failing anything.
+       * The task's status line on its source, said through its channel with what `status` makes of
+       * its facts now: beside whatever moved the task, one at a time, never failing anything.
        */
-      const tell = (
-        taskId: string,
-        words: (task: {
-          readonly mate: string;
-          readonly change: string | null;
-          readonly detail: string | null;
-        }) => string,
-      ) =>
+      const say = (taskId: string, status: (facts: TaskFacts) => TaskStatus | undefined) =>
         Effect.gen(function* () {
           const [task] = yield* sql<{
             readonly app_id: string;
-            readonly repo: string;
-            readonly number: number;
-            readonly mate_project_id: string | null;
+            readonly source: unknown;
+            readonly source_key: string;
+            readonly status_ref: string | null;
+            readonly mate: string | null;
             readonly change_repo: string | null;
             readonly change_number: number | null;
             readonly detail: string | null;
+            readonly question: string | null;
           }>`
-            SELECT app_id::text AS app_id, repo, number, mate_project_id, change_repo, change_number,
-              detail FROM hq_task WHERE id::text = ${taskId}`;
-          if (task === undefined) return;
-          const remotesOfApp = yield* sql<{ readonly repo: string; readonly url: string }>`
-            SELECT repo, url FROM hq_repo_remote WHERE app_id::text = ${task.app_id} ORDER BY repo`;
-          const found = remotesOfApp.find((row) => remoteIdentity(row.url)?.path === task.repo);
-          const remote = found === undefined ? undefined : remoteIdentity(found.url);
-          if (found === undefined || remote === undefined)
-            return yield* Effect.logInfo("a task's comment not posted: no remote", { taskId });
-          const name = yield* Effect.orElseSucceed(
-            Effect.map(
-              roles.view,
-              (view) => view.projects.find((project) => project.id === task.mate_project_id)?.name,
-            ),
-            () => undefined,
-          );
-          const body = words({
-            mate: name || "Mate",
+            SELECT app_id::text AS app_id, source, source_key, status_ref,
+              COALESCE(mate_project_id, last_mate_project_id) AS mate, change_repo, change_number,
+              detail, question FROM hq_task WHERE id::text = ${taskId}`;
+          const source = sourceOfRow(task?.source);
+          if (task === undefined || source === undefined) return;
+          const channel = yield* channels.of(source.kind);
+          if (channel === undefined)
+            return yield* Effect.logInfo("a task's status not said: no channel", {
+              taskId,
+              kind: source.kind,
+            });
+          const name =
+            task.mate === null
+              ? null
+              : yield* Effect.orElseSucceed(
+                  Effect.map(
+                    roles.view,
+                    (view) =>
+                      view.projects.find((project) => project.id === task.mate)?.name || "Mate",
+                  ),
+                  () => "Mate",
+                );
+          const said = status({
+            mate: name,
             change:
               task.change_repo === null || task.change_number === null
                 ? null
                 : `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(task.app_id, task.change_repo, task.change_number)}`,
             detail: task.detail,
+            question: task.question,
           });
-          const { token } = yield* remotes.tokenOf({ appId: task.app_id, repo: found.repo });
-          const posted = github.comment(remote, token, task.number, body).pipe(
-            Effect.filterOrFail(
-              (status) => status === 201,
-              (status) => ({ _tag: "CommentRefused", status }) as const,
-            ),
-          );
-          yield* posted.pipe(
-            Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
-          );
+          if (said === undefined) return;
+          const onSource: TaskOnSource = {
+            taskId,
+            appId: task.app_id,
+            source,
+            sourceKey: task.source_key,
+            ...(task.status_ref === null ? {} : { statusRef: task.status_ref }),
+          };
+          const ref = yield* channel.status(onSource, said);
+          if (typeof ref === "string" && ref !== task.status_ref)
+            yield* leader.write(sql`
+              UPDATE hq_task SET status_ref = ${ref} WHERE id::text = ${taskId}`);
         }).pipe(
           Effect.catchCause((cause) =>
-            Effect.logWarning("a task's comment not posted", { taskId, cause }),
+            Effect.logWarning("a task's status not said", { taskId, cause }),
           ),
           telling.withPermits(1),
           Effect.forkIn(layerScope),
           Effect.asVoid,
         );
-      const pickedUp = (taskId: string) => tell(taskId, ({ mate }) => `${mate} picked this up.`);
+      /**
+       * A day into a wait, its source asks again — with a message of its own where its channel
+       * can (an edit tells nobody), else by saying the wait again.
+       */
+      const remind = (taskId: string) =>
+        Effect.gen(function* () {
+          const [task] = yield* sql<{
+            readonly app_id: string;
+            readonly source: unknown;
+            readonly source_key: string;
+            readonly status_ref: string | null;
+            readonly question: string | null;
+          }>`
+            SELECT app_id::text AS app_id, source, source_key, status_ref, question FROM hq_task
+            WHERE id::text = ${taskId}`;
+          const source = sourceOfRow(task?.source);
+          if (task === undefined || source === undefined) return;
+          const channel = yield* channels.of(source.kind);
+          const question = task.question ?? "an answer.";
+          if (channel?.remind === undefined)
+            return yield* say(taskId, ({ mate }) => ({
+              kind: "waiting",
+              mate: mate ?? "Mate",
+              question,
+            }));
+          yield* channel
+            .remind(
+              {
+                taskId,
+                appId: task.app_id,
+                source,
+                sourceKey: task.source_key,
+                ...(task.status_ref === null ? {} : { statusRef: task.status_ref }),
+              },
+              question,
+            )
+            .pipe(telling.withPermits(1), Effect.forkIn(layerScope));
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a task's reminder not said", { taskId, cause }),
+          ),
+        );
+      const why = (detail: string | null) =>
+        (detail ?? "").trim().slice(0, 2000) || "no reason given.";
+      const pickedUp = (taskId: string) =>
+        say(taskId, ({ mate }) => ({ kind: "picked", mate: mate ?? "Mate" }));
       const couldNotFinish = (taskId: string) =>
-        tell(
-          taskId,
-          ({ mate, detail }) =>
-            `${mate} couldn't finish this: ${(detail ?? "").trim().slice(0, 2000) || "no reason given."}`,
-        );
-
-      /** A task no Mate took, failed on GitHub too: no Mate's name, since none took it. */
+        say(taskId, ({ mate, detail }) => ({ kind: "failed", mate, why: why(detail) }));
+      /** A task no Mate took, failed on its source too: no Mate's name, since none took it. */
       const untaken = (taskId: string) =>
-        tell(
-          taskId,
-          ({ detail }) =>
-            `No automated Mate could take this up: ${(detail ?? "").trim().slice(0, 2000) || "no reason given."}`,
-        );
+        say(taskId, ({ detail }) => ({ kind: "failed", mate: null, why: why(detail) }));
+      const stoppedSaid = (taskId: string, named: boolean) =>
+        say(taskId, ({ mate, detail }) => ({
+          kind: "stopped",
+          mate: named ? mate : null,
+          why: why(detail),
+        }));
+
+      /**
+       * The application's waiting tasks whose place in its queue moved since their status lines
+       * last said it: each says its place now.
+       */
+      const queueMoved = (appId: string) =>
+        Effect.gen(function* () {
+          const moved = yield* leader.write(sql<{ readonly id: string; readonly position: number }>`
+            WITH places AS (
+              SELECT id, row_number() OVER (ORDER BY seq)::int AS position FROM hq_task
+              WHERE app_id::text = ${appId} AND state = 'queued')
+            UPDATE hq_task t SET told_position = places.position
+            FROM places WHERE t.id = places.id
+              AND t.told_position IS DISTINCT FROM places.position
+            RETURNING t.id::text AS id, places.position`);
+          for (const { id, position } of moved)
+            yield* say(id, () => ({ kind: "queued", position }));
+        });
 
       /**
        * Each application's oldest waiting tasks, to its free Mates, one each — none while the
@@ -292,23 +415,27 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             JOIN hq_app_project p ON p.project_id = m.project_id
             WHERE p.app_id::text = ${appId} AND p.kind IN ('mate', 'devstage') AND m.automated
               AND NOT EXISTS (SELECT 1 FROM hq_task t
-                WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working'))
+                WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working', 'waiting'))
               AND NOT (${heldBy(sql`m.project_id`)})
             ORDER BY m.seq`;
           const free = yield* freeNow(idle.map((row) => row.project_id));
           if (free.length === 0) continue;
-          // Only the intake's own repository's: one it left or stopped gives nobody work.
+          // An issue's only from the intake's own repository: one it left or stopped gives nobody work.
           const waiting = yield* sql<TaskRow>`
             SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task t
             WHERE app_id::text = ${appId} AND state = 'queued'
-              AND EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo)
+              AND (t.source_kind <> 'github-issue'
+                OR EXISTS (SELECT 1 FROM hq_intake i WHERE i.app_id = t.app_id AND i.repo = t.repo))
             ORDER BY seq LIMIT ${free.length}`;
+          let handedAny = false;
+          const limits = yield* limitsNow;
           for (const [index, task] of waiting.entries()) {
             const projectId = free[index]!;
             const handed = yield* leader
               .write(sql`
                 UPDATE hq_task SET state = 'assigned', mate_project_id = ${projectId},
-                  last_mate_project_id = ${projectId}, assigned_at = now(), updated_at = now()
+                  last_mate_project_id = ${projectId}, assigned_at = now(), updated_at = now(),
+                  told_position = NULL
                 WHERE id::text = ${task.id} AND state = 'queued'
                 RETURNING 1`)
               .pipe(
@@ -321,12 +448,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 }),
               );
             if (handed.length === 0) continue;
-            yield* PubSub.publish(told, {
-              projectId,
-              frame: encodeDown({ type: "task", task: taskOf(task) }),
-            });
+            handedAny = true;
+            const frame = taskFrame(task, limits);
+            if (frame !== undefined) yield* tellMate(projectId, frame);
             yield* structure.mateTouched(projectId);
           }
+          if (handedAny) yield* queueMoved(appId);
         }
       });
 
@@ -342,6 +469,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               : sql`NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)`;
           const moved = yield* leader.write(sql<{
             readonly id: string;
+            readonly app_id: string;
             readonly mate_project_id: string | null;
             readonly state: string;
           }>`
@@ -354,7 +482,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               mate_project_id = NULL,
               assigned_at = CASE WHEN t.attempts + 1 >= ${TASK_TRIES} THEN t.assigned_at END
             FROM back WHERE t.id = back.id
-            RETURNING t.id::text AS id, back.was AS mate_project_id, t.state`);
+            RETURNING t.id::text AS id, t.app_id::text AS app_id, back.was AS mate_project_id,
+              t.state`);
           const now = yield* Clock.currentTimeMillis;
           for (const row of moved) {
             if (row.mate_project_id !== null) {
@@ -365,11 +494,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             }
             if (row.state === "failed") yield* untaken(row.id);
           }
+          for (const appId of new Set(moved.map((row) => row.app_id))) yield* queueMoved(appId);
           if (moved.length > 0) yield* structure.touched;
           return moved.length;
         });
 
       const goneMs = Duration.toMillis(options.goneAfter ?? Duration.hours(2));
+      const stopSecs = Duration.toSeconds(options.stopWithin ?? Duration.minutes(10));
+      const remindSecs = Duration.toSeconds(options.remindAfter ?? Duration.days(1));
+      const giveUpSecs = Duration.toSeconds(options.giveUpAfter ?? Duration.days(3));
       /** Since when HQ has seen each working task's Mate offline, where its presence says not. */
       const awaySince = new Map<string, number>();
       /** The working tasks whose Mates have been offline past `goneAfter`. */
@@ -397,14 +530,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       });
 
       /**
-       * Tasks handed out longer ago than a Mate has to take them, those of Mates gone, and those
-       * whose Mates went away mid-task.
+       * Tasks handed out longer ago than a Mate has to take them, those of Mates gone, those whose
+       * Mates went away mid-task, and those stopped whose Mates never said they stopped.
        */
       const sweep = Effect.gen(function* () {
         if (!(yield* leading)) return;
         // Most HQs hold no live task: one read, and none of the writes below, each sweep.
         const [live] = yield* sql<{ readonly any: boolean }>`
-          SELECT EXISTS (SELECT 1 FROM hq_task WHERE state IN ('assigned', 'working')) AS any`;
+          SELECT EXISTS (SELECT 1 FROM hq_task WHERE state IN ('assigned', 'working', 'waiting'))
+            AS any`;
         if (live?.any !== true) {
           if (automated.size > 0) yield* wake;
           return;
@@ -413,7 +547,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         yield* giveBack("orphaned");
         const failed = yield* leader.write(sql<{ readonly id: string }>`
           UPDATE hq_task SET state = 'failed', detail = ${MATE_GONE}, updated_at = now()
-          WHERE state = 'working'
+          WHERE state IN ('working', 'waiting')
             AND NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)
           RETURNING id::text AS id`);
         const away = yield* awayTooLong;
@@ -426,6 +560,31 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 RETURNING id::text AS id, mate_project_id`);
         for (const row of [...failed, ...left]) yield* couldNotFinish(row.id);
         for (const row of left) yield* structure.mateTouched(row.mate_project_id);
+        const unheard = yield* leader.write(sql<{
+          readonly id: string;
+          readonly mate_project_id: string;
+        }>`
+          UPDATE hq_task SET state = 'stopped', detail = stop_reason, updated_at = now()
+          WHERE state IN ('working', 'waiting')
+            AND stop_requested_at < now() - make_interval(secs => ${stopSecs})
+          RETURNING id::text AS id, mate_project_id`);
+        for (const row of unheard) {
+          yield* stoppedSaid(row.id, true);
+          yield* structure.mateTouched(row.mate_project_id);
+        }
+        // Waiting for an answer: asked again once after a day, stopped after three.
+        const due = yield* leader.write(sql<{ readonly id: string }>`
+          UPDATE hq_task SET reminded_at = now()
+          WHERE state = 'waiting' AND reminded_at IS NULL AND stop_requested_at IS NULL
+            AND waiting_since < now() - make_interval(secs => ${remindSecs})
+            AND waiting_since >= now() - make_interval(secs => ${giveUpSecs})
+          RETURNING id::text AS id`);
+        for (const row of due) yield* remind(row.id);
+        const unanswered = yield* sql<{ readonly id: string }>`
+          SELECT id::text AS id FROM hq_task
+          WHERE state = 'waiting' AND stop_requested_at IS NULL
+            AND waiting_since < now() - make_interval(secs => ${giveUpSecs})`;
+        for (const row of unanswered) yield* stopTask(row.id, NO_ANSWER);
         // Whatever a wake missed waits at most one sweep.
         yield* wake;
       });
@@ -484,29 +643,150 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
+      /** Something said about the task, kept and told to its Mate where it hears it now. */
+      const messageTask = (taskId: string, message: MateTaskMessage) =>
+        Effect.gen(function* () {
+          const [kept] = yield* leader.write(sql<{
+            readonly heard: boolean;
+            readonly mate_project_id: string | null;
+          }>`
+            WITH task AS (
+              SELECT t.id, t.mate_project_id, ${hears(sql`t`)} AS heard FROM hq_task t
+              WHERE t.id::text = ${taskId}
+                AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
+                  < ${TASK_MESSAGES_MAX}),
+            kept AS (
+              INSERT INTO hq_task_message (task_id, id, source, author, text)
+              SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
+              FROM task ON CONFLICT DO NOTHING RETURNING task_id)
+            SELECT task.heard, task.mate_project_id FROM task JOIN kept ON kept.task_id = task.id`);
+          if (kept === undefined) return;
+          // Told now to a Mate on it — or done with it, its change still waiting for review —
+          // and kept for one that has not taken it yet.
+          if (kept.mate_project_id !== null && kept.heard)
+            yield* tellMate(
+              kept.mate_project_id,
+              messageFrame({
+                task_id: taskId,
+                id: message.id,
+                source: message.from,
+                author: message.author,
+                text: message.text,
+              }),
+            );
+        });
+
+      /** People stopped the task: dropped while no Mate took it, else its Mate told to stop. */
+      const stopTask = (taskId: string, reason: string) =>
+        Effect.gen(function* () {
+          const gone = yield* leader.write(sql<{
+            readonly app_id: string;
+            readonly was: string | null;
+          }>`
+            WITH gone AS (
+              SELECT id, mate_project_id AS was FROM hq_task
+              WHERE id::text = ${taskId} AND state IN ('queued', 'assigned')
+              FOR UPDATE)
+            UPDATE hq_task t SET state = 'dropped', detail = ${reason}, mate_project_id = NULL,
+              assigned_at = NULL, updated_at = now()
+            FROM gone WHERE t.id = gone.id
+            RETURNING t.app_id::text AS app_id, gone.was`);
+          for (const row of gone) {
+            if (row.was !== null) yield* structure.mateTouched(row.was);
+            yield* dropped([{ id: taskId, app_id: row.app_id }], reason);
+            yield* structure.touched;
+          }
+          if (gone.length > 0) return;
+          const [taken] = yield* leader.write(sql<{
+            readonly mate_project_id: string;
+            readonly stop_reason: string;
+          }>`
+            UPDATE hq_task SET stop_reason = COALESCE(stop_reason, ${reason}),
+              stop_requested_at = COALESCE(stop_requested_at, now()), updated_at = now()
+            WHERE id::text = ${taskId} AND state IN ('working', 'waiting')
+            RETURNING mate_project_id, stop_reason`);
+          if (taken !== undefined)
+            yield* tellMate(
+              taken.mate_project_id,
+              encodeDown({ type: "task-stop", taskId, reason: taken.stop_reason }),
+            );
+        });
+
+      // A person's comment on a task's change: said to the task, for its Mate to hear.
       yield* Effect.forkScoped(
-        Stream.runForEach(changes.taskChanges, (taskId) =>
-          tell(taskId, ({ mate, change }) =>
-            change === null
-              ? `${mate} opened a change for review.`
-              : `${mate} opened a change for review: ${change}`,
+        Stream.runForEach(changes.comments, (comment) =>
+          logged("a review comment not told")(
+            Effect.gen(function* () {
+              const [task] = yield* sql<{ readonly id: string }>`
+                SELECT id::text AS id FROM hq_task
+                WHERE app_id::text = ${comment.appId} AND change_repo = ${comment.repo}
+                  AND change_number = ${comment.number} AND mate_project_id IS NOT NULL
+                ORDER BY seq DESC LIMIT 1`;
+              if (task === undefined) return;
+              const author = yield* Effect.orElseSucceed(
+                Effect.map(
+                  roles.view,
+                  (view) =>
+                    view.members.find((member) => member.userId === comment.userId)?.name ?? null,
+                ),
+                () => null,
+              );
+              yield* messageTask(task.id, {
+                id: `review:${comment.commentId}`,
+                from: "review",
+                author,
+                text: cleanTaskText(comment.body),
+              });
+            }),
           ),
         ),
       );
+      yield* Effect.forkScoped(
+        Stream.runForEach(changes.taskChanges, (taskId) =>
+          say(taskId, ({ mate, change }) =>
+            change === null ? undefined : { kind: "change", mate: mate ?? "Mate", link: change },
+          ),
+        ),
+      );
+
+      /**
+       * Whether the task's Mate hears what is said of it now: on it, or done with it while its
+       * change waits for review (a review comment is for the Mate that made the change).
+       */
+      const hears = (task: Statement.Fragment) => sql`(
+        ${task}.state IN ('working', 'waiting')
+        OR (${task}.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
+          WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
+            AND c.number = ${task}.change_number AND c.state = 'open')))`;
+
+      /** The messages kept of `taskIds`, in the order they came, as frames. */
+      const messagesOf = (taskIds: ReadonlyArray<string>) =>
+        taskIds.length === 0
+          ? Effect.succeed([] as ReadonlyArray<string>)
+          : Effect.map(
+              sql<MessageRow>`
+                SELECT task_id::text AS task_id, id, source, author, text FROM hq_task_message
+                WHERE task_id::text IN ${sql.in(taskIds)} ORDER BY seq`,
+              (rows) => rows.map(messageFrame),
+            );
 
       /**
        * The task is the Mate's: handed to it or taken by it — or, given back while its link was
        * down, waiting for no other Mate yet, as the Mate it was last handed to.
        */
       const owns = (projectId: string) => sql`(
-        (mate_project_id = ${projectId} AND state IN ('assigned', 'working'))
+        (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting'))
         OR (state = 'queued' AND last_mate_project_id = ${projectId}))`;
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
         Effect.map(
-          sql<{ readonly state: string; readonly app_id: string }>`
-            SELECT state, app_id::text AS app_id FROM hq_task
+          sql<{
+            readonly state: string;
+            readonly app_id: string;
+            readonly question: string | null;
+          }>`
+            SELECT state, app_id::text AS app_id, question FROM hq_task
             WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
@@ -540,14 +820,28 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               yield* untaken(word.taskId);
               yield* structure.touched;
             }
+            if (moved !== undefined) yield* queueMoved(task.app_id);
             declinedUntil.set(projectId, (yield* Clock.currentTimeMillis) + acceptMs);
             yield* wake;
-          } else if (word.state === "accepted" || word.state === "working") {
+          } else if (
+            word.state === "accepted" ||
+            word.state === "working" ||
+            word.state === "waiting"
+          ) {
+            const waiting = word.state === "waiting";
+            const question = waiting
+              ? cleanTaskText(word.question ?? "")
+                  .trim()
+                  .slice(0, 2000) || "an answer."
+              : null;
             const taken = yield* leader
               .write(sql`
-                UPDATE hq_task SET state = 'working', updated_at = now(),
+                UPDATE hq_task SET state = ${waiting ? "waiting" : "working"}, updated_at = now(),
                   mate_project_id = ${projectId}, assigned_at = COALESCE(assigned_at, now()),
-                  conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
+                  conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id),
+                  told_position = NULL, question = ${question},
+                  waiting_since = ${waiting ? sql`CASE WHEN state = 'waiting' THEN waiting_since ELSE now() END` : null},
+                  reminded_at = ${waiting ? sql`CASE WHEN state = 'waiting' THEN reminded_at END` : null}
                 WHERE id::text = ${word.taskId} AND ${owns(projectId)}
                 RETURNING 1`)
               .pipe(
@@ -559,27 +853,103 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                       : Effect.fail(error),
                 }),
               );
-            // Taken once: the first word that moves it from handed (or given back) to worked on.
-            if (taken.length > 0 && task.state !== "working") yield* pickedUp(word.taskId);
-            if (taken.length > 0 && task.state === "queued") yield* structure.touched;
+            const firstTaken = task.state === "assigned" || task.state === "queued";
+            // Taken once: the first word that moves it from handed (or given back) to worked on —
+            // and what was said of it meanwhile, told now.
+            if (taken.length > 0 && firstTaken)
+              for (const frame of yield* messagesOf([word.taskId]))
+                yield* tellMate(projectId, frame);
+            // Its source hears it waits for an answer, or that it is worked on again.
+            // (A word said again, as on each link, is no news.)
+            if (
+              taken.length > 0 &&
+              waiting &&
+              (task.state !== "waiting" || task.question !== question)
+            )
+              yield* say(word.taskId, ({ mate, question: asked }) => ({
+                kind: "waiting",
+                mate: mate ?? "Mate",
+                question: asked ?? "an answer.",
+              }));
+            else if (taken.length > 0 && !waiting && task.state !== "working")
+              yield* pickedUp(word.taskId);
+            if (taken.length > 0 && task.state === "queued") {
+              yield* structure.touched;
+              yield* queueMoved(task.app_id);
+            }
           } else {
             const ended = yield* leader.write(sql`
               UPDATE hq_task SET state = ${word.state}, updated_at = now(),
                 mate_project_id = ${projectId},
-                detail = ${word.state === "failed" ? (word.detail ?? null) : null},
+                detail = ${
+                  word.state === "failed"
+                    ? (word.detail ?? null)
+                    : word.state === "stopped"
+                      ? sql`COALESCE(${word.detail?.trim() || null}, stop_reason, ${STOPPED})`
+                      : null
+                },
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
               WHERE id::text = ${word.taskId} AND ${owns(projectId)}
               RETURNING 1`);
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
-            if (ended.length > 0 && task.state === "queued") yield* structure.touched;
+            if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
+            if (ended.length > 0 && word.state === "done")
+              yield* say(word.taskId, ({ mate, change }) => ({
+                kind: "done",
+                mate: mate ?? "Mate",
+                link: change,
+              }));
+            if (ended.length > 0 && task.state === "queued") {
+              yield* structure.touched;
+              yield* queueMoved(task.app_id);
+            }
             yield* wake;
           }
           yield* structure.mateTouched(projectId);
         }).pipe(logged("a task's word not kept"));
 
+      const dropped = (
+        tasks: ReadonlyArray<{ readonly id: string; readonly app_id: string }>,
+        why: string,
+      ) =>
+        Effect.gen(function* () {
+          for (const task of tasks)
+            yield* say(task.id, () => ({ kind: "stopped", mate: null, why }));
+          for (const appId of new Set(tasks.map((task) => task.app_id))) yield* queueMoved(appId);
+          if (tasks.length > 0) yield* wake;
+        }).pipe(logged("dropped tasks not told"));
+
       return MateTasks.of({
         wake,
         report,
+        dropped,
+        arrived: (taskId) =>
+          Effect.gen(function* () {
+            const [task] = yield* sql<{
+              readonly app_id: string;
+              readonly source: unknown;
+              readonly source_key: string;
+            }>`
+              SELECT app_id::text AS app_id, source, source_key FROM hq_task
+              WHERE id::text = ${taskId}`;
+            const source = sourceOfRow(task?.source);
+            if (task === undefined || source === undefined) return;
+            const channel = yield* channels.of(source.kind);
+            if (channel !== undefined)
+              yield* channel
+                .acknowledge({ taskId, appId: task.app_id, source, sourceKey: task.source_key })
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("a task not acknowledged", { taskId, cause }),
+                  ),
+                  Effect.forkIn(layerScope),
+                );
+            yield* queueMoved(task.app_id);
+            yield* structure.touched;
+            yield* wake;
+          }).pipe(logged("a task's arrival not told")),
+        message: (taskId, message) => messageTask(taskId, message),
+        stop: (taskId, reason) => stopTask(taskId, reason),
         linkFrames: (projectId) =>
           Stream.unwrap(
             Effect.gen(function* () {
@@ -588,10 +958,24 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               const handed = yield* sql<TaskRow>`
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
+              const limits = handed.length === 0 ? DEFAULT_TASK_LIMITS : yield* limitsNow;
+              // On it, or its change waiting for review: what was said of it, and whether people
+              // stopped it.
+              const on = yield* sql<{ readonly id: string; readonly stop_reason: string | null }>`
+                SELECT t.id::text AS id, t.stop_reason FROM hq_task t
+                WHERE t.mate_project_id = ${projectId} AND ${hears(sql`t`)}`;
+              const said = yield* messagesOf(on.map((task) => task.id));
+              const stops = on.flatMap((task) =>
+                task.stop_reason === null
+                  ? []
+                  : [encodeDown({ type: "task-stop", taskId: task.id, reason: task.stop_reason })],
+              );
               return Stream.concat(
-                Stream.fromIterable(
-                  handed.map((row) => encodeDown({ type: "task", task: taskOf(row) })),
-                ),
+                Stream.fromIterable([
+                  ...handed.flatMap((row) => taskFrame(row, limits) ?? []),
+                  ...said,
+                  ...stops,
+                ]),
                 Stream.fromSubscription(live).pipe(
                   Stream.filter((message) => message.projectId === projectId),
                   Stream.map((message) => message.frame),

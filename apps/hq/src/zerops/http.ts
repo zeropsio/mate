@@ -328,7 +328,7 @@ export const makeZeropsApiHttp = (
               canCreateProjects: row.canCreateProjects,
               canViewFinances: row.canViewFinances === true,
               canEditFinances: row.canEditFinances === true,
-              email: row.user.email ?? null,
+              ...(row.user.email ? { email: row.user.email.trim().toLowerCase() } : {}),
             })),
           ),
         ),

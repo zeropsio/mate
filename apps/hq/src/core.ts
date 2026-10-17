@@ -33,10 +33,19 @@ import { automationRoutes } from "./automationApi.ts";
 import { discordLayer } from "./discord.ts";
 import { discordApiLayer } from "./discordApi.ts";
 import { discordRoutes } from "./discordRoutes.ts";
+import { slackLayer } from "./slack.ts";
+import { slackApiLayer } from "./slackApi.ts";
+import { slackRoutes } from "./slackRoutes.ts";
 import { orgAiKeysLayer } from "./orgAiKeys.ts";
 import { intakeLayer } from "./intake.ts";
-import { mateTasksLayer } from "./mateTasks.ts";
+import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
+import { githubChannelLayer } from "./githubChannel.ts";
+import { githubGateLayer } from "./githubGate.ts";
+import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
+import { taskLimitsLayer } from "./taskLimits.ts";
+import { webhooksLayer } from "./webhooks.ts";
+import { schedulesLayer } from "./schedules.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -94,13 +103,12 @@ export interface CoreOptions {
   readonly githubApi?: string;
   /** Discord's REST API, for tests; Discord's own by default. */
   readonly discordApi?: string;
-  /**
-   * How long a Mate has to take a task, how often HQ looks, and how long a working task's Mate
-   * may be offline (`mateTasks.ts`); for tests.
-   */
-  readonly taskAcceptWithin?: Duration.Duration;
-  readonly taskSweepEvery?: Duration.Duration;
-  readonly taskGoneAfter?: Duration.Duration;
+  /** Slack's Web API, for tests; Slack's own by default. */
+  readonly slackApi?: string;
+  /** How long a task's steps may take and how often HQ looks at them (`mateTasks.ts`); for tests. */
+  readonly tasks?: MateTasksOptions;
+  /** How often the leading Core looks for schedules due (`schedules.ts`); 30 s. */
+  readonly scheduleEvery?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -117,6 +125,7 @@ const routes = (options: CoreOptions) =>
     chiefRoutes,
     automationRoutes,
     discordRoutes,
+    slackRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -158,23 +167,43 @@ const services = (options: CoreOptions) => {
   const github = githubIssuesLayer(options.githubApi).pipe(
     Layer.provide(NodeHttpClient.layerNodeHttp),
   );
-  return Layer.mergeAll(
-    autoUpdatePolicyLayer,
-    orgAiKeysLayer,
-    mateTasksLayer({
-      ...(options.taskAcceptWithin === undefined ? {} : { acceptWithin: options.taskAcceptWithin }),
-      ...(options.taskSweepEvery === undefined ? {} : { sweepEvery: options.taskSweepEvery }),
-      ...(options.taskGoneAfter === undefined ? {} : { goneAfter: options.taskGoneAfter }),
-    }).pipe(Layer.provide(remotes), Layer.provide(github), Layer.provide(orgAiKeysLayer)),
+  // Tasks from every source come in through one door (`taskIntake.ts`); each source's channel
+  // registers itself (`githubChannel.ts`), and `mateTasks.ts` says through it how a task moves.
+  const tasks = mateTasksLayer(options.tasks).pipe(Layer.provide(orgAiKeysLayer));
+  const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
+  const sources = Layer.mergeAll(
+    door,
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
-      Layer.provide(remotes),
-      Layer.provide(github),
+      Layer.provide(door),
+      Layer.provide(githubGateLayer),
+    ),
+    githubChannelLayer,
+    webhooksLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
+    schedulesLayer(
+      options.scheduleEvery === undefined ? {} : { every: options.scheduleEvery },
+    ).pipe(Layer.provide(door)),
+    slackLayer({ hqProjectId: options.hqProjectId }).pipe(
+      Layer.provide(
+        slackApiLayer(options.slackApi).pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
+      ),
+      Layer.provide(door),
     ),
     discordLayer({ hqProjectId: options.hqProjectId, keySecret }).pipe(
       Layer.provide(
         discordApiLayer(options.discordApi).pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
       ),
+      Layer.provide(door),
     ),
+  ).pipe(
+    Layer.provide(remotes),
+    Layer.provideMerge(github),
+    Layer.provideMerge(taskSourceChannelsLayer),
+  );
+  return Layer.mergeAll(
+    autoUpdatePolicyLayer,
+    orgAiKeysLayer,
+    taskLimitsLayer,
+    sources,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
