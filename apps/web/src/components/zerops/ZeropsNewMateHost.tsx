@@ -31,7 +31,8 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
@@ -71,10 +72,12 @@ export function ZeropsNewMateHost() {
   const { status } = useZeropsSession();
   // The creation lives here, above the dialog: it runs on after the dialog has closed.
   const create = useEnvironmentCreation();
+  const accountData = useContext(AccountDataContext);
   if (status !== "signed-in") return null;
   return (
     <>
-      <HoldAutomatedKey />
+      {/* The account's data reads the listed Mates; a host mounted without them holds nothing. */}
+      {accountData === null ? null : <HoldAutomatedKey />}
       {asked === null ? null : (
         <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
