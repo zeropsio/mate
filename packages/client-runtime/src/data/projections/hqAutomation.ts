@@ -74,11 +74,14 @@ export const orgAiKeys: Projection<AiKeysKey, OrgAiKeysRead> = {
   name: "orgAiKeys",
   keyOf: aiKeysId,
   derive: (read, key) => {
+    const keys = keysOf(read, key);
+    // This account's own record of its last key write: one never published is none made here.
     const request = read.fact("hqAiKeyRequest", aiKeysId(key));
+    if (request.kind !== "known") return { keys, action: { kind: "idle" } };
     return {
-      keys: keysOf(read, key),
+      keys,
       action: actionOf(
-        request.kind === "known" ? read.operation(request.value.requestId) : undefined,
+        read.operation(request.value.requestId),
         (kind) => (kind === "remove-ai-key" ? "remove" : "set"),
         "HQ may have taken this change. The key list shows what HQ holds once it is read again.",
       ),
@@ -99,16 +102,19 @@ export const appIntake: Projection<IntakeKey, AppIntakeRead> = {
   name: "appIntake",
   keyOf: intakeId,
   derive: (read, key) => {
+    const intake = navigationIntake(read, key.orgId, key.appId);
+    // This screen's own record of what it set: no read can fail or be refused, so one never
+    // published is that nothing was set from here — no write to follow, no answer to show.
     const reveal = read.fact("hqIntakeReveal", intakeId(key));
-    const record = reveal.kind === "known" ? read.operation(reveal.value.requestId) : undefined;
+    if (reveal.kind !== "known") return { intake, action: { kind: "idle" }, answer: null };
     return {
-      intake: navigationIntake(read, key.orgId, key.appId),
+      intake,
       action: actionOf(
-        record,
+        read.operation(reveal.value.requestId),
         (kind) => (kind === "stop-intake" ? "stop" : "set"),
         "HQ may have taken this change. What it holds shows here once HQ says it.",
       ),
-      answer: reveal.kind === "known" ? reveal.value.view : null,
+      answer: reveal.value.view,
     };
   },
   equals: sameValue,
