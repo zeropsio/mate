@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  automatedAgentsLine,
   automatedKeyState,
   automatedMateEntries,
   conversationTask,
@@ -75,5 +76,18 @@ describe("the organization's key for automated Mates", () => {
     { case: "none listed", keys: { state: "known", keys: [], stale: false }, key: "missing" },
   ] as const)("reads $case as $key", ({ keys, key }) => {
     expect(automatedKeyState(keys)).toBe(key);
+  });
+});
+
+describe("an automated Mate's panel line", () => {
+  it.each([
+    { key: "set", line: "Nova runs on your organization's API key. Nobody signs in to it." },
+    {
+      key: "missing",
+      line: "Nova waits for your organization's API key. Nobody signs in to it.",
+    },
+    { key: "unknown", line: "Nova runs on your organization's API key. Nobody signs in to it." },
+  ] as const)("with the key $key says: $line", ({ key, line }) => {
+    expect(automatedAgentsLine("Nova", key)).toBe(line);
   });
 });

@@ -1,4 +1,5 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
@@ -3459,6 +3460,8 @@ function useMateRowState<T extends RosterCandidate>({
     (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
       ? owner.name.split(" ")[0]
       : undefined;
+  // What is read of the organization's key: an automated Mate at rest may wait for it.
+  const automatedKey = useAutomatedKey();
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
     view,
@@ -3471,7 +3474,7 @@ function useMateRowState<T extends RosterCandidate>({
     asks,
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
-    automated: mateAutomation(candidate.project.hq?.mate),
+    automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
   });
   const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // A new ask rises into the row's second line as the person sets it; the

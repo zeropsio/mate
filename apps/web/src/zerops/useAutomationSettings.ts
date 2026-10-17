@@ -17,9 +17,10 @@ import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 
 import { randomUUID } from "../lib/utils";
+import { automatedKeyState, type AutomatedKeyState } from "./automatedMate.logic";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
+import { useAccountOrgId, useAccountStoreForAdapters, useProjection } from "./ZeropsAccountData";
 
 const hosts = new WeakMap<
   AccountStore,
@@ -101,4 +102,21 @@ export function useAppIntake(appId: string) {
       if (host !== null && key !== null) void host.stopIntake(key);
     },
   };
+}
+
+/**
+ * Whether the organization holds the key its automated Mates run on, as read for the account
+ * (`automatedKeyState`). The read is held from the app's root while signed in
+ * (`useHoldAutomatedKey`), once a session, so New Mate and every automated Mate's row find it
+ * read rather than learning it after they paint.
+ */
+export function useAutomatedKey(): AutomatedKeyState {
+  const orgId = useAccountOrgId();
+  const key = useMemo(() => (orgId === null ? null : { orgId }), [orgId]);
+  return automatedKeyState(useProjection(orgAiKeys, key, KEYS_UNREAD).keys);
+}
+
+/** Holds the organization's keys read while the account is signed in (the app's root). */
+export function useHoldAutomatedKey(): void {
+  useOrgAiKeys(true);
 }

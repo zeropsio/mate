@@ -2036,6 +2036,11 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
   ])("$case", ({ mate, expected }) => {
     expect(mateAutomation(mate)).toEqual(expected);
   });
+
+  it("carries what is read of the organization's key to an automated Mate's line alone", () => {
+    expect(mateAutomation({ automated: true }, "missing")).toEqual({ task: null, key: "missing" });
+    expect(mateAutomation({ automated: false }, "missing")).toBeUndefined();
+  });
 });
 
 describe("mateRowSecond — an automated Mate's line", () => {
@@ -2122,6 +2127,21 @@ describe("mateRowSecond — an automated Mate's line", () => {
       case: "an automated Mate whose task's change waits on the viewer says so in ink",
       over: { automated: { task }, view: view("needs") },
       line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: true },
+    },
+    {
+      case: "an automated Mate at rest with no task and no organization key says it waits for the key",
+      over: { automated: { task: null, key: "missing" } },
+      line: { kind: "task", text: "Waiting for an API key", on: false },
+    },
+    {
+      case: "an automated Mate on a task names it, whatever is read of the key",
+      over: { automated: { task, key: "missing" }, view: view("working", { kind: "pending" }) },
+      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+    },
+    {
+      case: "an automated Mate whose key is not read yet says it waits for a task",
+      over: { automated: { task: null, key: "unknown" } },
+      line: { kind: "task", text: "Waiting for a task", on: false },
     },
     {
       case: "an automated Mate never offers a sign-in on its line",

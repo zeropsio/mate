@@ -48,7 +48,7 @@ import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
@@ -73,6 +73,7 @@ export function ZeropsNewMateHost() {
   if (status !== "signed-in") return null;
   return (
     <>
+      <HoldAutomatedKey />
       {asked === null ? null : (
         <NewMateDialog again={asked.again} create={create} groupId={asked.groupId} key={asked.at} />
       )}
@@ -81,6 +82,12 @@ export function ZeropsNewMateHost() {
       )}
     </>
   );
+}
+
+/** The organization's key for automated Mates, read once while signed in (`useAutomatedKey`). */
+function HoldAutomatedKey() {
+  useHoldAutomatedKey();
+  return null;
 }
 
 /** How long a hand-over's conversation is kept read from here, across the route changing. */

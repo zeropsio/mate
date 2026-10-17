@@ -47,3 +47,10 @@ export function automatedKeyState(keys: OrgAiKeysRead["keys"]): AutomatedKeyStat
     ? "set"
     : "missing";
 }
+
+/** What an automated Mate's panel says of its agents: they run on the organization's key, or wait for it. */
+export function automatedAgentsLine(name: string, key: AutomatedKeyState): string {
+  return key === "missing"
+    ? `${name} waits for your organization's API key. Nobody signs in to it.`
+    : `${name} runs on your organization's API key. Nobody signs in to it.`;
+}
