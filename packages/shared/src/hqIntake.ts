@@ -39,6 +39,11 @@ export const HqIntakeView = Schema.Struct({
   hook: Schema.Union([
     /** HQ made the webhook on the repository with its token. */
     Schema.Struct({ kind: Schema.Literal("made") }),
+    /**
+     * The organization's GitHub app reaches the repository: its own webhook delivers the issues,
+     * and the repository has none of HQ's. Absent from an older HQ.
+     */
+    Schema.Struct({ kind: Schema.Literal("app") }),
     /** The person makes it: the secret is shown this once. */
     Schema.Struct({ kind: Schema.Literal("paste"), secret: Schema.String, why: Schema.String }),
   ]),
