@@ -351,6 +351,32 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
         ),
     );
 
+    it.effect(
+      "a merge recorded from GitHub lands the head GitHub merged, never a push that came after",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            yield* f.openChange("Add a search box");
+            const merged = yield* f.push("search.ts");
+            yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), merged);
+            const squash = commitIn(f.github, [f.main], "squashed");
+            native(f.github, ["update-ref", "refs/heads/main", squash]);
+            yield* f.mirror.sync(f.appId, "appdev");
+            // The Mate pushed again just after GitHub merged.
+            const later = yield* f.push("search.css");
+            assert.notStrictEqual(later, merged);
+            yield* f.changes.landImported(f.appId, "appdev", 1, squash, merged);
+            assert.deepStrictEqual(yield* f.changeRow(1), {
+              state: "merged",
+              merged_sha: squash,
+              landed_head: merged,
+            });
+          }),
+        ),
+    );
+
     it.effect("a merge recorded from GitHub must be a commit Mate's main holds", () =>
       Effect.scoped(
         Effect.gen(function* () {

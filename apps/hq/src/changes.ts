@@ -308,12 +308,15 @@ export class Changes extends Context.Service<
      * The change merged by a merge made elsewhere — on the GitHub its repository mirrors to — whose
      * commit `mergedSha` HQ's `main` already holds (`githubMirror.ts` imported it): what a squash
      * here records, with `main` left as the import moved it. One merged already stays as it is.
+     * `mergedHead` is the head GitHub merged, landed as it — a push since is not merged; the
+     * change's head now where none is known.
      */
     readonly landImported: (
       appId: string,
       repo: string,
       number: number,
       mergedSha: string,
+      mergedHead?: string,
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /**
      * Whether the person may merge or close the application's changes, as `mergeChange` and
@@ -1564,7 +1567,7 @@ export const changesLayer: Layer.Layer<
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
         }),
-      landImported: (appId, repo, number, mergedSha) =>
+      landImported: (appId, repo, number, mergedSha, mergedHead) =>
         Effect.gen(function* () {
           const git = yield* gitHost.git;
           const at = { appId, id: repo };
@@ -1587,7 +1590,8 @@ export const changesLayer: Layer.Layer<
                 const first = yield* firstCodeMergeOf(sql, { appId, repo, number });
                 const [merged] = yield* sql<ChangeRow>`
                   UPDATE hq_change
-                  SET state = 'merged', merged_sha = ${mergedSha}, landed_head = head,
+                  SET state = 'merged', merged_sha = ${mergedSha},
+                      landed_head = COALESCE(${mergedHead ?? null}, head),
                       merged_at = now(), updated_at = now(),
                       mergeability = 'already_merged', behind = false,
                       first_code_merge = ${first}::boolean
@@ -1599,7 +1603,7 @@ export const changesLayer: Layer.Layer<
                   appId,
                   repo,
                   number,
-                  data: { mergedSha, landedHead: row.head, by: "github" },
+                  data: { mergedSha, landedHead: mergedHead ?? row.head, by: "github" },
                 });
                 return changeOf(merged!);
               }),
