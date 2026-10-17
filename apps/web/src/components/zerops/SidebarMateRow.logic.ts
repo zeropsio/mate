@@ -1012,8 +1012,15 @@ const WAITING_FOR_A_KEY = "Waiting for an API key";
 
 /** An automated Mate's input to `mateRowSecond` (`mateAutomation`). */
 export interface MateAutomationLine {
-  /** The task it is on; `number` only for a GitHub issue's ("#12 …"). */
-  readonly task: { readonly number?: number | undefined; readonly title: string } | null;
+  /**
+   * The task it is on; `number` only for a GitHub issue's ("#12 …"); `waiting` while it waits for
+   * a person's answer (HQ's `task.waiting`).
+   */
+  readonly task: {
+    readonly number?: number | undefined;
+    readonly title: string;
+    readonly waiting?: true | undefined;
+  } | null;
   /**
    * Whether its organization holds the API key it runs on (`automatedKeyState`): HQ hands no task
    * while it holds none. Absent, or not read: nothing is said of it.
@@ -1023,9 +1030,10 @@ export interface MateAutomationLine {
 
 /**
  * An automated Mate's line where it says nothing of its own: at work, the task it is on; at rest
- * on a task — HQ keeps it on its task while the task's change is open, and hands it no other —
- * that task waiting for review; at rest with none, that it waits for one — or for the
- * organization's API key, where it holds none.
+ * on a task it asked a person about, that it waits for them — in ink, the question is theirs to
+ * answer where the task came from; at rest on a task — HQ keeps it on its task while the task's
+ * change is open, and hands it no other — that task waiting for review; at rest with none, that
+ * it waits for one — or for the organization's API key, where it holds none.
  */
 export function mateAutomatedLine(
   automated: MateAutomationLine,
@@ -1039,6 +1047,8 @@ export function mateAutomatedLine(
       on: false,
     };
   if (state === "working") return { kind: "task", text: mateTaskLine(task), on: true };
+  if (task.waiting === true)
+    return { kind: "task", text: `${mateTaskLine(task)} · waiting for you`, on: true };
   return {
     kind: "task",
     text: `${mateTaskLine(task)} · waiting for review`,
@@ -1061,7 +1071,11 @@ export function mateAutomation(
     | {
         readonly automated?: boolean | undefined;
         readonly task?:
-          | { readonly number?: number | undefined; readonly title: string }
+          | {
+              readonly number?: number | undefined;
+              readonly title: string;
+              readonly waiting?: true | undefined;
+            }
           | null
           | undefined;
       }
@@ -1076,7 +1090,11 @@ export function mateAutomation(
     task:
       task === null
         ? null
-        : { ...(task.number === undefined ? {} : { number: task.number }), title: task.title },
+        : {
+            ...(task.number === undefined ? {} : { number: task.number }),
+            title: task.title,
+            ...(task.waiting === true ? { waiting: true } : {}),
+          },
     ...(key === undefined ? {} : { key }),
   };
 }
@@ -1126,6 +1144,10 @@ export function mateRowSecond(input: {
       : line;
   };
   if (view.state === "working") return said(undefined);
+  // A task waiting for a person's answer says so over its Mate's last words: the question is
+  // asked where the task came from, and answered there.
+  if (automated?.task?.waiting === true && view.state !== "failed" && view.state !== "paused")
+    return mateAutomatedLine(automated, view.state);
   if (reply?.kind === "words" && reply.lastKnown === true)
     return said(reply.tone === "failed" ? "failed" : "muted");
   if (input.waitsOn !== undefined && view.state !== "failed") {
