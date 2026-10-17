@@ -120,6 +120,21 @@ describe("the GitHub section where no app is connected", () => {
     expect(onPost).toHaveBeenCalledWith(MANIFEST);
   });
 
+  it("lets the person press again after coming back from GitHub's page with Back", async () => {
+    const { host, button } = await render();
+    await act(async () => button("Connect")!.click());
+    await act(async () => {
+      host.querySelector("form")!.requestSubmit();
+    });
+    expect(button("Opening GitHub…")?.disabled).toBe(true);
+    await act(async () => {
+      const shown = new Event("pageshow");
+      Object.defineProperty(shown, "persisted", { value: true });
+      window.dispatchEvent(shown);
+    });
+    expect(button("Create GitHub app")?.disabled).toBe(false);
+  });
+
   it("says HQ's refusal and lets the person press again", async () => {
     const { host, button, onPost } = await render({
       controls: {

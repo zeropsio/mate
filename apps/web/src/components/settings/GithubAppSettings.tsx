@@ -9,7 +9,7 @@
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import { GithubIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { appBasePath } from "~/basePath";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
@@ -262,6 +262,22 @@ function CreateApp({
   const [refusal, setRefusal] = useState<string | null>(null);
   // Pressed and GitHub's page not yet here: the press says so until the browser leaves.
   const [leaving, setLeaving] = useState(false);
+  // Back from GitHub's page restores this one from the browser's cache, mid-press: it is
+  // pressable again once the page shows, or comes back into view.
+  useEffect(() => {
+    const back = (event: PageTransitionEvent) => {
+      if (event.persisted) setLeaving(false);
+    };
+    const seen = () => {
+      if (document.visibilityState === "visible") setLeaving(false);
+    };
+    window.addEventListener("pageshow", back);
+    document.addEventListener("visibilitychange", seen);
+    return () => {
+      window.removeEventListener("pageshow", back);
+      document.removeEventListener("visibilitychange", seen);
+    };
+  }, []);
   const ownerId = useId();
   const nameId = useId();
   return (
