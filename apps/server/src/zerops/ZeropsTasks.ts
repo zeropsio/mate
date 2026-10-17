@@ -63,8 +63,11 @@ export const taskIdOfConversation = (id: ConversationId): string | undefined =>
 export const taskBrief = (task: MateTask): string => {
   const { source } = task;
   const body = task.body.trim();
+  // Its first line names the conversation wherever a list titles it by the person's words.
   return [
-    `You have a task from GitHub: issue #${source.number} in ${source.repo}, "${source.title}".`,
+    `#${source.number} ${source.title}`,
+    "",
+    `You have a task from GitHub: issue #${source.number} in ${source.repo}.`,
     source.url,
     ...(source.author === null ? [] : [`Opened by @${source.author}.`]),
     "",
