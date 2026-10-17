@@ -136,8 +136,19 @@ const rig = (
     const assigned: Array<{ conversationId: ConversationId; agent: ConversationAgent }> = [];
     const delivered: Array<Delivered> = [];
     const changes = yield* PubSub.unbounded<ConversationId>();
+    /** Each task's own latest run's end, by its conversation, as the engine's runs hold it. */
+    const ownEnds = new Map<ConversationId, RunEnd>();
+    /** How many times a conversation's view was read. */
+    const reads = { count: 0 };
     const engine = Layer.succeed(MateEngine, {
       ...inertMateEngine,
+      runOf: (find) =>
+        Effect.sync(() => {
+          const end = "taskId" in find ? ownEnds.get(find.conversationId) : undefined;
+          return end === undefined
+            ? undefined
+            : { runId: RunId.make("own"), end, source: "agent" as const, reachedAgent: true };
+        }),
       conversations: Effect.sync(() => ({
         views: [...views.values()],
         unread: [...unreadable],
@@ -146,7 +157,10 @@ const rig = (
       conversation: (id) =>
         unreadable.has(id)
           ? Effect.fail(new ViewUnreadable({ conversationId: id }))
-          : Effect.sync(() => views.get(id)),
+          : Effect.sync(() => {
+              reads.count += 1;
+              return views.get(id);
+            }),
       changes: Stream.fromPubSub(changes),
       // Giving the agent writes the conversation's record, as the engine's does: no run in it yet.
       assignAgent: (conversationId, agent) =>
@@ -201,7 +215,19 @@ const rig = (
       Effect.sync(() => views.set(conversationId, next)).pipe(
         Effect.andThen(PubSub.publish(changes, conversationId)),
       );
-    return { views, unreadable, assigned, delivered, link, sent, move, tasks };
+    return {
+      views,
+      unreadable,
+      assigned,
+      delivered,
+      link,
+      sent,
+      move,
+      tasks,
+      ownEnds,
+      reads,
+      changes,
+    };
   });
 
 /** Lets the forked follower take what was published. */
@@ -554,6 +580,59 @@ describe("an automated Mate says how its task stands", () => {
       yield* settle;
       assert.strictEqual(sent.at(-1)?.state, "working");
     }),
+  );
+
+  it.effect("a failed task's end stands after a person's later run in its conversation", () =>
+    Effect.gen(function* () {
+      const { link, move, ownEnds, sent } = yield* rig();
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      yield* link.receive(task("task-1"));
+      const id = taskConversationId("task-1");
+      const failed: RunEnd = { kind: "failed", reason: "upstream 500", next: null };
+      ownEnds.set(id, failed);
+      // The person asked why in the task's conversation, and that run completed.
+      yield* move(
+        id,
+        view(id, {
+          lastEnded: run(id, { kind: "person", subject: "zerops-user:nova" }, "ended", {
+            kind: "completed",
+          }),
+        }),
+      );
+      yield* settle;
+      assert.deepStrictEqual(sent.at(-1), {
+        taskId: "task-1",
+        state: "failed",
+        conversationId: id,
+        detail: "The agent could not finish the run.",
+      });
+    }),
+  );
+
+  it.effect(
+    "a burst of moves in a task's conversation is read a few times, not once per move",
+    () =>
+      Effect.gen(function* () {
+        const { changes, link, reads, sent, views } = yield* rig();
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        const id = taskConversationId("task-1");
+        views.set(id, view(id, { activeRun: run(id, principalOf("task-1"), "running") }));
+        const before = reads.count;
+        // A streaming answer moves the record many times in a row.
+        yield* Effect.forEach(Array.from({ length: 50 }), () => PubSub.publish(changes, id), {
+          discard: true,
+        });
+        yield* settle;
+        assert.isAtMost(reads.count - before, 3);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "working",
+          conversationId: id,
+        });
+      }),
   );
 
   it.effect("re-sends the latest task's report when the link opens again", () =>

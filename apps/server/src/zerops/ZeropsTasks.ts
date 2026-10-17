@@ -16,8 +16,10 @@
  *   works from, its person item carrying the issue as `task`, so every client draws its card.
  * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
  *   `failed` (with why) once it ended, as the engine's record shows; a conversation whose brief was
- *   never recorded says nothing, so HQ tells the task again. Each link hears the latest task's
- *   report first, so a report missed while the link was down arrives with the next one.
+ *   never recorded says nothing, so HQ tells the task again. A task's end is its own last run's,
+ *   whatever a person ran in its conversation after. Each link hears the latest task's report
+ *   first, so a report missed while the link was down arrives with the next one, and reads a task
+ *   conversation that moved many times at once (a streaming answer) once, one read at a time.
  *
  * A task whose state cannot be read now goes unanswered: HQ tells it again until the Mate says.
  *
@@ -36,6 +38,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
@@ -152,6 +155,8 @@ const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRu
 export const taskReportOf = (
   taskId: string,
   view: ConversationView,
+  /** How the task's own latest run ended, read when a later run of a person's is the view's. */
+  ownEnd?: RunEnd | null,
 ): MateTaskReport | undefined => {
   const base = { taskId, conversationId: view.conversationId };
   const active = view.activeRun;
@@ -172,9 +177,21 @@ export const taskReportOf = (
       ? { ...base, state: "done" }
       : { ...base, state: "failed", detail: failure };
   }
-  // A person spoke in it after the task's own runs: the task ended before they did.
-  return hasRuns(view) ? { ...base, state: "done" } : undefined;
+  if (!hasRuns(view)) return undefined;
+  // A person spoke in it after the task's own runs: the task ended before they did, as its own
+  // last run did.
+  const failure = ownEnd == null ? undefined : failureOf(ownEnd);
+  return failure === undefined
+    ? { ...base, state: "done" }
+    : { ...base, state: "failed", detail: failure };
 };
+
+/** Whether the view holds none of the task's runs, though it holds runs: a person's came after. */
+const afterTheTask = (taskId: string, view: ConversationView): boolean =>
+  hasRuns(view) &&
+  !isTasks(view.activeRun, taskId) &&
+  !view.queued.some((queued) => isTasks(queued, taskId)) &&
+  !isTasks(view.lastEnded, taskId);
 
 /** One link's side of the tasks: the frames it hears, and the reports it sends while it lives. */
 export interface TaskLink {
@@ -214,13 +231,21 @@ export const make = Effect.gen(function* () {
       : Option.none(),
   );
 
+  /** How the task stands in `view`, its own last run read when a person's runs came after it. */
+  const reportFor = (taskId: string, view: ConversationView) =>
+    afterTheTask(taskId, view)
+      ? Effect.map(engine.runOf({ conversationId: view.conversationId, taskId }), (own) =>
+          taskReportOf(taskId, view, own?.end),
+        )
+      : Effect.succeed(taskReportOf(taskId, view));
+
   /** The report a frame is answered with; none when it cannot be told now. */
   const take = (task: MateTask) =>
     Effect.gen(function* () {
       const conversationId = taskConversationId(task.id);
       const held = yield* engine.conversation(conversationId);
       // Taken before: said again. One whose brief never went out is sent on below.
-      const told = held === undefined ? undefined : taskReportOf(task.id, held);
+      const told = held === undefined ? undefined : yield* reportFor(task.id, held);
       if (told !== undefined) return Option.some(told);
       const refused = (detail: string) =>
         Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
@@ -281,7 +306,10 @@ export const make = Effect.gen(function* () {
   );
 
   const open: ZeropsTasks["Service"]["open"] = (send) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
+      // The task conversations that moved since this link last read them: a burst of moves (a
+      // streaming answer) is read once, one read at a time.
+      const moved = yield* Queue.unbounded<ConversationId>();
       // What this link last said of each task: a report is sent again only once it moved.
       const said = new Map<string, string>();
       const tell = (report: MateTaskReport | undefined, always = false) => {
@@ -296,16 +324,24 @@ export const make = Effect.gen(function* () {
         if (taskId === undefined) return Effect.void;
         return engine.conversation(id).pipe(
           Effect.flatMap((view) =>
-            view === undefined ? Effect.void : tell(taskReportOf(taskId, view)),
+            view === undefined ? Effect.void : Effect.flatMap(reportFor(taskId, view), tell),
           ),
           Effect.catchTags({ ViewUnreadable: () => Effect.void }),
         );
       };
+      const follow = Stream.runForEach(engine.changes, (id) =>
+        taskIdOfConversation(id) === undefined ? Effect.void : Queue.offer(moved, id),
+      );
+      const read = Effect.forever(
+        Effect.flatMap(Queue.takeAll(moved), (ids) =>
+          Effect.forEach(new Set(ids), reportOf, { discard: true }),
+        ),
+      );
       const first = latest.pipe(
         Effect.flatMap(
           Option.match({
             onNone: () => Effect.void,
-            onSome: ({ taskId, view }) => tell(taskReportOf(taskId, view)),
+            onSome: ({ taskId, view }) => Effect.flatMap(reportFor(taskId, view), tell),
           }),
         ),
       );
@@ -318,7 +354,7 @@ export const make = Effect.gen(function* () {
             ),
           ),
         // Following the record first, so a move between the first read and the stream is heard.
-        run: Effect.all([Stream.runForEach(engine.changes, reportOf), first], {
+        run: Effect.all([follow, read, first], {
           concurrency: "unbounded",
           discard: true,
         }),

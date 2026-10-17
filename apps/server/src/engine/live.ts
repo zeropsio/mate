@@ -329,9 +329,17 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
-        : sql<RunEndRow>`
+        : "providerTurnId" in find
+          ? sql<RunEndRow>`
             SELECT run_id, end_json, end_source, started_at FROM engine_run
             WHERE provider_turn_id = ${find.providerTurnId}
+            ORDER BY ordinal DESC LIMIT 1
+          `
+          : sql<RunEndRow>`
+            SELECT run_id, end_json, end_source, started_at FROM engine_run
+            WHERE conversation_id = ${find.conversationId}
+              AND json_extract(principal_json, '$.kind') = 'task'
+              AND json_extract(principal_json, '$.taskId') = ${find.taskId}
             ORDER BY ordinal DESC LIMIT 1
           `
       ).pipe(

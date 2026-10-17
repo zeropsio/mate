@@ -300,7 +300,12 @@ const fakes = (world: World) =>
         }),
       runOf: (found) =>
         Effect.map(Ref.get(world.wokenRuns), (runs) => {
-          const run = "wakeId" in found ? runs[found.wakeId] : runs[found.providerTurnId];
+          const run =
+            "wakeId" in found
+              ? runs[found.wakeId]
+              : "providerTurnId" in found
+                ? runs[found.providerTurnId]
+                : undefined;
           return run === undefined
             ? undefined
             : {
