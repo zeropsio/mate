@@ -5,7 +5,9 @@
  *
  * Served by the dev server at `/design-automated.html` (`?theme=dark`). Open it at the owner's
  * 1786 × 1000. The menu's automated rows are the sidebar harness's Tea Shop; the New Mate
- * dialog's choice is `/design-newmate.html?automated=missing`.
+ * dialog's choice is `/design-newmate.html?automated=missing`. `?settle=pending` and
+ * `?settle=landed` draw the sources besides GitHub while read and once read, as an unconnected
+ * organization's: their sections stand at the same tops in both.
  *
  * Fixtures only. Nothing here ships — `design-automated.html` is not `index.html`, and no route
  * imports this module.
@@ -302,6 +304,28 @@ function Harness() {
   );
 }
 
+/** The sources besides GitHub while read, or once read, for their sections' tops to be compared. */
+function Settle({ landed }: { readonly landed: boolean }) {
+  const at = (value: unknown) => controls(landed ? known(value) : { state: "reading" });
+  return (
+    <div className="max-w-4xl bg-background p-8 text-foreground">
+      <SettingsSection title="HQ">
+        <SlackSettingsView apps={APPS} controls={at(SLACK_OFF)} manifest={controls(known("{}"))} />
+        <DiscordSettingsView apps={APPS} controls={at({ ...DISCORD_OFF, interactionsUrl: "" })} />
+        <WebhooksSettingsView apps={APPS}>
+          {(app) => <AppWebhooksView controls={at([])} name={app.name} />}
+        </WebhooksSettingsView>
+        <SchedulesSettingsView apps={APPS}>
+          {(app) => <AppSchedulesView controls={at([])} name={app.name} />}
+        </SchedulesSettingsView>
+        <TaskLimitsView controls={at({ minutes: 60, costUsd: null })} />
+      </SettingsSection>
+    </div>
+  );
+}
+
+const settle = params.get("settle");
+
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 
@@ -309,7 +333,7 @@ const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <Harness />
+      {settle === null ? <Harness /> : <Settle landed={settle === "landed"} />}
     </StrictMode>,
   );
 }
