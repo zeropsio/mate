@@ -1,17 +1,29 @@
 /**
- * A task's first message in an automated Mate's conversation, drawn as the issue it brings: the
- * issue's title, where it lives and who opened it, and a way out to it on GitHub. The words the
- * agent got with it are its brief, never the person's, so they are never drawn. What people say
- * about the task afterwards, told to its Mate, is drawn as theirs (`MateTaskMessageRow`).
+ * A task's first message in an automated Mate's conversation, drawn as the task's chain: the
+ * issue's title, where it lives and who opened it with a way out to it on GitHub, then where it
+ * stands now — its Mate at work, waiting for an answer, its change waiting for review, or the pull
+ * request on GitHub it became, linked. That last line holds its room from the first frame, so the
+ * conversation never moves as the task does. The words the agent got with it are its brief, never
+ * the person's, so they are never drawn. What people say about the task afterwards, told to its
+ * Mate, is drawn as theirs (`MateTaskMessageRow`).
  */
 import {
   mateTaskSourceAuthor,
   mateTaskSourceLabel,
   mateTaskSourceLink,
+  type EnvironmentId,
   type MateTaskMessage,
   type MateTaskSource,
 } from "@t3tools/contracts";
-import { ArrowUpRightIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  GitMergeIcon,
+  GitPullRequestClosedIcon,
+  GitPullRequestIcon,
+} from "lucide-react";
+
+import { taskChainLine, type TaskChain } from "~/zerops/automatedMate.logic";
+import { useTaskChain } from "~/zerops/useTaskChain";
 
 import { InlineButton } from "../ui/button";
 
@@ -22,8 +34,35 @@ export function mateTaskCardSource(task: MateTaskSource): string {
   return author === null ? where : `${where} · opened by ${author}`;
 }
 
-export function MateTaskCard({ task }: { readonly task: MateTaskSource }) {
+const UNKNOWN: TaskChain = { kind: "unknown" };
+
+/** The card, for the Mate living in the conversation's environment: its chain read live. */
+export function MateTaskChainCard({
+  task,
+  environmentId,
+}: {
+  readonly task: MateTaskSource;
+  readonly environmentId: EnvironmentId;
+}) {
+  return <MateTaskCard chain={useTaskChain(task, environmentId)} task={task} />;
+}
+
+export function MateTaskCard({
+  task,
+  chain = UNKNOWN,
+}: {
+  readonly task: MateTaskSource;
+  /** Where it stands now (`taskChain`); not known: its line holds its room, empty. */
+  readonly chain?: TaskChain;
+}) {
   const link = mateTaskSourceLink(task);
+  const line = taskChainLine(chain);
+  const PullRequestIcon =
+    chain.kind === "pull-request" && chain.pullRequest.state === "merged"
+      ? GitMergeIcon
+      : chain.kind === "pull-request" && chain.pullRequest.state === "closed"
+        ? GitPullRequestClosedIcon
+        : GitPullRequestIcon;
   return (
     <div
       className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
@@ -35,6 +74,26 @@ export function MateTaskCard({ task }: { readonly task: MateTaskSource }) {
         {link === null ? null : (
           <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
             {link.words}
+            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+          </InlineButton>
+        )}
+      </p>
+      <p
+        className="flex min-w-0 items-center gap-x-2 text-line text-foreground"
+        data-zerops-surface="mate-task-chain"
+      >
+        {/* Its room, held while nothing is known: a line of nothing. */}
+        {line.status === null && line.pullRequest === null ? <span>{"\u00a0"}</span> : null}
+        {line.status === null ? null : <span className="shrink-0">{line.status}</span>}
+        {line.status !== null && line.pullRequest !== null ? (
+          <span aria-hidden="true" className="text-muted-foreground">
+            ·
+          </span>
+        ) : null}
+        {line.pullRequest === null ? null : (
+          <InlineButton render={<a href={line.pullRequest.url} rel="noreferrer" target="_blank" />}>
+            <PullRequestIcon aria-hidden="true" className="me-1 inline size-3.5" />
+            {line.pullRequest.words}
             <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
           </InlineButton>
         )}
