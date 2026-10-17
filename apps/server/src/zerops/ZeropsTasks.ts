@@ -22,7 +22,7 @@
  *   the answer, a follow-up, resumes it.
  * - **Stopped:** a `task-stop` stops every run of the task's and is kept (`ZeropsTaskLedger`): the
  *   task says `stopped` with HQ's reason from then on, takes no more messages and, told again,
- *   never starts.
+ *   never starts; a run the Mate's restart continued on it is stopped as the Mate starts.
  * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end; reaching
  *   either stops its runs and the task says `failed` with the limit, and a follow-up past one
@@ -166,6 +166,8 @@ export const taskQuestionOf = (
 export const DEFAULT_TASK_LIMITS: MateTaskLimits = { minutes: 60, costUsd: null };
 
 const MINUTE_MS = 60_000;
+/** How often a task's run on is seen live, and so how much of it a restart may leave uncounted. */
+const LIVE_EVERY_MS = MINUTE_MS;
 
 /** The limit a task reached, in the plain sentence its source shows. */
 const limitWords = (limit: "minutes" | "cost", limits: MateTaskLimits): string =>
@@ -329,7 +331,10 @@ export interface TaskLink {
   readonly receive: (task: MateTask) => Effect.Effect<void>;
   /** HQ's `task-message` frame: heard once in the task's conversation, then how it stands. */
   readonly message: (taskId: string, message: MateTaskMessage) => Effect.Effect<void>;
-  /** HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason. */
+  /**
+   * HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason — once per
+   * link; a stop told again, or for a task this Mate never took, changes nothing else.
+   */
   readonly stop: (taskId: string, reason: string) => Effect.Effect<void>;
   /** The latest task's report, then each report that moved, for as long as the link runs. */
   readonly run: Effect.Effect<void>;
@@ -402,11 +407,25 @@ export const make = Effect.gen(function* () {
         ended.endedAt !== null &&
         entry?.runMs[ended.id] === undefined
       ) {
-        const ms = Math.max(0, ended.endedAt - ended.startedAt);
-        entry = yield* ledger.update(taskId, (kept) => ({
-          ...kept,
-          runMs: { ...kept.runMs, [ended.id]: ms },
-        }));
+        // A run a restart cut ended at the recovery: it ran until it was last seen live.
+        const seen = entry?.liveAt?.[ended.id] ?? ended.startedAt;
+        const until =
+          ended.end?.kind === "cut-by-restart" ? Math.min(ended.endedAt, seen) : ended.endedAt;
+        const ms = Math.max(0, until - ended.startedAt);
+        entry = yield* ledger.update(taskId, (kept) => {
+          const { [ended.id]: _counted, ...liveAt } = kept.liveAt ?? {};
+          return { ...kept, runMs: { ...kept.runMs, [ended.id]: ms }, liveAt };
+        });
+      }
+      const running = isTasks(view.activeRun, taskId) ? view.activeRun : undefined;
+      if (running !== undefined && running.startedAt !== null) {
+        const seen = entry?.liveAt?.[running.id];
+        if (seen === undefined || now - seen >= LIVE_EVERY_MS) {
+          entry = yield* ledger.update(taskId, (kept) => ({
+            ...kept,
+            liveAt: { ...kept.liveAt, [running.id]: now },
+          }));
+        }
       }
       const own = [view.activeRun, ...view.queued].filter((run): run is ViewRun =>
         isTasks(run, taskId),
@@ -441,12 +460,12 @@ export const make = Effect.gen(function* () {
         );
         return;
       }
-      const live = isTasks(view.activeRun, taskId) && view.activeRun.startedAt !== null;
-      if (!live) return yield* FiberMap.remove(deadlines, taskId);
+      if (running?.startedAt == null) return yield* FiberMap.remove(deadlines, taskId);
+      // Read again when its minutes run out, and each minute before: seen live till then.
       yield* FiberMap.run(
         deadlines,
         taskId,
-        Effect.sleep(Duration.millis(leftMs)).pipe(
+        Effect.sleep(Duration.millis(Math.min(leftMs, LIVE_EVERY_MS))).pipe(
           Effect.andThen(Queue.offer(moved, view.conversationId)),
         ),
       );
@@ -481,6 +500,20 @@ export const make = Effect.gen(function* () {
     Effect.forever(
       Effect.flatMap(Queue.takeAll(moved), (ids) =>
         Effect.forEach(new Set(ids), readMoved, { discard: true }),
+      ),
+    ),
+  );
+  // What the record held as the Mate started, read once after following it: a run its restart
+  // continued on a task people stopped, or past its limits, is stopped before it works on.
+  yield* Effect.forkScoped(
+    Effect.flatMap(engine.conversations, (list) =>
+      Effect.forEach(
+        [
+          ...list.views.flatMap((view) => (atWork(view) ? [view.conversationId] : [])),
+          ...list.unread,
+        ],
+        (id) => (taskIdOfConversation(id) === undefined ? Effect.void : Queue.offer(moved, id)),
+        { discard: true },
       ),
     ),
   );
@@ -665,7 +698,13 @@ export const make = Effect.gen(function* () {
       return {
         receive: (task) => Effect.flatMap(take(task), answer),
         message: (taskId, message) => Effect.flatMap(hear(taskId, message), answer),
-        stop: (taskId, reason) => Effect.flatMap(stopTask(taskId, reason), answer),
+        // Answered only when it moved what this link said: HQ answers a word on a stopped task
+        // with a stop, so one answer each would never end.
+        stop: (taskId, reason) =>
+          Effect.flatMap(
+            stopTask(taskId, reason),
+            Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
+          ),
         // Following the reports first, so a move between the first read and them is heard.
         run: Effect.scoped(
           Effect.gen(function* () {

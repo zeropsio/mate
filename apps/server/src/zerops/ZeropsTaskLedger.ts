@@ -4,7 +4,8 @@
  * how people or its limits ended it. Kept in the server's state directory (`automated-tasks.json`)
  * so a restart neither starts a stopped task again nor forgets what one spent.
  *
- * A write that fails is told and the entry kept in memory: the next change writes it again.
+ * Each change replaces the file whole (a synced sibling renamed over it); a write that fails is
+ * told and the entry kept in memory: the next change writes it again.
  *
  * @module ZeropsTaskLedger
  */
@@ -31,6 +32,11 @@ const TaskEntry = Schema.Struct({
   limitHit: Schema.optionalKey(Schema.Literals(["minutes", "cost"])),
   /** Each ended run of the task's, by its id: how long it ran. */
   runMs: Schema.Record(Schema.String, Schema.Number),
+  /**
+   * When each run of the task's on now was last seen live, by its id, at most a minute apart: a
+   * run a restart cut ends at the recovery, so the time the Mate was down is never its own.
+   */
+  liveAt: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
   /** US dollars in billionths (the usage record's scale 9), summed over the counted turns. */
   costNano: Schema.String,
   /** The provider turns counted in `costNano`: a turn's usage told twice counts once. */
@@ -95,8 +101,23 @@ export const make = Effect.gen(function* () {
     Effect.map((text) => Option.getOrElse(decodeLedgerFile(text), () => ({}))),
     Effect.orElseSucceed(() => ({})),
   );
+  const temp = `${file}.next`;
+  const encoder = new TextEncoder();
+  /**
+   * Replaced whole, never written in place: the next ledger goes to a sibling file, is synced to
+   * disk, then takes the ledger's name, so a crash mid-write leaves the last whole one.
+   */
+  const write = (contents: string) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* fs.makeDirectory(stateDir, { recursive: true });
+        const next = yield* fs.open(temp, { flag: "w" });
+        yield* next.writeAll(encoder.encode(contents));
+        yield* next.sync;
+      }),
+    ).pipe(Effect.andThen(fs.rename(temp, file)));
   return yield* ledgerOver(new Map(Object.entries(kept)), (entries) =>
-    fs.writeFileString(file, encodeLedgerFile(Object.fromEntries(entries))).pipe(
+    write(encodeLedgerFile(Object.fromEntries(entries))).pipe(
       Effect.catch((error) =>
         Effect.logWarning("zerops tasks: the task ledger could not be kept", {
           reason: error.message,

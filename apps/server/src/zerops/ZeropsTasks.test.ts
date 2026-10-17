@@ -36,7 +36,7 @@ import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
-import type { TaskEntry } from "./ZeropsTaskLedger.ts";
+import { emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import { taskConversationId, ZeropsTasks } from "./ZeropsTasks.ts";
 
@@ -138,10 +138,14 @@ const rig = (
     readonly standUpSettled?: boolean;
     /** What the Mate kept of its tasks: shared by two rigs, the same Mate started again. */
     readonly ledger?: Map<string, TaskEntry>;
+    /** The conversations the engine holds as the Mate starts: a restart's record. */
+    readonly held?: ReadonlyArray<ConversationView>;
   } = {},
 ) =>
   Effect.gen(function* () {
-    const views = new Map<ConversationId, ConversationView>();
+    const views = new Map<ConversationId, ConversationView>(
+      (options.held ?? []).map((held) => [held.conversationId, held]),
+    );
     const unreadable = new Set<ConversationId>();
     const assigned: Array<{ conversationId: ConversationId; agent: ConversationAgent }> = [];
     const delivered: Array<Delivered> = [];
@@ -769,6 +773,14 @@ const working = (
     return { ...harness, id };
   });
 
+/** Time passing a minute at a time, each minute's work let run. */
+const minutes = (count: number) =>
+  Effect.forEach(
+    Array.from({ length: count }),
+    () => TestClock.adjust("1 minute").pipe(Effect.andThen(settle)),
+    { discard: true },
+  );
+
 /** The agent's last words, as the view holds them once said whole. */
 const said = (text: string, at = 4) => ({ lastAgent: { text, at } });
 
@@ -965,6 +977,58 @@ describe("people steer a task its Mate works", () => {
   );
 });
 
+describe("a stop always lands", () => {
+  it.effect.each([
+    { title: "people stopped", entry: { stopped: "The issue was closed." } },
+    { title: "that spent its minutes", entry: { runMs: { "task-task-1/r/1": 60 * 60_000 } } },
+  ])("a run the Mate's restart continued on a task $title stops at once", ({ entry }) =>
+    Effect.gen(function* () {
+      const id = taskConversationId("task-1");
+      const ledger = new Map<string, TaskEntry>([["task-1", { ...emptyTaskEntry, ...entry }]]);
+      const continued = {
+        ...run(id, principalOf("task-1"), "running", null, 2),
+        startedAt: 0,
+      };
+      const cut = run(id, principalOf("task-1"), "ended", {
+        kind: "cut-by-restart",
+        continuedBy: null,
+      });
+      const { delivered } = yield* rig({
+        ledger,
+        held: [view(id, { activeRun: continued, lastEnded: cut })],
+      });
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/2`)]);
+    }),
+  );
+
+  it.effect("a stop for a task this Mate never took is answered once and stops nothing", () =>
+    Effect.gen(function* () {
+      const { delivered, link, sent } = yield* rig();
+      yield* link.stop("task-9", "The issue was closed.");
+      yield* link.stop("task-9", "The issue was closed.");
+      assert.deepStrictEqual(delivered, []);
+      assert.deepStrictEqual(sent, [
+        { taskId: "task-9", state: "stopped", detail: "The issue was closed." },
+      ]);
+    }),
+  );
+
+  it.effect("a stop for a task already stopped changes nothing and is not answered again", () =>
+    Effect.gen(function* () {
+      const { delivered, link, sent } = yield* working("task-1");
+      yield* link.stop("task-1", "The issue was closed.");
+      yield* settle;
+      const [stops, said] = [delivered.length, sent.length];
+      yield* link.stop("task-1", "The label was removed.");
+      yield* settle;
+      assert.strictEqual(delivered.length, stops);
+      assert.strictEqual(sent.length, said);
+      assert.strictEqual(sent.at(-1)?.detail, "The issue was closed.");
+    }),
+  );
+});
+
 describe("a task stops at its limits", () => {
   it.effect("a task's run stops at its minutes limit and says failed in a plain sentence", () =>
     Effect.gen(function* () {
@@ -1023,6 +1087,38 @@ describe("a task stops at its limits", () => {
         yield* settle;
         assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/2`)]);
       }),
+  );
+
+  it.effect("the time the Mate was down never counts toward a task's minutes limit", () =>
+    Effect.gen(function* () {
+      const ledger = new Map<string, TaskEntry>();
+      const id = taskConversationId("task-1");
+      // 20 minutes of work, then the Mate goes down with the run on.
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* working("task-1", { ledger });
+          yield* minutes(20);
+        }),
+      );
+      yield* TestClock.adjust("45 minutes");
+      // Back up: its recovery ended the run now, and continued the task in a new one.
+      const back = 65 * 60_000;
+      const cut = {
+        ...run(id, principalOf("task-1"), "ended", { kind: "cut-by-restart", continuedBy: null }),
+        startedAt: 0,
+        endedAt: back,
+      };
+      const again = yield* rig({ ledger });
+      yield* Effect.forkScoped(again.link.run);
+      yield* settle;
+      const next = { ...run(id, principalOf("task-1"), "running", null, 2), startedAt: back };
+      yield* again.move(id, view(id, { activeRun: next, lastEnded: cut }));
+      yield* settle;
+      yield* minutes(39);
+      assert.deepStrictEqual(stopsOf(again.delivered), []);
+      yield* minutes(1);
+      assert.deepStrictEqual(stopsOf(again.delivered), [RunId.make(`${id}/r/2`)]);
+    }),
   );
 
   it.effect(
