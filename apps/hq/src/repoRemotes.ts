@@ -135,6 +135,16 @@ export class Remotes extends Context.Service<
       token: Redacted.Redacted,
       branch?: string,
     ) => Effect.Effect<{ readonly ci?: HqTokenCiAccess }>;
+    /**
+     * The repository's token for a call on its host's API that pushes nothing — an issue's comment,
+     * a webhook (`intake.ts`): the custodian still a member, the token not known invalid. No probe.
+     */
+    readonly tokenOf: (
+      ref: RemoteRef,
+    ) => Effect.Effect<
+      { readonly remote: RemoteRecord; readonly token: Redacted.Redacted },
+      RemoteError
+    >;
   }
 >()("@t3tools/hq/repoRemotes/Remotes") {}
 
@@ -527,6 +537,19 @@ export const repoRemotesLayer = Layer.effect(
             }),
           ),
         );
+      }),
+      tokenOf: Effect.fn("Remotes.tokenOf")(function* (ref: RemoteRef) {
+        const row = yield* lookup(ref);
+        if (!row) return yield* new RemoteRefused({ reason: "no_remote" });
+        yield* custody(ref, row);
+        if (row.invalid_since !== null)
+          return yield* new RemoteRefused({ reason: "credential_invalid" });
+        const token =
+          row.sealed !== null && row.key_id !== null
+            ? keys.openRemote(ref.appId, ref.repo, { sealed: row.sealed, keyId: row.key_id })
+            : undefined;
+        if (!token) return yield* new RemoteRefused({ reason: "key_unavailable" });
+        return { remote: record(row), token };
       }),
       forUse: Effect.fn("Remotes.forUse")(function* (ref: RemoteRef, branch: string) {
         if (!branchValid(branch)) return yield* new RemoteRefused({ reason: "bad_branch" });

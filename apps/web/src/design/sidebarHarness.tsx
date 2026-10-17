@@ -287,6 +287,31 @@ const DECISIONS = new Map<string, MateDecision>([
   ],
 ]);
 
+/** An application's automated Mate, on the task it names, or waiting for one. */
+const automated = (
+  appId: string,
+  appName: string,
+  task: { readonly number: number; readonly title: string } | null,
+): HqPlacement => ({
+  appId,
+  appName,
+  kind: "mate",
+  mate: {
+    face: "",
+    automated: true,
+    task:
+      task === null
+        ? null
+        : {
+            id: `task-${String(task.number)}`,
+            repo: "acme/tea-shop",
+            number: task.number,
+            title: task.title,
+            url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
+          },
+  },
+});
+
 const LINKS = group("links", "Links");
 const SHOP = group("shop", "Shop");
 const NOTES = group("notes", "Notes");
@@ -356,12 +381,64 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
   candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
+  // An application's automated Mates: one at work on a task from GitHub, one whose task's change
+  // waits for review, one waiting for its next.
+  candidate(
+    "tea-nova",
+    "Nova",
+    automated("tea-shop", "Tea Shop", { number: 12, title: "Fix the checkout total" }),
+  ),
+  candidate(
+    "tea-rio",
+    "Rio",
+    automated("tea-shop", "Tea Shop", { number: 7, title: "Show the tea's origin" }),
+  ),
+  candidate("tea-sol", "Sol", automated("tea-shop", "Tea Shop", null)),
+  candidate("tea-ida", "Ida", group("tea-shop", "Tea Shop").mate()),
+
   // A name longer than any width here, and a project that is only a Mate:
   // nothing has been set up for it to travel to yet.
   candidate("tokens-ada", "Ada", LONG.mate()),
 ];
 
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
+  [
+    "tea-nova",
+    {
+      // On its task: the brief it got is never its line; the task is.
+      ...activity({
+        id: "tea-nova",
+        task: "Work issue #12 in the project, check it, then open a change for review.",
+        subject: "Work issue #12 in the project, check it, then open a change for review.",
+        hours: 0.05,
+        face: "working",
+        kind: "working",
+      }),
+      liveStep: { words: "Run the checkout tests" },
+    },
+  ],
+  [
+    "tea-rio",
+    activity({
+      id: "tea-rio",
+      task: "Work issue #7 in the project, check it, then open a change for review.",
+      subject: "Work issue #7 in the project, check it, then open a change for review.",
+      snippet: "Opened a change for review: Show the tea's origin on its page.",
+      hours: 1,
+      face: "idle",
+    }),
+  ],
+  [
+    "tea-sol",
+    activity({
+      id: "tea-sol",
+      task: "Work issue #9 in the project, check it, then open a change for review.",
+      subject: "Work issue #9 in the project, check it, then open a change for review.",
+      snippet: "Opened a change for review: Show the tea's origin on its page.",
+      hours: 3,
+      face: "idle",
+    }),
+  ],
   [
     "links-enzo",
     {

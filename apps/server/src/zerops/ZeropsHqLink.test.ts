@@ -169,6 +169,10 @@ const rig = (
     const hq = { refusing: false, tickets: 0 };
     /** What HQ relayed of the project's access, as the link handed it on. */
     const relayed: Array<unknown> = [];
+    /** What the link handed `ZeropsAutomation`: HQ's word on the Mate, and its keys. */
+    const automation: Array<unknown> = [];
+    /** The tasks the link handed on; each is answered `accepted`, and the latest is `task-0`. */
+    const taken: Array<string> = [];
     const http = HttpClient.make((request) =>
       Effect.sync(() => {
         asked.push(request.headers.authorization);
@@ -215,6 +219,20 @@ const rig = (
         Effect.sync(() => {
           relayed.push(access);
         }),
+      automation: {
+        heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
+        keysHeard: (keys) => Effect.sync(() => void automation.push({ keys })),
+      },
+      tasks: {
+        open: (send) =>
+          Effect.succeed({
+            receive: (task) =>
+              Effect.sync(() => void taken.push(task.id)).pipe(
+                Effect.andThen(send({ taskId: task.id, state: "accepted" })),
+              ),
+            run: send({ taskId: "task-0", state: "done" }).pipe(Effect.andThen(Effect.never)),
+          }),
+      },
       reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -243,6 +261,8 @@ const rig = (
       enrollmentRead: Deferred.await(enrollmentRead),
       reads,
       relayed,
+      automation,
+      taken,
     };
   });
 
@@ -376,6 +396,96 @@ describe("ZeropsHqLink", () => {
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
+  it.live("hands on HQ's word that the Mate is automated, and the organization's keys", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, automation } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const automated: MateState = { ...STATE, automated: true };
+        socket.hear({ type: "state", mate: automated });
+        const keys = [{ env: "NEBIUS_API_KEY", value: ["nb", "acme", "fixture"].join("-") }];
+        socket.hear({ type: "provider-keys", keys });
+        yield* until(() => automation[1]);
+        assert.deepStrictEqual(automation, [{ heard: automated }, { keys }]);
+      }),
+    ),
+  );
+
+  it.live("works a task HQ tells once HQ said who the Mate is, and sends how it stands", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, taken } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        const task = {
+          id: "task-1",
+          source: {
+            kind: "github-issue",
+            repo: "acme/tea-shop",
+            number: 42,
+            url: "https://github.com/acme/tea-shop/issues/42",
+            title: "The cart forgets its teas",
+            author: null,
+          },
+          body: "",
+        };
+        // Told before HQ's state, it is held until the Mate knows whether it is automated.
+        socket.hear({ type: "task", task });
+        // HQ's frames are heard in order: once the ping is answered, the task was heard.
+        socket.hear({ type: "ping" });
+        yield* until(() => socket.sent.find((message) => message.type === "pong"));
+        assert.deepStrictEqual(taken, []);
+        assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
+        socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+        yield* until(() => (taken.length > 0 ? taken : undefined));
+        const reports = yield* until(() => {
+          const found = socket.sent.filter((message) => message.type === "task-state");
+          return found.length >= 2 ? found : undefined;
+        });
+        assert.sameDeepMembers(reports, [
+          { type: "task-state", report: { taskId: "task-0", state: "done" } },
+          { type: "task-state", report: { taskId: "task-1", state: "accepted" } },
+        ]);
+        assert.deepStrictEqual(taken, ["task-1"]);
+      }),
+    ),
+  );
+
+  it.live("sends no task report on a link whose HQ never said the Mate is automated", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { enrollment, sockets, until, taken } = yield* rig({ everyMs: 10 });
+        yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
+        const socket = yield* until(() => sockets[0]);
+        socket.emit("open");
+        // An HQ from before automated Mates: its state names no flag, and it never hears of tasks.
+        socket.hear({ type: "state", mate: STATE });
+        socket.hear({
+          type: "task",
+          task: {
+            id: "task-1",
+            source: {
+              kind: "github-issue",
+              repo: "acme/tea-shop",
+              number: 42,
+              url: "https://github.com/acme/tea-shop/issues/42",
+              title: "The cart forgets its teas",
+              author: null,
+            },
+            body: "",
+          },
+        });
+        yield* until(() => (taken.length > 0 ? taken : undefined));
+        socket.hear({ type: "ping" });
+        yield* until(() => socket.sent.find((message) => message.type === "pong"));
+        assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
+      }),
+    ),
+  );
+
   it.live("keeps HQ's state with the application and the changes it carries", () =>
     Effect.scoped(
       Effect.gen(function* () {

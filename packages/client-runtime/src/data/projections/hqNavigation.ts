@@ -108,6 +108,8 @@ function mateOf(
     setupMarker: mate.setupMarker,
     keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
+    ...(mate.automated === undefined ? {} : { automated: mate.automated }),
+    ...(mate.task === undefined ? {} : { task: mate.task }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).
     ...(signers === undefined || Object.keys(signers).length === 0 ? {} : { signers }),
   };
@@ -153,6 +155,7 @@ function structureOf(
       ...(app.can === undefined ? {} : { can: app.can }),
       ...(app.contents === undefined ? {} : { contents: app.contents }),
       ...(app.births === undefined ? {} : { births: app.births }),
+      ...(app.intake === undefined ? {} : { intake: app.intake }),
       ...environmentsOfApp(app.environments),
       projects: (
         app.projectIds ??

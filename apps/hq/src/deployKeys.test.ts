@@ -23,6 +23,10 @@ import {
   sealToken,
   sealRemoteToken,
   openRemoteToken,
+  sealIntakeSecret,
+  openIntakeSecret,
+  sealAiKey,
+  openAiKey,
 } from "./deployKeys.ts";
 import { Leader, leaderLayer } from "./leader.ts";
 import { treeMigrations } from "./migrationFiles.ts";
@@ -114,6 +118,26 @@ describe("a sealed repository token", () => {
       openRemoteToken(key, "app-a", "web", sealToken(key, "app-a/web", token)),
       undefined,
     );
+  });
+});
+
+describe("a sealed intake secret and organization API key", () => {
+  it("An intake's webhook secret and an organization's API key open only on their own rows.", () => {
+    const key = testKey(TEST_KEY_SECRET);
+    const value = Redacted.make(["intake", "secret", "test"].join("-"));
+    const secret = sealIntakeSecret(key, "app-a", "hook-1", value);
+    assert.strictEqual(
+      Redacted.value(openIntakeSecret(key, "app-a", "hook-1", secret)!),
+      "intake-secret-test",
+    );
+    assert.strictEqual(openIntakeSecret(key, "app-b", "hook-1", secret), undefined);
+    assert.strictEqual(openIntakeSecret(key, "app-a", "hook-2", secret), undefined);
+    assert.strictEqual(openRemoteToken(key, "app-a", "hook-1", secret), undefined);
+    const apiKey = sealAiKey(key, "nebius", value);
+    assert.strictEqual(Redacted.value(openAiKey(key, "nebius", apiKey)!), "intake-secret-test");
+    assert.strictEqual(openAiKey(key, "other", apiKey), undefined);
+    assert.strictEqual(openAiKey(key, "nebius", secret), undefined);
+    assert.strictEqual(openAiKey(testKey(OTHER_KEY_SECRET), "nebius", apiKey), undefined);
   });
 });
 

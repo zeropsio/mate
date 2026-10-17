@@ -255,6 +255,7 @@ const remotes = (refused?: RemoteRefused) =>
           : Effect.fail(refused),
       invalidate: () => Effect.void,
       ciAccess: () => Effect.die("not used by CI"),
+      tokenOf: () => Effect.die("not used by CI"),
       connect: () => Effect.die("not used by CI"),
       updateAddress: () => Effect.die("not used by CI"),
       disconnect: () => Effect.die("not used by CI"),

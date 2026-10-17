@@ -809,8 +809,11 @@ export type PressRegistration = {
       readonly kind: "mate";
       /** The project's group: its application in HQ. */
       readonly groupId: string;
-      /** Its face as picked; none where the press gives it its name's own. */
-      readonly mate: { readonly face: ZeropsMateFace | undefined };
+      /**
+       * Its face as picked — none where the press gives it its name's own — and whether it is made
+       * automated.
+       */
+      readonly mate: { readonly face: ZeropsMateFace | undefined; readonly automated?: true };
       /**
        * The person pressing asks for its stand-up, in its attach; one that closes a birth intent
        * takes the intent's ask instead.
@@ -882,6 +885,7 @@ export function pressRegistration(
             face:
               registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
             standUp: registration.standUp,
+            ...(registration.mate.automated === true ? { automated: true as const } : {}),
             ...service,
           },
           ...(registration.intent === undefined ? {} : { birth: registration.intent }),

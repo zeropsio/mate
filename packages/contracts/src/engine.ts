@@ -32,6 +32,7 @@ import {
 import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
+import { MateTaskSource } from "./mateTask.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -168,11 +169,16 @@ export const CREW_OWNER_ID: ConversationId = ConversationId.make("crew/main");
 /** Whose authority a run or an answer carries (D6). */
 export const Principal = forwardCompatibleUnion({
   key: "kind",
-  known: ["person", "crew", "standup", "engine", "unknown"],
+  known: ["person", "crew", "standup", "task", "engine", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("person"), subject: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("standup"), startedBy: Schema.String }),
+    /**
+     * A task from outside an automated Mate took (`MateTask`, by HQ's id): nobody is at the
+     * keyboard, and its runs go on the organization's key, never on a person's sign-in.
+     */
+    Schema.Struct({ kind: Schema.Literal("task"), taskId: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("engine") }),
   ],
   fallback: unknownKind,
@@ -487,6 +493,11 @@ const itemBodyFields = {
      * is never the conversation's subject. Absent: typed.
      */
     fromPanel: Schema.optionalKey(Schema.Literal(true)),
+    /**
+     * Sent for a task from outside (`MateTask`) on an automated Mate: the issue it brings, drawn as
+     * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
+     */
+    task: Schema.optionalKey(MateTaskSource),
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
       state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),

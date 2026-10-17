@@ -2568,6 +2568,137 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect(
+    "an OpenCode turn reports the tokens and provider model it ran on, its subagents' included, once",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("thread-turn-usage");
+        const sessionID = "http://127.0.0.1:9999/session";
+        const step = (
+          session: string,
+          messageID: string,
+          id: string,
+          tokens: { input: number; output: number; reasoning: number; read: number },
+          cost: number,
+        ) => ({
+          id: `evt-${id}`,
+          type: "message.part.updated",
+          properties: {
+            sessionID: session,
+            time: 0,
+            part: {
+              id,
+              sessionID: session,
+              messageID,
+              type: "step-finish",
+              reason: "stop",
+              cost,
+              tokens: {
+                total: tokens.input + tokens.read + tokens.output + tokens.reasoning,
+                input: tokens.input,
+                output: tokens.output,
+                reasoning: tokens.reasoning,
+                cache: { read: tokens.read, write: 0 },
+              },
+            },
+          },
+        });
+        const assistant = (session: string, id: string, modelID: string) => ({
+          id: `evt-${id}`,
+          type: "message.updated",
+          properties: {
+            sessionID: session,
+            info: { id, sessionID: session, role: "assistant", providerID: "nebius", modelID },
+          },
+        });
+        const parentStep = step(
+          sessionID,
+          "msg_a",
+          "prt_1",
+          { input: 1000, output: 200, reasoning: 50, read: 300 },
+          0.0012,
+        );
+        const events = [
+          {
+            id: "evt-busy",
+            type: "session.status",
+            properties: { sessionID, status: { type: "busy" } },
+          },
+          assistant(sessionID, "msg_a", "moonshotai/Kimi-K2.7-Code"),
+          parentStep,
+          parentStep,
+          {
+            id: "evt-child",
+            type: "session.created",
+            properties: { sessionID: "ses_child", info: { id: "ses_child", parentID: sessionID } },
+          },
+          assistant("ses_child", "msg_c", "zai-org/GLM-5.3"),
+          step("ses_child", "msg_c", "prt_2", { input: 40, output: 10, reasoning: 0, read: 0 }, 0),
+          {
+            id: "evt-idle",
+            type: "session.status",
+            properties: { sessionID, status: { type: "idle" } },
+          },
+        ];
+        const gates = events.map(() => promiseWithResolvers<unknown>());
+        runtimeMock.state.subscribedEvents = gates.map((gate) => gate.promise);
+        runtimeMock.state.sessionStatusImplementation = async () => ({ data: {} });
+        const collected = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => event.threadId === threadId),
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        const turn = yield* adapter.sendTurn({
+          threadId,
+          input: "Fix the tea shop's checkout.",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "nebius/moonshotai/Kimi-K2.7-Code",
+          ),
+        });
+        events.forEach((event, index) => gates[index]!.resolve(event));
+        yield* advanceTestClock(1_000);
+        const usage = Array.from(yield* Fiber.join(collected)).filter(
+          (event) => event.type === "turn.usage.completed",
+        );
+        NodeAssert.deepEqual(
+          usage.map((event) =>
+            event.type === "turn.usage.completed"
+              ? {
+                  turnId: event.turnId,
+                  nativeTurnId: event.payload.nativeTurnId,
+                  models: event.payload.models.map((line) => [
+                    line.model,
+                    line.components.uncachedInput,
+                    line.components.cachedInput,
+                    line.components.output,
+                    line.components.reasoning,
+                  ]),
+                }
+              : undefined,
+          ),
+          [
+            {
+              turnId: turn.turnId,
+              nativeTurnId: turn.turnId,
+              models: [
+                ["nebius/moonshotai/Kimi-K2.7-Code", "1000", "300", "250", "50"],
+                ["nebius/zai-org/GLM-5.3", "40", "0", "10", "0"],
+              ],
+            },
+          ],
+        );
+        yield* adapter.stopSession(threadId);
+      }),
+  );
+
   it.effect("uses polled busy status to admit output after a stopped turn", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;

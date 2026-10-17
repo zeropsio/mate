@@ -489,6 +489,40 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_structure_writer",
     ],
   ],
+  // Where an application's automated Mates take issues from, and the organization's API keys
+  // they run on: its owners and admins, who write the structure.
+  keep_intake: [
+    ["org owner", { orgRole: "OWNER" }, { verb: "keep_intake", target: null }, "allow"],
+    ["org admin", { orgRole: "ADMIN" }, { verb: "keep_intake", target: null }, "allow"],
+    [
+      "org Basic user",
+      { orgRole: "BASIC_USER" },
+      { verb: "keep_intake", target: null },
+      "not_structure_writer",
+    ],
+    [
+      "an admin of one project",
+      P_ADMIN,
+      { verb: "keep_intake", target: null },
+      "not_structure_writer",
+    ],
+  ],
+  keep_ai_key: [
+    ["org owner", { orgRole: "OWNER" }, { verb: "keep_ai_key", target: null }, "allow"],
+    ["org admin", { orgRole: "ADMIN" }, { verb: "keep_ai_key", target: null }, "allow"],
+    [
+      "org Basic user",
+      { orgRole: "BASIC_USER" },
+      { verb: "keep_ai_key", target: null },
+      "not_structure_writer",
+    ],
+    [
+      "an admin of one project",
+      P_ADMIN,
+      { verb: "keep_ai_key", target: null },
+      "not_structure_writer",
+    ],
+  ],
   // An application with nothing in it, which a stopped New project leaves (E2E 2026-10-03, F5):
   // whoever writes the structure removes it, as they make and rename one.
   delete_app: [

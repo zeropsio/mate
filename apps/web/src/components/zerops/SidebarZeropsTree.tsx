@@ -1,4 +1,5 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
@@ -141,6 +142,7 @@ import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarComingEnds } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { MateAutomatedMark } from "./MateAutomatedMark";
 import { MateOwnerMark } from "./MateOwnerMark";
 import {
   activityOfNow,
@@ -168,7 +170,7 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { hqDown, hqPlacementsAtom } from "~/state/zerops";
+import { appTasksWaitingAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
@@ -291,6 +293,8 @@ import {
   mateRowHeldLines,
   mateAsker,
   mateRowSecond,
+  mateAutomation,
+  tasksWaitingWords,
   pendingBornLine,
   type MateBornLine,
   type MateRowAskLine,
@@ -3456,6 +3460,8 @@ function useMateRowState<T extends RosterCandidate>({
     (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
       ? owner.name.split(" ")[0]
       : undefined;
+  // What is read of the organization's key: an automated Mate at rest may wait for it.
+  const automatedKey = useAutomatedKey();
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
     view,
@@ -3468,6 +3474,7 @@ function useMateRowState<T extends RosterCandidate>({
     asks,
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
+    automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
   });
   const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // A new ask rises into the row's second line as the person sets it; the
@@ -4013,6 +4020,7 @@ function MateRowView<T extends RosterCandidate>({
               {kid || (project !== undefined && !sameName(project, name)) ? null : (
                 <ProjectNameMarks />
               )}
+              {candidate.project.hq?.mate?.automated === true ? <MateAutomatedMark /> : null}
               <MateNameMarks mateProjectId={candidate.project.id} />
               {crewFacts === undefined ? null : <SidebarCrewMinis facts={crewFacts} />}
               {actions?.muted === true ? (
@@ -4249,14 +4257,35 @@ interface RowMarksValue {
 const NO_MATES: ReadonlySet<string> = new Set();
 const RowMarks = createContext<RowMarksValue>({ review: undefined, mates: NO_MATES });
 
-/** After a project's name: what waits for production, and changes no Mate's row here marks. */
+/**
+ * After a project's name: the tasks waiting for its automated Mates, what waits for production,
+ * and changes no Mate's row here marks.
+ */
 function ProjectNameMarks() {
   const { review, mates } = useContext(RowMarks);
   if (review === undefined) return null;
   const items = review.items.filter(
     (item) => item.mateProjectId === undefined || !mates.has(item.mateProjectId),
   );
-  return <ProjectReviewMarks {...review} items={items} />;
+  return (
+    <>
+      <ProjectTasksWaiting appId={review.groupId} />
+      <ProjectReviewMarks {...review} items={items} />
+    </>
+  );
+}
+
+/** "3 tasks waiting" for the application's automated Mates, only while any wait. */
+function ProjectTasksWaiting({ appId }: { readonly appId: string }) {
+  const words = tasksWaitingWords(useAtomValue(appTasksWaitingAtom(appId)));
+  return words === undefined ? null : (
+    <span
+      className="shrink-0 truncate text-xs text-muted-foreground"
+      data-zerops-surface="sidebar-project-tasks-waiting"
+    >
+      {words}
+    </span>
+  );
 }
 
 /** After a Mate's name: its own changes waiting on a review. */
@@ -4336,6 +4365,18 @@ function MateSecondLine({
         >
           {/* the time slot says when it picks up; this line says why, once */}
           At its usage limit
+        </span>
+      );
+    case "task":
+      return (
+        <span
+          className={cn(
+            "menu-line2 truncate",
+            second.on ? "text-sidebar-foreground" : "text-muted-foreground",
+          )}
+          data-zerops-surface="sidebar-mate-task"
+        >
+          {second.text}
         </span>
       );
     case "change":

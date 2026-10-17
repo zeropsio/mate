@@ -935,6 +935,37 @@ describe("a Mate with no owner, or nobody signed in", () => {
     expect(html.includes('data-zerops-sign-in="yours"')).toBe(yours);
   });
 
+  it.each([
+    { case: "waiting for a task", task: null, says: "Waiting for a task" },
+    {
+      case: "on a task",
+      task: {
+        id: "t1",
+        repo: "acme/tea-shop",
+        number: 12,
+        title: "Fix the checkout total",
+        url: "https://github.com/acme/tea-shop/issues/12",
+      },
+      // At rest on it: HQ keeps it on its task while the task's change waits for review.
+      says: "#12 Fix the checkout total · waiting for review",
+    },
+  ])(
+    "an automated Mate wears its mark, names its task and never asks for a sign-in: $case",
+    ({ task, says }) => {
+      session.viewer = "u-petra";
+      const html = render(
+        [mate({ standupRequestedBy: "u-petra", automated: true, task }, { group: "connected" })],
+        { getOwner: () => undefined },
+      );
+      expect(html).toContain('aria-label="Automated: takes tasks from GitHub issues"');
+      expect(
+        /<span[^>]*data-zerops-surface="sidebar-mate-task"[^>]*>([^<]*)<\/span>/u.exec(html)?.[1],
+      ).toBe(says);
+      expect(line(html)).toBeNull();
+      expect(html.includes('data-zerops-sign-in="yours"')).toBe(false);
+    },
+  );
+
   it("seats nobody's Mate on a dashed ring, and says so in words, never as a person", () => {
     const html = render([mate(null, { group: "connected" })], { getOwner: () => undefined });
     expect(seat(html)).toBe("nobody");

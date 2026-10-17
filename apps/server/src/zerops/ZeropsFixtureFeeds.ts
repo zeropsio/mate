@@ -51,6 +51,7 @@ import {
 } from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsCrewProposals from "./ZeropsCrewProposals.ts";
+import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -569,12 +570,24 @@ export const FIXTURE_ATTENTION: MateAttention = {
   truncated: false,
 };
 
+/** A fixture scene has no HQ to say a Mate is automated: it is an ordinary one. */
+const automationFixtureLayer = Layer.succeed(
+  ZeropsAutomation,
+  ZeropsAutomation.of({
+    automated: Effect.succeed(false),
+    keySet: Effect.succeed(false),
+    heard: () => Effect.void,
+    keysHeard: () => Effect.void,
+  }),
+);
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   const login = agentLoginLayer(scene);
   // The live gate, over this scene's agents and signers — a fixture admits
   // and refuses turns exactly as a live Mate would on the same facts.
   const admission = ZeropsTurnAdmission.layer.pipe(
+    Layer.provide(automationFixtureLayer),
     Layer.provide(login),
     Layer.provide(auth),
     Layer.provide(loginsFixtureLayer),
@@ -585,6 +598,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     lifecycleLayer(scene),
     login.pipe(Layer.provideMerge(auth)),
     admission,
+    automationFixtureLayer,
     signOutFixtureLayer,
     loginsFixtureLayer,
     browserStreamLayer(),

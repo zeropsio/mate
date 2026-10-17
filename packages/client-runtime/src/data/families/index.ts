@@ -16,6 +16,7 @@ import { mateResourceTelemetryHistoryFamily } from "./mateResourceTelemetryHisto
 import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
+import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
 import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
 import { mateFilesystemFamily } from "./mateFilesystem.ts";
 import { matePullRequestFamily } from "./matePullRequest.ts";
@@ -127,6 +128,9 @@ export const FAMILIES = defineFamilies([
   mateVcsFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,
+  hqAiKeysFamily,
+  hqAiKeyRequestFamily,
+  hqIntakeRevealFamily,
   mateAssetUrlFamily,
   mateFilesystemFamily,
   matePullRequestFamily,

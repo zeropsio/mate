@@ -329,3 +329,101 @@ export function makeCodexTurnUsage() {
     ];
   };
 }
+
+/** OpenCode's meters: `input` excludes both cache counts and `output` excludes `reasoning`. */
+function openCodeComponents(tokens: Record<string, unknown> | undefined): UsageComponents {
+  const cache = record(tokens?.cache);
+  const output = quantity(tokens?.output),
+    reasoning = quantity(tokens?.reasoning);
+  return normalizeComponents({
+    uncachedInput: quantity(tokens?.input),
+    cachedInput: quantity(cache?.read),
+    cacheCreation: quantity(cache?.write),
+    output:
+      output !== null && reasoning !== null ? String(BigInt(output) + BigInt(reasoning)) : null,
+    reasoning,
+    inclusiveTotal: quantity(tokens?.total),
+  });
+}
+const addCost = (a: UsageNativeCost | null, b: UsageNativeCost | null) =>
+  a === null ? b : b === null ? a : { ...a, amount: String(BigInt(a.amount) + BigInt(b.amount)) };
+interface OpenCodeStep {
+  readonly messageId: string;
+  readonly components: UsageComponents;
+  readonly nativeCost: UsageNativeCost | null;
+}
+/**
+ * Each step-finish part is one model call's exact meter; an assistant message's own `tokens`
+ * hold only its last step. Steps of the session and its subagents count once, at the turn's end.
+ */
+export function makeOpenCodeTurnUsage() {
+  const modelByMessage = new Map<string, string>();
+  const pending = new Map<string, OpenCodeStep>();
+  const counted = new Set<string>();
+  return {
+    observe: (event: unknown): void => {
+      const envelope = record(event);
+      const properties = record(envelope?.properties);
+      if (envelope?.type === "message.updated") {
+        const info = record(properties?.info);
+        const id = text(info?.id),
+          provider = text(info?.providerID),
+          model = text(info?.modelID);
+        if (info?.role === "assistant" && id && provider && model)
+          modelByMessage.set(id, `${provider}/${model}`);
+        return;
+      }
+      if (envelope?.type !== "message.part.updated") return;
+      const part = record(properties?.part);
+      const id = text(part?.id),
+        messageId = text(part?.messageID);
+      if (part?.type !== "step-finish" || !id || !messageId || counted.has(id)) return;
+      const charge = cost(part.cost, "provider-reported-estimate");
+      pending.set(id, {
+        messageId,
+        components: openCodeComponents(record(part.tokens)),
+        // OpenCode reports 0 for a model it has no price for: unknown, never free.
+        nativeCost: charge === null || charge.amount === "0" ? null : charge,
+      });
+    },
+    complete: (
+      nativeThreadId: string,
+      nativeTurnId: string,
+    ): ReadonlyArray<TurnUsageCompletedPayload> => {
+      const lines = new Map<string | null, UsageModelLine>();
+      for (const [id, step] of pending) {
+        counted.add(id);
+        const model = modelByMessage.get(step.messageId) ?? null;
+        const line = lines.get(model);
+        lines.set(
+          model,
+          line
+            ? {
+                model,
+                components: add(line.components, step.components),
+                nativeCost: addCost(line.nativeCost, step.nativeCost),
+              }
+            : { model, components: step.components, nativeCost: step.nativeCost },
+        );
+      }
+      pending.clear();
+      const models = [...lines.values()]
+        .map((line) => ({ ...line, components: normalizeComponents(line.components) }))
+        .filter((line) => hasTokens(line.components))
+        .sort((a, b) => ((a.model ?? "") < (b.model ?? "") ? -1 : 1));
+      if (models.length === 0) return [];
+      return [
+        completedUsage({
+          nativeThreadId,
+          nativeTurnId,
+          models,
+          nativeCost: models.reduce<UsageNativeCost | null>(
+            (total, line) => addCost(total, line.nativeCost),
+            null,
+          ),
+          parentId: null,
+        }),
+      ];
+    },
+  };
+}

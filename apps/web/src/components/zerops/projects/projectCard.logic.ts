@@ -591,6 +591,8 @@ export function cardSecondWords(input: {
       return second.mine
         ? { text: second.title, tone: "ink" }
         : muted(`${second.title} · in review`);
+    case "task":
+      return second.on ? { text: second.text, tone: "ink" } : muted(second.text);
     case "ask":
       if (askLine === undefined || askLine.kind === "sign-in") return muted(undefined);
       if (askLine.kind === "nothing-asked") return muted(NOTHING_ASKED_YET);

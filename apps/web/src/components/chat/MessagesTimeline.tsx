@@ -231,6 +231,7 @@ import {
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
+import { MateTaskCard } from "../zerops/MateTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
@@ -2837,6 +2838,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
+      {row.kind === "task-card" ? <MateTaskCard task={row.task} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}

@@ -87,6 +87,18 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
 export const hqNavigationAtom = shownCanonicalHqMenuNavigationAtom;
 export type HqNavigationView = CanonicalHqNavigationRead & { readonly orgId: string | null };
 
+/**
+ * How many tasks wait for an application's automated Mates to be free, as HQ's navigation says
+ * it: 0 where it takes none, or HQ has not said. One number per application, so a row redraws
+ * only when its own count moves.
+ */
+export const appTasksWaitingAtom = Atom.family((appId: string) =>
+  Atom.make(
+    (get): number =>
+      get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.intake?.waiting ?? 0,
+  ).pipe(Atom.withLabel(`zerops:tasks-waiting:${appId}`)),
+);
+
 /** HQ stopped answering what it answered: catching up, refused, or its retries capped. */
 export const hqDown = (
   view: Pick<HqNavigationRead, "live" | "reconnecting" | "capped" | "refusal">,

@@ -19,6 +19,8 @@ import {
   mateRowHeldLines,
   mateRowPropsEqual,
   mateRowSecond,
+  mateAutomation,
+  tasksWaitingWords,
   type MateRowView,
   ownerBadge,
   mateRowAskLine,
@@ -2002,6 +2004,167 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
     { case: "on its way off Zerops", over: { deleting: true }, line: { kind: "deleting" } },
     { case: "its setup being finished", over: { finishing: true }, line: { kind: "finishing" } },
     { case: "outside this HQ", over: { outsideHq: true }, line: { kind: "outside" } },
+  ] as const)("$case", ({ over, line }) => {
+    expect(second(over as Partial<Parameters<typeof mateRowSecond>[0]>)).toEqual(line);
+  });
+});
+
+describe("tasksWaitingWords — the tasks waiting for an application's Mates", () => {
+  it.each([
+    [0, undefined],
+    [-1, undefined],
+    [1, "1 task waiting"],
+    [3, "3 tasks waiting"],
+  ] as const)("%i waiting reads %s", (waiting, words) => {
+    expect(tasksWaitingWords(waiting)).toBe(words);
+  });
+});
+
+describe("mateAutomation — an automated Mate as its HQ record says it", () => {
+  it.each([
+    { case: "an ordinary Mate", mate: { face: "" }, expected: undefined },
+    { case: "no record yet", mate: undefined, expected: undefined },
+    { case: "automated, no task", mate: { automated: true }, expected: { task: null } },
+    {
+      case: "automated, on a task",
+      mate: {
+        automated: true,
+        task: { id: "t1", repo: "acme/tea-shop", number: 12, title: "Fix it", url: "u" },
+      },
+      expected: { task: { number: 12, title: "Fix it" } },
+    },
+  ])("$case", ({ mate, expected }) => {
+    expect(mateAutomation(mate)).toEqual(expected);
+  });
+
+  it("carries what is read of the organization's key to an automated Mate's line alone", () => {
+    expect(mateAutomation({ automated: true }, "missing")).toEqual({ task: null, key: "missing" });
+    expect(mateAutomation({ automated: false }, "missing")).toBeUndefined();
+  });
+});
+
+describe("mateRowSecond — an automated Mate's line", () => {
+  const view = (
+    state: MateRowView["state"],
+    reply: MateRowView["reply"] | null = { kind: "words", text: "Its last words.", tone: "muted" },
+    slot: MateRowView["slot"] = { kind: "age" },
+  ) => ({ state, reply: reply ?? undefined, slot });
+  const task = { number: 12, title: "Fix the checkout total" };
+  const second = (over: Partial<Parameters<typeof mateRowSecond>[0]> = {}) =>
+    mateRowSecond({
+      view: view("idle"),
+      askLine: { kind: "ask", text: "Work issue #12 in the project, then open a change." },
+      deleting: false,
+      finishing: false,
+      outsideHq: false,
+      mine: true,
+      waitsOn: undefined,
+      change: undefined,
+      automated: { task: null },
+      ...over,
+    });
+
+  it.each([
+    {
+      case: "an automated Mate with no task says it waits for one",
+      over: {},
+      line: { kind: "task", text: "Waiting for a task", on: false },
+    },
+    {
+      case: "an automated Mate never asked anything yet says it waits for a task",
+      over: { view: view("idle", null), askLine: undefined },
+      line: { kind: "task", text: "Waiting for a task", on: false },
+    },
+    {
+      case: "an automated Mate at work says its step, as any Mate",
+      over: {
+        automated: { task },
+        view: view(
+          "working",
+          { kind: "live", words: "Running the tests" },
+          {
+            kind: "clock",
+            since: "2026-10-17T10:00:00Z",
+          },
+        ),
+      },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "an automated Mate at work without a step names its task, never its brief's words",
+      over: { automated: { task }, view: view("working", { kind: "pending" }) },
+      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+    },
+    {
+      case: "an automated Mate at work without a task says its step, never that it waits for one",
+      over: {
+        view: view(
+          "working",
+          { kind: "live", words: "Standing up the project" },
+          {
+            kind: "clock",
+            since: "2026-10-17T10:00:00Z",
+          },
+        ),
+      },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "an automated Mate asking something says the question, as any Mate",
+      over: {
+        automated: { task },
+        asks: true,
+        view: view("needs", { kind: "words", text: "Which currency?", tone: "muted" }),
+      },
+      line: { kind: "reply", tone: "ink" },
+    },
+    {
+      case: "an automated Mate at rest on a task says the task waits for review",
+      over: { automated: { task } },
+      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: false },
+    },
+    {
+      case: "an automated Mate whose task's change waits on the viewer says so in ink",
+      over: { automated: { task }, view: view("needs") },
+      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: true },
+    },
+    {
+      case: "an automated Mate at rest with no task and no organization key says it waits for the key",
+      over: { automated: { task: null, key: "missing" } },
+      line: { kind: "task", text: "Waiting for an API key", on: false },
+    },
+    {
+      case: "an automated Mate on a task names it, whatever is read of the key",
+      over: { automated: { task, key: "missing" }, view: view("working", { kind: "pending" }) },
+      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+    },
+    {
+      case: "an automated Mate whose key is not read yet says it waits for a task",
+      over: { automated: { task: null, key: "unknown" } },
+      line: { kind: "task", text: "Waiting for a task", on: false },
+    },
+    {
+      case: "an automated Mate never offers a sign-in on its line",
+      over: { askLine: { kind: "sign-in" } },
+      line: { kind: "task", text: "Waiting for a task", on: false },
+    },
+    {
+      case: "an automated Mate that stopped on an error says the error",
+      over: { view: view("failed", { kind: "words", text: "Build failed.", tone: "failed" }) },
+      line: { kind: "reply", tone: "failed" },
+    },
+    {
+      case: "an automated Mate at its key's limit says when it picks up",
+      over: {
+        view: view("paused", undefined, { kind: "paused", until: "2026-10-17T13:00:00Z" }),
+      },
+      line: { kind: "paused", until: "2026-10-17T13:00:00Z" },
+    },
+    {
+      case: "an automated Mate on its way off Zerops says so",
+      over: { automated: { task }, deleting: true },
+      line: { kind: "deleting" },
+    },
   ] as const)("$case", ({ over, line }) => {
     expect(second(over as Partial<Parameters<typeof mateRowSecond>[0]>)).toEqual(line);
   });

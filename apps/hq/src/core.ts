@@ -29,6 +29,11 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import { apiRoutes } from "./api.ts";
 import { chiefsLayer } from "./chief.ts";
 import { chiefRoutes } from "./chiefApi.ts";
+import { automationRoutes } from "./automationApi.ts";
+import { orgAiKeysLayer } from "./orgAiKeys.ts";
+import { intakeLayer } from "./intake.ts";
+import { mateTasksLayer } from "./mateTasks.ts";
+import { githubIssuesLayer } from "./githubIssues.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -82,6 +87,15 @@ export interface CoreOptions {
   readonly observeHealth?: HealthObserver;
   /** How long the server still answers after the lead is given up on shutdown; 10 s. */
   readonly drainFor?: Duration.Duration;
+  /** GitHub's REST API for issues and webhooks, for tests; GitHub's own by default. */
+  readonly githubApi?: string;
+  /**
+   * How long a Mate has to take a task, how often HQ looks, and how long a working task's Mate
+   * may be offline (`mateTasks.ts`); for tests.
+   */
+  readonly taskAcceptWithin?: Duration.Duration;
+  readonly taskSweepEvery?: Duration.Duration;
+  readonly taskGoneAfter?: Duration.Duration;
   /** Shorter intervals, for tests. */
   readonly heartbeat?: Duration.Duration;
   readonly retryAfter?: Duration.Duration;
@@ -96,6 +110,7 @@ const routes = (options: CoreOptions) =>
   Layer.mergeAll(
     healthRoute(options.build, options.observeHealth),
     chiefRoutes,
+    automationRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,
@@ -134,8 +149,21 @@ const services = (options: CoreOptions) => {
       }),
     ),
   );
+  const github = githubIssuesLayer(options.githubApi).pipe(
+    Layer.provide(NodeHttpClient.layerNodeHttp),
+  );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
+    orgAiKeysLayer,
+    mateTasksLayer({
+      ...(options.taskAcceptWithin === undefined ? {} : { acceptWithin: options.taskAcceptWithin }),
+      ...(options.taskSweepEvery === undefined ? {} : { sweepEvery: options.taskSweepEvery }),
+      ...(options.taskGoneAfter === undefined ? {} : { goneAfter: options.taskGoneAfter }),
+    }).pipe(Layer.provide(remotes), Layer.provide(github), Layer.provide(orgAiKeysLayer)),
+    intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
+      Layer.provide(remotes),
+      Layer.provide(github),
+    ),
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,
@@ -189,7 +217,15 @@ const services = (options: CoreOptions) => {
         }),
       ),
       Layer.provideMerge(
-        PgClient.layer({ url: options.databaseUrl, applicationName: "hq", maxConnections: 4 }),
+        PgClient.layer({
+          url: options.databaseUrl,
+          applicationName: "hq",
+          maxConnections: 4,
+          // HQ's reads are small and frequent: JIT never pays for itself here, and a read whose
+          // estimate crosses its threshold is compiled on every run (navigation on CI went from
+          // ~20 ms to ~600–1000 ms per tab before its subqueries became joins).
+          startupParameters: { jit: "off" },
+        }),
       ),
     )
     .pipe((base) =>

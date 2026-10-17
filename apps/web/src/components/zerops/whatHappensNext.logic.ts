@@ -63,10 +63,26 @@ export function newMateNext(input: {
   readonly groupName: string;
   readonly botName: string;
   readonly recipe: NewMateRecipe;
+  /** Made automated: nobody signs it in, and its work comes from GitHub issues. */
+  readonly automated?: boolean;
 }): WhatHappensNext {
   const { subject, object } = named(input.botName);
   const up: NextStep = { words: `${subject} comes up`, time: MATE_UP };
   const signIn = signInStep(object);
+  if (input.automated === true) {
+    const tasks: NextStep = {
+      words: `${subject} takes tasks from your GitHub issues`,
+      time: undefined,
+    };
+    const develops: NextStep = {
+      words: `${subject} sets up development, deploying ${crewPossessive(input.groupName)} code`,
+      time: DEVELOPMENT_UP,
+    };
+    return {
+      steps: input.recipe === "none" ? [up, tasks] : [up, develops, tasks],
+      note: KEEP_TAB_OPEN_LINE,
+    };
+  }
   if (input.recipe === "none") {
     return {
       steps: [up, signIn, { words: `You tell ${object} what to build`, time: undefined }],

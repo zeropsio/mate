@@ -4,6 +4,7 @@ import { Remotes, RemoteRefused } from "./repoRemotes.ts";
 import { ProbeRefused } from "./githubProbes.ts";
 import { GitEnvironmentRefused } from "./gitEnvironments.ts";
 import { GitRequestRefused } from "./gitTargetReceipts.ts";
+import { AUTOMATION_STATUS, AutomationRefused } from "./automationRefused.ts";
 import { Chiefs } from "./chief.ts";
 import { HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { Observation } from "./observation.ts";
@@ -143,7 +144,13 @@ import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { CHIEF_STATUS, ChiefRefused } from "./chiefRefused.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
-import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
+import {
+  DOOR_LIMIT,
+  DoorRateLimit,
+  INTAKE_LIMIT,
+  PERSON_ADDRESS_LIMIT,
+  TooManyRequests,
+} from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
 import { ROLES_UNANSWERED, Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
@@ -202,6 +209,8 @@ const NewMateBody = Schema.Struct({
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
   serviceId: Schema.optionalKey(ServiceId),
+  /** An automated Mate (`MateState.automated`): set with its record, never changed. */
+  automated: Schema.optionalKey(Schema.Boolean),
 });
 const MateBody = Schema.Struct({ face: Schema.String });
 const AttachBody = Schema.Struct({
@@ -212,6 +221,7 @@ const AttachBody = Schema.Struct({
       face: Schema.String,
       standUp: Schema.optionalKey(Schema.Boolean),
       serviceId: Schema.optionalKey(ServiceId),
+      automated: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
@@ -231,6 +241,8 @@ const BirthBody = Schema.Struct({
   appId: Schema.String,
   face: Schema.String,
   standUp: Schema.optionalKey(Schema.Boolean),
+  /** The Mate born under it is automated (`MateState.automated`). */
+  automated: Schema.optionalKey(Schema.Boolean),
 });
 /**
  * A Zerops token as the platform spells one, at most 512 characters: one HQ sends on as a bearer
@@ -309,6 +321,7 @@ const isRemoteRefused = Schema.is(RemoteRefused);
 const isProbeRefused = Schema.is(ProbeRefused);
 const isGitEnvironmentRefused = Schema.is(GitEnvironmentRefused);
 const isGitRequestRefused = Schema.is(GitRequestRefused);
+const isAutomationRefused = Schema.is(AutomationRefused);
 
 /**
  * A JSON body of at most `limit` bytes. A declared `Content-Length` above it is refused before a
@@ -372,6 +385,10 @@ export const failure = (error: {
         { code: error.reason === "forbidden" ? "forbidden" : "conflict", reason: error.reason },
         error.reason === "forbidden" ? 403 : 409,
       ),
+    );
+  if (isAutomationRefused(error))
+    return Effect.succeed(
+      json({ code: error.code, reason: error.reason }, AUTOMATION_STATUS[error.code]),
     );
   if (isGitRequestRefused(error))
     return Effect.succeed(json({ code: "conflict", reason: error.reason }, 409));
@@ -526,13 +543,14 @@ const deploysOf = (event: RolloutCause) =>
   );
 
 /** A token of the client address's bucket at `door`; none left is `429`. */
-const knock = (door: "person" | "mate" | "git") =>
+export const knock = (door: "person" | "mate" | "git" | "intake") =>
   Effect.gen(function* () {
     // `X-Real-IP` is the client address the Zerops L7 balancer sets.
     const request = yield* HttpServerRequest.HttpServerRequest;
     const address =
       request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
-    const limit = door === "person" ? PERSON_ADDRESS_LIMIT : DOOR_LIMIT;
+    const limit =
+      door === "person" ? PERSON_ADDRESS_LIMIT : door === "intake" ? INTAKE_LIMIT : DOOR_LIMIT;
     if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`, limit))) {
       return yield* new TooManyRequests();
     }
@@ -549,7 +567,7 @@ const mateHolding = (presented: string | undefined) =>
   });
 
 /** The Mate presenting `Authorization: Mate <credential>`. */
-const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+export const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 

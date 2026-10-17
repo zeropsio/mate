@@ -44,6 +44,13 @@ import {
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
+import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import {
+  HqAiKeyView,
+  HqIntakeView,
+  type HqAiKeyRequest,
+  type HqIntakeRequest,
+} from "@t3tools/shared/hqIntake";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -75,6 +82,11 @@ export interface HqMateRecord {
  */
 export interface HqNewMate extends HqMateRecord {
   readonly standUp?: boolean;
+  /**
+   * It is made automated (`MateState.automated`): it takes tasks from outside and runs on the
+   * organization's API key. Set at its making, never changed; an older HQ ignores it.
+   */
+  readonly automated?: true;
 }
 
 /**
@@ -113,6 +125,13 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
   readonly runsWithoutSignIn?: boolean;
+  /**
+   * It takes tasks from outside and runs on the organization's API key, never on a person's
+   * sign-in (`HqNavigationMate.automated`); absent from an older HQ: not one.
+   */
+  readonly automated?: boolean | undefined;
+  /** The task an automated Mate is on, or none; absent from an older HQ. */
+  readonly task?: HqNavigationMateTask | null | undefined;
 }
 
 /**
@@ -177,6 +196,11 @@ export interface HqStructure {
     readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
+    /**
+     * Where its automated Mates take tasks from, and how many wait for one to be free; null:
+     * nowhere; absent from an older HQ.
+     */
+    readonly intake?: HqNavigationIntake | null;
   }>;
 }
 
@@ -372,6 +396,20 @@ export interface HqApi {
     environment: string,
     service: string,
   ) => Promise<HqDeployAnswer>;
+  /**
+   * Points the application's automated Mates at a GitHub repository's issues carrying a label
+   * (`PUT /api/apps/:appId/intake`): the webhook HQ made, or the URL and secret to paste, the
+   * secret shown this once.
+   */
+  readonly setIntake?: (appId: string, request: HqIntakeRequest) => Promise<HqIntakeView>;
+  /** Stops the application's automated Mates taking tasks (`DELETE /api/apps/:appId/intake`). */
+  readonly stopIntake?: (appId: string) => Promise<void>;
+  /** The organization's API keys, by provider, as set or not, never their values. */
+  readonly aiKeys?: () => Promise<ReadonlyArray<HqAiKeyView>>;
+  /** Keeps the organization's key for a provider, sealed (`PUT /api/org/ai-keys/:provider`). */
+  readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
+  /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
+  readonly removeAiKey?: (provider: string) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
@@ -600,6 +638,9 @@ const unreadable = () =>
   });
 
 const readChangeDetail = decoded(ChangeDetailResponse);
+const readIntakeView = decoded(HqIntakeView);
+const readAiKeys = decoded(Schema.Array(HqAiKeyView));
+const readAiKey = decoded(HqAiKeyView);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
@@ -1234,6 +1275,33 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    setIntake: async (appId, request) =>
+      readIntakeView(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/intake`,
+          { method: "PUT", body: JSON.stringify(request) },
+          true,
+        ),
+      ),
+    stopIntake: async (appId) => {
+      await authorized(`/api/apps/${encodeURIComponent(appId)}/intake`, { method: "DELETE" }, true);
+    },
+    aiKeys: async () => readAiKeys(await authorized("/api/org/ai-keys")),
+    setAiKey: async (provider, value) =>
+      readAiKey(
+        await authorized(
+          `/api/org/ai-keys/${encodeURIComponent(provider)}`,
+          { method: "PUT", body: JSON.stringify({ value } satisfies HqAiKeyRequest) },
+          true,
+        ),
+      ),
+    removeAiKey: async (provider) => {
+      await authorized(
+        `/api/org/ai-keys/${encodeURIComponent(provider)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(

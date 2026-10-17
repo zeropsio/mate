@@ -27,6 +27,7 @@ import { ThreadToolPolicyRegistry, type ThreadToolProfile } from "../spi/threadT
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ZeropsAgentAuthModule from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -96,6 +97,8 @@ interface World {
   readonly logins?: Readonly<Record<string, ZeropsLoginState>>;
   /** The server-driven logins this server holds (`ZeropsAgentLogin`), by agent. */
   readonly agentLogins?: ZeropsAgentLoginModule.ZeropsAgentLoginByAgent;
+  /** Whether HQ says this Mate is automated (`ZeropsAutomation`). */
+  readonly automated?: boolean;
   /** Every question the gate was asked, as it was asked. */
   readonly gateCalls?: Array<{ readonly agentId: string; readonly login: unknown }>;
 }
@@ -195,6 +198,7 @@ const admission = (world: World) =>
             })),
           ),
         }),
+        Layer.mock(ZeropsAutomation)({ automated: Effect.succeed(world.automated === true) }),
         Layer.mock(ZeropsAgentAuthModule.ZeropsAgentAuth)({
           latest: Effect.succeed({ available: true, agents: world.agents ?? [] }),
         }),
@@ -252,6 +256,7 @@ const admitted = (
     Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
   );
 
+const AUTOMATED = "An automated Mate runs on your organization's API key; nobody signs in to it.";
 const NO_ACCESS = "The person this turn runs for no longer has access to this project.";
 const ACCESS_UNCONFIRMED =
   "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
@@ -1004,6 +1009,34 @@ describe("ZeropsTurnAdmission.admitRun", () => {
           { ...janSignedClaude, zerops: false },
           "claudeAgent",
           session(EVA),
+          undefined,
+        ],
+        [
+          "an automated Mate refuses a run on a subscription sign-in, even its signer's own",
+          { ...janSignedClaude, automated: true },
+          "claudeAgent",
+          session(JAN),
+          AUTOMATED,
+        ],
+        [
+          "an automated Mate refuses a run on a subscription login",
+          { ...evaSignedWork, automated: true },
+          "claudeAgent-work",
+          session(EVA),
+          AUTOMATED,
+        ],
+        [
+          "a task's run is refused on a subscription sign-in",
+          janSignedClaude,
+          "claudeAgent",
+          { kind: "task", taskId: "task-1" },
+          AUTOMATED,
+        ],
+        [
+          "a task's run is admitted on OpenCode, which nobody signs in to",
+          { drivers: { opencode: "opencode" }, automated: true },
+          "opencode",
+          { kind: "task", taskId: "task-1" },
           undefined,
         ],
       ] as const satisfies ReadonlyArray<

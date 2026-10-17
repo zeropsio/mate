@@ -27,6 +27,11 @@ describe("mateShowsSignIn", () => {
       false,
     ],
     [
+      "never shows an automated Mate's sign-in: the organization's key runs it",
+      { mate: true, automated: true, signInRequired: true, said: false },
+      false,
+    ],
+    [
       "leaves a conversation no Mate lives in as it is",
       { mate: false, signInRequired: true, said: false },
       false,

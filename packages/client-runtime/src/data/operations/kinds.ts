@@ -1,6 +1,7 @@
 import { HQ_GIT_TARGET_KINDS } from "./hqGitTargets.ts";
 import { creationPress } from "./creationPress.ts";
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
+import { HQ_AUTOMATION_KINDS } from "./hqAutomation.ts";
 import { WORKSPACE_MUTATION_KINDS } from "./mateWorkspace.ts";
 import { mateWriteFile } from "./mateWriteFile.ts";
 import { mateAction } from "./mateActions.ts";
@@ -65,6 +66,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...HQ_GIT_TARGET_KINDS,
   issueGitCredential,
   revokeGitCredential,
+  ...HQ_AUTOMATION_KINDS,
   ...WORKSPACE_MUTATION_KINDS,
   mateWriteFile,
   mateSendTurn,
