@@ -141,6 +141,11 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["no_change", "Nothing was pushed to it yet."],
     ["main_moved", "Other changes kept landing on main meanwhile. Try again."],
     ["change_not_open", "This change is merged or closed already."],
+    [
+      "github_blocked",
+      "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
+    ],
+    ["github_refused", "GitHub refused to merge its PR. See its PR on GitHub."],
   ])("says %s as it stands", (reason, words) => {
     expect(hqRefusalWords({ code: "conflict", reason })).toBe(words);
   });

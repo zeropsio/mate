@@ -7,6 +7,7 @@ import {
   appOwner,
   appRepositories,
   defaultAppName,
+  githubReturnLine,
   githubReturnTo,
   githubSection,
   githubStatus,
@@ -185,5 +186,21 @@ describe("the repositories the app reaches", () => {
     ]);
     expect(appRepositories({ state: "none" })).toEqual([]);
     expect(appRepositories(null)).toEqual([]);
+  });
+});
+
+describe("coming back from GitHub", () => {
+  it("confirms a connected app, and says an owner's approval is asked where GitHub asked one", () => {
+    expect(githubReturnLine("connected", githubSection(known(CONNECTED), true))).toBe(
+      "GitHub is connected. Mate acts there as acme-mate[bot] from now on.",
+    );
+    expect(githubReturnLine("requested", githubSection(known(CONNECTED), true))).toBe(
+      "GitHub asked an owner of acme to approve the app; it's installed once they do.",
+    );
+    expect(githubReturnLine("requested", githubSection(known({ state: "none" }), true))).toBe(
+      "GitHub asked an owner of the organization to approve the app; it's installed once they do.",
+    );
+    expect(githubReturnLine(null, githubSection(known(CONNECTED), true))).toBeNull();
+    expect(githubReturnLine("connected", githubSection(known({ state: "none" }), true))).toBeNull();
   });
 });

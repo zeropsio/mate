@@ -9,7 +9,7 @@
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import { GithubIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { appBasePath } from "~/basePath";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
@@ -24,7 +24,9 @@ import {
   appOwner,
   defaultAppName,
   GITHUB_ONE_LINE,
+  githubReturnLine,
   githubReturnTo,
+  type GithubReturn,
   githubSection,
   githubStatus,
   postManifest,
@@ -36,6 +38,8 @@ import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 export interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
   readonly disconnect: () => void;
+  /** Reads the app again, where HQ's answer failed. */
+  readonly again: () => void;
   readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
 }
 
@@ -44,10 +48,10 @@ export function GithubAppSettings({
   returned,
 }: {
   readonly admin: boolean;
-  /** GitHub brought the person back here once the app was made. */
-  readonly returned: boolean;
+  /** How GitHub brought the person back here, if it did. */
+  readonly returned: GithubReturn;
 }) {
-  const { read, write, manifest } = useGithubApp();
+  const { read, write, manifest, again } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
   return (
     <GithubAppView
@@ -55,6 +59,7 @@ export function GithubAppSettings({
       controls={{
         read,
         manifest,
+        again,
         disconnect: () => {
           write({ kind: "github-disconnect" });
         },
@@ -85,7 +90,7 @@ export function GithubAppView({
   /** The Zerops organization's name: the app's first name. */
   readonly organization: string | null;
   readonly returnTo: string;
-  readonly returned: boolean;
+  readonly returned: GithubReturn;
   /** Hands GitHub the manifest: the page leaves for GitHub's. */
   readonly onPost: (view: HqGithubManifestView) => void;
 }) {
@@ -95,6 +100,7 @@ export function GithubAppView({
   const [confirming, setConfirming] = useState(false);
   const working = read.action.kind === "working";
   const problem = taskSourceProblem(read.action);
+  const back = githubReturnLine(returned, section);
   const toggle = () => {
     setOpen((was) => !was);
     setConfirming(false);
@@ -105,19 +111,15 @@ export function GithubAppView({
       <span className="text-destructive-foreground" role="alert">
         {problem}
       </span>
+    ) : back !== null ? (
+      <span role="status">{back}</span>
     ) : section.kind === "connected" ? (
-      returned ? (
-        <span role="status">
-          GitHub is connected. Mate acts there as {section.botLogin} from now on.
-        </span>
-      ) : (
-        <>
-          Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
-          {section.installations.length === 0
-            ? " · installed nowhere yet"
-            : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
-        </>
-      )
+      <>
+        Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
+        {section.installations.length === 0
+          ? " · installed nowhere yet"
+          : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
+      </>
     ) : section.kind === "none" ? (
       section.connect ? (
         GITHUB_ONE_LINE
@@ -140,6 +142,10 @@ export function GithubAppView({
           <IntegrationAction closeWords="Close" onToggle={toggle} open={open} primary={false}>
             Manage
           </IntegrationAction>
+        ) : section.kind === "failed" ? (
+          <Button onClick={controls.again} size="sm" variant="secondary">
+            Read again
+          </Button>
         ) : undefined
       }
       id={searchableSetting("automation-github").id}
@@ -205,8 +211,9 @@ export function GithubAppView({
           {confirming ? (
             <div className="grid gap-2" role="group">
               <p className="text-xs text-foreground">
-                HQ forgets the app, and Mate stops acting on GitHub through it. The app stays on
-                GitHub: delete it in its settings there.
+                HQ forgets the app, and Mate stops acting on GitHub through it. Repositories
+                mirrored through it stop mirroring, and their changes stop updating on GitHub. The
+                app stays on GitHub: delete it in its settings there.
               </p>
               <div className="flex gap-2">
                 <Button
@@ -255,6 +262,22 @@ function CreateApp({
   const [refusal, setRefusal] = useState<string | null>(null);
   // Pressed and GitHub's page not yet here: the press says so until the browser leaves.
   const [leaving, setLeaving] = useState(false);
+  // Back from GitHub's page restores this one from the browser's cache, mid-press: it is
+  // pressable again once the page shows, or comes back into view.
+  useEffect(() => {
+    const back = (event: PageTransitionEvent) => {
+      if (event.persisted) setLeaving(false);
+    };
+    const seen = () => {
+      if (document.visibilityState === "visible") setLeaving(false);
+    };
+    window.addEventListener("pageshow", back);
+    document.addEventListener("visibilitychange", seen);
+    return () => {
+      window.removeEventListener("pageshow", back);
+      document.removeEventListener("visibilitychange", seen);
+    };
+  }, []);
   const ownerId = useId();
   const nameId = useId();
   return (

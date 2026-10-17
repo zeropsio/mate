@@ -61,6 +61,7 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
   const controls = {
     read: read(known({ state: "none" })),
     disconnect: vi.fn(),
+    again: vi.fn(),
     manifest: vi.fn(async () => MANIFEST as HqGithubManifestView | null),
     ...props.controls,
   };
@@ -72,7 +73,7 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
         onPost={onPost}
         organization="Acme"
         returnTo={RETURN_TO}
-        returned={false}
+        returned={null}
         {...props}
         controls={controls}
       />,
@@ -99,7 +100,9 @@ describe("the GitHub section where no app is connected", () => {
     expect(host.textContent).toContain("Not connected");
     expect(field("App name")).toBeNull();
     await act(async () => button("Connect")!.click());
-    expect(host.textContent).toContain("appear as your organization's bot, never a person");
+    expect(host.textContent).toContain(
+      "Everything Mate writes on GitHub appears as your organization's bot, never a person.",
+    );
     expect(field("GitHub organization")?.placeholder).toBe("Your own account");
     expect(field("App name")?.value).toBe("Acme Mate");
     expect(button("Create GitHub app")).toBeDefined();
@@ -119,6 +122,21 @@ describe("the GitHub section where no app is connected", () => {
     expect(onPost).toHaveBeenCalledWith(MANIFEST);
   });
 
+  it("lets the person press again after coming back from GitHub's page with Back", async () => {
+    const { host, button } = await render();
+    await act(async () => button("Connect")!.click());
+    await act(async () => {
+      host.querySelector("form")!.requestSubmit();
+    });
+    expect(button("Opening GitHub…")?.disabled).toBe(true);
+    await act(async () => {
+      const shown = new Event("pageshow");
+      Object.defineProperty(shown, "persisted", { value: true });
+      window.dispatchEvent(shown);
+    });
+    expect(button("Create GitHub app")?.disabled).toBe(false);
+  });
+
   it("says HQ's refusal and lets the person press again", async () => {
     const { host, button, onPost } = await render({
       controls: {
@@ -127,6 +145,7 @@ describe("the GitHub section where no app is connected", () => {
           words: "Only the organization's Owner and Admins connect GitHub.",
         }),
         disconnect: vi.fn(),
+        again: vi.fn(),
         manifest: vi.fn(async () => null),
       },
     });
@@ -153,6 +172,7 @@ describe("the GitHub section where no app is connected", () => {
       controls: {
         read: read({ state: "unsupported" }),
         disconnect: vi.fn(),
+        again: vi.fn(),
         manifest: vi.fn(),
       },
     });
@@ -165,6 +185,7 @@ describe("the GitHub section once the app is connected", () => {
   const connected = {
     read: read(known(CONNECTED)),
     disconnect: vi.fn(),
+    again: vi.fn(),
     manifest: vi.fn(),
   };
 
@@ -187,6 +208,9 @@ describe("the GitHub section once the app is connected", () => {
     await act(async () => button("Disconnect")!.click());
     expect(controls.disconnect).not.toHaveBeenCalled();
     expect(host.textContent).toContain("The app stays on GitHub: delete it in its settings there.");
+    expect(host.textContent).toContain(
+      "Repositories mirrored through it stop mirroring, and their changes stop updating on GitHub.",
+    );
     await act(async () => button("Disconnect")!.click());
     expect(controls.disconnect).toHaveBeenCalledTimes(1);
   });
@@ -200,9 +224,66 @@ describe("the GitHub section once the app is connected", () => {
   });
 
   it("confirms the connection in one line once GitHub brings the person back", async () => {
-    const { host } = await render({ controls: connected, returned: true });
+    const { host } = await render({ controls: connected, returned: "connected" });
     expect(host.querySelector('[role="status"]')?.textContent).toBe(
       "GitHub is connected. Mate acts there as acme-mate[bot] from now on.",
     );
   });
+});
+
+it("says GitHub asked an owner to approve the app when it brings the person back without it", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <GithubAppView
+        admin
+        controls={{
+          read: read(known({ ...CONNECTED, installations: [] })),
+          disconnect: vi.fn(),
+          again: vi.fn(),
+          manifest: vi.fn(),
+        }}
+        onPost={vi.fn()}
+        organization="Acme"
+        returnTo={RETURN_TO}
+        returned="requested"
+      />,
+    ),
+  );
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(
+    "GitHub asked an owner of acme to approve the app; it's installed once they do.",
+  );
+  await act(async () => root.unmount());
+});
+
+it("offers Read again where HQ's answer about the app failed, and reads it again on the press", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const again = vi.fn();
+  await act(async () =>
+    root.render(
+      <GithubAppView
+        admin
+        controls={{
+          read: read({ state: "failed", words: "HQ isn't answering." }),
+          again,
+          disconnect: vi.fn(),
+          manifest: vi.fn(),
+        }}
+        onPost={vi.fn()}
+        organization="Acme"
+        returnTo={RETURN_TO}
+        returned={null}
+      />,
+    ),
+  );
+  expect(host.textContent).toContain("HQ isn't answering.");
+  await act(async () =>
+    [...host.querySelectorAll("button")].find((node) => node.textContent === "Read again")!.click(),
+  );
+  expect(again).toHaveBeenCalledTimes(1);
+  await act(async () => root.unmount());
 });
