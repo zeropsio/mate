@@ -6,10 +6,13 @@ import {
 } from "@t3tools/shared/openCodeKeyProviders";
 import type { MateState } from "@t3tools/shared/mateLink";
 import * as Cause from "effect/Cause";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 
+import * as ServerConfig from "../config.ts";
 import * as ServerSettingsModule from "../serverSettings.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as ZeropsAutomationModule from "./ZeropsAutomation.ts";
@@ -32,13 +35,30 @@ const nebiusKey = (settings: ServerSettings) =>
     (variable) => variable.name === nebius.variable,
   );
 
+/** A server's automation, its state kept under `baseDir` (a new one each time by default). */
 const withAutomation = <A, E>(
   body: Effect.Effect<A, E, ZeropsAutomation | ServerSettingsService>,
   settings: Layer.Layer<
     ServerSettingsService,
     ServerSettingsError
   > = ServerSettingsModule.layerTest(),
-) => body.pipe(Effect.provide(ZeropsAutomationModule.layer.pipe(Layer.provideMerge(settings))));
+  baseDir: string | { readonly prefix: string } = { prefix: "automation-test-" },
+) =>
+  body.pipe(
+    Effect.provide(
+      ZeropsAutomationModule.layer.pipe(
+        Layer.provideMerge(settings),
+        Layer.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
+  );
+
+/** A directory that outlives one server: the same Mate, started again on it. */
+const keptDirectory = FileSystem.FileSystem.pipe(
+  Effect.flatMap((fs) => fs.makeTempDirectoryScoped({ prefix: "automation-kept-" })),
+  Effect.provide(NodeServices.layer),
+);
 
 describe("an automated Mate and the organization's keys", () => {
   it.effect("is not automated until HQ says it is", () =>
@@ -52,6 +72,29 @@ describe("an automated Mate and the organization's keys", () => {
         assert.isFalse(yield* automation.automated);
       }),
     ),
+  );
+
+  it.effect("an automated Mate starts automated again after a restart, before HQ says so", () =>
+    Effect.gen(function* () {
+      const directory = yield* keptDirectory;
+      const restart = (body: (automation: ZeropsAutomation["Service"]) => Effect.Effect<void>) =>
+        withAutomation(
+          Effect.gen(function* () {
+            yield* body(yield* ZeropsAutomation);
+          }),
+          ServerSettingsModule.layerTest(),
+          directory,
+        );
+      yield* restart((automation) => automation.heard(mate(true)));
+      yield* restart((automation) =>
+        Effect.map(automation.automated, (automated) => assert.isTrue(automated)),
+      );
+      // HQ's word wins whenever it speaks, and the next start keeps it.
+      yield* restart((automation) => automation.heard(mate(false)));
+      yield* restart((automation) =>
+        Effect.map(automation.automated, (automated) => assert.isFalse(automated)),
+      );
+    }),
   );
 
   it.effect(

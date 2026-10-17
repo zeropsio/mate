@@ -8,8 +8,10 @@
  * sensitive variables — the settings keep them in the secret store, and a client only ever reads
  * that one is set — and OpenCode is turned on. An ordinary Mate sets none of them.
  *
- * Until HQ's first state the Mate is taken as ordinary: the flag is HQ's, and a restart hears it
- * again on the next link.
+ * The flag is HQ's and never changes once the Mate is made, so HQ's last word on it is kept in the
+ * server's state directory (`automated-mate.json`) and a restart starts from it: an automated Mate
+ * never lets a person's subscription in while its link waits for HQ's first state. A Mate HQ never
+ * said is automated starts as ordinary.
  *
  * @module ZeropsAutomation
  */
@@ -31,10 +33,15 @@ import {
 import type { MateLinkDown, MateState } from "@t3tools/shared/mateLink";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
+import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 
 /** What an automated Mate answers a sign-in, or a run on one: nobody's subscription runs it. */
@@ -72,9 +79,32 @@ export class ZeropsAutomation extends Context.Service<
   }
 >()("t3/zerops/ZeropsAutomation") {}
 
+/** HQ's last word on the flag, as the state directory keeps it. */
+const AutomatedFile = Schema.fromJsonString(Schema.Struct({ automated: Schema.Boolean }));
+const decodeAutomatedFile = Schema.decodeUnknownOption(AutomatedFile);
+const encodeAutomatedFile = Schema.encodeSync(AutomatedFile);
+
 export const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
-  const automated = yield* Ref.make(false);
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const { stateDir } = yield* ServerConfig.ServerConfig;
+  const flagPath = path.join(stateDir, "automated-mate.json");
+  // Unreadable or absent: ordinary until HQ says otherwise.
+  const kept = yield* fs.readFileString(flagPath).pipe(
+    Effect.map((text) => Option.exists(decodeAutomatedFile(text), (read) => read.automated)),
+    Effect.orElseSucceed(() => false),
+  );
+  const automated = yield* Ref.make(kept);
+  /** Keeps HQ's word for the next start; a write that fails is told, and HQ says it again. */
+  const keep = (is: boolean) =>
+    fs.writeFileString(flagPath, encodeAutomatedFile({ automated: is })).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("zerops automation: the Mate's flag could not be kept", {
+          reason: error.message,
+        }),
+      ),
+    );
   // The last keys HQ handed over: set once the Mate is known to be automated.
   const heldKeys = yield* Ref.make<ProviderKeys | undefined>(undefined);
   const writing = yield* Semaphore.make(1);
@@ -116,6 +146,7 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const is = mate.automated === true;
       const was = yield* Ref.getAndSet(automated, is);
+      if (is !== was) yield* keep(is);
       if (!is || was) return;
       const keys = yield* Ref.get(heldKeys);
       if (keys !== undefined) yield* apply(keys);
