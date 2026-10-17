@@ -14,7 +14,7 @@ import {
   workingWords,
 } from "./taskSourcesSettings.logic";
 
-const known = <T>(value: T) => ({ state: "known", value, stale: false }) as const;
+const known = <T>(value: T) => ({ state: "known", held: value, stale: false }) as const;
 
 describe("what a task source's section shows", () => {
   it.each([

@@ -81,7 +81,7 @@ describe("the organization's Slack app", () => {
     const read = waitFor(r.store, () => r.read("hqSlack").setting.state === "known");
     const release = r.host.demandOrg("hqSlack", ORG);
     await read;
-    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", value: notConnected });
+    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", held: notConnected });
     const done = waitFor(r.store, () => r.read("hqSlack").action.kind === "done");
     await r.host.write(
       ORG,
@@ -90,7 +90,7 @@ describe("the organization's Slack app", () => {
     );
     await done;
     expect(sent).toEqual([{ botToken: BOT_TOKEN, signingSecret: SIGNING }]);
-    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", value: connected });
+    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", held: connected });
     expect(r.records()).not.toContain(BOT_TOKEN);
     expect(r.records()).not.toContain(SIGNING);
     release();
@@ -128,7 +128,7 @@ describe("the organization's Slack app", () => {
     const done = waitFor(r.store, () => r.read("hqSlack").action.kind === "done");
     answerReread(connected);
     await done;
-    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", value: connected });
+    expect(r.read("hqSlack").setting).toMatchObject({ state: "known", held: connected });
     release();
     r.close();
   });
@@ -187,7 +187,7 @@ describe("the organization's Slack app", () => {
     await read;
     expect(r.read("hqSlackManifest").setting).toMatchObject({
       state: "known",
-      value: JSON.stringify(manifest, null, 2),
+      held: JSON.stringify(manifest, null, 2),
     });
     release();
     r.close();
@@ -253,11 +253,11 @@ describe("an application's sources", () => {
     });
     const release = r.host.demandApp("hqAppSlack", SHOP);
     await waitFor(r.store, () => r.read("hqAppSlack", "shop").setting.state === "known");
-    expect(r.read("hqAppSlack", "shop").setting).toMatchObject({ value: { channel: null } });
+    expect(r.read("hqAppSlack", "shop").setting).toMatchObject({ held: { channel: null } });
     await r.host.write(SHOP, { kind: "channel", source: "slack", channelId: "C042" });
     await waitFor(r.store, () => r.read("hqAppSlack", "shop").action.kind === "done");
     expect(r.read("hqAppSlack", "shop").setting).toMatchObject({
-      value: { channel: { channelId: "C042", channel: "support" } },
+      held: { channel: { channelId: "C042", channel: "support" } },
     });
     release();
     r.close();
@@ -286,7 +286,7 @@ describe("an application's sources", () => {
     await waitFor(r.store, () => r.read("hqAppWebhooks", "shop").action.kind === "done");
     expect(r.read("hqAppWebhooks", "shop").revealed).toEqual(made);
     const listed = r.read("hqAppWebhooks", "shop").setting;
-    expect(listed).toMatchObject({ state: "known", value: [{ id: "w1", name: "Sentry" }] });
+    expect(listed).toMatchObject({ state: "known", held: [{ id: "w1", name: "Sentry" }] });
     expect(JSON.stringify(listed)).not.toContain(HOOK_SECRET);
     expect(JSON.stringify([...r.store.state().operations.values()])).not.toContain(HOOK_SECRET);
     hold();
@@ -338,7 +338,7 @@ describe("the limits on each task", () => {
     await waitFor(r.store, () => r.read("hqTaskLimits").action.kind === "done");
     expect(r.read("hqTaskLimits").setting).toMatchObject({
       state: "known",
-      value: { minutes: 30, costUsd: 5 },
+      held: { minutes: 30, costUsd: 5 },
     });
     release();
     r.close();

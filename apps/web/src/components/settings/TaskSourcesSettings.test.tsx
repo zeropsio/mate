@@ -39,7 +39,7 @@ function controls(setting: unknown, over: { readonly revealed?: HqWebhookView | 
   };
 }
 
-const known = (value: unknown) => ({ state: "known", value, stale: false });
+const known = (value: unknown) => ({ state: "known", held: value, stale: false });
 
 /** The words a markup carries. */
 const shown = (html: string) =>

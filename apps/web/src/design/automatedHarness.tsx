@@ -92,7 +92,7 @@ const controls = (setting: unknown, revealed: HqWebhookView | null = null) => ({
   write: nothing,
   again: nothing,
 });
-const known = (value: unknown) => ({ state: "known", value, stale: false });
+const known = (value: unknown) => ({ state: "known", held: value, stale: false });
 const APPS = [
   { id: "tea-shop", name: "Tea Shop" },
   { id: "shop-front", name: "Shop Front" },

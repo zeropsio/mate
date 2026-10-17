@@ -114,7 +114,7 @@ const WITHHELD = "Only the organization's Owner and Admins see this.";
 function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): string {
   switch (setting.state) {
     case "known":
-      return line(setting.value);
+      return line(setting.held);
     case "failed":
       return setting.words;
     case "withheld":
@@ -312,7 +312,7 @@ export function SlackSettingsView({
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
-  const view = setting.state === "known" ? setting.value : null;
+  const view = setting.state === "known" ? setting.held : null;
   return (
     <SettingsRow
       control={
@@ -373,7 +373,7 @@ function SlackSteps({
   const [botToken, setBotToken] = useState("");
   const [signingSecret, setSigningSecret] = useState("");
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "Slack manifest" });
-  const text = manifest.read.setting.state === "known" ? manifest.read.setting.value : null;
+  const text = manifest.read.setting.state === "known" ? manifest.read.setting.held : null;
   const ready = botToken.trim().length > 0 && signingSecret.trim().length > 0;
   return (
     <ol className="grid gap-3">
@@ -462,7 +462,7 @@ export function AppChannelView({
         <Problem read={read} />
       </>
     );
-  const held: HqChannelView | null = setting.value.channel;
+  const held: HqChannelView | null = setting.held.channel;
   return (
     <>
       {held !== null ? (
@@ -524,7 +524,7 @@ export function DiscordSettingsView({
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
-  const view = setting.state === "known" ? setting.value : null;
+  const view = setting.state === "known" ? setting.held : null;
   return (
     <SettingsRow
       control={
@@ -790,9 +790,9 @@ export function AppWebhooksView({
             </Button>
           </form>
           {read.revealed === null ? null : <WebhookMade view={read.revealed} />}
-          {setting.value.length === 0 ? null : (
+          {setting.held.length === 0 ? null : (
             <ul className="grid gap-1.5" data-zerops-surface="settings-webhooks-list">
-              {setting.value.map((hook) => (
+              {setting.held.map((hook) => (
                 <WebhookLine
                   busy={busy}
                   hook={hook}
@@ -1052,9 +1052,9 @@ export function AppSchedulesView({
               </Button>
             </div>
           </form>
-          {setting.value.length === 0 ? null : (
+          {setting.held.length === 0 ? null : (
             <ul className="grid gap-1.5" data-zerops-surface="settings-schedules-list">
-              {setting.value.map((schedule) => (
+              {setting.held.map((schedule) => (
                 <ScheduleLine
                   busy={busy}
                   key={schedule.id}
@@ -1126,7 +1126,7 @@ function ScheduleLine({
 export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTaskLimits"> }) {
   const { read, write, again } = controls;
   const setting = read.setting;
-  const held: HqTaskLimitsView | null = setting.state === "known" ? setting.value : null;
+  const held: HqTaskLimitsView | null = setting.state === "known" ? setting.held : null;
   // What is typed; `null` while untouched: the field shows what HQ holds.
   const [minutes, setMinutes] = useState<string | null>(null);
   const [cost, setCost] = useState<string | null>(null);

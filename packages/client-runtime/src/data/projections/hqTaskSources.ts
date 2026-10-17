@@ -32,7 +32,7 @@ export type SettingValue<T> =
   /** `unsupported`: this HQ predates the setting. */
   | { readonly state: "unread" | "reading" | "withheld" | "unsupported" }
   /** `stale`: its last read failed, and this is what HQ said before. */
-  | { readonly state: "known"; readonly value: T; readonly stale: boolean }
+  | { readonly state: "known"; readonly held: T; readonly stale: boolean }
   | { readonly state: "failed"; readonly words: string };
 
 export interface TaskSourceSettingRead<T> {
@@ -62,7 +62,7 @@ export const taskSourceSetting: Projection<
     const stream = read.stream(settingScope(key.family, owner));
     const setting: SettingValue<FamilyValues[TaskSourceSetting]> =
       fact.kind === "known"
-        ? { state: "known", value: fact.value, stale: stream.fault !== null }
+        ? { state: "known", held: fact.value, stale: stream.fault !== null }
         : fact.kind === "withheld"
           ? { state: "withheld" }
           : read.stream(settingLink(key.family, owner)).fault?.code === SETTING_UNSUPPORTED
