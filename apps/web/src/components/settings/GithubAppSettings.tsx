@@ -204,8 +204,9 @@ export function GithubAppView({
           {confirming ? (
             <div className="grid gap-2" role="group">
               <p className="text-xs text-foreground">
-                HQ forgets the app, and Mate stops acting on GitHub through it. The app stays on
-                GitHub: delete it in its settings there.
+                HQ forgets the app, and Mate stops acting on GitHub through it. Repositories
+                mirrored through it stop mirroring, and their changes stop updating on GitHub. The
+                app stays on GitHub: delete it in its settings there.
               </p>
               <div className="flex gap-2">
                 <Button

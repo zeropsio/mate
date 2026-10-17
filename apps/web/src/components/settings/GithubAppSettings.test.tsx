@@ -187,6 +187,9 @@ describe("the GitHub section once the app is connected", () => {
     await act(async () => button("Disconnect")!.click());
     expect(controls.disconnect).not.toHaveBeenCalled();
     expect(host.textContent).toContain("The app stays on GitHub: delete it in its settings there.");
+    expect(host.textContent).toContain(
+      "Repositories mirrored through it stop mirroring, and their changes stop updating on GitHub.",
+    );
     await act(async () => button("Disconnect")!.click());
     expect(controls.disconnect).toHaveBeenCalledTimes(1);
   });
