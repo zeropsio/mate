@@ -122,6 +122,8 @@ function githubName(url: string): string | null {
 }
 
 const NO_ENVIRONMENTS: ReadonlyArray<never> = [];
+/** GitHub's page for a new fine-grained token, before the repository's URL names its owner. */
+const GITHUB_NEW_TOKEN = "https://github.com/settings/personal-access-tokens/new";
 
 export function GitRemoteSettings({
   appId,
@@ -389,7 +391,7 @@ function Remote({
         )
       ) : null}
       {remote == null && viaApp !== undefined && permitted && !editing ? (
-        <p>
+        <p className="rv-note">
           <InlineButton aria-expanded={false} onClick={() => setEditing(true)} tone="muted">
             Use a token instead
           </InlineButton>
@@ -486,7 +488,8 @@ function Remote({
               </p>
             ) : (
               <p className="rv-note" id={`${tokenId}-guide`}>
-                Enter the repository's URL first: the link to create its token follows.
+                <OutLink href={GITHUB_NEW_TOKEN}>Create a token on GitHub</OutLink> · Select the
+                repository · Contents, Issues and Webhooks: Read and write.
               </p>
             )}
           </div>

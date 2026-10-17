@@ -144,7 +144,7 @@ describe("Automation settings section", () => {
     expect(paths.indexOf("/settings/automation")).toBe(paths.indexOf("/settings/zerops") + 1);
   });
 
-  it.each(["github app", "model key", "slack", "discord", "limits per task"])(
+  it.each(["github", "model key", "slack", "discord", "limits per task"])(
     "finds %s on the Automation page",
     (query) => {
       expect(searchSettings(query)[0]?.to).toBe("/settings/automation");

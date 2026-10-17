@@ -28,8 +28,6 @@ export type GithubSection =
   | {
       readonly kind: "connected";
       readonly botLogin: string;
-      readonly slug: string;
-      readonly appUrl: string;
       readonly installUrl: string;
       readonly installations: ReadonlyArray<{
         readonly id: number;
@@ -71,8 +69,6 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
       return {
         kind: "connected",
         botLogin: view.botLogin,
-        slug: view.slug,
-        appUrl: view.appUrl,
         installUrl: view.installUrl,
         installations: view.installations.map((installation) => ({
           id: installation.id,

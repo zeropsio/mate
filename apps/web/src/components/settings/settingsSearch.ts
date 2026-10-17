@@ -280,9 +280,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "automation-github",
-    title: "GitHub app",
+    title: "GitHub",
     to: "/settings/automation",
-    searchTerms: ["connect github bot issues installation automated mates"],
+    searchTerms: ["connect github app bot issues installation automated mates"],
   },
   {
     id: "automation-slack",

@@ -330,12 +330,12 @@ export function SlackSettingsView({
         ) : undefined
       }
       data-zerops-surface="settings-slack"
-      description="Mention Mate in a channel a project takes tasks from: the thread becomes the task's conversation, and Mate answers there."
+      description="Mention Mate in a project's channel: the thread becomes the task's conversation, and Mate answers there."
       id={searchableSetting("automation-slack").id}
       status={statusOf(setting, slackLine)}
       title="Slack"
     >
-      <div className="grid gap-3 px-3 pb-3 empty:hidden sm:px-4">
+      <div className="grid gap-3 px-3 pb-3 empty:hidden">
         {view === null ? (
           <NotKnown
             onAgain={again}
@@ -531,12 +531,12 @@ export function DiscordSettingsView({ controls }: { readonly controls: Controls<
         ) : undefined
       }
       data-zerops-surface="settings-discord"
-      description="Allowed people type /mate task in a channel a project takes tasks from: Mate opens a thread for it, and /mate reply there steers it."
+      description="Allowed people type /mate task in a project's channel: Mate opens a thread for it, and /mate reply there steers it."
       id={searchableSetting("automation-discord").id}
       status={statusOf(setting, (known) => (known.connected ? "Connected" : "Not connected"))}
       title="Discord"
     >
-      <div className="grid gap-3 px-3 pb-3 sm:px-4">
+      <div className="grid gap-3 px-3 pb-3">
         {view === null ? (
           <NotKnown
             onAgain={again}
@@ -726,7 +726,7 @@ export function WebhooksSettingsView({
       }
       title="Webhooks"
     >
-      <div className="px-3 pb-3 sm:px-4">
+      <div className="px-3 pb-3">
         <AppRows apps={apps}>{children}</AppRows>
       </div>
     </SettingsRow>
@@ -858,7 +858,7 @@ export function SchedulesSettingsView({
       description="A brief an application's automated Mates get as a task each time it is due, such as updating dependencies every Monday morning."
       title="Schedules"
     >
-      <div className="px-3 pb-3 sm:px-4">
+      <div className="px-3 pb-3">
         <AppRows apps={apps}>{children}</AppRows>
       </div>
     </SettingsRow>
@@ -1154,7 +1154,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
       status={statusOf(setting, limitsLine)}
       title="Limits per task"
     >
-      <div className="grid gap-2 px-3 pb-3 sm:px-4">
+      <div className="grid gap-2 px-3 pb-3">
         {held === null ? (
           <NotKnown onAgain={again} quiet setting={setting} />
         ) : (

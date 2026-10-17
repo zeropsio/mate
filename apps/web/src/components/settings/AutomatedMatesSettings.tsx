@@ -122,7 +122,7 @@ export function OrganizationKeyView({
         )
       }
       data-zerops-surface="settings-org-ai-key"
-      description={`Pays for the open models automated Mates run on OpenCode: ${provider.models}.`}
+      description={`Pays for the models automated Mates run: ${provider.models}.`}
       id={searchableSetting("automation-model-key").id}
       status={
         <>
@@ -136,7 +136,7 @@ export function OrganizationKeyView({
     >
       {editing ? (
         <form
-          className="grid gap-2 px-3 pb-3 sm:px-4"
+          className="grid gap-2 px-3 pb-3"
           onSubmit={(event) => {
             event.preventDefault();
             const typed = value.trim();

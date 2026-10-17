@@ -17,7 +17,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { PersonAvatar } from "../zerops/primitives";
 import { OutLink } from "./automationParts";
 import {
   appNameProblem,
@@ -114,15 +113,8 @@ export function GithubAppView({
       description={GITHUB_ONE_LINE}
       status={
         section.kind === "connected" ? (
-          <span className="flex items-center gap-1.5">
-            <PersonAvatar
-              name={section.botLogin}
-              picture={`https://github.com/${section.slug}.png`}
-              size={16}
-            />
-            <span>
-              Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
-            </span>
+          <span>
+            Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
           </span>
         ) : (
           githubStatus(section)
@@ -141,7 +133,7 @@ export function GithubAppView({
           returnTo={returnTo}
         />
       ) : section.kind === "connected" ? (
-        <div className="grid gap-2 px-3 pb-3 sm:px-4">
+        <div className="grid gap-2 px-3 pb-3">
           {returned ? (
             <p className="text-xs text-foreground" role="status">
               GitHub is connected. Mate acts there as {section.botLogin} from now on.
@@ -149,8 +141,8 @@ export function GithubAppView({
           ) : null}
           <ul className="grid gap-1" data-zerops-surface="settings-github-installations">
             {section.installations.map((installation) => (
-              <li className="flex items-center justify-between gap-3" key={installation.id}>
-                <span className="text-xs text-foreground">{installation.line}</span>
+              <li className="flex items-center justify-between gap-3 text-xs" key={installation.id}>
+                <span className="text-foreground">{installation.line}</span>
                 <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
               </li>
             ))}
@@ -196,7 +188,7 @@ export function GithubAppView({
         </div>
       ) : null}
       {problem === null ? null : (
-        <p className="px-3 pb-3 text-xs text-destructive-foreground sm:px-4" role="alert">
+        <p className="px-3 pb-3 text-xs text-destructive-foreground" role="alert">
           {problem}
         </p>
       )}
@@ -225,7 +217,7 @@ function CreateApp({
   const nameId = useId();
   return (
     <form
-      className="grid gap-2 px-3 pb-3 sm:px-4"
+      className="grid gap-2 px-3 pb-3"
       onSubmit={(event) => {
         event.preventDefault();
         const problem = appNameProblem(name);
