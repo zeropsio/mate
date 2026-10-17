@@ -1048,6 +1048,76 @@ describe("HQ immutable usage", () => {
       ),
     );
     it.effect(
+      "an OpenCode turn on a Nebius model is priced under the name OpenCode gives it; a cache read the table cannot price reads as unpriced beside OpenCode's own estimate",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql, leader, ledger, sender, origin } = yield* setup;
+            const openCodeOrigin = usageOriginId(binding, "opencode");
+            const estimate = {
+              amount: "2000000",
+              scale: 9,
+              currency: "USD",
+              basis: "provider-reported-estimate",
+            };
+            // One day each: a day's cells of one model share their price.
+            const turn = (id: string, cachedInput: string, at: string): UsageFact => {
+              const line = fact(id, "1000", undefined, "nebius/moonshotai/Kimi-K2.7-Code")
+                .models[0]!;
+              return {
+                ...fact(id, "1000", at),
+                originId: openCodeOrigin,
+                provider: "opencode",
+                models: [
+                  {
+                    ...line,
+                    components: {
+                      uncachedInput: "1000",
+                      cachedInput,
+                      cacheCreation: "0",
+                      output: "250",
+                      reasoning: "50",
+                      inclusiveTotal: String(1250 + Number(cachedInput)),
+                    },
+                    nativeCost: estimate,
+                  },
+                ],
+                nativeCost: estimate,
+              };
+            };
+            yield* ledger.receive(sender, {
+              type: "usage-facts",
+              protocol: 2,
+              batchId: "opencode-batch",
+              origins: [{ ...origin, originId: openCodeOrigin, provider: "opencode" }],
+              facts: [
+                turn("uncached", "0", "2020-01-01T12:00:00.000Z"),
+                turn("cached", "4000", "2020-01-02T12:00:00.000Z"),
+              ],
+            });
+            yield* installAutomaticUsageRates(sql, leader, {
+              "nebius/moonshotai/Kimi-K2.7-Code": {
+                input_cost_per_token: 9.5e-7,
+                output_cost_per_token: 0.000004,
+              },
+            });
+            const report = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(report.totals.tokens, "6500");
+            // 1000 input at $0.95/M and 250 output (reasoning included) at $4/M.
+            assert.strictEqual(report.pricing.costUsdNanos, "1950000");
+            assert.strictEqual(report.pricing.pricedModelEntries, "1");
+            assert.strictEqual(report.pricing.unpricedModelEntries, "1");
+            assert.deepStrictEqual(Object.values(report.nativeCosts ?? {}), ["4000000"]);
+          }),
+        ),
+    );
+    it.effect(
       "deleted sources persist and only active org readers can see their totals and labels",
       () =>
         database(
