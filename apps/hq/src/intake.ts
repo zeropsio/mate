@@ -12,15 +12,24 @@
  * repository again keeps its address and secret, so a pasted webhook goes on working; another
  * repository gets new ones, and the webhook HQ made on the old one goes.
  *
+ * A delivery is taken only once its `X-Hub-Signature-256` holds — an HMAC-SHA256 of its bytes under
+ * the secret, compared in constant time — before a byte of it is parsed (`receive`). An issue opened,
+ * labelled or reopened carrying the label, in any case, waits as a task (`hq_task`, `queued`): once
+ * per delivery and once per issue while it is live. One closed or unlabelled while it still waits is
+ * dropped; one a Mate took stays its Mate's.
+ *
  * @module intake
  */
 import * as NodeCrypto from "node:crypto";
 
+import { MATE_TASK_BODY_MAX, MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 import type { HqIntakeRequest, HqIntakeView } from "@t3tools/shared/hqIntake";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -56,6 +65,50 @@ const WHY = {
 
 type IntakeError = AutomationRefused | NotLeader | SqlError | ZeropsError;
 
+/** A delivery as GitHub sends it: its headers HQ reads, and its bytes as they came. */
+export interface Delivery {
+  readonly event: string | undefined;
+  readonly id: string | undefined;
+  readonly signature: string | undefined;
+  readonly body: Uint8Array;
+}
+
+/**
+ * What became of a delivery: no intake at that address, its signature refused, a ping, one HQ
+ * cannot read, or taken — a task queued or dropped where it moved one (`moved`), in `appId`.
+ */
+export type Received =
+  | { readonly kind: "unknown" | "refused" | "ping" | "invalid" }
+  | { readonly kind: "taken"; readonly appId: string; readonly moved: boolean };
+
+/** What HQ reads of an `issues` event; everything else in it is passed by. */
+const IssuesEvent = Schema.Struct({
+  action: Schema.String,
+  issue: Schema.Struct({
+    number: Schema.Int,
+    title: Schema.String,
+    body: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    html_url: Schema.String,
+    user: Schema.optionalKey(Schema.NullOr(Schema.Struct({ login: Schema.String }))),
+    labels: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))),
+  }),
+  label: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
+  repository: Schema.Struct({ full_name: Schema.String }),
+});
+const decodeIssuesEvent = Schema.decodeUnknownOption(Schema.fromJsonString(IssuesEvent));
+
+/** Whether `signature` (`sha256=<hex>`) is the HMAC-SHA256 of `body` under `secret`. */
+export const signatureHolds = (
+  secret: Redacted.Redacted,
+  body: Uint8Array,
+  signature: string | undefined,
+) => {
+  const presented = /^sha256=([0-9a-f]{64})$/u.exec(signature ?? "")?.[1];
+  if (presented === undefined) return false;
+  const expected = NodeCrypto.createHmac("sha256", Redacted.value(secret)).update(body).digest();
+  return NodeCrypto.timingSafeEqual(expected, Buffer.from(presented, "hex"));
+};
+
 export class Intake extends Context.Service<
   Intake,
   {
@@ -65,6 +118,11 @@ export class Intake extends Context.Service<
       request: HqIntakeRequest,
     ) => Effect.Effect<HqIntakeView, IntakeError>;
     readonly stop: (userId: string, appId: string) => Effect.Effect<void, IntakeError>;
+    /** GitHub's delivery to the intake at `publicId`. */
+    readonly receive: (
+      publicId: string,
+      delivery: Delivery,
+    ) => Effect.Effect<Received, NotLeader | SqlError>;
   }
 >()("@t3tools/hq/intake") {}
 
@@ -176,7 +234,80 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           ),
         );
 
+      /** An issue's task, waiting: once per delivery, once per issue while it is live. */
+      const queue = (appId: string, deliveryId: string, event: typeof IssuesEvent.Type) =>
+        Effect.gen(function* () {
+          const { issue } = event;
+          const title =
+            issue.title.trim().slice(0, MATE_TASK_TITLE_MAX) || `Issue #${String(issue.number)}`;
+          const rows = yield* leader.write(sql`
+            INSERT INTO hq_task (app_id, repo, number, title, body, url, author, delivery_id, state)
+            VALUES (${appId}::uuid, ${event.repository.full_name.toLowerCase()}, ${issue.number},
+              ${title}, ${(issue.body ?? "").slice(0, MATE_TASK_BODY_MAX)}, ${issue.html_url},
+              ${issue.user?.login ?? null}, ${deliveryId}, 'queued')
+            ON CONFLICT DO NOTHING
+            RETURNING 1`);
+          return rows.length > 0;
+        });
+
+      /** The issue's task that still waits, dropped: its issue closed or lost the label. */
+      const drop = (appId: string, repo: string, number: number, why: string) =>
+        Effect.map(
+          leader.write(sql`
+            UPDATE hq_task SET state = 'dropped', detail = ${why}, updated_at = now()
+            WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}
+              AND state = 'queued'
+            RETURNING 1`),
+          (rows) => rows.length > 0,
+        );
+
       return Intake.of({
+        receive: (publicId, delivery) =>
+          Effect.gen(function* () {
+            const [row] = yield* sql<{
+              readonly app_id: string;
+              readonly repo: string;
+              readonly label: string;
+              readonly sealed: Uint8Array;
+              readonly key_id: string;
+            }>`
+              SELECT app_id::text AS app_id, repo, label, sealed, key_id FROM hq_intake
+              WHERE public_id = ${publicId}`;
+            if (row === undefined) return { kind: "unknown" } as const;
+            const secret = keys.openIntake(row.app_id, publicId, {
+              sealed: row.sealed,
+              keyId: row.key_id,
+            });
+            if (secret === undefined || !signatureHolds(secret, delivery.body, delivery.signature))
+              return { kind: "refused" } as const;
+            if (delivery.event === "ping") return { kind: "ping" } as const;
+            if (delivery.event !== "issues")
+              return { kind: "taken", appId: row.app_id, moved: false } as const;
+            const read = decodeIssuesEvent(new TextDecoder().decode(delivery.body));
+            if (Option.isNone(read) || delivery.id === undefined || delivery.id === "")
+              return { kind: "invalid" } as const;
+            const event = read.value;
+            const repo = event.repository.full_name.toLowerCase();
+            if (repo !== row.repo || event.issue.number < 1)
+              return { kind: "taken", appId: row.app_id, moved: false } as const;
+            const label = row.label.toLowerCase();
+            const carries = (event.issue.labels ?? []).some(
+              (candidate) => candidate.name.toLowerCase() === label,
+            );
+            const named = event.label?.name.toLowerCase() === label;
+            const moved =
+              event.action === "opened" || event.action === "reopened"
+                ? carries && (yield* queue(row.app_id, delivery.id, event))
+                : event.action === "labeled"
+                  ? named && (yield* queue(row.app_id, delivery.id, event))
+                  : event.action === "closed"
+                    ? yield* drop(row.app_id, repo, event.issue.number, "issue closed")
+                    : event.action === "unlabeled" && named
+                      ? yield* drop(row.app_id, repo, event.issue.number, "label removed")
+                      : false;
+            if (moved) yield* structure.touched;
+            return { kind: "taken", appId: row.app_id, moved } as const;
+          }),
         keep: (userId, appId, request) =>
           confirmingRefusal(
             Effect.gen(function* () {

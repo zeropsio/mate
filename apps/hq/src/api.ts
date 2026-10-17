@@ -144,7 +144,13 @@ import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { CHIEF_STATUS, ChiefRefused } from "./chiefRefused.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
-import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
+import {
+  DOOR_LIMIT,
+  DoorRateLimit,
+  INTAKE_LIMIT,
+  PERSON_ADDRESS_LIMIT,
+  TooManyRequests,
+} from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
 import { ROLES_UNANSWERED, Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
@@ -537,13 +543,14 @@ const deploysOf = (event: RolloutCause) =>
   );
 
 /** A token of the client address's bucket at `door`; none left is `429`. */
-const knock = (door: "person" | "mate" | "git") =>
+export const knock = (door: "person" | "mate" | "git" | "intake") =>
   Effect.gen(function* () {
     // `X-Real-IP` is the client address the Zerops L7 balancer sets.
     const request = yield* HttpServerRequest.HttpServerRequest;
     const address =
       request.headers["x-real-ip"] ?? Option.getOrElse(request.remoteAddress, () => "unknown");
-    const limit = door === "person" ? PERSON_ADDRESS_LIMIT : DOOR_LIMIT;
+    const limit =
+      door === "person" ? PERSON_ADDRESS_LIMIT : door === "intake" ? INTAKE_LIMIT : DOOR_LIMIT;
     if (!(yield* (yield* DoorRateLimit).take(`${door} ${address}`, limit))) {
       return yield* new TooManyRequests();
     }

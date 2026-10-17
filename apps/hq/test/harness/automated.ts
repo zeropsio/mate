@@ -1,15 +1,20 @@
+// @effect-diagnostics nodeBuiltinImport:off -- GitHub signs its webhooks with HMAC-SHA256.
 /**
  * Automated Mates in the running Core (`runningCore.ts`), as their tests set them up: a Mate's record
  * made automated, in an application or in none, enrolled, with its link open.
  *
  * @module test/harness/automated
  */
+import * as NodeCrypto from "node:crypto";
+
 import { assert } from "@effect/vitest";
+import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 import { sealRemoteToken } from "../../src/deployKeys.ts";
 import { testKey } from "./deployKeys.ts";
+import type { githubFake } from "./githubFake.ts";
 import { enrollMate, type startCore } from "./runningCore.ts";
 
 type Core = Effect.Success<ReturnType<typeof startCore>>;
@@ -77,3 +82,79 @@ export const connectedRepo = (
       VALUES (${appId}::uuid, ${repo}, ${`https://github.com/${path}.git`}, ${`github.com/${path}`},
         'github.com', '1', ${sealed.sealed}, ${sealed.keyId}, ${keptBy}, clock_timestamp())`;
   }).pipe(Effect.orDie);
+
+type Github = Effect.Success<typeof githubFake>;
+
+/**
+ * The application's intake on `acme/tea-shop` labelled `label`, its webhook made on the fake GitHub:
+ * where GitHub delivers, and the secret it signs with.
+ */
+export const intakeOn = (
+  core: Core,
+  github: Github,
+  owner: string,
+  appId: string,
+  label = "mate",
+) =>
+  Effect.gen(function* () {
+    const kept = yield* core.call("PUT", `/api/apps/${appId}/intake`, {
+      session: owner,
+      body: { repo: "acme/tea-shop", label },
+    });
+    assert.strictEqual(kept.status, 200);
+    const view = kept.body as HqIntakeView;
+    const made = github.state.seen.findLast((request) => request.path.endsWith("/hooks"));
+    const secret = (made?.body as { config: { secret: string } }).config.secret;
+    return { path: new URL(view.webhookUrl).pathname, secret };
+  });
+
+let deliveries = 0;
+
+/** GitHub's delivery of `event`, signed with `secret` unless a signature is given. */
+export const deliver = (
+  core: Core,
+  hook: { readonly path: string; readonly secret: string },
+  event: string,
+  payload: unknown,
+  options: { readonly delivery?: string; readonly signature?: string | null } = {},
+) => {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const signature =
+    options.signature === undefined
+      ? `sha256=${NodeCrypto.createHmac("sha256", hook.secret).update(bytes).digest("hex")}`
+      : options.signature;
+  return core.call("POST", hook.path, {
+    body: bytes,
+    headers: {
+      "content-type": "application/json",
+      "x-github-event": event,
+      "x-github-delivery": options.delivery ?? `delivery-${String((deliveries += 1))}`,
+      ...(signature === null ? {} : { "x-hub-signature-256": signature }),
+    },
+  });
+};
+
+/** An `issues` event's payload as GitHub sends it, of `acme/tea-shop`. */
+export const issueEvent = (
+  action: string,
+  issue: {
+    readonly number: number;
+    readonly title?: string;
+    readonly body?: string | null;
+    readonly labels?: ReadonlyArray<string>;
+  },
+  label?: string,
+) => ({
+  action,
+  issue: {
+    number: issue.number,
+    title: issue.title ?? `Issue ${String(issue.number)}`,
+    body: issue.body === undefined ? "Make the tea hotter." : issue.body,
+    html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
+    state: action === "closed" ? "closed" : "open",
+    user: { login: "nova" },
+    labels: (issue.labels ?? []).map((name) => ({ name })),
+  },
+  ...(label === undefined ? {} : { label: { name: label } }),
+  repository: { full_name: "acme/tea-shop" },
+});
