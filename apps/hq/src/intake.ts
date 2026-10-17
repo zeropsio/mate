@@ -53,13 +53,7 @@ import { Structure } from "./structure.ts";
 import { MateTasks } from "./mateTasks.ts";
 import { HQ_MARK, marked } from "./githubChannel.ts";
 import { type GithubActor, GithubGate } from "./githubGate.ts";
-import {
-  TaskIntake,
-  TaskIntakeUnavailable,
-  cleanTaskText,
-  cleanTaskTitle,
-  encodeSource,
-} from "./taskSources.ts";
+import { TaskIntake, TaskIntakeUnavailable, cleanTaskText, cleanTaskTitle } from "./taskSources.ts";
 
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -151,6 +145,13 @@ const IssuesEvent = Schema.Struct({
   label: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   repository: Repository,
   sender: Schema.optionalKey(Actor),
+  /** What an edit changed: a field it left alone is absent. */
+  changes: Schema.optionalKey(
+    Schema.Struct({
+      title: Schema.optionalKey(Schema.Unknown),
+      body: Schema.optionalKey(Schema.Unknown),
+    }),
+  ),
 });
 const decodeIssuesEvent = Schema.decodeUnknownOption(Schema.fromJsonString(IssuesEvent));
 
@@ -527,12 +528,19 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                 if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
                 const verdict = yield* verdictOf(target, actor);
                 if (verdict.kind !== "writer") return passed;
-                const source = issueSource(repo, issues.issue);
+                // Only what the edit changed is taken: the rest of the issue may read as someone
+                // nobody let steer the task left it.
+                const titled = issues.changes?.title !== undefined;
+                const bodied = issues.changes?.body !== undefined;
+                if (!titled && !bodied) return passed;
+                const title = issueSource(repo, issues.issue).title;
                 const body = cleanTaskText(issues.issue.body ?? "");
-                // Before any Mate took it, the task is the issue as it reads now.
+                // Before any Mate took it, the task reads as the edit left it.
                 const rewritten = yield* leader.write(sql`
-                  UPDATE hq_task SET title = ${source.title}, body = ${body},
-                    source = ${encodeSource(source)}::jsonb, updated_at = now()
+                  UPDATE hq_task SET
+                    title = ${titled ? title : sql`title`},
+                    source = ${titled ? sql`jsonb_set(source, '{title}', to_jsonb(${title}::text))` : sql`source`},
+                    body = ${bodied ? body : sql`body`}, updated_at = now()
                   WHERE app_id::text = ${row.app_id} AND source_key = ${key} AND state = 'queued'
                   RETURNING 1`);
                 if (rewritten.length === 0)
@@ -540,7 +548,9 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                     id: `github-edit:${deliveryId}`,
                     from: "edit",
                     author: actor.login,
-                    text: `The issue now reads:\n\n${source.title}\n\n${body}`,
+                    text: bodied
+                      ? `The issue now reads:\n\n${title}\n\n${body}`
+                      : `The issue's title now reads: ${title}`,
                   });
                 return passed;
               }
