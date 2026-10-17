@@ -5,7 +5,7 @@
  * the committed value's revision carries: a write's answer names the last read started before it
  * (`started`), so whoever waits for the write to show knows the read that can show it.
  *
- * An HQ with no such address (`404`), or a client whose HQ has no such call, keeps no such setting:
+ * An HQ with no such address (a bare `404`), or a client whose HQ has no such call, keeps no such setting:
  * the read is refused with `SETTING_UNSUPPORTED`, which nothing retries.
  */
 import * as Clock from "effect/Clock";
@@ -22,6 +22,16 @@ import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import { credentialFailure } from "./hqGitCredentialReads.ts";
 
+/**
+ * HQ has no such address: a `404` that names no reason of its own. One that does — an application
+ * gone (`app_not_found`) — is HQ's answer about the thing, never about its age.
+ */
+const routeMissing = (cause: unknown): boolean =>
+  cause instanceof HqError &&
+  cause.status === 404 &&
+  cause.reason === undefined &&
+  (cause.code === "http_404" || cause.code === "not_found");
+
 export interface SettingRead<F extends Family> {
   readonly family: F;
   readonly id: string;
@@ -34,6 +44,7 @@ export interface SettingRead<F extends Family> {
 }
 
 interface Reading {
+  readonly spec: SettingRead<Family>;
   count: number;
   /** Read again at the next turn: set by `again`, cleared as a read starts. */
   again: boolean;
@@ -66,7 +77,12 @@ export function makeSettingsReads(store: AccountStore) {
     let entry = readings.get(key);
     if (entry !== undefined) entry.count++;
     else {
-      const made: Reading = { count: 1, again: true, started: committed(spec) };
+      const made: Reading = {
+        spec: spec as SettingRead<Family>,
+        count: 1,
+        again: true,
+        started: committed(spec),
+      };
       made.fiber = Effect.runFork(
         Effect.scoped(
           Effect.gen(function* () {
@@ -99,8 +115,7 @@ export function makeSettingsReads(store: AccountStore) {
                         Effect.tryPromise({
                           try: () => spec.read() ?? Promise.reject(unsupported),
                           catch: (cause) =>
-                            cause === unsupported ||
-                            (cause instanceof HqError && cause.status === 404)
+                            cause === unsupported || routeMissing(cause)
                               ? ({
                                   outcome: "definitive-refusal",
                                   message: spec.unsupported,
@@ -187,6 +202,11 @@ export function makeSettingsReads(store: AccountStore) {
   return {
     demand,
     again,
+    /** Reads again every setting of a family read now whose id `matches`. */
+    againEvery: (family: Family, matches: (id: string) => boolean) => {
+      for (const entry of readings.values())
+        if (entry.spec.family === family && matches(entry.spec.id)) again(entry.spec);
+    },
     /**
      * The last read started of a setting: one that lands with a greater number started after
      * now. Taken before `readAfterWrite`, it names the reads a write's answer may predate.

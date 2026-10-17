@@ -66,6 +66,11 @@ function rendered(element: ReactElement) {
         tree!.root.findByType("form").props.onSubmit({ preventDefault: () => {} });
       });
     },
+    update: (next: ReactElement) => {
+      act(() => {
+        tree!.update(next);
+      });
+    },
     unmount: () => {
       act(() => {
         tree!.unmount();
@@ -150,6 +155,28 @@ describe("Slack in Settings", () => {
     expect(shown(html)).toContain("Reading…");
   });
 
+  it.each([
+    {
+      case: "Slack, as its unconnected steps",
+      part: <SlackSettingsView apps={APPS} controls={controls({ state: "reading" })} />,
+      room: "Create a Slack app from this manifest.",
+    },
+    {
+      case: "Discord, as its unconnected steps",
+      part: <DiscordSettingsView apps={APPS} controls={controls({ state: "reading" })} />,
+      room: "Make an application in the Discord Developer Portal.",
+    },
+    {
+      case: "an application's schedules, as its form",
+      part: <AppSchedulesView controls={controls({ state: "reading" })} name="Tea Shop" />,
+      room: "Add schedule",
+    },
+  ])("holds the room of its final shape while it is read: $case", ({ part, room }) => {
+    const html = renderToStaticMarkup(part);
+    expect(html).toContain("data-zerops-intake-room");
+    expect(shown(html)).toContain(room);
+  });
+
   it("asks for an update where HQ predates these settings", () => {
     expect(shown(renderToStaticMarkup(<TaskSourcesUnsupported />))).toBe(
       "Update HQ to take tasks from Slack, Discord, webhooks and schedules.",
@@ -174,6 +201,17 @@ describe("Discord in Settings", () => {
     expect(shown(html)).toContain("Public key");
     expect(shown(html)).toContain("Bot token");
     expect(shown(html)).toContain("https://hq.example/api/intake/discord/acme");
+  });
+
+  it("says the endpoint address appears once connected, with nothing to copy before HQ names it", () => {
+    const html = renderToStaticMarkup(
+      <DiscordSettingsView
+        apps={APPS}
+        controls={controls(known({ ...off, interactionsUrl: "" }))}
+      />,
+    );
+    expect(shown(html)).toContain("the address that appears here once it is connected");
+    expect(shown(html)).not.toContain("Copy URL");
   });
 
   it("shows a connected application's invite link and who may use it", () => {
@@ -270,6 +308,45 @@ describe("the limits on each task in Settings", () => {
       kind: "task-limits",
       limits: { minutes: 30, costUsd: 5 },
     });
+    view.unmount();
+  });
+});
+
+describe("limits saved in Settings", () => {
+  // The owner's rule: nothing paints that the next frame takes back.
+  it.each([
+    { case: "HQ's read after it lands", end: "done", heldAfter: 30, shows: ["30", "5"] },
+    { case: "HQ refuses it, as HQ holds them", end: "failed", heldAfter: 60, shows: ["60", ""] },
+  ] as const)("show what was typed while saving, until $case", ({ end, heldAfter, shows }) => {
+    const at = (held: number, action: unknown, cost: number | null = null) => ({
+      ...controls(known({ minutes: held, costUsd: cost })),
+      read: {
+        setting: known({ minutes: held, costUsd: cost }),
+        action,
+        revealed: null,
+      } as TaskSourceSettingValue<never>,
+    });
+    const first = at(60, { kind: "idle" });
+    const view = rendered(<TaskLimitsView controls={first} />);
+    const values = () => view.root.findAllByType(Input).map((node) => node.props.value);
+    const [minutes, cost] = view.root.findAllByType(Input);
+    view.type(minutes!, "30");
+    view.type(cost!, "5");
+    view.submit();
+    view.update(<TaskLimitsView controls={at(60, { kind: "working", verb: "task-limits" })} />);
+    expect(values()).toEqual(["30", "5"]);
+    view.update(
+      <TaskLimitsView
+        controls={at(
+          heldAfter,
+          end === "done"
+            ? { kind: "done", verb: "task-limits" }
+            : { kind: "failed", words: "Minutes are a whole number from 1 to 1,440." },
+          end === "done" ? 5 : null,
+        )}
+      />,
+    );
+    expect(values()).toEqual(shows);
     view.unmount();
   });
 });

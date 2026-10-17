@@ -263,6 +263,44 @@ describe("an application's sources", () => {
     r.close();
   });
 
+  it.each([
+    { write: { kind: "slack-disconnect" } as const, secrets: undefined },
+    {
+      write: { kind: "slack-connect" } as const,
+      secrets: { botToken: BOT_TOKEN, signingSecret: SIGNING },
+    },
+  ])(
+    "reads each application's Slack channel again after Slack is changed ($write.kind): HQ may have dropped them",
+    async ({ write, secrets }) => {
+      let held: HqChannelView | null = { appId: "shop", channelId: "C042", channel: "support" };
+      const r = rig({
+        slack: async () => connected,
+        connectSlack: async () => {
+          held = null;
+          return connected;
+        },
+        disconnectSlack: async () => {
+          held = null;
+        },
+        appChannel: async () => held,
+      });
+      const release = r.host.demandApp("hqAppSlack", SHOP);
+      await waitFor(r.store, () =>
+        JSON.stringify(r.read("hqAppSlack", "shop").setting).includes("support"),
+      );
+      await r.host.write(ORG, write, secrets);
+      await waitFor(
+        r.store,
+        () =>
+          r.read("hqAppSlack", "shop").setting.state === "known" &&
+          !JSON.stringify(r.read("hqAppSlack", "shop").setting).includes("support"),
+      );
+      expect(r.read("hqAppSlack", "shop").setting).toMatchObject({ held: { channel: null } });
+      release();
+      r.close();
+    },
+  );
+
   it("shows a webhook's secret while the screen that made it is open, never in its list, and forgets it once closed", async () => {
     const made: HqWebhookView = {
       id: "w1",
@@ -318,6 +356,30 @@ describe("an application's sources", () => {
     await making;
     expect(r.read("hqAppWebhooks", "shop").revealed).toBeNull();
     expect(r.records()).not.toContain(HOOK_SECRET);
+    r.close();
+  });
+});
+
+describe("an application HQ no longer holds", () => {
+  it("says the application is gone, never that HQ is too old", async () => {
+    const r = rig({
+      webhooks: async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "app_not_found",
+          reason: "app_not_found",
+          status: 404,
+          message: "This application is gone from HQ.",
+        });
+      },
+    });
+    const release = r.host.demandApp("hqAppWebhooks", SHOP);
+    await waitFor(r.store, () => r.read("hqAppWebhooks", "shop").setting.state === "failed");
+    expect(r.read("hqAppWebhooks", "shop").setting).toEqual({
+      state: "failed",
+      words: "This application is gone from HQ.",
+    });
+    release();
     r.close();
   });
 });

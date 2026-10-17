@@ -17,6 +17,7 @@ import type {
   TaskSourceWrite,
 } from "@t3tools/client-runtime/data";
 import type {
+  HqScheduleRequest,
   HqChannelView,
   HqDiscordView,
   HqScheduleRule,
@@ -41,7 +42,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { CopyLine, IntakeRoom } from "./automationParts";
+import { CopyLine, HeldRoom, IntakeRoom } from "./automationParts";
 import { SettingsRow } from "./settingsLayout";
 import {
   allowlistAfter,
@@ -56,6 +57,20 @@ import {
   taskSourcesUnsupported,
   workingWords,
 } from "./taskSourcesSettings.logic";
+
+/** Controls over nothing, for a part drawn unseen as the room its final shape takes. */
+const UNSEEN = {
+  read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+  write: () => {},
+  again: () => {},
+} as TaskSourceControls<never>;
+/** How HQ answers an organization with no Discord application: no address until connected. */
+const DISCORD_OFF: HqDiscordView = {
+  connected: false,
+  interactionsUrl: "",
+  inviteUrl: null,
+  allowed: [],
+};
 
 const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
@@ -132,33 +147,38 @@ function NotKnown({
   setting,
   onAgain,
   quiet = false,
+  template,
 }: {
   readonly setting: SettingValue<unknown>;
   readonly onAgain: () => void;
   readonly quiet?: boolean;
+  /** The part's final shape, whose room is held; absent: one field's. */
+  readonly template?: ReactNode;
 }) {
   const state = sectionState(setting);
-  return (
-    <IntakeRoom>
-      {state === "failed" && setting.state === "failed" ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {quiet ? (
-            <span />
-          ) : (
-            <p className="text-xs text-muted-foreground" role="alert">
-              {setting.words}
-            </p>
-          )}
-          <Button onClick={onAgain} size="sm" variant="secondary">
-            Read again
-          </Button>
-        </div>
-      ) : quiet ? null : state === "withheld" ? (
-        <p className="text-xs text-muted-foreground">{WITHHELD}</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">Reading…</p>
-      )}
-    </IntakeRoom>
+  const said =
+    state === "failed" && setting.state === "failed" ? (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {quiet ? (
+          <span />
+        ) : (
+          <p className="text-xs text-muted-foreground" role="alert">
+            {setting.words}
+          </p>
+        )}
+        <Button onClick={onAgain} size="sm" variant="secondary">
+          Read again
+        </Button>
+      </div>
+    ) : quiet ? null : state === "withheld" ? (
+      <p className="text-xs text-muted-foreground">{WITHHELD}</p>
+    ) : (
+      <p className="text-xs text-muted-foreground">Reading…</p>
+    );
+  return template === undefined ? (
+    <IntakeRoom>{said}</IntakeRoom>
+  ) : (
+    <HeldRoom template={template}>{said}</HeldRoom>
   );
 }
 
@@ -336,7 +356,13 @@ export function SlackSettingsView({
     >
       <div className="grid gap-3 px-3 pb-3 sm:px-4">
         {view === null ? (
-          <NotKnown onAgain={again} quiet setting={setting} />
+          <NotKnown
+            onAgain={again}
+            quiet
+            setting={setting}
+            // An unconnected organization's steps: the shape most land in.
+            template={<SlackSteps controls={UNSEEN} manifest={UNSEEN} />}
+          />
         ) : view.connected ? (
           <AppRows apps={apps}>
             {(app) =>
@@ -548,7 +574,12 @@ export function DiscordSettingsView({
     >
       <div className="grid gap-3 px-3 pb-3 sm:px-4">
         {view === null ? (
-          <NotKnown onAgain={again} quiet setting={setting} />
+          <NotKnown
+            onAgain={again}
+            quiet
+            setting={setting}
+            template={<DiscordSteps controls={UNSEEN} view={DISCORD_OFF} />}
+          />
         ) : view.connected ? (
           <>
             <DiscordConnected controls={controls} view={view} />
@@ -618,8 +649,18 @@ function DiscordSteps({
         </form>
       </Step>
       <Step n={3}>
-        <p>Then set its Interactions Endpoint URL to this, and add the bot to your server.</p>
-        <CopyLine copy="Copy URL" label="Endpoint URL" value={view.interactionsUrl} />
+        {/* HQ names the address only once the application is connected. */}
+        {view.interactionsUrl === "" ? (
+          <p>
+            Then set its Interactions Endpoint URL to the address that appears here once it is
+            connected, and add the bot to your server.
+          </p>
+        ) : (
+          <>
+            <p>Then set its Interactions Endpoint URL to this, and add the bot to your server.</p>
+            <CopyLine copy="Copy URL" label="Endpoint URL" value={view.interactionsUrl} />
+          </>
+        )}
       </Step>
     </ol>
   );
@@ -932,126 +973,22 @@ export function AppSchedulesView({
   readonly name: string;
 }) {
   const { read, write, again } = controls;
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [every, setEvery] = useState<HqScheduleRule["every"]>("week");
-  const [day, setDay] = useState(1);
-  const [at, setAt] = useState("09:00");
-  const [timeZone, setTimeZone] = useState(browserTimeZone);
-  const briefId = useId();
   const setting = read.setting;
   const busy = working(read.action);
-  const ready =
-    title.trim().length > 0 &&
-    brief.trim().length > 0 &&
-    /^([01]\d|2[0-3]):[0-5]\d$/u.test(at) &&
-    timeZone.trim().length > 0;
+  const make = (request: HqScheduleRequest) => {
+    write({ kind: "schedule-make", request });
+  };
   return (
     <>
       {setting.state !== "known" ? (
-        <NotKnown onAgain={again} setting={setting} />
+        <NotKnown
+          onAgain={again}
+          setting={setting}
+          template={<ScheduleForm action={{ kind: "idle" }} name={name} onMake={() => {}} />}
+        />
       ) : (
         <>
-          <form
-            className="grid gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!ready) return;
-              write({
-                kind: "schedule-make",
-                request: {
-                  name: title.trim(),
-                  brief: brief.trim(),
-                  rule: {
-                    every,
-                    ...(every === "week" ? { day } : {}),
-                    at,
-                    timeZone: timeZone.trim(),
-                  },
-                },
-              });
-              setTitle("");
-              setBrief("");
-            }}
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              <TextField
-                label={`${name}'s new schedule`}
-                onChange={setTitle}
-                value={title}
-                width="w-48"
-              />
-              <div className="grid w-36 gap-1.5">
-                <Label>Repeats</Label>
-                <Select
-                  onValueChange={(next) => {
-                    if (next === "day" || next === "weekday" || next === "week") setEvery(next);
-                  }}
-                  value={every}
-                >
-                  <SelectTrigger aria-label="Repeats" size="sm">
-                    <SelectValue>
-                      {EVERY_CHOICES.find(([value]) => value === every)?.[1]}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {EVERY_CHOICES.map(([value, words]) => (
-                      <SelectItem key={value} value={value}>
-                        {words}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              </div>
-              {/* Always in its place: choosing how often never moves the fields after it. */}
-              <div className="grid w-32 gap-1.5">
-                <Label>On</Label>
-                <Select
-                  disabled={every !== "week"}
-                  onValueChange={(next) => {
-                    if (typeof next === "number") setDay(next);
-                  }}
-                  value={day}
-                >
-                  <SelectTrigger aria-label="On" size="sm">
-                    <SelectValue>
-                      {every === "week"
-                        ? DAY_CHOICES.find(([value]) => value === day)?.[1]
-                        : every === "day"
-                          ? "Each day"
-                          : "Mon–Fri"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {DAY_CHOICES.map(([value, words]) => (
-                      <SelectItem key={value} value={value}>
-                        {words}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              </div>
-              <TimeField onChange={setAt} value={at} />
-              <TextField label="Time zone" onChange={setTimeZone} value={timeZone} width="w-40" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={briefId}>Brief</Label>
-              <Textarea
-                id={briefId}
-                onChange={(event) => {
-                  setBrief(event.target.value);
-                }}
-                placeholder="Update the dependencies, check the build, and open a change."
-                size="sm"
-                value={brief}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button disabled={busy || !ready} size="sm" type="submit">
-                {pressWords(read.action, ["schedule-make"], "Add schedule")}
-              </Button>
-            </div>
-          </form>
+          <ScheduleForm action={read.action} name={name} onMake={make} />
           {setting.held.length === 0 ? null : (
             <ul className="grid gap-1.5" data-zerops-surface="settings-schedules-list">
               {setting.held.map((schedule) => (
@@ -1070,6 +1007,128 @@ export function AppSchedulesView({
       )}
       <Problem read={read} />
     </>
+  );
+}
+
+/** A new schedule's form: its name, how often and when, in which time zone, and its brief. */
+function ScheduleForm({
+  name,
+  action,
+  onMake,
+}: {
+  readonly name: string;
+  readonly action: TaskSourceSettingValue<"hqAppSchedules">["action"];
+  readonly onMake: (request: HqScheduleRequest) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [brief, setBrief] = useState("");
+  const [every, setEvery] = useState<HqScheduleRule["every"]>("week");
+  const [day, setDay] = useState(1);
+  const [at, setAt] = useState("09:00");
+  const [timeZone, setTimeZone] = useState(browserTimeZone);
+  const briefId = useId();
+  const busy = working(action);
+  const ready =
+    title.trim().length > 0 &&
+    brief.trim().length > 0 &&
+    /^([01]\d|2[0-3]):[0-5]\d$/u.test(at) &&
+    timeZone.trim().length > 0;
+  return (
+    <form
+      className="grid gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready) return;
+        onMake({
+          name: title.trim(),
+          brief: brief.trim(),
+          rule: {
+            every,
+            ...(every === "week" ? { day } : {}),
+            at,
+            timeZone: timeZone.trim(),
+          },
+        });
+        setTitle("");
+        setBrief("");
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <TextField
+          label={`${name}'s new schedule`}
+          onChange={setTitle}
+          value={title}
+          width="w-48"
+        />
+        <div className="grid w-36 gap-1.5">
+          <Label>Repeats</Label>
+          <Select
+            onValueChange={(next) => {
+              if (next === "day" || next === "weekday" || next === "week") setEvery(next);
+            }}
+            value={every}
+          >
+            <SelectTrigger aria-label="Repeats" size="sm">
+              <SelectValue>{EVERY_CHOICES.find(([value]) => value === every)?.[1]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {EVERY_CHOICES.map(([value, words]) => (
+                <SelectItem key={value} value={value}>
+                  {words}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+        {/* Always in its place: choosing how often never moves the fields after it. */}
+        <div className="grid w-32 gap-1.5">
+          <Label>On</Label>
+          <Select
+            disabled={every !== "week"}
+            onValueChange={(next) => {
+              if (typeof next === "number") setDay(next);
+            }}
+            value={day}
+          >
+            <SelectTrigger aria-label="On" size="sm">
+              <SelectValue>
+                {every === "week"
+                  ? DAY_CHOICES.find(([value]) => value === day)?.[1]
+                  : every === "day"
+                    ? "Each day"
+                    : "Mon–Fri"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {DAY_CHOICES.map(([value, words]) => (
+                <SelectItem key={value} value={value}>
+                  {words}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+        <TimeField onChange={setAt} value={at} />
+        <TextField label="Time zone" onChange={setTimeZone} value={timeZone} width="w-40" />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={briefId}>Brief</Label>
+        <Textarea
+          id={briefId}
+          onChange={(event) => {
+            setBrief(event.target.value);
+          }}
+          placeholder="Update the dependencies, check the build, and open a change."
+          size="sm"
+          value={brief}
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button disabled={busy || !ready} size="sm" type="submit">
+          {pressWords(action, ["schedule-make"], "Add schedule")}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -1131,6 +1190,15 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
   const [minutes, setMinutes] = useState<string | null>(null);
   const [cost, setCost] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // Saved and not yet settled: what was typed stays shown until HQ's read after it lands, or HQ
+  // refuses it — never the limits as they were for a frame in between.
+  const [sent, setSent] = useState(false);
+  const settled = ["done", "failed", "unresolved"].includes(read.action.kind);
+  if (sent && settled) {
+    setSent(false);
+    setMinutes(null);
+    setCost(null);
+  }
   const minutesId = useId();
   const costId = useId();
   const shownMinutes = minutes ?? (held === null ? "" : String(held.minutes));
@@ -1156,8 +1224,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
                 return;
               }
               setRefusal(null);
-              setMinutes(null);
-              setCost(null);
+              setSent(true);
               write({ kind: "task-limits", limits: typed.limits });
             }}
           >
@@ -1187,7 +1254,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
               />
             </div>
             <Button
-              disabled={working(read.action) || (minutes === null && cost === null)}
+              disabled={sent || working(read.action) || (minutes === null && cost === null)}
               size="sm"
               type="submit"
             >

@@ -107,10 +107,25 @@ describe("what the settings' forms take", () => {
     { minutes: "60", cost: "", read: { limits: { minutes: 60, costUsd: null } } },
     { minutes: " 45 ", cost: "5", read: { limits: { minutes: 45, costUsd: 5 } } },
     { minutes: "45", cost: "2.50", read: { limits: { minutes: 45, costUsd: 2.5 } } },
-    { minutes: "0", cost: "", read: { error: "Minutes are a whole number of at least 1." } },
-    { minutes: "1.5", cost: "", read: { error: "Minutes are a whole number of at least 1." } },
-    { minutes: "60", cost: "0", read: { error: "Cost is an amount above $0, or empty for none." } },
-    { minutes: "60", cost: "x", read: { error: "Cost is an amount above $0, or empty for none." } },
+    { minutes: "0", cost: "", read: { error: "Minutes are a whole number from 1 to 1,440." } },
+    { minutes: "1.5", cost: "", read: { error: "Minutes are a whole number from 1 to 1,440." } },
+    { minutes: "1441", cost: "", read: { error: "Minutes are a whole number from 1 to 1,440." } },
+    { minutes: "1440", cost: "10000", read: { limits: { minutes: 1440, costUsd: 10000 } } },
+    {
+      minutes: "60",
+      cost: "0",
+      read: { error: "Cost is an amount above $0 and at most $10,000, or empty for none." },
+    },
+    {
+      minutes: "60",
+      cost: "x",
+      read: { error: "Cost is an amount above $0 and at most $10,000, or empty for none." },
+    },
+    {
+      minutes: "60",
+      cost: "10000.01",
+      read: { error: "Cost is an amount above $0 and at most $10,000, or empty for none." },
+    },
   ])("limits of $minutes minutes and $cost dollars read as $read", ({ minutes, cost, read }) => {
     expect(readLimits(minutes, cost)).toEqual(read);
   });
@@ -129,7 +144,7 @@ describe("what the settings' forms take", () => {
       case: "what is no Discord user ID is refused",
       held: [],
       add: "not-an-id",
-      after: { error: "A Discord user ID is a long number." },
+      after: { error: "A Discord user ID is a number of up to 20 digits." },
     },
     { case: "an ID removed leaves it", held: [IDA, NOVA], remove: IDA, after: { userIds: [NOVA] } },
   ])("the Discord allowlist: $case", ({ held, add, remove, after }) => {

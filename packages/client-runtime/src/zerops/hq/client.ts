@@ -698,9 +698,10 @@ const readDiscord = decoded(HqDiscordView);
 const readChannel = decoded(HqChannelView);
 const readAppChannel = decoded(Schema.NullOr(HqChannelView));
 const readWebhook = decoded(HqWebhookView);
-const readWebhooks = decoded(Schema.Array(HqWebhookView));
+/** HQ answers an application's lists wrapped: `{ webhooks }`, `{ schedules }`. */
+const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
 const readSchedule = decoded(HqScheduleView);
-const readSchedules = decoded(Schema.Array(HqScheduleView));
+const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
 const readTaskLimits = decoded(HqTaskLimitsView);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
@@ -1414,7 +1415,8 @@ export function makeHqApi(input: {
       );
     },
     webhooks: async (appId) =>
-      readWebhooks(await authorized(`/api/apps/${encodeURIComponent(appId)}/webhooks`)),
+      (await readWebhooks(await authorized(`/api/apps/${encodeURIComponent(appId)}/webhooks`)))
+        .webhooks,
     makeWebhook: async (appId, request) =>
       readWebhook(
         await authorized(
@@ -1431,7 +1433,8 @@ export function makeHqApi(input: {
       );
     },
     schedules: async (appId) =>
-      readSchedules(await authorized(`/api/apps/${encodeURIComponent(appId)}/schedules`)),
+      (await readSchedules(await authorized(`/api/apps/${encodeURIComponent(appId)}/schedules`)))
+        .schedules,
     makeSchedule: async (appId, request) =>
       readSchedule(
         await authorized(

@@ -101,20 +101,25 @@ export function taskSourceProblem(action: AutomationAction<string>): string | nu
   return action.kind === "failed" || action.kind === "unresolved" ? action.words : null;
 }
 
-/** The limits as typed: minutes a whole number ≥ 1, cost an amount above zero or none. */
+/** HQ's caps on the limits (`apps/hq/src/taskLimits.ts`): said here before anything is sent. */
+const MINUTES_MAX = 1440;
+const COST_MAX = 10_000;
+const MINUTES_WORDS = "Minutes are a whole number from 1 to 1,440.";
+const COST_WORDS = "Cost is an amount above $0 and at most $10,000, or empty for none.";
+
+/** The limits as typed: minutes a whole number from 1 to 1,440, cost up to $10,000 or none. */
 export function readLimits(
   minutes: string,
   cost: string,
 ): { readonly limits: HqTaskLimitsView } | { readonly error: string } {
   const typedMinutes = minutes.trim();
   const whole = Number(typedMinutes);
-  if (!/^\d+$/u.test(typedMinutes) || whole < 1)
-    return { error: "Minutes are a whole number of at least 1." };
+  if (!/^\d+$/u.test(typedMinutes) || whole < 1 || whole > MINUTES_MAX)
+    return { error: MINUTES_WORDS };
   const typedCost = cost.trim();
   if (typedCost === "") return { limits: { minutes: whole, costUsd: null } };
   const amount = Number(typedCost);
-  if (!Number.isFinite(amount) || amount <= 0)
-    return { error: "Cost is an amount above $0, or empty for none." };
+  if (!Number.isFinite(amount) || amount <= 0 || amount > COST_MAX) return { error: COST_WORDS };
   return { limits: { minutes: whole, costUsd: amount } };
 }
 
@@ -125,6 +130,8 @@ export function allowlistAfter(
 ): { readonly userIds: ReadonlyArray<string> } | { readonly error: string } {
   if ("remove" in change) return { userIds: held.filter((id) => id !== change.remove) };
   const id = change.add.trim();
-  if (!/^\d{5,25}$/u.test(id)) return { error: "A Discord user ID is a long number." };
+  // As HQ takes it (`apps/hq/src/discord.ts`): a snowflake of up to 20 digits.
+  if (!/^\d{1,20}$/u.test(id))
+    return { error: "A Discord user ID is a number of up to 20 digits." };
   return { userIds: held.includes(id) ? held : [...held, id] };
 }

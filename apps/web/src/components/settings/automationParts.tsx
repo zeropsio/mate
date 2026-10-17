@@ -13,6 +13,28 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
 /**
+ * The room a part's final shape takes (`template`, drawn unseen), held under what it says while it
+ * is read, so the part paints in that shape from the first frame and nothing under it moves as
+ * what it reads lands.
+ */
+export function HeldRoom({
+  template,
+  children,
+}: {
+  readonly template: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="grid">
+      <div aria-hidden className="invisible col-start-1 row-start-1" data-zerops-intake-room="">
+        {template}
+      </div>
+      <div className="col-start-1 row-start-1 self-start">{children}</div>
+    </div>
+  );
+}
+
+/**
  * The room an intake row's form takes, held under whatever the row says instead — reading, taking
  * tasks, nothing to take them from — so the row paints in its final shape from the first frame
  * and never grows as what it reads lands (the cardinal sin).

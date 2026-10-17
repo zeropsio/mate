@@ -2120,3 +2120,109 @@ it("Git transport keeps candidate plaintext in one incoming write body and recov
   expect(JSON.stringify(sent.map(({ body: _incoming, ...safe }) => safe))).not.toContain(marker);
   expect(JSON.stringify(intent)).not.toContain(marker);
 });
+
+describe("makeHqApi — where automated Mates take tasks from besides GitHub", () => {
+  const hook = {
+    id: "w1",
+    name: "Sentry",
+    url: "https://hq.example/api/intake/webhook/9f2c41",
+    createdAt: "2026-10-17T09:00:00.000Z",
+  };
+  const schedule = {
+    id: "s1",
+    name: "Weekly upkeep",
+    brief: "Update the dependencies.",
+    rule: { every: "week", day: 1, at: "09:00", timeZone: "Europe/Prague" },
+    nextAt: "2026-10-19T07:00:00.000Z",
+  } as const;
+  const channel = { appId: "app-1", channelId: "C042", channel: "support" };
+
+  // HQ's own answers (`apps/hq/src/automationApi.ts`, `slackRoutes.ts`, `discordRoutes.ts`).
+  it.each([
+    {
+      case: "an application's webhooks, which HQ answers wrapped",
+      call: (api: HqApi) => api.webhooks!("app-1"),
+      method: "GET",
+      path: "/api/apps/app-1/webhooks",
+      status: 200,
+      answer: { webhooks: [hook] },
+      read: [hook],
+    },
+    {
+      case: "a webhook made, with its secret this once",
+      call: (api: HqApi) => api.makeWebhook!("app-1", { name: "Sentry" }),
+      method: "POST",
+      path: "/api/apps/app-1/webhooks",
+      sent: { name: "Sentry" },
+      status: 201,
+      answer: { ...hook, secret: "s" },
+      read: { ...hook, secret: "s" },
+    },
+    {
+      case: "an application's schedules, which HQ answers wrapped",
+      call: (api: HqApi) => api.schedules!("app-1"),
+      method: "GET",
+      path: "/api/apps/app-1/schedules",
+      status: 200,
+      answer: { schedules: [schedule] },
+      read: [schedule],
+    },
+    {
+      case: "a schedule made",
+      call: (api: HqApi) =>
+        api.makeSchedule!("app-1", {
+          name: schedule.name,
+          brief: schedule.brief,
+          rule: schedule.rule,
+        }),
+      method: "POST",
+      path: "/api/apps/app-1/schedules",
+      sent: { name: schedule.name, brief: schedule.brief, rule: schedule.rule },
+      status: 201,
+      answer: schedule,
+      read: schedule,
+    },
+    {
+      case: "an application with no Slack channel",
+      call: (api: HqApi) => api.appChannel!("app-1", "slack"),
+      method: "GET",
+      path: "/api/apps/app-1/slack",
+      status: 200,
+      answer: null,
+      read: null,
+    },
+    {
+      case: "an application's Discord channel set",
+      call: (api: HqApi) => api.setAppChannel!("app-1", "discord", { channelId: "123456789" }),
+      method: "PUT",
+      path: "/api/apps/app-1/discord",
+      sent: { channelId: "123456789" },
+      status: 200,
+      answer: channel,
+      read: channel,
+    },
+    {
+      case: "the limits on each task kept",
+      call: (api: HqApi) => api.setTaskLimits!({ minutes: 30, costUsd: 5 }),
+      method: "PUT",
+      path: "/api/org/task-limits",
+      sent: { minutes: 30, costUsd: 5 },
+      status: 200,
+      answer: { minutes: 30, costUsd: 5 },
+      read: { minutes: 30, costUsd: 5 },
+    },
+  ])("reads $case as HQ answers it", async ({ call, method, path, sent, status, answer, read }) => {
+    const hq = fakeHq((seen) =>
+      seen.path === path && seen.method === method ? json(status, answer) : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(call(api)).resolves.toEqual(read);
+    const asked = hq.seen.find((entry) => entry.path === path && entry.method === method);
+    expect(asked?.body).toEqual(sent);
+  });
+});
