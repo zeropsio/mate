@@ -560,12 +560,23 @@ describe("a change's pull request", () => {
           const squash = yield* squashOnMain(core);
           yield* core.dispatch("pull_request", {
             action: "closed",
-            pull_request: { number: 2, merged: true, merge_commit_sha: squash },
+            pull_request: {
+              number: 2,
+              merged: true,
+              merge_commit_sha: squash,
+              head: { sha: HEAD },
+            },
           });
           yield* rowsWhere(
             core.url,
             "SELECT state, merged_sha FROM hq_change WHERE repo = 'web'",
             (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["merged_sha"] === squash,
+          );
+          // The head GitHub merged is kept, whatever the change's head is by then.
+          yield* rowsWhere(
+            core.url,
+            "SELECT merged_sha, merged_head FROM hq_pull_request",
+            (rows) => rows[0]?.["merged_sha"] === squash && rows[0]?.["merged_head"] === HEAD,
           );
           yield* statusSays(core, "Merged in #2.");
         }),

@@ -271,10 +271,12 @@ interface PullRow {
   readonly checks_given_up: boolean;
   readonly described: string | null;
   readonly merged_sha: string | null;
+  readonly merged_head: string | null;
 }
 
 const PULL_COLUMNS = `app_id::text AS app_id, repo, number, github_repo, pr_number, url, state,
-  head_sha, checks, checks_told_sha, checks_told, checks_given_up, described, merged_sha`;
+  head_sha, checks, checks_told_sha, checks_told, checks_given_up, described, merged_sha,
+  merged_head`;
 
 interface ChangeFactsRow {
   readonly state: string;
@@ -403,6 +405,17 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       // One pull request's step at a time: a sweep, an event and a merge never cross.
       const working = yield* Semaphore.make(1);
       const leading = Effect.map(leader.status, (status) => status.state === "active");
+      /**
+       * The change merged by GitHub's merge `mergedSha` of its head `mergedHead`; a `landImported`
+       * that does not take the head yet records the change's own.
+       */
+      const landImported: (
+        appId: string,
+        repo: string,
+        number: number,
+        mergedSha: string,
+        mergedHead?: string,
+      ) => ReturnType<typeof changes.landImported> = changes.landImported;
       /** GitHub user ids by login, for a merge's `Co-authored-by`. */
       const userIds = new Map<string, number>();
 
@@ -522,7 +535,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const { row: change } = facts;
           // Merged on GitHub, not yet here: followed again.
           if (row?.state === "merged" && row.merged_sha !== null && facts.row.state === "open")
-            return yield* landed(row, row.merged_sha);
+            return yield* landed(row, row.merged_sha, row.merged_head);
           if (row !== undefined && row.state !== "open") return;
           // Closed in Mate while GitHub did not answer: closed there now.
           if (row !== undefined && change.state === "closed") return yield* closeOnGithub(row);
@@ -707,10 +720,10 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        * change merged by it (`Changes.landImported`). Either failing leaves it for the next try
        * (the sweep); one merged already stays as it is.
        */
-      const landed = (row: PullRow, mergedSha: string) =>
+      const landed = (row: PullRow, mergedSha: string, mergedHead: string | null) =>
         Effect.gen(function* () {
           yield* mirror.sync(row.app_id, row.repo);
-          yield* changes.landImported(row.app_id, row.repo, row.number, mergedSha);
+          yield* landImported(row.app_id, row.repo, row.number, mergedSha, mergedHead ?? undefined);
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("GitHub's merge not followed yet", { pull: row.pr_number, cause }),
@@ -721,18 +734,23 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        * The pull request is merged as `mergedSha`: recorded, its change merged here, and its task's
        * status line says so.
        */
-      const mergedOnGithub = (row: PullRow, mergedSha: string | undefined) =>
+      const mergedOnGithub = (
+        row: PullRow,
+        mergedSha: string | undefined,
+        mergedHead: string | undefined,
+      ) =>
         Effect.gen(function* () {
           const ended = yield* leader.write(sql<{ readonly mate_project_id: string }>`
             UPDATE hq_pull_request pr SET state = 'merged',
-              merged_sha = COALESCE(${mergedSha ?? null}, pr.merged_sha), updated_at = now()
+              merged_sha = COALESCE(${mergedSha ?? null}, pr.merged_sha),
+              merged_head = COALESCE(${mergedHead ?? null}, pr.merged_head), updated_at = now()
             FROM hq_change c
             WHERE pr.app_id::text = ${row.app_id} AND pr.repo = ${row.repo}
               AND pr.number = ${row.number} AND pr.state = 'open'
               AND c.app_id = pr.app_id AND c.repo = pr.repo AND c.number = pr.number
             RETURNING c.mate_project_id`);
           const sha = mergedSha ?? row.merged_sha;
-          if (sha !== null) yield* landed(row, sha);
+          if (sha !== null) yield* landed(row, sha, mergedHead ?? row.merged_head);
           if (ended.length === 0) return;
           yield* moved(ended[0]!.mate_project_id);
           const task = yield* taskOf(row);
@@ -897,7 +915,11 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const row = yield* pullOnGithub(event.repository, read.pull_request.number);
           if (row === undefined) return;
           if (read.pull_request.merged === true)
-            yield* mergedOnGithub(row, read.pull_request.merge_commit_sha ?? undefined);
+            yield* mergedOnGithub(
+              row,
+              read.pull_request.merge_commit_sha ?? undefined,
+              read.pull_request.head?.sha,
+            );
           else yield* closedOnGithub(row, read.sender);
         }),
       );
@@ -1063,7 +1085,8 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             });
             return yield* refuse("github_refused");
           }
-          yield* mergedOnGithub(row, merged.sha);
+          // The head GitHub merged is the one it was asked to: `sha` holds it to it.
+          yield* mergedOnGithub(row, merged.sha, expectedHead);
           return yield* changes.change(appId, repo, number);
         });
 
