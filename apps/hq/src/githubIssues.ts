@@ -43,7 +43,7 @@ const decodeUser = Schema.decodeUnknownOption(
 );
 
 /** The events an intake's webhook delivers: issues, and the comments on them. */
-export const INTAKE_EVENTS = ["issues"] as const;
+export const INTAKE_EVENTS = ["issues", "issue_comment"] as const;
 
 /** A person's standing on a repository, as GitHub answers it. */
 export interface GithubPermission {

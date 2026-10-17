@@ -150,6 +150,38 @@ export const deliver = (
   });
 };
 
+/** Who acts on GitHub in an event: `nova`, a person, unless the test says otherwise. */
+export interface Acting {
+  readonly sender?: string;
+  readonly bot?: boolean;
+  /** The repository is public. */
+  readonly public?: boolean;
+}
+
+const issueOf = (
+  action: string,
+  issue: {
+    readonly number: number;
+    readonly title?: string;
+    readonly body?: string | null;
+    readonly labels?: ReadonlyArray<string>;
+    readonly state?: "open" | "closed";
+  },
+) => ({
+  number: issue.number,
+  title: issue.title ?? `Issue ${String(issue.number)}`,
+  body: issue.body === undefined ? "Make the tea hotter." : issue.body,
+  html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
+  state: issue.state ?? (action === "closed" ? "closed" : "open"),
+  user: { login: "nova", type: "User" },
+  labels: (issue.labels ?? []).map((name) => ({ name })),
+});
+
+const actingOf = (acting: Acting) => ({
+  repository: { full_name: "acme/tea-shop", private: acting.public !== true },
+  sender: { login: acting.sender ?? "nova", type: acting.bot === true ? "Bot" : "User" },
+});
+
 /** An `issues` event's payload as GitHub sends it, of `acme/tea-shop`. */
 export const issueEvent = (
   action: string,
@@ -162,19 +194,31 @@ export const issueEvent = (
     readonly state?: "open" | "closed";
   },
   label?: string,
+  acting: Acting = {},
 ) => ({
   action,
-  issue: {
-    number: issue.number,
-    title: issue.title ?? `Issue ${String(issue.number)}`,
-    body: issue.body === undefined ? "Make the tea hotter." : issue.body,
-    html_url: `https://github.com/acme/tea-shop/issues/${String(issue.number)}`,
-    state: issue.state ?? (action === "closed" ? "closed" : "open"),
-    user: { login: "nova" },
-    labels: (issue.labels ?? []).map((name) => ({ name })),
-  },
+  issue: issueOf(action, issue),
   ...(label === undefined ? {} : { label: { name: label } }),
-  repository: { full_name: "acme/tea-shop" },
+  ...actingOf(acting),
+});
+
+let comments = 0;
+
+/** An `issue_comment` event's payload: `body` said on the open issue `number`. */
+export const commentEvent = (
+  number: number,
+  body: string,
+  acting: Acting & { readonly app?: boolean } = {},
+) => ({
+  action: "created",
+  issue: issueOf("created", { number, labels: ["mate"] }),
+  comment: {
+    id: (comments += 1),
+    body,
+    user: { login: acting.sender ?? "nova", type: acting.bot === true ? "Bot" : "User" },
+    performed_via_github_app: acting.app === true ? { id: 1 } : null,
+  },
+  ...actingOf(acting),
 });
 
 let revisions = 0;

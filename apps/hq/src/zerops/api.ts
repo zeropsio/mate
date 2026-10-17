@@ -31,6 +31,11 @@ export interface ZeropsMember {
   /** Whether they see the org's billing (its costs whole), and change it; absent: no. */
   readonly canViewFinances?: boolean;
   readonly canEditFinances?: boolean;
+  /**
+   * The email they sign in to Zerops with, lower case; absent where Zerops did not say. HQ maps a
+   * person on another service to a member by it (`githubGate.ts`), and never answers it out.
+   */
+  readonly email?: string;
 }
 
 export interface ZeropsProject {

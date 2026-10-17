@@ -83,6 +83,7 @@ const person = (userId: string, roleCode: string): ZeropsMember => ({
   userId,
   clientUserId: `C-${userId}`,
   canCreateProjects: false,
+  email: `${userId}@tea.test`,
 });
 
 const tokenRecord = (patch: Partial<ZeropsOwnToken>): Omit<ZeropsOwnToken, "readAtMs"> => ({

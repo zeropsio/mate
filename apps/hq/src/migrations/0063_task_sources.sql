@@ -66,3 +66,6 @@ CREATE TABLE hq_task_message (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (task_id, id)
 );
+
+-- A public repository's issues are taken only where its intake says so: anyone may open one.
+ALTER TABLE hq_intake ADD COLUMN public boolean NOT NULL DEFAULT false;

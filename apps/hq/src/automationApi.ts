@@ -10,7 +10,8 @@
  *   to paste is answered only where HQ could not make the webhook (no-store).
  * - `POST /api/intake/github/:publicId`: GitHub's delivery to an intake's webhook, limited per
  *   address. Past 1 MiB `413`; no intake there `404`; a signature that does not hold `401
- *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`.
+ *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`; one HQ could
+ *   not check or take in now `503`, for GitHub to deliver again.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
  *   the organization's key, for the Mate's zcp to put in its project's vault; `404 no_key` while
  *   none is kept.
@@ -30,7 +31,6 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } from "./api.ts";
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
-import { MateTasks } from "./mateTasks.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Writes } from "./writes.ts";
 
@@ -139,13 +139,18 @@ export const automationRoutes = Layer.mergeAll(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const body = yield* deliveryBytes;
         const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
-        const received = yield* (yield* Intake).receive(publicId, {
-          event: request.headers["x-github-event"],
-          contentType: request.headers["content-type"],
-          id: request.headers["x-github-delivery"],
-          signature: request.headers["x-hub-signature-256"],
-          body,
-        });
+        // Read once whole, then carried through even where GitHub stops waiting for the answer.
+        const received = yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            return yield* (yield* Intake).receive(publicId, {
+              event: request.headers["x-github-event"],
+              contentType: request.headers["content-type"],
+              id: request.headers["x-github-delivery"],
+              signature: request.headers["x-hub-signature-256"],
+              body,
+            });
+          }),
+        );
         switch (received.kind) {
           case "unknown":
             return json({ code: "not_found" }, 404);
@@ -156,7 +161,6 @@ export const automationRoutes = Layer.mergeAll(
           case "ping":
             return json({}, 200);
           case "taken":
-            if (received.moved) yield* (yield* MateTasks).wake;
             return json({}, 202);
         }
       }),

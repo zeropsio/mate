@@ -69,6 +69,11 @@ export const githubFake = Effect.gen(function* () {
                 response.end(JSON.stringify(status === 201 ? { id: (state.commentId += 1) } : {}));
                 return;
               }
+              if (request.method === "PATCH" && /\/hooks\/\d+$/u.test(path)) {
+                response.writeHead(200);
+                response.end("{}");
+                return;
+              }
               if (request.method === "PATCH" && /\/issues\/comments\/\d+$/u.test(path)) {
                 response.writeHead(200);
                 response.end("{}");

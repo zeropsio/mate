@@ -35,6 +35,7 @@ import { intakeLayer } from "./intake.ts";
 import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
+import { githubGateLayer } from "./githubGate.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
@@ -155,7 +156,10 @@ const services = (options: CoreOptions) => {
   const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
   const sources = Layer.mergeAll(
     door,
-    intakeLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
+    intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
+      Layer.provide(door),
+      Layer.provide(githubGateLayer),
+    ),
     githubChannelLayer,
   ).pipe(
     Layer.provide(remotes),
