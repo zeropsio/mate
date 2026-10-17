@@ -635,26 +635,53 @@ describe("Slack", () => {
         }),
     );
 
-    it.effect("the thread's first message deleted stops its task", () =>
-      Effect.gen(function* () {
-        const hq = yield* withSlack;
-        yield* hq.connected;
-        yield* hq.post(hq.event(mention("<@U0MATE> brew more tea")));
-        yield* Queue.take(hq.intake.enqueued);
-        yield* hq.post(
-          hq.event({
-            type: "message",
-            subtype: "message_deleted",
-            channel: "C0SUPPORT",
-            deleted_ts: "1700000000.000100",
-            ts: "1700000000.000900",
-          }),
-        );
-        assert.deepStrictEqual(yield* Queue.take(hq.intake.stops), {
-          sourceKey: "slack:T0TEA/C0SUPPORT/1700000000.000100",
-          reason: "The Slack thread was deleted.",
-        });
-      }),
+    it.effect(
+      "a task stops when its ask is deleted, never when someone else's message it answered is",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const deletion = (ts: string) =>
+            hq.event({
+              type: "message",
+              subtype: "message_deleted",
+              channel: "C0SUPPORT",
+              deleted_ts: ts,
+              ts: "1700000000.000900",
+            });
+          // Nova asks in a thread someone else began.
+          yield* hq.post(
+            hq.event(
+              mention("<@U0MATE> brew more tea", {
+                ts: "1700000000.000200",
+                thread_ts: "1700000000.000100",
+              }),
+            ),
+          );
+          const asked = yield* Queue.take(hq.intake.enqueued);
+          yield* hq.post(deletion("1700000000.000100"));
+          yield* hq.post(
+            hq.event({
+              type: "message",
+              subtype: "message_changed",
+              channel: "C0SUPPORT",
+              message: { ts: "1700000000.000100", subtype: "tombstone" },
+              ts: "1700000000.000901",
+            }),
+          );
+          yield* hq.service.drained;
+          assert.strictEqual(yield* Queue.size(hq.intake.stops), 0);
+          yield* hq.post(deletion("1700000000.000200"));
+          assert.deepStrictEqual(yield* Queue.take(hq.intake.stops), {
+            sourceKey: asked.sourceKey,
+            reason: "The Slack thread was deleted.",
+          });
+          // Where the thread's first message is the ask, deleting it stops the task too.
+          yield* hq.post(hq.event(mention("<@U0MATE> fix the menu", { ts: "1700000000.000300" })));
+          const second = yield* Queue.take(hq.intake.enqueued);
+          yield* hq.post(deletion("1700000000.000300"));
+          assert.strictEqual((yield* Queue.take(hq.intake.stops)).sourceKey, second.sourceKey);
+        }),
     );
 
     it.effect(

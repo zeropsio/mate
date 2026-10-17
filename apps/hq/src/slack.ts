@@ -22,7 +22,7 @@
  *   its thread (`slack:<team>/<channel>/<thread ts>`). Anyone else is told only members can ask.
  *   A reply or a mention in a thread whose task lives, by a member, is told to it
  *   (`TaskIntake.message`) and marked 👀; the bot's own words and other bots' never are. The
- *   thread's first message deleted stops its task (`TaskIntake.stop`).
+ *   ask deleted stops its task (`TaskIntake.stop`); anyone else's message deleted, nothing.
  * - Its channel (`TaskSourceChannels`): 👀 on the ask, and one status message in the thread, posted
  *   for a task the first time and edited after; a question is put to the person who asked.
  *
@@ -533,13 +533,14 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
             yield* heard(link, channel, ts);
         });
 
-      /** A thread's first message deleted: its task stops. */
-      const deleted = (link: Connection, channel: string | undefined, ts: string | undefined) =>
+      /** A task's ask deleted: its task stops. Anyone else's message deleted stops nothing. */
+      const deleted = (channel: string | undefined, ts: string | undefined) =>
         Effect.gen(function* () {
           if (channel === undefined || ts === undefined) return;
-          const sourceKey = slackSourceKey(link.teamId, channel, ts);
-          if ((yield* threadRow(sourceKey)) === undefined) return;
-          yield* intake.stop(sourceKey, "The Slack thread was deleted.");
+          const asks = yield* sql<{ readonly source_key: string }>`
+            SELECT source_key FROM hq_slack_thread WHERE channel_id = ${channel} AND ask_ts = ${ts}`;
+          for (const { source_key } of asks)
+            yield* intake.stop(source_key, "The Slack thread was deleted.");
         });
 
       const worked = (link: Connection, eventId: string, raw: unknown) =>
@@ -550,9 +551,9 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           if (event.type === "app_mention") return yield* mentioned(link, event, eventId);
           if (event.type !== "message") return;
           if (event.subtype === "message_deleted")
-            return yield* deleted(link, event.channel, event.deleted_ts);
+            return yield* deleted(event.channel, event.deleted_ts);
           if (event.subtype === "message_changed" && event.message?.subtype === "tombstone")
-            return yield* deleted(link, event.channel, event.message.ts);
+            return yield* deleted(event.channel, event.message.ts);
           return yield* replied(link, event);
         }).pipe(
           Effect.catchCause((cause) =>
