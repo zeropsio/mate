@@ -18,6 +18,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
   gitAdoptionSentence,
+  gitCiAccessRows,
   gitSetupBranchValid,
   gitSetupRepository,
   gitSetupRepositoryHint,
@@ -387,6 +388,14 @@ export function GitEnvironmentForm({
                   <div key={entry.repo} className="space-y-1 text-sm">
                     {entry.branchRules === "none_on_plan" ? (
                       <p>No branch rules on this plan</p>
+                    ) : null}
+                    {entry.ci ? (
+                      <ul aria-label="Reads to show CI" className="text-xs text-muted-foreground">
+                        <li>Optional, to show CI:</li>
+                        {gitCiAccessRows(entry.ci).map((row) => (
+                          <li key={row}>{row}</li>
+                        ))}
+                      </ul>
                     ) : null}
                     <p>
                       {gitAdoptionSentence(entry)}

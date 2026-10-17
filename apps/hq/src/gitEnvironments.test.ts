@@ -115,6 +115,7 @@ const fixture = Effect.gen(function* () {
     updateAddress: () => Effect.die("not used"),
     disconnect: () => Effect.die("external disconnect is forbidden"),
     invalidate: () => Effect.void,
+    ciAccess: () => Effect.succeed({}),
     forUse: (ref) =>
       Effect.suspend(() =>
         state.refused

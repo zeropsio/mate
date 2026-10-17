@@ -2173,6 +2173,7 @@ describe("revisioned HQ values", () => {
             disconnect: unused,
             forUse: unused,
             invalidate: unused,
+            ciAccess: unused,
           });
           const client = yield* f.connect("owner");
           yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);

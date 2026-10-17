@@ -352,6 +352,34 @@ describe("Git environment setup's real form", () => {
     expect(host.textContent).toContain("No branch rules on this plan");
     expect(button("Add production to Shop").disabled).toBe(false);
   });
+  it("the branch review lists the token's CI reads, and a missing one never blocks adding the environment", async () => {
+    await draw({
+      setup: {
+        ...props.setup,
+        preview: vi.fn(async () => [
+          {
+            ...review,
+            ci: {
+              checks: "missing" as const,
+              statuses: "granted" as const,
+              actions: "unknown" as const,
+            },
+          },
+        ]),
+      },
+    });
+    await chooseRepository();
+    const rows = [...host.querySelectorAll('[aria-label="Reads to show CI"] li')].map(
+      (row) => row.textContent,
+    );
+    expect(rows).toEqual([
+      "Optional, to show CI:",
+      "Checks: Read: missing. Add it to the token on GitHub.",
+      "Commit statuses: Read: granted",
+      "Actions: Read: Mate couldn't test it.",
+    ]);
+    expect(button("Add production to Shop").disabled).toBe(false);
+  });
   it("a failed candidate probe cannot connect or become an adoption input", async () => {
     await draw({ repos: [] });
     await chooseRepository();

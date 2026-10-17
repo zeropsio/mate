@@ -107,16 +107,51 @@ export const HqPushReceipt = Schema.Struct({
   via: Schema.Literals(["found", "answer", "resolve"]),
 });
 export type HqPushReceipt = typeof HqPushReceipt.Type;
+
+/** A check that did not pass, with the host page that says why. */
+export const HqPushCiFailure = Schema.Struct({
+  name: Schema.String,
+  url: Schema.NullOr(Schema.String),
+});
+export type HqPushCiFailure = typeof HqPushCiFailure.Type;
+
+/**
+ * What the origin's CI reported for the pushed commit, as HQ last read it (`apps/hq/src/gitCi.ts`):
+ * `none` (no check reported), `running` (`done` of `total` counted checks complete), `passed`,
+ * `failed` (`failed` names each counted check that did not pass) or `unreadable` (`reason` says
+ * why). `required` lists the branch rules' required checks, which alone count; null counts every
+ * check. `watch` is `watching` until every counted check completed (`finished`) or HQ stopped
+ * reading before that (`stopped`, `reason` says why); `until` is when watching stops at the latest
+ * and `readAt` when HQ first read what the record now says (HQ writes only what changed).
+ * Absent where HQ does not read CI: before the hand-over is confirmed or on a host other than GitHub.
+ */
+export const HqPushCi = Schema.Struct({
+  sha: Sha,
+  verdict: Schema.Literals(["none", "running", "passed", "failed", "unreadable"]),
+  done: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  failed: Schema.Array(HqPushCiFailure),
+  required: Schema.NullOr(Schema.Array(Schema.String)),
+  reason: Schema.NullOr(Schema.String),
+  watch: Schema.Literals(["watching", "finished", "stopped"]),
+  readAt: HqTargetTimestamp,
+  until: HqTargetTimestamp,
+});
+export type HqPushCi = typeof HqPushCi.Type;
+
 export const HqPushEvidence = Schema.Struct({
   attempt: Schema.optionalKey(HqPushAttempt),
   confirmed: Schema.optionalKey(HqPushReceipt),
   observed: Schema.optionalKey(Schema.NullOr(Sha)),
+  ci: Schema.optionalKey(HqPushCi),
   nextActor: HqDeployEvidence.fields.nextActor,
   nextAction: HqDeployEvidence.fields.nextAction,
 }).check(
   Schema.makeFilter((value) => {
     const a = value.attempt;
     const c = value.confirmed;
+    if (value.ci !== undefined && value.ci.sha !== c?.after)
+      return "Expected CI of the confirmed commit";
     return c === undefined ||
       (a !== undefined &&
         a.remote.url === c.remote.url &&

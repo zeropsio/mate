@@ -7,6 +7,7 @@ import {
   tokenExpiryLabel,
   type HqRepoRemote,
   type HqRemoteProbe,
+  type HqTokenCiAccess,
 } from "@t3tools/shared/hqChanges";
 import { keepGitReceipt, readGitReceipt, GitRequestRefused } from "./gitTargetReceipts.ts";
 /** The only owner of a repository's verified connection and sealed credential custody. */
@@ -125,6 +126,12 @@ export class Remotes extends Context.Service<
       ref: RemoteRef,
       attemptedKeptAt: string,
     ) => Effect.Effect<void, SqlError | NotLeader>;
+    /** What a token may read of the chosen branch's CI on GitHub; nothing for other hosts. */
+    readonly ciAccess: (
+      url: string,
+      token: Redacted.Redacted,
+      branch?: string,
+    ) => Effect.Effect<{ readonly ci?: HqTokenCiAccess }>;
   }
 >()("@t3tools/hq/repoRemotes/Remotes") {}
 
@@ -360,6 +367,13 @@ export const repoRemotesLayer = Layer.effect(
           }),
         );
     });
+    /** The token test's optional CI rows: GitHub remotes, read on a chosen branch only. */
+    const ciAccess = (url: string, token: Redacted.Redacted, branch?: string) => {
+      const remote = remoteIdentity(url);
+      return remote?.kind === "github" && branch !== undefined
+        ? Effect.map(probes.ciAccess(remote, token, branch), (ci) => ({ ci }))
+        : Effect.succeed({});
+    };
     const safeProbe = (row: RemoteRecord): HqRemoteProbe => ({
       ok: true,
       remote: remoteForWire(row)!,
@@ -445,6 +459,7 @@ export const repoRemotesLayer = Layer.effect(
                     }),
                   );
                   const checked = yield* probes.verify(remote, candidate, branch);
+                  const ci = yield* ciAccess(checked.remote.url, candidate, branch);
                   yield* authorize(userId);
                   return {
                     ok: true,
@@ -454,6 +469,7 @@ export const repoRemotesLayer = Layer.effect(
                       expiresAt: checked.expiresAt,
                       invalidSince: null,
                     },
+                    ...ci,
                   } satisfies HqRemoteProbe;
                 }
                 const saved = yield* remotes.connect(userId, {
@@ -462,7 +478,12 @@ export const repoRemotesLayer = Layer.effect(
                   ...(branch === undefined ? {} : { branch }),
                   token: candidate,
                 });
-                return { probe: safeProbe(saved) };
+                return {
+                  probe: {
+                    ...safeProbe(saved),
+                    ...(yield* ciAccess(saved.url, candidate, branch)),
+                  },
+                };
               }),
             );
             yield* SubscriptionRef.update(ticks, (n) => n + 1);
@@ -473,6 +494,7 @@ export const repoRemotesLayer = Layer.effect(
       connect: (userId, input) => keep(userId, input, false),
       updateAddress: (userId, input) => keep(userId, input, true),
       invalidate,
+      ciAccess,
       disconnect: Effect.fn("Remotes.disconnect")(function* (userId: string, ref: RemoteRef) {
         yield* authorize(userId);
         yield* leader.write(

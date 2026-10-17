@@ -280,6 +280,19 @@ export type ReplaceRepoRemoteTokenRequest = typeof ReplaceRepoRemoteTokenRequest
 export const UpdateRepoRemoteAddressRequest = Schema.Struct({ url: HqRemoteUrl });
 export type UpdateRepoRemoteAddressRequest = typeof UpdateRepoRemoteAddressRequest.Type;
 
+/**
+ * What a GitHub token may read of the repository's CI, as one read each proved: `granted` (GitHub
+ * answered), `missing` (GitHub refused it this permission) or `unknown`. Needed only to show CI;
+ * a missing one never refuses the token.
+ */
+const HqTokenReadAccess = Schema.Literals(["granted", "missing", "unknown"]);
+export const HqTokenCiAccess = Schema.Struct({
+  checks: HqTokenReadAccess,
+  statuses: HqTokenReadAccess,
+  actions: HqTokenReadAccess,
+});
+export type HqTokenCiAccess = typeof HqTokenCiAccess.Type;
+
 /** Host probes return proven facts or a named refusal, never host bodies or credential values. */
 export const HqRemoteProbe = Schema.Union([
   Schema.Struct({
@@ -291,6 +304,8 @@ export const HqRemoteProbe = Schema.Union([
       keptAt: Schema.optionalKey(HqTargetTimestamp),
       keptBy: Schema.optionalKey(Schema.String),
     }),
+    /** GitHub tokens only. */
+    ci: Schema.optionalKey(HqTokenCiAccess),
   }),
   Schema.Struct({
     ok: Schema.Literal(false),
@@ -309,6 +324,8 @@ export const HqGitAdoption = Schema.Struct({
   mainHead: Sha,
   remoteHead: Schema.NullOr(Sha),
   branchRules: Schema.optionalKey(Schema.Literal("none_on_plan")),
+  /** GitHub only: what the kept token may read of this branch's CI. */
+  ci: Schema.optionalKey(HqTokenCiAccess),
   changedFiles: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   seed: Schema.Boolean,
 });
