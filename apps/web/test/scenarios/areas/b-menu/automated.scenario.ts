@@ -25,6 +25,12 @@ describe("B: automated Mates in the menu", () => {
           const s = yield* menuScenario([wire.install]);
           yield* s.given.project("Nova", { mate: true, app: "Tea Shop" });
           yield* s.given.project("Ida", { mate: true, app: "Tea Shop" });
+          // The organization keeps its API key: at rest, its automated Mate waits for a task.
+          const kept = yield* s.drivers.core.call("PUT", "/api/org/ai-keys/nebius", {
+            session: s.drivers.owner,
+            body: { value: ["nb", "key", "acme", "42"].join("-") },
+          });
+          expect(kept.status, "ASSERTION: HQ keeps the organization's key").toBe(200);
           yield* s.given.signedIn;
           yield* Effect.promise(async () => {
             await s.page.setViewport({ width: 1786, height: 1000 });
