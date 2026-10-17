@@ -113,7 +113,8 @@ export type GitEvent =
       readonly repo: Repo;
       readonly old: string | null;
       readonly new: string;
-      readonly by: "merge" | "commit" | "push";
+      /** `import`: fast-forwarded to a remote's tip (`fastForwardMain`). */
+      readonly by: "merge" | "commit" | "push" | "import";
     }
   | { readonly kind: "tagged"; readonly repo: Repo; readonly name: string; readonly sha: string };
 export interface Author {
@@ -172,6 +173,24 @@ export interface AdoptionPreview {
   readonly seed: boolean;
   readonly changedFiles: number;
 }
+/**
+ * A remote HQ mirrors a repository to, and the token it pushes and fetches with, handed to git only
+ * through askpass. A local repository path serves internal fixtures.
+ */
+export interface MirrorRemote {
+  readonly url: string;
+  readonly token: Redacted.Redacted;
+}
+export type MirrorPush =
+  | { readonly kind: "pushed" }
+  /** The remote refused, or its ref is no longer the one expected (`stale`); nothing moved. */
+  | { readonly kind: "rejected"; readonly reason: "stale" | "not_fast_forward" | "refused" };
+export type FastForward =
+  | { readonly kind: "moved" }
+  /** `main` is no longer `expected`. */
+  | { readonly kind: "stale" }
+  /** `main` is not before the commit: moving it would drop history. */
+  | { readonly kind: "not_fast_forward" };
 export type AdoptionResult =
   | { readonly kind: "adopted"; readonly sha: string }
   | { readonly kind: "unchanged" }
@@ -272,6 +291,50 @@ export interface HqGit {
     preview: AdoptionPreview,
     author: Author,
   ) => Effect.Effect<AdoptionResult, GitError>;
+  /**
+   * The remote's default branch — its `HEAD`, `main` where it names none — and that branch's tip,
+   * none while the remote is empty.
+   */
+  readonly remoteHead: (
+    repo: Repo,
+    remote: MirrorRemote,
+  ) => Effect.Effect<{ readonly branch: string; readonly sha: string | null }, GitError>;
+  /**
+   * The remote branch's tip fetched into the repository: its objects only — no ref, tag or
+   * FETCH_HEAD written, so nothing serves or merges it until a ref names it. None while the branch
+   * does not exist.
+   */
+  readonly fetchTip: (
+    repo: Repo,
+    remote: MirrorRemote,
+    branch: string,
+  ) => Effect.Effect<string | null, GitError>;
+  /** Whether `ancestor` is `descendant` or comes before it; false where either is no commit here. */
+  readonly isAncestor: (
+    repo: Repo,
+    ancestor: string,
+    descendant: string,
+  ) => Effect.Effect<boolean, GitError>;
+  /**
+   * `main` moved forward to `sha` by CAS from `expected` (null: unborn), emitting `main_moved` by
+   * `import`; never backwards or sideways.
+   */
+  readonly fastForwardMain: (
+    repo: Repo,
+    sha: string,
+    expected: string | null,
+  ) => Effect.Effect<FastForward, GitError>;
+  /**
+   * `sha` pushed to the remote's `refs/heads/<branch>`, leased against `expected` (null: the branch
+   * must not exist yet), and only forward from it: HQ never force-pushes.
+   */
+  readonly pushRef: (
+    repo: Repo,
+    remote: MirrorRemote,
+    branch: string,
+    sha: string,
+    expected: string | null,
+  ) => Effect.Effect<MirrorPush, GitError>;
   readonly commitFiles: (
     repo: Repo,
     ref: string,
