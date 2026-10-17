@@ -284,20 +284,34 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /** Tasks handed out longer ago than a Mate has to take them, and those of Mates gone. */
       const sweep = Effect.gen(function* () {
         if (!(yield* leading)) return;
-        const overdue = yield* giveBack("overdue");
-        const orphaned = yield* giveBack("orphaned");
+        yield* giveBack("overdue");
+        yield* giveBack("orphaned");
         const failed = yield* leader.write(sql<{ readonly id: string }>`
           UPDATE hq_task SET state = 'failed', detail = ${MATE_GONE}, updated_at = now()
           WHERE state = 'working'
             AND NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)
           RETURNING id::text AS id`);
         for (const row of failed) yield* couldNotFinish(row.id);
-        if (overdue + orphaned + failed.length > 0) yield* wake;
+        // Whatever a wake missed waits at most one sweep.
+        yield* wake;
       });
+
+      /**
+       * The automated Mates, by project, as their records say: only their links and attention move
+       * a task, while every Mate's overview moves often.
+       */
+      let automated: ReadonlySet<string> = new Set();
+      const readAutomated = Effect.map(
+        sql<{ readonly project_id: string }>`SELECT project_id FROM hq_mate WHERE automated`,
+        (rows) => {
+          automated = new Set(rows.map((row) => row.project_id));
+        },
+      );
 
       /** A Mate's link or attention moved: its untaken task back where it went offline. */
       const mateMoved = (projectId: string) =>
         Effect.gen(function* () {
+          if (!automated.has(projectId)) return;
           const entry = (yield* overviews.all).get(projectId);
           if (entry?.presence.online !== true && (yield* leading))
             yield* giveBack({ of: projectId });
@@ -322,6 +336,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             Effect.sleep(options.sweepEvery ?? Duration.seconds(5)),
             logged("tasks not swept")(sweep),
           ),
+        ),
+      );
+      yield* Effect.forkScoped(
+        Stream.runForEach(Stream.concat(Stream.make(""), structure.mateChanges), () =>
+          logged("automated Mates not read")(readAutomated),
         ),
       );
       yield* Effect.forkScoped(
