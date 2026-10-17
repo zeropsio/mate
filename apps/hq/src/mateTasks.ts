@@ -9,12 +9,14 @@
  *   or attention moves, and a task ends.
  * - Nothing is handed out while the organization keeps no key for the provider automated Mates run
  *   on (`orgAiKeys.ts`): tasks wait, counted as waiting.
- * - A Mate that does not take its task within `acceptWithin` (60 s), or goes offline before it
- *   does, gives it back (`queued`, one try more); the third try that runs out fails it, saying why.
+ * - A Mate that does not take its task within `acceptWithin` (60 s), its link down or not, gives it
+ *   back (`queued`, one try more); the third try that runs out fails it, saying why. Its word, late
+ *   on its next link, is still taken while the task waits for no other Mate.
  * - A Mate that turns its task down gives it back with no try against it; once its Mates have
  *   turned it down for 30 minutes it fails, with the last reason.
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
- *   then done or failed — its Mate free again. A word of a task not its own is passed by.
+ *   then done or failed — its Mate free again. A word of a task not its own — never handed to it,
+ *   or handed to another since — is passed by.
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it.
  * - GitHub hears from the Mate by name, on the issue, with the repository's token: once it takes
  *   the issue up, once it opens its change for review (with the change's address in Mate), and
@@ -269,7 +271,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             const handed = yield* leader
               .write(sql`
                 UPDATE hq_task SET state = 'assigned', mate_project_id = ${projectId},
-                  assigned_at = now(), updated_at = now()
+                  last_mate_project_id = ${projectId}, assigned_at = now(), updated_at = now()
                 WHERE id::text = ${task.id} AND state = 'queued'
                 RETURNING 1`)
               .pipe(
@@ -293,16 +295,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       /**
        * A handed-out task back to wait, one try more — failed past the last: HQ's word, where the
-       * Mate's link went before it took it or it took too long.
+       * Mate took too long to take it, its link down or not, or its record went.
        */
-      const giveBack = (which: "overdue" | "orphaned" | { readonly of: string }) =>
+      const giveBack = (which: "overdue" | "orphaned") =>
         Effect.gen(function* () {
           const where =
             which === "overdue"
               ? sql`assigned_at < now() - make_interval(secs => ${acceptMs / 1000})`
-              : which === "orphaned"
-                ? sql`NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)`
-                : sql`mate_project_id = ${which.of}`;
+              : sql`NOT EXISTS (SELECT 1 FROM hq_mate m WHERE m.project_id = hq_task.mate_project_id)`;
           const moved = yield* leader.write(sql<{
             readonly id: string;
             readonly mate_project_id: string | null;
@@ -353,15 +353,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         },
       );
 
-      /** A Mate's link or attention moved: its untaken task back where it went offline. */
-      const mateMoved = (projectId: string) =>
-        Effect.gen(function* () {
-          if (!automated.has(projectId)) return;
-          const entry = (yield* overviews.all).get(projectId);
-          if (entry?.presence.online !== true && (yield* leading))
-            yield* giveBack({ of: projectId });
-          yield* wake;
-        });
+      /**
+       * A Mate's link or attention moved: look again for free Mates. An untaken task stays its
+       * Mate's while its link is down — its word may come on the next — until it is overdue.
+       */
+      const mateMoved = (projectId: string) => (automated.has(projectId) ? wake : Effect.void);
 
       /** A step that fails is logged, and the next wake or sweep tries again. */
       const logged =
@@ -390,7 +386,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       yield* Effect.forkScoped(
         Stream.runForEach(overviews.changes, (projectId) =>
-          logged("a Mate's task not given back")(mateMoved(projectId)),
+          logged("tasks not looked at")(mateMoved(projectId)),
         ),
       );
       yield* Effect.forkScoped(
@@ -411,13 +407,20 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         ),
       );
 
+      /**
+       * The task is the Mate's: handed to it or taken by it — or, given back while its link was
+       * down, waiting for no other Mate yet, as the Mate it was last handed to.
+       */
+      const owns = (projectId: string) => sql`(
+        (mate_project_id = ${projectId} AND state IN ('assigned', 'working'))
+        OR (state = 'queued' AND last_mate_project_id = ${projectId}))`;
+
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
         Effect.map(
           sql<{ readonly state: string; readonly app_id: string }>`
             SELECT state, app_id::text AS app_id FROM hq_task
-            WHERE id::text = ${taskId} AND mate_project_id = ${projectId}
-              AND state IN ('assigned', 'working')`,
+            WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
 
@@ -436,14 +439,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             const declinedSecs = Duration.toSeconds(DECLINED_FOR);
             const [moved] = yield* leader.write(sql<{ readonly state: string }>`
               UPDATE hq_task SET updated_at = now(), mate_project_id = NULL,
-                declined_since = COALESCE(declined_since, now()),
+                last_mate_project_id = NULL, declined_since = COALESCE(declined_since, now()),
                 state = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
                   THEN 'failed' ELSE 'queued' END,
                 detail = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
                   THEN ${declinedTooLong(word.detail)} ELSE detail END,
                 assigned_at = CASE WHEN declined_since < now() - make_interval(secs => ${declinedSecs})
                   THEN assigned_at END
-              WHERE id::text = ${word.taskId} AND state = 'assigned'
+              WHERE id::text = ${word.taskId} AND mate_project_id = ${projectId}
+                AND state = 'assigned'
               RETURNING state`);
             if (moved?.state === "failed") {
               yield* untaken(word.taskId);
@@ -452,20 +456,35 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             declinedUntil.set(projectId, (yield* Clock.currentTimeMillis) + acceptMs);
             yield* wake;
           } else if (word.state === "accepted" || word.state === "working") {
-            yield* leader.write(sql`
-              UPDATE hq_task SET state = 'working', updated_at = now(),
-                conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
-              WHERE id::text = ${word.taskId} AND state IN ('assigned', 'working')`);
-            // Taken once: the first word that moves it from handed to worked on.
-            if (task.state === "assigned") yield* pickedUp(word.taskId);
+            const taken = yield* leader
+              .write(sql`
+                UPDATE hq_task SET state = 'working', updated_at = now(),
+                  mate_project_id = ${projectId}, assigned_at = COALESCE(assigned_at, now()),
+                  conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
+                WHERE id::text = ${word.taskId} AND ${owns(projectId)}
+                RETURNING 1`)
+              .pipe(
+                // A late word from a Mate handed another task since: that one is its own now.
+                Effect.catchTags({
+                  SqlError: (error) =>
+                    error.reason._tag === "UniqueViolation"
+                      ? Effect.succeed([])
+                      : Effect.fail(error),
+                }),
+              );
+            // Taken once: the first word that moves it from handed (or given back) to worked on.
+            if (taken.length > 0 && task.state !== "working") yield* pickedUp(word.taskId);
+            if (taken.length > 0 && task.state === "queued") yield* structure.touched;
           } else {
             const ended = yield* leader.write(sql`
               UPDATE hq_task SET state = ${word.state}, updated_at = now(),
+                mate_project_id = ${projectId},
                 detail = ${word.state === "failed" ? (word.detail ?? null) : null},
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id)
-              WHERE id::text = ${word.taskId} AND state IN ('assigned', 'working')
+              WHERE id::text = ${word.taskId} AND ${owns(projectId)}
               RETURNING 1`);
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
+            if (ended.length > 0 && task.state === "queued") yield* structure.touched;
             yield* wake;
           }
           yield* structure.mateTouched(projectId);

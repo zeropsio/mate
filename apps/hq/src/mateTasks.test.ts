@@ -251,12 +251,60 @@ describe("tasks for automated Mates", () => {
 
     it.effect("a Mate whose link drops before it takes its task gives it back", () =>
       Effect.gen(function* () {
-        const core = yield* withPool();
+        const core = yield* withPool({ taskAcceptWithin: Duration.millis(300) });
         yield* core.issue(1);
         yield* toldTask(core.robot.link, 1);
         yield* core.robot.link.close;
+        // Not at once — its word may still come on its next link — but once its time to take it
+        // has passed.
         const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "queued");
         assert.deepInclude(row, { attempts: 1, mate_project_id: null });
+      }),
+    );
+
+    it.effect(
+      "a Mate's word on its task, late after its link dropped, is taken while the task waits for no other Mate",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool({ taskAcceptWithin: Duration.millis(300) });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          // Its agents set to work on it as the link drops: back, it is not free for another.
+          yield* core.robot.link.send(attention(1));
+          yield* core.robot.link.close;
+          yield* core.tasks((rows) => rows[0]?.["state"] === "queued");
+          const again = yield* linkOf(core, core.robot.credential);
+          yield* again.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
+          });
+          const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          assert.deepInclude(row, {
+            mate_project_id: "P_ROBOT",
+            conversation_id: "conversation-1",
+          });
+        }),
+    );
+
+    it.effect("a Mate's word on its task after it went to another Mate is passed by", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool({ taskAcceptWithin: Duration.millis(300) });
+        addProject(core.fake, "P_OTHER");
+        const other = yield* mateLinked(core, core.owner, "P_OTHER", { appId: core.appId });
+        yield* core.issue(1);
+        const task = yield* toldTask(core.robot.link, 1);
+        yield* core.robot.link.close;
+        yield* other.link.send(attention(0));
+        yield* toldTask(other.link, 1);
+        const again = yield* linkOf(core, core.robot.credential);
+        for (const state of ["accepted", "done"] as const)
+          yield* again.link.send({ type: "task-state", report: { taskId: task.id, state } });
+        yield* other.link.send({
+          type: "task-state",
+          report: { taskId: task.id, state: "accepted", conversationId: "conversation-2" },
+        });
+        const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        assert.deepInclude(row, { mate_project_id: "P_OTHER", conversation_id: "conversation-2" });
       }),
     );
 
