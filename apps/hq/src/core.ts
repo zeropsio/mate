@@ -38,6 +38,7 @@ import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
 import { taskIntakeLayer, taskSourceChannelsLayer } from "./taskIntake.ts";
 import { taskLimitsLayer } from "./taskLimits.ts";
+import { webhooksLayer } from "./webhooks.ts";
 import { proposalDecisionsLayer } from "./proposals.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
@@ -162,6 +163,7 @@ const services = (options: CoreOptions) => {
       Layer.provide(githubGateLayer),
     ),
     githubChannelLayer,
+    webhooksLayer({ hqProjectId: options.hqProjectId }).pipe(Layer.provide(door)),
   ).pipe(
     Layer.provide(remotes),
     Layer.provideMerge(github),

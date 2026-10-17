@@ -12,6 +12,12 @@
  *   address. Past 1 MiB `413`; no intake there `404`; a signature that does not hold `401
  *   unauthorized`, whatever was wrong with it; `ping` `200`; anything else read `202`; one HQ could
  *   not check or take in now `503`, for GitHub to deliver again.
+ * - `POST /api/apps/:appId/webhooks` `HqWebhookRequest` → `201 HqWebhookView` (its secret this once,
+ *   no-store), `GET` → `{ webhooks }`, `DELETE …/:id` → `204`: the application's signed webhooks
+ *   (`webhooks.ts`), by a structure writer.
+ * - `POST /api/intake/webhook/:publicId`: a call on one, limited per address. Past 1 MiB `413`; no
+ *   webhook there `404`; a signature that does not hold `401`; no JSON with a title `400`; taken
+ *   `202 { status: "queued", position } | { status: "told" | "duplicate" }`.
  * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
  *   or admin of the organization.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
@@ -20,7 +26,7 @@
  *
  * @module automationApi
  */
-import { HqAiKeyRequest, HqIntakeRequest } from "@t3tools/shared/hqIntake";
+import { HqAiKeyRequest, HqIntakeRequest, HqWebhookRequest } from "@t3tools/shared/hqIntake";
 import * as ByteSize from "effect/ByteSize";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -35,6 +41,8 @@ import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } 
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { TaskLimits } from "./taskLimits.ts";
+import type { TaskEnqueued } from "./taskSources.ts";
+import { WEBHOOK_PATH, Webhooks } from "./webhooks.ts";
 import { Writes } from "./writes.ts";
 
 const MateAiKeyBody = Schema.Struct({ provider: Schema.optionalKey(Schema.String) });
@@ -64,7 +72,91 @@ const TaskLimitsBody = Schema.Struct({
   costUsd: Schema.NullOr(Schema.Number),
 });
 
+const webhookParam = Effect.map(HttpRouter.params, (params) => params["id"] ?? "");
+
+/** What a webhook's caller hears of its call: taken as a task, said to one, or seen before. */
+const takenAnswer = (enqueued: TaskEnqueued) =>
+  enqueued.kind === "queued"
+    ? { status: "queued", position: enqueued.position }
+    : { status: enqueued.kind };
+
+const webhookRoutes = Layer.mergeAll(
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:appId/webhooks",
+    handle(
+      Effect.gen(function* () {
+        const request = yield* jsonBody(HqWebhookRequest, BODY_LIMIT);
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const view = yield* (yield* Webhooks).make(userId, yield* appParam, request);
+            return HttpServerResponse.jsonUnsafe(view, { status: 201, headers: NO_STORE });
+          }),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "GET",
+    "/api/apps/:appId/webhooks",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json({ webhooks: yield* (yield* Webhooks).list(userId, yield* appParam) }, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "DELETE",
+    "/api/apps/:appId/webhooks/:id",
+    handle(
+      Effect.gen(function* () {
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            yield* (yield* Webhooks).remove(userId, yield* appParam, yield* webhookParam);
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "POST",
+    `${WEBHOOK_PATH}/:publicId`,
+    handle(
+      Effect.gen(function* () {
+        yield* knock("intake");
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const body = yield* deliveryBytes;
+        const publicId = (yield* HttpRouter.params)["publicId"] ?? "";
+        const received = yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            return yield* (yield* Webhooks).receive(publicId, {
+              signature: request.headers["x-mate-signature"],
+              delivery: request.headers["x-mate-delivery"],
+              body,
+            });
+          }),
+        );
+        switch (received.kind) {
+          case "unknown":
+            return json({ code: "not_found" }, 404);
+          case "refused":
+            return json({ code: "unauthorized" }, 401);
+          case "invalid":
+            return json({ code: "invalid" }, 400);
+          case "taken":
+            return json(takenAnswer(received.enqueued), 202);
+        }
+      }),
+    ),
+  ),
+);
+
 export const automationRoutes = Layer.mergeAll(
+  webhookRoutes,
   HttpRouter.add(
     "GET",
     "/api/org/task-limits",

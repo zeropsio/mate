@@ -78,3 +78,18 @@ CREATE TABLE hq_task_limits (
   set_by text NOT NULL,
   set_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- An application's signed webhooks (`HqWebhookView`): a call on `/api/intake/webhook/<public_id>`,
+-- signed with the secret sealed here (`deployKeys.ts` `sealSecret`), becomes a task.
+CREATE TABLE hq_webhook (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  seq bigint GENERATED ALWAYS AS IDENTITY,
+  app_id uuid NOT NULL REFERENCES hq_app (id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+  public_id text NOT NULL UNIQUE,
+  sealed bytea NOT NULL,
+  key_id text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX hq_webhook_app ON hq_webhook (app_id, seq);
