@@ -259,6 +259,8 @@ export class GithubApp extends Context.Service<
       readonly setupAction: string | undefined;
       readonly state: string | undefined;
     }) => Effect.Effect<GithubAppLanding, SqlError | NotLeader>;
+    /** Whether a made app's webhook is at `publicId`: asked before a byte of an event is read. */
+    readonly listensAt: (publicId: string) => Effect.Effect<boolean, SqlError>;
     /** GitHub's event to the app's webhook at `publicId`: answered at once, worked after. */
     readonly receive: (
       publicId: string,
@@ -892,6 +894,8 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
             if (kept.length === 0) return page(502, LANDING_WORDS.installation, back);
             return yield* done("connected");
           }),
+        listensAt: (publicId) =>
+          Effect.map(appRow, (row) => row?.public_id === publicId && opened(row) !== undefined),
         receive: (publicId, delivery) =>
           Effect.gen(function* () {
             const row = yield* appRow;

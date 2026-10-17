@@ -358,6 +358,20 @@ describe("the organization's GitHub app", () => {
         }),
     );
 
+    it.effect("an event to an address no app holds is refused before a byte of it is read", () =>
+      Effect.gen(function* () {
+        const core = yield* appCore;
+        const { hook } = yield* connected(core);
+        // Past GitHub's 25 MiB, as a caller may claim: no app there is the answer, not the size.
+        const claimed = { "content-length": String(30 * 1024 * 1024) };
+        const nowhere = yield* core.call("POST", `${hook.path.replace(/[^/]+$/u, "")}nobody`, {
+          body: new TextEncoder().encode("{}"),
+          headers: { "content-type": "application/json", "x-github-event": "push", ...claimed },
+        });
+        assert.strictEqual(nowhere.status, 404);
+      }),
+    );
+
     it.effect(
       "the app's webhook takes an event only under its signature, and keeps HQ's installations as GitHub changes them",
       () =>
