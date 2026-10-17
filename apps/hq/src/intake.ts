@@ -517,9 +517,26 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
                 });
                 return { ...passed, moved: taken.kind === "queued" };
               }
-              case "closed":
+              case "closed": {
+                // Its opener withdrawing it, or one who may steer it; anyone else's close is
+                // nobody's word to its task.
+                const opener = issues.issue.user?.login;
+                const closer = actor?.login;
+                const own = closer !== undefined && closer.toLowerCase() === opener?.toLowerCase();
+                const may =
+                  own ||
+                  (actor !== undefined &&
+                    (yield* liveTask(row.app_id, key)) &&
+                    (yield* verdictOf(target, actor)).kind === "writer");
+                if (!may) {
+                  yield* Effect.logInfo("an issue's close passed by: its closer may not steer it", {
+                    appId: row.app_id,
+                  });
+                  return passed;
+                }
                 yield* intake.stop(key, ISSUE_CLOSED);
                 return { ...passed, moved: true };
+              }
               case "unlabeled":
                 if (!named) return passed;
                 yield* intake.stop(key, LABEL_REMOVED);

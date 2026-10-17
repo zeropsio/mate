@@ -250,6 +250,39 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
     );
 
     it.effect(
+      "closing an issue stops its task only when its closer may steer it or opened the issue; anyone else's close is passed by",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ busy: true });
+          core.github.state.roles.set("zoe", "read");
+          const closed = (number: number, sender: string, author = "nova") =>
+            deliver(core, core.hook, "issues", {
+              ...issueEvent("closed", { number, labels: ["mate"] }, undefined, { sender }),
+              issue: {
+                ...issueEvent("closed", { number, labels: ["mate"] }).issue,
+                user: { login: author, type: "User" },
+              },
+            });
+          yield* labelled(core, 1);
+          yield* labelled(core, 2);
+          yield* labelled(core, 3);
+          yield* taskRows(core, (rows) => rows.length === 3);
+          yield* closed(1, "zoe");
+          yield* closed(2, "zoe", "zoe");
+          yield* closed(3, "nova");
+          const rows = yield* taskRows(core, (found) => found[2]?.["state"] === "dropped");
+          assert.deepStrictEqual(
+            rows.map((row) => [row["number"], row["state"]]),
+            [
+              [1, "queued"],
+              [2, "dropped"],
+              [3, "dropped"],
+            ],
+          );
+        }),
+    );
+
+    it.effect(
       "a task waiting for an answer says so on its issue, labelled mate:blocked; a member's answer reaches its Mate, and once it works again the issue says so and the label goes",
       () =>
         Effect.gen(function* () {
