@@ -220,20 +220,37 @@ async function supervise() {
           request.before === null
             ? undefined
             : await run(["merge-base", "--is-ancestor", request.before, request.sha]);
-        answer =
-          ancestry !== undefined && ancestry.code !== 0
-            ? {
-                ...ancestry,
-                stderr: "The observed remote tip is not an ancestor of the fixed commit",
-              }
-            : await run([
-                "push",
-                "--porcelain",
-                `--force-with-lease=${request.ref}:${request.before ?? ""}`,
-                "--",
-                request.url,
-                `${request.sha}:${request.ref}`,
-              ]);
+        if (ancestry !== undefined && ancestry.code !== 0) {
+          answer = {
+            ...ancestry,
+            stderr: "The observed remote tip is not an ancestor of the fixed commit",
+          };
+        } else {
+          // The remote must still hold the observed tip (null: no branch). The push carries no
+          // force form, so a remote moving after this read can only be fast-forwarded.
+          const read = await run(["ls-remote", "--refs", "--", request.url, request.ref]);
+          const tip =
+            read.stdout
+              .split("\n")
+              .find((line) => line.split("\t")[1] === request.ref)
+              ?.split("\t")[0] ?? null;
+          answer =
+            read.code !== 0
+              ? read
+              : tip !== request.before
+                ? {
+                    ...read,
+                    code: 1,
+                    stdout: `!\t${request.sha}:${request.ref}\t[rejected] (stale info)\n`,
+                  }
+                : await run([
+                    "push",
+                    "--porcelain",
+                    "--",
+                    request.url,
+                    `${request.sha}:${request.ref}`,
+                  ]);
+        }
       }
     }
     // Atomic receipt comes only after the entire captured process group has stopped.

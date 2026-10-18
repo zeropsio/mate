@@ -1712,4 +1712,31 @@ describe("a mirror on another host", () => {
       });
     }),
   );
+
+  it.live.each(["moved forward", "deleted"])(
+    "a push whose remote moved since HQ read it is refused as stale and overwrites nothing: %s",
+    (change) =>
+      fixture(async (git, dir) => {
+        const first = await write(git, { app: "1" }, null);
+        const second = await write(git, { app: "2" }, first);
+        const third = await write(git, { app: "3" }, second);
+        const { path, remote } = await mirrorOf(dir);
+        await value(git.pushRef(repo, remote, "mate/1-add-search", first, null));
+        // Moved to an ancestor of the pushed commit: only the expected tip stops the push.
+        if (change === "deleted")
+          await native(path, ["update-ref", "-d", "refs/heads/mate/1-add-search"]);
+        else await value(git.pushRef(repo, remote, "mate/1-add-search", second, first));
+        expect(await value(git.pushRef(repo, remote, "mate/1-add-search", third, first))).toEqual({
+          kind: "rejected",
+          reason: "stale",
+        });
+        expect(
+          await native(path, [
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/heads/mate/1-add-search",
+          ]),
+        ).toBe(change === "deleted" ? "" : second);
+      }),
+  );
 });

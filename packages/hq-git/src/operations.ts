@@ -687,17 +687,12 @@ export const makeOperations = (
       await resolve(dir, sha, signal);
       if (expected !== null && expected !== sha && !(await ancestorIn(dir, expected, sha, signal)))
         return { kind: "rejected", reason: "not_fast_forward" } as const;
+      // The remote must still hold what HQ expects (null: no branch). The push carries no force
+      // form, so a remote moving after this read can only be fast-forwarded, never overwritten.
+      if ((await remoteTip(dir, remote, ref, signal)) !== expected)
+        return { kind: "rejected", reason: "stale" } as const;
       const pushed = await git.remoteAskpass(
-        [
-          "-C",
-          dir,
-          "push",
-          "--porcelain",
-          "--no-verify",
-          `--force-with-lease=${ref}:${expected ?? ""}`,
-          url,
-          `${sha}:${ref}`,
-        ],
+        ["-C", dir, "push", "--porcelain", "--no-verify", url, `${sha}:${ref}`],
         url,
         remote.token,
         signal,
@@ -711,7 +706,7 @@ export const makeOperations = (
       if (line === undefined) throw error("Push failed");
       return {
         kind: "rejected",
-        reason: /stale info|fetch first|non-fast-forward/u.test(line) ? "stale" : "refused",
+        reason: /fetch first|non-fast-forward/u.test(line) ? "stale" : "refused",
       } as const;
     }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("pushRef")));
   const changeHead: HqGit["changeHead"] = (repo, mateId, number) =>
