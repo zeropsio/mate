@@ -1,4 +1,3 @@
-import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -185,34 +184,9 @@ describe("the change waiting, while the project has no production", () => {
     target: { kind: "change", groupId: "g-1", repository: "app", number: 1 },
   };
 
-  it("offers Put it live as the one blue button, with Review beside it in quiet words", () => {
-    const onPutLive = vi.fn();
-    const markup = renderToStaticMarkup(
-      <ZeropsNextStepStrip onPutLive={onPutLive} onReview={() => {}} strip={STRIP} />,
-    );
-    expect(markup).toContain(">Put it live<");
-    expect(markup).toContain(">Review<");
-    const primary: unknown[] = [];
-    visitElements(
-      ZeropsNextStepStrip({ onPutLive, onReview: () => {}, strip: STRIP }) as ReactElement,
-      (element) => {
-        if (element.type === Button && (element.props.variant ?? "primary") === "primary")
-          primary.push(element.props.children);
-        return false;
-      },
-    );
-    expect(primary).toEqual(["Put it live"]);
-  });
-
-  it("says why Put it live waits for the review, with Review as its one button", () => {
-    const markup = renderToStaticMarkup(
-      <ZeropsNextStepStrip
-        onReview={() => {}}
-        putLiveHeld="Required checks running"
-        strip={STRIP}
-      />,
-    );
-    expect(markup).toContain("Required checks running");
+  // The owner, 2026-10-18: "it's just merge into git, none says its connected to prod".
+  it("offers Review as its one button, never Put it live: a change's door is its merge", () => {
+    const markup = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={STRIP} />);
     expect(markup).toContain(">Review<");
     expect(markup).not.toContain("Put it live");
   });

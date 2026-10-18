@@ -24,7 +24,6 @@ import { useCompactProjectFlows, type ZeropsProjectFlow } from "~/zerops/project
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
 import {
   putLiveAddress,
-  putLiveOffered,
   putLiveProgress,
   putLiveReleased,
   putLiveResumed,
@@ -33,7 +32,6 @@ import {
 } from "~/zerops/putLive.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useOpenReview } from "~/zerops/review";
-import { useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 
 import { ComposerAsk } from "../chat/ComposerAsk";
@@ -219,18 +217,6 @@ export function useConversationGroup(threadRef: ScopedThreadRef | null): string 
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
   const project = inventory.projects.find((entry) => entry.id === projectId);
   return readZeropsMembership(project).groupId;
-}
-
-/** Whether *Put it live* is offered for a project now (`putLiveOffered`). */
-export function usePutLiveOffered(groupId: string | undefined): boolean {
-  const flows = useCompactProjectFlows(
-    useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
-  );
-  const facts = useEnvironmentQuestionFacts(
-    groupId ?? "",
-    groupId === undefined ? undefined : flows.flows.get(groupId),
-  );
-  return groupId !== undefined && putLiveOffered(facts);
 }
 
 /** What a run resumed from the project's flow reads; `undefined` until it is read. */
