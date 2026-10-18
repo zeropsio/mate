@@ -5,6 +5,7 @@ import {
   connectionMissing,
   poolMateLine,
   scheduleWhen,
+  slackChannelForm,
   sourceRowPress,
   sourceRows,
   stopWords,
@@ -243,5 +244,49 @@ describe("Stop and Remove on a source's row", () => {
     ],
   ] as const)("a %s row asks and works in its own words", (kind, words) => {
     expect(stopWords(kind)).toEqual(words);
+  });
+});
+
+describe("how a project's Slack channel is chosen", () => {
+  const channels = [{ id: "C042", name: "support" }];
+  it.each([
+    {
+      case: "the bot is in channels: picked from them",
+      choices: known({ bot: "mate", channels }),
+      typing: false,
+      form: { kind: "pick", channels },
+    },
+    {
+      case: "the person types an ID instead",
+      choices: known({ bot: "mate", channels }),
+      typing: true,
+      form: { kind: "type", invite: null },
+    },
+    {
+      case: "the bot is in none: invite it, an ID still typed",
+      choices: known({ bot: "mate", channels: [] }),
+      typing: false,
+      form: { kind: "type", invite: "Invite @mate to a channel first." },
+    },
+    {
+      case: "the channels are read: the picker's room, waiting",
+      choices: { state: "reading" as const },
+      typing: false,
+      form: { kind: "reading" },
+    },
+    {
+      case: "HQ predates the list: an ID typed",
+      choices: { state: "unsupported" as const },
+      typing: false,
+      form: { kind: "type", invite: null },
+    },
+    {
+      case: "the list failed: an ID typed",
+      choices: { state: "failed" as const, words: "HQ could not reach Slack." },
+      typing: false,
+      form: { kind: "type", invite: null },
+    },
+  ])("$case", ({ choices, typing, form }) => {
+    expect(slackChannelForm(choices, typing)).toEqual(form);
   });
 });
