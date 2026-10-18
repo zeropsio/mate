@@ -2613,6 +2613,32 @@ describe("a group of Mates folded to its row", () => {
     expect(clusterOf(mounted)[0]?.key).toBe("crm-bo");
   });
 
+  it("never leads with an automated Mate waiting for a task over a person's Mate's words", () => {
+    const MATES = [
+      named("crm-a", "Ada", { tags: ["mate"], hq: AAA("mate", true) }),
+      named("crm-r", "Raya", {
+        tags: ["mate"],
+        hq: recorded(AAA("mate", true), { automated: true, task: null }),
+      }),
+    ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
+    session.viewer = "u-ada";
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={MATES}
+        complete
+        getActivity={(item: ZeropsCandidate) =>
+          item.project.id === "crm-r"
+            ? said("crm-r", "idle", "idle", 1, "Ready for tasks")
+            : said("crm-a", "idle", "idle", 60, "Your preview is up")
+        }
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(text(surface(mounted, "sidebar-project-lead"))).toMatch(/^Ada(: | · )$/u);
+    expect(clusterOf(mounted, ["crm-a", "crm-r"])[0]?.key).toBe("crm-a");
+  });
+
   // A Mate whose own change waits for the person's review needs them, as the composer's top says
   // (`mateNextStep`): folded, its face among its group's says so (the owner, 2026-09-30: a folded
   // project read only its name while its Mate's #2 waited for Review); open, its row wears the

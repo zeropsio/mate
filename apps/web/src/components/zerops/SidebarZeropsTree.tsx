@@ -1866,6 +1866,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         at: live?.at,
         working: live?.kind === "working",
         runSince: live?.runSince,
+        // An automated Mate waiting for a task never outranks another Mate's news.
+        waitsForTask:
+          live?.kind !== "working" && mateAutomation(item.project.hq?.mate)?.task === null,
       };
     });
     const { lead, asks } = groupLead(readings);
