@@ -2229,4 +2229,21 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
     const asked = hq.seen.find((entry) => entry.path === path && entry.method === method);
     expect(asked?.body).toEqual(sent);
   });
+
+  it("a person's stop of a task is sent to that task of its application", async () => {
+    const path = "/api/apps/app-1/tasks/task-1/stop";
+    const hq = fakeHq((seen) =>
+      seen.path === path && seen.method === "POST"
+        ? new Response(null, { status: 204 })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.stopAppTask!("app-1", "task-1")).resolves.toBeUndefined();
+    expect(hq.seen.some((entry) => entry.path === path && entry.method === "POST")).toBe(true);
+  });
 });

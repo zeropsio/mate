@@ -6,6 +6,7 @@ import {
   CHIEF_COMPOSER_PLACEHOLDER,
   DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
   ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER,
+  taskComposerPlaceholder,
 } from "./composerPlaceholder";
 
 describe("resolveComposerPlaceholders", () => {
@@ -59,4 +60,19 @@ it("a Chief's conversation invites asks across the organization, never what to b
     ).toEqual({ connected: CHIEF_COMPOSER_PLACEHOLDER, idle: CHIEF_COMPOSER_PLACEHOLDER });
   }
   expect(CHIEF_COMPOSER_PLACEHOLDER).toBe("Ask about anything across your projects…");
+});
+
+it("a task's conversation invites the person to tell its Mate about the task, never what to build", () => {
+  for (const zeropsAvailable of [false, true]) {
+    const said = taskComposerPlaceholder("Raya");
+    expect(
+      resolveComposerPlaceholders({
+        whoLivesHere: "mate",
+        zeropsAvailable,
+        task: { mate: "Raya" },
+      }),
+    ).toEqual({ connected: said, idle: said });
+  }
+  expect(taskComposerPlaceholder("Raya")).toBe("Tell Raya something about this task…");
+  expect(taskComposerPlaceholder(null)).toBe("Tell this Mate something about this task…");
 });

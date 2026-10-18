@@ -92,13 +92,16 @@ export function useOrgTaskSource<F extends OrgSetting>(
   };
 }
 
-/** One of an application's settings, read while its row is drawn. */
+/** One of an application's settings, read while its row is drawn; none while `appId` is not known. */
 export function useAppTaskSource<F extends AppSetting>(
   family: F,
-  appId: string,
+  appId: string | null,
 ): TaskSourceControls<F> {
   const { host, store, orgId } = useHost();
-  const key = useMemo(() => (orgId === null ? null : { orgId, appId }), [orgId, appId]);
+  const key = useMemo(
+    () => (orgId === null || appId === null ? null : { orgId, appId }),
+    [orgId, appId],
+  );
   const read = useAtomValue(
     store === null || key === null
       ? UNREAD

@@ -16,7 +16,7 @@ import type { MateTaskSource } from "@t3tools/contracts";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { MateTaskCard } from "~/components/zerops/MateTaskCard";
+import { MateTaskSessionBar } from "~/components/zerops/MateTaskCard";
 import {
   ProjectAutomationView,
   SourceDialog,
@@ -38,7 +38,7 @@ import {
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import type { TaskChain } from "~/zerops/automatedMate.logic";
+import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -254,26 +254,68 @@ const ISSUE: MateTaskSource = {
   author: "nova-dev",
 };
 const PR = { number: 2, url: "https://github.com/acme/tea-shop/pull/2" };
-const CHAINS: ReadonlyArray<readonly [string, TaskChain]> = [
-  ["Not read yet", { kind: "unknown" }],
-  ["Working", { kind: "working", pullRequest: undefined }],
-  ["Waiting for you", { kind: "waiting" }],
-  ["Waiting for review (no GitHub app)", { kind: "review" }],
+const AT: TaskSession = {
+  status: null,
+  taskId: "task-1",
+  stoppable: false,
+  workedMs: null,
+  spentUsd: null,
+  change: null,
+  pullRequest: null,
+};
+const SESSIONS: ReadonlyArray<readonly [string, TaskSession]> = [
+  ["Not read yet", AT],
+  ["Queued", { ...AT, status: "queued", stoppable: true, workedMs: 0, spentUsd: 0 }],
+  ["Working", { ...AT, status: "working", stoppable: true, workedMs: 754_000, spentUsd: 0.42 }],
   [
-    "PR open, checks passing",
-    { kind: "pull-request", pullRequest: { ...PR, state: "open", checks: "passing" } },
+    "Waiting for you",
+    { ...AT, status: "waiting", stoppable: true, workedMs: 1_200_000, spentUsd: 1.37 },
+  ],
+  ["Stopping", { ...AT, status: "stopping", workedMs: 1_200_000, spentUsd: 1.37 }],
+  [
+    "Up for review, change in Mate",
+    {
+      ...AT,
+      status: "review",
+      workedMs: 1_200_000,
+      spentUsd: 1.37,
+      change: { repo: "web", number: 3 },
+    },
+  ],
+  [
+    "Up for review, PR open, checks passing",
+    {
+      ...AT,
+      status: "review",
+      workedMs: 1_200_000,
+      spentUsd: 1.37,
+      change: { repo: "web", number: 3 },
+      pullRequest: { ...PR, state: "open", checks: "passing" },
+    },
   ],
   [
     "Working on review comments",
-    { kind: "working", pullRequest: { ...PR, state: "open", checks: "failing" } },
+    {
+      ...AT,
+      status: "working",
+      stoppable: true,
+      workedMs: 1_500_000,
+      spentUsd: 2.05,
+      pullRequest: { ...PR, state: "open", checks: "failing" },
+    },
   ],
-  ["PR closed", { kind: "pull-request", pullRequest: { ...PR, state: "closed" } }],
   [
-    "Merged on GitHub (ended)",
-    { kind: "ended", ended: "merged", pullRequest: { ...PR, state: "merged" } },
+    "Merged",
+    {
+      ...AT,
+      status: "merged",
+      workedMs: 3_840_000,
+      spentUsd: 6.44,
+      pullRequest: { ...PR, state: "merged" },
+    },
   ],
-  ["Stopped (ended)", { kind: "ended", ended: "stopped", pullRequest: undefined }],
-  ["A task before its Mate's most recent", { kind: "earlier" }],
+  ["Failed", { ...AT, status: "failed", workedMs: 3_600_000, spentUsd: 0.004 }],
+  ["Stopped", { ...AT, status: "stopped", workedMs: 420_000, spentUsd: 0.18 }],
 ];
 
 const INTAKE: AppIntakeRead = {
@@ -401,12 +443,17 @@ function Harness() {
           />
         </Panel>
       </div>
-      <Panel title="A task's card, as its chain">
+      <Panel title="A task's session, in each state">
         <div className="grid max-w-3xl gap-3">
-          {CHAINS.map(([label, chain]) => (
+          {SESSIONS.map(([label, session]) => (
             <div className="grid gap-1" key={label}>
               <p className="text-xs text-muted-foreground">{label}</p>
-              <MateTaskCard chain={chain} task={ISSUE} />
+              <MateTaskSessionBar
+                onOpenChange={nothing}
+                onStop={session.stoppable ? nothing : undefined}
+                session={session}
+                task={ISSUE}
+              />
             </div>
           ))}
         </div>
