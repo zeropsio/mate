@@ -87,7 +87,7 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
     const inspect = Effect.fnUntraced(function* (appId: string, repo: string, branch: string) {
       const git = yield* (yield* GitHost).git;
       const remotes = yield* Remotes;
-      const source = yield* remotes.forUse({ appId, repo }, branch);
+      const source = yield* remotes.forUse({ appId, repo }, branch, "ci");
       const preview = yield* git.previewAdoption(
         { appId, id: repo },
         { url: source.remote.url, token: source.token, branch },

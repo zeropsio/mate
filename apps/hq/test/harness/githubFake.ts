@@ -82,8 +82,16 @@ export const githubFake = Effect.gen(function* () {
     installations: new Map<number, FakeInstallation>(),
     /** How long an installation token GitHub mints lives. */
     tokenLifeMs: 60 * 60_000,
-    /** The installation tokens minted, in order, with the installation each is of. */
-    minted: [] as Array<{ readonly token: string; readonly installation: number }>,
+    /**
+     * The installation tokens minted, in order, with the installation each is of and the
+     * repositories and permissions HQ asked it for: neither asked, all the installation's.
+     */
+    minted: [] as Array<{
+      readonly token: string;
+      readonly installation: number;
+      readonly repositoryIds?: ReadonlyArray<number>;
+      readonly permissions?: Readonly<Record<string, string>>;
+    }>,
     seen: [] as Array<GithubRequest>,
     /** The status the next webhook made answers; 201 with `hookId`. */
     hookStatus: 201,
@@ -218,7 +226,18 @@ export const githubFake = Effect.gen(function* () {
                   if (found.suspended === true)
                     return reply(403, { message: "This installation has been suspended" });
                   const token = ["ghs", "fake", String(state.minted.length + 1)].join("_");
-                  state.minted.push({ token, installation: id });
+                  const asked = (text === "" ? {} : JSON.parse(text)) as {
+                    readonly repository_ids?: ReadonlyArray<number>;
+                    readonly permissions?: Readonly<Record<string, string>>;
+                  };
+                  state.minted.push({
+                    token,
+                    installation: id,
+                    ...(asked.repository_ids === undefined
+                      ? {}
+                      : { repositoryIds: asked.repository_ids }),
+                    ...(asked.permissions === undefined ? {} : { permissions: asked.permissions }),
+                  });
                   return reply(201, {
                     token,
                     expires_at: new Date(Date.now() + state.tokenLifeMs).toISOString(),
@@ -253,6 +272,16 @@ export const githubFake = Effect.gen(function* () {
                 response.end(JSON.stringify(body));
               };
               const bare = path.split("?")[0]!;
+              // A token minted for some repositories reaches no other: GitHub answers 404.
+              const scoped = state.minted.find((minted) => minted.token === bearer)?.repositoryIds;
+              const named = /^\/repos\/([^/]+\/[^/]+)/u.exec(bare)?.[1]?.toLowerCase();
+              if (scoped !== undefined && named !== undefined) {
+                const repo = [...state.installations.values()]
+                  .flatMap((installation) => installation.repositories)
+                  .find((candidate) => candidate.full_name.toLowerCase() === named);
+                if (repo === undefined || !scoped.includes(repo.id))
+                  return answer(404, { message: "Not Found" });
+              }
               const pullAt = /\/pulls\/(\d+)(\/merge)?$/u.exec(bare);
               const issueAt = /\/issues\/(\d+)$/u.exec(bare);
               if (request.method === "GET" && /^\/repos\/[^/]+\/[^/]+$/u.test(bare))

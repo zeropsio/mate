@@ -326,7 +326,8 @@ describe("a change's pull request", () => {
           assert.isTrue(
             core.github.state.seen
               .slice(core.since)
-              .filter((request) => request.method !== "GET")
+              // Minting the app's tokens for the repository is the app's too, with its JWT.
+              .filter((request) => request.method !== "GET" && !request.path.startsWith("/app/"))
               .every((request) => core.asTheApp(request.authorization)),
           );
           const change = yield* changeOf(core);

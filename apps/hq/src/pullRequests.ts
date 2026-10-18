@@ -417,7 +417,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       const asApp = (appId: string, repo: string, repository: string) =>
         Effect.gen(function* () {
           const remote = remoteIdentity(`https://github.com/${repository}`);
-          const reached = yield* remotes.tokenOf({ appId, repo }, "act");
+          const reached = yield* remotes.tokenOf({ appId, repo }, "pullRequests", "act");
           return remote === undefined || reached.as !== "app"
             ? undefined
             : { remote, token: reached.token };

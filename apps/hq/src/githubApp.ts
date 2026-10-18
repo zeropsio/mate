@@ -18,9 +18,10 @@
  * - Its webhook: taken only once `X-Hub-Signature-256` holds under the app's webhook secret, before
  *   a byte is parsed; answered at once and worked after. Installations and their repositories
  *   keep HQ's rows; every event goes on to whoever listens for it (`GithubEvents`).
- * - Acting as it (`GithubAuth`): an installation token for a repository the app reaches, minted with
- *   the app's JWT and kept until five minutes before GitHub expires it; a repository HQ does not
- *   know the app reaches is looked for again at most once a minute per account.
+ * - Acting as it (`GithubAuth`): a token for one repository the app reaches and one use's
+ *   permissions, minted with the app's JWT and kept until five minutes before GitHub expires it;
+ *   only listing what an installation reaches takes the whole installation's. A repository HQ does
+ *   not know the app reaches is looked for again at most once a minute per account.
  *
  * Forgotten, HQ keeps nothing of the app, and the remotes reached through it are invalid from then
  * on (`invalid_since`) until connected through an app again; deleting it on GitHub is the person's.
@@ -56,7 +57,13 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import { AutomationRefused } from "./automationRefused.ts";
 import { DeployKeys } from "./deployKeys.ts";
-import { GithubAuth, GithubAuthUnavailable, type GithubBot } from "./githubAuth.ts";
+import {
+  GITHUB_TOKEN_USES,
+  GithubAuth,
+  GithubAuthUnavailable,
+  type GithubBot,
+  type GithubTokenUse,
+} from "./githubAuth.ts";
 import { GithubEvents } from "./githubEvents.ts";
 import { signatureHolds } from "./intake.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -110,6 +117,12 @@ const REPOSITORY_PAGES = 10;
 export const GITHUB_APP_EVENT_LIMIT = 25 * 1024 * 1024;
 
 const randomId = (bytes: number) => NodeCrypto.randomBytes(bytes).toString("base64url");
+
+/** A token GitHub minted, and until when HQ uses it. */
+interface HeldToken {
+  readonly token: Redacted.Redacted;
+  readonly until: number;
+}
 
 /** The app's definition, as GitHub reads it from the manifest form, its addresses on `hqOrigin`. */
 export const githubAppManifest = (input: {
@@ -386,10 +399,8 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
       const client = yield* HttpClient.HttpClient;
       const work = yield* FiberSet.make();
       const api = options.api ?? "https://api.github.com";
-      const tokens = new Map<
-        number,
-        { readonly token: Redacted.Redacted; readonly until: number }
-      >();
+      /** Each installation's tokens: its own (`*`), and each `<repository id>:<use>`'s. */
+      const tokens = new Map<number, Map<string, HeldToken>>();
       const listed = new Map<string, number>();
       const bots = new Map<string, GithubBot>();
       const minting = yield* Semaphore.make(1);
@@ -402,6 +413,7 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
         method: "GET" | "POST",
         path: string,
         auth: { readonly jwt: string } | { readonly token: Redacted.Redacted } | null,
+        body?: unknown,
       ) =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -415,6 +427,7 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
                 request,
                 "jwt" in auth ? auth.jwt : Redacted.value(auth.token),
               );
+            if (body !== undefined) request = HttpClientRequest.bodyJsonUnsafe(request, body);
             const response = yield* client.execute(request);
             return { status: response.status, body: yield* response.text };
           }).pipe(
@@ -472,16 +485,22 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
       const jwtOf = (app: MadeApp) =>
         Effect.map(Clock.currentTimeMillis, (now) => appJwt(app.githubId, app.pem, now));
 
-      /** A token of the installation `id`, kept until shortly before it expires. */
-      const installationToken = (app: MadeApp, id: number) =>
+      /**
+       * A token of the installation `id` GitHub mints as `asked` (none: the whole installation's),
+       * kept under `key` until shortly before it expires.
+       */
+      const mint = (app: MadeApp, id: number, key: string, asked?: object) =>
         minting.withPermits(1)(
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
-            const held = tokens.get(id);
+            const held = tokens.get(id)?.get(key);
             if (held !== undefined && now < held.until) return held.token;
-            const reply = yield* send("POST", `/app/installations/${String(id)}/access_tokens`, {
-              jwt: yield* jwtOf(app),
-            });
+            const reply = yield* send(
+              "POST",
+              `/app/installations/${String(id)}/access_tokens`,
+              { jwt: yield* jwtOf(app) },
+              asked,
+            );
             if (reply.status === 403)
               return yield* new GithubAuthUnavailable({
                 reason: /suspend/iu.test(reply.body) ? "suspended" : "refused",
@@ -495,7 +514,9 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
               return yield* new GithubAuthUnavailable({ reason: "unreachable" });
             const token = Redacted.make(read.value.token);
             const expires = Date.parse(read.value.expires_at);
-            tokens.set(id, {
+            const kept = tokens.get(id) ?? new Map<string, HeldToken>();
+            tokens.set(id, kept);
+            kept.set(key, {
               token,
               until:
                 (Number.isNaN(expires) ? now + 55 * 60_000 : expires) -
@@ -504,6 +525,21 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
             return token;
           }),
         );
+
+      /** The whole installation's token: only for listing the repositories it reaches. */
+      const installationToken = (app: MadeApp, id: number) => mint(app, id, "*");
+
+      /** A token of the installation `id` for `repositoryId` alone, with `use`'s permissions. */
+      const repositoryToken = (
+        app: MadeApp,
+        id: number,
+        repositoryId: number,
+        use: GithubTokenUse,
+      ) =>
+        mint(app, id, `${String(repositoryId)}:${use}`, {
+          repository_ids: [repositoryId],
+          permissions: GITHUB_TOKEN_USES[use],
+        });
 
       const installations = sql<InstallationRow>`
         SELECT id::text AS id, account, account_type, repository_selection, suspended, repositories
@@ -621,7 +657,7 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
         });
 
       const auth = GithubAuth.of({
-        tokenFor: (repository, id) =>
+        tokenFor: (repository, use, id) =>
           Effect.gen(function* () {
             const reached = yield* reach(repository, id);
             if (reached === undefined) return undefined;
@@ -629,7 +665,12 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
               return yield* new GithubAuthUnavailable({ reason: "replaced" });
             if (reached.row.suspended)
               return yield* new GithubAuthUnavailable({ reason: "suspended" });
-            return yield* installationToken(reached.app, Number(reached.row.id));
+            return yield* repositoryToken(
+              reached.app,
+              Number(reached.row.id),
+              reached.repo.id,
+              use,
+            );
           }),
         bot: Effect.gen(function* () {
           const app = yield* madeOrUnavailable;

@@ -109,7 +109,7 @@ export const githubChannelLayer = Layer.effectDiscard(
         const found = rows.find((row) => remoteIdentity(row.url)?.path === repo);
         const remote = found === undefined ? undefined : remoteIdentity(found.url);
         if (found === undefined || remote === undefined) return undefined;
-        const { token } = yield* remotes.tokenOf({ appId: task.appId, repo: found.repo });
+        const { token } = yield* remotes.tokenOf({ appId: task.appId, repo: found.repo }, "issues");
         return { remote, token, number: task.source.number };
       });
 

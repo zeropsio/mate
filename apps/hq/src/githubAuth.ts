@@ -1,6 +1,6 @@
 /**
- * How HQ acts on GitHub as the organization's own app (`githubApp.ts` makes and keeps it): an
- * installation token for a repository the app is installed on, and the bot it writes as. Every
+ * How HQ acts on GitHub as the organization's own app (`githubApp.ts` makes and keeps it): a token
+ * for one repository the app is installed on, for one use, and the bot it writes as. Every
  * GitHub write HQ makes on such a repository goes through this, so it is the app's, never a
  * person's; where the app is not installed, a caller falls back to the repository's kept token.
  *
@@ -20,6 +20,24 @@ export interface GithubBot {
   readonly userId: number;
 }
 
+/**
+ * What HQ uses an app token on one repository for, and the permissions GitHub grants it for that
+ * and nothing more: each within what the app may do (`GITHUB_APP_PERMISSIONS`).
+ */
+export const GITHUB_TOKEN_USES = {
+  /** Whether the app reaches the repository: nothing of it but its metadata. */
+  reach: { metadata: "read" },
+  /** Fetching and pushing its branches: a mirror's, an environment's, a release's. */
+  git: { contents: "write" },
+  /** Its branches, and what its CI says of them: check runs, statuses and workflow runs. */
+  ci: { contents: "write", checks: "read", statuses: "read", actions: "read" },
+  /** Its pull requests the bot opens, follows and answers on, and their check runs. */
+  pullRequests: { pull_requests: "write", checks: "read" },
+  /** Its issues the bot answers on: reactions, comments, labels, closing. */
+  issues: { issues: "write" },
+} as const;
+export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
+
 /** GitHub refused or could not be reached for a token. */
 export class GithubAuthUnavailable extends Data.TaggedError("GithubAuthUnavailable")<{
   /** `replaced`: GitHub's repository of that name is not the one of the id asked for. */
@@ -30,14 +48,16 @@ export class GithubAuth extends Context.Service<
   GithubAuth,
   {
     /**
-     * An installation token for `repository` (`owner/name`, case-insensitive) while the app is
-     * installed on it; `undefined` when HQ has no app or the app does not reach it. Cached until
-     * shortly before GitHub expires it. With `id` (the repository's id on GitHub, as a remote
-     * keeps it), only while the repository of that name is still the one of that id: one deleted
-     * and made again is `replaced`, never a token.
+     * A token for `repository` (`owner/name`, case-insensitive) while the app is installed on it,
+     * reaching that repository alone with the permissions of `use`; `undefined` when HQ has no app
+     * or the app does not reach it. Cached per repository and use until shortly before GitHub
+     * expires it. With `id` (the repository's id on GitHub, as a remote keeps it), only while the
+     * repository of that name is still the one of that id: one deleted and made again is
+     * `replaced`, never a token.
      */
     readonly tokenFor: (
       repository: string,
+      use: GithubTokenUse,
       id?: string,
     ) => Effect.Effect<Redacted.Redacted | undefined, GithubAuthUnavailable>;
     /** The app's bot, or `undefined` while HQ has no app. */

@@ -343,11 +343,11 @@ describe("the organization's GitHub app", () => {
               session: core.owner,
               body: { repository: "acme/tea-shop" },
             });
-          // Listing the installation's repositories minted the first.
+          // Listing the installation's repositories minted the first; connecting, the repository's.
           assert.strictEqual(core.github.state.minted.length, 1);
           yield* remoteApp();
           yield* remoteApp();
-          assert.strictEqual(core.github.state.minted.length, 1);
+          assert.strictEqual(core.github.state.minted.length, 2);
           // A token GitHub gives four minutes is too short to use: each use asks again.
           core.github.state.tokenLifeMs = 4 * 60_000;
           yield* core.call("DELETE", "/api/org/github", { session: core.owner });
@@ -478,6 +478,102 @@ describe("the organization's GitHub app", () => {
           );
           yield* robot.link.close;
         }),
+    );
+
+    it.effect(
+      "a token HQ mints for one repository names only that repository and the permissions its use needs",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* appCore;
+          const { hook } = yield* connected(core);
+          yield* core.call("PUT", "/api/org/ai-keys/nebius", {
+            session: core.owner,
+            body: { value: NEBIUS_KEY },
+          });
+          yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+          // Listing what the installation reaches is the installation's own: no repository named.
+          const asked = (token: string | undefined) => {
+            const minted = core.github.state.minted.find(
+              (candidate) => `Bearer ${candidate.token}` === token,
+            );
+            return { repositoryIds: minted?.repositoryIds, permissions: minted?.permissions };
+          };
+          assert.deepStrictEqual(asked(`Bearer ${core.github.state.minted[0]?.token}`), {
+            repositoryIds: undefined,
+            permissions: undefined,
+          });
+          const kept = yield* core.call("PUT", `/api/apps/${core.appId}/intake`, {
+            session: core.owner,
+            body: { repo: "acme/tea-shop", label: "mate" },
+          });
+          assert.deepStrictEqual((kept.body as HqIntakeView).hook, { kind: "app" });
+          // Whether the app reaches it: nothing of the repository but its metadata.
+          assert.deepStrictEqual(asked(`Bearer ${core.github.state.minted.at(-1)?.token}`), {
+            repositoryIds: [501],
+            permissions: { metadata: "read" },
+          });
+          addProject(core.fake, "P_ROBOT");
+          const robot = yield* mateLinked(core, core.owner, "P_ROBOT", { appId: core.appId });
+          yield* robot.link.send(overviewAt(TASK_SOURCES_SINCE));
+          yield* robot.link.send(attention(1));
+          yield* deliver(
+            core,
+            hook,
+            "issues",
+            issueEvent("labeled", { number: 1, labels: ["mate"] }, "mate"),
+          );
+          const seen = yield* core.github.seenWhere("the issue's status said", (requests) =>
+            requests.some(
+              (request) =>
+                request.method === "POST" &&
+                request.path === "/repos/acme/tea-shop/issues/1/comments",
+            ),
+          );
+          // The writer's permission, the 👀 and the status comment: the issue's repository, its issues.
+          const onIssue = seen.filter(
+            (request) =>
+              request.path.endsWith("/permission") ||
+              request.path.endsWith("/reactions") ||
+              request.path.endsWith("/issues/1/comments"),
+          );
+          assert.isAtLeast(onIssue.length, 3);
+          for (const request of onIssue)
+            assert.deepStrictEqual(
+              asked(request.authorization),
+              { repositoryIds: [501], permissions: { issues: "write" } },
+              request.path,
+            );
+          yield* robot.link.close;
+        }),
+    );
+
+    it.effect("a token for one repository is never handed out for another", () =>
+      Effect.gen(function* () {
+        const core = yield* appCore;
+        yield* connected(core);
+        // Installed on both: HQ hears of `acme/samovar` when it first asks for it.
+        core.github.state.installations
+          .get(7001)!
+          .repositories.push({ id: 502, full_name: "acme/samovar" });
+        yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+        yield* connectedRepo(core, core.appId, "api", "acme/samovar");
+        yield* core.sql`
+          UPDATE hq_repo_remote SET host_repo_id = CASE repo WHEN 'web' THEN '501' ELSE '502' END`;
+        const remoteApp = (repo: string, repository: string) =>
+          core.call("PUT", `/api/apps/${core.appId}/repos/${repo}/remote/app`, {
+            session: core.owner,
+            body: { repository },
+          });
+        const listed = core.github.state.minted.length;
+        assert.strictEqual((yield* remoteApp("web", "acme/tea-shop")).status, 204);
+        assert.strictEqual((yield* remoteApp("api", "acme/samovar")).status, 204);
+        assert.strictEqual((yield* remoteApp("web", "acme/tea-shop")).status, 204);
+        // One token each, kept for its own repository: tea-shop's again is the one it had.
+        assert.deepStrictEqual(
+          core.github.state.minted.slice(listed).map((minted) => minted.repositoryIds),
+          [[501], [502]],
+        );
+      }),
     );
 
     it.effect(
