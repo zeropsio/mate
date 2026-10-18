@@ -12,7 +12,6 @@ const RUN: PutLiveRun = {
   orgId: "o-1",
   groupId: "g-1",
   project: "Tea Shop",
-  change: { repository: "app", number: 1, title: "Shop front", head: "abc", merged: true },
   phase: "creating",
 };
 
@@ -27,7 +26,6 @@ const row = (run: Partial<PutLiveRun>, over: Partial<PutLiveRowProps> = {}) =>
       onCopy={() => {}}
       onDismiss={() => {}}
       onOpenProject={() => {}}
-      onSeeCode={() => {}}
       run={{ ...RUN, ...run }}
       {...over}
     />,
@@ -37,7 +35,7 @@ describe("Put it live in the conversation", () => {
   it("says a step that never answered in plain words, with its source's words under Details", () => {
     const markup = row({
       phase: "failed",
-      failedAt: "merging",
+      failedAt: "creating",
       failure: { words: "No answer came back.", action: "again", detail: "socket hang up" },
     });
     expect(markup).toContain("No answer came back.");
@@ -95,7 +93,6 @@ describe("Put it live in the conversation", () => {
       onCopy: () => {},
       onDismiss: () => {},
       onOpenProject: vi.fn(),
-      onSeeCode: () => {},
       run: {
         ...RUN,
         phase: "failed",
@@ -136,10 +133,8 @@ describe("Put it live in the conversation", () => {
       onCopy: () => {},
       onDismiss: () => {},
       onOpenProject: () => {},
-      onSeeCode: () => {},
       run: {
         ...RUN,
-        change: undefined,
         phase: "failed",
         failedAt: "creating",
         productionId: "p-prod",
@@ -161,7 +156,6 @@ describe("Put it live in the conversation", () => {
 
   it.each([
     ["again", "Try again"],
-    ["see-code", "See the code"],
     ["project", "Open the project"],
     ["release", "Release"],
   ] as const)("says why it stopped, with the one action that fixes it (%s)", (action, label) => {

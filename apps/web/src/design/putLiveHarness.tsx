@@ -23,18 +23,13 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const SHEET = params.get("sheet") === "1";
 const NOW = Date.now();
 
+const TITLE = "Cookbook: add, browse and search dishes by ingredient";
+
 const RUN: PutLiveRun = {
   orgId: "o-1",
   groupId: "g-1",
   project: "Cookbook",
-  change: {
-    repository: "app",
-    number: 1,
-    title: "Cookbook: add, browse and search dishes by ingredient",
-    head: "abc",
-    merged: false,
-  },
-  phase: "merging",
+  phase: "creating",
 };
 
 const ADDRESS = {
@@ -43,7 +38,6 @@ const ADDRESS = {
 };
 
 const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> = [
-  { name: "Merging", run: { ...RUN, stepAt: NOW - 4_000 } },
   { name: "Making production", run: { ...RUN, phase: "creating", stepAt: NOW - 133_000 } },
   {
     name: "Releasing",
@@ -63,7 +57,6 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> =
     name: "After a reload, not released yet",
     run: {
       ...RUN,
-      change: undefined,
       phase: "failed",
       failedAt: "creating",
       productionId: "p-prod",
@@ -116,7 +109,7 @@ function Harness() {
               onReview={noop}
               strip={{
                 title: "Alba is waiting for your review of #1",
-                detail: RUN.change!.title,
+                detail: TITLE,
                 tint: "coral",
                 target: { kind: "change", groupId: "g-1", repository: "app", number: 1 },
               }}
@@ -137,7 +130,6 @@ function Harness() {
                 onCopy={noop}
                 onDismiss={noop}
                 onOpenProject={noop}
-                onSeeCode={noop}
                 run={run}
               />
             }
@@ -150,7 +142,7 @@ function Harness() {
             project: "Cookbook",
             changes: [
               {
-                title: RUN.change!.title,
+                title: TITLE,
                 description: [
                   "A small, phone-friendly shop front backed by PostgreSQL.",
                   "",

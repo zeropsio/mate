@@ -256,16 +256,6 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
       halfMade,
     });
 
-    if (run.phase === "merging" && run.change !== undefined) {
-      const { change } = run;
-      send(
-        () => verbs.merge(groupId, change, change.head),
-        (outcome) => (outcome.ok ? { kind: "merged" } : failed(outcome.reason)),
-        "again",
-      );
-      return;
-    }
-
     if (run.phase === "creating" && run.productionId === undefined) {
       if (entry === undefined || recipe.loading || recipe.state === "loading") return;
       if (people.kind === "reading") return;
