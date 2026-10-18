@@ -54,6 +54,7 @@ export const previewAdoption = (userId: string, repo: Repo, branch: string) =>
       const { remote, token } = yield* (yield* Remotes).forUse(
         { appId: repo.appId, repo: repo.id },
         branch,
+        "git",
       );
       const preview = yield* git.previewAdoption(repo, { url: remote.url, token, branch });
       return {
@@ -76,6 +77,7 @@ export const acceptAdoption = (userId: string, preview: GitAdoptionPreview) =>
       const { remote, token } = yield* (yield* Remotes).forUse(
         { appId: preview.repo.appId, repo: preview.repo.id },
         preview.branch,
+        "git",
       );
       if (remote.url !== preview.url || remote.keptAt !== preview.keptAt)
         return { kind: "stale" } as const;

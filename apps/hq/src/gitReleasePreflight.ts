@@ -177,7 +177,7 @@ export const gitReleasePreflightLayer = Layer.effect(
     return GitReleasePreflight.of({
       check: (appId, repo, sha, branch) =>
         Effect.gen(function* () {
-          const use = yield* remotes.forUse({ appId, repo }, branch);
+          const use = yield* remotes.forUse({ appId, repo }, branch, "git");
           const now = yield* Clock.currentTimeMillis;
           const evidenceRemote = {
             url: use.remote.url,

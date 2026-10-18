@@ -498,7 +498,7 @@ export const gitPushLayer = Layer.effect(
           const use = yield* Effect.gen(function* () {
             for (;;) {
               const answer = yield* remotes
-                .forUse({ appId: job.app_id, repo: job.repo }, environment.branch)
+                .forUse({ appId: job.app_id, repo: job.repo }, environment.branch, "git")
                 .pipe(
                   Effect.map((value) => ({ ok: true as const, value })),
                   Effect.catchTags({

@@ -58,6 +58,7 @@ export interface GitProcess {
 /** Single private subprocess boundary: no inherited environment, even for a restore and config. */
 export class GitRunner {
   private readonly active = new Set<GitProcess>();
+  private readonly handoffs = new Set<Promise<unknown>>();
   private closed = false;
   private readonly home: string;
   constructor(home: string) {
@@ -139,6 +140,24 @@ export class GitRunner {
     signal: AbortSignal,
     acceptExitCodes?: ReadonlyArray<number>,
   ): Promise<{ readonly stdout: Buffer; readonly code: number }> {
+    if (this.closed) throw failed("git", "Layer scope is closed");
+    // Its files live in the home the scope removes after close, so close waits for them too.
+    const handoff = this.askpass(args, url, token, signal, acceptExitCodes);
+    this.handoffs.add(handoff);
+    try {
+      return await handoff;
+    } finally {
+      this.handoffs.delete(handoff);
+    }
+  }
+
+  private async askpass(
+    args: string[],
+    url: string,
+    token: Redacted.Redacted,
+    signal: AbortSignal,
+    acceptExitCodes?: ReadonlyArray<number>,
+  ): Promise<{ readonly stdout: Buffer; readonly code: number }> {
     const dir = await NodeFSP.mkdtemp(NodePath.join(this.home, "askpass-"));
     try {
       await NodeFSP.chmod(dir, 0o700);
@@ -205,6 +224,7 @@ export class GitRunner {
     const processes = [...this.active];
     for (const { child } of processes) terminate(child);
     await Promise.all(processes.map(({ done }) => done.catch(() => {})));
+    await Promise.all([...this.handoffs].map((handoff) => handoff.catch(() => {})));
   }
 }
 

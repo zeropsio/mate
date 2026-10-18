@@ -411,13 +411,18 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
       /** The app's way into the GitHub repository `owner/name`; none while it has none. */
       /**
        * The app's way into the GitHub repository `repository` that HQ's `repo` of `appId` mirrors
-       * to (`Remotes.tokenOf`, acting); none where GitHub gives HQ no app token for it — never a
-       * person's token: everything here is the bot's.
+       * to (`Remotes.tokenOf`, acting), for its pull requests or, `merge`, merging one; none where
+       * GitHub gives HQ no app token for it — never a person's token: everything here is the bot's.
        */
-      const asApp = (appId: string, repo: string, repository: string) =>
+      const asApp = (
+        appId: string,
+        repo: string,
+        repository: string,
+        use: "pullRequests" | "merge" = "pullRequests",
+      ) =>
         Effect.gen(function* () {
           const remote = remoteIdentity(`https://github.com/${repository}`);
-          const reached = yield* remotes.tokenOf({ appId, repo }, "act");
+          const reached = yield* remotes.tokenOf({ appId, repo }, use, "act");
           return remote === undefined || reached.as !== "app"
             ? undefined
             : { remote, token: reached.token };
@@ -1070,7 +1075,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const change = yield* changes.change(appId, repo, number);
           if (change.state !== "open") return yield* refuse("change_not_open");
           if (change.head !== expectedHead) return yield* refuse("head_moved");
-          const app = yield* asApp(row.app_id, row.repo, row.github_repo).pipe(
+          const app = yield* asApp(row.app_id, row.repo, row.github_repo, "merge").pipe(
             Effect.orElseSucceed(() => undefined),
           );
           if (app === undefined) return yield* refuse("github_unreachable");

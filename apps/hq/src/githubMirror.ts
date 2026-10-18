@@ -212,7 +212,7 @@ export const githubMirrorLayer = (
           );
           if (connected.id === null) return yield* notConnected;
           const token = yield* auth
-            .tokenFor(connected.repository, connected.id)
+            .tokenFor(connected.repository, "git", connected.id)
             .pipe(
               Effect.mapError((error) =>
                 error.reason === "replaced"

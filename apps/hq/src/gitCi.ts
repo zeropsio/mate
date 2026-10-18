@@ -303,25 +303,27 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
     // The token is opened once per watch: every read proves it with GitHub anyway.
     let token: Redacted.Redacted | undefined;
     while (token === undefined) {
-      const use = yield* remotes.forUse({ appId: target.appId, repo: target.repo }, branch).pipe(
-        Effect.map((value) => ({ ok: true as const, token: value.token })),
-        Effect.catchTags({
-          RemoteRefused: (error) =>
-            Effect.succeed({
-              ok: false as const,
-              reason: error.message,
-              wait: false,
-              retryAfterMs: undefined,
-            }),
-          ProbeRefused: (error) =>
-            Effect.succeed({
-              ok: false as const,
-              reason: error.message,
-              wait: error.reason === "rate_limited" || error.reason === "unreachable",
-              retryAfterMs: error.retryAfterMs,
-            }),
-        }),
-      );
+      const use = yield* remotes
+        .forUse({ appId: target.appId, repo: target.repo }, branch, "ci")
+        .pipe(
+          Effect.map((value) => ({ ok: true as const, token: value.token })),
+          Effect.catchTags({
+            RemoteRefused: (error) =>
+              Effect.succeed({
+                ok: false as const,
+                reason: error.message,
+                wait: false,
+                retryAfterMs: undefined,
+              }),
+            ProbeRefused: (error) =>
+              Effect.succeed({
+                ok: false as const,
+                reason: error.message,
+                wait: error.reason === "rate_limited" || error.reason === "unreachable",
+                retryAfterMs: error.retryAfterMs,
+              }),
+          }),
+        );
       if (use.ok) token = use.token;
       else if (!use.wait) return yield* refuse(use.reason);
       else if (!(yield* pause(Math.max(1_000, use.retryAfterMs ?? POLL_MS[0])))) return;
