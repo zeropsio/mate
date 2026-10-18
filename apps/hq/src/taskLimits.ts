@@ -3,7 +3,8 @@
  * agent at work on it, and US dollars of model use; 60 minutes and no cost limit until an owner or
  * admin of the organization sets them. Every `task` frame carries them (`MateTask.limits`); its
  * Mate stops the task at either and says where it got to. Beside them, what all its automated
- * Mates may spend in a calendar month (UTC): reached, HQ hands out no task and stops those at work
+ * Mates may spend in a calendar month (UTC), counted in the month each report said it: reached, HQ
+ * hands out no task, puts those handed out but not taken back in line, and stops those at work
  * (`mateTasks.ts`).
  *
  * @module taskLimits
@@ -29,13 +30,18 @@ const MINUTES_MAX = 1440;
 /** The most a budget may be: past it, a typo. */
 const BUDGET_MAX = 1_000_000;
 
-/** What the organization's automated Mates spent this calendar month (UTC), as they reported it. */
+/** This calendar month (UTC), as `hq_task_month_spend.month` keys it. */
+export const THIS_MONTH = "(date_trunc('month', now() AT TIME ZONE 'UTC'))::date";
+
+/**
+ * What the organization's automated Mates spent this calendar month (UTC), as they reported it:
+ * each report's rise counted in the month it came (`MateTasks.report`).
+ */
 export const spentThisMonth = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [row] = yield* sql<{ readonly spent: number }>`
-    SELECT COALESCE(sum(spent_usd), 0)::float8 AS spent FROM hq_task
-    WHERE spent_usd IS NOT NULL
-      AND started_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+    SELECT COALESCE(sum(spent_usd), 0)::float8 AS spent FROM hq_task_month_spend
+    WHERE month = ${sql.literal(THIS_MONTH)}`;
   return row?.spent ?? 0;
 });
 
