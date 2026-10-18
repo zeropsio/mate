@@ -106,30 +106,23 @@ export function MateTaskSessionBar({
   const { status, pullRequest, change } = session;
   return (
     <div
-      className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-line"
+      className="flex min-h-7 min-w-0 items-center gap-x-4 text-line"
       data-zerops-surface="mate-task-session"
     >
-      <span className="flex min-w-0 flex-1 items-center gap-x-2">
-        <span
-          className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"
-          data-zerops-surface="mate-task-status"
-        >
-          {status === null ? (
-            // Its room, held while nothing is known: a line of nothing.
-            <span>{"\u00a0"}</span>
-          ) : (
-            <>
-              <span
-                aria-hidden="true"
-                className={`size-1.5 shrink-0 rounded-full ${DOT[status]}`}
-              />
-              {TASK_STATUS_WORDS[status]}
-            </>
-          )}
+      {/* Its state first, alone: what lands or changes here moves nothing else. */}
+      <span
+        className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"
+        data-zerops-surface="mate-task-status"
+      >
+        {status === null ? null : (
+          <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${DOT[status]}`} />
+        )}
+        <span data-zerops-surface="mate-task-status-words">
+          {/* Its room, held while nothing is known: a line of nothing. */}
+          {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
         </span>
-        <span aria-hidden="true" className="text-muted-foreground">
-          ·
-        </span>
+      </span>
+      <span className="flex min-w-0 flex-1 items-center justify-end gap-x-2">
         <span className="min-w-0 truncate text-muted-foreground">{mateTaskCardSource(task)}</span>
         {link === null ? null : (
           <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
@@ -170,11 +163,16 @@ export function MateTaskSessionBar({
             </>
           )}
         </span>
-        {onStop === undefined ? null : (
+        {onStop !== undefined ? (
           <Button onClick={onStop} size="sm" variant="secondary">
             Stop
           </Button>
-        )}
+        ) : status === "stopping" ? (
+          // Pressed: it stands where it was, spent, until the task says it stopped.
+          <Button disabled size="sm" variant="secondary">
+            Stop
+          </Button>
+        ) : null}
       </span>
     </div>
   );

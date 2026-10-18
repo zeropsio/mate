@@ -35,9 +35,11 @@ describe("a task's issue card", () => {
 });
 
 describe("a task's issue card, as its chain", () => {
-  // The words before the first separator: its status beside its dot.
   const statusOf = (html: string) =>
-    (html.replace(/<[^>]+>/gu, "").split("·")[0] ?? "").replace(/\u00a0/gu, " ");
+    (/data-zerops-surface="mate-task-status-words"[^>]*>([^<]*)</u.exec(html)?.[1] ?? "").replace(
+      /\u00a0/gu,
+      " ",
+    );
   const factsOf = (html: string) =>
     (/data-zerops-surface="mate-task-facts"[^>]*>([\s\S]*)$/u.exec(html)?.[1] ?? "").replace(
       /<[^>]+>/gu,
