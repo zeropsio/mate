@@ -927,6 +927,54 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "a task that couldn't finish what a review asked says so on the pull request where the reviewer wrote, and on its issue",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.dispatch("pull_request_review", {
+            action: "submitted",
+            pull_request: { number: 2 },
+            review: {
+              id: 7,
+              body: "Boil it once more.",
+              state: "commented",
+              user: { login: "nova", type: "User" },
+            },
+          });
+          yield* core.robot.link.takeWhere("the review", (frame) => frame.type === "task-message");
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "working", conversationId: "conversation-1" },
+          });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "failed", detail: "It reached its $5 limit." },
+          });
+          const words = "Juno couldn't finish this: It reached its $5 limit.";
+          yield* statusSays(core, words);
+          const onPull = (seen: ReadonlyArray<{ method: string; path: string; body?: unknown }>) =>
+            seen.filter(
+              (request) =>
+                request.method === "POST" &&
+                request.path === "/repos/acme/tea-shop/issues/2/comments" &&
+                (request.body as { body: string }).body.startsWith(words),
+            );
+          yield* core.github.seenWhere(
+            "said on the pull request",
+            (seen) => onPull(seen).length > 0,
+          );
+          assert.strictEqual(onPull(core.github.state.seen).length, 1);
+        }),
+    );
+
+    it.effect(
       "failing checks on the pull request's head reach its task's Mate once per head, three heads at most, then a person is told",
       () =>
         Effect.gen(function* () {

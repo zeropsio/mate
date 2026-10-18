@@ -1406,6 +1406,64 @@ describe("a task stops at its limits", () => {
     }),
   );
 
+  it.effect("a task's run is stopped once its spend passes its limit mid-turn", () =>
+    Effect.gen(function* () {
+      const { delivered, id, running, sent, unreadable } = yield* working(
+        "task-1",
+        {},
+        { minutes: 60, costUsd: 5 },
+      );
+      // Its record cannot be read as the turn's cost crosses the limit: nothing to stop then.
+      unreadable.add(id);
+      yield* running(id, "turn-1", 5.1);
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), []);
+      // The next step past the limit reads it again, and stops the run, well before the minute.
+      unreadable.delete(id);
+      yield* running(id, "turn-1", 5.3);
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
+      assert.deepStrictEqual(sent.at(-1), {
+        taskId: "task-1",
+        state: "failed",
+        conversationId: id,
+        detail: "It reached its $5 limit.",
+      });
+    }),
+  );
+
+  it.effect("a task never starts a run past its limit", () =>
+    Effect.gen(function* () {
+      const { delivered, id, link, move, sent, spent } = yield* working(
+        "task-1",
+        {},
+        { minutes: 60, costUsd: 5 },
+      );
+      // Its turn ended past the limit as it was put back in line: handed again, it starts nothing.
+      yield* link.stop("task-1", "it reached the organization's monthly budget.", true);
+      yield* move(
+        id,
+        view(id, { lastEnded: run(id, principalOf("task-1"), "ended", { kind: "completed" }) }),
+      );
+      yield* spent(id, "turn-1", 5.4);
+      yield* settle;
+      const before = delivered.length;
+      yield* link.receive({ ...task("task-1"), limits: { minutes: 60, costUsd: 5 } });
+      yield* settle;
+      assert.strictEqual(delivered.length, before);
+      assert.deepStrictEqual(sent.at(-1), {
+        taskId: "task-1",
+        state: "failed",
+        conversationId: id,
+        detail: "It reached its $5 limit.",
+      });
+      // Nor does a follow-up.
+      yield* link.message("task-1", message("m-1", "One more thing."));
+      yield* settle;
+      assert.strictEqual(delivered.length, before);
+    }),
+  );
+
   it.effect("a follow-up on a task past its cost limit starts nothing and says failed", () =>
     Effect.gen(function* () {
       const { delivered, id, link, move, sent, spent } = yield* working(

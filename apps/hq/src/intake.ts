@@ -27,6 +27,7 @@
  * Closing an issue or removing its label stops its task (`TaskIntake.stop`). After it came in, a
  * comment such a person makes on the issue (not a bot's, not HQ's own) and an edit of the issue
  * are said to its task (`TaskIntake.message`); an edit before any Mate took it rewrites the task.
+ * Such a comment after its task ended is answered once per end, on the issue, with how it ended.
  *
  * @module intake
  */
@@ -58,7 +59,13 @@ import { Structure } from "./structure.ts";
 import { MateTasks, taskListens } from "./mateTasks.ts";
 import { HQ_MARK, marked } from "./githubChannel.ts";
 import { type GithubActor, GithubGate } from "./githubGate.ts";
-import { TaskIntake, TaskIntakeUnavailable, cleanTaskText, cleanTaskTitle } from "./taskSources.ts";
+import {
+  TaskIntake,
+  TaskIntakeUnavailable,
+  cleanTaskText,
+  cleanTaskTitle,
+  taskEndWords,
+} from "./taskSources.ts";
 
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -453,11 +460,12 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           return verdict;
         });
 
-      /** Why the issue was not taken, said on it once; never failing the delivery. */
-      const decline = (
+      /** HQ's `words` said on the issue once; never failing the delivery. */
+      const say = (
         target: { readonly appId: string; readonly hqRepo: string },
         number: number,
-        why: string,
+        words: string,
+        unsaid: string,
       ) =>
         Effect.gen(function* () {
           const repository = yield* repositoryOf(target);
@@ -466,13 +474,17 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
             repository.remote,
             repository.token,
             number,
-            marked(why),
+            marked(words),
           );
-          if (posted.status !== 201)
-            yield* Effect.logInfo("an issue's refusal not posted", { status: posted.status });
-        }).pipe(
-          Effect.catchCause((cause) => Effect.logWarning("an issue's refusal not posted", cause)),
-        );
+          if (posted.status !== 201) yield* Effect.logInfo(unsaid, { status: posted.status });
+        }).pipe(Effect.catchCause((cause) => Effect.logWarning(unsaid, cause)));
+
+      /** Why the issue was not taken, said on it once; never failing the delivery. */
+      const decline = (
+        target: { readonly appId: string; readonly hqRepo: string },
+        number: number,
+        why: string,
+      ) => say(target, number, why, "an issue's refusal not posted");
 
       /** An issue's event, from the intake's own webhook or the app's, worked for the intake `row`. */
       const handled = (row: IntakeTarget, read: IssueEventRead, deliveryId: string) =>
@@ -496,10 +508,25 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               read.event.issue.pull_request != null ||
               author == null ||
               comment.performed_via_github_app != null ||
-              text.includes(HQ_MARK) ||
-              !(yield* listeningTask(row.app_id, key))
+              text.includes(HQ_MARK)
             )
               return passed;
+            // Its task ended (and no change of it waits for review): one who may steer it hears
+            // how, once per end, never silence.
+            if (!(yield* listeningTask(row.app_id, key))) {
+              const end = yield* intake.answerEnded(
+                key,
+                Effect.map(verdictOf(target, author), (verdict) => verdict.kind === "writer"),
+              );
+              if (end !== undefined)
+                yield* say(
+                  target,
+                  number,
+                  taskEndWords(end, `Open a new issue labelled \`${row.label}\``),
+                  "an ended task's answer not posted",
+                );
+              return passed;
+            }
             const verdict = yield* verdictOf(target, author);
             if (verdict.kind !== "writer") return passed;
             yield* intake.message(key, {

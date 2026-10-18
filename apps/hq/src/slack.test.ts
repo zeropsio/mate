@@ -36,6 +36,7 @@ import { REPLIES } from "./slackText.ts";
 import {
   type TaskEnqueue,
   TaskIntake,
+  type TaskEnd,
   type TaskSourceChannel,
   TaskSourceChannels,
 } from "./taskSources.ts";
@@ -95,6 +96,8 @@ const fakeIntake = Effect.gen(function* () {
   }>();
   const stops = yield* Queue.unbounded<{ readonly sourceKey: string; readonly reason: string }>();
   const live = new Set<string>();
+  /** The keys whose task ended, and how, until a reply after it was answered. */
+  const ended = new Map<string, TaskEnd>();
   /** While set, HQ takes no task in (not the leading HQ, its database away). */
   const away = { now: false };
   const service = TaskIntake.of({
@@ -112,8 +115,15 @@ const fakeIntake = Effect.gen(function* () {
       Effect.sync(() => live.delete(sourceKey)).pipe(
         Effect.andThen(Queue.offer(stops, { sourceKey, reason })),
       ),
+    answerEnded: (sourceKey, allowed) =>
+      Effect.gen(function* () {
+        const end = ended.get(sourceKey);
+        if (end === undefined || !(yield* allowed)) return undefined;
+        ended.delete(sourceKey);
+        return end;
+      }),
   });
-  return { service, enqueued, messages, stops, live, away };
+  return { service, enqueued, messages, stops, live, ended, away };
 });
 
 /**
@@ -689,6 +699,60 @@ describe("Slack", () => {
           assert.strictEqual(yield* Queue.size(hq.intake.messages), 0);
           assert.strictEqual((yield* hq.slack.callsOf("users.info")).length, asked);
           for (const line of hq.logged) assert.notInclude(line, SLACK_BOT_TOKEN);
+        }),
+    );
+
+    it.effect(
+      "a member's reply in a thread whose task ended is answered once, in the thread, with how it ended and how to ask again",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          yield* hq.post(hq.event(mention("<@U0MATE> brew more tea")));
+          const asked = yield* Queue.take(hq.intake.enqueued);
+          const reply = (ts: string, user = "U0NOVA") =>
+            hq.event({
+              type: "message",
+              channel: "C0SUPPORT",
+              channel_type: "channel",
+              user,
+              text: "And the green one?",
+              ts,
+              thread_ts: "1700000000.000100",
+            });
+          const said = Effect.map(hq.slack.callsOf("chat.postMessage"), (calls) =>
+            calls.map((call) => [call.params["thread_ts"], call.params["text"]]),
+          );
+          hq.intake.live.delete(asked.sourceKey);
+          hq.intake.ended.set(asked.sourceKey, { kind: "finished" });
+          // Someone who may not steer it hears nothing, and the end stays unanswered.
+          hq.slack.state.users.set("U0GUEST", {
+            email: "nova@acme.test",
+            name: "Gus",
+            guest: true,
+          });
+          yield* hq.post(reply("1700000000.000150", "U0GUEST"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual(yield* said, []);
+          yield* hq.post(reply("1700000000.000200"));
+          yield* hq.post(reply("1700000000.000300"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual(yield* said, [
+            [
+              "1700000000.000100",
+              "This task is finished. Mention @Mate in a new message to start another.",
+            ],
+          ]);
+          hq.intake.ended.set(asked.sourceKey, {
+            kind: "stopped",
+            why: "It reached its $5 limit.",
+          });
+          yield* hq.post(reply("1700000000.000400"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual((yield* said).at(-1), [
+            "1700000000.000100",
+            "This task stopped: It reached its $5 limit. Mention @Mate in a new message to try again.",
+          ]);
         }),
     );
 

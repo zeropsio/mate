@@ -37,6 +37,8 @@
  *   (`TaskSourceChannels`): its place in the queue (kept true as the queue moves), the Mate that
  *   picked it up, the change it opened, and how it ended — the Mate by name, plain sentences only.
  *   One line at a time, in the order the task moved; a channel's failure never moves a task.
+ *   A task that couldn't finish what a review asked last says so on its pull request too, as the
+ *   organization's app, where the reviewer wrote.
  *
  * @module mateTasks
  */
@@ -67,9 +69,13 @@ import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
 import { GithubAuth, botCommitAuthor } from "./githubAuth.ts";
+import { marked, statusWords } from "./githubChannel.ts";
+import { GithubIssues } from "./githubIssues.ts";
+import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
+import { Remotes } from "./repoRemotes.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
 import { DEFAULT_TASK_LIMITS, THIS_MONTH, budgetSpent, readTaskLimits } from "./taskLimits.ts";
@@ -327,6 +333,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
       const overBudget = Effect.provideService(budgetSpent, SqlClient.SqlClient, sql);
       const github = yield* GithubAuth;
+      const githubIssues = yield* GithubIssues;
+      const remotes = yield* Remotes;
       /**
        * Who the commits of the application's tasks are by: the organization's app's bot, where a
        * repository of the application is mirrored through the app (its bot read once, then kept
@@ -401,6 +409,26 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           });
         });
 
+      /** Words said on a change's pull request, as the organization's app; none where it is not. */
+      const onPullRequest = (
+        ref: { readonly appId: string; readonly repo: string },
+        repository: string,
+        number: number,
+        words: string,
+      ) =>
+        Effect.gen(function* () {
+          const remote = remoteIdentity(`https://github.com/${repository}`);
+          const reached = yield* remotes.tokenOf(ref, "pullRequests", "act");
+          if (remote === undefined || reached.as !== "app") return;
+          const posted = yield* githubIssues.comment(remote, reached.token, number, marked(words));
+          if (posted.status !== 201)
+            yield* Effect.logInfo("a pull request's line not said", { status: posted.status });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a pull request's line not said", { cause }),
+          ),
+        );
+
       /**
        * The task's status line on its source, said through its channel with what `status` makes of
        * its facts now: beside whatever moved the task, one at a time, never failing anything.
@@ -423,13 +451,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly conversation_id: string | null;
             readonly change_ready: boolean;
             readonly change_state: string | null;
+            readonly pr_repository: string | null;
+            readonly last_from: string | null;
           }>`
             SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
               COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.conversation_id,
               t.change_repo,
               t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
               pr.url AS pr_url, COALESCE(c.ready_head = c.head, false) AS change_ready,
-              c.state AS change_state
+              c.state AS change_state, pr.github_repo AS pr_repository,
+              (SELECT m.source FROM hq_task_message m WHERE m.task_id = t.id
+                ORDER BY m.seq DESC LIMIT 1) AS last_from
             FROM hq_task t
             LEFT JOIN hq_app a ON a.id = t.app_id
             LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
@@ -485,6 +517,20 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           if (typeof ref === "string" && ref !== task.status_ref)
             yield* leader.write(sql`
               UPDATE hq_task SET status_ref = ${ref} WHERE id::text = ${taskId}`);
+          // What a review asked and the Mate couldn't finish: said where the reviewer wrote too.
+          if (
+            said.kind === "failed" &&
+            task.last_from === "review" &&
+            task.change_repo !== null &&
+            task.pr_number !== null &&
+            task.pr_repository !== null
+          )
+            yield* onPullRequest(
+              { appId: task.app_id, repo: task.change_repo },
+              task.pr_repository,
+              task.pr_number,
+              statusWords(said),
+            );
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("a task's status not said", { taskId, cause }),
