@@ -55,12 +55,16 @@ afterEach(() => {
  * conversation it shows. Its send answers from `answers`, in turn, and goes out once they run out.
  */
 async function openComposer(
-  options: { readonly strict?: boolean; readonly answers?: Array<ComposerSendResult> } = {},
+  options: {
+    readonly strict?: boolean;
+    readonly answers?: Array<ComposerSendResult | "throws">;
+  } = {},
 ) {
   const document = installTestDom();
   const { act, StrictMode } = await import("react");
   const { createRoot } = await import("react-dom/client");
-  const { useComposerSendRequests, sendOutcomeOf } = await import("./useComposerSendRequests");
+  const { useComposerSendRequests, sendOutcomeOf, tellSendOutcome, REQUESTED_SEND_WAIT_MS } =
+    await import("./useComposerSendRequests");
   const { useComposerDraftStore } = await import("../composerDraftStore");
   useComposerDraftStore.setState({ sendRequestsByThreadKey: {} });
   const written: Array<string> = [];
@@ -85,8 +89,9 @@ async function openComposer(
       write: (prompt) => written.push(prompt),
       send: async (ids) => {
         tried.push(ids);
-        const answer = answers.shift() ?? { sent: true };
-        if (answer !== "not-ready" && answer.sent) sent.push({ words: written.at(-1), ids });
+        const answer = answers.shift() ?? { kind: "sent" };
+        if (answer === "throws") throw new Error("The send broke.");
+        if (answer.kind === "sent") sent.push({ words: written.at(-1), ids });
         return answer;
       },
     });
@@ -110,9 +115,9 @@ async function openComposer(
         ),
       );
     });
-  const ask = (target: ScopedThreadRef) =>
+  const ask = (target: ScopedThreadRef, ids: typeof IDS = IDS) =>
     act(async () => {
-      useComposerDraftStore.getState().requestSend(target, WORDS, IDS);
+      useComposerDraftStore.getState().requestSend(target, WORDS, ids);
     });
   const settle = () =>
     act(async () => {
@@ -121,7 +126,30 @@ async function openComposer(
   const pending = (target: ScopedThreadRef) =>
     useComposerDraftStore.getState().sendRequestsByThreadKey[scopedThreadKey(target)];
   const close = () => act(async () => root.unmount());
-  return { show, ask, settle, pending, close, sent, tried, written, sendOutcomeOf };
+  /** The person's own hand in the composer: what its draft holds now. */
+  const type = (target: ScopedThreadRef, prompt: string) =>
+    act(async () => {
+      useComposerDraftStore.getState().setPrompt(target, prompt);
+    });
+  const wait = (ms: number) =>
+    act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+  return {
+    show,
+    ask,
+    settle,
+    wait,
+    type,
+    pending,
+    close,
+    sent,
+    tried,
+    written,
+    sendOutcomeOf,
+    tellSendOutcome,
+    REQUESTED_SEND_WAIT_MS,
+  };
 }
 
 describe("useComposerSendRequests", () => {
@@ -181,7 +209,7 @@ describe("useComposerSendRequests", () => {
       await composer.show(MAIN);
       await composer.ask(MAIN);
       await composer.settle();
-      await expect(outcome).resolves.toEqual({ sent: true });
+      await expect(outcome).resolves.toEqual({ kind: "sent" });
     } finally {
       await composer.close();
     }
@@ -197,7 +225,7 @@ describe("useComposerSendRequests", () => {
       expect(composer.sent).toEqual([]);
       expect(composer.written).toEqual([WORDS]);
       expect(composer.pending(MAIN)).toBeUndefined();
-      await expect(outcome).resolves.toEqual({ sent: false, why: SIGN_IN });
+      await expect(outcome).resolves.toEqual({ kind: "waits", why: SIGN_IN });
     } finally {
       await composer.close();
     }
@@ -235,7 +263,7 @@ describe("useComposerSendRequests", () => {
       await composer.show(MAIN);
       await composer.settle();
       expect(composer.sent).toEqual([{ words: WORDS, ids: IDS }]);
-      await expect(outcome).resolves.toEqual({ sent: true });
+      await expect(outcome).resolves.toEqual({ kind: "sent" });
     } finally {
       await composer.close();
     }
@@ -243,7 +271,7 @@ describe("useComposerSendRequests", () => {
 
   it("a requested send the composer declines is never told as sent", async () => {
     const declined = "It did not go out.";
-    const composer = await openComposer({ answers: [{ sent: false, why: declined }] });
+    const composer = await openComposer({ answers: [{ kind: "waits", why: declined }] });
     try {
       const outcome = composer.sendOutcomeOf(IDS.messageId);
       await composer.show(MAIN);
@@ -252,14 +280,14 @@ describe("useComposerSendRequests", () => {
       expect(composer.sent).toEqual([]);
       expect(composer.written).toEqual([WORDS]);
       expect(composer.pending(MAIN)).toBeUndefined();
-      await expect(outcome).resolves.toEqual({ sent: false, why: declined });
+      await expect(outcome).resolves.toEqual({ kind: "waits", why: declined });
     } finally {
       await composer.close();
     }
   });
 
   it("a requested send its composer was not yet ready for waits for it once more, never in a loop", async () => {
-    const composer = await openComposer({ answers: ["not-ready"] });
+    const composer = await openComposer({ answers: [{ kind: "not-ready" }] });
     try {
       const outcome = composer.sendOutcomeOf(IDS.messageId);
       let told = false;
@@ -276,7 +304,106 @@ describe("useComposerSendRequests", () => {
       await composer.show(MAIN);
       await composer.settle();
       expect(composer.sent).toEqual([{ words: WORDS, ids: IDS }]);
-      await expect(outcome).resolves.toEqual({ sent: true });
+      await expect(outcome).resolves.toEqual({ kind: "sent" });
+    } finally {
+      await composer.close();
+    }
+  });
+
+  it.each([
+    { by: "sent by hand", draft: "" },
+    { by: "changed", draft: "Stand up only the database." },
+  ])(
+    "a requested send whose words the person already $by is never sent again",
+    async ({ draft }) => {
+      const composer = await openComposer();
+      try {
+        const outcome = composer.sendOutcomeOf(IDS.messageId);
+        await composer.show(MAIN, SENDS, { ready: false });
+        await composer.ask(MAIN);
+        await composer.type(MAIN, draft);
+        await composer.show(MAIN);
+        await composer.settle();
+        expect(composer.tried).toEqual([]);
+        expect(composer.pending(MAIN)).toBeUndefined();
+        await expect(outcome).resolves.toEqual({ kind: "taken-over" });
+      } finally {
+        await composer.close();
+      }
+    },
+  );
+
+  it("a requested send held back in one conversation never holds back another's", async () => {
+    const OTHER_IDS = {
+      commandId: CommandId.make("ask-thread-other-1"),
+      messageId: MessageId.make("ask-thread-other-1"),
+    };
+    const composer = await openComposer({ answers: [{ kind: "not-ready" }] });
+    try {
+      await composer.show(MAIN);
+      await composer.ask(MAIN);
+      await composer.settle();
+      expect(composer.pending(MAIN)).toEqual({ prompt: WORDS, ids: IDS });
+      await composer.show(OTHER);
+      await composer.ask(OTHER, OTHER_IDS);
+      await composer.settle();
+      expect(composer.sent).toEqual([{ words: WORDS, ids: OTHER_IDS }]);
+    } finally {
+      await composer.close();
+    }
+  });
+
+  it("a requested send its conversation cannot take in time is told its words wait in the composer", async () => {
+    const composer = await openComposer();
+    try {
+      const outcome = composer.sendOutcomeOf(IDS.messageId);
+      await composer.show(MAIN, SENDS, { ready: false });
+      await composer.ask(MAIN);
+      await composer.wait(composer.REQUESTED_SEND_WAIT_MS);
+      await expect(outcome).resolves.toMatchObject({ kind: "waits" });
+      // Withdrawn: it never goes out later behind the asker's back.
+      expect(composer.pending(MAIN)).toBeUndefined();
+      await composer.show(MAIN);
+      await composer.settle();
+      expect(composer.tried).toEqual([]);
+    } finally {
+      await composer.close();
+    }
+  });
+
+  it.each([
+    { leaves: "with its turn", told: { kind: "sent" } as const },
+    {
+      leaves: "back into the composer",
+      told: { kind: "waits", why: "It was stopped before it went." } as const,
+    },
+  ])("a queued request is told only once it leaves the queue $leaves", async ({ told }) => {
+    const composer = await openComposer({ answers: [{ kind: "queued" }] });
+    try {
+      const outcome = composer.sendOutcomeOf(IDS.messageId);
+      let heard = false;
+      void outcome.then(() => (heard = true));
+      await composer.show(MAIN);
+      await composer.ask(MAIN);
+      await composer.settle();
+      await composer.wait(composer.REQUESTED_SEND_WAIT_MS);
+      expect(heard).toBe(false);
+      composer.tellSendOutcome(IDS.messageId, told);
+      await expect(outcome).resolves.toEqual(told);
+    } finally {
+      await composer.close();
+    }
+  });
+
+  it("a requested send whose send breaks is told it did not go, its words left in the composer", async () => {
+    const composer = await openComposer({ answers: ["throws"] });
+    try {
+      const outcome = composer.sendOutcomeOf(IDS.messageId);
+      await composer.show(MAIN);
+      await composer.ask(MAIN);
+      await composer.settle();
+      expect(composer.written).toEqual([WORDS]);
+      await expect(outcome).resolves.toMatchObject({ kind: "waits" });
     } finally {
       await composer.close();
     }
