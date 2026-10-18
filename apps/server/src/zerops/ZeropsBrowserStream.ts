@@ -39,10 +39,8 @@
  * - `console`: page console output — not read here; this slice has no
  *   console surface.
  *
- * Client→daemon, CDP `Input.dispatch*Event` vocabulary verbatim (see
- * `packages/contracts/src/zerops.ts`'s `ZeropsBrowserMouseInput`/
- * `ZeropsBrowserKeyboardInput` doc comments): `input_mouse`/`input_keyboard`/
- * `input_touch` (touch unused — no touch UI in this slice), `config`, `ack`.
+ * Client→daemon: `config` and `ack` only. The panel shows the page; it sends
+ * no input (the daemon's `input_*` messages go unused).
  *
  * ## Ack pacing is FORWARDED, never generated on receipt
  *
@@ -81,7 +79,6 @@ import type {
   ZeropsBrowserCallResult,
   SpiEvent,
   ZeropsBrowserFrame,
-  ZeropsBrowserInput,
   ZeropsBrowserStateEvent,
   ZeropsBrowserStreamEvent,
   ZeropsBrowserStreamStatus,
@@ -139,8 +136,6 @@ export class ZeropsBrowserStream extends Context.Service<
   {
     /** Connects on the first subscription, disconnects when the last one's scope closes. */
     readonly subscribe: Effect.Effect<Stream.Stream<ZeropsBrowserStreamEvent>, never, Scope.Scope>;
-    /** Forwards one input event to the daemon's current connection; a no-op (never throws) when nothing is connected. */
-    readonly sendInput: (input: ZeropsBrowserInput) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsBrowserStream") {}
 
@@ -269,43 +264,6 @@ const encodeConfigMessage = Schema.encodeSync(Schema.fromJsonString(ConfigMessag
 
 const AckMessage = Schema.Struct({ type: Schema.Literal("ack"), seq: Schema.Number });
 const encodeAckMessage = Schema.encodeSync(Schema.fromJsonString(AckMessage));
-
-const DaemonMouseInputMessage = Schema.Struct({
-  type: Schema.Literal("input_mouse"),
-  eventType: Schema.Literals(["mouseMoved", "mousePressed", "mouseReleased"]),
-  x: Schema.Number,
-  y: Schema.Number,
-  button: Schema.optional(Schema.Literals(["left", "middle", "right", "none"])),
-  clickCount: Schema.optional(Schema.Number),
-});
-const encodeDaemonMouseInput = Schema.encodeSync(Schema.fromJsonString(DaemonMouseInputMessage));
-
-const DaemonKeyboardInputMessage = Schema.Struct({
-  type: Schema.Literal("input_keyboard"),
-  eventType: Schema.Literals(["keyDown", "keyUp", "char"]),
-  key: Schema.optional(Schema.String),
-  text: Schema.optional(Schema.String),
-});
-const encodeDaemonKeyboardInput = Schema.encodeSync(
-  Schema.fromJsonString(DaemonKeyboardInputMessage),
-);
-
-const toDaemonInputMessage = (input: ZeropsBrowserInput): string =>
-  input.kind === "mouse"
-    ? encodeDaemonMouseInput({
-        type: "input_mouse",
-        eventType: input.eventType,
-        x: input.x,
-        y: input.y,
-        ...(input.button !== undefined ? { button: input.button } : {}),
-        ...(input.clickCount !== undefined ? { clickCount: input.clickCount } : {}),
-      })
-    : encodeDaemonKeyboardInput({
-        type: "input_keyboard",
-        eventType: input.eventType,
-        ...(input.key !== undefined ? { key: input.key } : {}),
-        ...(input.text !== undefined ? { text: input.text } : {}),
-      });
 
 export const make = (options: ZeropsBrowserStreamOptions) =>
   Effect.gen(function* () {
@@ -597,18 +555,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       );
     });
 
-    const sendInput = (input: ZeropsBrowserInput): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const socket = yield* Ref.get(activeSocket);
-        if (socket === undefined) {
-          // Nothing connected right now — the panel disables input outside
-          // `live`, so this is a race at worst, never a user-visible error.
-          return;
-        }
-        yield* sendQuietly(socket, toDaemonInputMessage(input));
-      });
-
-    return { subscribe, sendInput, ingestCall } satisfies ZeropsBrowserStream["Service"] & {
+    return { subscribe, ingestCall } satisfies ZeropsBrowserStream["Service"] & {
       readonly ingestCall: (event: SpiEvent) => Effect.Effect<void>;
     };
   });

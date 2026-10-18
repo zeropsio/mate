@@ -771,47 +771,6 @@ export const ZeropsBrowserStreamEvent = Schema.Union([
 export type ZeropsBrowserStreamEvent = typeof ZeropsBrowserStreamEvent.Type;
 
 /**
- * A pointer event from the panel's canvas, already mapped to device pixels
- * by the client (`packages/client-runtime/src/zerops/browserStream.ts`).
- * `eventType`/`button`/`clickCount` mirror CDP's `Input.dispatchMouseEvent`
- * vocabulary verbatim (agent-browser's own streaming reference,
- * `/usr/lib/node_modules/agent-browser/skill-data/core/references/streaming.md`
- * on the rig) — the relay forwards these fields as-is, no translation. A
- * canvas click is two events, `mousePressed` then `mouseReleased`, both
- * `clickCount: 1`.
- */
-export const ZeropsBrowserMouseInput = Schema.Struct({
-  kind: Schema.Literal("mouse"),
-  eventType: Schema.Literals(["mouseMoved", "mousePressed", "mouseReleased"]),
-  x: Schema.Number,
-  y: Schema.Number,
-  button: Schema.optional(Schema.Literals(["left", "middle", "right", "none"])),
-  clickCount: Schema.optional(Schema.Number),
-});
-export type ZeropsBrowserMouseInput = typeof ZeropsBrowserMouseInput.Type;
-
-/**
- * A keyboard event from the panel, CDP vocabulary (see
- * {@link ZeropsBrowserMouseInput}'s doc comment). `text` carries a printable
- * character (composition-safe); `key` carries a named key (`Enter`,
- * `Backspace`, `ArrowLeft`, ...).
- */
-export const ZeropsBrowserKeyboardInput = Schema.Struct({
-  kind: Schema.Literal("keyboard"),
-  eventType: Schema.Literals(["keyDown", "keyUp", "char"]),
-  key: Schema.optional(Schema.String),
-  text: Schema.optional(Schema.String),
-});
-export type ZeropsBrowserKeyboardInput = typeof ZeropsBrowserKeyboardInput.Type;
-
-/** `zeropsBrowserInput`'s RPC payload — one input event, client → daemon. */
-export const ZeropsBrowserInput = Schema.Union([
-  ZeropsBrowserMouseInput,
-  ZeropsBrowserKeyboardInput,
-]);
-export type ZeropsBrowserInput = typeof ZeropsBrowserInput.Type;
-
-/**
  * The live view of the app an agent opened on the paired Mac (the Mac tab).
  * `not-paired`: no Mac is paired with this Mate. `unreachable`: the paired
  * Mac does not answer over the VPN. `no-app`: no app opened yet, or it is not
