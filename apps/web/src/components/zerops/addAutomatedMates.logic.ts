@@ -5,6 +5,7 @@
  *
  * Pure: no React, no store, no clock.
  */
+import type { SettingValue } from "@t3tools/client-runtime/data";
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
@@ -102,33 +103,79 @@ export function automatedSubmit(input: {
   return waiting ?? created ?? { kind: "wait", on: "names" };
 }
 
+type ChannelRead = SettingValue<{ readonly channel: { readonly channel: string } | null }>;
+type ListRead = SettingValue<ReadonlyArray<unknown>>;
+
 /** Where a project's tasks come from, as read for the dialog. */
 export interface AutomatedSourceReads {
   /** Its GitHub intake: `undefined` while not read, `null` where none. */
   readonly intake: HqNavigationIntake | null | undefined;
-  /** Its Slack and Discord channels, `undefined` while not read or not shown to the reader. */
-  readonly slack: string | null | undefined;
-  readonly discord: string | null | undefined;
-  readonly webhooks: number | undefined;
-  readonly schedules: number | undefined;
+  readonly slack: ChannelRead;
+  readonly discord: ChannelRead;
+  readonly webhooks: ListRead;
+  readonly schedules: ListRead;
 }
 
-/** The sources in words, joined: `null` where it has none, `undefined` while its GitHub is read. */
-export function automatedSourcesWords(reads: AutomatedSourceReads): string | null | undefined {
-  if (reads.intake === undefined) return undefined;
+/**
+ * Where its tasks come from, as the dialog can tell: `reading` until every source is read, then
+ * the sources `named`, `none`, or `withheld` where some are refused to the reader or failed to
+ * read — never none while one of them is not known.
+ */
+export type AutomatedSources =
+  | { readonly kind: "reading" }
+  | { readonly kind: "none" }
+  | { readonly kind: "withheld" }
+  | { readonly kind: "named"; readonly words: string };
+
+/** The sources in words, joined, once every one of them is read. */
+export function automatedSourcesWords(reads: AutomatedSourceReads): AutomatedSources {
+  const settings = [reads.slack, reads.discord, reads.webhooks, reads.schedules];
+  if (
+    reads.intake === undefined ||
+    settings.some((setting) => setting.state === "unread" || setting.state === "reading")
+  )
+    return { kind: "reading" };
+  if (settings.some((setting) => setting.state === "withheld" || setting.state === "failed"))
+    return { kind: "withheld" };
+  // An HQ that predates a source has none of it.
+  const held = <T>(setting: SettingValue<T>) =>
+    setting.state === "known" ? setting.held : undefined;
   const parts: Array<string> = [];
   if (reads.intake !== null)
     parts.push(`GitHub issues labelled “${reads.intake.label}” in ${reads.intake.repo}`);
-  if (reads.slack != null) parts.push(`#${reads.slack} on Slack`);
-  if (reads.discord != null) parts.push(`#${reads.discord} on Discord`);
-  if (reads.webhooks !== undefined && reads.webhooks > 0)
-    parts.push(reads.webhooks === 1 ? "a webhook" : `${String(reads.webhooks)} webhooks`);
-  if (reads.schedules !== undefined && reads.schedules > 0)
-    parts.push(reads.schedules === 1 ? "a schedule" : `${String(reads.schedules)} schedules`);
-  if (parts.length === 0) return null;
-  return parts.length === 1
-    ? parts[0]!
-    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]!}`;
+  const slack = held(reads.slack)?.channel;
+  if (slack != null) parts.push(`#${slack.channel} on Slack`);
+  const discord = held(reads.discord)?.channel;
+  if (discord != null) parts.push(`#${discord.channel} on Discord`);
+  const webhooks = held(reads.webhooks)?.length ?? 0;
+  if (webhooks > 0) parts.push(webhooks === 1 ? "a webhook" : `${String(webhooks)} webhooks`);
+  const schedules = held(reads.schedules)?.length ?? 0;
+  if (schedules > 0) parts.push(schedules === 1 ? "a schedule" : `${String(schedules)} schedules`);
+  if (parts.length === 0) return { kind: "none" };
+  return {
+    kind: "named",
+    words:
+      parts.length === 1
+        ? parts[0]!
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]!}`,
+  };
+}
+
+/**
+ * The paragraph's first sentence: where their tasks come from. While the sources are read, the
+ * sentence the dialog holds room for (`withheld`'s, a line long), so the paragraph never grows.
+ */
+export function automatedSourcesSentence(count: number, sources: AutomatedSources): string {
+  const they = count === 1 ? "It" : "They";
+  const takes = count === 1 ? "takes" : "take";
+  switch (sources.kind) {
+    case "none":
+      return `No sources of tasks yet — add one on the project's page.`;
+    case "named":
+      return `${they} ${takes} tasks from ${sources.words}.`;
+    default:
+      return `${they} ${takes} tasks from the sources set on the project's page.`;
+  }
 }
 
 const dollars = (amount: number) =>
@@ -145,22 +192,19 @@ export function automatedModelWords(): string {
 /**
  * What they do, in one plain paragraph: where their tasks come from — or that none is set yet,
  * and where one is added — what they run on and what one task may take, and the month's budget
- * where one is set. `sources` `undefined` while read; `limits` `undefined` where not shown.
+ * where one is set. No sources sentence while they are read; `limits` `undefined` where not shown.
  */
 export function automatedWhatTheyDo(input: {
   readonly count: number;
-  readonly sources: string | null | undefined;
+  readonly sources: AutomatedSources;
   readonly key: AutomatedKeyState;
   readonly limits: HqTaskLimitsView | undefined;
 }): ReadonlyArray<string> {
   const they = input.count === 1 ? "It" : "They";
-  const takes = input.count === 1 ? "takes" : "take";
   const runs = input.count === 1 ? "runs" : "run";
   const sentences: Array<string> = [];
-  if (input.sources === null)
-    sentences.push(`No sources of tasks yet — add one on the project's page.`);
-  else if (input.sources !== undefined)
-    sentences.push(`${they} ${takes} tasks from ${input.sources}.`);
+  if (input.sources.kind !== "reading")
+    sentences.push(automatedSourcesSentence(input.count, input.sources));
   const model = automatedModelWords();
   const limits = input.limits;
   const perTask =

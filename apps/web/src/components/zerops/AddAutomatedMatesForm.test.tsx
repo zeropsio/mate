@@ -28,7 +28,7 @@ function form(props: Partial<Props> = {}): ReactElement {
         onCreate={() => {}}
         people={{ kind: "ready", userRoles: PEOPLE }}
         propose={(taken) => ["Otto", "Ada", "Milo"].find((name) => !taken.includes(name))!}
-        sources="GitHub issues labelled “mate” in acme/tea-shop"
+        sources={{ kind: "named", words: "GitHub issues labelled “mate” in acme/tea-shop" }}
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={TIER}
         tierLoading={false}
@@ -165,8 +165,22 @@ describe("Add automated Mates", () => {
   });
 
   it("says a project with no sources yet where one is added", () => {
-    expect(spoken(mount(form({ sources: null })).root)).toContain(
+    expect(spoken(mount(form({ sources: { kind: "none" } })).root)).toContain(
       "No sources of tasks yet — add one on the project's page.",
+    );
+  });
+
+  it("says nothing of the sources while they are read, in a sentence's room held for them", () => {
+    const tree = mount(form({ sources: { kind: "reading" } }));
+    const said = spoken(tree.root);
+    expect(said).not.toContain("No sources of tasks yet");
+    expect(said).not.toContain("takes tasks from");
+    expect(
+      tree.root.findAll((node) => node.props["data-zerops-automated-sources"] === "held"),
+    ).toHaveLength(1);
+    act(() => tree.update(form({ sources: { kind: "withheld" } })));
+    expect(spoken(tree.root)).toContain(
+      "It takes tasks from the sources set on the project's page.",
     );
   });
 

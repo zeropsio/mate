@@ -39,6 +39,7 @@ import {
   automatedNext,
   automatedSubmit,
   automatedWhatTheyDo,
+  type AutomatedSources,
 } from "./addAutomatedMates.logic";
 import { MateNameInput } from "./MateNameInput";
 import { MateFace } from "./primitives";
@@ -74,8 +75,8 @@ export interface AddAutomatedMatesFormProps {
   readonly tintFor: (name: string) => MateTintId;
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   readonly tierLoading: boolean;
-  /** Where the project's tasks come from, in words (`automatedSourcesWords`). */
-  readonly sources: string | null | undefined;
+  /** Where the project's tasks come from, as read (`automatedSourcesWords`). */
+  readonly sources: AutomatedSources;
   /** Whether the organization holds the key they run on, and whether the viewer may set it. */
   readonly keyState: AutomatedKeyState;
   readonly admin: boolean;
@@ -93,6 +94,9 @@ export interface AddAutomatedMatesFormProps {
   readonly onCancel: () => void;
   readonly onCreate: (choice: AutomatedMatesChoice) => void;
 }
+
+/** While the sources are read, the paragraph holds the room of a line-long sources sentence. */
+const HELD_SOURCES: AutomatedSources = { kind: "withheld" };
 
 const READING_PEOPLE = "Reading who reaches this project…";
 const PEOPLE_FAILED = "Couldn't read who reaches this project. Close and try again.";
@@ -163,13 +167,13 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
     setNames((current) => current.map((one, at) => (at === index ? name : one)));
     setWaitingPress(false);
   };
-  const whatTheyDo = (keyState: AutomatedKeyState) => {
+  const whatTheyDo = (keyState: AutomatedKeyState, sources: AutomatedSources = props.sources) => {
     const note = newMateKeyNote(keyState, props.admin);
     return (
       <>
         {automatedWhatTheyDo({
           count,
-          sources: props.sources,
+          sources,
           key: keyState,
           limits: props.limits,
         }).join(" ")}
@@ -288,7 +292,19 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
                   className="invisible col-start-1 row-start-1"
                   data-zerops-automated-key-note="held"
                 >
-                  {whatTheyDo("missing")}
+                  {whatTheyDo(
+                    "missing",
+                    props.sources.kind === "reading" ? HELD_SOURCES : props.sources,
+                  )}
+                </p>
+              ) : null}
+              {props.sources.kind === "reading" ? (
+                <p
+                  aria-hidden
+                  className="invisible col-start-1 row-start-1"
+                  data-zerops-automated-sources="held"
+                >
+                  {whatTheyDo(key, HELD_SOURCES)}
                 </p>
               ) : null}
               <p className="col-start-1 row-start-1" data-zerops-automated-what="">

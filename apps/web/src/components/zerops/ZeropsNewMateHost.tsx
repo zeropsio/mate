@@ -399,13 +399,7 @@ function AutomatedMatesDialog({
   const limits = useOrgTaskSource("hqTaskLimits").read.setting;
   const known = <T,>(setting: { readonly state: string; readonly held?: T }) =>
     setting.state === "known" ? setting.held : undefined;
-  const sources = automatedSourcesWords({
-    intake,
-    slack: known(slack)?.channel?.channel ?? (known(slack) === undefined ? undefined : null),
-    discord: known(discord)?.channel?.channel ?? (known(discord) === undefined ? undefined : null),
-    webhooks: known(webhooks)?.length,
-    schedules: known(schedules)?.length,
-  });
+  const sources = automatedSourcesWords({ intake, slack, discord, webhooks, schedules });
   return (
     <Dialog
       onOpenChange={(open) => {

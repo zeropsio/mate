@@ -82,7 +82,10 @@ describe("what automated Mates do, in one paragraph", () => {
       case: "the project's GitHub issues, the organization's key, the limits per task",
       input: {
         count: 2,
-        sources: "GitHub issues labelled “mate” in acme/tea-shop",
+        sources: {
+          kind: "named" as const,
+          words: "GitHub issues labelled “mate” in acme/tea-shop",
+        },
         key: "set" as const,
         limits: LIMITS,
       },
@@ -93,7 +96,12 @@ describe("what automated Mates do, in one paragraph", () => {
     },
     {
       case: "a project with no source yet says where one is added",
-      input: { count: 1, sources: null, key: "set" as const, limits: undefined },
+      input: {
+        count: 1,
+        sources: { kind: "none" as const },
+        key: "set" as const,
+        limits: undefined,
+      },
       words: [
         "No sources of tasks yet — add one on the project's page.",
         "It runs on the organization's key (Nebius · GLM-5.3).",
@@ -103,7 +111,7 @@ describe("what automated Mates do, in one paragraph", () => {
       case: "a monthly budget says what is spent of it",
       input: {
         count: 3,
-        sources: undefined,
+        sources: { kind: "reading" as const },
         key: "set" as const,
         limits: { minutes: 30, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 6 },
       },
@@ -114,45 +122,109 @@ describe("what automated Mates do, in one paragraph", () => {
     },
     {
       case: "an organization with no key says it isn't set",
-      input: { count: 1, sources: null, key: "missing" as const, limits: LIMITS },
+      input: {
+        count: 1,
+        sources: { kind: "none" as const },
+        key: "missing" as const,
+        limits: LIMITS,
+      },
       words: [
         "No sources of tasks yet — add one on the project's page.",
         "It runs on the organization's key (Nebius · GLM-5.3), which isn't set yet, at most $3 and 60 minutes per task.",
+      ],
+    },
+    {
+      case: "sources withheld from the reader send them to the project's page",
+      input: {
+        count: 2,
+        sources: { kind: "withheld" as const },
+        key: "set" as const,
+        limits: undefined,
+      },
+      words: [
+        "They take tasks from the sources set on the project's page.",
+        "They run on the organization's key (Nebius · GLM-5.3).",
       ],
     },
   ])("$case", ({ input, words }) => {
     expect(automatedWhatTheyDo(input)).toEqual(words);
   });
 
+  const channel = (name: string | null) => ({
+    state: "known" as const,
+    held: { channel: name === null ? null : { channel: name } },
+    stale: false,
+  });
+  const listed = (count: number) => ({
+    state: "known" as const,
+    held: Array.from({ length: count }, () => ({})),
+    stale: false,
+  });
+  const UNREAD = { state: "unread" as const };
+  const WITHHELD = { state: "withheld" as const };
+  const NONE = {
+    intake: null,
+    slack: channel(null),
+    discord: channel(null),
+    webhooks: listed(0),
+    schedules: listed(0),
+  };
+
   it("names every source a project takes tasks from", () => {
     expect(
       automatedSourcesWords({
         intake: { repo: "acme/tea-shop", label: "mate", waiting: 2 },
-        slack: "support",
-        discord: null,
-        webhooks: 1,
-        schedules: undefined,
+        slack: channel("support"),
+        discord: channel(null),
+        webhooks: listed(1),
+        schedules: { state: "unsupported" },
       }),
-    ).toBe("GitHub issues labelled “mate” in acme/tea-shop, #support on Slack and a webhook");
-    expect(
-      automatedSourcesWords({
-        intake: null,
-        slack: null,
-        discord: null,
-        webhooks: 0,
-        schedules: 0,
-      }),
-    ).toBeNull();
-    expect(
-      automatedSourcesWords({
-        intake: undefined,
-        slack: undefined,
-        discord: undefined,
-        webhooks: undefined,
-        schedules: undefined,
-      }),
-    ).toBeUndefined();
+    ).toEqual({
+      kind: "named",
+      words: "GitHub issues labelled “mate” in acme/tea-shop, #support on Slack and a webhook",
+    });
+    expect(automatedSourcesWords(NONE)).toEqual({ kind: "none" });
   });
+
+  it.each([
+    { case: "its GitHub intake", reads: { ...NONE, intake: undefined } },
+    { case: "its Slack channel", reads: { ...NONE, slack: UNREAD } },
+    { case: "its Discord channel", reads: { ...NONE, discord: { state: "reading" as const } } },
+    { case: "its webhooks", reads: { ...NONE, webhooks: UNREAD } },
+    { case: "its schedules", reads: { ...NONE, schedules: UNREAD } },
+  ])("waits for every source before saying a project has none: $case", ({ reads }) => {
+    expect(automatedSourcesWords(reads)).toEqual({ kind: "reading" });
+  });
+
+  it.each([
+    {
+      case: "all but its GitHub intake withheld",
+      reads: {
+        ...NONE,
+        slack: WITHHELD,
+        discord: WITHHELD,
+        webhooks: WITHHELD,
+        schedules: WITHHELD,
+      },
+    },
+    {
+      case: "a webhook read failed",
+      reads: { ...NONE, webhooks: { state: "failed" as const, words: "HQ did not answer." } },
+    },
+    {
+      case: "a source named beside one withheld",
+      reads: {
+        ...NONE,
+        intake: { repo: "acme/tea-shop", label: "mate", waiting: 0 },
+        schedules: WITHHELD,
+      },
+    },
+  ])(
+    "never says a project takes tasks from nowhere while some of its sources are refused to the reader: $case",
+    ({ reads }) => {
+      expect(automatedSourcesWords(reads)).toEqual({ kind: "withheld" });
+    },
+  );
 });
 
 describe("what happens once automated Mates are added", () => {

@@ -20,7 +20,8 @@
  *
  * `&automated=set` opens *Add automated Mates* instead, `&automated=missing` with the organization
  * holding no API key for them yet (`&admin=no`: to one who can't set it), `&automated=unknown`
- * before the key is read; `&sources=none` a project with no source of tasks yet.
+ * before the key is read; `&sources=none` a project with no source of tasks yet, `withheld` with
+ * some refused to the viewer, `reading` while they are read, `late` named a second after.
  *
  * Fixtures only. Nothing here ships — `design-newmate.html` is not
  * `index.html`, and no route imports this module.
@@ -31,6 +32,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AddAutomatedMatesForm } from "~/components/zerops/AddAutomatedMatesForm";
+import type { AutomatedSources } from "~/components/zerops/addAutomatedMates.logic";
 import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import {
@@ -51,10 +53,20 @@ const AUTOMATION =
   AUTOMATED === "set" || AUTOMATED === "missing" || AUTOMATED === "unknown"
     ? { key: AUTOMATED as "set" | "missing" | "unknown", admin: params.get("admin") !== "no" }
     : undefined;
-const SOURCES =
-  params.get("sources") === "none"
-    ? null
-    : "GitHub issues labelled “mate” in acme/tea-shop and #support on Slack";
+const SOURCES_SHOWN = params.get("sources");
+const NAMED: AutomatedSources = {
+  kind: "named",
+  words: "GitHub issues labelled “mate” in acme/tea-shop and #support on Slack",
+};
+/** `&sources=late` reads them for a second, then names them: nothing under the line moves. */
+const SOURCES: AutomatedSources =
+  SOURCES_SHOWN === "none"
+    ? { kind: "none" }
+    : SOURCES_SHOWN === "withheld"
+      ? { kind: "withheld" }
+      : SOURCES_SHOWN === "reading" || SOURCES_SHOWN === "late"
+        ? { kind: "reading" }
+        : NAMED;
 /** What the repo holds once read: its recipe, or none. */
 const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" : "recipe";
 
@@ -121,6 +133,12 @@ const created: Array<unknown> = [];
 
 function Harness() {
   const [open, setOpen] = useState(true);
+  const [sources, setSources] = useState(SOURCES);
+  useEffect(() => {
+    if (SOURCES_SHOWN !== "late") return;
+    const timer = setTimeout(() => setSources(NAMED), 1000);
+    return () => clearTimeout(timer);
+  }, []);
   const role = STATE === "stage" ? "stage" : "dev";
   const [read, setRead] = useState(STATE !== "reading");
   // Add pressed: the dialog gives way to the new Mate's page, at once.
@@ -169,7 +187,7 @@ function Harness() {
               onOpenKeySettings={() => setLanded("/settings/automation")}
               people={{ kind: "ready", userRoles: [] }}
               propose={(names) => ROLLS.find((roll) => !names.includes(roll)) ?? "Juno"}
-              sources={SOURCES}
+              sources={sources}
               takenBotNames={{ names: TAKEN, complete: true }}
               tier={loaded ? TIER : undefined}
               tierLoading={!read}
