@@ -16,6 +16,8 @@ import { gatedPortal } from "~/components/ui/portal-gate";
 const TooltipPortal = gatedPortal(TooltipPrimitive.Portal);
 
 const TooltipProvider = TooltipPrimitive.Provider;
+/** One tooltip for many triggers (a chart's bars): each trigger names it and passes its payload. */
+const TooltipCreateHandle = TooltipPrimitive.createHandle;
 
 type TooltipActionsRef = RefObject<TooltipPrimitive.Root.Actions | null>;
 const TooltipHoverContext = createContext<TooltipActionsRef | null>(null);
@@ -155,4 +157,11 @@ function TooltipPopup({
   );
 }
 
-export { TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup, TooltipScrollDismissArea };
+export {
+  TooltipProvider,
+  TooltipCreateHandle,
+  Tooltip,
+  TooltipTrigger,
+  TooltipPopup,
+  TooltipScrollDismissArea,
+};

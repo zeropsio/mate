@@ -93,8 +93,8 @@ describe("the composer's drawer asks for a value", () => {
     expect(text(container, "note")).toBe(
       "Goes to this project's vault for every app, never into this chat.",
     );
-    expect(field(container)?.type).toBe("password");
-    expect(field(container)?.getAttribute("autocomplete")).toBe("new-password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
+    expect(field(container)?.getAttribute("autocomplete")).toBe("off");
     expect(hiddenSwitch(container)?.getAttribute("aria-checked")).toBe("true");
     expect(button(container, "Save to vault")?.disabled).toBe(true);
     expect(button(container, "Not now")).toBeDefined();
@@ -103,11 +103,11 @@ describe("the composer's drawer asks for a value", () => {
 
   it("the field is masked until the person shows it, whatever the agent asked", async () => {
     const { container } = await mount(ask({ sensitive: false }));
-    expect(field(container)?.type).toBe("password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
     await click(button(container, "Show"));
-    expect(field(container)?.type).toBe("text");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(false);
     await click(button(container, "Hide"));
-    expect(field(container)?.type).toBe("password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
   });
 
   it.each([

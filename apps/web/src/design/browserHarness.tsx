@@ -1,10 +1,10 @@
 /**
  * The Browser tab in the right panel as the app lays it out at the owner's size: 1786 wide, the
  * left menu at 435 (`?menu=` for another), the panel at its default 540 beside the conversation.
- * `?tab=list` (the default) shows the sites list; `?tab=site` an open site's tab. `?theme=dark`
- * for dark.
+ * `?tab=list` (the default) shows the sites list; `?tab=site` an open site's tab; `?max=1` the
+ * panel expanded over the conversation. `?theme=dark` for dark.
  *
- * The real `BrowserSites`, `ZeropsBrowserPanel` and `ServiceBrowserPanels` in the real
+ * The real `BrowserSites` and `ServiceBrowserPanels` in the real
  * `RightPanelTabs`, over nextstore's invented sites. Served by the dev server at
  * `/design-browser.html`. Fixtures only: nothing here ships, and no route imports this module.
  */
@@ -13,10 +13,8 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { RightPanelPage } from "~/components/RightPanelPage";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { ServiceBrowserPanels } from "~/components/ServiceBrowserPanel";
-import { ZeropsBrowserPanel } from "~/components/zerops/ZeropsBrowserPanel";
 import { BrowserSites } from "~/components/zerops/ZeropsBrowserSurface";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import type { RightPanelSurface } from "~/rightPanelStore";
@@ -28,6 +26,7 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const TAB = params.get("tab") ?? "list";
 const MENU = Number(params.get("menu") ?? 435);
+const MAXIMIZED = params.get("max") === "1";
 const noop = () => {};
 
 const THREAD_REF = {
@@ -93,7 +92,7 @@ function Harness() {
         })}
         defaultWidth={540}
         liveAgentCount={0}
-        maximized={false}
+        maximized={MAXIMIZED}
         mode="inline"
         onActivate={noop}
         onAdd={noop}
@@ -109,14 +108,11 @@ function Harness() {
         widthStorageKey="mate:design-browser:panel-width"
       >
         {TAB === "site" ? null : (
-          <RightPanelPage kind="browser" mate="Juno">
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-6 px-4 pt-4 pb-6">
-                <BrowserSites addresses={ADDRESSES} threadRef={THREAD_REF} />
-                <ZeropsBrowserPanel mateName="Juno" threadRef={THREAD_REF} />
-              </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="px-4 pt-4 pb-6">
+              <BrowserSites addresses={ADDRESSES} threadRef={THREAD_REF} />
             </div>
-          </RightPanelPage>
+          </div>
         )}
         <ServiceBrowserPanels
           activeSurfaceId={active}

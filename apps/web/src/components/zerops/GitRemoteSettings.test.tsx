@@ -233,9 +233,9 @@ it("candidate token is cleared before verification and failed verification keeps
     expect(container.textContent).toContain("The host refused this candidate.");
     expect(container.textContent).toContain("github.com/acme/api");
     expect(container.textContent).not.toContain("kept in HQ");
-    expect(container.querySelector('input[type="password"]')).not.toBeNull();
+    expect(container.querySelector("input[data-secret]")).not.toBeNull();
     await act(async () => button("Cancel").click());
-    expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(container.querySelector("input[data-secret]")).toBeNull();
   } finally {
     await act(async () => root.unmount());
     vi.unstubAllGlobals();
@@ -499,7 +499,7 @@ it.each(["settled", "pending"] as const)(
         await act(async () => finish({ ok: false, reason: "Eva's token was refused." }));
       expect(host.textContent).toContain("Mirrors to github.com/acme/api");
       expect(host.querySelector('[role="status"]')).toBeNull();
-      expect(host.querySelector('input[type="password"]')).toBeNull();
+      expect(host.querySelector("input[data-secret]")).toBeNull();
       expect(
         [...host.querySelectorAll("button")].find((node) => node.textContent === "Replace token")
           ?.disabled,
@@ -641,12 +641,12 @@ describe("mirroring through the organization's GitHub app", () => {
       expect(view.host.textContent).toContain("Not mirrored");
       expect(view.host.textContent).toContain("GitHub repository");
       expect(view.buttons()).toContain("Mirror here");
-      expect(view.host.querySelector('input[type="password"]')).toBeNull();
+      expect(view.host.querySelector("input[data-secret]")).toBeNull();
       await view.click("Mirror here");
       expect(viaApp).toHaveBeenCalledWith("appdev", "acme/api");
       expect(actions.connect).not.toHaveBeenCalled();
       await view.click("Use a token instead");
-      expect(view.host.querySelector('input[type="password"]')).not.toBeNull();
+      expect(view.host.querySelector("input[data-secret]")).not.toBeNull();
       expect(view.host.textContent).toContain("Repository URL");
       expect(labelled(view.host, "Repository URL").placeholder).toBe(
         "https://github.com/owner/name",
@@ -693,7 +693,7 @@ describe("mirroring through the organization's GitHub app", () => {
     const onOpenAutomation = vi.fn();
     const view = await mount({ github: { kind: "none" }, actions, onOpenAutomation });
     try {
-      expect(view.host.querySelector('input[type="password"]')).not.toBeNull();
+      expect(view.host.querySelector("input[data-secret]")).not.toBeNull();
       expect(view.host.textContent).toContain(
         "Or connect GitHub in Settings › Automation to mirror without a token.",
       );

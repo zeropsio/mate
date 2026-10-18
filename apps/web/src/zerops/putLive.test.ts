@@ -4,14 +4,6 @@ import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { putLiveRunsIn, usePutLive } from "./putLive";
 import { keptPutLiveProductions } from "./putLiveMemory";
 
-const change = {
-  repository: "app",
-  number: 1,
-  title: "Shop front",
-  head: "a".repeat(40),
-  merged: false,
-};
-
 const stored = new Map<string, string>();
 beforeEach(() => {
   stored.clear();
@@ -32,8 +24,8 @@ afterEach(async () => {
 describe("Put it live's runs belong to the account and organization that pressed it", () => {
   it("a new account on the tab never sends a previous account's merge or production", async () => {
     openAccountLifetime("u-first");
-    usePutLive.getState().ask({ groupId: "g-1", change });
-    usePutLive.getState().start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop", change });
+    usePutLive.getState().ask({ groupId: "g-1" });
+    usePutLive.getState().start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop" });
     expect(usePutLive.getState().runs.size).toBe(1);
 
     await closeAccountLifetime();
@@ -45,8 +37,8 @@ describe("Put it live's runs belong to the account and organization that pressed
   it("drives only the runs of the organization shown", () => {
     openAccountLifetime("u-first");
     const { start } = usePutLive.getState();
-    start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop", change });
-    start({ orgId: "o-2", groupId: "g-2", project: "Bakery", change });
+    start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop" });
+    start({ orgId: "o-2", groupId: "g-2", project: "Bakery" });
     const runs = usePutLive.getState().runs;
     expect(putLiveRunsIn(runs, "o-2").map((run) => run.groupId)).toEqual(["g-2"]);
     expect(putLiveRunsIn(runs, undefined)).toEqual([]);
@@ -57,12 +49,7 @@ describe("a reload knows the attempt was this person's", () => {
   it("keeps only the production the person's own Put it live made, for their account, until it goes live", async () => {
     openAccountLifetime("u-first");
     const { start, step } = usePutLive.getState();
-    start({
-      orgId: "o-1",
-      groupId: "g-1",
-      project: "Tea Shop",
-      change: { ...change, merged: true },
-    });
+    start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop" });
     expect(keptPutLiveProductions()).toEqual({});
     step("g-1", { kind: "accepted", productionId: "p-prod" });
     expect(keptPutLiveProductions()).toEqual({ "g-1": "p-prod" });
@@ -96,12 +83,7 @@ describe("a reload knows the attempt was this person's", () => {
   it("forgets the attempt once its card is put away", () => {
     openAccountLifetime("u-first");
     const { start, step, forget } = usePutLive.getState();
-    start({
-      orgId: "o-1",
-      groupId: "g-1",
-      project: "Tea Shop",
-      change: { ...change, merged: true },
-    });
+    start({ orgId: "o-1", groupId: "g-1", project: "Tea Shop" });
     step("g-1", { kind: "created", productionId: "p-prod" });
     step("g-1", { kind: "failed", words: "No answer came back." });
     forget("g-1");

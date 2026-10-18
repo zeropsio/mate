@@ -25,7 +25,6 @@ import { zeropsCommands } from "../../state/zeropsCommands";
 import { useMateMacView } from "../../zerops/macViewLinks";
 import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel } from "./primitives";
-import { FRAME_BOX } from "./ZeropsBrowserPanel";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button } from "../ui/button";
 import { Badge } from "~/components/ui/badge";
@@ -410,7 +409,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
       {frame !== undefined ? (
         <LiveFrameViewer
           alt={live?.app === undefined ? "The app on the Mac" : `${live.app} on ${macName}`}
-          boxClassName={FRAME_BOX}
+          boxClassName="mac-frame"
           canvasData={{ "data-zerops-mac-input-disabled": inputDisabled }}
           frame={frame}
           inputDisabled={inputDisabled}

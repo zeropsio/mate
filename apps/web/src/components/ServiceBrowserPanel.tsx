@@ -1,14 +1,9 @@
 import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowserPolicy";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
-import * as Schema from "effect/Schema";
 import { useState } from "react";
-import { CookieIcon, ExternalLinkIcon, RotateCwIcon } from "lucide-react";
-import { useLocalStorage } from "../hooks/useLocalStorage";
+import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
-
-/** Set once this browser's viewer has read the cookie note; a per-viewer convenience. */
-export const PREVIEW_COOKIE_NOTE_KEY = "mate:zerops:preview-cookie-note-read";
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -66,8 +61,8 @@ export function previewKey(version: string | undefined, revision: number): strin
  * is cross-site wherever Mate runs, and a browser keeps out the cookies a
  * site sets without `SameSite=None` — measured 2026-09-29, Chrome refused a
  * Medusa storefront's cookie in the frame and stored it top-level. So sign-ins
- * and carts fail here. It is said once, above the frame, and stays gone once
- * read; it names the header's control rather than repeating it.
+ * and carts fail here. It is said on the way out, *Open in new tab*'s hover, never as a row over
+ * the site: the panel is the address row and the site, edge to edge (the owner, 2026-10-18).
  */
 export function ServiceBrowserPanel({
   service,
@@ -81,11 +76,6 @@ export function ServiceBrowserPanel({
 }) {
   const [revision, setRevision] = useState(0);
   const [heldVersion, setHeldVersion] = useState(deployedVersion);
-  const [cookieNoteRead, setCookieNoteRead] = useLocalStorage(
-    PREVIEW_COOKIE_NOTE_KEY,
-    false,
-    Schema.Boolean,
-  );
   const version = nextHeldVersion(heldVersion, deployedVersion);
   if (version !== heldVersion) setHeldVersion(version);
   if (!isServiceBrowserUrl(url)) return null;
@@ -101,16 +91,12 @@ export function ServiceBrowserPanel({
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={`${service} preview`}
     >
-      {/* The panel's one row above the page: reload, where it is, and the way out to a tab. */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b px-1.5">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Reload ${service}`}
-          onClick={() => setRevision((value) => value + 1)}
-        >
-          <RotateCwIcon />
-        </Button>
+      {/* The panel's one row above the page: where it is, reload, and the way out to a tab. */}
+      <div
+        className="flex h-9 shrink-0 items-center gap-1 border-b ps-3 pe-1.5"
+        data-site-address-row
+      >
+        <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <a
           className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-xs hover:text-foreground"
           href={url}
@@ -119,6 +105,14 @@ export function ServiceBrowserPanel({
         >
           {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
         </a>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Reload ${service}`}
+          onClick={() => setRevision((value) => value + 1)}
+        >
+          <RotateCwIcon />
+        </Button>
         {/* The one control that survives a frame the site refused to draw, so
             it says what it is rather than making a person hover an icon over a
             blank page to find out. */}
@@ -126,28 +120,13 @@ export function ServiceBrowserPanel({
           variant="ghost"
           size="sm"
           className="shrink-0 text-muted-foreground"
+          title="Browsers block most cookies here, so sign-ins and carts need a new tab."
           render={<a href={url} target="_blank" rel="noreferrer" />}
         >
           <ExternalLinkIcon />
           Open in new tab
         </Button>
       </div>
-      {cookieNoteRead ? null : (
-        <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
-          <CookieIcon className="size-4 shrink-0" aria-hidden="true" />
-          <p className="min-w-0 flex-1">
-            Browsers block most cookies here, so sign-ins and carts need a new tab.
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0"
-            onClick={() => setCookieNoteRead(true)}
-          >
-            Got it
-          </Button>
-        </div>
-      )}
       <iframe
         key={previewKey(version, revision)}
         title={`${service} live preview`}

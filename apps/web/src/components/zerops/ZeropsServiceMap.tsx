@@ -246,7 +246,13 @@ function ServiceHeader({
 }
 
 /** One resource's graph: what was used over the last day as a filled curve, the last hour marked. */
-function ResourceGraph({ trend, id }: { trend: ReadonlyArray<ZeropsTrendPoint>; id: string }) {
+export function ResourceGraph({
+  trend,
+  id,
+}: {
+  trend: ReadonlyArray<ZeropsTrendPoint>;
+  id: string;
+}) {
   const geometry = sparklineGeometry(trend, GRAPH_WIDTH, GRAPH_HEIGHT, 1.5);
   const gradientId = `zerops-graph-${id}`;
   return (

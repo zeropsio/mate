@@ -98,14 +98,13 @@ export const RIGHT_PANEL_KIND_META = {
   browser: {
     launcher: {
       label: "Browser",
-      description: "Watch this Mate's browser live.",
+      description: "Open your app's sites.",
       shortcut: "B",
       unavailableHint: "Available in a Zerops project.",
     },
-    page: {
-      title: "Browser",
-      line: (mate) => `Your app's sites, and what ${mate} opens in its browser.`,
-    },
+    // Its list of sites and an open site fill the panel, with no head over either (the owner,
+    // 2026-10-18).
+    page: null,
     availability: (input) => input.zeropsPanel,
   },
   mac: {
@@ -257,8 +256,8 @@ export function rightPanelPageHead(
 }
 
 /**
- * A site's tab is the site itself, edge to edge under its own address row (`ServiceBrowserPanels`):
- * no page and no head over it. The Browser's title and line stay on its list.
+ * A site's tab is the site itself, edge to edge under its own address row (`ServiceBrowserPanels`),
+ * in place of the Browser's list of sites.
  */
 export function isRightPanelSite(
   surface: RightPanelSurface,
