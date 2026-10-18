@@ -153,7 +153,7 @@ it.effect.each([
       ).pipe(Effect.forkChild);
       // The writer's half-minute wait runs on the test clock; Git itself runs on the real one.
       while (fiber.pollUnsafe() === undefined) {
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50)));
+        yield* TestClock.withLive(Effect.sleep("50 millis"));
         yield* TestClock.adjust("30 seconds");
       }
       const result = yield* Fiber.join(fiber);
