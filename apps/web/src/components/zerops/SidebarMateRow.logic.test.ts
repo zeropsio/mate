@@ -2164,6 +2164,14 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "reply", tone: "ink" },
     },
     {
+      case: "an automated Mate whose finished task waits for review says so while it works on",
+      over: {
+        automated: { task: { ...task, done: true } },
+        view: view("working", { kind: "pending" }),
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · up for review", on: false },
+    },
+    {
       case: "an automated Mate at rest on a task says the task waits for review",
       over: { automated: { task } },
       line: { kind: "task", text: "#12 Fix the checkout total · up for review", on: false },

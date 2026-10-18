@@ -386,6 +386,32 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "a Mate whose finished task's change waits for review says its task is done, not ended",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          const task = yield* opened(core);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          const row = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.done === true,
+          );
+          assert.strictEqual(row.mate?.task?.id, task.id);
+          assert.isUndefined(row.mate?.task?.ended);
+          yield* watching.close;
+        }),
+    );
+
+    it.effect(
       "a free Mate's row keeps its last task, saying how it ended, with its pull request",
       () =>
         Effect.gen(function* () {
