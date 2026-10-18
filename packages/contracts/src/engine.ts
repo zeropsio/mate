@@ -504,6 +504,12 @@ const itemBodyFields = {
      */
     taskAsk: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
     /**
+     * HQ's id of the task this message is for (`MateTask.id`): its brief or a follow-up on it. The
+     * Mate works every task in one conversation (`MATE_TASKS_CONVERSATION_ID`), so the message names
+     * its task; absent: not a task's, or one from before, whose conversation names it.
+     */
+    taskId: Schema.optionalKey(TrimmedNonEmptyString),
+    /**
      * Sent for something said about a task its Mate took (`MateTaskMessage`: a comment on its
      * issue, a reply in its thread, a review comment, an edit): drawn as its author's, from where
      * they said it. Its words are what the agent got; absent: not a task's follow-up.

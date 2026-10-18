@@ -1122,6 +1122,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             ...(command.task === undefined ? {} : { task: command.task }),
             ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
+            ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
             delivery: { state: "queued", at: null },
           }
         : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },

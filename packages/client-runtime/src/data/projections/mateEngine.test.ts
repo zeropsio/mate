@@ -1874,6 +1874,22 @@ describe("the crew on an engine conversation's record", () => {
     expect(drawn?.messages[1]).not.toHaveProperty("taskAsk");
   });
 
+  it("a task's messages carry its id, for the one conversation every task runs in; a typed one carries none", () => {
+    const drawn = thread(
+      held({
+        runs: [engineRun("thread-ada", 1)],
+        items: [
+          personItem(run1, 1, "Work issue #12 in the project, then open a change.", {
+            taskId: "task-12",
+          }),
+          personItem(run1, 2, "Also check the tax line"),
+        ],
+      }),
+    );
+    expect(drawn?.messages[0]).toMatchObject({ role: "user", taskId: "task-12" });
+    expect(drawn?.messages[1]).not.toHaveProperty("taskId");
+  });
+
   it("a follow-up told to a task's Mate carries who said it and where, for its row; a typed one carries none", () => {
     const comment = {
       id: "c1",
