@@ -15,7 +15,7 @@ import * as Redacted from "effect/Redacted";
 
 import type { CoreOptions } from "../../src/core.ts";
 import { sealRemoteToken } from "../../src/deployKeys.ts";
-import { type MateTasksOptions, TASK_SOURCES_SINCE } from "../../src/mateTasks.ts";
+import { type MateTasksOptions, TASK_SOURCES_SINCE, mateTaskLink } from "../../src/mateTasks.ts";
 import { testKey } from "./deployKeys.ts";
 import { githubFake } from "./githubFake.ts";
 import { addProject, rowsWhere } from "./mates.ts";
@@ -221,6 +221,12 @@ export const commentEvent = (
     performed_via_github_app: acting.app === true ? { id: 1 } : null,
   },
   ...actingOf(acting),
+});
+
+/** Where the robot's task is followed: its task's conversation, on the environment its overview names. */
+export const ROBOT_TASK_LINK = mateTaskLink("P_ROBOT", {
+  environmentId: "env-1",
+  conversationId: "conversation-1",
 });
 
 /** The Mate's overview as its link brings it, saying the version it runs. */

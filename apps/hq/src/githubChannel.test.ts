@@ -19,4 +19,20 @@ describe("a task's status line on its issue", () => {
       else assert.include(read(words), status.why);
     },
   );
+
+  it("a change merged in Mate says so with its change, and a pull request merged names it", () => {
+    // A repository mirrored through no app has no pull request: the change itself was merged.
+    assert.strictEqual(
+      statusWords({ kind: "merged", mate: "Nova", change: "https://mate.zerops.io/c/3" }),
+      "Merged into main: https://mate.zerops.io/c/3",
+    );
+    assert.strictEqual(
+      statusWords({
+        kind: "merged",
+        mate: "Nova",
+        pullRequest: { number: 2, url: "https://github.com/acme/tea-shop/pull/2" },
+      }),
+      "Merged in #2.",
+    );
+  });
 });

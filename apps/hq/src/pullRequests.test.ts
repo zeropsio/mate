@@ -7,13 +7,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { automatedPool, deliver, issueEvent } from "../test/harness/automated.ts";
+import { ROBOT_TASK_LINK, automatedPool, deliver, issueEvent } from "../test/harness/automated.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
 import { ticketFor } from "../test/harness/runningCore.ts";
 import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { GithubMirror, GithubMirrorUnavailable } from "./githubMirror.ts";
-import { mateTaskLink } from "./mateTasks.ts";
 import {
   CHECKS_GIVEN_UP,
   MATE_END,
@@ -317,10 +316,7 @@ describe("a change's pull request", () => {
           );
           assert.include(pull.body, "Boils the water twice.");
           assert.include(pull.body, "Fixes #1");
-          assert.include(
-            pull.body,
-            `Juno · [Mate task](${mateTaskLink("P_ROBOT")}) · Requested by @nova`,
-          );
+          assert.include(pull.body, `Juno · [Mate task](${ROBOT_TASK_LINK}) · Requested by @nova`);
           const [assigned] = yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/assignees");
           assert.deepStrictEqual(assigned!.body, { assignees: ["nova"] });
           const [first] = yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
@@ -434,10 +430,7 @@ describe("a change's pull request", () => {
         Effect.gen(function* () {
           const core = yield* mirroredPool;
           yield* describedChange(core);
-          yield* statusSays(
-            core,
-            `**Juno** is on it — [follow along](${mateTaskLink("P_ROBOT")}).`,
-          );
+          yield* statusSays(core, `**Juno** is on it — [follow along](${ROBOT_TASK_LINK}).`);
         }),
     );
 
@@ -500,7 +493,7 @@ describe("a change's pull request", () => {
             asks["commit_message"]!,
             "Co-authored-by: nova <1000+nova@users.noreply.github.com>",
           );
-          assert.include(asks["commit_message"]!, `Mate-Task: ${mateTaskLink("P_ROBOT")}`);
+          assert.include(asks["commit_message"]!, `Mate-Task: ${ROBOT_TASK_LINK}`);
           assert.isAtLeast(core.mirrored.syncs, 1);
           yield* statusSays(core, "Merged in #2.");
           yield* asked(core, "POST", "/repos/acme/tea-shop/issues/1/reactions");
