@@ -1,7 +1,6 @@
 /** Git standing has one owner: accepted destinations, frozen entries and confirmed hand-overs. */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import { type HqPushCiFailure, type HqPushReceipt, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
-import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
+import type { HqPushCiFailure, HqPushReceipt } from "@t3tools/shared/hqDeploys";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { HqGitReleasePreflight, Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
@@ -83,7 +82,11 @@ export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
   const stage = repo.confirmed === undefined;
   const ci = stage ? repo.job?.evidence?.gate : repo.job?.evidence?.ci;
   if (ci === undefined) return undefined;
-  const what = stage ? `Stage CI "${RELEASE_CHECK}"` : "CI";
+  const what = !stage
+    ? "CI"
+    : ci.required === null
+      ? "Stage CI"
+      : `Stage CI ${ci.required.map((name) => `"${name}"`).join(", ")}`;
   const count = ci.done < ci.total ? [`${ci.done} of ${ci.total} done`] : [];
   const stopped = ci.watch === "stopped" && ci.reason !== null ? [ci.reason] : [];
   switch (ci.verdict) {
@@ -111,22 +114,6 @@ export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
     case "passed":
       return { words: `${what} passed`, failed: [], notes: [] };
   }
-}
-
-/**
- * How to make GitHub hold main to what stage tested — HQ never sets it: one sentence and the
- * repository's ruleset settings; none off GitHub.
- */
-export function gitRulesetGuide(
-  remoteUrl: string,
-  branch: string,
-): { readonly words: string; readonly url: string } | undefined {
-  const guide = gitTokenGuide(remoteUrl, "");
-  if (guide.kind !== "guide" || guide.host !== "github") return undefined;
-  return {
-    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the status check "${RELEASE_CHECK}" from GitHub Actions, blocks force pushes and restricts deletions.`,
-    url: `https://github.com/${guide.repository}/settings/rules`,
-  };
 }
 
 /** No remote/service/version reads and no receiver inference: a push never proves `live`. */

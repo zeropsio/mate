@@ -13,11 +13,12 @@ import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
   flowReleaseOf,
   gitDeliveryOf,
-  gitRulesetGuide,
   type GitDelivery,
   type GitDeliveryEnvironment,
 } from "@t3tools/client-runtime/zerops";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
@@ -28,6 +29,19 @@ import { toastManager } from "~/components/ui/toast";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
+
+/**
+ * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
+ * sentence and the repository's ruleset settings; none off GitHub.
+ */
+function gitRulesetGuide(remoteUrl: string, branch: string) {
+  const guide = gitTokenGuide(remoteUrl, "");
+  if (guide.kind !== "guide" || guide.host !== "github") return undefined;
+  return {
+    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the status check "${RELEASE_CHECK}" from GitHub Actions, blocks force pushes and restricts deletions.`,
+    url: `https://github.com/${guide.repository}/settings/rules`,
+  };
+}
 
 type GitEnvironment = Omit<GitDeliveryEnvironment, "target"> & {
   readonly target: Extract<GitDeliveryEnvironment["target"], { readonly kind: "git" }>;

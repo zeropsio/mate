@@ -639,9 +639,9 @@ describe("the origin's CI on a Git environment's last push", () => {
         links: [...line.querySelectorAll("a")].map((link) => [link.textContent, link.href]),
       }));
     };
-    expect(lines("submitting", ci({ verdict: "running", done: 0, total: 1 }))).toEqual([
-      { words: 'Stage CI "check" running · 0 of 1 done', links: [] },
-    ]);
+    expect(
+      lines("submitting", ci({ verdict: "running", done: 0, total: 1, required: ["check"] })),
+    ).toEqual([{ words: 'Stage CI "check" running · 0 of 1 done', links: [] }]);
     expect(
       lines(
         "refused",
@@ -650,6 +650,7 @@ describe("the origin's CI on a Git environment's last push", () => {
           done: 1,
           total: 1,
           watch: "finished",
+          required: ["check"],
           failed: [{ name: "check", url: "https://github.com/acme/api/actions/runs/9" }],
         }),
       ),
@@ -659,9 +660,9 @@ describe("the origin's CI on a Git environment's last push", () => {
         links: [["check", "https://github.com/acme/api/actions/runs/9"]],
       },
     ]);
-    expect(lines("refused", ci({ verdict: "none", watch: "finished" }))).toEqual([
-      { words: 'Stage CI "check" never ran', links: [] },
-    ]);
+    expect(
+      lines("refused", ci({ verdict: "none", watch: "finished", required: ["check"] })),
+    ).toEqual([{ words: 'Stage CI "check" never ran', links: [] }]);
   });
   it("a push HQ does not read CI for shows no CI line", () => {
     const env = environment([job("pushed"), job("pushed", "web")]);
