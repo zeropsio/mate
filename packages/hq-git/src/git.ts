@@ -166,7 +166,9 @@ export class GitRunner {
         { signal, env: { GIT_ASKPASS: askpass }, ...(acceptExitCodes ? { acceptExitCodes } : {}) },
       );
     } finally {
-      await NodeFSP.rm(dir, { recursive: true, force: true });
+      // Git may still be writing in it as the call ends (an aborted push): Node retries the
+      // removal then, so the credential never stays and the call keeps its own outcome.
+      await NodeFSP.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   }
 
