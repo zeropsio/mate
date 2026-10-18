@@ -7,7 +7,7 @@
  */
 import { MATE_TASK_BODY_MAX, MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 
-import { BUDGET_WAIT, type TaskStatus } from "./taskSources.ts";
+import { BUDGET_WAIT, type TaskEnd, type TaskStatus, taskEndWords } from "./taskSources.ts";
 
 /** Slack's markup of what a message names: `<@U1|name>`, `<#C1|name>`, `<!here>`, `<url|label>`. */
 const MARKUP = /<([^<>]*)>/gu;
@@ -97,3 +97,7 @@ export const REPLIES = {
   empty: "Say what you need after @Mate.",
   unavailable: "Mate couldn't take this in just now. Ask again in a minute.",
 } as const;
+
+/** A reply after its task ended: how it ended, and that a new mention asks again. */
+export const endedText = (end: TaskEnd) =>
+  escaped(taskEndWords(end, "Mention @Mate in a new message"));

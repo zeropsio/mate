@@ -235,6 +235,40 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
     );
 
     it.effect(
+      "a member's comment after the issue's task ended is answered once on the issue, with how it ended and how to ask again; an outsider's is not",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          core.github.state.roles.set("zoe", "read");
+          yield* labelled(core, 1);
+          const task = yield* working(core, 1);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "failed", detail: "It reached its $5 limit." },
+          });
+          yield* taskRows(core, (rows) => rows[0]?.["state"] === "failed");
+          const said = (body: string, acting: Parameters<typeof commentEvent>[2] = {}) =>
+            deliver(core, core.hook, "issue_comment", commentEvent(1, body, acting));
+          const line =
+            "This task stopped: It reached its $5 limit. Open a new issue labelled `mate` to try again.";
+          yield* said("Why did it stop?", { sender: "zoe" });
+          yield* said("Can you try the blue kettle?");
+          yield* core.github.seenWhere("the end said", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string } | undefined)?.body?.startsWith(line),
+            ),
+          );
+          yield* said("Hello?");
+          yield* said("Anyone?");
+          const answered = (yield* refusals(core, 1)).filter((words) => words === line);
+          assert.strictEqual(answered.length, 1);
+          assert.isFalse(
+            (yield* core.robot.link.collected).some((frame) => frame.type === "task-message"),
+          );
+        }),
+    );
+
+    it.effect(
       "an issue edited before a Mate takes it rewrites its task; edited after, its Mate hears the issue as it reads now",
       () =>
         Effect.gen(function* () {

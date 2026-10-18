@@ -54,7 +54,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { SlackApi, type SlackAnswer, type SlackUnreachable } from "./slackApi.ts";
-import { REPLIES, askOf, questionText, statusText, titleOf } from "./slackText.ts";
+import { REPLIES, askOf, endedText, questionText, statusText, titleOf } from "./slackText.ts";
 import { TaskIntake, TaskSourceChannels, type TaskOnSource } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -522,7 +522,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           if (taken.value.kind === "told") yield* heard(link, channel, ts);
         });
 
-      /** A reply in a thread HQ holds: told to its task, when a member wrote it. */
+      /**
+       * A reply in a thread HQ holds: told to its task, when a member wrote it; after its task
+       * ended, answered once with how it ended.
+       */
       const replied = (link: Connection, event: SlackEvent) =>
         Effect.gen(function* () {
           const { user, channel, ts, thread_ts: threadTs } = event;
@@ -539,7 +542,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           const text = askOf(event.text ?? "", link.botUserId);
           if (text === "") return;
           if (yield* intake.message(sourceKey, messageOf(link, channel, ts, asker.name, text)))
-            yield* heard(link, channel, ts);
+            return yield* heard(link, channel, ts);
+          // Its task ended: said once per end, so the reply is not lost in silence.
+          const end = yield* intake.answerEnded(sourceKey, Effect.succeed(true));
+          if (end !== undefined) yield* say(link, channel, threadTs, endedText(end));
         });
 
       /** A task's ask deleted: its task stops. Anyone else's message deleted stops nothing. */
