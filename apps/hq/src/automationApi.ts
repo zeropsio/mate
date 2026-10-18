@@ -23,6 +23,9 @@
  *   structure writer.
  * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
  *   or admin of the organization.
+ * - `GET /api/apps/:appId/tasks` → `HqAppTasksView`: the application's queued, at-work and latest
+ *   ended tasks (`appTasks.ts`), to whoever sees it; `POST …/tasks/:taskId/stop` → `204`, by an
+ *   owner or admin of the organization: a task no Mate took goes, one at work its Mate stops.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
  *   the organization's key, for the Mate's zcp to put in its project's vault; `404 no_key` while
  *   none is kept.
@@ -46,6 +49,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, knock, mate, principal } from "./api.ts";
+import { AppTasks } from "./appTasks.ts";
 import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Schedules } from "./schedules.ts";
@@ -79,6 +83,7 @@ const NO_STORE = { "cache-control": "no-store" };
 const TaskLimitsBody = Schema.Struct({
   minutes: Schema.Int,
   costUsd: Schema.NullOr(Schema.Number),
+  monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 });
 
 const webhookParam = Effect.map(HttpRouter.params, (params) => params["id"] ?? "");
@@ -209,9 +214,39 @@ const scheduleRoutes = Layer.mergeAll(
   ),
 );
 
+const taskRoutes = Layer.mergeAll(
+  HttpRouter.add(
+    "GET",
+    "/api/apps/:appId/tasks",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json({ tasks: yield* (yield* AppTasks).list(userId, yield* appParam) }, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:appId/tasks/:taskId/stop",
+    handle(
+      Effect.gen(function* () {
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const taskId = (yield* HttpRouter.params)["taskId"] ?? "";
+            yield* (yield* AppTasks).stop(userId, yield* appParam, taskId);
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        );
+      }),
+    ),
+  ),
+);
+
 export const automationRoutes = Layer.mergeAll(
   webhookRoutes,
   scheduleRoutes,
+  taskRoutes,
   HttpRouter.add(
     "GET",
     "/api/org/task-limits",

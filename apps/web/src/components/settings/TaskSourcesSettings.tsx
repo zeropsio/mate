@@ -49,7 +49,9 @@ import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
+  budgetLine,
   limitsLine,
+  readBudget,
   readLimits,
   slackLine,
   taskSourceProblem,
@@ -92,7 +94,12 @@ export function TaskSourcesSettings() {
 export function TaskLimitsSettings() {
   const limits = useOrgTaskSource("hqTaskLimits");
   if (limits.read.setting.state === "unsupported") return null;
-  return <TaskLimitsView controls={limits} />;
+  return (
+    <>
+      <TaskLimitsView controls={limits} />
+      <MonthlyBudgetView controls={limits} />
+    </>
+  );
 }
 
 /** In these settings' place, where this HQ predates them. */
@@ -778,6 +785,84 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         )}
         <Problem read={read} />
       </div>
+    </SettingsRow>
+  );
+}
+
+/**
+ * What all the organization's automated Mates may spend in a calendar month (UTC), and what they
+ * spent so far: once spent, HQ starts no task and stops those at work. Saved beside the limits per
+ * task, which it keeps as HQ holds them. An HQ that predates it shows no row.
+ */
+export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"hqTaskLimits"> }) {
+  const { read, write } = controls;
+  const setting = read.setting;
+  const held: HqTaskLimitsView | null = setting.state === "known" ? setting.held : null;
+  const [typed, setTyped] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const settled = ["done", "failed", "unresolved"].includes(read.action.kind);
+  if (sent && settled) {
+    setSent(false);
+    setTyped(null);
+  }
+  const fieldId = useId();
+  if (held !== null && held.spentThisMonthUsd === undefined) return null;
+  const shown = typed ?? (held?.monthlyBudgetUsd == null ? "" : String(held.monthlyBudgetUsd));
+  return (
+    <SettingsRow
+      control={
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (held === null) return;
+            const budget = readBudget(shown);
+            if ("error" in budget) {
+              setRefusal(budget.error);
+              return;
+            }
+            setRefusal(null);
+            setSent(true);
+            write({
+              kind: "task-limits",
+              limits: {
+                minutes: held.minutes,
+                costUsd: held.costUsd,
+                monthlyBudgetUsd: budget.budgetUsd,
+              },
+            });
+          }}
+        >
+          <Label htmlFor={fieldId}>USD a month</Label>
+          <div className="w-24">
+            <Input
+              disabled={held === null}
+              id={fieldId}
+              inputMode="decimal"
+              onChange={(event) => {
+                setTyped(event.target.value);
+              }}
+              placeholder="No budget"
+              size="sm"
+              value={shown}
+            />
+          </div>
+          <Button disabled={held === null || sent || typed === null} size="sm" type="submit">
+            {sent ? "Saving…" : "Save"}
+          </Button>
+        </form>
+      }
+      data-zerops-surface="settings-monthly-budget"
+      description="All automated Mates together. Once it is spent, no task starts and those at work stop, until next month or a higher budget."
+      status={held === null ? null : budgetLine(held)}
+      title="Monthly budget"
+    >
+      {refusal === null ? null : (
+        <p className="px-3 pb-3 text-xs text-destructive-foreground" role="alert">
+          {refusal}
+        </p>
+      )}
     </SettingsRow>
   );
 }

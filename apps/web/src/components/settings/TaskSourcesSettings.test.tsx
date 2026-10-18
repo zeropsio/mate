@@ -17,6 +17,7 @@ import {
   AppWebhooksView,
   DiscordSettingsView,
   SlackSettingsView,
+  MonthlyBudgetView,
   TaskLimitsView,
   TaskSourcesUnsupported,
 } from "./TaskSourcesSettings";
@@ -317,6 +318,31 @@ describe("the limits on each task in Settings", () => {
       limits: { minutes: 30, costUsd: 5 },
     });
     view.unmount();
+  });
+});
+
+describe("the monthly budget in Settings", () => {
+  it("says this month's spend against the budget, and saves a budget typed with the limits per task as HQ holds them", () => {
+    const limits = controls(
+      known({ minutes: 45, costUsd: 3, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 }),
+    );
+    expect(shown(renderToStaticMarkup(<MonthlyBudgetView controls={limits} />))).toContain(
+      "$6.44 of $50 spent this month.",
+    );
+    const view = rendered(<MonthlyBudgetView controls={limits} />);
+    const [budget] = view.root.findAllByType(Input);
+    view.type(budget!, "80");
+    view.submit();
+    expect(limits.write).toHaveBeenCalledWith({
+      kind: "task-limits",
+      limits: { minutes: 45, costUsd: 3, monthlyBudgetUsd: 80 },
+    });
+    view.unmount();
+  });
+
+  it("shows no budget where HQ predates it", () => {
+    const limits = controls(known({ minutes: 60, costUsd: null }));
+    expect(renderToStaticMarkup(<MonthlyBudgetView controls={limits} />)).toBe("");
   });
 });
 

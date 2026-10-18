@@ -133,9 +133,10 @@ describe("tasks for automated Mates", () => {
             session: core.owner,
             body: { minutes: 30, costUsd: 5 },
           });
-          assert.deepStrictEqual(kept.body, { minutes: 30, costUsd: 5 });
+          const limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 0 };
+          assert.deepStrictEqual(kept.body, limits);
           const read = yield* core.call("GET", "/api/org/task-limits", { session: developer });
-          assert.deepStrictEqual(read.body, { minutes: 30, costUsd: 5 });
+          assert.deepStrictEqual(read.body, limits);
           yield* core.robot.link.send({
             type: "task-state",
             report: { taskId: first.id, state: "failed", detail: "No kettle." },

@@ -7,7 +7,7 @@
  */
 import { MATE_TASK_BODY_MAX, MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 
-import type { TaskStatus } from "./taskSources.ts";
+import { BUDGET_WAIT, type TaskStatus } from "./taskSources.ts";
 
 /** Slack's markup of what a message names: `<@U1|name>`, `<#C1|name>`, `<!here>`, `<url|label>`. */
 const MARKUP = /<([^<>]*)>/gu;
@@ -58,6 +58,8 @@ export const statusText = (status: TaskStatus): string => {
   switch (status.kind) {
     case "queued":
       return `Queued (#${String(status.position)} in line for a free Mate).`;
+    case "budget":
+      return BUDGET_WAIT;
     case "picked":
       return `${escaped(status.mate)} picked this up.`;
     case "waiting":

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { AtomRegistry } from "effect/reactivity";
 import type {
+  HqAppTask,
   HqChannelView,
   HqDiscordView,
   HqSlackView,
@@ -406,6 +407,50 @@ describe("the limits on each task", () => {
     expect(r.read("hqTaskLimits").setting).toMatchObject({
       state: "known",
       held: { minutes: 30, costUsd: 5 },
+    });
+    release();
+    r.close();
+  });
+});
+
+describe("an application's tasks", () => {
+  const task = (id: string, state: HqAppTask["state"]): HqAppTask => ({
+    id,
+    title: `Task ${id}`,
+    label: `acme/tea-shop#${id}`,
+    url: null,
+    state,
+    mate: state === "queued" ? null : { projectId: "P_JUNO", name: "Juno" },
+    requestedBy: "nova",
+    createdAt: "2026-10-18T08:00:00.000Z",
+    startedAt: null,
+    endedAt: null,
+    spentUsd: null,
+    workedMs: null,
+    detail: null,
+    change: null,
+    pullRequest: null,
+    link: null,
+  });
+
+  it("reads the board while it is shown, and a task stopped from it shows done once a read after HQ's answer has it stopped", async () => {
+    let held: ReadonlyArray<HqAppTask> = [task("1", "working")];
+    const stopped: Array<[string, string]> = [];
+    const r = rig({
+      appTasks: async () => held,
+      stopAppTask: async (appId, taskId) => {
+        stopped.push([appId, taskId]);
+        held = [task("1", "stopped")];
+      },
+    });
+    const release = r.host.demandApp("hqAppTasks", SHOP);
+    await waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
+    await r.host.write(SHOP, { kind: "task-stop", taskId: "1" });
+    await waitFor(r.store, () => r.read("hqAppTasks", "shop").action.kind === "done");
+    expect(stopped).toEqual([["shop", "1"]]);
+    expect(r.read("hqAppTasks", "shop").setting).toMatchObject({
+      state: "known",
+      held: [{ id: "1", state: "stopped" }],
     });
     release();
     r.close();
