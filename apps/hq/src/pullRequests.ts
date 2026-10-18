@@ -804,7 +804,9 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
 
       /**
        * Every open change a pull request is due for, or whose pull request may have moved;
-       * `reconcile`, also what GitHub says of each open one.
+       * `reconcile`, also what GitHub says of each open one. Only repositories reached through the
+       * app (`GithubMirror.repositoryOf` says which): any ref's move wakes this, and a change
+       * elsewhere is never kept, so it costs no read of its own.
        */
       const keepAll = (reconcile: boolean) =>
         Effect.gen(function* () {
@@ -816,6 +818,8 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           }>`
           SELECT c.app_id::text AS app_id, c.repo, c.number
           FROM hq_change c
+          JOIN hq_repo_remote remote
+            ON remote.app_id = c.app_id AND remote.repo = c.repo AND remote.via = 'app'
           LEFT JOIN hq_pull_request pr
             ON pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
           WHERE c.repo <> ${RECIPE_REPO} AND (
