@@ -206,9 +206,10 @@ const reachedLimit = (
 
 /**
  * What a task spent, as each of its reports carries it: its turns' cost in US dollars, and how
- * long its runs worked — its ended runs as the ledger counted them, and its run on until it was
- * last seen live — never the time it waited between them. The run on is seen live at most once a
- * minute (`enforce`), so while the task works its numbers move, and it says so, once a minute.
+ * long its runs worked — its ended runs as the ledger counted them (every report counts its last
+ * one first), and its run on until it was last seen live — never the time it waited between them.
+ * The run on is seen live at most once a minute (`enforce`), so while the task works its numbers
+ * move, and it says so, once a minute (and as a turn's cost comes in).
  */
 export const taskSpendOf = (
   taskId: string,
@@ -408,10 +409,37 @@ export const make = Effect.gen(function* () {
       : Option.none(),
   );
 
+  /**
+   * The task's ledger, its last ended run counted once (`runMs`): every report reads its ended
+   * runs so, whichever path asked for it, before a queued read of the move came.
+   */
+  const counted = (taskId: string, view: ConversationView) =>
+    Effect.gen(function* () {
+      const ended = view.lastEnded;
+      const entry = yield* ledger.entry(taskId);
+      if (
+        !isTasks(ended, taskId) ||
+        ended.startedAt === null ||
+        ended.endedAt === null ||
+        entry?.runMs[ended.id] !== undefined
+      )
+        return entry;
+      // A run a restart cut ended at the recovery: it ran until it was last seen live.
+      const seen = entry?.liveAt?.[ended.id] ?? ended.startedAt;
+      const until =
+        ended.end?.kind === "cut-by-restart" ? Math.min(ended.endedAt, seen) : ended.endedAt;
+      const ms = Math.max(0, until - ended.startedAt);
+      return yield* ledger.update(taskId, (kept) => {
+        if (kept.runMs[ended.id] !== undefined) return kept;
+        const { [ended.id]: _counted, ...liveAt } = kept.liveAt ?? {};
+        return { ...kept, runMs: { ...kept.runMs, [ended.id]: ms }, liveAt };
+      });
+    });
+
   /** How the task stands in `view`, its own last run read when a person's runs came after it. */
   const reportFor = (taskId: string, view: ConversationView) =>
     Effect.gen(function* () {
-      const entry = yield* ledger.entry(taskId);
+      const entry = yield* counted(taskId, view);
       const own = afterTheTask(taskId, view)
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
@@ -422,31 +450,14 @@ export const make = Effect.gen(function* () {
   const principalOf = (taskId: string): Principal => ({ kind: "task", taskId });
 
   /**
-   * Counts the task's ended run, and holds it to its limits and its stop: every run of it on or
+   * Counts the task's ended run, sees its run on live, and holds it to its limits and its stop: every run of it on or
    * queued is stopped once people stopped it or it spent its minutes or its cost, and a run on
    * that has minutes left is read again when they run out.
    */
   const enforce = (taskId: string, view: ConversationView) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
-      const ended = view.lastEnded;
-      let entry = yield* ledger.entry(taskId);
-      if (
-        isTasks(ended, taskId) &&
-        ended.startedAt !== null &&
-        ended.endedAt !== null &&
-        entry?.runMs[ended.id] === undefined
-      ) {
-        // A run a restart cut ended at the recovery: it ran until it was last seen live.
-        const seen = entry?.liveAt?.[ended.id] ?? ended.startedAt;
-        const until =
-          ended.end?.kind === "cut-by-restart" ? Math.min(ended.endedAt, seen) : ended.endedAt;
-        const ms = Math.max(0, until - ended.startedAt);
-        entry = yield* ledger.update(taskId, (kept) => {
-          const { [ended.id]: _counted, ...liveAt } = kept.liveAt ?? {};
-          return { ...kept, runMs: { ...kept.runMs, [ended.id]: ms }, liveAt };
-        });
-      }
+      let entry = yield* counted(taskId, view);
       const running = isTasks(view.activeRun, taskId) ? view.activeRun : undefined;
       if (running !== undefined && running.startedAt !== null) {
         const seen = entry?.liveAt?.[running.id];

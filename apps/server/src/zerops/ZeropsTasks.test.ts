@@ -1223,6 +1223,28 @@ describe("a task's report says what it cost and how long it worked", () => {
     }),
   );
 
+  it.effect("a run that just ended counts in the report a link opened before its read says", () =>
+    Effect.gen(function* () {
+      const { id, tasks, views } = yield* working("task-1");
+      // The run ends, and the link drops and opens again before the move is read.
+      const first = run(id, principalOf("task-1"), "ended", { kind: "completed" });
+      views.set(id, view(id, { lastEnded: { ...first, startedAt: 0, endedAt: 200_000 } }));
+      const again: Array<MateTaskReport> = [];
+      const link = yield* tasks.open((report) => Effect.sync(() => void again.push(report)));
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      assert.deepStrictEqual(
+        again.map(({ state, workedMs }) => ({ state, workedMs })),
+        [{ state: "done", workedMs: 200_000 }],
+      );
+      // Counted once: a later run's end adds its own time to it, never this one's again.
+      const second = run(id, principalOf("task-1"), "ended", { kind: "completed" }, 2);
+      views.set(id, view(id, { lastEnded: { ...second, startedAt: 300_000, endedAt: 360_000 } }));
+      yield* link.message("task-1", message("m-9", "Thanks."));
+      assert.strictEqual(again.at(-1)?.workedMs, 260_000);
+    }),
+  );
+
   it.effect("a task at work says working again with fresh numbers once a minute, no more", () =>
     Effect.gen(function* () {
       const { id, move, reports } = yield* working("task-1");
