@@ -407,6 +407,24 @@ describe("OpenCode turn accounting", () => {
     usage.observe(step("ses", "msg", "prt", { input: 0, output: 0, reasoning: 0, read: 0 }, 0));
     expect(usage.complete("ses", "turn")).toEqual([]);
   });
+  it("an OpenCode turn's running cost is told each time a step adds to it, and its end carries the same", () => {
+    const usage = makeOpenCodeTurnUsage();
+    const tokens = { input: 10, output: 5, reasoning: 0, read: 0 };
+    usage.observe(assistant("ses", "msg", "nebius", "zai-org/GLM-5.3"));
+    expect(usage.running()).toBeUndefined();
+    usage.observe(step("ses", "msg", "prt_1", tokens, 0.0012));
+    expect(usage.running()?.amount).toBe("1200000");
+    // Told again only once it moved: a step seen twice, or one OpenCode priced at nothing.
+    usage.observe(step("ses", "msg", "prt_1", tokens, 0.0012));
+    usage.observe(step("ses", "msg", "prt_2", tokens, 0));
+    expect(usage.running()).toBeUndefined();
+    usage.observe(step("ses", "msg", "prt_3", tokens, 0.003));
+    expect(usage.running()?.amount).toBe("4200000");
+    expect(usage.complete("ses", "turn-1")[0]?.nativeCost?.amount).toBe("4200000");
+    // The next turn runs up from nothing.
+    usage.observe(step("ses", "msg", "prt_4", tokens, 0.0005));
+    expect(usage.running()?.amount).toBe("500000");
+  });
   it("an invalid OpenCode meter stays unknown and does not block the steps beside it", () => {
     const usage = makeOpenCodeTurnUsage();
     usage.observe(assistant("ses", "msg", "nebius", "zai-org/GLM-5.3"));

@@ -22,6 +22,7 @@ const stateOf = (task: NavigationTask | null | undefined) =>
         task.id,
         task.waiting === true,
         task.stopping === true,
+        task.done === true,
         task.ended ?? null,
         task.pullRequest?.number ?? null,
         task.pullRequest?.state ?? null,

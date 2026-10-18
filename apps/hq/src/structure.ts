@@ -1074,7 +1074,8 @@ export const structureLayer = (options: {
                            || jsonb_strip_nulls(jsonb_build_object('startedAt', to_char(task.started_at
                              AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
                              'spentUsd', task.spent_usd, 'workedMs', task.worked_ms,
-                             'stopping', CASE WHEN task.stopping THEN true END))
+                             'stopping', CASE WHEN task.stopping THEN true END,
+                             'done', CASE WHEN task.state = 'done' AND task.ended IS NULL THEN true END))
                            || CASE WHEN task.ended IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('ended', task.ended) END
                            || CASE WHEN task_pr.pr_number IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
                              'pullRequest', jsonb_strip_nulls(jsonb_build_object('number', task_pr.pr_number,
@@ -1122,6 +1123,7 @@ export const structureLayer = (options: {
                       readonly spentUsd?: number;
                       readonly workedMs?: number;
                       readonly stopping?: true;
+                      readonly done?: true;
                     }
                   | null
                   | undefined;
@@ -1142,6 +1144,7 @@ export const structureLayer = (options: {
                             spentUsd: task.spentUsd,
                             workedMs: task.workedMs,
                             stopping: task.stopping === true,
+                            done: task.done === true,
                           }),
                   };
                 }

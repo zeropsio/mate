@@ -53,10 +53,11 @@ const UNKNOWN: TaskSession = {
 };
 
 /**
- * Where the Mate's latest task stands, as navigation says it, while it is this one. A task
- * navigation names without `ended` is live, or done with its change still open: its record says
- * which (done with a change is up for review); a pull request open says it is up for review; else
- * it is at work, between its runs. `undefined`: it is not this one, or not read.
+ * Where the Mate's latest task stands, as navigation says it, while it is this one. HQ says a task
+ * its Mate finished, whose change still waits for review (`done`); one navigation names without
+ * `ended` or `done` is live — an older HQ says neither, so its record says which; a pull request
+ * open says it is up for review; else it is at work, between its runs. `undefined`: it is not
+ * this one, or not read.
  */
 function fromNavigation(input: TaskSessionInput): TaskStatus | undefined {
   const chain = taskChain(input.source, input.current, input.working, input.taskId);
@@ -77,6 +78,10 @@ function fromNavigation(input: TaskSessionInput): TaskStatus | undefined {
       return chain.kind;
     case "pull-request":
       return chain.pullRequest.state === "open" ? "review" : chain.pullRequest.state;
+    case "done":
+      return chain.pullRequest === undefined || chain.pullRequest.state === "open"
+        ? "review"
+        : chain.pullRequest.state;
     case "at-rest": {
       const recorded = input.record === undefined ? undefined : recordStatus(input.record);
       if (recorded === "review" || recorded === "starting") return recorded;

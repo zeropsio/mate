@@ -231,7 +231,7 @@ import {
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
-import { MateTaskMessageRow } from "../zerops/MateTaskCard";
+import { MateTaskAskRow, MateTaskMessageRow } from "../zerops/MateTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
@@ -2838,8 +2838,9 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
-      {/* What is said of a task after its Mate took it; its brief draws no row, its issue
-          standing in the session band above the conversation. */}
+      {/* What a task's asker wrote, and what is said of it after its Mate took it; its brief
+          draws no row, its issue standing in the session band above the conversation. */}
+      {row.kind === "task-ask" ? <MateTaskAskRow source={row.source} text={row.text} /> : null}
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}

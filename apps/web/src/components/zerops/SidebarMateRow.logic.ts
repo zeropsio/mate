@@ -1059,6 +1059,8 @@ export interface MateAutomationLine {
     readonly waiting?: true | undefined;
     /** HQ took a person's stop of it; its Mate has not stopped yet. */
     readonly stopping?: true | undefined;
+    /** Its Mate finished it; its change waits for review. */
+    readonly done?: true | undefined;
     readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
   /**
@@ -1094,19 +1096,23 @@ export function mateAutomatedLine(
       on: false,
     };
   const working = state === "working";
-  const pullRequest = pullRequestWords(task.pullRequest, working);
+  // A task its Mate finished says its pull request at rest, whatever the Mate does meanwhile.
+  const pullRequest = pullRequestWords(task.pullRequest, working && task.done !== true);
   const line = (words: string | null) =>
     words === null ? mateTaskLine(task) : `${mateTaskLine(task)} · ${words}`;
   if (task.stopping === true)
     return { kind: "task", text: line(statusWords("stopping")), on: false };
-  if (working) {
+  const review = state === "needs" || state === "unread";
+  // HQ says its Mate finished it: its change waits for review, whatever the Mate does meanwhile.
+  if (task.done === true && task.pullRequest === undefined)
+    return { kind: "task", text: line(statusWords("review")), on: review };
+  if (working && task.done !== true) {
     const words =
       options.saysWorking === true ? [statusWords("working"), pullRequest] : [pullRequest];
     const said = words.filter((word) => word !== null).join(" · ");
     return { kind: "task", text: line(said === "" ? null : said), on: true };
   }
   if (task.waiting === true) return { kind: "task", text: line(statusWords("waiting")), on: true };
-  const review = state === "needs" || state === "unread";
   if (task.pullRequest === undefined)
     return { kind: "task", text: line(statusWords("review")), on: review };
   return {
@@ -1136,6 +1142,7 @@ export function mateAutomation(
               readonly title: string;
               readonly waiting?: true | undefined;
               readonly stopping?: true | undefined;
+              readonly done?: true | undefined;
               readonly pullRequest?: MateTaskPullRequest | undefined;
               readonly ended?: string | undefined;
             }
@@ -1159,6 +1166,7 @@ export function mateAutomation(
             title: task.title,
             ...(task.waiting === true ? { waiting: true } : {}),
             ...(task.stopping === true ? { stopping: true } : {}),
+            ...(task.done === true ? { done: true } : {}),
             ...(task.pullRequest === undefined
               ? {}
               : {
