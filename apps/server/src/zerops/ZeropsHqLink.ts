@@ -447,8 +447,8 @@ export const makeZeropsHqLink = (
               }
               case "task-stop": {
                 if (tasks === undefined) return Effect.void;
-                const { taskId, reason } = message.value;
-                return onceStated(tasks.stop(taskId, reason));
+                const { taskId, reason, requeued } = message.value;
+                return onceStated(tasks.stop(taskId, reason, requeued === true));
               }
               case "access":
                 return options.relayAccess({

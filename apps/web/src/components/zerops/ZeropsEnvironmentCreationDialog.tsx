@@ -49,7 +49,7 @@ import {
   type PressStepView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ProcessSteps, type ProcessStep } from "./primitives";
-import { ZeropsNewMateForm, type ZeropsNewMateFormProps } from "./ZeropsNewMateForm";
+import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
 
@@ -62,7 +62,7 @@ export interface EnvironmentCreationChoice {
   readonly face?: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
-  /** A Mate made automated: it takes tasks from GitHub issues, on the organization's API key. */
+  /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
   readonly automated?: true;
 }
 
@@ -113,12 +113,6 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onSetupChange?: (() => void) | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
-  /** A Mate's Automated choice, and whether its organization holds the key (`ZeropsNewMateForm`). */
-  readonly automation?: ZeropsNewMateFormProps["automation"];
-  /** The Automated choice made already: an Add started over that was automated. */
-  readonly defaultAutomated?: boolean | undefined;
-  /** Leaves the dialog for where the organization's API key is set. */
-  readonly onOpenKeySettings?: (() => void) | undefined;
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
@@ -172,20 +166,16 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, recipe, face, userRoles, automated }) => {
+      onCreate={({ name, recipe, face, userRoles }) => {
         onCreate({
           name,
           withAgent: true,
           recipe,
           face,
           ...(userRoles === undefined ? {} : { userRoles }),
-          ...(automated === true ? { automated } : {}),
         });
       }}
       access={props.access}
-      automation={props.automation}
-      defaultAutomated={props.defaultAutomated}
-      onOpenKeySettings={props.onOpenKeySettings}
       forecast={props.forecast}
       proposeAnotherName={props.proposeAnotherName}
       takenBotNames={takenBotNames}

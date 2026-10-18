@@ -5,12 +5,13 @@ import {
   automatedAgentsLine,
   automatedKeyState,
   automatedMateEntries,
+  automatedRunsOnLine,
   conversationTask,
   pullRequestStateWords,
   taskChain,
-  taskChainLine,
   taskTitle,
 } from "./automatedMate.logic";
+import { taskSession } from "./taskSession.logic";
 
 const issue = {
   kind: "github-issue",
@@ -34,6 +35,24 @@ describe("an automated Mate's agents", () => {
     expect(automatedMateEntries(entries, automated).map((entry) => entry.instanceId)).toEqual(
       shown,
     );
+  });
+});
+
+describe("what an automated Mate's composer says it runs on", () => {
+  it.each([
+    [
+      "the organization's key's model, by its provider",
+      "nebius/zai-org/GLM-5.3",
+      "Runs on Nebius · GLM-5.3",
+    ],
+    ["its automated model while the conversation names none", null, "Runs on Nebius · GLM-5.3"],
+    [
+      "a model on no organization key by its own name, never a provider it is not on",
+      "acme/tea-7",
+      "Runs on tea-7",
+    ],
+  ] as const)("%s", (_title, model, line) => {
+    expect(automatedRunsOnLine(model)).toBe(line);
   });
 });
 
@@ -122,19 +141,22 @@ describe("a task's chain: where its conversation's task stands now", () => {
       case: "holds its line while the Mate's task is not read",
       current: undefined,
       working: false,
-      line: { status: null, pullRequest: null },
+      status: null,
+      pullRequest: null,
     },
     {
       case: "holds its line once its Mate is on no task HQ names",
       current: null,
       working: false,
-      line: { status: null, pullRequest: null },
+      status: null,
+      pullRequest: null,
     },
     {
       case: "holds its line once its Mate is on another task",
       current: { ...onIt, id: "t2", number: 13, title: "Another" },
       working: false,
-      line: { status: null, pullRequest: null },
+      status: null,
+      pullRequest: null,
     },
     {
       case: "names its pull request merged, once the task ended with it",
@@ -144,7 +166,8 @@ describe("a task's chain: where its conversation's task stands now", () => {
         pullRequest: { ...pr, state: "merged" as const },
       },
       working: false,
-      line: { status: null, pullRequest: { words: "PR #14 · merged", url: pr.url } },
+      status: "merged",
+      pullRequest: "merged",
     },
     {
       case: "names its pull request closed, once the task ended with it",
@@ -154,7 +177,8 @@ describe("a task's chain: where its conversation's task stands now", () => {
         pullRequest: { ...pr, state: "closed" as const },
       },
       working: false,
-      line: { status: null, pullRequest: { words: "PR #14 · closed", url: pr.url } },
+      status: "closed",
+      pullRequest: "closed",
     },
     {
       case: "says it was stopped, with the pull request it left",
@@ -164,49 +188,58 @@ describe("a task's chain: where its conversation's task stands now", () => {
         pullRequest: { ...pr, state: "closed" as const },
       },
       working: false,
-      line: { status: "Stopped", pullRequest: { words: "PR #14 · closed", url: pr.url } },
+      status: "stopped",
+      pullRequest: "closed",
     },
     {
       case: "says it failed",
       current: { ...onIt, ended: "failed" as const },
       working: false,
-      line: { status: "Failed", pullRequest: null },
+      status: "failed",
+      pullRequest: null,
     },
     {
       case: "says it is done",
       current: { ...onIt, ended: "done" as const },
       working: false,
-      line: { status: "Done", pullRequest: null },
+      status: "done",
+      pullRequest: null,
     },
     {
       case: "says it merged where no pull request carried it",
       current: { ...onIt, ended: "merged" as const },
       working: false,
-      line: { status: "Merged", pullRequest: null },
+      status: "merged",
+      pullRequest: null,
     },
     {
       case: "says how it ended, never that its Mate works on it, once it ended",
       current: { ...onIt, ended: "done" as const },
       working: true,
-      line: { status: "Done", pullRequest: null },
+      status: "done",
+      pullRequest: null,
     },
     {
       case: "says its Mate works on it",
       current: onIt,
       working: true,
-      line: { status: "Working", pullRequest: null },
+      status: "working",
+      pullRequest: null,
     },
     {
       case: "says its Mate waits for you where it asked something",
       current: { ...onIt, waiting: true as const },
       working: false,
-      line: { status: "Waiting for you", pullRequest: null },
+      status: "waiting",
+      pullRequest: null,
     },
     {
       case: "says its change waits for review where it has no pull request",
       current: onIt,
       working: false,
-      line: { status: "Waiting for review", pullRequest: null },
+      record: "done",
+      status: "review",
+      pullRequest: null,
     },
     {
       case: "names its open pull request and its checks, linked",
@@ -215,7 +248,8 @@ describe("a task's chain: where its conversation's task stands now", () => {
         pullRequest: { ...pr, state: "open" as const, checks: "passing" as const },
       },
       working: false,
-      line: { status: null, pullRequest: { words: "PR #14 · open · checks passing", url: pr.url } },
+      status: "review",
+      pullRequest: "open",
     },
     {
       case: "names its pull request while its Mate works on it again",
@@ -224,25 +258,60 @@ describe("a task's chain: where its conversation's task stands now", () => {
         pullRequest: { ...pr, state: "open" as const, checks: "failing" as const },
       },
       working: true,
-      line: {
-        status: "Working",
-        pullRequest: { words: "PR #14 · open · checks failing", url: pr.url },
-      },
+      status: "working",
+      pullRequest: "open",
     },
     {
       case: "names its merged pull request",
       current: { ...onIt, pullRequest: { ...pr, state: "merged" as const } },
       working: false,
-      line: { status: null, pullRequest: { words: "PR #14 · merged", url: pr.url } },
+      status: "merged",
+      pullRequest: "merged",
     },
     {
       case: "names its pull request closed unmerged",
       current: { ...onIt, pullRequest: { ...pr, state: "closed" as const } },
       working: false,
-      line: { status: null, pullRequest: { words: "PR #14 · closed", url: pr.url } },
+      status: "closed",
+      pullRequest: "closed",
     },
-  ])("$case", ({ current, working, line }) => {
-    expect(taskChainLine(taskChain(issue, current, working))).toEqual(line);
+  ])("$case", (given) => {
+    const { current, working, status, pullRequest } = given;
+    const session = taskSession({
+      source: issue,
+      taskId: "t1",
+      current,
+      working,
+      // Done with its change open: navigation says no more than that it is not over.
+      record:
+        "record" in given
+          ? {
+              id: "t1",
+              title: onIt.title,
+              label: "acme/tea-shop#12",
+              url: onIt.url,
+              state: "done",
+              mate: { projectId: "p-juno", name: "Juno" },
+              requestedBy: null,
+              createdAt: "2026-10-17T10:00:00.000Z",
+              startedAt: "2026-10-17T10:01:00.000Z",
+              endedAt: null,
+              spentUsd: null,
+              workedMs: null,
+              detail: null,
+              change: { repo: "web", number: 3 },
+              pullRequest: null,
+              link: null,
+            }
+          : undefined,
+      canStop: true,
+    });
+    expect(session.status).toBe(status);
+    expect(session.pullRequest?.state ?? null).toBe(pullRequest);
+    // Linked as HQ names it, its checks with it.
+    expect(session.pullRequest).toEqual(
+      current != null && "pullRequest" in current ? current.pullRequest : null,
+    );
   });
 
   it("knows a task from elsewhere by its link, else by its title", () => {

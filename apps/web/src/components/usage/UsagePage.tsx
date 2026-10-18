@@ -24,9 +24,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
 import { usageNativeCosts } from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
-import type {
-  UsageEnvironmentIdentities,
-  UsageEnvironmentOwner,
+import {
+  isAutomatedMatesOwner,
+  type UsageEnvironmentIdentities,
+  type UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import {
@@ -60,6 +61,7 @@ import {
   type UsageDimensions,
   type UsageScope,
 } from "./usageDimensions";
+import { UsageAutomatedBudget } from "./UsageAutomated";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
 import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
 import { UsageReadStatus } from "./UsageReadStatus";
@@ -212,7 +214,7 @@ export function UsagePage({
   const whoSummary = [
     dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} contributing Mates` : "",
     dimensions.visible.person
-      ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null).length)} owners`
+      ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null && !isAutomatedMatesOwner(person.owner)).length)} owners`
       : "",
   ].join("");
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
@@ -547,8 +549,10 @@ export function UsagePage({
                     A server update is required to read current usage.
                   </p>
                 ) : null}
-                <div className="min-h-5">
+                {/* One reserved line: the read's state, and the month's automated spend beside it. */}
+                <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
                   <UsageReadStatus read={read} label="usage" onRetry={refresh} />
+                  <UsageAutomatedBudget />
                 </div>
 
                 <section className="grid min-h-80 gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
@@ -773,6 +777,11 @@ export function UsagePage({
                       dimension={breakdown}
                       dimensions={dimensions}
                       metric={dimensionMetric}
+                      period={
+                        report === null
+                          ? null
+                          : { since: report.query.since, until: report.query.until }
+                      }
                       scope={scope}
                       onScopeChange={onScopeChange}
                     />

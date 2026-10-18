@@ -4,9 +4,13 @@ import { useState } from "react";
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";
-import type { UsageEnvironmentOwner } from "../../zerops/usageEnvironmentIdentities";
+import {
+  isAutomatedMatesOwner,
+  type UsageEnvironmentOwner,
+} from "../../zerops/usageEnvironmentIdentities";
 import { Badge } from "../ui/badge";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
+import { AutomatedMatesMark, UsageMateTaskRows } from "./UsageAutomated";
 import type {
   UsageDimension,
   UsageDimensionMetric,
@@ -81,9 +85,55 @@ export function OwnerName({
   );
 }
 
-export function OwnerAvatar({ owner }: { readonly owner: UsageEnvironmentOwner | null }) {
-  return owner === null ? null : (
-    <PersonAvatar name={owner.name} picture={owner.avatarUrl} size={16} />
+export function OwnerAvatar({
+  owner,
+  title,
+}: {
+  readonly owner: UsageEnvironmentOwner | null;
+  /** Names the face where nothing beside it does. */
+  readonly title?: string;
+}) {
+  if (owner === null) return null;
+  return isAutomatedMatesOwner(owner) ? (
+    <AutomatedMatesMark />
+  ) : (
+    <PersonAvatar
+      name={owner.name}
+      picture={owner.avatarUrl}
+      size={16}
+      {...(title === undefined ? {} : { title })}
+    />
+  );
+}
+
+/** The report's period, for an automated Mate's tasks. */
+export interface UsagePeriod {
+  readonly since: string | null;
+  readonly until: string;
+}
+
+function Disclosure({
+  open,
+  label,
+  onToggle,
+}: {
+  readonly open: boolean;
+  readonly label: string;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={label}
+      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+      onClick={onToggle}
+    >
+      <ChevronRightIcon
+        aria-hidden
+        className={cn("size-3.5 transition-transform", open && "rotate-90")}
+      />
+    </button>
   );
 }
 
@@ -166,11 +216,24 @@ export function DrillButton({
   );
 }
 
+/** An automated Mate's row opens into its tasks; a Mate's row is the same otherwise. */
+function taskSource(mate: UsageMateRow): { appId: string; mateProjectId: string } | null {
+  return isAutomatedMatesOwner(mate.owner) &&
+    mate.projectId !== null &&
+    mate.mateProjectId !== undefined
+    ? { appId: mate.projectId, mateProjectId: mate.mateProjectId }
+    : null;
+}
+
 function MateCells({
   mate,
   metric,
   showOwner,
   indent,
+  showProject,
+  disclosureRoom,
+  open,
+  onToggle,
   onScope,
   scope,
 }: {
@@ -178,24 +241,41 @@ function MateCells({
   readonly metric: UsageDimensionMetric;
   readonly showOwner: boolean;
   readonly indent: boolean;
+  /** Under its project's own row the project is said already. */
+  readonly showProject: boolean;
+  /** Its siblings open: a row that does not keeps their names aligned. */
+  readonly disclosureRoom: boolean;
+  readonly open: boolean;
+  readonly onToggle: (() => void) | null;
   readonly onScope: (scope: UsageScope) => void;
   readonly scope: UsageScope;
 }) {
   return (
     <tr className="border-b border-border/50 transition-colors hover:bg-muted/50">
       <td className={cn("py-2 text-foreground", indent && "ps-8")}>
-        <DrillButton
-          label={`Show ${mate.mateName}'s usage`}
-          onDrill={() => onScope({ ...scope, mate: mate.environmentId })}
-        >
-          {showOwner ? <OwnerAvatar owner={mate.owner} /> : null}
-          <span className="truncate">
-            {mate.mateName}
-            {mate.projectName === null ? null : (
-              <span className="text-muted-foreground"> · {mate.projectName}</span>
-            )}
-          </span>
-        </DrillButton>
+        <span className="flex min-w-0 items-center gap-1">
+          {onToggle !== null ? (
+            <Disclosure
+              open={open}
+              label={`${open ? "Hide" : "Show"} ${mate.mateName}'s tasks`}
+              onToggle={onToggle}
+            />
+          ) : disclosureRoom ? (
+            <span aria-hidden className="size-5 shrink-0" />
+          ) : null}
+          <DrillButton
+            label={`Show ${mate.mateName}'s usage`}
+            onDrill={() => onScope({ ...scope, mate: mate.environmentId })}
+          >
+            {showOwner ? <OwnerAvatar owner={mate.owner} /> : null}
+            <span className="truncate">
+              {mate.mateName}
+              {mate.projectName === null || !showProject ? null : (
+                <span className="text-muted-foreground"> · {mate.projectName}</span>
+              )}
+            </span>
+          </DrillButton>
+        </span>
       </td>
       <td className="py-2 text-right text-foreground tabular-nums">{amount(metric, mate)}</td>
       <td className="py-2 text-right text-muted-foreground tabular-nums">{share(metric, mate)}</td>
@@ -208,12 +288,15 @@ export function UsageDimensionTable({
   dimension,
   dimensions,
   metric,
+  period,
   scope,
   onScopeChange,
 }: {
   readonly dimension: UsageDimension;
   readonly dimensions: UsageDimensions;
   readonly metric: UsageDimensionMetric;
+  /** The report's period; null while none is read: an automated Mate's tasks wait for it. */
+  readonly period: UsagePeriod | null;
   readonly scope: UsageScope;
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
@@ -224,6 +307,47 @@ export function UsageDimensionTable({
     setExpanded(next);
   };
   const rowClass = "border-b border-border/50 transition-colors hover:bg-muted/50";
+
+  /** A Mate's row, and its tasks under it while open. */
+  const mateRows = (
+    mate: UsageMateRow,
+    key: string,
+    nested: boolean,
+    room: boolean,
+    showOwner: boolean,
+  ) => {
+    const source = period === null ? null : taskSource(mate);
+    const open = source !== null && expanded.has(key);
+    return [
+      <MateCells
+        key={key}
+        mate={mate}
+        metric={metric}
+        showOwner={showOwner}
+        indent={nested}
+        showProject={dimension !== "project"}
+        disclosureRoom={room}
+        open={open}
+        onToggle={source === null ? null : () => toggle(key)}
+        onScope={onScopeChange}
+        scope={scope}
+      />,
+      ...(open && source !== null && period !== null
+        ? [
+            <UsageMateTaskRows
+              key={`${key}:tasks`}
+              appId={source.appId}
+              mateProjectId={source.mateProjectId}
+              nested={nested}
+              since={period.since}
+              until={period.until}
+            />,
+          ]
+        : []),
+    ];
+  };
+  const opensAny = (mates: readonly UsageMateRow[]) =>
+    period !== null && mates.some((mate) => taskSource(mate) !== null);
 
   return (
     <table className="w-full table-fixed text-sm">
@@ -249,22 +373,16 @@ export function UsageDimensionTable({
               const name =
                 person.owner?.name ??
                 (person.ownerState === "unassigned" ? "Unassigned" : "Unknown owner");
+              const room = opensAny(person.mates);
               return [
                 <tr key={key} className={rowClass}>
                   <td className="py-2 text-foreground">
                     <span className="flex min-w-0 items-center gap-1">
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        aria-label={`${open ? "Hide" : "Show"} ${name}'s Mates`}
-                        className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
-                        onClick={() => toggle(key)}
-                      >
-                        <ChevronRightIcon
-                          aria-hidden
-                          className={cn("size-3.5 transition-transform", open && "rotate-90")}
-                        />
-                      </button>
+                      <Disclosure
+                        open={open}
+                        label={`${open ? "Hide" : "Show"} ${name}'s Mates`}
+                        onToggle={() => toggle(key)}
+                      />
                       <DrillButton
                         label={`Show ${name}'s usage`}
                         onDrill={
@@ -286,78 +404,88 @@ export function UsageDimensionTable({
                   </td>
                 </tr>,
                 ...(open
-                  ? person.mates.map((mate) => (
-                      <MateCells
-                        key={`${key}:${mate.environmentId}`}
-                        mate={mate}
-                        metric={metric}
-                        showOwner={false}
-                        indent
-                        onScope={onScopeChange}
-                        scope={scope}
-                      />
-                    ))
+                  ? person.mates.flatMap((mate) =>
+                      mateRows(mate, `${key}:${mate.environmentId}`, true, room, false),
+                    )
                   : []),
               ];
             })
           : dimension === "project"
-            ? dimensions.projects.map((project) => (
-                <tr key={project.projectId ?? "unknown"} className={rowClass}>
-                  <td className="py-2 text-foreground">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <DrillButton
-                        label={`Show ${project.projectName ?? "Unknown project"} usage`}
-                        onDrill={
-                          project.projectId === null
-                            ? null
-                            : () =>
-                                onScopeChange({
-                                  ...scope,
-                                  project: project.projectId ?? undefined,
-                                })
-                        }
-                      >
-                        <span
-                          className={cn(
-                            "truncate",
-                            project.projectName === null && "text-muted-foreground",
-                          )}
+            ? dimensions.projects.flatMap((project) => {
+                const key = `project:${project.projectId ?? "unknown"}`;
+                const open = expanded.has(key);
+                const name = project.projectName ?? "Unknown project";
+                const room = opensAny(project.mates);
+                return [
+                  <tr key={key} className={rowClass}>
+                    <td className="py-2 text-foreground">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <Disclosure
+                          open={open}
+                          label={`${open ? "Hide" : "Show"} ${name}'s Mates`}
+                          onToggle={() => toggle(key)}
+                        />
+                        <DrillButton
+                          label={`Show ${name} usage`}
+                          onDrill={
+                            project.projectId === null
+                              ? null
+                              : () =>
+                                  onScopeChange({
+                                    ...scope,
+                                    project: project.projectId ?? undefined,
+                                  })
+                          }
                         >
-                          {project.projectName ?? "Unknown project"}
+                          <span
+                            className={cn(
+                              "truncate",
+                              project.projectName === null && "text-muted-foreground",
+                            )}
+                          >
+                            {name}
+                          </span>
+                        </DrillButton>
+                        <span className="ms-1 flex shrink-0 -space-x-1">
+                          {project.owners.map((projectOwner) => (
+                            <OwnerAvatar
+                              key={projectOwner.id}
+                              owner={projectOwner}
+                              title={projectOwner.name}
+                            />
+                          ))}
                         </span>
-                      </DrillButton>
-                      <span className="flex shrink-0 -space-x-1">
-                        {project.owners.map((projectOwner) => (
-                          <PersonAvatar
-                            key={projectOwner.id}
-                            name={projectOwner.name}
-                            picture={projectOwner.avatarUrl}
-                            size={16}
-                            title={projectOwner.name}
-                          />
-                        ))}
                       </span>
-                    </span>
-                  </td>
-                  <td className="py-2 text-right text-foreground tabular-nums">
-                    {amount(metric, project)}
-                  </td>
-                  <td className="py-2 text-right text-muted-foreground tabular-nums">
-                    {share(metric, project)}
-                  </td>
-                </tr>
-              ))
-            : dimensions.mates.map((mate) => (
-                <MateCells
-                  key={mate.environmentId}
-                  mate={mate}
-                  metric={metric}
-                  showOwner={dimensions.visible.person}
-                  indent={false}
-                  onScope={onScopeChange}
-                  scope={scope}
-                />
-              ))}
+                    </td>
+                    <td className="py-2 text-right text-foreground tabular-nums">
+                      {amount(metric, project)}
+                    </td>
+                    <td className="py-2 text-right text-muted-foreground tabular-nums">
+                      {share(metric, project)}
+                    </td>
+                  </tr>,
+                  ...(open
+                    ? project.mates.flatMap((mate) =>
+                        mateRows(
+                          mate,
+                          `${key}:${mate.environmentId}`,
+                          true,
+                          room,
+                          dimensions.visible.person,
+                        ),
+                      )
+                    : []),
+                ];
+              })
+            : dimensions.mates.flatMap((mate) =>
+                mateRows(
+                  mate,
+                  mate.environmentId,
+                  false,
+                  opensAny(dimensions.mates),
+                  dimensions.visible.person,
+                ),
+              )}
       </tbody>
     </table>
   );

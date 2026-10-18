@@ -126,10 +126,13 @@ export interface SidebarCreateProject {
 export function SidebarCreateButton({
   projects,
   onNewMate,
+  onNewAutomatedMates,
   onNewProject,
 }: {
   readonly projects: ReadonlyArray<SidebarCreateProject>;
   readonly onNewMate: (projectId: string) => void;
+  /** *Automated Mates…* in a project, where this HQ makes them. */
+  readonly onNewAutomatedMates?: ((projectId: string) => void) | undefined;
   /** New project, where the viewer's role creates projects. */
   readonly onNewProject?: (() => void) | undefined;
 }) {
@@ -185,32 +188,14 @@ export function SidebarCreateButton({
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" className="w-50">
-        {only === undefined ? null : projects.length === 1 ? (
-          <MenuItem
-            data-zerops-create="mate"
-            onClick={() => {
-              onNewMate(only.id);
-            }}
-          >
-            New Mate
-          </MenuItem>
-        ) : (
-          <MenuSub>
-            <MenuSubTrigger data-zerops-create="mate">New Mate</MenuSubTrigger>
-            <MenuSubPopup>
-              {projects.map((project) => (
-                <MenuItem
-                  data-zerops-create-in={project.id}
-                  key={project.id}
-                  onClick={() => {
-                    onNewMate(project.id);
-                  }}
-                >
-                  {project.name}
-                </MenuItem>
-              ))}
-            </MenuSubPopup>
-          </MenuSub>
+        <CreateInProject label="New Mate" kind="mate" onPick={onNewMate} projects={projects} />
+        {onNewAutomatedMates === undefined ? null : (
+          <CreateInProject
+            label="Automated Mates…"
+            kind="automated"
+            onPick={onNewAutomatedMates}
+            projects={projects}
+          />
         )}
         {onNewProject === undefined ? null : (
           <MenuItem data-zerops-create="project" onClick={onNewProject}>
@@ -219,6 +204,52 @@ export function SidebarCreateButton({
         )}
       </MenuPopup>
     </Menu>
+  );
+}
+
+/** One thing Add makes in a project: at once where there is one, else a list of them. */
+function CreateInProject({
+  label,
+  kind,
+  projects,
+  onPick,
+}: {
+  readonly label: string;
+  readonly kind: "mate" | "automated";
+  readonly projects: ReadonlyArray<SidebarCreateProject>;
+  readonly onPick: (projectId: string) => void;
+}) {
+  const [only] = projects;
+  if (only === undefined) return null;
+  if (projects.length === 1)
+    return (
+      <MenuItem
+        data-zerops-create={kind}
+        onClick={() => {
+          onPick(only.id);
+        }}
+      >
+        {label}
+      </MenuItem>
+    );
+  return (
+    <MenuSub>
+      <MenuSubTrigger data-zerops-create={kind}>{label}</MenuSubTrigger>
+      <MenuSubPopup>
+        {projects.map((project) => (
+          <MenuItem
+            data-zerops-automated-in={kind === "automated" ? project.id : undefined}
+            data-zerops-create-in={kind === "mate" ? project.id : undefined}
+            key={project.id}
+            onClick={() => {
+              onPick(project.id);
+            }}
+          >
+            {project.name}
+          </MenuItem>
+        ))}
+      </MenuSubPopup>
+    </MenuSub>
   );
 }
 

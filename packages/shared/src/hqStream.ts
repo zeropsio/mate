@@ -307,6 +307,8 @@ export const HqNavigationMateTask = Schema.Struct({
   label: Schema.optionalKey(Schema.String),
   /** It waits for a person's answer (`MateTaskReport.question`); absent: it works or rests. */
   waiting: Schema.optionalKey(Schema.Literal(true)),
+  /** HQ took a person's stop of it and its Mate has not stopped yet; absent: no stop asked. */
+  stopping: Schema.optionalKey(Schema.Literal(true)),
   /** The pull request its change is mirrored to on GitHub; absent where none. */
   pullRequest: Schema.optionalKey(HqPullRequest),
   /**
@@ -314,6 +316,11 @@ export const HqNavigationMateTask = Schema.Struct({
    * its row says so, while the task's own conversation still shows where it got to. Absent: live.
    */
   ended: Schema.optionalKey(Schema.Literals(["merged", "closed", "done", "failed", "stopped"])),
+  /** When its Mate took it; absent from an older HQ. */
+  startedAt: Schema.optionalKey(Schema.String),
+  /** What it cost and how long it worked so far, as its Mate last reported. */
+  spentUsd: Schema.optionalKey(Schema.Number),
+  workedMs: Schema.optionalKey(Schema.Number),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({

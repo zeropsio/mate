@@ -2,7 +2,10 @@
  * The organization's limits on each task (`hq_task_limits`, `HqTaskLimitsView`): minutes of an
  * agent at work on it, and US dollars of model use; 60 minutes and no cost limit until an owner or
  * admin of the organization sets them. Every `task` frame carries them (`MateTask.limits`); its
- * Mate stops the task at either and says where it got to.
+ * Mate stops the task at either and says where it got to. Beside them, what all its automated
+ * Mates may spend in a calendar month (UTC), counted in the month each report said it: reached, HQ
+ * hands out no task, puts those handed out but not taken back in line, and stops those at work
+ * (`mateTasks.ts`).
  *
  * @module taskLimits
  */
@@ -24,6 +27,32 @@ import type { ZeropsError } from "./zerops/api.ts";
 export const DEFAULT_TASK_LIMITS: MateTaskLimits = { minutes: 60, costUsd: null };
 /** The most minutes a task may be given: a day. */
 const MINUTES_MAX = 1440;
+/** The most a budget may be: past it, a typo. */
+const BUDGET_MAX = 1_000_000;
+
+/** This calendar month (UTC), as `hq_task_month_spend.month` keys it. */
+export const THIS_MONTH = "(date_trunc('month', now() AT TIME ZONE 'UTC'))::date";
+
+/**
+ * What the organization's automated Mates spent this calendar month (UTC), as they reported it:
+ * each report's rise counted in the month it came (`MateTasks.report`).
+ */
+export const spentThisMonth = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [row] = yield* sql<{ readonly spent: number }>`
+    SELECT COALESCE(sum(spent_usd), 0)::float8 AS spent FROM hq_task_month_spend
+    WHERE month = ${sql.literal(THIS_MONTH)}`;
+  return row?.spent ?? 0;
+});
+
+/** Whether this month's spend reached the organization's monthly budget, where it set one. */
+export const budgetSpent = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [row] = yield* sql<{ readonly budget: number | null }>`
+    SELECT monthly_budget_usd AS budget FROM hq_task_limits`;
+  if (row?.budget == null) return false;
+  return (yield* spentThisMonth) >= row.budget;
+});
 
 /** The limits as kept, or the defaults. */
 export const readTaskLimits = Effect.gen(function* () {
@@ -42,7 +71,8 @@ export class TaskLimits extends Context.Service<
     /** Kept by an owner or admin of the organization. */
     readonly keep: (
       userId: string,
-      limits: HqTaskLimitsView,
+      /** A monthly budget left out is kept as it is (a client that predates it). */
+      limits: Omit<HqTaskLimitsView, "spentThisMonthUsd">,
     ) => Effect.Effect<HqTaskLimitsView, AutomationRefused | NotLeader | SqlError | ZeropsError>;
   }
 >()("@t3tools/hq/taskLimits") {}
@@ -53,7 +83,20 @@ export const taskLimitsLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const leader = yield* Leader;
     const roles = yield* Roles;
-    const view = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
+    const view = Effect.provideService(
+      Effect.gen(function* () {
+        const limits = yield* readTaskLimits;
+        const [row] = yield* sql<{ readonly budget: number | null }>`
+          SELECT monthly_budget_usd AS budget FROM hq_task_limits`;
+        return {
+          ...limits,
+          monthlyBudgetUsd: row?.budget ?? null,
+          spentThisMonthUsd: yield* spentThisMonth,
+        } satisfies HqTaskLimitsView;
+      }),
+      SqlClient.SqlClient,
+      sql,
+    );
     return TaskLimits.of({
       view,
       keep: (userId, limits) =>
@@ -72,11 +115,18 @@ export const taskLimitsLayer = Layer.effect(
               return yield* new AutomationRefused({ code: "invalid", reason: "minutes" });
             if (limits.costUsd !== null && !(limits.costUsd > 0 && limits.costUsd <= 10_000))
               return yield* new AutomationRefused({ code: "invalid", reason: "cost" });
+            const budget = limits.monthlyBudgetUsd;
+            if (budget != null && !(budget > 0 && budget <= BUDGET_MAX))
+              return yield* new AutomationRefused({ code: "invalid", reason: "budget" });
+            const given = budget !== undefined;
             yield* leader.write(sql`
-              INSERT INTO hq_task_limits (id, minutes, cost_usd, set_by, set_at)
-              VALUES (true, ${limits.minutes}, ${limits.costUsd}, ${userId}, now())
+              INSERT INTO hq_task_limits (id, minutes, cost_usd, monthly_budget_usd, set_by, set_at)
+              VALUES (true, ${limits.minutes}, ${limits.costUsd}, ${budget ?? null}, ${userId},
+                now())
               ON CONFLICT (id) DO UPDATE SET minutes = EXCLUDED.minutes,
-                cost_usd = EXCLUDED.cost_usd, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at`);
+                cost_usd = EXCLUDED.cost_usd, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at,
+                monthly_budget_usd = CASE WHEN ${given} THEN EXCLUDED.monthly_budget_usd
+                  ELSE hq_task_limits.monthly_budget_usd END`);
             return yield* view;
           }),
         ),

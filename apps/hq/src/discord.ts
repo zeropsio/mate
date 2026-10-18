@@ -57,6 +57,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import {
+  BUDGET_WAIT,
   type TaskOnSource,
   type TaskStatus,
   TaskIntake,
@@ -281,6 +282,8 @@ export const statusWords = (status: TaskStatus): string => {
     switch (status.kind) {
       case "queued":
         return `Waiting for a free Mate: #${String(status.position)} in line.`;
+      case "budget":
+        return BUDGET_WAIT;
       case "picked":
         return `${status.mate} picked this up.`;
       case "waiting":

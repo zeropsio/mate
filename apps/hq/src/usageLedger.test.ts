@@ -10,7 +10,12 @@ import { treeMigrations } from "./migrationFiles.ts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { UsageFact, UsageReport, type UsageReportQuery } from "@t3tools/contracts";
+import {
+  UsageFact,
+  UsageReport,
+  USAGE_AUTOMATED_OWNER,
+  type UsageReportQuery,
+} from "@t3tools/contracts";
 import { usageOriginId, usageFactId, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { activeCoreLayer } from "../test/harness/activeCore.ts";
@@ -816,6 +821,35 @@ describe("HQ immutable usage", () => {
               ),
             );
             assert.strictEqual(stale._tag, "Failure");
+          }),
+        ),
+    );
+    it.effect(
+      "an automated Mate's usage is the automated Mates' own, never the person who made it",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, sql } = yield* setup;
+            yield* ledger.receive(sender, batch([fact("task", "100")]));
+            yield* sql`UPDATE hq_mate SET automated=true, made_by='owner' WHERE project_id='P'`;
+            const report = (query: Partial<UsageReportQuery>) =>
+              readUsageReport(
+                sql,
+                "owner",
+                { kind: "agentUsage", query: { ...baseQuery, ...query } },
+                access,
+                new Map(),
+              );
+            const byOwner = yield* report({ groupBy: "owner" });
+            assert.deepStrictEqual(
+              byOwner.groups.map((group) => [group.key, group.totals.tokens]),
+              [[USAGE_AUTOMATED_OWNER, "100"]],
+            );
+            assert.strictEqual(byOwner.coverage[0]!.ownerUserId, USAGE_AUTOMATED_OWNER);
+            const automated = yield* report({ ownerUserId: USAGE_AUTOMATED_OWNER });
+            assert.strictEqual(automated.totals.tokens, "100");
+            const maker = yield* report({ ownerUserId: "owner" });
+            assert.strictEqual(maker.totals.tokens, "0");
           }),
         ),
     );

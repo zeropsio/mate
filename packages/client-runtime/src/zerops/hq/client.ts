@@ -57,9 +57,11 @@ import {
   HqDiscordView,
   HqIntakeView,
   HqScheduleView,
+  HqAppTasksView,
   HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
+  type HqAppTask,
   type HqAiKeyRequest,
   type HqChannelRequest,
   type HqDiscordAllowRequest,
@@ -465,6 +467,13 @@ export interface HqApi {
   readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
   readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
   readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
+  /**
+   * An application's tasks: queued, at work, and the latest that ended (`GET
+   * /api/apps/:appId/tasks`).
+   */
+  readonly appTasks?: (appId: string) => Promise<ReadonlyArray<HqAppTask>>;
+  /** Stops one of them (`POST /api/apps/:appId/tasks/:taskId/stop`). */
+  readonly stopAppTask?: (appId: string, taskId: string) => Promise<void>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits?: () => Promise<HqTaskLimitsView>;
   readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
@@ -726,6 +735,7 @@ const readWebhook = decoded(HqWebhookView);
 const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
 const readSchedule = decoded(HqScheduleView);
 const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
+const readAppTasks = decoded(HqAppTasksView);
 const readTaskLimits = decoded(HqTaskLimitsView);
 const readGithub = decoded(HqGithubView);
 const readGithubManifest = decoded(HqGithubManifestView);
@@ -1473,6 +1483,15 @@ export function makeHqApi(input: {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/schedules/${encodeURIComponent(scheduleId)}`,
         { method: "DELETE" },
+        true,
+      );
+    },
+    appTasks: async (appId) =>
+      (await readAppTasks(await authorized(`/api/apps/${encodeURIComponent(appId)}/tasks`))).tasks,
+    stopAppTask: async (appId, taskId) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/stop`,
+        { method: "POST" },
         true,
       );
     },

@@ -49,6 +49,25 @@ export function messageHasText(
  * A wordless thought or note has no line, in either the slot or the history: the working line
  * names what the Mate does until its words come, never its face beside an empty bubble.
  */
+/**
+ * An agent's thinking as the one quiet line it stands as in a run's work, its words behind it:
+ * "Thinking · 12 s" once done, from its first part's start to its last part's last word; while it
+ * still thinks, or under a second, "Thinking".
+ */
+export function thinkingLine(
+  messages: ReadonlyArray<Pick<ChatMessage, "createdAt" | "updatedAt" | "streaming">>,
+): string {
+  if (messages.length === 0 || messages.some((message) => message.streaming)) return "Thinking";
+  const from = Math.min(...messages.map((message) => Date.parse(message.createdAt)));
+  const to = Math.max(...messages.map((message) => Date.parse(message.updatedAt)));
+  const seconds = Math.floor((to - from) / 1000);
+  if (!Number.isFinite(seconds) || seconds < 1) return "Thinking";
+  const minutes = Math.floor(seconds / 60);
+  return minutes === 0
+    ? `Thinking · ${String(seconds)} s`
+    : `Thinking · ${String(minutes)} m ${String(seconds % 60)} s`;
+}
+
 export function chatItemHasLine(
   item: RecordItem,
   liveLines?: ReadonlyMap<string, boolean>,

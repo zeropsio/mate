@@ -5,6 +5,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as Duration from "effect/Duration";
 import * as SqlClient from "effect/sql/SqlClient";
 import { usageDigest } from "@t3tools/shared/agentUsage";
+import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { Leader } from "./leader.ts";
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 export const USAGE_AUTOMATIC_RATES_URL =
@@ -23,6 +24,8 @@ const decodeRate = Schema.decodeUnknownOption(Rate);
 export const USAGE_CACHE_RATES_URL = "https://models.dev/api.json";
 const CatalogCost = Schema.Struct({
   cost: Schema.Struct({
+    input: Schema.optionalKey(Price),
+    output: Schema.optionalKey(Price),
     cache_read: Schema.optionalKey(Price),
     cache_write: Schema.optionalKey(Price),
   }),
@@ -74,6 +77,13 @@ const priceNanos = (rate: number, multiplier: number, perTokens = 0) => {
 export const automaticUsageRates = (
   document: Readonly<Record<string, unknown>>,
   catalog: Readonly<Record<string, unknown>> = {},
+): ReadonlyArray<AutomaticUsageRate> => [
+  ...publishedRates(document, catalog),
+  ...catalogOnlyRates(document, catalog),
+];
+const publishedRates = (
+  document: Readonly<Record<string, unknown>>,
+  catalog: Readonly<Record<string, unknown>>,
 ): ReadonlyArray<AutomaticUsageRate> =>
   Object.entries(document).flatMap(([model, value]) => {
     const read = decodeRate(value);
@@ -126,6 +136,39 @@ export const automaticUsageRates = (
         },
       })),
     );
+  });
+/**
+ * The models an automated Mate runs on with the organization's key (`OPENCODE_KEY_PROVIDERS`, as
+ * OpenCode names them: `provider/model`) that LiteLLM does not list yet, priced from models.dev
+ * alone (USD per million tokens). Only those providers: the rest of models.dev is never copied in.
+ */
+const catalogOnlyRates = (
+  document: Readonly<Record<string, unknown>>,
+  catalog: Readonly<Record<string, unknown>>,
+): ReadonlyArray<AutomaticUsageRate> =>
+  OPENCODE_KEY_PROVIDERS.flatMap((provider) => {
+    const listed = Option.getOrUndefined(decodeRecord(catalog[provider.id]));
+    const models = Option.getOrUndefined(decodeRecord(listed?.models)) ?? {};
+    return Object.entries(models).flatMap(([name, value]) => {
+      const model = `${provider.id}/${name}`;
+      const cost = Option.getOrUndefined(decodeCatalogCost(value))?.cost;
+      if (document[model] !== undefined || cost?.input === undefined || cost.output === undefined)
+        return [];
+      const perMillion = (rate: number | undefined) =>
+        rate === undefined ? null : priceNanos(rate, 1, 6);
+      const rates = {
+        uncachedInput: perMillion(cost.input),
+        output: perMillion(cost.output),
+        cachedInput: perMillion(cost.cache_read),
+        cacheCreation: perMillion(cost.cache_write),
+      };
+      return ["api-equivalent-baseline", "standard", "cache-5m", "cache-1h"].map((pricingBand) => ({
+        model,
+        pricingBand,
+        provenance: USAGE_CACHE_RATES_URL,
+        rates,
+      }));
+    });
   });
 export const installAutomaticUsageRates = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,

@@ -1,5 +1,6 @@
 import type { EnvironmentId, UsageReport, UsageReportQuery } from "@t3tools/contracts";
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
+import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
@@ -25,6 +26,7 @@ const testState = vi.hoisted(() => ({
   stale: false,
   provenance: "live-responses" as "live-responses" | "legacy-scanner",
   sectionReads: {} as Partial<Record<string, AgentUsageRead>>,
+  limits: null as HqTaskLimitsView | null,
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => new Map() }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
@@ -58,6 +60,7 @@ vi.mock("react", async (original) => {
 });
 vi.mock("../../env", () => ({ isElectron: false }));
 vi.mock("@tanstack/react-router", () => ({
+  Link: "a",
   useNavigate: () => vi.fn(),
   useCanGoBack: () => false,
 }));
@@ -123,6 +126,25 @@ vi.mock("../../zerops/ZeropsAccountData", () => ({
       report: { ...report, query, groups: query.groupBy === "mate" ? report?.groups : [] },
     };
   },
+}));
+vi.mock("../../zerops/useTaskSourceSettings", () => ({
+  useOrgTaskSource: () => ({
+    read: {
+      setting:
+        testState.limits === null
+          ? { state: "unread" }
+          : { state: "known", held: testState.limits, stale: false },
+      action: { kind: "idle" },
+      revealed: null,
+    },
+    write: vi.fn(),
+    again: vi.fn(),
+  }),
+  useAppTaskSource: () => ({
+    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+    write: vi.fn(),
+    again: vi.fn(),
+  }),
 }));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
@@ -215,6 +237,37 @@ it("The Usage range preserves exact minutes and the Hour table names its date an
   expect(bodyOf(markup)).toContain("Oct 7, 12:00 PM UTC");
 });
 
+it("The month's automated spend shows against the organization's budget at the top of Usage", () => {
+  expect(renderPage()).not.toContain("Automated Mates spent");
+  testState.limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 };
+  expect(renderPage()).not.toContain("Automated Mates spent");
+  testState.limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 };
+  const line = renderPage()
+    .replaceAll(/<[^>]+>/g, "")
+    .replaceAll("&#x27;", "'");
+  expect(line).toContain("Automated Mates spent $6.44 of this month's $50.00 budget.");
+});
+
+it("Usage names automated work as its own owner, never the person who made the Mate", () => {
+  const ada = { id: "ada", name: "Ada", initials: "A", avatarUrl: null, isViewer: true };
+  testState.people = new Map([[ada.id, ada]]);
+  testState.breakdown = "person";
+  const coverage = recordedReport().coverage[0]!;
+  testState.report = recordedReport({
+    coverage: [
+      { ...coverage, mateId: "mate-a", ownerUserId: "ada", label: "Fern" },
+      { ...coverage, mateId: "mate-b", ownerUserId: "automated", label: "Raya" },
+    ],
+    groups: [
+      { key: "mate-a", totals: statistics(), costUsdNanos: "20000000" },
+      { key: "mate-b", totals: statistics(), costUsdNanos: "6440000000" },
+    ],
+  });
+  const page = renderPage().replaceAll(/<[^>]+>/g, " ");
+  expect(page).toContain("Automated Mates");
+  expect(page).toMatch(/1 owners/);
+});
+
 it("Daily Usage identifies the recorded UTC day window", () => {
   testState.hourly = false;
   expect(renderPage()).toContain("Oct 6 to Oct 7 · UTC days");
@@ -235,6 +288,7 @@ it("A sole contributing Mate keeps its owner, project and name in the Usage summ
   expect(renderPage()).toContain("Fern · Shop · Ada");
 });
 beforeEach(() => {
+  testState.limits = null;
   testState.provenance = "live-responses";
   testState.sectionReads = {};
   testState.metric = "cost";

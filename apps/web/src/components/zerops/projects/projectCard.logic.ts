@@ -581,7 +581,10 @@ export function cardSecondWords(input: {
       const text =
         reply?.kind === "words" ? reply.text : reply?.kind === "live" ? reply.words : undefined;
       const tone = second.tone === "failed" ? "failed" : second.tone === "ink" ? "ink" : "muted";
-      return { text, tone };
+      return {
+        text: second.task === undefined || text === undefined ? text : `${second.task} · ${text}`,
+        tone,
+      };
     }
     case "waits-on":
       return muted(second.text);

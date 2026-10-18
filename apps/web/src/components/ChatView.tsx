@@ -401,6 +401,7 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
+import { MateTaskSession } from "./zerops/MateTaskCard";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
@@ -4256,6 +4257,9 @@ function ConversationView(props: ChatViewProps) {
     whoLivesHere: whoLivesHereKind,
     zeropsAvailable: zeropsChrome.panel === "available",
     chief: chiefConversation,
+    ...(activeThreadTask === null
+      ? {}
+      : { task: { mate: admissionMate.kind === "mate" ? admissionMate.mate.name : null } }),
   });
   const openFileSurface = useCallback(
     (relativePath: string) => {
@@ -8485,6 +8489,26 @@ function ConversationView(props: ChatViewProps) {
             ) : null}
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
+              {/* A task's session stands above its conversation: its state, cost and Stop stay
+                  in sight however far the conversation scrolls. */}
+              {activeThreadTask !== null && activeThreadRef ? (
+                <div className="shrink-0 border-b border-border/60 px-3 pt-1 pb-2 sm:px-5">
+                  <div className="mx-auto w-full max-w-3xl px-4">
+                    <MateTaskSession
+                      conversationId={activeThread.id}
+                      environmentId={activeThread.environmentId}
+                      task={activeThreadTask}
+                      onOpenChange={(change) =>
+                        useRightPanelStore.getState().openChange(activeThreadRef, {
+                          groupId: change.appId,
+                          repository: change.repo,
+                          number: change.number,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              ) : null}
               {/* Messages — LegendList handles virtualization and scrolling
                   internally. A switch between Mates is at once: the list is
                   the next conversation's own from the press. One seen a

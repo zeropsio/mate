@@ -489,7 +489,10 @@ export type {
 } from "./families/hqTaskSources.ts";
 export type { TaskSourceWrite } from "./operations/hqTaskSources.ts";
 export {
+  appTaskStops,
   taskSourceSetting,
+  type AppTaskStopsKey,
+  type TaskStopAction,
   type SettingValue,
   type TaskSourceSettingKey,
   type TaskSourceSettingRead,

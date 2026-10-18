@@ -34,6 +34,8 @@ export type TaskSourceWrite =
   | { readonly kind: "schedule-make"; readonly request: HqScheduleRequest }
   | { readonly kind: "schedule-delete"; readonly scheduleId: string }
   | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsView }
+  /** One of an application's tasks stopped from its board. */
+  | { readonly kind: "task-stop"; readonly taskId: string }
   /** HQ's manifest for the app goes to the screen that asked, never into the record. */
   | {
       readonly kind: "github-manifest";
@@ -76,6 +78,8 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqAppSchedules";
     case "task-limits":
       return "hqTaskLimits";
+    case "task-stop":
+      return "hqAppTasks";
     case "github-manifest":
     case "github-disconnect":
       return "hqGithub";

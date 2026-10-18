@@ -1866,6 +1866,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         at: live?.at,
         working: live?.kind === "working",
         runSince: live?.runSince,
+        // An automated Mate waiting for a task never outranks another Mate's news.
+        waitsForTask:
+          live?.kind !== "working" && mateAutomation(item.project.hq?.mate)?.task === null,
       };
     });
     const { lead, asks } = groupLead(readings);
@@ -4341,6 +4344,7 @@ function MateSecondLine({
       return view.reply === undefined ? null : (
         <MateReply
           known={known}
+          task={second.task}
           reply={
             view.reply.kind === "words" && second.tone !== undefined
               ? { ...view.reply, tone: second.tone }
@@ -4586,8 +4590,11 @@ const NOTHING_ASKED_YET = "Nothing asked yet";
 function MateReply({
   reply,
   known,
+  task,
 }: {
   readonly reply: NonNullable<MateRowReply>;
+  /** The task an automated Mate works on, named before its step. */
+  readonly task?: string | undefined;
   /** The words are the Mate's as read, not what this browser remembered them saying. */
   readonly known: boolean;
 }) {
@@ -4621,6 +4628,11 @@ function MateReply({
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
+        {task === undefined ? null : (
+          <span className="text-sidebar-foreground" data-zerops-surface="sidebar-mate-live-task">
+            {task} ·{" "}
+          </span>
+        )}
         <RunShimmer inline sweeps>
           {reply.words}
         </RunShimmer>

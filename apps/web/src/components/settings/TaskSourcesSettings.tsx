@@ -25,7 +25,6 @@ import {
   IntakeRoom,
   OutLink,
   pressWords,
-  Problem,
   TextField,
   WITHHELD,
   working,
@@ -49,7 +48,9 @@ import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
+  budgetLine,
   limitsLine,
+  readBudget,
   readLimits,
   slackLine,
   taskSourceProblem,
@@ -92,7 +93,12 @@ export function TaskSourcesSettings() {
 export function TaskLimitsSettings() {
   const limits = useOrgTaskSource("hqTaskLimits");
   if (limits.read.setting.state === "unsupported") return null;
-  return <TaskLimitsView controls={limits} />;
+  return (
+    <>
+      <TaskLimitsView controls={limits} />
+      <MonthlyBudgetView controls={limits} />
+    </>
+  );
 }
 
 /** In these settings' place, where this HQ predates them. */
@@ -709,13 +715,13 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
   const [refusal, setRefusal] = useState<string | null>(null);
   // Saved and not yet settled: what was typed stays shown until HQ's read after it lands, or HQ
   // refuses it — never the limits as they were for a frame in between.
-  const [sent, setSent] = useState(false);
-  const settled = ["done", "failed", "unresolved"].includes(read.action.kind);
-  if (sent && settled) {
-    setSent(false);
+  const save = useOwnSave(read.action);
+  if (save.settled !== null) {
+    setRefusal(save.settled.refusal);
     setMinutes(null);
     setCost(null);
   }
+  const sent = save.sent;
   const minutesId = useId();
   const costId = useId();
   const shownMinutes = minutes ?? (held === null ? "" : String(held.minutes));
@@ -741,7 +747,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
                 return;
               }
               setRefusal(null);
-              setSent(true);
+              save.send();
               write({ kind: "task-limits", limits: typed.limits });
             }}
           >
@@ -758,7 +764,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
                 size="sm"
                 type="submit"
               >
-                {pressWords(read.action, ["task-limits"], "Save")}
+                <SaveWords sent={sent} />
               </Button>
             </LimitsFields>
           </form>
@@ -776,10 +782,128 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
             {refusal}
           </p>
         )}
-        <Problem read={read} />
       </div>
     </SettingsRow>
   );
+}
+
+/**
+ * What all the organization's automated Mates may spend in a calendar month (UTC), and what they
+ * spent so far: once spent, HQ starts no task and stops those at work. Saved beside the limits per
+ * task, which it keeps as HQ holds them. An HQ that predates it shows no row.
+ */
+export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"hqTaskLimits"> }) {
+  const { read, write } = controls;
+  const setting = read.setting;
+  const held: HqTaskLimitsView | null = setting.state === "known" ? setting.held : null;
+  const [typed, setTyped] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // A refused amount stays typed beside why, to correct and save again.
+  const save = useOwnSave(read.action);
+  if (save.settled !== null) {
+    setRefusal(save.settled.refusal);
+    if (save.settled.refusal === null) setTyped(null);
+  }
+  const sent = save.sent;
+  const fieldId = useId();
+  if (held !== null && held.spentThisMonthUsd === undefined) return null;
+  const shown = typed ?? (held?.monthlyBudgetUsd == null ? "" : String(held.monthlyBudgetUsd));
+  return (
+    <SettingsRow
+      control={
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (held === null) return;
+            const budget = readBudget(shown);
+            if ("error" in budget) {
+              setRefusal(budget.error);
+              return;
+            }
+            setRefusal(null);
+            save.send();
+            write({
+              kind: "task-limits",
+              limits: {
+                minutes: held.minutes,
+                costUsd: held.costUsd,
+                monthlyBudgetUsd: budget.budgetUsd,
+              },
+            });
+          }}
+        >
+          <Label htmlFor={fieldId}>USD a month</Label>
+          <div className="w-24">
+            <Input
+              disabled={held === null}
+              id={fieldId}
+              inputMode="decimal"
+              onChange={(event) => {
+                setTyped(event.target.value);
+              }}
+              placeholder="No budget"
+              size="sm"
+              value={shown}
+            />
+          </div>
+          <Button
+            disabled={held === null || sent || working(read.action) || typed === null}
+            size="sm"
+            type="submit"
+          >
+            <SaveWords sent={sent} />
+          </Button>
+        </form>
+      }
+      data-zerops-surface="settings-monthly-budget"
+      description="All automated Mates together. Once it is spent, no task starts and those at work stop, until next month or a higher budget."
+      status={held === null ? null : budgetLine(held)}
+      title="Monthly budget"
+    >
+      {refusal === null ? null : (
+        <p className="px-3 pb-3 text-xs text-destructive-foreground" role="alert">
+          {refusal}
+        </p>
+      )}
+    </SettingsRow>
+  );
+}
+
+type LimitsAction = Controls<"hqTaskLimits">["read"]["action"];
+
+/** A limits row's press: as wide as "Saving…" from the first frame, so nothing beside it moves. */
+function SaveWords({ sent }: { readonly sent: boolean }) {
+  return (
+    <span className="grid">
+      <span aria-hidden className="invisible col-start-1 row-start-1">
+        Saving…
+      </span>
+      <span className="col-start-1 row-start-1">{sent ? "Saving…" : "Save"}</span>
+    </span>
+  );
+}
+
+/**
+ * A row's own save on the limits record the two rows share: sent from it until HQ answers the
+ * write it made, and the answer once (`settled`, its refusal's words or none) — never the other
+ * row's write, nor the answer to an earlier one still shown when this one is sent.
+ */
+function useOwnSave(action: LimitsAction) {
+  // The action shown as this row's write was sent; `null` while it has none under way.
+  const [from, setFrom] = useState<{ readonly action: LimitsAction } | null>(null);
+  const answered =
+    from !== null &&
+    action !== from.action &&
+    (action.kind === "done" || action.kind === "failed" || action.kind === "unresolved");
+  if (answered) setFrom(null);
+  return {
+    sent: from !== null && !answered,
+    settled: answered ? { refusal: taskSourceProblem(action) } : null,
+    send: () => {
+      setFrom({ action });
+    },
+  };
 }
 
 /** The limits' two fields side by side, each labelled beside it, and the press after them. */

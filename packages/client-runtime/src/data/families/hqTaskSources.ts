@@ -2,12 +2,14 @@
  * Where automated Mates take tasks from besides GitHub, as the settings read it: the
  * organization's Slack app and Discord application (connected or not, never a token), the
  * manifest a Slack app is made from, the limits on each task; and, per application, the channel
- * it takes tasks from on each, its signed webhooks (never a secret) and its schedules. Each is read
+ * it takes tasks from on each, its signed webhooks (never a secret), its schedules, and the tasks
+ * its automated Mates took (its Automation board). Each is read
  * while a screen demands it. A webhook's secret, which HQ shows only as it is made, is held only
  * while the screen that made it stays open (`hqWebhookReveal`). The organization's GitHub app
  * (connected or not, never its key) is read the same way, beside them in Settings › Automation.
  */
 import type {
+  HqAppTask,
   HqChannelView,
   HqDiscordView,
   HqScheduleView,
@@ -34,7 +36,14 @@ declare module "../model.ts" {
     readonly hqAppWebhooks: ReadonlyArray<HqWebhookView>;
     readonly hqAppSchedules: ReadonlyArray<HqScheduleView>;
     /**
-     * The latest write of this account's to one of them, by its request, and — once HQ answered
+     * Its tasks: queued, at work, and the latest that ended. Read again while shown as HQ's
+     * navigation says its automated Mates' tasks moved (`hqTaskBoardRefresh`): HQ streams no
+     * board of its own.
+     */
+    readonly hqAppTasks: ReadonlyArray<HqAppTask>;
+    /**
+     * The latest write of this account's to one of them (a task's stop: to that task,
+     * `taskStopRequestId`), by its request, and — once HQ answered
      * it — the last read started before that answer: the write shows done once a read started
      * after it lands. `null` until HQ answers.
      */
@@ -65,6 +74,7 @@ export const APP_SETTINGS = [
   "hqAppDiscord",
   "hqAppWebhooks",
   "hqAppSchedules",
+  "hqAppTasks",
 ] as const;
 export type OrgSetting = (typeof ORG_SETTINGS)[number];
 export type AppSetting = (typeof APP_SETTINGS)[number];
@@ -83,6 +93,7 @@ const SUFFIX: Readonly<Record<TaskSourceSetting, string>> = {
   hqAppDiscord: "app-discord",
   hqAppWebhooks: "app-webhooks",
   hqAppSchedules: "app-schedules",
+  hqAppTasks: "app-tasks",
 };
 
 export const settingId = (key: OrgSettingKey | AppSettingKey): string =>
@@ -102,6 +113,14 @@ export const settingRequestScope = (
   family: TaskSourceSetting,
   key: OrgSettingKey | AppSettingKey,
 ): ScopeKey => `hq:${key.orgId}:task-source-request:${settingRequestId(family, key)}`;
+/**
+ * A stop of one of an application's tasks has a request record of its own, by the task: a second
+ * stop never hides where the first stands, and every surface showing the task reads the same one.
+ */
+export const taskStopRequestId = (key: AppSettingKey, taskId: string): string =>
+  JSON.stringify(["hqAppTasks", settingId(key), "stop", taskId]);
+export const taskStopRequestScope = (key: AppSettingKey, taskId: string): ScopeKey =>
+  `hq:${key.orgId}:task-source-request:${taskStopRequestId(key, taskId)}`;
 export const webhookRevealScope = (key: AppSettingKey): ScopeKey =>
   `hq:${key.orgId}:webhook-reveal:${settingId(key)}`;
 
@@ -123,5 +142,6 @@ export const hqAppSlackFamily = detail("hqAppSlack", SUFFIX.hqAppSlack);
 export const hqAppDiscordFamily = detail("hqAppDiscord", SUFFIX.hqAppDiscord);
 export const hqAppWebhooksFamily = detail("hqAppWebhooks", SUFFIX.hqAppWebhooks);
 export const hqAppSchedulesFamily = detail("hqAppSchedules", SUFFIX.hqAppSchedules);
+export const hqAppTasksFamily = detail("hqAppTasks", SUFFIX.hqAppTasks);
 export const hqTaskSourceRequestFamily = detail("hqTaskSourceRequest", "task-source-request");
 export const hqWebhookRevealFamily = detail("hqWebhookReveal", "webhook-reveal");

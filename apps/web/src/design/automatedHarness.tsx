@@ -1,7 +1,7 @@
 /**
  * What sets up and shows automated Mates outside the menu, in each of its states: Settings ›
- * Zerops › HQ's organization API key and Tasks from GitHub, and a task's first message drawn as
- * its issue's card.
+ * Zerops › HQ's organization API key and Tasks from GitHub, and a task's session over its
+ * its session.
  *
  * Served by the dev server at `/design-automated.html` (`?theme=dark`). Open it at the owner's
  * 1786 × 1000. The menu's automated rows are the sidebar harness's Tea Shop; the New Mate
@@ -39,7 +39,7 @@ import {
   TaskSourcesUnsupported,
   WebhooksSettingsView,
 } from "~/components/settings/TaskSourcesSettings";
-import { MateTaskCard, MateTaskMessageRow } from "~/components/zerops/MateTaskCard";
+import { MateTaskMessageRow, MateTaskSessionBar } from "~/components/zerops/MateTaskCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -204,9 +204,19 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
-        <Panel title="A task's first message, and a follow-up">
+        <Panel title="A task's session, and a follow-up">
           <div className="grid max-w-2xl gap-3">
-            <MateTaskCard
+            <MateTaskSessionBar
+              onStop={nothing}
+              session={{
+                status: "working",
+                taskId: "task-12",
+                stoppable: true,
+                workedMs: 754_000,
+                spentUsd: 0.42,
+                change: null,
+                pullRequest: null,
+              }}
               task={{
                 kind: "github-issue",
                 repo: "acme/tea-shop",
