@@ -91,14 +91,24 @@ export function midnightIn(day: SpendDay, timeZone: string): number {
   return wall - offsetAt(first, timeZone);
 }
 
-/** The read's window: from the midnight 29 days before today, to now, in the viewer's zone. */
+/**
+ * The read's window, in the viewer's zone: from the midnight 29 days before today to the midnight
+ * that ends today. Billing answers today's partial bucket only for a window that reaches the start
+ * of tomorrow (measured live: a `till` of 23:59:59 today answers 29 buckets).
+ */
 export function spendWindow(now: number, timeZone: string) {
   const today = dayIn(now, timeZone);
   return {
     from: new Date(midnightIn(addDays(today, 1 - SPEND_DAYS), timeZone)).toISOString(),
-    till: new Date(now).toISOString(),
+    till: new Date(midnightIn(addDays(today, 1), timeZone)).toISOString(),
   };
 }
+
+/** The window's last day: a `till` at midnight ends the day before it. */
+const lastDayOf = (till: string): SpendDay =>
+  /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.0+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(till)
+    ? addDays(till.slice(0, 10), -1)
+    : till.slice(0, 10);
 
 const Item = Schema.Struct({
   projectId: Schema.NonEmptyString,
@@ -134,7 +144,7 @@ export function decodeProjectSpend(answer: unknown): ProjectSpendValue | null {
       }
       return {
         firstDay: listing.from.slice(0, 10),
-        lastDay: listing.till.slice(0, 10),
+        lastDay: lastDayOf(listing.till),
         byProject,
         complete:
           read === listing.items.length &&

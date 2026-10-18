@@ -83,12 +83,17 @@ describe("the spend read's window", () => {
     expect(new Date(midnightIn(day, zone)).toISOString()).toBe(midnight);
   });
 
-  it("reads 30 days: from the midnight 29 days before today, to now", () => {
+  it("today's partial day is the 30th bar: the window runs to the start of tomorrow", () => {
     const now = Date.parse("2026-10-18T17:00:00.000Z");
     expect(spendWindow(now, "Europe/Prague")).toEqual({
       from: "2026-09-18T22:00:00.000Z",
-      till: "2026-10-18T17:00:00.000Z",
+      till: "2026-10-18T22:00:00.000Z",
     });
+    const spend = decodeProjectSpend({
+      ...answer([bucket("tea-prod", "2026-10-18T00:00:00+02:00", 0.35)]),
+      till: "2026-10-19T00:00:00+02:00",
+    });
+    expect(spend).toMatchObject({ firstDay: "2026-09-19", lastDay: "2026-10-18" });
   });
 
   it("asks the organization's whole spend by project and day, its client named", () => {
