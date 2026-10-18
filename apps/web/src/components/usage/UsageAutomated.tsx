@@ -2,6 +2,7 @@
  * Automated work in Usage: the Automated Mates' mark beside people's faces, an automated Mate's
  * tasks under its row, and the month's automated spend against the organization's budget.
  */
+import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { Link } from "@tanstack/react-router";
 import { BotIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -95,7 +96,34 @@ export function UsageMateTaskRows({
   readonly until: string;
 }) {
   const { read, again } = useAppTaskSource("hqAppTasks", appId);
-  const setting = read.setting;
+  return (
+    <UsageMateTaskRowsView
+      again={again}
+      mateProjectId={mateProjectId}
+      nested={nested}
+      setting={read.setting}
+      since={since}
+      until={until}
+    />
+  );
+}
+
+/** The rows drawn from the application's tasks as read, so a harness can look with no account. */
+export function UsageMateTaskRowsView({
+  setting,
+  again,
+  mateProjectId,
+  nested,
+  since,
+  until,
+}: {
+  readonly setting: TaskSourceSettingValue<"hqAppTasks">["setting"];
+  readonly again: () => void;
+  readonly mateProjectId: string;
+  readonly nested: boolean;
+  readonly since: string | null;
+  readonly until: string;
+}) {
   if (setting.state === "unsupported")
     return (
       <TaskNote nested={nested}>

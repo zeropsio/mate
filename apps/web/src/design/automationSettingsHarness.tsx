@@ -12,7 +12,8 @@
 import type { OrgAiKeysRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubView } from "@t3tools/shared/hqGithub";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
-import { StrictMode, type ReactNode } from "react";
+import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { OrganizationKeyView } from "~/components/settings/AutomatedMatesSettings";
@@ -21,6 +22,7 @@ import { IntegrationList } from "~/components/settings/IntegrationRow";
 import { SettingsSection } from "~/components/settings/settingsLayout";
 import {
   DiscordSettingsView,
+  MonthlyBudgetView,
   SlackSettingsView,
   TaskLimitsView,
 } from "~/components/settings/TaskSourcesSettings";
@@ -84,6 +86,46 @@ const DISCORD_OFF = {
   allowed: [],
 };
 
+/**
+ * The limits per task and the monthly budget over one record, as HQ answers a save a moment
+ * later: a budget above $1,000 or more than 120 minutes is refused, anything else kept.
+ */
+function LimitsRows() {
+  const [held, setHeld] = useState<HqTaskLimitsView>({
+    minutes: 60,
+    costUsd: 5,
+    monthlyBudgetUsd: 50,
+    spentThisMonthUsd: 6.44,
+  });
+  const [action, setAction] = useState<unknown>({ kind: "idle" });
+  const limits = {
+    read: { setting: known(held), action, revealed: null } as TaskSourceSettingValue<never>,
+    write: (change: { readonly kind: string; readonly limits?: HqTaskLimitsView }) => {
+      const next = change.limits!;
+      setAction({ kind: "working", verb: "task-limits" });
+      setTimeout(() => {
+        const refusal =
+          (next.monthlyBudgetUsd ?? 0) > 1000
+            ? "HQ refused the budget: it is an amount above $0 and at most $1,000 here."
+            : next.minutes > 120
+              ? "HQ refused the limits: at most 120 minutes here."
+              : null;
+        if (refusal === null) {
+          setHeld((current) => ({ ...current, ...next }));
+          setAction({ kind: "done", verb: "task-limits" });
+        } else setAction({ kind: "failed", words: refusal });
+      }, 900);
+    },
+    again: nothing,
+  };
+  return (
+    <>
+      <TaskLimitsView controls={limits} />
+      <MonthlyBudgetView controls={limits} />
+    </>
+  );
+}
+
 function Page({ children }: { readonly children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background px-8 py-10 text-foreground">
@@ -142,7 +184,11 @@ function Automation({
               />
               <DiscordSettingsView controls={at(DISCORD_OFF)} />
             </IntegrationList>
-            <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
+            {checking ? (
+              <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
+            ) : (
+              <LimitsRows />
+            )}
           </>
         ) : (
           <IntegrationList>{app}</IntegrationList>
