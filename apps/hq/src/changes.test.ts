@@ -847,6 +847,7 @@ describe("a Mate's changes in HQ", () => {
             appName: "Shop",
             changes: [change(1, "open")],
             gitPushes: [],
+            production: false,
             repos: [{ name: "appdev" }, { name: "group" }],
           });
 
@@ -902,9 +903,28 @@ describe("a Mate's changes in HQ", () => {
             appName: null,
             changes: [],
             gitPushes: [],
+            production: false,
             repos: [],
           });
         }),
+    );
+
+    it.effect("a Mate reads whether its application has a production in its own state", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateWithChange(call, fake, owner);
+        const production = Effect.map(
+          call("GET", "/api/mate/self", { headers: auth }),
+          (answer) => (answer.body as { readonly production: unknown }).production,
+        );
+        yield* gitEnvironment(url, appId, "git-stage", "stage", "main");
+        assert.strictEqual(yield* production, false);
+        // Added, never released: production all the same.
+        yield* gitEnvironment(url, appId, "git-prod", "production", "release");
+        assert.strictEqual(yield* production, true);
+      }),
     );
 
     it.effect(

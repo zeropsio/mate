@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { GitHost, holdingRepo } from "./gitHost.ts";
+import { recordedBeyondMain } from "./reconcile.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { can } from "./permissions.ts";
 import { Roles, decidedFresh } from "./roles.ts";
@@ -83,6 +84,8 @@ export const acceptAdoption = (userId: string, preview: GitAdoptionPreview) =>
         { url: remote.url, token, branch: preview.branch },
         preview,
         { name: "HQ", email: "hq@hq.invalid" },
+        preview.seed &&
+          (yield* recordedBeyondMain(yield* SqlClient.SqlClient, preview.repo, preview.main)),
       );
     }),
   );

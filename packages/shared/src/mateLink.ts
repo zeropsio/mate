@@ -110,6 +110,11 @@ export const MateState = Schema.Struct({
    */
   gitPushes: Schema.optionalKey(Schema.Array(MateGitPush)),
   /**
+   * Whether its application has a production, of any target, released or not. Only `GET
+   * /api/mate/self` answers it: absent from the link's state and from an older HQ.
+   */
+  production: Schema.optionalKey(Schema.Boolean),
+  /**
    * Each repository of its application by name, with its connected origin's address. Only `GET
    * /api/mate/self` answers it: absent from the link's state and from an older HQ.
    */

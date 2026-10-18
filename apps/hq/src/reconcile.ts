@@ -76,26 +76,13 @@ export const madeRepo = (git: HqGit, repo: Repo) =>
     });
   });
 
-/** How many recorded things git lacks, by kind; none when the records and git agree. */
-export type Missing = Readonly<Record<string, number>>;
-
-/**
- * Every recorded commit git lacks, and every repository it lacks, counted by kind; not what
- * `withheld` repositories (`<appId>/<repo>`) hold.
- */
-export const missing = (
-  git: HqGit,
-  sql: SqlClient.SqlClient,
-  withheld: ReadonlySet<string>,
-): Effect.Effect<Missing, GitError | SqlError> =>
-  Effect.gen(function* () {
-    const present = new Set((yield* git.list()).map((repo) => `${repo.appId}/${repo.id}`));
-    const named = yield* sql<{
-      readonly app_id: string;
-      readonly repo: string;
-      readonly kind: string;
-      readonly sha: string;
-    }>`
+/** Every commit HQ's records name, by repository and what names it: what git has to keep. */
+const recordedCommits = (sql: SqlClient.SqlClient) => sql<{
+  readonly app_id: string;
+  readonly repo: string;
+  readonly kind: string;
+  readonly sha: string;
+}>`
       SELECT app_id::text AS app_id, name AS repo, 'main' AS kind, main_head AS sha
       FROM hq_repo WHERE main_head IS NOT NULL
       UNION ALL
@@ -113,6 +100,35 @@ export const missing = (
       SELECT e.app_id::text, j.repo, 'deploy', j.sha
       FROM hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
       WHERE j.kind IN ('deploy','push')`;
+
+/**
+ * Whether a record other than the repository's own `main` names `sha`: a commit git keeps beyond
+ * main's history, which adoption must leave reachable.
+ */
+export const recordedBeyondMain = (sql: SqlClient.SqlClient, repo: Repo, sha: string) =>
+  Effect.map(
+    sql`
+      SELECT 1 FROM (${recordedCommits(sql)}) named
+      WHERE app_id = ${repo.appId} AND repo = ${repo.id} AND sha = ${sha} AND kind <> 'main'
+      LIMIT 1`,
+    (rows) => rows.length > 0,
+  );
+
+/** How many recorded things git lacks, by kind; none when the records and git agree. */
+export type Missing = Readonly<Record<string, number>>;
+
+/**
+ * Every recorded commit git lacks, and every repository it lacks, counted by kind; not what
+ * `withheld` repositories (`<appId>/<repo>`) hold.
+ */
+export const missing = (
+  git: HqGit,
+  sql: SqlClient.SqlClient,
+  withheld: ReadonlySet<string>,
+): Effect.Effect<Missing, GitError | SqlError> =>
+  Effect.gen(function* () {
+    const present = new Set((yield* git.list()).map((repo) => `${repo.appId}/${repo.id}`));
+    const named = yield* recordedCommits(sql);
     const repos = yield* sql<{ readonly app_id: string; readonly name: string }>`
       SELECT app_id::text AS app_id, name FROM hq_repo`;
     const counts: Record<string, number> = {};

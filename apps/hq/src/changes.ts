@@ -227,6 +227,8 @@ export class Changes extends Context.Service<
     readonly mateGitPushes: (
       projectId: string,
     ) => Effect.Effect<ReadonlyArray<MateGitPush>, SqlError>;
+    /** Whether the Mate's application has a production, of any target; none out of one. */
+    readonly mateProduction: (projectId: string) => Effect.Effect<boolean, SqlError>;
     /** A picture for the Mate's open change: a raster, kept for its description to show. */
     readonly attach: (
       projectId: string,
@@ -1232,6 +1234,15 @@ export const changesLayer: Layer.Layer<
             ) latest
             ORDER BY declared_seq, repo`;
           return rows.map(({ ci, ...push }) => (ci === null ? push : { ...push, ci }));
+        }),
+      mateProduction: (projectId) =>
+        Effect.gen(function* () {
+          const [placed] = yield* matePlaced(projectId);
+          if (placed === undefined) return false;
+          const rows = yield* sql`
+            SELECT 1 FROM hq_environment
+            WHERE app_id = ${placed.app_id}::uuid AND tier = 'production' LIMIT 1`;
+          return rows.length > 0;
         }),
       editChange: (projectId, repo, number, edit) =>
         Effect.gen(function* () {

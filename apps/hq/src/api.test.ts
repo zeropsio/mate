@@ -2163,8 +2163,15 @@ describe("HQ API", () => {
           );
           // Named as its project is in Zerops (D3).
           const born = { projectId: "P_MATE", name: "P_MATE", face: "face-1" };
-          // A Mate in no application: no changes, pushes or repositories beside its record.
-          const none = { appId: null, appName: null, changes: [], gitPushes: [], repos: [] };
+          // A Mate in no application: no changes, pushes, production or repositories beside its record.
+          const none = {
+            appId: null,
+            appName: null,
+            changes: [],
+            gitPushes: [],
+            production: false,
+            repos: [],
+          };
           assert.deepStrictEqual(yield* self, [
             200,
             { ...born, standupRequestedBy: "owner", closedOff: false, signers: {}, ...none },

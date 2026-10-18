@@ -1082,10 +1082,13 @@ it.live(
           branch: "main",
         };
         const preview = yield* git.previewAdoption(repo, sourceRef);
-        const accepted = yield* git.acceptAdoption(repo, sourceRef, preview, {
-          name: "HQ",
-          email: "hq@hq.invalid",
-        });
+        const accepted = yield* git.acceptAdoption(
+          repo,
+          sourceRef,
+          preview,
+          { name: "HQ", email: "hq@hq.invalid" },
+          false,
+        );
         expect(accepted.kind).toBe("adopted");
         if (accepted.kind !== "adopted") throw new Error("adoption refused");
         yield* Effect.promise(() => checked(pair, ["fetch", "--no-tags", url(), "main"], "mate"));
@@ -1258,10 +1261,13 @@ it.live(
         yield* Effect.promise(() => checked(pair, ["update-ref", "refs/heads/main", joined]));
         const sourceRef = { url: remote.path, token: Redacted.make("fixture"), branch: "main" };
         const preview = yield* git.previewAdoption(repo, sourceRef);
-        const accepted = yield* git.acceptAdoption(repo, sourceRef, preview, author);
+        const accepted = yield* git.acceptAdoption(repo, sourceRef, preview, author, false);
         if (accepted.kind !== "adopted") throw new Error("adoption refused");
         yield* Effect.promise(() => checked(pair, ["fetch", "--no-tags", repoDir(), accepted.sha]));
-        const merge = yield* Effect.promise(() => run(pair, ["merge", "--no-edit", "FETCH_HEAD"]));
+        // HQ never saw the join, so main became the remote's own history: unrelated to the pair's.
+        const merge = yield* Effect.promise(() =>
+          run(pair, ["merge", "--allow-unrelated-histories", "--no-edit", "FETCH_HEAD"]),
+        );
         expect(merge.code).toBe(1);
         expect(
           yield* Effect.promise(() => checked(pair, ["diff", "--name-only", "--diff-filter=U"])),
