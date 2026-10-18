@@ -98,9 +98,9 @@ it.layer(NodeServices.layer)("HQ Git pushes", (it) => {
     },
   ])("a push argv is forced exactly when it carries a force form: $argv", ({ argv, forced }) =>
     Effect.sync(() => {
-      const [collected] = collectPushArgvs(`run(${argv}, signal);`, "x.ts");
-      assert.strictEqual(collected?.argv, argv);
-      assert.strictEqual(FORCE_FORM.test(collected.argv), forced);
+      const collected = collectPushArgvs(`run(${argv}, signal);`, "x.ts").map((push) => push.argv);
+      assert.deepStrictEqual(collected, [argv]);
+      assert.strictEqual(FORCE_FORM.test(argv), forced);
     }),
   );
 
