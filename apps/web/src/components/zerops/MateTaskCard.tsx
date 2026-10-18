@@ -189,6 +189,13 @@ export function MateTaskSessionBar({
           >
             Stop
           </Button>
+        ) : status === "stopping" ? (
+          // Its room held while it stops, so nothing on the band moves at the press.
+          <span aria-hidden="true" className="invisible">
+            <Button disabled size="sm" tabIndex={-1} variant="secondary">
+              Stop
+            </Button>
+          </span>
         ) : null}
       </span>
     </div>

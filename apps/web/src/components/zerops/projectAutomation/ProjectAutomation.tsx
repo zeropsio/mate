@@ -228,6 +228,21 @@ function usePool(groupId: string): {
   return { pool, live, tasks };
 }
 
+/** How many rows each block will hold while the board reads (`predictedBoard`). */
+interface Predicted {
+  readonly atWork: number;
+  readonly queued: number;
+  readonly recent: number;
+  /** The line saying how many more ended earlier. */
+  readonly recentMore?: boolean | undefined;
+}
+
+/**
+ * How Recent last landed, per application, while this page lives: navigation names only each
+ * Mate's latest task, so the next read's placeholders take Recent's size from the last answer.
+ */
+const landed = new Map<string, { readonly recent: number; readonly recentMore: boolean }>();
+
 /**
  * The application's task board: HQ's tasks of it, read while the section is drawn (and again by
  * the data layer as navigation says its tasks moved), live rows moving with navigation; the
@@ -237,7 +252,7 @@ function usePool(groupId: string): {
 function useTaskBoard(
   groupId: string,
   live: ReadonlyMap<string, HqNavigationMateTask>,
-  predicted: { readonly atWork: number; readonly queued: number; readonly recent: number },
+  predicted: Predicted,
   /** An Owner or Admin: each live task has its Stop. */
   admin: boolean,
 ): BoardView {
@@ -248,10 +263,12 @@ function useTaskBoard(
   const [asking, setAsking] = useState<string | null>(null);
   const setting = tasks.read.setting;
   const held = setting.state === "known" ? setting.held : null;
-  const board = useMemo(
-    () => (held === null ? null : boardOf(held, nowMs, groupId, live)),
-    [held, nowMs, groupId, live],
-  );
+  const board = useMemo(() => {
+    if (held === null) return null;
+    const made = boardOf(held, nowMs, groupId, live);
+    landed.set(groupId, { recent: made.recent.length, recentMore: made.recentMore > 0 });
+    return made;
+  }, [held, nowMs, groupId, live]);
   const stoppable = board === null ? [] : [...board.atWork, ...board.queued].map((row) => row.id);
   const stops = useAppTaskStops(groupId, stoppable);
   return {
@@ -262,7 +279,7 @@ function useTaskBoard(
           ? { state: "failed", words: setting.words }
           : setting.state === "withheld" || setting.state === "unsupported"
             ? { state: "none" }
-            : { state: "reading", predicted },
+            : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
     spend: limits.read.setting.state === "known" ? spendLine(limits.read.setting.held) : null,
     onReadAgain: tasks.again,
     onOpen: (route) => {
@@ -581,11 +598,7 @@ export interface BoardView {
   readonly read:
     | {
         readonly state: "reading";
-        readonly predicted: {
-          readonly atWork: number;
-          readonly queued: number;
-          readonly recent: number;
-        };
+        readonly predicted: Predicted;
       }
     | { readonly state: "known"; readonly board: Board }
     | { readonly state: "failed"; readonly words: string }
@@ -995,6 +1008,7 @@ export function TaskBoardView({
         </BoardBlock>
         <BoardBlock name="Recent">
           <Placeholders count={Math.max(1, read.predicted.recent)} />
+          {read.predicted.recentMore === true ? <div aria-hidden="true" className="h-6" /> : null}
         </BoardBlock>
       </div>
     );
@@ -1150,7 +1164,9 @@ export function TaskBoardView({
           </ul>
         )}
         {recentMore === 0 ? null : (
-          <p className="px-2 text-xs text-muted-foreground">{recentMore} more ended earlier.</p>
+          <p className="flex h-6 items-center px-2 text-xs text-muted-foreground">
+            {recentMore} more ended earlier.
+          </p>
         )}
       </BoardBlock>
     </div>

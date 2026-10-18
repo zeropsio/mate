@@ -161,14 +161,18 @@ describe("a task's Stop on its session", () => {
   });
 
   it("says it is stopping, with no Stop, once HQ took the stop", () => {
-    const html = renderToStaticMarkup(
-      <MateTaskSessionBar
-        session={{ ...working, status: "stopping", stoppable: false }}
-        task={issue}
-      />,
-    );
-    expect(html).toContain("Stopping");
-    expect(html).not.toContain(">Stop<");
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(
+        <MateTaskSessionBar
+          session={{ ...working, status: "stopping", stoppable: false }}
+          task={issue}
+        />,
+      );
+    });
+    const root = tree!.root;
+    expect(text(root)).toContain("Stopping");
+    expect(button(root, "Stop").filter((node) => node.props.disabled !== true)).toHaveLength(0);
   });
 });
 
