@@ -36,11 +36,10 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
- * above main's 14, whose runs lacked the agent's last words (`lastSaid`), so no snapshot of
- * another shape loads as this one.
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 16
+ * keeps the task the session holds (`sessionTask`), folded from every run sent since.
  */
-export const STATE_VERSION = 15;
+export const STATE_VERSION = 16;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -271,6 +270,12 @@ export interface ConversationState {
   /** The native thread of the last session, so the next one resumes it. */
   readonly lastNativeRef: string | null;
   /**
+   * The task whose work the agent's session holds: the last task's run sent on it, kept through a
+   * person's, none once a fresh session opens on a thread of its own. Another task's run starts
+   * afresh (`dispatch`).
+   */
+  readonly sessionTask: string | null;
+  /**
    * A usage limit holds the queue until then; `"unknown"` until a probe or a known reset ends it,
    * or the person writes again.
    */
@@ -318,6 +323,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   rotatingFrom: null,
   rotation: null,
   lastNativeRef: null,
+  sessionTask: null,
   pausedUntil: null,
   usageProbeMs: null,
   items: {},

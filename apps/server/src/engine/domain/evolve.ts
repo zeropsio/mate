@@ -160,14 +160,18 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         event.runId,
         (run) => ({ ...run, state: "admitted", admittedAt: event.at }),
       );
-    case "RunSending":
+    case "RunSending": {
       // The engine's handle for the message it sends is the run's own id.
-      return withRun(withTurn(state, event.runId, event.runId), event.runId, (run) => ({
+      const principal = state.runs[event.runId]?.principal;
+      const holding: ConversationState =
+        principal?.kind === "task" ? { ...state, sessionTask: principal.taskId } : state;
+      return withRun(withTurn(holding, event.runId, event.runId), event.runId, (run) => ({
         ...run,
         state: "sending",
         sessionId: event.sessionId,
         turn: run.turn ?? (event.runId as string as TurnHandle),
       }));
+    }
     case "RunStarted": {
       const started = state.runs[event.runId];
       // A turn the agent opened itself took one finished result.
@@ -509,6 +513,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...state,
         rotation: { reason: event.reason, fresh: event.fresh, seed: event.seed },
         threadGeneration: event.fresh ? state.threadGeneration + 1 : state.threadGeneration,
+        // Read loosely: a snapshot from before the session's task was kept carries none.
+        sessionTask: event.fresh ? null : (state.sessionTask ?? null),
       };
     case "AgentAssigned":
       // The agent's own model, none included: null runs its driver's default. Another instance or

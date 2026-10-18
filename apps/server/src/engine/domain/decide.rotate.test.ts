@@ -31,17 +31,22 @@ interface Scene {
   readonly log: ReadonlyArray<KnownEngineEvent>;
 }
 
+/** A command, or one sent on behalf of someone other than the scene's principal. */
+type Step = Command | { readonly as: Principal; readonly command: Command };
+const by = (as: Principal, commands: ReadonlyArray<Command>): ReadonlyArray<Step> =>
+  commands.map((command) => ({ as, command }));
+
 /** Plays commands through decide and evolve; the scene is the last one, the log every one's. */
-const play = (steps: ReadonlyArray<Command>, principal: Principal = crew): Scene => {
+const play = (steps: ReadonlyArray<Step>, principal: Principal = crew): Scene => {
   let state = initialState(conversation);
   const log: Array<KnownEngineEvent> = [];
   let scene: Omit<Scene, "log"> | undefined;
-  steps.forEach((command, index) => {
+  steps.forEach((step, index) => {
     const envelope = {
       commandId: CommandId.make(`c${index}`),
       conversationId: conversation,
-      principal,
-      command,
+      principal: "as" in step ? step.as : principal,
+      command: "as" in step ? step.command : step,
     };
     const decision = decide(state, envelope, T0);
     const events =
@@ -85,9 +90,9 @@ const send = (text: string): Command => ({ _tag: "Send", text });
 const prepared = (run: number): Command => settled(r(run), "run.prepare", { kind: "ok" });
 const sent = (run: number): Command => settled(r(run), "provider.send", { kind: "ok" });
 const closed = (session: string): Command => settled(session, "session.close", { kind: "ok" });
-const ended = (run: number): Command => ({
+const ended = (run: number, session = "s1"): Command => ({
   _tag: "ProviderSignals",
-  sessionId: "s1" as never,
+  sessionId: session as never,
   signals: [{ kind: "turn-ended", turn: T(run), outcome: { kind: "completed" }, source: "agent" }],
 });
 const rotate = (reason: RotateSessionReason, fresh: boolean, seed: string | null): Command => ({
@@ -176,6 +181,74 @@ describe("decide: a session rotates between turns", () => {
         payload: { resume: null, fresh: true, seed: null, rotateFrom: "s1" },
       },
     ]);
+  });
+
+  describe("a task's run never goes on in another task's agent session", () => {
+    const one: Principal = { kind: "task", taskId: "task-1" };
+    const two: Principal = { kind: "task", taskId: "task-2" };
+    // Task 1 worked on s1; task 2 then took a fresh session, s2, and ended its turn there.
+    const twoTasks: ReadonlyArray<Step> = [
+      ...by(one, firstTurn),
+      ...by(two, [
+        rotate("task", true, null),
+        send("task 2's card"),
+        prepared(2),
+        closed("s1"),
+        opened(2, "s2"),
+        sent(2),
+        ended(2, "s2"),
+      ]),
+    ];
+
+    it("a follow-up on an earlier task starts afresh, resuming nothing of the later one", () => {
+      const closing = play([...twoTasks, ...by(one, [send("a review of task 1"), prepared(3)])]);
+      expect(closing.effects).toMatchObject([
+        { kind: "session.close", payload: { sessionId: "s2", reason: "closed" } },
+      ]);
+      expect(
+        closing.events.flatMap((event) => (event._tag === "ItemOpened" ? [event.body] : [])),
+      ).toContainEqual({ kind: "marker", marker: { kind: "session-rotated", reason: "task" } });
+      const next = play([
+        ...twoTasks,
+        ...by(one, [send("a review of task 1"), prepared(3), closed("s2")]),
+      ]);
+      expect(next.effects).toMatchObject([
+        {
+          kind: "session.open",
+          payload: { resume: null, fresh: true, seed: null, rotateFrom: "s2" },
+        },
+      ]);
+      // Sent there, the session holds task 1's work again: task 1's next run goes on in it.
+      const after = play([
+        ...twoTasks,
+        ...by(one, [
+          send("a review of task 1"),
+          prepared(3),
+          closed("s2"),
+          opened(3, "s3"),
+          sent(3),
+          ended(3, "s3"),
+          send("another review of task 1"),
+          prepared(4),
+        ]),
+      ]);
+      expect(after.effects).toMatchObject([
+        { kind: "provider.send", payload: { sessionId: "s3" } },
+      ]);
+    });
+
+    it("a follow-up on the task its session holds goes on in it", () => {
+      const next = play([...twoTasks, ...by(two, [send("a review of task 2"), prepared(3)])]);
+      expect(next.effects).toMatchObject([{ kind: "provider.send", payload: { sessionId: "s2" } }]);
+    });
+
+    it("a person's message goes on in the session whichever task it holds", () => {
+      const next = play([
+        ...twoTasks,
+        ...by({ kind: "person", subject: "ana" }, [send("what next?"), prepared(3)]),
+      ]);
+      expect(next.effects).toMatchObject([{ kind: "provider.send", payload: { sessionId: "s2" } }]);
+    });
   });
 
   it("a rotation for the budget resumes the same thread in its new session", () => {
