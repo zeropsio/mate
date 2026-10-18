@@ -5,6 +5,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import type { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import type { GitEnvironmentFormProps } from "../components/zerops/GitEnvironmentForm";
 import { useAccountOperationsOptional } from "./accountOperations";
@@ -52,14 +53,28 @@ export function useGitEnvironmentFormInputs(
   };
 }
 
-/** The application a Zerops project is in, as HQ's structure holds it: its id and name. */
-export function useApplicationOfProject(
-  projectId: string | undefined,
-): { readonly id: string; readonly name: string } | undefined {
+/**
+ * The application a Zerops project is in, as HQ's structure holds it: its id, name and
+ * environments — `undefined` while HQ's structure is not live or refuses them.
+ */
+export function useApplicationOfProject(projectId: string | undefined):
+  | {
+      readonly id: string;
+      readonly name: string;
+      readonly environments: ReadonlyArray<CanonicalHqNavigationEnvironment> | undefined;
+    }
+  | undefined {
   const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
   if (projectId === undefined) return undefined;
   const app = navigation.structure?.apps.find((entry) =>
     entry.projects.some((project) => project.projectId === projectId),
   );
-  return app === undefined ? undefined : { id: app.id, name: app.name };
+  return app === undefined
+    ? undefined
+    : {
+        id: app.id,
+        name: app.name,
+        environments:
+          navigation.live && Array.isArray(app.environments) ? app.environments : undefined,
+      };
 }
