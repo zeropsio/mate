@@ -50,13 +50,22 @@ export interface StopDeployAgain {
 }
 
 /**
- * The table's columns: name, type, what runs, state, addresses, verbs. Below its container's
- * 42rem a row stacks: name and verbs on its first line, the rest under them.
+ * The table's columns: name, type, what runs, state, addresses, verbs — one row per service from
+ * its container's 42rem. Narrower (a phone), a row is three lines, never one fact per line: name,
+ * type and state with the verbs at its end; what runs and where it answers; then the meters.
  */
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 @2xl/place:grid-cols-[minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,1.35fr)_7.5rem]";
-/** A cell after the name: a line of its own when stacked, its column when wide. */
-const CELL = "col-span-2 min-w-0 @2xl/place:col-span-1 @2xl/place:row-start-1";
+  "grid grid-cols-[minmax(0,auto)_minmax(0,auto)_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 @2xl/place:grid-cols-[minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,1.35fr)_7.5rem]";
+/** Each cell's place: narrow first, then its column in the one-row table. */
+const AT = {
+  name: "col-start-1 row-start-1 min-w-0",
+  type: "col-start-2 row-start-1 min-w-0 @2xl/place:col-start-2",
+  runs: "col-span-2 col-start-1 row-start-2 min-w-0 @2xl/place:col-span-1 @2xl/place:col-start-3 @2xl/place:row-start-1",
+  state: "col-start-3 row-start-1 min-w-0 @2xl/place:col-start-4",
+  addresses:
+    "col-span-2 col-start-3 row-start-2 min-w-0 @2xl/place:col-span-1 @2xl/place:col-start-5 @2xl/place:row-start-1",
+  actions: "col-start-4 row-start-1 @2xl/place:col-start-6",
+} as const;
 
 const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =
   [
@@ -150,6 +159,15 @@ function PlaceServiceLine({
           ? code.deployLog
           : answer.deployLog;
   const again = code?.drift?.redeploy;
+  const viewDeploy =
+    deployLog === undefined ? undefined : (
+      <ViewDeploy
+        onToggle={() => setDeployOpen(!deployOpen)}
+        open={deployOpen}
+        projectId={projectId}
+        target={deployLog}
+      />
+    );
   const state =
     code === undefined ? (
       row.platform === undefined || !row.platform.statusNeedsWord ? undefined : (
@@ -165,7 +183,7 @@ function PlaceServiceLine({
       data-zerops-place-service={row.hostname}
     >
       <div className={ROW_GRID}>
-        <span className="flex min-w-0 flex-col">
+        <span className={`${AT.name} flex flex-col`}>
           <span className="truncate text-body font-medium text-foreground">{row.hostname}</span>
           {row.under === undefined ? null : (
             <span className="truncate text-caption text-muted-foreground">{row.under}</span>
@@ -173,20 +191,19 @@ function PlaceServiceLine({
         </span>
         {/* Only cells with something to say: a stacked row keeps no gap for an empty one. */}
         {row.type === undefined ? null : (
-          <span className={`${CELL} text-body text-muted-foreground @2xl/place:col-start-2`}>
-            {row.type}
-          </span>
+          <span className={`${AT.type} text-body text-muted-foreground`}>{row.type}</span>
         )}
         {code === undefined ? null : (
-          <span className={`${CELL} flex flex-col @2xl/place:col-start-3`}>
+          <span className={`${AT.runs} flex flex-col`}>
             <PlaceRuns row={code} />
+            {viewDeploy === undefined ? null : (
+              <span className="flex @2xl/place:hidden">{viewDeploy}</span>
+            )}
           </span>
         )}
-        {state === undefined ? null : (
-          <span className={`${CELL} flex @2xl/place:col-start-4`}>{state}</span>
-        )}
+        {state === undefined ? null : <span className={`${AT.state} flex`}>{state}</span>}
         {code === undefined ? null : (
-          <span className={`${CELL} flex flex-col gap-1 @2xl/place:col-start-5`}>
+          <span className={`${AT.addresses} flex flex-col gap-1`}>
             <PlaceAddresses
               enablingServiceId={enablingServiceId}
               onEnableRoute={onEnableRoute}
@@ -195,14 +212,10 @@ function PlaceServiceLine({
             />
           </span>
         )}
-        <span className="col-start-2 row-start-1 flex items-center justify-end gap-1 @2xl/place:col-start-6">
-          {deployLog === undefined ? null : (
-            <ViewDeploy
-              onToggle={() => setDeployOpen(!deployOpen)}
-              open={deployOpen}
-              projectId={projectId}
-              target={deployLog}
-            />
+        <span className={`${AT.actions} flex items-center justify-end gap-1`}>
+          {/* At the row's end in the table; under what runs where a row is narrow. */}
+          {viewDeploy === undefined ? null : (
+            <span className="hidden @2xl/place:contents">{viewDeploy}</span>
           )}
           {row.platform?.dashboardUrl === undefined || row.platform.dashboardUrl === "" ? null : (
             <Menu>
@@ -320,11 +333,12 @@ function PlaceRuns({ row }: { readonly row: NonNullable<PlaceServiceRow["code"]>
 
 function PlaceState({ status, tone }: { readonly status: string; readonly tone: GroupRowTone }) {
   const dot = PLACE_DOT_TONE[tone];
-  // `Deployed · 2h ago`: the word beside its dot, its age under it, as the name sits over its repository.
+  // `Deployed · 2h ago`: the word beside its dot, its age under it in the table as the name sits
+  // over its repository; on one line with it where a row is narrow.
   const [word = status, ...rest] = status.split(" · ");
   const age = rest.join(" · ");
   return (
-    <span className="flex min-w-0 flex-col items-start">
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 @2xl/place:flex-col @2xl/place:items-start">
       {dot === undefined ? (
         <span className="min-w-0 text-body break-words text-muted-foreground">{word}</span>
       ) : (
@@ -483,7 +497,7 @@ function PlaceMeters({
 }) {
   return (
     <span
-      className="grid grid-cols-[repeat(auto-fill,10.5rem)] items-center gap-x-4 gap-y-1"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 @2xl/place:grid @2xl/place:grid-cols-[repeat(auto-fill,10.5rem)]"
       data-zerops-place-meters=""
     >
       {METERS.map((meter) => (
