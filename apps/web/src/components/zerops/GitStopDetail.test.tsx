@@ -108,7 +108,7 @@ describe("Git environment detail", () => {
             sha: ci.sha,
             before: null,
             credentialKeptAt: "2026-10-14T10:00:00Z",
-            phase: "closed",
+            phase: "submitting",
           },
           [on]: ci,
           nextActor: "person",
