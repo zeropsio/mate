@@ -237,6 +237,7 @@ describe("a task's chain: where its conversation's task stands now", () => {
       case: "says its change waits for review where it has no pull request",
       current: onIt,
       working: false,
+      record: "done",
       status: "review",
       pullRequest: null,
     },
@@ -274,13 +275,36 @@ describe("a task's chain: where its conversation's task stands now", () => {
       status: "closed",
       pullRequest: "closed",
     },
-  ])("$case", ({ current, working, status, pullRequest }) => {
+  ])("$case", (given) => {
+    const { current, working, status, pullRequest } = given;
     const session = taskSession({
       source: issue,
+      taskId: "t1",
       current,
       working,
-      record: undefined,
-      stopAsked: false,
+      // Done with its change open: navigation says no more than that it is not over.
+      record:
+        "record" in given
+          ? {
+              id: "t1",
+              title: onIt.title,
+              label: "acme/tea-shop#12",
+              url: onIt.url,
+              state: "done",
+              mate: { projectId: "p-juno", name: "Juno" },
+              requestedBy: null,
+              createdAt: "2026-10-17T10:00:00.000Z",
+              startedAt: "2026-10-17T10:01:00.000Z",
+              endedAt: null,
+              spentUsd: null,
+              workedMs: null,
+              detail: null,
+              change: { repo: "web", number: 3 },
+              pullRequest: null,
+              link: null,
+            }
+          : undefined,
+      canStop: true,
     });
     expect(session.status).toBe(status);
     expect(session.pullRequest?.state ?? null).toBe(pullRequest);

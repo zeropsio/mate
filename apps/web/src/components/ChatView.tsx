@@ -8495,6 +8495,7 @@ function ConversationView(props: ChatViewProps) {
                 <div className="shrink-0 border-b border-border/60 px-3 pt-1 pb-2 sm:px-5">
                   <div className="mx-auto w-full max-w-3xl px-4">
                     <MateTaskSession
+                      conversationId={activeThread.id}
                       environmentId={activeThread.environmentId}
                       task={activeThreadTask}
                       onOpenChange={(change) =>

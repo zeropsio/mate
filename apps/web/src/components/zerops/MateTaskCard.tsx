@@ -2,7 +2,8 @@
  * A task's session, at the top of its conversation on an automated Mate: where the task stands in
  * one word beside its dot, where it came from and who opened it with a way out to it, then the
  * change and pull request it made, how long it worked and what it cost as its Mate last reported,
- * and Stop while it is queued, at work or waiting for an answer. The title is the conversation
+ * and Stop, for an Owner or Admin, while it is queued, at work or waiting for an answer — asked on
+ * the band before anything stops, as the board asks. The title is the conversation
  * header's. Every slot holds its room from the first frame, so nothing moves as the task does. The
  * words the agent got with it are its brief, never the person's, so they are never drawn. What
  * people say about the task afterwards, told to its Mate, is drawn as theirs (`MateTaskMessageRow`).
@@ -16,15 +17,11 @@ import {
   type MateTaskSource,
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon, TimerIcon } from "lucide-react";
+import { useState } from "react";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
-import {
-  spentWords,
-  TASK_STATUS_WORDS,
-  workedWords,
-  type TaskSession,
-  type TaskStatus,
-} from "~/zerops/taskSession.logic";
+import { spentWords, type TaskSession } from "~/zerops/taskSession.logic";
+import { TASK_STATUS_WORDS, taskStatusDot, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
 
 import { Button, InlineButton } from "../ui/button";
@@ -35,21 +32,6 @@ export function mateTaskCardSource(task: MateTaskSource): string {
   const author = mateTaskSourceAuthor(task);
   return author === null ? where : `${where} · opened by ${author}`;
 }
-
-/** The dot beside each status: at work, waiting on a person, up for review, failed, else quiet. */
-const DOT: Record<TaskStatus, string> = {
-  queued: "bg-muted-foreground/50",
-  working: "bg-success",
-  waiting: "bg-warning",
-  stopping: "bg-muted-foreground/50",
-  review: "bg-info",
-  merged: "bg-muted-foreground",
-  closed: "bg-muted-foreground/50",
-  done: "bg-muted-foreground",
-  failed: "bg-destructive",
-  stopped: "bg-muted-foreground/50",
-  declined: "bg-muted-foreground/50",
-};
 
 const NOT_KNOWN: TaskSession = {
   status: null,
@@ -65,17 +47,20 @@ const NOT_KNOWN: TaskSession = {
 export function MateTaskSession({
   task,
   environmentId,
+  conversationId,
   onOpenChange,
 }: {
   readonly task: MateTaskSource;
   readonly environmentId: EnvironmentId;
+  /** The conversation's id: it names HQ's task (`mateTaskIdOfConversation`). */
+  readonly conversationId: string;
   readonly onOpenChange?: (change: {
     readonly appId: string;
     readonly repo: string;
     readonly number: number;
   }) => void;
 }) {
-  const { session, appId, stop } = useTaskSession(task, environmentId);
+  const { session, appId, stop } = useTaskSession(task, environmentId, conversationId);
   const openChange =
     onOpenChange === undefined || appId === null || session.change === null
       ? undefined
@@ -99,11 +84,14 @@ export function MateTaskSessionBar({
   readonly task: MateTaskSource;
   /** Where it stands now (`taskSession`); not known: its slots hold their room, empty. */
   readonly session?: TaskSession;
+  /** Stops the task, confirmed on the band; absent while it cannot be stopped from here. */
   readonly onStop?: (() => void) | undefined;
   readonly onOpenChange?: () => void;
 }) {
   const link = mateTaskSourceLink(task);
   const { status, pullRequest, change } = session;
+  const [asking, setAsking] = useState(false);
+  const confirming = asking && onStop !== undefined;
   return (
     <div
       className="flex min-h-7 min-w-0 items-center gap-x-4 text-line"
@@ -115,7 +103,10 @@ export function MateTaskSessionBar({
         data-zerops-surface="mate-task-status"
       >
         {status === null ? null : (
-          <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${DOT[status]}`} />
+          <span
+            aria-hidden="true"
+            className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
+          />
         )}
         <span data-zerops-surface="mate-task-status-words">
           {/* Its room, held while nothing is known: a line of nothing. */}
@@ -163,13 +154,39 @@ export function MateTaskSessionBar({
             </>
           )}
         </span>
-        {onStop !== undefined ? (
-          <Button onClick={onStop} size="sm" variant="secondary">
-            Stop
-          </Button>
-        ) : status === "stopping" ? (
-          // Pressed: it stands where it was, spent, until the task says it stopped.
-          <Button disabled size="sm" variant="secondary">
+        {confirming ? (
+          <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
+            <span className="text-muted-foreground">
+              Stop this task? Its Mate stops where it got to.
+            </span>
+            <Button
+              onClick={() => {
+                setAsking(false);
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              Keep
+            </Button>
+            <Button
+              onClick={() => {
+                setAsking(false);
+                onStop?.();
+              }}
+              size="sm"
+              variant="destructive"
+            >
+              Stop
+            </Button>
+          </span>
+        ) : onStop !== undefined ? (
+          <Button
+            onClick={() => {
+              setAsking(true);
+            }}
+            size="sm"
+            variant="secondary"
+          >
             Stop
           </Button>
         ) : null}

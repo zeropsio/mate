@@ -1,5 +1,7 @@
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { create, type ReactTestInstance } from "react-test-renderer";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { TaskSession } from "~/zerops/taskSession.logic";
 
@@ -114,6 +116,59 @@ describe("a task's issue card, as its chain", () => {
       <MateTaskSessionBar session={{ ...working, status: "stopped" }} task={issue} />,
     );
     expect(factsOf(ended)).not.toContain("Stop");
+  });
+});
+
+describe("a task's Stop on its session", () => {
+  const working: TaskSession = {
+    status: "working",
+    taskId: "task-12",
+    stoppable: true,
+    workedMs: 60_000,
+    spentUsd: 0.1,
+    change: null,
+    pullRequest: null,
+  };
+  const text = (node: ReactTestInstance): string =>
+    node.children.map((child) => (typeof child === "string" ? child : text(child))).join(" ");
+  const button = (root: ReactTestInstance, label: string) =>
+    root.findAll((node) => node.type === "button" && text(node).trim() === label);
+
+  it("asks before it stops the task, as the board asks, and stops it only once confirmed", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const onStop = vi.fn();
+    let tree: ReturnType<typeof create> | undefined;
+    act(() => {
+      tree = create(<MateTaskSessionBar onStop={onStop} session={working} task={issue} />);
+    });
+    const root = tree!.root;
+    act(() => {
+      button(root, "Stop")[0]?.props.onClick();
+    });
+    expect(onStop).not.toHaveBeenCalled();
+    expect(text(root)).toContain("Stop this task? Its Mate stops where it got to.");
+    act(() => {
+      button(root, "Keep")[0]?.props.onClick();
+    });
+    expect(button(root, "Keep")).toHaveLength(0);
+    act(() => {
+      button(root, "Stop")[0]?.props.onClick();
+    });
+    act(() => {
+      button(root, "Stop").at(-1)?.props.onClick();
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("says it is stopping, with no Stop, once HQ took the stop", () => {
+    const html = renderToStaticMarkup(
+      <MateTaskSessionBar
+        session={{ ...working, status: "stopping", stoppable: false }}
+        task={issue}
+      />,
+    );
+    expect(html).toContain("Stopping");
+    expect(html).not.toContain(">Stop<");
   });
 });
 
