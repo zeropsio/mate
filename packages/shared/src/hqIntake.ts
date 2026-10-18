@@ -204,13 +204,19 @@ export const HqAppTask = Schema.Struct({
   title: Schema.String,
   label: Schema.String,
   url: Schema.NullOr(Schema.String),
+  /**
+   * Where it stands: `stopping` is live with a person's stop taken, until its Mate stops; `merged`
+   * and `closed` are done with its change merged or closed unmerged.
+   */
   state: Schema.Literals([
     "queued",
     "assigned",
     "working",
     "waiting",
+    "stopping",
     "done",
     "merged",
+    "closed",
     "failed",
     "stopped",
     "declined",

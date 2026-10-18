@@ -71,10 +71,10 @@ const DROP_TABLES = `DO $$ DECLARE t text; BEGIN
   LOOP EXECUTE 'DROP TABLE IF EXISTS ' || t || ' CASCADE'; END LOOP;
 END $$`;
 
-// Table replacement also replaces migration-owned routines and aggregates.
-const DROP_USAGE_ROUTINES = `DO $$ DECLARE routine record; BEGIN
+// Table replacement also replaces migration-owned routines, aggregates and trigger functions: all `hq_`.
+const DROP_HQ_ROUTINES = `DO $$ DECLARE routine record; BEGIN
   FOR routine IN SELECT p.oid,p.prokind,format('%I.%I(%s)',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)) AS signature
-    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'hq_usage_%'
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'hq\\_%'
   LOOP EXECUTE 'DROP ' || CASE WHEN routine.prokind='a' THEN 'AGGREGATE' ELSE 'FUNCTION' END || ' IF EXISTS ' || routine.signature || ' CASCADE'; END LOOP;
 END $$`;
 
@@ -189,7 +189,7 @@ const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query:
         target.databaseUrl,
       );
       yield* query(DROP_TABLES);
-      yield* query(DROP_USAGE_ROUTINES);
+      yield* query(DROP_HQ_ROUTINES);
       const left = yield* count(`
           SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public'`);

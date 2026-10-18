@@ -307,6 +307,8 @@ export const HqNavigationMateTask = Schema.Struct({
   label: Schema.optionalKey(Schema.String),
   /** It waits for a person's answer (`MateTaskReport.question`); absent: it works or rests. */
   waiting: Schema.optionalKey(Schema.Literal(true)),
+  /** HQ took a person's stop of it and its Mate has not stopped yet; absent: no stop asked. */
+  stopping: Schema.optionalKey(Schema.Literal(true)),
   /** The pull request its change is mirrored to on GitHub; absent where none. */
   pullRequest: Schema.optionalKey(HqPullRequest),
   /**
