@@ -113,6 +113,35 @@ describe("groupLead — whose face leads a group and whose words its line says",
     expect(groupLead(readings)).toEqual({ lead, asks });
   });
 
+  it.each([
+    {
+      case: "an automated Mate waiting for a task never leads over a person's Mate's newer words",
+      readings: [
+        reading("mira", { at: "2026-10-17T08:00:00Z" }),
+        reading("raya", { at: "2026-10-17T18:00:00Z", waitsForTask: true }),
+      ],
+      lead: "mira",
+    },
+    {
+      case: "an automated Mate at work on its task leads as any Mate at work",
+      readings: [
+        reading("mira", { at: "2026-10-17T18:00:00Z" }),
+        reading("raya", { working: true, runSince: "2026-10-17T17:00:00Z" }),
+      ],
+      lead: "raya",
+    },
+    {
+      case: "where every Mate waits for a task, the newest words lead",
+      readings: [
+        reading("ines", { at: "2026-10-17T08:00:00Z", waitsForTask: true }),
+        reading("raya", { at: "2026-10-17T18:00:00Z", waitsForTask: true }),
+      ],
+      lead: "raya",
+    },
+  ])("$case", ({ readings, lead }) => {
+    expect(groupLead(readings).lead).toBe(lead);
+  });
+
   it("leads with nobody in an empty group", () => {
     expect(groupLead([])).toEqual({ lead: undefined, asks: [] });
   });

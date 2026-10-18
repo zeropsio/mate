@@ -18,9 +18,9 @@
  * `window.__newMateHarness.read()` answers the recipe the moment it is asked
  * to, so a press made while it was being read can be watched going through.
  *
- * `&automated=set` offers the Automated choice, `&automated=missing` with the organization holding
- * no API key for it yet (`&admin=no`: to one who can't set it), `&automated=unknown` before
- * the key is read (its note's room held).
+ * `&automated=set` opens *Add automated Mates* instead, `&automated=missing` with the organization
+ * holding no API key for them yet (`&admin=no`: to one who can't set it), `&automated=unknown`
+ * before the key is read; `&sources=none` a project with no source of tasks yet.
  *
  * Fixtures only. Nothing here ships — `design-newmate.html` is not
  * `index.html`, and no route imports this module.
@@ -30,6 +30,8 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { AddAutomatedMatesForm } from "~/components/zerops/AddAutomatedMatesForm";
+import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import {
   newMateDoor,
@@ -49,6 +51,10 @@ const AUTOMATION =
   AUTOMATED === "set" || AUTOMATED === "missing" || AUTOMATED === "unknown"
     ? { key: AUTOMATED as "set" | "missing" | "unknown", admin: params.get("admin") !== "no" }
     : undefined;
+const SOURCES =
+  params.get("sources") === "none"
+    ? null
+    : "GitHub issues labelled “mate” in acme/tea-shop and #support on Slack";
 /** What the repo holds once read: its recipe, or none. */
 const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" : "recipe";
 
@@ -145,6 +151,34 @@ function Harness() {
       </div>
     );
   }
+  if (AUTOMATION !== undefined)
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <Dialog onOpenChange={setOpen} open={open}>
+          <DialogPopup className="max-w-lg">
+            <AddAutomatedMatesForm
+              admin={AUTOMATION.admin}
+              groupName="Acme Docs"
+              keyState={AUTOMATION.key}
+              limits={{ minutes: 60, costUsd: 3, monthlyBudgetUsd: 50, spentThisMonthUsd: 6 }}
+              onCancel={() => setOpen(false)}
+              onCreate={(choice) => {
+                created.push(choice);
+                setOpen(false);
+              }}
+              onOpenKeySettings={() => setLanded("/settings/automation")}
+              people={{ kind: "ready", userRoles: [] }}
+              propose={(names) => ROLLS.find((roll) => !names.includes(roll)) ?? "Juno"}
+              sources={SOURCES}
+              takenBotNames={{ names: TAKEN, complete: true }}
+              tier={loaded ? TIER : undefined}
+              tierLoading={!read}
+              tintFor={(name) => newMateTint(MATES, name)}
+            />
+          </DialogPopup>
+        </Dialog>
+      </div>
+    );
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
@@ -156,8 +190,6 @@ function Harness() {
         }
         defaultTintFor={(name) => newMateTint(MATES, name)}
         defaultWithAgent={role === "dev"}
-        automation={AUTOMATION}
-        onOpenKeySettings={() => setLanded("/settings/zerops")}
         groupName="Acme Docs"
         // As the app's host: Add lands on the new Mate's page, which takes the focus.
         landsElsewhere

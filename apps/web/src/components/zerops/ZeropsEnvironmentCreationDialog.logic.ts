@@ -103,7 +103,7 @@ type BotNameVerdict =
   | { readonly kind: "refused"; readonly reason: "blank" | "long" | "taken"; readonly bot: string }
   | { readonly kind: "unread" };
 
-const CHECKING_NAMES = "Checking which names are taken…";
+export const CHECKING_NAMES = "Checking which names are taken…";
 
 function botNameVerdict(
   raw: string,

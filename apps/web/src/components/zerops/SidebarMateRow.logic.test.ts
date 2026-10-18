@@ -2132,12 +2132,13 @@ describe("mateRowSecond — an automated Mate's line", () => {
           },
         ),
       },
-      line: { kind: "reply", tone: undefined },
+      // After the task it is on: an automated Mate's row names the work it does.
+      line: { kind: "reply", tone: undefined, task: "#12 Fix the checkout total" },
     },
     {
       case: "an automated Mate at work without a step names its task, never its brief's words",
       over: { automated: { task }, view: view("working", { kind: "pending" }) },
-      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+      line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
       case: "an automated Mate at work without a task says its step, never that it waits for one",
@@ -2191,7 +2192,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
         automated: { task: { ...task, waiting: true } },
         view: view("working", { kind: "pending" }),
       },
-      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+      line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
       case: "an automated Mate at rest on a task whose pull request is open says it waits for review",
@@ -2231,7 +2232,11 @@ describe("mateRowSecond — an automated Mate's line", () => {
         automated: { task: { ...task, pullRequest: { number: 14, state: "open" } } },
         view: view("working", { kind: "pending" }),
       },
-      line: { kind: "task", text: "#12 Fix the checkout total · PR #14 open", on: true },
+      line: {
+        kind: "task",
+        text: "#12 Fix the checkout total · working · PR #14 open",
+        on: true,
+      },
     },
     {
       case: "an automated Mate whose pull request merged says it merged",
@@ -2266,7 +2271,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
     {
       case: "an automated Mate on a task names it, whatever is read of the key",
       over: { automated: { task, key: "missing" }, view: view("working", { kind: "pending" }) },
-      line: { kind: "task", text: "#12 Fix the checkout total", on: true },
+      line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
       case: "an automated Mate whose key is not read yet says it waits for a task",

@@ -780,6 +780,17 @@ describe("a Mate on a card", () => {
     ).toEqual(expected);
   });
 
+  it("names the task an automated Mate works on before its step, as the menu row does", () => {
+    expect(
+      cardSecondWords({
+        second: { kind: "reply", tone: undefined, task: "#12 Fix the checkout total" },
+        reply: { kind: "live", words: "Running the tests" },
+        askLine: undefined,
+        pausedUntil: () => "1:00 PM",
+      }),
+    ).toEqual({ text: "#12 Fix the checkout total · Running the tests", tone: "muted" });
+  });
+
   it.each([
     { case: "the viewer's", by: "You", text: "You: Add a cart" },
     { case: "a colleague's", by: "Jan", text: "Jan: Add a cart" },

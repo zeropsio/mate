@@ -50,7 +50,10 @@ afterEach(() => {
 
 async function mount(
   projects: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-  { newProject = true }: { readonly newProject?: boolean } = {},
+  {
+    newProject = true,
+    automated = false,
+  }: { readonly newProject?: boolean; readonly automated?: boolean } = {},
 ) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
@@ -58,9 +61,11 @@ async function mount(
   const root = createRoot(container);
   const onNewMate = vi.fn();
   const onNewProject = vi.fn();
+  const onNewAutomatedMates = vi.fn();
   await act(async () => {
     root.render(
       <SidebarCreateButton
+        onNewAutomatedMates={automated ? onNewAutomatedMates : undefined}
         onNewMate={onNewMate}
         onNewProject={newProject ? onNewProject : undefined}
         projects={projects}
@@ -71,7 +76,7 @@ async function mount(
     root.unmount();
     container.remove();
   });
-  return { container, onNewMate, onNewProject };
+  return { container, onNewMate, onNewProject, onNewAutomatedMates };
 }
 
 describe("SidebarCreateButton — the top row's +", () => {
@@ -109,6 +114,33 @@ describe("SidebarCreateButton — the top row's +", () => {
       choices[1]?.click();
     });
     expect(onNewMate).toHaveBeenCalledWith("tea");
+  });
+
+  it("asks for automated Mates in a project from Add, apart from a person's New Mate", async () => {
+    const one = await mount([{ id: "tea", name: "Tea Shop" }], { automated: true });
+    const item = one.container.querySelector<HTMLElement>('[data-zerops-create="automated"]');
+    expect(item?.textContent).toBe("Automated Mates…");
+    await act(async () => {
+      item?.click();
+    });
+    expect(one.onNewAutomatedMates).toHaveBeenCalledWith("tea");
+    expect(one.onNewMate).not.toHaveBeenCalled();
+    const several = await mount(
+      [
+        { id: "ledger", name: "Ledger API" },
+        { id: "tea", name: "Tea Shop" },
+      ],
+      { automated: true },
+    );
+    await act(async () => {
+      several.container.querySelector<HTMLElement>('[data-zerops-automated-in="ledger"]')?.click();
+    });
+    expect(several.onNewAutomatedMates).toHaveBeenCalledWith("ledger");
+  });
+
+  it("offers no automated Mates where this HQ makes none", async () => {
+    const { container } = await mount([{ id: "tea", name: "Tea Shop" }]);
+    expect(container.querySelector('[data-zerops-create="automated"]')).toBeNull();
   });
 
   it("offers only New project while there is no project to put a Mate in", async () => {

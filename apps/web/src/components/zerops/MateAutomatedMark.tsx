@@ -2,11 +2,11 @@
  * The small mark after an automated Mate's name, in the menu and on its card: it looks like any
  * Mate otherwise, and the mark's words stand in its tooltip, as the Chief's sign's do.
  */
-import { WorkflowIcon } from "lucide-react";
+import { BotIcon } from "lucide-react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-export const MATE_AUTOMATED_WORDS = "Automated: takes tasks from GitHub issues";
+export const MATE_AUTOMATED_WORDS = "Automated — runs on the organization's key";
 
 export function MateAutomatedMark() {
   return (
@@ -21,7 +21,7 @@ export function MateAutomatedMark() {
           />
         }
       >
-        <WorkflowIcon aria-hidden="true" className="size-3" />
+        <BotIcon aria-hidden="true" className="size-3.5" />
       </TooltipTrigger>
       <TooltipPopup side="top">{MATE_AUTOMATED_WORDS}</TooltipPopup>
     </Tooltip>
