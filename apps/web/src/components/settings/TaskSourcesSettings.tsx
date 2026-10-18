@@ -57,9 +57,13 @@ import {
   limitsLine,
   readBudget,
   readLimits,
+  replaceKeysReady,
   SLACK_NEW_APP,
+  SLACK_SIGNATURE_REFUSED,
+  slackChannelsLine,
   slackLine,
   slackManifestApp,
+  slackSignatureRefused,
   taskSourceProblem,
   taskSourcesUnsupported,
 } from "./taskSourcesSettings.logic";
@@ -208,12 +212,15 @@ function SourceAction({
   open,
   onToggle,
   again,
+  connectedWords = "Manage",
 }: {
   readonly setting: SettingValue<unknown>;
   readonly connected: boolean | null;
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly again: () => void;
+  /** Its press's words once connected: *Manage*, unless something there needs doing. */
+  readonly connectedWords?: string;
 }) {
   if (setting.state === "failed")
     return (
@@ -240,7 +247,7 @@ function SourceAction({
       open={open}
       primary={false}
     >
-      {connected ? "Manage" : "Connect"}
+      {connected ? connectedWords : "Connect"}
     </IntegrationAction>
   );
 }
@@ -277,38 +284,51 @@ function AppRows({
 export function SlackSettingsView({
   controls,
   manifest,
+  channels,
   defaultOpen = false,
 }: {
   readonly controls: Controls<"hqSlack">;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
+  /** The bot's channels' read, where the harness hands it; else read while it is managed. */
+  readonly channels?: Controls<"hqSlackChannels">;
   /** Its press's part opened from the start: the harness's and a test's. */
   readonly defaultOpen?: boolean;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
-  // Connected, nothing is left to do here: each project's channel is set on its page.
+  // Connected, nothing is left to do here but manage it: each project's channel is set on its page.
   const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen, false);
   const close = () => setOpen(false);
+  const refused = view !== null && slackSignatureRefused(view);
   return (
     <IntegrationRow
       action={
         <SourceAction
           again={again}
           connected={view?.connected ?? null}
+          connectedWords={refused ? "Replace" : "Manage"}
           onToggle={() => setOpen(!open)}
           open={open}
           setting={setting}
         />
       }
       id={searchableSetting("automation-slack").id}
-      line={sourceLine(
-        read,
-        setting,
-        "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
-        slackLine,
-      )}
+      line={
+        refused && taskSourceProblem(read.action) === null ? (
+          <span className="text-destructive-foreground" role="alert">
+            {SLACK_SIGNATURE_REFUSED}
+          </span>
+        ) : (
+          sourceLine(
+            read,
+            setting,
+            "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
+            slackLine,
+          )
+        )
+      }
       mark={<SlackMark />}
       name="Slack"
       open={open && view !== null}
@@ -328,13 +348,19 @@ export function SlackSettingsView({
               {pressWords(read.action, ["slack-disconnect"], "Disconnect")}
             </InlineButton>
           }
-          warning="Disconnecting stops every project taking tasks from Slack."
+          warning="Disconnecting stops every project taking tasks from Slack until it connects again."
         >
           <AddressField
             hint="Where Slack sends what happens in the workspace: Event Subscriptions › Request URL."
             label="Request URL"
             value={view.eventsUrl}
           />
+          {channels === undefined ? (
+            <SlackChannelsRead />
+          ) : (
+            <SlackChannelsField channels={channels} />
+          )}
+          <SlackReplaceKeys controls={controls} secretFirst={refused} />
         </ManagePanel>
       ) : manifest === undefined ? (
         <SlackStepsWithManifest controls={controls} onCancel={close} view={view} />
@@ -342,6 +368,105 @@ export function SlackSettingsView({
         <SlackSteps controls={controls} manifest={manifest} onCancel={close} view={view} />
       )}
     </IntegrationRow>
+  );
+}
+
+function SlackChannelsRead() {
+  return <SlackChannelsField channels={useOrgTaskSource("hqSlackChannels")} />;
+}
+
+/** Where the bot is: the channels a project can take tasks from, or that it is in none yet. */
+function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlackChannels"> }) {
+  const setting = channels.read.setting;
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-sm font-medium text-foreground">Channels</p>
+      <p className="text-xs text-muted-foreground">
+        {setting.state === "known"
+          ? slackChannelsLine(setting.held)
+          : setting.state === "failed"
+            ? setting.words
+            : "Reading…"}
+        {setting.state === "known" || setting.state === "failed" ? (
+          <>
+            {" "}
+            <InlineButton
+              onClick={() => {
+                channels.again();
+              }}
+            >
+              Look again
+            </InlineButton>
+          </>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+/** A connected Slack's keys replaced in place: either alone, the other kept. */
+function SlackReplaceKeys({
+  controls,
+  secretFirst,
+}: {
+  readonly controls: Controls<"hqSlack">;
+  /** The signing secret is what needs replacing: its field first, focused. */
+  readonly secretFirst: boolean;
+}) {
+  const [botToken, setBotToken] = useState("");
+  const [signingSecret, setSigningSecret] = useState("");
+  const ready = replaceKeysReady(botToken, signingSecret);
+  const busy = working(controls.read.action);
+  const secret = (
+    <KeyField
+      autoFocus={secretFirst}
+      hint="Basic Information › App Credentials › Signing Secret. Empty keeps the one HQ holds."
+      key="secret"
+      label="New signing secret"
+      onChange={setSigningSecret}
+      problem={connectKeyProblem("slack-signing-secret", signingSecret)}
+      secret
+      value={signingSecret}
+    />
+  );
+  const token = (
+    <KeyField
+      hint="OAuth & Permissions › Bot User OAuth Token. Empty keeps the one HQ holds."
+      key="token"
+      label="New bot token"
+      onChange={setBotToken}
+      problem={connectKeyProblem("slack-bot-token", botToken)}
+      secret
+      value={botToken}
+    />
+  );
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready || busy) return;
+        controls.write(
+          { kind: "slack-connect" },
+          {
+            ...(botToken.trim() === "" ? {} : { botToken: botToken.trim() }),
+            ...(signingSecret.trim() === "" ? {} : { signingSecret: signingSecret.trim() }),
+          },
+        );
+        setBotToken("");
+        setSigningSecret("");
+      }}
+    >
+      {secretFirst ? [secret, token] : [token, secret]}
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+          Every project keeps its channel.
+        </p>
+        <Button disabled={!ready || busy} size="sm" type="submit" variant="secondary">
+          {pressWords(controls.read.action, ["slack-connect"], "Replace")}
+        </Button>
+      </div>
+    </form>
   );
 }
 

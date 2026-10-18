@@ -106,6 +106,48 @@ describe("the organization's Slack app", () => {
     r.close();
   });
 
+  it("replaces the signing secret alone of a connected Slack, and keeps it out of every record", async () => {
+    const sent: Array<unknown> = [];
+    const r = rig({
+      slack: async () => connected,
+      connectSlack: async (request) => {
+        sent.push(request);
+        return connected;
+      },
+    });
+    const release = r.host.demandOrg("hqSlack", ORG);
+    await waitFor(r.store, () => r.read("hqSlack").setting.state === "known");
+    await r.host.write(ORG, { kind: "slack-connect" }, { signingSecret: SIGNING });
+    await waitFor(r.store, () => r.read("hqSlack").action.kind === "done");
+    expect(sent).toEqual([{ signingSecret: SIGNING }]);
+    expect(r.records()).not.toContain(SIGNING);
+    release();
+    r.close();
+  });
+
+  it("reads the channels the Slack bot is in while a screen shows them, and again after Slack connects again", async () => {
+    let channels = [{ id: "C042", name: "support" }];
+    const r = rig({
+      slack: async () => connected,
+      connectSlack: async () => {
+        channels = [{ id: "C043", name: "orders" }];
+        return connected;
+      },
+      slackChannels: async () => ({ bot: "mate", channels }),
+    });
+    const release = r.host.demandOrg("hqSlackChannels", ORG);
+    await waitFor(r.store, () => r.read("hqSlackChannels").setting.state === "known");
+    expect(r.read("hqSlackChannels").setting).toMatchObject({
+      held: { bot: "mate", channels: [{ id: "C042", name: "support" }] },
+    });
+    await r.host.write(ORG, { kind: "slack-connect" }, { botToken: BOT_TOKEN });
+    await waitFor(r.store, () =>
+      JSON.stringify(r.read("hqSlackChannels").setting).includes("orders"),
+    );
+    release();
+    r.close();
+  });
+
   it("reads as connecting until a read after HQ's answer shows it, never as it was", async () => {
     let reads = 0;
     let answerReread: (view: HqSlackView) => void = () => {};

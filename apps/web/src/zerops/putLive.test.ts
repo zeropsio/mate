@@ -71,7 +71,6 @@ describe("a reload knows the attempt was this person's", () => {
       orgId: "o-1",
       groupId: "g-1",
       project: "Tea Shop",
-      change: undefined,
       productionId: "p-prod",
       phase: "live",
       tag: "v0.1.0",

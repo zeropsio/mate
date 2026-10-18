@@ -8,8 +8,14 @@
  *   token, checked with Slack (`auth.test`, which names the workspace), and the signing secret,
  *   both sealed (`deployKeys.ts`) and never answered back. Slack sends its events to
  *   `https://<HQ's own domain>/api/intake/slack/<public id>`, the address the manifest names, made
- *   at the first look and kept across connections. Connected to another workspace, the channels
- *   and threads of the one it leaves go.
+ *   at the first look and kept across connections. Either can be replaced while connected. The
+ *   applications' channels and threads stay through a disconnect and the next connection to the
+ *   same workspace (a new app's included); connected to another workspace, the ones of the one it
+ *   leaves go, and an archived channel's mapping goes as a new bot token connects.
+ * - The channels the bot is in (`users.conversations`), listed for a structure writer to pick an
+ *   application's channel from.
+ * - The last time an event's signature did not hold, and the last time one did, kept for the
+ *   settings to say the signing secret is not the app's while the refusal is the later.
  * - An application's channel (`hq_slack_channel`), by a structure writer (`keep_intake`): one Slack
  *   says exists and the bot is in.
  * - An event is taken only once its `X-Slack-Signature` holds — `v0=` and the HMAC-SHA256 of
@@ -33,7 +39,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import type { MateTaskMessage } from "@t3tools/contracts";
-import type { HqChannelView, HqSlackView } from "@t3tools/shared/hqIntake";
+import type { HqChannelView, HqSlackChannels, HqSlackView } from "@t3tools/shared/hqIntake";
 import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -53,7 +59,12 @@ import { DeployKeys } from "./deployKeys.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
-import { SlackApi, type SlackAnswer, type SlackUnreachable } from "./slackApi.ts";
+import {
+  SlackApi,
+  type SlackAnswer,
+  type SlackChannelPage,
+  type SlackUnreachable,
+} from "./slackApi.ts";
 import { REPLIES, askOf, endedText, questionText, statusText, titleOf } from "./slackText.ts";
 import { TaskIntake, TaskSourceChannels, type TaskOnSource } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
@@ -90,29 +101,33 @@ const SIGNING_SECRET = /^[\x21-\x7e]{1,256}$/u;
 /** A channel's id: public `C…`, private `G…` (older) or `C…`. */
 const CHANNEL_ID = /^[CG][A-Z0-9]{2,40}$/u;
 
+/** How many pages of 200 channels the bot's list reads at most. */
+const CHANNEL_PAGES = 10;
+
 /** The reaction that says HQ heard an ask or a reply. */
 const HEARD = "eyes";
 
 /**
  * Whether `signature` (`v0=<hex>`) is Slack's for `body` sent at `timestamp` (seconds), under
- * `secret`, and `timestamp` within five minutes of `nowMs`.
+ * `secret`, and `timestamp` within five minutes of `nowMs`: it `holds`; a fresh, well-formed one
+ * made under another secret is a `mismatch`; anything else is `malformed`.
  */
-export const slackSignatureHolds = (
+export const slackSignatureVerdict = (
   secret: Redacted.Redacted,
   timestamp: string | undefined,
   body: Uint8Array,
   signature: string | undefined,
   nowMs: number,
-) => {
-  if (timestamp === undefined || !/^\d{1,12}$/u.test(timestamp)) return false;
-  if (Math.abs(nowMs / 1000 - Number(timestamp)) > MAX_AGE_SECONDS) return false;
+): "holds" | "mismatch" | "malformed" => {
+  if (timestamp === undefined || !/^\d{1,12}$/u.test(timestamp)) return "malformed";
+  if (Math.abs(nowMs / 1000 - Number(timestamp)) > MAX_AGE_SECONDS) return "malformed";
   const presented = /^v0=([0-9a-f]{64})$/u.exec(signature ?? "")?.[1];
-  if (presented === undefined) return false;
+  if (presented === undefined) return "malformed";
   const expected = NodeCrypto.createHmac("sha256", Redacted.value(secret))
     .update(`v0:${timestamp}:`)
     .update(body)
     .digest();
-  return NodeCrypto.timingSafeEqual(expected, Buffer.from(presented, "hex"));
+  return NodeCrypto.timingSafeEqual(expected, Buffer.from(presented, "hex")) ? "holds" : "mismatch";
 };
 
 /** The Slack app's manifest, its events sent to `eventsUrl`: what an admin makes the app from. */
@@ -160,10 +175,16 @@ export class Slack extends Context.Service<
     readonly manifest: (
       userId: string,
     ) => Effect.Effect<ReturnType<typeof slackManifest>, SlackError>;
+    /** Both to connect; once connected, either alone replaces the one HQ holds. */
     readonly connect: (
       userId: string,
-      secrets: { readonly botToken: Redacted.Redacted; readonly signingSecret: Redacted.Redacted },
+      secrets: {
+        readonly botToken?: Redacted.Redacted | undefined;
+        readonly signingSecret?: Redacted.Redacted | undefined;
+      },
     ) => Effect.Effect<HqSlackView, SlackError>;
+    /** The channels the bot is in, by name: for a structure writer to pick from. */
+    readonly channels: (userId: string) => Effect.Effect<HqSlackChannels, SlackError>;
     readonly disconnect: (userId: string) => Effect.Effect<void, SlackError>;
     /** The channel the application takes tasks from. */
     readonly channelOf: (appId: string) => Effect.Effect<HqChannelView | undefined, SqlError>;
@@ -191,6 +212,10 @@ interface SlackRow {
   readonly token_sealed: Uint8Array | null;
   readonly secret_sealed: Uint8Array | null;
   readonly key_id: string | null;
+  readonly mapped_team_id: string | null;
+  readonly bot_name: string | null;
+  readonly refused_at: string | null;
+  readonly accepted_at: string | null;
 }
 
 /** The connection, its secrets opened. */
@@ -301,15 +326,53 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
         });
 
+      /** A read of what an application may take tasks from: by a structure writer. */
+      const mayIntake = (userId: string) =>
+        Effect.gen(function* () {
+          const verdict = can(
+            { kind: "person", userId },
+            "keep_intake",
+            null,
+            yield* roles.forWrite,
+          );
+          if (!verdict.allow) return yield* refuse("forbidden", verdict.reason);
+        });
+
+      /**
+       * Each application's channel as `token` sees it now: renamed as Slack names it, and gone
+       * where it is archived. One Slack does not show (a private channel a new bot is not in yet,
+       * or Slack away) stays as it is.
+       */
+      const channelsNow = (token: Redacted.Redacted) =>
+        Effect.gen(function* () {
+          const mapped = yield* sql<{ readonly app_id: string; readonly channel_id: string }>`
+            SELECT app_id::text AS app_id, channel_id FROM hq_slack_channel`;
+          for (const { app_id, channel_id } of mapped) {
+            const answer = yield* api.channel(token, channel_id);
+            if (!answer.ok) continue;
+            yield* leader.write(
+              answer.value.archived
+                ? sql`DELETE FROM hq_slack_channel WHERE app_id::text = ${app_id}`
+                : sql`
+                    UPDATE hq_slack_channel SET channel_name = ${answer.value.name}
+                    WHERE app_id::text = ${app_id}`,
+            );
+          }
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logInfo("slack channels not read again", { cause: String(cause) }),
+          ),
+        );
+
       const rowWhere = (publicId: string | null) =>
         Effect.map(
-          publicId === null
-            ? sql<SlackRow>`
-                SELECT public_id, team_id, team_name, bot_user_id, token_sealed, secret_sealed, key_id
-                FROM hq_slack`
-            : sql<SlackRow>`
-                SELECT public_id, team_id, team_name, bot_user_id, token_sealed, secret_sealed, key_id
-                FROM hq_slack WHERE public_id = ${publicId}`,
+          // One row at most (`one`): by its address, or the one there is.
+          sql<SlackRow>`
+            SELECT public_id, team_id, team_name, bot_user_id, token_sealed, secret_sealed, key_id,
+              mapped_team_id, bot_name,
+              to_char(refused_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS refused_at,
+              to_char(accepted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS accepted_at
+            FROM hq_slack WHERE ${publicId === null} OR public_id = ${publicId ?? ""}`,
           (rows) => rows[0],
         );
 
@@ -365,14 +428,41 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           return `https://${zone}${SLACK_EVENTS_PATH}/${publicId}`;
         });
 
-      const view = Effect.gen(function* () {
-        const row = yield* ensured;
-        return {
-          connected: opened(row) !== undefined,
-          workspace: row.team_name,
-          eventsUrl: yield* eventsUrl(row.public_id),
-        } satisfies HqSlackView;
-      });
+      const viewOf = (row: SlackRow) =>
+        Effect.gen(function* () {
+          return {
+            connected: opened(row) !== undefined,
+            workspace: row.team_name,
+            eventsUrl: yield* eventsUrl(row.public_id),
+            eventsRefusedAt: row.refused_at,
+            eventsAcceptedAt: row.accepted_at,
+          } satisfies HqSlackView;
+        });
+      const view = Effect.flatMap(ensured, viewOf);
+
+      /**
+       * An event's signature as it was judged, kept: the latest refusal and acceptance, each written
+       * at most once a minute unless the other is the later — so which is the later always holds.
+       * Never in the way of the event's answer.
+       */
+      const judged = (publicId: string, verdict: "mismatch" | "holds") =>
+        leader
+          .write(
+            verdict === "mismatch"
+              ? sql`
+                  UPDATE hq_slack SET refused_at = now()
+                  WHERE public_id = ${publicId} AND (refused_at IS NULL
+                    OR accepted_at >= refused_at OR refused_at < now() - interval '1 minute')`
+              : sql`
+                  UPDATE hq_slack SET accepted_at = now()
+                  WHERE public_id = ${publicId} AND (accepted_at IS NULL
+                    OR refused_at >= accepted_at OR accepted_at < now() - interval '1 minute')`,
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logInfo("slack signature not kept", { verdict, cause: String(cause) }),
+            ),
+          );
 
       const channelRow = (appId: string) =>
         Effect.map(
@@ -655,56 +745,100 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
           confirmingRefusal(
             Effect.gen(function* () {
               yield* mayConnect(userId);
-              if (!BOT_TOKEN.test(Redacted.value(secrets.botToken)))
+              const given = secrets;
+              if (given.botToken !== undefined && !BOT_TOKEN.test(Redacted.value(given.botToken)))
                 return yield* refuse("invalid", "bot_token");
-              if (!SIGNING_SECRET.test(Redacted.value(secrets.signingSecret)))
+              if (
+                given.signingSecret !== undefined &&
+                !SIGNING_SECRET.test(Redacted.value(given.signingSecret))
+              )
                 return yield* refuse("invalid", "signing_secret");
-              const identity = yield* api
-                .identity(secrets.botToken)
-                .pipe(Effect.catch(() => refuse("conflict", "slack_unreachable")));
-              if (!identity.ok) return yield* refuse("invalid", "bot_token_refused");
               const row = yield* ensured;
-              const token = keys.sealSlack("bot_token", row.public_id, secrets.botToken);
-              const secret = keys.sealSlack("signing_secret", row.public_id, secrets.signingSecret);
+              // Connected, either alone replaces the one HQ holds.
+              const held = opened(row);
+              const botToken = given.botToken ?? held?.token;
+              const signingSecret = given.signingSecret ?? held?.secret;
+              if (botToken === undefined) return yield* refuse("invalid", "bot_token");
+              if (signingSecret === undefined) return yield* refuse("invalid", "signing_secret");
+              const identity =
+                given.botToken === undefined && held !== undefined
+                  ? {
+                      team: held.team,
+                      teamId: held.teamId,
+                      userId: held.botUserId,
+                      name: row.bot_name,
+                    }
+                  : yield* api.identity(botToken).pipe(
+                      Effect.catch(() => refuse("conflict", "slack_unreachable")),
+                      Effect.flatMap((answer) =>
+                        answer.ok
+                          ? Effect.succeed(answer.value)
+                          : refuse("invalid", "bot_token_refused"),
+                      ),
+                    );
+              const token = keys.sealSlack("bot_token", row.public_id, botToken);
+              const secret = keys.sealSlack("signing_secret", row.public_id, signingSecret);
               if (token === undefined || secret === undefined)
                 return yield* refuse("conflict", "no_key_secret");
-              const { team, teamId, userId: botUserId } = identity.value;
+              const { team, teamId, userId: botUserId, name } = identity;
               yield* leader.write(
                 Effect.gen(function* () {
                   // Another workspace's channels and threads are none of this one's.
-                  if (row.team_id !== null && row.team_id !== teamId) {
+                  if (row.mapped_team_id !== null && row.mapped_team_id !== teamId) {
                     yield* sql`DELETE FROM hq_slack_channel`;
                     yield* sql`DELETE FROM hq_slack_thread`;
                   }
                   yield* sql`
                     UPDATE hq_slack SET team_id = ${teamId}, team_name = ${team},
-                      bot_user_id = ${botUserId}, token_sealed = ${token.sealed},
+                      bot_user_id = ${botUserId}, bot_name = ${name}, token_sealed = ${token.sealed},
                       secret_sealed = ${secret.sealed}, key_id = ${token.keyId},
-                      connected_by = ${userId}, connected_at = now()
+                      mapped_team_id = ${teamId}, connected_by = ${userId}, connected_at = now()
                     WHERE public_id = ${row.public_id}`;
+                  // The refusals were of the secret it replaces.
+                  if (given.signingSecret !== undefined)
+                    yield* sql`
+                      UPDATE hq_slack SET refused_at = NULL WHERE public_id = ${row.public_id}`;
                 }),
               );
+              // A new bot token sees the channels as they are now: renamed, or archived.
+              if (given.botToken !== undefined) yield* channelsNow(botToken);
+              return yield* viewOf((yield* rowWhere(row.public_id)) ?? row);
+            }),
+          ),
+        channels: (userId) =>
+          confirmingRefusal(
+            Effect.gen(function* () {
+              yield* mayIntake(userId);
+              const row = yield* ensured;
+              const link = opened(row);
+              if (link === undefined) return yield* refuse("conflict", "slack_not_connected");
+              const found: Array<{ readonly id: string; readonly name: string }> = [];
+              let cursor: string | null = null;
+              for (let page = 0; page < CHANNEL_PAGES; page++) {
+                const answer: SlackAnswer<SlackChannelPage> = yield* api
+                  .memberChannels(link.token, cursor)
+                  .pipe(Effect.catch(() => refuse("conflict", "slack_unreachable")));
+                if (!answer.ok) return yield* refuse("invalid", "bot_token_refused");
+                found.push(...answer.value.channels);
+                cursor = answer.value.next;
+                if (cursor === null) break;
+              }
               return {
-                connected: true,
-                workspace: team,
-                eventsUrl: yield* eventsUrl(row.public_id),
-              } satisfies HqSlackView;
+                bot: row.bot_name,
+                channels: found.toSorted((a, b) => a.name.localeCompare(b.name)),
+              } satisfies HqSlackChannels;
             }),
           ),
         disconnect: (userId) =>
           confirmingRefusal(
             Effect.gen(function* () {
               yield* mayConnect(userId);
-              yield* leader.write(
-                Effect.gen(function* () {
-                  yield* sql`DELETE FROM hq_slack_channel`;
-                  yield* sql`DELETE FROM hq_slack_thread`;
-                  yield* sql`
-                    UPDATE hq_slack SET team_id = NULL, team_name = NULL, bot_user_id = NULL,
-                      token_sealed = NULL, secret_sealed = NULL, key_id = NULL,
-                      connected_by = NULL, connected_at = NULL`;
-                }),
-              );
+              // The applications' channels and threads stay for the next connection to the same
+              // workspace (`mapped_team_id`).
+              yield* leader.write(sql`
+                UPDATE hq_slack SET team_id = NULL, team_name = NULL, bot_user_id = NULL,
+                  bot_name = NULL, token_sealed = NULL, secret_sealed = NULL, key_id = NULL,
+                  connected_by = NULL, connected_at = NULL, refused_at = NULL, accepted_at = NULL`);
             }),
           ),
         channelOf: (appId) =>
@@ -760,16 +894,15 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
                 : ({ kind: "unknown" } as const);
             }
             const now = yield* Clock.currentTimeMillis;
-            if (
-              !slackSignatureHolds(
-                link.secret,
-                delivery.timestamp,
-                delivery.body,
-                delivery.signature,
-                now,
-              )
-            )
-              return { kind: "refused" } as const;
+            const verdict = slackSignatureVerdict(
+              link.secret,
+              delivery.timestamp,
+              delivery.body,
+              delivery.signature,
+              now,
+            );
+            if (verdict !== "malformed") yield* judged(row.public_id, verdict);
+            if (verdict !== "holds") return { kind: "refused" } as const;
             const read = decodeEnvelope(new TextDecoder().decode(delivery.body));
             if (Option.isNone(read)) return { kind: "invalid" } as const;
             const envelope = read.value;

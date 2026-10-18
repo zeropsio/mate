@@ -74,10 +74,7 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     if (current !== undefined && current.phase !== "live" && current.phase !== "failed") return;
     set({
       asked: null,
-      runs: new Map(get().runs).set(
-        input.groupId,
-        startPutLive({ ...input, change: undefined, at: Date.now() }),
-      ),
+      runs: new Map(get().runs).set(input.groupId, startPutLive({ ...input, at: Date.now() })),
     });
   },
   step: (groupId, event) => {

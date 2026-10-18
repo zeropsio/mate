@@ -201,7 +201,6 @@ import {
   ZeropsLoginAddInput,
   ZeropsLoginAddResult,
   ZeropsLoginRemoveInput,
-  ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
   ZeropsMacInput,
   ZeropsMacStreamEvent,
@@ -392,7 +391,6 @@ export const WS_METHODS = {
   zeropsAgentLoginSignOut: "zerops.agentLogin.signOut",
   zeropsLoginAdd: "zerops.login.add",
   zeropsLoginRemove: "zerops.login.remove",
-  zeropsBrowserInput: "zerops.browser.input",
   zeropsMacInput: "zerops.mac.input",
   zeropsMacForget: "zerops.mac.forget",
   zeropsMateUpdate: "zerops.mate.update",
@@ -1181,12 +1179,6 @@ const WsSubscribeZeropsBrowserStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsBro
   stream: true,
 });
 
-/** One input event (click, move, key) forwarded to whatever page the daemon currently has open. */
-const WsZeropsBrowserInputRpc = Rpc.make(WS_METHODS.zeropsBrowserInput, {
-  payload: ZeropsBrowserInput,
-  error: EnvironmentAuthorizationError,
-});
-
 /**
  * The live view of the app an agent opened on the paired Mac (the Mac tab):
  * its window and the view's state. Reaches the Mac on the first subscriber and
@@ -1572,7 +1564,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsLoginAddRpc,
   WsZeropsLoginRemoveRpc,
   WsSubscribeZeropsBrowserStreamRpc,
-  WsZeropsBrowserInputRpc,
   WsSubscribeZeropsMacStreamRpc,
   WsZeropsMacInputRpc,
   WsZeropsMacForgetRpc,

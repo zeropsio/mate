@@ -1172,7 +1172,6 @@ const buildAppUnderTest = (options?: {
             // `~/.agent-browser/default.stream`.
             Layer.mock(ZeropsBrowserStreamModule.ZeropsBrowserStream)({
               subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
-              sendInput: () => Effect.void,
               ...options?.layers?.zeropsBrowserStream,
             }),
             // A test machine pairs no Mac: the suite never reads a pairing or spawns ssh.
@@ -6624,7 +6623,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         layers: {
           zeropsBrowserStream: {
             subscribe: browserStream.subscribe,
-            sendInput: browserStream.sendInput,
           },
         },
       });

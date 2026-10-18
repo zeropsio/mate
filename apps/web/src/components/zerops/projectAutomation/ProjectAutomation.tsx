@@ -359,6 +359,13 @@ function AdminAutomation({
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
   const [open, setOpen] = useState<SourceKind | null>(null);
+  // Read while the Slack channel's dialog is open: what its channel is picked from.
+  const slackChannels = useOrgTaskSource(
+    "hqSlackChannels",
+    open === "slack" &&
+      orgSlack.read.setting.state === "known" &&
+      orgSlack.read.setting.held.connected,
+  );
   // The row whose Stop asks now, and the one whose Stop was confirmed last.
   const [asking, setAsking] = useState<string | null>(null);
   const [pressed, setPressed] = useState<string | null>(null);
@@ -473,7 +480,7 @@ function AdminAutomation({
                   </ul>
                 );
               case "slack":
-                return <AppChannelView controls={slack} source="slack" />;
+                return <AppChannelView choices={slackChannels} controls={slack} source="slack" />;
               case "discord":
                 return <AppChannelView controls={discord} source="discord" />;
               case "webhook":

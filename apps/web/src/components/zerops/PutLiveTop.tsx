@@ -31,7 +31,6 @@ import {
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { useOpenReview } from "~/zerops/review";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 
 import { ComposerAsk } from "../chat/ComposerAsk";
@@ -83,14 +82,12 @@ export interface PutLiveRowProps {
   readonly copied: boolean;
   readonly onCopy: (url: string) => void;
   readonly onAgain: () => void;
-  readonly onSeeCode: () => void;
   readonly onOpenProject: () => void;
   readonly onDismiss: () => void;
 }
 
 const FAILURE_ACTION = {
   again: "Try again",
-  "see-code": "See the code",
   project: "Open the project",
   release: "Release",
 } as const;
@@ -151,11 +148,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
             ) : null}
             <Button
               onClick={
-                action === "again" || action === "release"
-                  ? props.onAgain
-                  : action === "see-code"
-                    ? props.onSeeCode
-                    : props.onOpenProject
+                action === "again" || action === "release" ? props.onAgain : props.onOpenProject
               }
             >
               {FAILURE_ACTION[action]}
@@ -272,7 +265,6 @@ export function usePutLiveRow(groupId: string, face: PutLiveRowProps["face"]): R
   const restore = usePutLive((state) => state.restore);
   const step = usePutLive((state) => state.step);
   const forget = usePutLive((state) => state.forget);
-  const openReview = useOpenReview();
   const navigate = useNavigate();
   const nowMs = useNowMs();
   const addresses = useProductionAddresses(run?.phase === "live" ? run.productionId : undefined);
@@ -301,15 +293,6 @@ export function usePutLiveRow(groupId: string, face: PutLiveRowProps["face"]): R
       onOpenProject={() => {
         forget(groupId);
         void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-      }}
-      onSeeCode={() => {
-        if (run.change === undefined) return;
-        openReview({
-          kind: "change",
-          groupId,
-          repository: run.change.repository,
-          number: run.change.number,
-        });
       }}
       run={run}
     />

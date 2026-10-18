@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  mateAddressNameWords,
-  mateAddressOpenTarget,
-  mateAddressRoleWord,
-} from "./MateAddresses.logic";
+import { mateAddressOpenTarget } from "./MateAddresses.logic";
 
 const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false };
 
@@ -26,46 +22,5 @@ describe("mateAddressOpenTarget", () => {
     { name: "a back button opens nothing", event: { ...click, button: 3 }, expected: "none" },
   ] as const)("$name", ({ event, expected }) => {
     expect(mateAddressOpenTarget(event)).toBe(expected);
-  });
-});
-
-describe("mateAddressRoleWord", () => {
-  it.each([
-    { role: "dev", expected: "Dev" },
-    { role: "preview", expected: "Preview" },
-    { role: "stage", expected: "Stage" },
-    { role: "production", expected: "Production" },
-    { role: undefined, expected: undefined },
-  ] as const)("$role reads $expected", ({ role, expected }) => {
-    expect(mateAddressRoleWord(role)).toBe(expected);
-  });
-});
-
-// The live check of 0.15.144: the Sites list read "Dev appdev", "Preview appstage" — a hostname
-// beside the word that already says what the site is, above an address that names it again.
-describe("mateAddressNameWords", () => {
-  it.each([
-    {
-      name: "a service's bare hostname is said by the role and the address",
-      address: { role: "preview", name: "appstage" },
-      expected: undefined,
-    },
-    {
-      name: "an environment's name tells two of one role apart",
-      address: { role: "stage", name: "app · EU" },
-      expected: "app · EU",
-    },
-    {
-      name: "a dev server's port tells two parts apart",
-      address: { role: "dev", name: "web :5173" },
-      expected: "web :5173",
-    },
-    {
-      name: "a service outside the roles is its name alone",
-      address: { role: undefined, name: "docs" },
-      expected: undefined,
-    },
-  ] as const)("$name", ({ address, expected }) => {
-    expect(mateAddressNameWords(address)).toBe(expected);
   });
 });

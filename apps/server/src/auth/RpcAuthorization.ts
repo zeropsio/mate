@@ -126,7 +126,6 @@ export const RPC_REQUIRED_SCOPES = {
   // clicking/typing into it is a real action on the user's behalf — the same
   // authority as any other environment-mutating RPC.
   [WS_METHODS.subscribeZeropsBrowserStream]: AuthOrchestrationReadScope,
-  [WS_METHODS.zeropsBrowserInput]: AuthOrchestrationOperateScope,
   // The Mac's live view, the same pair: watching is a read, a click or typing operates.
   [WS_METHODS.subscribeZeropsMacStream]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsMacInput]: AuthOrchestrationOperateScope,

@@ -23,7 +23,7 @@ import { useId, useState } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import type { TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
@@ -45,6 +45,7 @@ import {
   scheduleNextLine,
 } from "../../settings/taskSourcesSettings.logic";
 import { tasksWaitingWords } from "../SidebarMateRow.logic";
+import { slackChannelForm } from "./projectAutomation.logic";
 
 type Controls<F extends AppSetting> = TaskSourceControls<F>;
 
@@ -217,12 +218,18 @@ function IntakeAnswer({
 export function AppChannelView({
   controls,
   source,
+  choices,
 }: {
   readonly controls: Controls<"hqAppSlack" | "hqAppDiscord">;
   readonly source: "slack" | "discord";
+  /** Slack's: the channels the bot is in, picked from; without them, an ID is typed. */
+  readonly choices?: TaskSourceControls<"hqSlackChannels">;
 }) {
   const { read, write, again } = controls;
   const [channelId, setChannelId] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [typing, setTyping] = useState(false);
+  const pickerId = useId();
   const setting = read.setting;
   if (setting.state !== "known")
     return (
@@ -232,6 +239,14 @@ export function AppChannelView({
       </>
     );
   const held: HqChannelView | null = setting.held.channel;
+  const form =
+    choices === undefined
+      ? ({ kind: "type", invite: null } as const)
+      : slackChannelForm(choices.read.setting, typing);
+  const busy = working(read.action);
+  const take = (id: string) => {
+    write({ kind: "channel", source, channelId: id });
+  };
   return (
     <>
       {held !== null ? (
@@ -239,7 +254,7 @@ export function AppChannelView({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">{channelLine(held)}</p>
             <Button
-              disabled={working(read.action)}
+              disabled={busy}
               onClick={() => {
                 write({ kind: "channel-stop", source });
               }}
@@ -250,30 +265,90 @@ export function AppChannelView({
             </Button>
           </div>
         </IntakeRoom>
-      ) : (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const typed = channelId.trim();
-            if (typed.length === 0) return;
-            write({ kind: "channel", source, channelId: typed });
-          }}
-        >
-          <TextField
-            label="Channel ID, from the channel's details"
-            onChange={setChannelId}
-            value={channelId}
-            width="w-72"
-          />
-          <Button
-            disabled={working(read.action) || channelId.trim().length === 0}
-            size="sm"
-            type="submit"
+      ) : form.kind === "type" ? (
+        <div className="grid gap-2">
+          {form.invite === null ? null : (
+            <p className="text-xs text-foreground">
+              {form.invite} <InlineButton onClick={() => choices?.again()}>Look again</InlineButton>
+            </p>
+          )}
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const typed = channelId.trim();
+              if (typed.length === 0) return;
+              take(typed);
+            }}
           >
-            {pressWords(read.action, ["channel"], "Take tasks")}
-          </Button>
-        </form>
+            <TextField
+              label="Channel ID, from the channel's details"
+              onChange={setChannelId}
+              value={channelId}
+              width="w-72"
+            />
+            <Button disabled={busy || channelId.trim().length === 0} size="sm" type="submit">
+              {pressWords(read.action, ["channel"], "Take tasks")}
+            </Button>
+          </form>
+          {typing ? (
+            <p className="text-xs text-muted-foreground">
+              Or{" "}
+              <InlineButton onClick={() => setTyping(false)}>
+                choose from the bot's channels
+              </InlineButton>
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (picked !== null) take(picked);
+            }}
+          >
+            <div className="grid w-72 gap-1.5">
+              <Label htmlFor={pickerId}>Channel</Label>
+              <Select
+                disabled={form.kind === "reading"}
+                onValueChange={(next) => {
+                  if (typeof next === "string") setPicked(next);
+                }}
+                value={picked}
+              >
+                <SelectTrigger aria-label="Slack channel" id={pickerId} size="sm">
+                  <SelectValue>
+                    {form.kind === "reading"
+                      ? "Reading channels…"
+                      : (() => {
+                          const name = form.channels.find((channel) => channel.id === picked)?.name;
+                          return name === undefined ? "Choose a channel" : `#${name}`;
+                        })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  {form.kind === "pick"
+                    ? form.channels.map((channel) => (
+                        <SelectItem key={channel.id} value={channel.id}>
+                          {`#${channel.name}`}
+                        </SelectItem>
+                      ))
+                    : null}
+                </SelectPopup>
+              </Select>
+            </div>
+            <Button disabled={busy || picked === null} size="sm" type="submit">
+              {pressWords(read.action, ["channel"], "Take tasks")}
+            </Button>
+          </form>
+          <p className="text-xs text-muted-foreground">
+            Not listed? Invite the bot to it, or{" "}
+            <InlineButton onClick={() => setTyping(true)}>type its ID</InlineButton>.
+          </p>
+        </div>
       )}
       <Problem read={read} />
     </>

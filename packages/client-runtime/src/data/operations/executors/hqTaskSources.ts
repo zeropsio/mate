@@ -80,11 +80,15 @@ export function makeTaskSourceExecutor(options: {
           switch (write.kind) {
             case "slack-connect": {
               if (api.connectSlack === undefined) return null;
+              // Both to connect; once connected, either alone replaces the one HQ holds.
               const botToken = secrets?.botToken;
               const signingSecret = secrets?.signingSecret;
-              if (botToken === undefined || signingSecret === undefined)
+              if (botToken === undefined && signingSecret === undefined)
                 return Promise.reject(refused("Enter the token and the secret again."));
-              return api.connectSlack({ botToken, signingSecret });
+              return api.connectSlack({
+                ...(botToken === undefined ? {} : { botToken }),
+                ...(signingSecret === undefined ? {} : { signingSecret }),
+              });
             }
             case "slack-disconnect":
               return api.disconnectSlack?.() ?? null;
