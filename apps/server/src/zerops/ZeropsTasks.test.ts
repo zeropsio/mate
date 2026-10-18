@@ -36,6 +36,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { CommitAuthorUnset, ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
+import { type WorkingCopyBase, ZeropsWorkingCopy } from "./ZeropsWorkingCopy.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import { emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
@@ -156,6 +157,8 @@ const rig = (
     readonly held?: ReadonlyArray<ConversationView>;
     /** Setting a task's commit author fails on these dev services. */
     readonly authorUnsetOn?: ReadonlyArray<string>;
+    /** Putting the working copies on a task's base leaves these dev services as they were. */
+    readonly workingCopyMissed?: ReadonlyArray<string>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -171,6 +174,8 @@ const rig = (
     const turnOwners = new Map<string, Principal>();
     /** Each commit author set on the working copies, and how many messages were sent by then. */
     const authored: Array<{ author: MateTaskCommitAuthor; sentBefore: number }> = [];
+    /** Each time the working copies were put on a task's base, and how many messages were sent by then. */
+    const copies: Array<{ taskId: string; base: WorkingCopyBase; sentBefore: number }> = [];
     /** The engine's receipts: a command id told again is answered by its first result. */
     const receipts = new Map<string, CommandResult>();
     const changes = yield* PubSub.unbounded<ConversationId>();
@@ -293,6 +298,13 @@ const rig = (
           return where.length === 0 ? Effect.void : Effect.fail(new CommitAuthorUnset({ where }));
         }),
     });
+    const workingCopy = Layer.mock(ZeropsWorkingCopy)({
+      hold: (taskId, base) =>
+        Effect.sync(() => {
+          copies.push({ taskId, base, sentBefore: delivered.length });
+          return { missed: options.workingCopyMissed ?? [], unlisted: false };
+        }),
+    });
     const bus = ProviderRuntimeEventBusTest.make(
       Stream.fromPubSub(runtime) as Stream.Stream<SpiEvent>,
     );
@@ -307,6 +319,7 @@ const rig = (
             standUp,
             bus,
             commitAuthor,
+            workingCopy,
             ZeropsTaskLedgerModule.layerMemory(options.ledger),
           ),
         ),
@@ -380,6 +393,7 @@ const rig = (
       delivered,
       rotations,
       authored,
+      copies,
       link,
       sent,
       reports,
@@ -1749,6 +1763,110 @@ describe("an automated Mate works every task in one conversation", () => {
       );
       assert.strictEqual(sent.findLast((each) => each.taskId === "task-1")?.state, "stopped");
       assert.strictEqual(sent.findLast((each) => each.taskId === "task-2")?.state, "working");
+    }),
+  );
+});
+
+describe("an automated Mate's working copies hold the task it works", () => {
+  const CHANGE_1 = { repo: "appdev", number: 3, branch: "mate/P_ROBOT/3" };
+  /** Task 1 done, then task 2 taken and done: the working copies hold task 2. */
+  const twoDone = (options: Parameters<typeof rig>[0] = {}) =>
+    Effect.gen(function* () {
+      const harness = yield* rig(options);
+      yield* harness.link.receive(task("task-1"));
+      yield* harness.move(TASKS, {
+        ...harness.views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-1", 1, 0, 1),
+      });
+      yield* harness.link.receive(task("task-2", 43));
+      yield* harness.move(TASKS, {
+        ...harness.views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-2", 2, 2, 3),
+      });
+      return harness;
+    });
+  const contextOf = (delivered: ReadonlyArray<Delivered>, id: string) => {
+    const command = delivered.find((each) => each.commandId === `task-message:${id}`)?.command;
+    return command?._tag === "Send" ? (command.context ?? []).join("\n") : "";
+  };
+
+  it.effect("a new task starts on a working copy at main, its earlier work kept", () =>
+    Effect.gen(function* () {
+      const { copies } = yield* twoDone();
+      // Each task's working copies put on main before its brief went out.
+      assert.deepStrictEqual(copies, [
+        { taskId: "task-1", base: { kind: "main" }, sentBefore: 0 },
+        { taskId: "task-2", base: { kind: "main" }, sentBefore: 1 },
+      ]);
+    }),
+  );
+
+  it("the brief says each task gets its own change, started from main", () => {
+    const brief = ZeropsTasksModule.taskBrief(task("task-1"));
+    assert.include(brief, "This task gets its own change and pull request");
+    assert.include(brief, "never merge in or carry over another task's work");
+  });
+
+  it.effect("a follow-up starts on its own change's branch", () =>
+    Effect.gen(function* () {
+      const { copies, delivered, link } = yield* twoDone();
+      yield* link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1);
+      assert.deepStrictEqual(copies.at(-1), {
+        taskId: "task-1",
+        base: { kind: "change", branch: "mate/P_ROBOT/3" },
+        sentBefore: 2,
+      });
+      assert.include(contextOf(delivered, "m-1"), "Your working copy is on this task's own change");
+    }),
+  );
+
+  it.effect("a working copy already holding the task is left alone", () =>
+    Effect.gen(function* () {
+      const { copies, delivered, link } = yield* twoDone();
+      yield* link.message("task-2", message("m-2", "Also the teapot."), {
+        ...CHANGE_1,
+        number: 4,
+        branch: "mate/P_ROBOT/4",
+      });
+      assert.strictEqual(copies.length, 2);
+      assert.isTrue(delivered.some((each) => each.commandId === "task-message:m-2"));
+    }),
+  );
+
+  it.effect("a follow-up never moves the working copies under another task's run", () =>
+    Effect.gen(function* () {
+      const { copies, link, move, views } = yield* rig();
+      yield* link.receive(task("task-1"));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-1", 1, 0, 1),
+      });
+      yield* link.receive(task("task-2", 43));
+      // Task 2's run is on: task 1's follow-up joins it where the working copies are.
+      yield* link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1);
+      assert.deepStrictEqual(
+        copies.map((each) => each.taskId),
+        ["task-1", "task-2"],
+      );
+    }),
+  );
+
+  it.effect("a failing git step leaves the working copy and the task goes on", () =>
+    Effect.gen(function* () {
+      const { delivered, link, sent } = yield* rig({ workingCopyMissed: ["appdev"] });
+      yield* link.receive(task("task-1"));
+      assert.strictEqual(delivered.length, 1);
+      assert.deepStrictEqual(sent, [
+        {
+          taskId: "task-1",
+          state: "accepted",
+          conversationId: TASKS,
+          detail: "Started on the working copy as it was on appdev.",
+        },
+      ]);
     }),
   );
 });
