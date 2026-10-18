@@ -56,9 +56,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         )
         .click(),
     );
-    yield* Effect.promise(() =>
-      page.locator('.chat-header-review [data-zerops-surface="sidebar-project-release"]').click(),
-    );
     expect(page.url()).not.toContain(`/Shop-production`);
   });
   /** The release's review lists what goes out: the changes it carries, by their titles. */

@@ -3727,8 +3727,15 @@ code {
     color: var(--sidebar-muted-foreground);
   }
 
+  /* A door: its press opens what waits for production (`ProjectReviewMarks`). */
   .menu-mark-release {
     color: var(--primary);
+    cursor: pointer;
+    transition: background-color 150ms ease-out;
+  }
+
+  .menu-mark-release:hover {
+    background: color-mix(in oklab, currentColor 20%, transparent);
   }
 
   .menu-mark-icon {
