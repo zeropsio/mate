@@ -2722,6 +2722,38 @@ describe("deriveMessagesTimelineRows", () => {
     expect(drawn(undefined).filter((row) => row.id === "m0")).toEqual([]);
   });
 
+  it("draws nothing for a task's brief sent again when its Mate takes it back, never the brief's words", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 12,
+      url: "https://github.com/acme/tea-shop/issues/12",
+      title: "Fix the checkout total",
+      author: "nova-dev",
+    } as const;
+    const first = user("m0", 0, "Work issue #12 in the project, then open a change.");
+    const again = user("m2", 2, "Work issue #12 in the project, then open a change.");
+    const withTask = (entry: typeof first) => ({
+      ...entry,
+      message: {
+        ...(entry as Extract<typeof entry, { kind: "message" }>).message,
+        task: issue,
+        taskAsk: "The total skips the tax line.",
+      },
+    });
+    const drawn = rows({
+      entries: [
+        withTask(first),
+        tool("w1", "t1", 1),
+        withTask(again),
+        tool("w3", "t3", 3),
+      ] as never,
+      settled: "t3",
+    });
+    expect(drawn.filter((row) => row.kind === "task-ask").map((row) => row.id)).toEqual(["m0"]);
+    expect(JSON.stringify(drawn)).not.toContain("Work issue #12");
+  });
+
   it("draws a follow-up told to a task's Mate as its author's, from where they said it, never as the viewer's words", () => {
     const issue = {
       kind: "github-issue",

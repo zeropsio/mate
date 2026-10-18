@@ -2203,6 +2203,18 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
+      case: "an automated Mate whose finished task's pull request is open says it waits for review while it works on",
+      over: {
+        automated: { task: { ...task, done: true, pullRequest: { number: 14, state: "open" } } },
+        view: view("working", { kind: "pending" }),
+      },
+      line: {
+        kind: "task",
+        text: "#12 Fix the checkout total · PR #14 up for review",
+        on: false,
+      },
+    },
+    {
       case: "an automated Mate at rest on a task whose pull request is open says it waits for review",
       over: { automated: { task: { ...task, pullRequest: { number: 14, state: "open" } } } },
       line: {

@@ -2644,6 +2644,11 @@ export function deriveMessagesTimelineRows(input: {
   // conversation, so the brief's words are never drawn. What its asker wrote opens the
   // conversation as theirs; an ask with no text (or a Mate from before asks were kept) draws no
   // row, and the run under it opens the conversation.
+  // Only the conversation's first brief opens it: one sent again (a task put back in line and
+  // taken again) draws nothing.
+  const firstBriefId = entries.find(
+    (entry) => entry.kind === "message" && entry.message.task !== undefined,
+  )?.id;
   const personRow = (
     entry: MessageEntry,
     index: number,
@@ -2651,7 +2656,7 @@ export function deriveMessagesTimelineRows(input: {
   ): MessagesTimelineRow | null => {
     const { task: source, taskAsk } = entry.message;
     if (source !== undefined) {
-      return taskAsk === undefined || taskAsk === ""
+      return taskAsk === undefined || taskAsk === "" || entry.id !== firstBriefId
         ? null
         : { kind: "task-ask", id: entry.id, createdAt: entry.createdAt, source, text: taskAsk };
     }

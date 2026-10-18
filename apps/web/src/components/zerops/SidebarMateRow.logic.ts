@@ -1096,7 +1096,8 @@ export function mateAutomatedLine(
       on: false,
     };
   const working = state === "working";
-  const pullRequest = pullRequestWords(task.pullRequest, working);
+  // A task its Mate finished says its pull request at rest, whatever the Mate does meanwhile.
+  const pullRequest = pullRequestWords(task.pullRequest, working && task.done !== true);
   const line = (words: string | null) =>
     words === null ? mateTaskLine(task) : `${mateTaskLine(task)} · ${words}`;
   if (task.stopping === true)
