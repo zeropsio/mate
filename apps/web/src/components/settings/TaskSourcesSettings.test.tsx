@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { AppIntakeView } from "./AutomatedMatesSettings";
 import {
@@ -91,10 +92,12 @@ describe("Slack in Settings", () => {
         manifest={controls(known('{"display_information":{}}'))}
       />,
     );
-    expect(shown(html)).toContain("Create a Slack app from this manifest.");
+    expect(shown(html)).toContain("Create the Slack app");
     expect(shown(html)).toContain("Copy manifest");
-    expect(html).toContain('href="https://api.slack.com/apps?new_app=1"');
-    expect(shown(html)).toContain("Install it to your workspace.");
+    expect(html).toContain(
+      `href="https://api.slack.com/apps?new_app=1&amp;manifest_json=${encodeURIComponent('{"display_information":{}}')}"`,
+    );
+    expect(shown(html)).toContain("Install it to your workspace");
     expect(shown(html)).toContain("Bot token");
     expect(shown(html)).toContain("Signing secret");
   });
@@ -116,6 +119,54 @@ describe("Slack in Settings", () => {
     );
     const after = view.root.findAllByType(Input).filter((node) => node.props.type === "password");
     expect(after.map((node) => node.props.value)).toEqual(["", ""]);
+    view.unmount();
+  });
+
+  it("shows the address Slack sends its requests to before anything is connected, with its Copy", () => {
+    const html = renderToStaticMarkup(
+      <SlackSettingsView
+        controls={controls(known(slackOff))}
+        defaultOpen
+        manifest={controls({ state: "reading" })}
+      />,
+    );
+    expect(shown(html)).toMatch(/Request URL https:\/\/hq\.example\/slack (Copied )?Copy/u);
+  });
+
+  it("says why HQ's manifest is not at hand, and keeps Slack's own page to make the app by hand", () => {
+    const html = renderToStaticMarkup(
+      <SlackSettingsView
+        controls={controls(known(slackOff))}
+        defaultOpen
+        manifest={controls({
+          state: "failed",
+          words: "HQ does not know its own public address yet.",
+        })}
+      />,
+    );
+    expect(shown(html)).toContain("HQ does not know its own public address yet.");
+    expect(html).toContain('href="https://api.slack.com/apps?new_app=1"');
+  });
+
+  it("offers Connect only once every key holds as HQ takes it", () => {
+    const view = rendered(
+      <SlackSettingsView
+        controls={controls(known(slackOff))}
+        defaultOpen
+        manifest={controls(known("{}"))}
+      />,
+    );
+    const connect = () =>
+      view.root.findAll((node) => node.props.type === "submit" && node.type === Button)[0]!;
+    const [token, signing] = view.root
+      .findAllByType(Input)
+      .filter((node) => node.props.type === "password");
+    expect(connect().props.disabled).toBe(true);
+    view.type(token!, "xoxp-1");
+    view.type(signing!, SIGNING);
+    expect(connect().props.disabled).toBe(true);
+    view.type(token!, BOT_TOKEN);
+    expect(connect().props.disabled).toBe(false);
     view.unmount();
   });
 
@@ -224,8 +275,8 @@ describe("Discord in Settings", () => {
         defaultOpen
       />,
     );
-    expect(shown(html)).toContain("the address that appears here once it is connected");
-    expect(shown(html)).not.toContain("Copy URL");
+    expect(shown(html)).toContain("The address appears here once connected.");
+    expect(shown(html)).not.toContain("Copy");
   });
 
   it("shows a connected application's invite link and who may use it", () => {

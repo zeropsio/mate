@@ -9,8 +9,10 @@ import {
   readLimits,
   scheduleLine,
   scheduleNextLine,
+  connectKeyProblem,
   sectionState,
   slackLine,
+  slackManifestApp,
   taskSourceProblem,
   taskSourcesUnsupported,
   workingWords,
@@ -181,5 +183,60 @@ describe("what the settings' forms take", () => {
     { case: "an ID removed leaves it", held: [IDA, NOVA], remove: IDA, after: { userIds: [NOVA] } },
   ])("the Discord allowlist: $case", ({ held, add, remove, after }) => {
     expect(allowlistAfter(held, add === undefined ? { remove: remove! } : { add })).toEqual(after);
+  });
+});
+
+describe("making the organization's Slack app from HQ's manifest", () => {
+  // As HQ makes it (`apps/hq/src/slack.ts`): its events sent to HQ's own address.
+  const EVENTS = "https://hq-acme.zerops.app/api/intake/slack/acme";
+  const manifest = {
+    display_information: { name: "Mate" },
+    features: { bot_user: { display_name: "Mate", always_online: true } },
+    oauth_config: { scopes: { bot: ["app_mentions:read", "chat:write", "users:read.email"] } },
+    settings: {
+      event_subscriptions: { request_url: EVENTS, bot_events: ["app_mention"] },
+      socket_mode_enabled: false,
+    },
+  };
+
+  it("opens Slack's new app page with HQ's manifest whole, its requests sent to HQ's address and its scopes", () => {
+    const app = slackManifestApp(JSON.stringify(manifest, null, 2))!;
+    const url = new URL(app.createUrl);
+    expect(`${url.origin}${url.pathname}`).toBe("https://api.slack.com/apps");
+    expect(url.searchParams.get("new_app")).toBe("1");
+    expect(JSON.parse(url.searchParams.get("manifest_json")!)).toEqual(manifest);
+    expect(app.requestUrls).toEqual([EVENTS]);
+    expect(app.scopes).toEqual(["app_mentions:read", "chat:write", "users:read.email"]);
+  });
+
+  it.each([
+    { case: "no JSON", text: "not json" },
+    { case: "no object", text: "[]" },
+  ])("offers no one-press app where HQ's manifest is $case", ({ text }) => {
+    expect(slackManifestApp(text)).toBeNull();
+  });
+});
+
+describe("what a connection's fields take before Connect", () => {
+  it.each([
+    { key: "slack-bot-token", typed: "", problem: null },
+    { key: "slack-bot-token", typed: ["xoxb", "1", "acme"].join("-"), problem: null },
+    { key: "slack-bot-token", typed: "xoxp-1", problem: "A bot token starts with xoxb-." },
+    { key: "slack-signing-secret", typed: "a b", problem: "A signing secret has no spaces." },
+    { key: "discord-application-id", typed: "1234567890", problem: null },
+    {
+      key: "discord-application-id",
+      typed: "12ab",
+      problem: "An application ID is a number of up to 20 digits.",
+    },
+    { key: "discord-public-key", typed: "AB".repeat(32), problem: null },
+    {
+      key: "discord-public-key",
+      typed: "abc",
+      problem: "A public key is 64 characters, 0–9 and a–f.",
+    },
+    { key: "discord-bot-token", typed: "a b", problem: "A bot token has no spaces." },
+  ] as const)("$key typed as '$typed' says $problem", ({ key, typed, problem }) => {
+    expect(connectKeyProblem(key, typed)).toBe(problem);
   });
 });

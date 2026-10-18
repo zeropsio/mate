@@ -201,7 +201,11 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
-import { resolveRightPanelAvailability, type RightPanelKind } from "../rightPanelKinds";
+import {
+  isRightPanelSite,
+  resolveRightPanelAvailability,
+  type RightPanelKind,
+} from "../rightPanelKinds";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
@@ -401,7 +405,6 @@ import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog"
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
-import { MateTaskSession } from "./zerops/MateTaskCard";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
@@ -8192,8 +8195,9 @@ function ConversationView(props: ChatViewProps) {
     }
     kind satisfies never;
   };
+  // A site's tab is the site alone, drawn by `ServiceBrowserPanels`: no page and no head over it.
   const rightPanelPageBody =
-    activeThreadRef && activeRightPanelSurface ? (
+    activeThreadRef && activeRightPanelSurface && !isRightPanelSite(activeRightPanelSurface) ? (
       <Suspense fallback={<Loading label="The panel" shape="room" />}>
         {(() => {
           switch (activeRightPanelSurface.kind) {
@@ -8252,7 +8256,7 @@ function ConversationView(props: ChatViewProps) {
                 />
               );
             case "browser":
-              return "url" in activeRightPanelSurface ? null : (
+              return (
                 <ZeropsBrowserSurface
                   mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
                   onOpenImage={onExpandTimelineImage}
@@ -8489,26 +8493,6 @@ function ConversationView(props: ChatViewProps) {
             ) : null}
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              {/* A task's session stands above its conversation: its state, cost and Stop stay
-                  in sight however far the conversation scrolls. */}
-              {activeThreadTask !== null && activeThreadRef ? (
-                <div className="shrink-0 border-b border-border/60 px-3 pt-1 pb-2 sm:px-5">
-                  <div className="mx-auto w-full max-w-3xl px-4">
-                    <MateTaskSession
-                      conversationId={activeThread.id}
-                      environmentId={activeThread.environmentId}
-                      task={activeThreadTask}
-                      onOpenChange={(change) =>
-                        useRightPanelStore.getState().openChange(activeThreadRef, {
-                          groupId: change.appId,
-                          repository: change.repo,
-                          number: change.number,
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
               {/* Messages — LegendList handles virtualization and scrolling
                   internally. A switch between Mates is at once: the list is
                   the next conversation's own from the press. One seen a

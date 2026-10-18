@@ -1,6 +1,7 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { taskTitle } from "../../zerops/automatedMate.logic";
+import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
@@ -644,7 +645,14 @@ export const ChatHeader = memo(function ChatHeader({
               }
               subject={crewOrigin === null && spoken ? headline : null}
               trailing={
-                // What waits on the person, right after the Mate (the owner, 2026-10-12: "it's
+                // A task's conversation: where the task stands, and its Stop, right after it.
+                activeThreadTask !== undefined && isServerThread ? (
+                  <MateTaskStatus
+                    conversationId={activeThreadId}
+                    environmentId={activeThreadEnvironmentId}
+                    task={activeThreadTask}
+                  />
+                ) : // What waits on the person, right after the Mate (the owner, 2026-10-12: "it's
                 // pretty important after all … maybe placed on the left"): its changes to review,
                 // then what waits for production, together.
                 reviewTags.value === null ? null : (

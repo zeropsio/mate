@@ -2,8 +2,7 @@
  * Settings › Automation and the mirror dialog, in each of their states, from fixtures.
  *
  * Served by the dev server at `/design-automation.html` (`?theme=dark`). Open it at the owner's
- * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (GitHub's and
- * Slack's Connect pressed), `checking` (every read under way), `connected`, `older` (an HQ older
+ * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect pressed), `checking` (every read under way), `connected`, `manage` (Discord connected, its Manage open), `older` (an HQ older
  * than the app), `member`, `dialog` (the mirror dialog's repositories, each state).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
@@ -18,7 +17,7 @@ import { createRoot } from "react-dom/client";
 
 import { OrganizationKeyView } from "~/components/settings/AutomatedMatesSettings";
 import { GithubAppView } from "~/components/settings/GithubAppSettings";
-import { IntegrationList } from "~/components/settings/IntegrationRow";
+import { IntegrationList, LimitsList } from "~/components/settings/IntegrationRow";
 import { SettingsSection } from "~/components/settings/settingsLayout";
 import {
   DiscordSettingsView,
@@ -79,12 +78,29 @@ const SLACK = {
   workspace: "Acme",
   eventsUrl: "https://hq-acme.zerops.app/api/intake/slack/acme",
 };
-const DISCORD_OFF = {
-  connected: false,
+// As HQ answers before a connection: it makes Discord's address as it connects.
+const DISCORD_OFF = { connected: false, interactionsUrl: "", inviteUrl: null, allowed: [] };
+const DISCORD_ON = {
+  connected: true,
   interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
-  inviteUrl: null,
-  allowed: [],
+  inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
+  allowed: ["123456789012345678"],
 };
+// As HQ makes it (`apps/hq/src/slack.ts`).
+const SLACK_MANIFEST = JSON.stringify({
+  display_information: { name: "Mate" },
+  features: { bot_user: { display_name: "Mate", always_online: true } },
+  oauth_config: { scopes: { bot: ["app_mentions:read", "chat:write", "channels:history"] } },
+  settings: {
+    event_subscriptions: {
+      request_url: "https://hq-acme.zerops.app/api/intake/slack/acme",
+      bot_events: ["app_mention", "message.channels", "message.groups"],
+    },
+    org_deploy_enabled: false,
+    socket_mode_enabled: false,
+    token_rotation_enabled: false,
+  },
+});
 
 /**
  * The limits per task and the monthly budget over one record, as HQ answers a save a moment
@@ -119,10 +135,10 @@ function LimitsRows() {
     again: nothing,
   };
   return (
-    <>
+    <LimitsList>
       <TaskLimitsView controls={limits} />
       <MonthlyBudgetView controls={limits} />
-    </>
+    </LimitsList>
   );
 }
 
@@ -180,12 +196,17 @@ function Automation({
               <SlackSettingsView
                 controls={at(open ? { ...SLACK, connected: false, workspace: null } : SLACK)}
                 defaultOpen={open}
-                manifest={controls(known("{}"))}
+                manifest={controls(known(SLACK_MANIFEST))}
               />
-              <DiscordSettingsView controls={at(DISCORD_OFF)} />
+              <DiscordSettingsView
+                controls={at(view === "manage" ? DISCORD_ON : DISCORD_OFF)}
+                defaultOpen={open || view === "manage"}
+              />
             </IntegrationList>
             {checking ? (
-              <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
+              <LimitsList>
+                <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
+              </LimitsList>
             ) : (
               <LimitsRows />
             )}
