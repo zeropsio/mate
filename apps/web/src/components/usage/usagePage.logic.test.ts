@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { usagePageState } from "./usagePage.logic";
+import { USAGE_AUTOMATED_OWNER } from "@t3tools/contracts";
+import { AUTOMATED_MATES_OWNER } from "../../zerops/usageEnvironmentIdentities";
+import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
 import { recordedReport, statistics } from "./usageTestFixtures";
 const projects = new Map([
   ["a", "Shop"],
@@ -57,4 +59,32 @@ describe("Usage claims require scope and source evidence", () => {
         scope: { project: "deleted-app" },
       }).kind,
     ).toBe("ready"));
+});
+
+describe("Automated work is its own line", () => {
+  it("HQ's automated owner reads as the Automated Mates, with the Mate's project for its tasks", () => {
+    const report = recordedReport();
+    const { identities } = createUsageIdentityIndex({
+      report: {
+        ...report,
+        coverage: report.coverage.map((entry) => ({
+          ...entry,
+          ownerUserId: USAGE_AUTOMATED_OWNER,
+        })),
+      },
+      registered: new Map(),
+      people: new Map(),
+      projects: new Map([["app-a", "Tea Shop"]]),
+    });
+    expect([...identities.values()]).toEqual([
+      {
+        mateName: "A",
+        projectId: "app-a",
+        projectName: "Tea Shop",
+        ownerState: "known",
+        owner: AUTOMATED_MATES_OWNER,
+        mateProjectId: "project-a",
+      },
+    ]);
+  });
 });
