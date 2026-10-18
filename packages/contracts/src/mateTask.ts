@@ -139,6 +139,10 @@ export const MateTaskReport = Schema.Struct({
   detail: Schema.optionalKey(Schema.String),
   /** What it asks a person, while `waiting`: posted where the task came from. */
   question: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
+  /** What its model use cost so far, in US dollars, as the Mate's ledger counts it. */
+  spentUsd: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  /** How long its runs worked so far (never the wait between them), in milliseconds. */
+  workedMs: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export type MateTaskReport = typeof MateTaskReport.Type;
 

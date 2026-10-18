@@ -186,5 +186,58 @@ export type HqScheduleView = typeof HqScheduleView.Type;
 export const HqTaskLimitsView = Schema.Struct({
   minutes: Schema.Int,
   costUsd: Schema.NullOr(Schema.Number),
+  /**
+   * What the organization's automated Mates may spend in a calendar month (UTC), all tasks
+   * together; `null`: no budget. Reached, HQ hands out no more tasks until the next month or a
+   * higher budget. Absent from an older HQ.
+   */
+  monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  /** What they spent this month so far, as their Mates reported it. Read only. */
+  spentThisMonthUsd: Schema.optionalKey(Schema.Number),
 });
 export type HqTaskLimitsView = typeof HqTaskLimitsView.Type;
+
+/** One task of an application, as its Automation board lists it. */
+export const HqAppTask = Schema.Struct({
+  id: Schema.String,
+  /** Where it came from, linked (`MateTaskSource`'s words and address). */
+  title: Schema.String,
+  label: Schema.String,
+  url: Schema.NullOr(Schema.String),
+  state: Schema.Literals([
+    "queued",
+    "assigned",
+    "working",
+    "waiting",
+    "done",
+    "merged",
+    "failed",
+    "stopped",
+    "declined",
+  ]),
+  /** The automated Mate on it or that had it: its project id and name. */
+  mate: Schema.NullOr(Schema.Struct({ projectId: Schema.String, name: Schema.String })),
+  /** Its place in the queue while queued (1 = next). */
+  position: Schema.optionalKey(Schema.Int),
+  /** Who asked, in the source's words (a GitHub login, a Slack name). */
+  requestedBy: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  startedAt: Schema.NullOr(Schema.String),
+  endedAt: Schema.NullOr(Schema.String),
+  spentUsd: Schema.NullOr(Schema.Number),
+  workedMs: Schema.NullOr(Schema.Number),
+  /** Why it failed, stopped or was declined; the question while waiting. */
+  detail: Schema.NullOr(Schema.String),
+  /** Its change in Mate and its pull request on GitHub, once it has them. */
+  change: Schema.NullOr(Schema.Struct({ repo: Schema.String, number: Schema.Int })),
+  pullRequest: Schema.NullOr(Schema.Struct({ number: Schema.Int, url: Schema.String })),
+  /** Where to follow it in Mate (its own conversation, or its Mate's page). */
+  link: Schema.NullOr(Schema.String),
+});
+export type HqAppTask = typeof HqAppTask.Type;
+
+/** `GET /api/apps/:appId/tasks`: what is queued, at work, and the latest that ended. */
+export const HqAppTasksView = Schema.Struct({
+  tasks: Schema.Array(HqAppTask),
+});
+export type HqAppTasksView = typeof HqAppTasksView.Type;

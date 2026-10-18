@@ -314,6 +314,11 @@ export const HqNavigationMateTask = Schema.Struct({
    * its row says so, while the task's own conversation still shows where it got to. Absent: live.
    */
   ended: Schema.optionalKey(Schema.Literals(["merged", "closed", "done", "failed", "stopped"])),
+  /** When its Mate took it; absent from an older HQ. */
+  startedAt: Schema.optionalKey(Schema.String),
+  /** What it cost and how long it worked so far, as its Mate last reported. */
+  spentUsd: Schema.optionalKey(Schema.Number),
+  workedMs: Schema.optionalKey(Schema.Number),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
 export const HqNavigationMate = Schema.Struct({
