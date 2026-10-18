@@ -179,14 +179,22 @@ export function freeWords(names: ReadonlyArray<string>): string {
 
 /**
  * The automated Mates in one line: "Odo works on a task", "Odo and Tess work on tasks" while any
- * works; else "2 automated Mates wait for a task".
+ * works; else "Odo waits for your review" while a change of theirs waits for it (HQ hands such a
+ * Mate no task); else "2 automated Mates wait for a task".
  */
 export function automatedWords(
-  mates: ReadonlyArray<{ readonly name: string; readonly working: boolean }>,
+  mates: ReadonlyArray<{
+    readonly name: string;
+    readonly working: boolean;
+    readonly reviewing?: boolean;
+  }>,
 ): string {
   const working = mates.filter((mate) => mate.working).map((mate) => mate.name);
   if (working.length === 1) return `${working[0] ?? ""} works on a task`;
   if (working.length > 1) return `${joined(working)} work on tasks`;
+  const reviewing = mates.filter((mate) => mate.reviewing === true).map((mate) => mate.name);
+  if (reviewing.length > 0)
+    return `${joined(reviewing)} ${reviewing.length === 1 ? "waits" : "wait"} for your review`;
   return mates.length === 1
     ? `${mates[0]?.name ?? ""} waits for a task`
     : `${String(mates.length)} automated Mates wait for a task`;
