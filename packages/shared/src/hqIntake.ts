@@ -78,8 +78,9 @@ export type HqMateAiKey = typeof HqMateAiKey.Type;
  * conversation.
  */
 export const HqSlackConnectRequest = Schema.Struct({
-  botToken: TrimmedNonEmptyString,
-  signingSecret: TrimmedNonEmptyString,
+  /** Both to connect; once connected, either alone replaces the one HQ holds. */
+  botToken: Schema.optionalKey(TrimmedNonEmptyString),
+  signingSecret: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type HqSlackConnectRequest = typeof HqSlackConnectRequest.Type;
 
@@ -89,8 +90,26 @@ export const HqSlackView = Schema.Struct({
   workspace: Schema.NullOr(Schema.String),
   /** Where Slack sends events: the manifest names it. */
   eventsUrl: Schema.String,
+  /**
+   * The last time an event's signature did not hold (`401` at `eventsUrl`), and the last time one
+   * did; `null` for never. While the refusal is the later, the signing secret is not the app's.
+   * Absent from an HQ that predates them.
+   */
+  eventsRefusedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  eventsAcceptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HqSlackView = typeof HqSlackView.Type;
+
+/**
+ * The channels the bot is in (`GET /api/org/slack/channels`, a structure writer's), by name, for
+ * an application's channel to be picked from; `bot` is its name in the workspace, which people
+ * invite to a channel (`null` where HQ does not know it yet).
+ */
+export const HqSlackChannels = Schema.Struct({
+  bot: Schema.NullOr(Schema.String),
+  channels: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+});
+export type HqSlackChannels = typeof HqSlackChannels.Type;
 
 export const HqChannelRequest = Schema.Struct({ channelId: TrimmedNonEmptyString });
 export type HqChannelRequest = typeof HqChannelRequest.Type;
