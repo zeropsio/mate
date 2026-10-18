@@ -2699,6 +2699,103 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       }),
   );
 
+  it.effect(
+    "an OpenCode turn's running cost is told as its steps' costs change, not only at its end",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("thread-running-cost");
+        const sessionID = "http://127.0.0.1:9999/session";
+        const step = (id: string, cost: number) => ({
+          id: `evt-${id}`,
+          type: "message.part.updated",
+          properties: {
+            sessionID,
+            time: 0,
+            part: {
+              id,
+              sessionID,
+              messageID: "msg_a",
+              type: "step-finish",
+              reason: "tool-calls",
+              cost,
+              tokens: {
+                total: 15,
+                input: 10,
+                output: 5,
+                reasoning: 0,
+                cache: { read: 0, write: 0 },
+              },
+            },
+          },
+        });
+        const events = [
+          {
+            id: "evt-busy",
+            type: "session.status",
+            properties: { sessionID, status: { type: "busy" } },
+          },
+          {
+            id: "evt-msg_a",
+            type: "message.updated",
+            properties: {
+              sessionID,
+              info: {
+                id: "msg_a",
+                sessionID,
+                role: "assistant",
+                providerID: "nebius",
+                modelID: "zai-org/GLM-5.3",
+              },
+            },
+          },
+          step("prt_1", 0.0012),
+          step("prt_1", 0.0012),
+          step("prt_2", 0.003),
+          {
+            id: "evt-idle",
+            type: "session.status",
+            properties: { sessionID, status: { type: "idle" } },
+          },
+        ];
+        const gates = events.map(() => promiseWithResolvers<unknown>());
+        runtimeMock.state.subscribedEvents = gates.map((gate) => gate.promise);
+        runtimeMock.state.sessionStatusImplementation = async () => ({ data: {} });
+        const collected = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => event.threadId === threadId),
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        const turn = yield* adapter.sendTurn({
+          threadId,
+          input: "Fix the tea shop's checkout.",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "nebius/zai-org/GLM-5.3",
+          ),
+        });
+        events.forEach((event, index) => gates[index]!.resolve(event));
+        yield* advanceTestClock(1_000);
+        const told = Array.from(yield* Fiber.join(collected)).flatMap((event) =>
+          event.type === "turn.usage.updated" || event.type === "turn.usage.completed"
+            ? [[event.type, event.payload.nativeTurnId, event.payload.nativeCost?.amount]]
+            : [],
+        );
+        NodeAssert.deepEqual(told, [
+          ["turn.usage.updated", turn.turnId, "1200000"],
+          ["turn.usage.updated", turn.turnId, "4200000"],
+          ["turn.usage.completed", turn.turnId, "4200000"],
+        ]);
+        yield* adapter.stopSession(threadId);
+      }),
+  );
+
   it.effect("uses polled busy status to admit output after a stopped turn", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;

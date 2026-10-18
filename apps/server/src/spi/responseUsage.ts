@@ -354,12 +354,15 @@ interface OpenCodeStep {
 }
 /**
  * Each step-finish part is one model call's exact meter; an assistant message's own `tokens`
- * hold only its last step. Steps of the session and its subagents count once, at the turn's end.
+ * hold only its last step. Steps of the session and its subagents count once, at the turn's end;
+ * their cost so far is read on the way (`running`), the same sum the end's fact carries.
  */
 export function makeOpenCodeTurnUsage() {
   const modelByMessage = new Map<string, string>();
   const pending = new Map<string, OpenCodeStep>();
   const counted = new Set<string>();
+  // The running cost last read, so each read tells only a change.
+  let told: string | undefined;
   return {
     observe: (event: unknown): void => {
       const envelope = record(event);
@@ -386,6 +389,16 @@ export function makeOpenCodeTurnUsage() {
         nativeCost: charge === null || charge.amount === "0" ? null : charge,
       });
     },
+    /** The turn's cost so far, when its steps moved it since the last read; else nothing. */
+    running: (): UsageNativeCost | undefined => {
+      const total = [...pending.values()].reduce<UsageNativeCost | null>(
+        (sum, step) => addCost(sum, step.nativeCost),
+        null,
+      );
+      if (total === null || total.amount === told) return undefined;
+      told = total.amount;
+      return total;
+    },
     complete: (
       nativeThreadId: string,
       nativeTurnId: string,
@@ -407,6 +420,7 @@ export function makeOpenCodeTurnUsage() {
         );
       }
       pending.clear();
+      told = undefined;
       const models = [...lines.values()]
         .map((line) => ({ ...line, components: normalizeComponents(line.components) }))
         .filter((line) => hasTokens(line.components))

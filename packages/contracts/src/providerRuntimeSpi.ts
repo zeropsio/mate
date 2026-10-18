@@ -109,6 +109,11 @@
  *   since the previous end, the session's and its subagents', one line per
  *   `provider/model`, with OpenCode's own cost estimate when it is above zero.
  *   Additive; the payload shape is unchanged.
+ * - 2.11 (2026-10-18): `turn.usage.updated` tells a native turn's cost so far while it runs,
+ *   each time it grows, under the native ids its `turn.usage.completed` will carry; the
+ *   completed fact's `nativeCost` replaces it, never adds to it. OpenCode emits it from its
+ *   step-finish meters (one turn is a whole automated task run); the other drivers do not.
+ *   The task limits and the cost a task reports read it (`zerops/ZeropsTasks.ts`). A new member.
  *
  * @module providerRuntimeSpi
  */
@@ -122,7 +127,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.10";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.11";
 
 /**
  * One image content block an MCP tool result carried, e.g. a
