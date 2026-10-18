@@ -15204,6 +15204,23 @@ button.rv-relrow:hover .rv-relrow-go {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
+/* A change's pull request on GitHub, after its row: quiet, a link's colour on hover. */
+.pp-cards-pr {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-underline-offset: 3px;
+}
+
+.pp-cards-pr:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
 .pp-cards-held {
   height: 12px;
   flex: 1;

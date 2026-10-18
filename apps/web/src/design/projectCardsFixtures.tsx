@@ -306,6 +306,7 @@ export function TeaShopCards() {
           mateOf={mateOf}
           onOpen={nothing}
           onOpenRelease={nothing}
+          onRelease={nothing}
           read={{ state: "known" }}
         />
       }

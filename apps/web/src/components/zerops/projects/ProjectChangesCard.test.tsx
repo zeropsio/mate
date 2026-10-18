@@ -32,7 +32,16 @@ function pull(number: number, over: Partial<FlowPullRequest> = {}): FlowPullRequ
 const GROUPS = projectChangeGroups({
   open: [pull(9, { title: "Gift cards at checkout" })],
   merged: [
-    pull(8, { title: "Prices per 100 g", merged: true, mergedAt: "2026-10-18T11:35:00Z" }),
+    pull(8, {
+      title: "Prices per 100 g",
+      merged: true,
+      mergedAt: "2026-10-18T11:35:00Z",
+      pullRequest: {
+        number: 5,
+        url: "https://github.com/acme/tea-shop/pull/5",
+        state: "merged",
+      },
+    }),
     pull(7, { title: "Show how many teas", merged: true, mergedAt: "2026-10-11T09:00:00Z" }),
     pull(6, { title: "Sold-out badge", merged: true, mergedAt: "2026-10-04T09:00:00Z" }),
     pull(5, { title: "First tea list", merged: true, mergedAt: "2026-09-20T09:00:00Z" }),
@@ -151,5 +160,55 @@ describe("a project's Changes card", () => {
       />,
     );
     expect(untold.textContent).toContain("HQ did not answer.");
+  });
+
+  it("the Changes card's ready group releases", async () => {
+    const onRelease = vi.fn();
+    const host = await mount(
+      <ProjectChangesCard
+        groups={GROUPS}
+        mateOf={MATES}
+        onOpen={vi.fn()}
+        onRelease={onRelease}
+        read={{ state: "known" }}
+      />,
+    );
+    const ready = host.querySelector('[data-zerops-changes="ready"]');
+    const release = [...(ready?.querySelectorAll("button") ?? [])].find(
+      (button) => button.textContent === "Release",
+    );
+    await act(async () => {
+      release?.click();
+    });
+    expect(onRelease).toHaveBeenCalledTimes(1);
+    const merged = await mount(
+      <ProjectChangesCard
+        groups={{ ...GROUPS, ready: { ...GROUPS.ready, title: "Merged" } }}
+        mateOf={MATES}
+        onOpen={vi.fn()}
+        onRelease={onRelease}
+        read={{ state: "known" }}
+      />,
+    );
+    const nowhere = [...merged.querySelectorAll("button")].find(
+      (button) => button.textContent === "Release",
+    );
+    expect(nowhere).toBeUndefined();
+  });
+
+  it("a change shows its GitHub pull request where it has one, opened on GitHub", async () => {
+    const host = await mount(
+      <ProjectChangesCard
+        groups={GROUPS}
+        mateOf={MATES}
+        onOpen={vi.fn()}
+        read={{ state: "known" }}
+      />,
+    );
+    const row = host.querySelector('[data-zerops-change="app#8"]');
+    const link = row?.querySelector<HTMLAnchorElement>("a");
+    expect(link?.textContent).toContain("#5");
+    expect(link?.getAttribute("href")).toBe("https://github.com/acme/tea-shop/pull/5");
+    expect(host.querySelector('[data-zerops-change="app#7"] a')).toBeNull();
   });
 });
