@@ -7,6 +7,7 @@ import {
   launcherActions,
   resolveRightPanelAvailability,
   rightPanelPageHead,
+  isRightPanelSite,
   type RightPanelAvailabilityInput,
 } from "./rightPanelKinds";
 
@@ -339,6 +340,19 @@ describe("a side-panel page's head", () => {
   it("the Chief's overview and an open file wear their own heads, not the panel page's", () => {
     expect(rightPanelPageHead("overview", "Nova")).toBeNull();
     expect(rightPanelPageHead("file", "Nova")).toBeNull();
+  });
+
+  it("a site's tab is the site, edge to edge under its address row: the Browser's head stays on its list", () => {
+    expect(isRightPanelSite({ id: "browser", kind: "browser" })).toBe(false);
+    expect(rightPanelPageHead("browser", "Juno")?.title).toBe("Browser");
+    expect(
+      isRightPanelSite({
+        id: "service:nextstore production",
+        kind: "browser",
+        service: "nextstore production",
+        url: "https://nextstore-c3d4-8000.prg1.zerops.app",
+      }),
+    ).toBe(true);
   });
 
   it.each([

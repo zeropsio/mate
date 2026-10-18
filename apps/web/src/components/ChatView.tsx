@@ -201,7 +201,11 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
-import { resolveRightPanelAvailability, type RightPanelKind } from "../rightPanelKinds";
+import {
+  isRightPanelSite,
+  resolveRightPanelAvailability,
+  type RightPanelKind,
+} from "../rightPanelKinds";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
@@ -8192,8 +8196,9 @@ function ConversationView(props: ChatViewProps) {
     }
     kind satisfies never;
   };
+  // A site's tab is the site alone, drawn by `ServiceBrowserPanels`: no page and no head over it.
   const rightPanelPageBody =
-    activeThreadRef && activeRightPanelSurface ? (
+    activeThreadRef && activeRightPanelSurface && !isRightPanelSite(activeRightPanelSurface) ? (
       <Suspense fallback={<Loading label="The panel" shape="room" />}>
         {(() => {
           switch (activeRightPanelSurface.kind) {
@@ -8252,7 +8257,7 @@ function ConversationView(props: ChatViewProps) {
                 />
               );
             case "browser":
-              return "url" in activeRightPanelSurface ? null : (
+              return (
                 <ZeropsBrowserSurface
                   mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
                   onOpenImage={onExpandTimelineImage}
