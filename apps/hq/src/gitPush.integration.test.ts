@@ -192,6 +192,34 @@ it.live(
     }),
 );
 
+it.live.each(["moved forward", "deleted"])(
+  "a push whose remote moved since HQ read it is refused as stale and overwrites nothing: %s",
+  (change) =>
+    Effect.gen(function* () {
+      const f = yield* Effect.promise(() => fixture());
+      const intended = yield* Effect.promise(() => f.commit("third"));
+      // The remote's tip after HQ read it: an ancestor of the intended commit, so only the
+      // read tip, never fast-forward ancestry, stops the push.
+      const result = yield* deliverRef({ ...f.input, sha: intended }, (evidence) =>
+        Effect.promise(async () => {
+          if (evidence.phase !== "prepared") return;
+          if (change === "deleted") await git(f.remote, ["update-ref", "-d", "refs/heads/main"]);
+          else {
+            await git(f.remote, ["fetch", f.directory, f.second]);
+            await git(f.remote, ["update-ref", "refs/heads/main", f.second]);
+          }
+        }),
+      );
+      expect(result.state).toBe("refused");
+      expect(result.reason).toContain("stale info");
+      expect(
+        yield* Effect.promise(() =>
+          git(f.remote, ["for-each-ref", "--format=%(objectname)", "refs/heads/main"]),
+        ),
+      ).toBe(change === "deleted" ? "" : f.second);
+    }),
+);
+
 it.live.each(["moved", "rewound", "deleted"])(
   "refuses a %s last confirmed ref before any external write",
   (change) =>
@@ -583,11 +611,13 @@ it.live(
           !observed.includes("credential-marker") &&
           !observed.includes("GIT_TRACE") &&
           observed.includes("GIT_ASKPASS=");
-        safeArgs =
-          observed.includes(`--force-with-lease=${f.input.ref}:${f.first}`) &&
-          !observed.includes(" --force ") &&
-          !observed.includes(" --force-with-lease ") &&
-          !observed.includes(`+${f.second}`);
+        // The pre-push read reaches the remote too; the push's own argv decides.
+        if (observed.includes(" push "))
+          safeArgs =
+            observed.includes(` ${f.second}:${f.input.ref}`) &&
+            !observed.includes("--force") &&
+            !observed.includes(" -f ") &&
+            !observed.includes(`+${f.second}`);
         const url = new URL(request.url!, "http://localhost");
         const backend = NodeChildProcess.spawn("git", ["http-backend"], {
           env: {

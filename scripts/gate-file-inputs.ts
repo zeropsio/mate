@@ -208,6 +208,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/mobile/node_modules/@legendapp/list/**",
     "apps/web/node_modules/@legendapp/list/**",
   ],
+  "scripts/hq-git-push.test.ts": ["apps/hq/src/**", "packages/hq-git/src/**"],
   "scripts/lib/brand-assets.test.ts": ["assets/**", "apps/mobile/assets/**"],
   "scripts/lib/cli-external-packages.test.ts": [],
   "scripts/lib/spread-shard.test.ts": ["apps/**", "packages/**"],
