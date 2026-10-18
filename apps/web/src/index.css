@@ -7018,8 +7018,10 @@ code {
   margin-top: 6px;
 }
 
+/* One height whatever it holds: a stage being added and the stage it becomes take one room. */
 .ov-stage-head {
   display: flex;
+  height: 20px;
   min-width: 0;
   align-items: center;
   gap: 8px;
@@ -7037,6 +7039,7 @@ code {
 
 .ov-stage-state {
   display: flex;
+  height: 16px;
   min-width: 0;
   align-items: center;
   gap: 8px;
@@ -7049,8 +7052,14 @@ code {
   color: inherit;
 }
 
-.ov-sec > [data-zerops-card-ready] {
-  margin-top: 4px;
+/* Release N under production: the room of production's own row of buttons (a gap, its margin,
+   one default button), which its held History takes once the release is on its way. */
+.ov-ready {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 0 6px;
 }
 
 .ov-card-people {

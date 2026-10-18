@@ -742,6 +742,8 @@ function readPlaces<T>(
     production,
     productionAbsent,
     stages,
+    /** What the person called the stage being added, while it is. */
+    creatingName: flow.creatingStages[0]?.name,
     state,
     settingUp,
     stageSetUp,
@@ -845,33 +847,38 @@ function CardProduction<T>({
 }) {
   const { production, putLive, releaseDoor } = read;
   return (
-    <section aria-label="Production" className="ov-sec" data-zerops-place="production">
-      {read.productionAbsent ? (
-        <div className="ov-panel">
-          <div className="ov-panel-head">
-            <b className="ov-panel-name">Production</b>
-          </div>
-          <p className="ov-panel-state">
-            <PlaceDot dot="none" />
-            <PlaceWords line={production} />
-          </p>
-          {putLive === undefined ? null : (
-            <div className="ov-panel-acts">
-              <PutLive onPut={putLive} />
+    <>
+      <section aria-label="Production" className="ov-sec" data-zerops-place="production">
+        {read.productionAbsent ? (
+          <div className="ov-panel">
+            <div className="ov-panel-head">
+              <b className="ov-panel-name">Production</b>
             </div>
-          )}
-          <PutLiveWaits onPut={putLive} />
-        </div>
-      ) : (
-        (props.renderPlacePanel?.(entry, production, "card") ?? <PlainPanel line={production} />)
-      )}
-      {props.renderProductionRun?.(entry)}
+            <p className="ov-panel-state">
+              <PlaceDot dot="none" />
+              <PlaceWords line={production} />
+            </p>
+            {putLive === undefined ? null : (
+              <div className="ov-panel-acts">
+                <PutLive onPut={putLive} />
+              </div>
+            )}
+            <PutLiveWaits onPut={putLive} />
+          </div>
+        ) : (
+          (props.renderPlacePanel?.(entry, production, "card") ?? <PlainPanel line={production} />)
+        )}
+        {props.renderProductionRun?.(entry)}
+      </section>
+      {/* Under production, outside its words: the door saying "Releasing…" is no production
+          line. It takes the room production's held History takes once the release is on its
+          way, so the card holds still from the press. */}
       {releaseDoor === null ? null : (
-        <div className="ov-acts" data-zerops-card-ready="true">
+        <div className="ov-ready" data-zerops-card-ready="true">
           {releaseDoor}
         </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -904,7 +911,11 @@ function CardStages({ read }: { readonly read: PlacesReading }) {
         </div>
       ))}
       {stages.length > 0 ? null : stageSetUp === "creating" ? (
+        // The stage it becomes, in the room it will take: its name's line, then how far it got.
         <div className="ov-stage" data-zerops-place="stage" data-zerops-setting-up="true">
+          <span className="ov-stage-head">
+            <b className="ov-stage-name">{read.creatingName ?? NEW_STAGE.name}</b>
+          </span>
           <p className="ov-stage-state">
             <PlaceDot dot="unknown" />
             <PlaceWords line={settingUpLine(NEW_STAGE, settingUp)} />
