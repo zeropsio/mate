@@ -5,6 +5,7 @@
  *
  * Drawn from its reads, handed in, so a test and the harness look at it with no account behind it.
  */
+import { flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -32,6 +33,7 @@ export function ProjectChangesCard({
   onOpen,
   onOpenRelease,
   onRelease,
+  releasing = false,
   emptyAction,
 }: {
   readonly groups: ProjectChangeGroups;
@@ -52,6 +54,8 @@ export function ProjectChangesCard({
    * review as the road's chip. Absent, the group offers none.
    */
   readonly onRelease?: ((from: HTMLElement) => void) | undefined;
+  /** A release is on its way: its Release waits, saying so, until it lands. */
+  readonly releasing?: boolean | undefined;
   /** The way to a first environment, where the project has no repository yet. */
   readonly emptyAction?:
     | { readonly words: string; readonly label: string; readonly onPress: () => void }
@@ -127,12 +131,13 @@ export function ProjectChangesCard({
               </CardGroupName>
               {onRelease === undefined || ready.title !== "Ready to release" ? null : (
                 <Button
+                  disabled={releasing}
                   onClick={(event) => {
                     onRelease(event.currentTarget);
                   }}
                   size="sm"
                 >
-                  Release
+                  {releasing ? flowVerbLabel("release", true) : "Release"}
                 </Button>
               )}
             </div>

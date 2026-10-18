@@ -15,6 +15,7 @@ import { useCallback, useMemo, type ComponentProps } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useOpenReview } from "~/zerops/review";
+import { useReleaseOffer } from "../ZeropsReleaseVerb";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 
 import { MateFace } from "../primitives";
@@ -124,16 +125,13 @@ export function useProjectChangesCard(
           },
     [groupId, navigate, productionId],
   );
-  // The ready group's Release opens the same review as the road's chip.
-  const onRelease = useMemo(
-    () =>
-      productionId === undefined
-        ? undefined
-        : (from: HTMLElement) => {
-            openReview({ kind: "release", groupId }, { from });
-          },
-    [groupId, openReview, productionId],
-  );
+  // The ready group's Release is the page's own Release door: offered where the release gate
+  // offers it to this person, waiting while one is on its way.
+  const release = useReleaseOffer(groupId, flow);
+  const onRelease =
+    productionId === undefined || (!release.offered && !release.releasing)
+      ? undefined
+      : release.onReview;
   return {
     groups,
     read:
@@ -146,5 +144,6 @@ export function useProjectChangesCard(
     onOpen,
     onOpenRelease,
     onRelease,
+    releasing: release.releasing,
   };
 }
