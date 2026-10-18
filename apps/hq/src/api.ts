@@ -60,8 +60,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   asks `POST /api/mates/:projectId/key-check` → `204` to read it again;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`) and each Git environment's
- *   latest confirmed push with the origin's CI (`gitPushes`) and each repository's connected
- *   origin address, never its token (`repos`).
+ *   latest confirmed push with the origin's CI (`gitPushes`), whether its application has a
+ *   production (`production`), and each repository's connected origin address, never its token
+ *   (`repos`).
  * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
  *   the client that set it up. Its stand-up is asked in the write that records it (B3).
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
@@ -1245,6 +1246,7 @@ const routes = (
                   signers: state.value.signers ?? {},
                   ...placed,
                   gitPushes: yield* changes.mateGitPushes(projectId),
+                  production: yield* changes.mateProduction(projectId),
                   repos:
                     placed.appId === null ? [] : yield* (yield* Remotes).mateRepos(placed.appId),
                 },
