@@ -47,6 +47,7 @@ export type TaskSourceApi = TaskSourceWrites &
     | "appChannel"
     | "webhooks"
     | "schedules"
+    | "appTasks"
     | "github"
   >;
 
@@ -94,6 +95,8 @@ export function makeTaskSourceSettings(options: {
           return api.webhooks?.(appId).then((list) => list.map(withoutSecret));
         case "hqAppSchedules":
           return api.schedules?.(appId);
+        case "hqAppTasks":
+          return api.appTasks?.(appId);
       }
     };
     return {

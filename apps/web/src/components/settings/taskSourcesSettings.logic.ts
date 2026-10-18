@@ -91,6 +91,7 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
     case "schedule-delete":
       return "Deleting…";
     case "channel-stop":
+    case "task-stop":
       return "Stopping…";
     case "channel":
     case "discord-allow":

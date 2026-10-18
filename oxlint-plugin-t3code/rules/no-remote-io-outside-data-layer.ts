@@ -263,6 +263,8 @@ export const HQ_CLIENT_VERBS = [
   "schedules",
   "makeSchedule",
   "deleteSchedule",
+  "appTasks",
+  "stopAppTask",
   "taskLimits",
   "setTaskLimits",
   "github",

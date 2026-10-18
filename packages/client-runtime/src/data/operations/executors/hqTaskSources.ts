@@ -24,6 +24,7 @@ export type TaskSourceWrites = Pick<
   | "makeSchedule"
   | "deleteSchedule"
   | "setTaskLimits"
+  | "stopAppTask"
   | "githubManifest"
   | "githubDisconnect"
 >;
@@ -107,6 +108,8 @@ export function makeTaskSourceExecutor(options: {
               return api.deleteSchedule?.(appId, write.scheduleId) ?? null;
             case "task-limits":
               return api.setTaskLimits?.(write.limits) ?? null;
+            case "task-stop":
+              return api.stopAppTask?.(appId, write.taskId) ?? null;
             case "github-manifest":
               return (
                 api
