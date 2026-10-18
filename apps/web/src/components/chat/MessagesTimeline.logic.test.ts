@@ -2694,6 +2694,34 @@ describe("deriveMessagesTimelineRows", () => {
     expect(JSON.stringify(list)).not.toContain("Work issue #12");
   });
 
+  it("draws a task's first message with an ask as its author's, from its source; with none, it draws nothing", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 12,
+      url: "https://github.com/acme/tea-shop/issues/12",
+      title: "Fix the checkout total",
+      author: "nova-dev",
+    } as const;
+    const brief = user("m0", 0, "Work issue #12 in the project, then open a change.");
+    const message = (brief as Extract<typeof brief, { kind: "message" }>).message;
+    const drawn = (taskAsk: string | undefined) =>
+      rows({
+        entries: [
+          { ...brief, message: { ...message, task: issue, ...(taskAsk ? { taskAsk } : {}) } },
+          tool("w1", "t1", 1),
+        ] as never,
+        settled: "t1",
+      });
+    const asked = drawn("The total skips the tax line.");
+    expect(asked.filter((row) => row.id === "m0")).toMatchObject([
+      { kind: "task-ask", source: issue, text: "The total skips the tax line." },
+    ]);
+    expect(asked.map((row) => row.kind)).toEqual(["seam", "task-ask", "record"]);
+    expect(JSON.stringify(asked)).not.toContain("Work issue #12");
+    expect(drawn(undefined).filter((row) => row.id === "m0")).toEqual([]);
+  });
+
   it("draws a follow-up told to a task's Mate as its author's, from where they said it, never as the viewer's words", () => {
     const issue = {
       kind: "github-issue",
