@@ -12,6 +12,7 @@ import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
 import type { CoreOptions } from "../../src/core.ts";
 import { sealRemoteToken } from "../../src/deployKeys.ts";
@@ -90,6 +91,52 @@ export const connectedRepo = (
   }).pipe(Effect.orDie);
 
 type Github = Effect.Success<typeof githubFake>;
+
+/** What of the app's manifest says where GitHub delivers the app's webhook. */
+const decodeManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ hook_attributes: Schema.Struct({ url: Schema.String }) })),
+);
+
+/**
+ * The organization's GitHub app, named `slug`, made and installed on `acme/tea-shop` through
+ * GitHub's pages, and the application's repository `web` reached through it, not its token.
+ */
+export const throughOrgApp = (
+  core: Core & { readonly github: Github; readonly owner: string; readonly appId: string },
+  slug: string,
+) =>
+  Effect.gen(function* () {
+    core.github.state.app.slug = slug;
+    core.github.state.installations.set(7001, {
+      account: "acme",
+      repositories: [{ id: 501, full_name: "acme/tea-shop" }],
+    });
+    const asked = yield* core.call("POST", "/api/org/github/manifest", {
+      session: core.owner,
+      body: { owner: "acme", name: "Acme Mate", returnTo: "https://mate.zerops.io/settings" },
+    });
+    const view = asked.body as { readonly state: string; readonly manifest: string };
+    yield* core.call("GET", `/api/github/app/created?code=code-1&state=${view.state}`);
+    yield* core.call(
+      "GET",
+      `/api/github/app/installed?installation_id=7001&setup_action=install&state=${view.state}`,
+    );
+    yield* core.sql`UPDATE hq_repo_remote SET host_repo_id = '501'`;
+    const through = yield* core.call("PUT", `/api/apps/${core.appId}/repos/web/remote/app`, {
+      session: core.owner,
+      body: { repository: "acme/tea-shop" },
+    });
+    assert.strictEqual(through.status, 204);
+    // The app's webhook, which delivers the repository's issues from now on.
+    const manifest = yield* decodeManifest(view.manifest).pipe(Effect.orDie);
+    const hook = {
+      path: new URL(manifest.hook_attributes.url).pathname,
+      secret: core.github.state.app.webhookSecret,
+    };
+    const issue = (number: number) =>
+      deliver(core, hook, "issues", issueEvent("opened", { number, labels: ["mate"] }));
+    return { issue };
+  });
 
 /**
  * The application's intake on `acme/tea-shop` labelled `label`, its webhook made on the fake GitHub:
