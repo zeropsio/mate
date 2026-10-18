@@ -134,6 +134,7 @@ export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
 export { balanceScope } from "./families/organizationBalance.ts";
 export {
+  dayIn,
   projectSpendScope,
   SPEND_DAYS,
   type ProjectSpendValue,

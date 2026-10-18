@@ -273,6 +273,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
   --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
+     palette check): Zerops compute, and model tokens on the organization's key. */
+  --color-spend-compute: var(--primary);
+  --color-spend-tokens: var(--zerops-mate-tint-coral);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
