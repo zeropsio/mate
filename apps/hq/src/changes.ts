@@ -198,7 +198,10 @@ export class Changes extends Context.Service<
       projectId: string,
       name: string,
     ) => Effect.Effect<HqRepo, MateError | GitError>;
-    /** The Mate's open change in `repo`, or the next number opened with `title`. */
+    /**
+     * The open change in `repo` a delivery goes to — its live task's own, else the Mate's own off
+     * any task — or the next number opened with `title`, the task's.
+     */
     readonly openChange: (
       projectId: string,
       repo: string,
@@ -1119,23 +1122,41 @@ export const changesLayer: Layer.Layer<
                   return { change: null, created: false, reason: "nothing_to_deliver" } as const;
                 }
                 /**
-                 * A change its Mate opens while on a task is the task's (one task at a time), in
-                 * the write that answers it: the first it opens on it.
+                 * The Mate's live task (one at a time — on it, or back on it for a follow-up): what
+                 * it delivers is that task's own change, whatever else of its waits for review.
+                 * None on no task: a person's own Mate keeps one open change in the repository.
+                 */
+                const [live] = yield* sql<{
+                  readonly id: string;
+                  readonly linked: boolean;
+                }>`
+                SELECT t.id::text AS id, (t.change_number IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM hq_change c WHERE c.app_id = t.app_id AND c.repo = t.change_repo
+                    AND c.number = t.change_number AND c.state = 'open')) AS linked
+                FROM hq_task t
+                WHERE t.mate_project_id = ${projectId} AND t.app_id = ${appId}::uuid
+                  AND t.state IN ('assigned', 'working', 'waiting')`;
+                const taskId = live?.id ?? null;
+                /**
+                 * The task's change, in the write that answers it: the first it opens on it, or the
+                 * next once the one it had is no longer open.
                  */
                 const onTask = (change: { readonly number: number }) =>
-                  Effect.map(
-                    sql<{ readonly id: string }>`
-                    UPDATE hq_task SET change_repo = ${repo}, change_number = ${change.number},
-                      updated_at = now()
-                    WHERE mate_project_id = ${projectId} AND state IN ('assigned', 'working')
-                      AND change_number IS NULL
-                    RETURNING id::text AS id`,
-                    (rows) => rows[0]?.id,
-                  );
+                  live === undefined || live.linked
+                    ? Effect.succeed(undefined)
+                    : Effect.map(
+                        sql<{ readonly id: string }>`
+                        UPDATE hq_task SET change_repo = ${repo}, change_number = ${change.number},
+                          updated_at = now()
+                        WHERE id::text = ${live.id}
+                        RETURNING id::text AS id`,
+                        (rows) => rows[0]?.id,
+                      );
                 const [open] = yield* sql<ChangeRow>`
                 SELECT ${columns} FROM hq_change
                 WHERE app_id = ${appId}::uuid AND repo = ${repo}
-                  AND mate_project_id = ${projectId} AND state = 'open'`;
+                  AND mate_project_id = ${projectId} AND state = 'open'
+                  AND ${taskId === null ? sql`task_id IS NULL` : sql`task_id::text = ${taskId}`}`;
                 if (open !== undefined) {
                   const change = changeOf(open);
                   return { change, created: false, task: yield* onTask(change) };
@@ -1147,9 +1168,9 @@ export const changesLayer: Layer.Layer<
                   0,
                 );
                 const [made] = yield* sql<ChangeRow>`
-                INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
+                INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, task_id)
                 SELECT ${appId}::uuid, ${repo}, GREATEST(COALESCE(MAX(number), 0), ${branched}) + 1,
-                  ${projectId}, ${title}
+                  ${projectId}, ${title}, ${taskId}::uuid
                 FROM hq_change WHERE app_id = ${appId}::uuid AND repo = ${repo}
                 RETURNING ${columns}`;
                 // `INSERT … RETURNING` answers the row it inserted, or fails.

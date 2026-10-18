@@ -34,6 +34,11 @@ const TaskEntry = Schema.Struct({
    */
   requeued: Schema.optionalKey(Schema.Number),
   retaken: Schema.optionalKey(Schema.Number),
+  /**
+   * When the Mate's working copies were last put on this task (`ZeropsWorkingCopy`): the task they
+   * hold is the one put there last.
+   */
+  workingCopyAt: Schema.optionalKey(Schema.Number),
   /** The brief it was taken with: told again with a follow-up the agent's session no longer holds. */
   brief: Schema.optionalKey(Schema.String),
   /** The limit that stopped it, or turned a follow-up away. */
@@ -64,6 +69,8 @@ export class ZeropsTaskLedger extends Context.Service<
   {
     /** The task's entry; none for a task the ledger holds nothing of. */
     readonly entry: (taskId: string) => Effect.Effect<TaskEntry | undefined>;
+    /** The task the Mate's working copies were put on last; none before the first. */
+    readonly workingCopyHolds: Effect.Effect<string | undefined>;
     /** Changes the task's entry (an empty one when it has none) and keeps it; the entry after. */
     readonly update: (
       taskId: string,
@@ -95,6 +102,14 @@ const ledgerOver = (
       }).pipe(writing.withPermit);
     return ZeropsTaskLedger.of({
       entry: (taskId) => Effect.sync(() => entries.get(taskId)),
+      workingCopyHolds: Effect.sync(() => {
+        let holds: { readonly taskId: string; readonly at: number } | undefined;
+        for (const [taskId, entry] of entries) {
+          const at = entry.workingCopyAt;
+          if (at !== undefined && (holds === undefined || at >= holds.at)) holds = { taskId, at };
+        }
+        return holds?.taskId;
+      }),
       update,
     });
   });

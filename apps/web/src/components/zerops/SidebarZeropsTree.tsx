@@ -149,6 +149,7 @@ import {
   mateRunOf,
   mateAwake,
   mateBirthFace,
+  mateReviewCount,
   mateReviewWaits,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
@@ -294,6 +295,7 @@ import {
   mateAsker,
   mateRowSecond,
   mateAutomation,
+  changeLineWords,
   tasksWaitingWords,
   pendingBornLine,
   type MateBornLine,
@@ -1375,6 +1377,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // Whether a Mate's own change waits on the person's review — the composer's top's own rule
     // (`mateNextStep`), on the flow HQ told: its face wears needs-you for it.
     const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
+    // How many of its changes wait so: an automated Mate's line says how many where several do.
+    const inReview = (item: T) => mateReviewCount(flow, item.project.id);
     // What its places are doing, as the globe's tag says it (D′): an environment coming up step by
     // step, what landed, a deploy under way — from what the platform says of it (`stopComing`).
     const listedOf = (stop: GroupFlowStop): ListedStop => {
@@ -1772,6 +1776,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             projectMenu={at === "solo" ? refs.menu : undefined}
             review={at === "solo" ? review : undefined}
             reviewWaits={reviewWaits(item)}
+            inReview={inReview(item)}
             sites={at === "solo" ? sites : undefined}
             timestampFormat={timestampFormat}
             {...faceOf(item.project)}
@@ -3288,6 +3293,7 @@ function useMateRowState<T extends RosterCandidate>({
   owner,
   timestampFormat,
   reviewWaits,
+  inReview,
 }: {
   readonly candidate: T;
   readonly activity: ZeropsAgentActivity | undefined;
@@ -3297,6 +3303,8 @@ function useMateRowState<T extends RosterCandidate>({
   readonly owner: ZeropsMateOwner | undefined;
   readonly timestampFormat: TimestampFormat;
   readonly reviewWaits: boolean;
+  /** How many of its changes wait for review (`mateReviewCount`). */
+  readonly inReview?: number | undefined;
 }) {
   const tags = readZeropsMembership(candidate.project);
   const name = projectNameInApp(candidate.project);
@@ -3486,7 +3494,7 @@ function useMateRowState<T extends RosterCandidate>({
     asks,
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
-    automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
+    automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
   });
   const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // A new ask rises into the row's second line as the person sets it; the
@@ -3653,6 +3661,7 @@ function MateRowView<T extends RosterCandidate>({
   number,
   numbers = false,
   reviewWaits = false,
+  inReview,
   project,
   kid = false,
   review,
@@ -3693,6 +3702,8 @@ function MateRowView<T extends RosterCandidate>({
   readonly numbers?: boolean;
   /** Its own change waits on the person's review (`mateNextStep`): it wears needs-you. */
   readonly reviewWaits?: boolean;
+  /** How many of its changes wait so (`mateReviewCount`): its line says how many, past one. */
+  readonly inReview?: number | undefined;
   /**
    * The project it is the one Mate of: its row is the project's, "Project · Mate" (the owner,
    * 2026-10-12: "one mate = project would look like a mate named with project and name").
@@ -3743,6 +3754,7 @@ function MateRowView<T extends RosterCandidate>({
     owner,
     timestampFormat,
     reviewWaits,
+    inReview,
   });
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
@@ -4402,7 +4414,7 @@ function MateSecondLine({
           data-zerops-surface="sidebar-mate-change"
         >
           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-          {second.mine ? second.title : `${second.title} · in review`}
+          {changeLineWords(second)}
         </span>
       );
     case "ask":

@@ -24,6 +24,7 @@ import {
   foldMates,
   foldWords,
   mateChangeForReview,
+  mateChangesForReview,
   panelAddresses,
   historyOffered,
   placeLines,
@@ -832,6 +833,39 @@ describe("a Mate on a card", () => {
       tone: "muted",
       lift: undefined,
     });
+  });
+
+  it("says how many of a Mate's changes wait for review, where several do", () => {
+    expect(
+      cardSecondWords({
+        second: { kind: "change", title: "Cart page", mine: true, count: 2 },
+        reply: undefined,
+        askLine: undefined,
+        pausedUntil: () => "1:00 PM",
+      }),
+    ).toEqual({ text: "2 changes in review", tone: "ink" });
+    const resting = view({ state: "idle" });
+    expect(
+      cardMateReading({ view: resting, status: undefined, mine: true, review: pull(), reviews: 2 })
+        .text,
+    ).toBe("2 changes in review");
+  });
+
+  it("finds every change of a Mate's that waits for review, one per task", () => {
+    const flow = {
+      pullRequests: [
+        { pull: pull(), blocked: null, state: undefined, review: true },
+        { pull: pull({ number: 2 }), blocked: null, state: undefined, review: true },
+        {
+          pull: pull({ number: 3, mateProjectId: "kai-dev" }),
+          blocked: null,
+          state: undefined,
+          review: true,
+        },
+      ],
+    };
+    expect(mateChangesForReview(flow, "wren-dev").map((each) => each.number)).toEqual([1, 2]);
+    expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(1);
   });
 
   // D7, one rule with the menu (`changeShowsReview`): while Wren works, its changes show no Review.
