@@ -181,7 +181,7 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
           Layer.succeed(
             GithubAuth,
             GithubAuth.of({
-              tokenFor: (repository, id) =>
+              tokenFor: (repository, _use, id) =>
                 Effect.suspend(() => {
                   auth.asked.push(repository);
                   if (id !== undefined && id !== auth.id)

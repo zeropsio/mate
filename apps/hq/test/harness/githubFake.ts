@@ -34,7 +34,21 @@ export interface FakeInstallation {
     readonly private?: boolean;
     readonly default_branch?: string;
   }>;
+  /** What the installation was granted; the app's whole manifest when not named. */
+  permissions?: Readonly<Record<string, string>>;
 }
+
+/** What an installation of the app is granted when a test names nothing: all its manifest asks. */
+const GRANTED = {
+  contents: "write",
+  pull_requests: "write",
+  issues: "write",
+  metadata: "read",
+  checks: "read",
+  statuses: "read",
+  actions: "read",
+};
+const LEVEL: Readonly<Record<string, number>> = { read: 1, write: 2, admin: 3 };
 
 /** Whether `jwt` is RS256-signed under `publicKey` and good now. */
 const jwtHolds = (jwt: string, publicKey: string) => {
@@ -82,8 +96,16 @@ export const githubFake = Effect.gen(function* () {
     installations: new Map<number, FakeInstallation>(),
     /** How long an installation token GitHub mints lives. */
     tokenLifeMs: 60 * 60_000,
-    /** The installation tokens minted, in order, with the installation each is of. */
-    minted: [] as Array<{ readonly token: string; readonly installation: number }>,
+    /**
+     * The installation tokens minted, in order, with the installation each is of and the
+     * repositories and permissions HQ asked it for: neither asked, all the installation's.
+     */
+    minted: [] as Array<{
+      readonly token: string;
+      readonly installation: number;
+      readonly repositoryIds?: ReadonlyArray<number>;
+      readonly permissions?: Readonly<Record<string, string>>;
+    }>,
     seen: [] as Array<GithubRequest>,
     /** The status the next webhook made answers; 201 with `hookId`. */
     hookStatus: 201,
@@ -213,12 +235,34 @@ export const githubFake = Effect.gen(function* () {
                     account: { login: found.account, type: found.accountType ?? "Organization" },
                     repository_selection: found.selection ?? "selected",
                     suspended_at: found.suspended === true ? "2026-10-01T00:00:00Z" : null,
+                    permissions: found.permissions ?? GRANTED,
                   });
                 if (request.method === "POST") {
                   if (found.suspended === true)
                     return reply(403, { message: "This installation has been suspended" });
                   const token = ["ghs", "fake", String(state.minted.length + 1)].join("_");
-                  state.minted.push({ token, installation: id });
+                  const asked = (text === "" ? {} : JSON.parse(text)) as {
+                    readonly repository_ids?: ReadonlyArray<number>;
+                    readonly permissions?: Readonly<Record<string, string>>;
+                  };
+                  // GitHub grants a token nothing the installation was not granted: it refuses.
+                  const granted: Readonly<Record<string, string>> = found.permissions ?? GRANTED;
+                  if (
+                    Object.entries(asked.permissions ?? {}).some(
+                      ([name, level]) => (LEVEL[level] ?? 9) > (LEVEL[granted[name] ?? ""] ?? 0),
+                    )
+                  )
+                    return reply(422, {
+                      message: "The permissions requested are not granted to this installation.",
+                    });
+                  state.minted.push({
+                    token,
+                    installation: id,
+                    ...(asked.repository_ids === undefined
+                      ? {}
+                      : { repositoryIds: asked.repository_ids }),
+                    ...(asked.permissions === undefined ? {} : { permissions: asked.permissions }),
+                  });
                   return reply(201, {
                     token,
                     expires_at: new Date(Date.now() + state.tokenLifeMs).toISOString(),
@@ -253,6 +297,16 @@ export const githubFake = Effect.gen(function* () {
                 response.end(JSON.stringify(body));
               };
               const bare = path.split("?")[0]!;
+              // A token minted for some repositories reaches no other: GitHub answers 404.
+              const scoped = state.minted.find((minted) => minted.token === bearer)?.repositoryIds;
+              const named = /^\/repos\/([^/]+\/[^/]+)/u.exec(bare)?.[1]?.toLowerCase();
+              if (scoped !== undefined && named !== undefined) {
+                const repo = [...state.installations.values()]
+                  .flatMap((installation) => installation.repositories)
+                  .find((candidate) => candidate.full_name.toLowerCase() === named);
+                if (repo === undefined || !scoped.includes(repo.id))
+                  return answer(404, { message: "Not Found" });
+              }
               const pullAt = /\/pulls\/(\d+)(\/merge)?$/u.exec(bare);
               const issueAt = /\/issues\/(\d+)$/u.exec(bare);
               if (request.method === "GET" && /^\/repos\/[^/]+\/[^/]+$/u.test(bare))
