@@ -93,9 +93,32 @@ describe("a project's state line", () => {
       waitsOnYou: true,
       want: "2 changes in review",
     },
-  ] as const)("says why it needs you: $name", ({ review, ready, waitsOnYou, want }) => {
-    const state = projectState({ production: RUNS, waitsOnYou, mates: [MATE], review, ready });
-    expect([state.words, state.reason]).toEqual(["Needs you", want]);
+    {
+      // Nothing waits on the viewer but the release: an open change is no reason of theirs.
+      name: "a release ready to go, though a change is open",
+      review: 1,
+      ready: { count: 2, atLeast: false },
+      waitsOnYou: false,
+      want: "2 ready to release",
+    },
+    {
+      name: "a Mate's question, before a change in review",
+      review: 1,
+      ready: undefined,
+      waitsOnYou: true,
+      asking: ["Juno"],
+      want: "Juno asks",
+    },
+  ] as const)("says why it needs you: $name", (row) => {
+    const state = projectState({
+      production: RUNS,
+      waitsOnYou: row.waitsOnYou,
+      mates: [MATE],
+      review: row.review,
+      ready: row.ready,
+      asking: "asking" in row ? row.asking : undefined,
+    });
+    expect([state.words, state.reason]).toEqual(["Needs you", row.want]);
   });
 });
 

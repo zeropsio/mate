@@ -54,6 +54,8 @@ export function projectState(input: {
   readonly review?: number | undefined;
   /** A release production waits for (`cardReady`). */
   readonly ready?: { readonly count: number; readonly atLeast: boolean } | undefined;
+  /** The Mates that wait on the viewer's answer, by name. */
+  readonly asking?: ReadonlyArray<string> | undefined;
 }): ProjectState {
   const { production } = input;
   const review = input.review ?? 0;
@@ -74,14 +76,19 @@ export function projectState(input: {
                 ? "running"
                 : "in-development";
   // Why it needs you, said beside it: a change in review first, then a release ready to go.
+  // Why it needs you, by what made it: a Mate asking, then a change waiting on the viewer — both
+  // only where something waits on them — then a release ready to go.
+  const asking = input.asking ?? [];
   const reason =
     kind !== "needs-you"
       ? undefined
-      : review > 0
-        ? inReviewWords(review)
-        : input.ready === undefined
-          ? undefined
-          : readyWords(input.ready.count, input.ready.atLeast);
+      : input.waitsOnYou && asking.length > 0
+        ? `${joined(asking)} ${asking.length === 1 ? "asks" : "ask"}`
+        : input.waitsOnYou && review > 0
+          ? inReviewWords(review)
+          : input.ready === undefined
+            ? undefined
+            : readyWords(input.ready.count, input.ready.atLeast);
   return { kind, ...STATES[kind], ...(reason === undefined ? {} : { reason }) };
 }
 

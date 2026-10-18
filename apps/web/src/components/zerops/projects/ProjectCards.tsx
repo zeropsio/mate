@@ -729,6 +729,7 @@ function readPlaces<T>(
     mates: flow.mates,
     review: inReview(flow),
     ready: releaseShown ? ready : undefined,
+    asking: flow.mates.filter((mate) => mate.waiting).map((mate) => mate.name),
   });
   // No stage yet: the way to add it — or that one is being set up.
   const stageSetUp =
