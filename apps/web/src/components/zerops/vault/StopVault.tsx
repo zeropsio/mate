@@ -51,6 +51,11 @@ export function StopVaultSide({
 }) {
   return (
     <PreviewPanelShell mode="inline" widthStorageKey={WIDTH_KEY}>
+      {/* Whose values these are: the column reads as the place's own, not the page's. */}
+      <h2 className="flex h-10 flex-none items-end gap-1.5 px-3 text-body font-medium text-foreground">
+        Vault
+        <span className="font-normal text-muted-foreground">· {name}</span>
+      </h2>
       <ProjectVaultPanel
         actor="environment"
         project={{ orgId, projectId }}
