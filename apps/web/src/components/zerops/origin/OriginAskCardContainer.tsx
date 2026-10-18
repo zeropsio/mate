@@ -1,7 +1,8 @@
 /**
  * An origin ask as the conversation draws it: the engine's record of the request, the application
  * HQ places the Mate in (where the Git sheet adds the environments) and the answer, connected once
- * production is added or declined on Not now — only the outcome reaches the engine. What the
+ * production is added — by the sheet, or seen in HQ — or declined on Not now — only the outcome
+ * reaches the engine. What the
  * person said here is kept in memory by the request, so the card folds at once and stays folded
  * until the engine's record says so too.
  */
@@ -10,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
 
 import { useThreadDetail } from "~/state/entities";
@@ -27,10 +28,12 @@ import { OriginAskCard } from "./OriginAskCard";
 import {
   type OriginAsk,
   type OriginAskSaid,
+  originAskAnswer,
   originAskFace,
   originAskFromKey,
   originAskKey,
   originAskOf,
+  originConnected,
 } from "./originAsk.logic";
 
 /** What the person said to each ask here, by its request. Memory only. */
@@ -91,6 +94,8 @@ function AskCard({
   });
   const onAnswer = useCallback(
     async (outcome: OriginAskSaid): Promise<string | null> => {
+      // The sheet's production and HQ's record both answer connected: the engine hears it once.
+      if (useOriginAskSaid.getState()[requestId] === outcome) return null;
       say(requestId, outcome);
       const result = await answerOriginAsk({
         environmentId,
@@ -103,13 +108,22 @@ function AskCard({
     },
     [answerOriginAsk, environmentId, requestId, threadRef.threadId],
   );
+  const connected = originConnected(ask, application?.environments, git?.repos);
+  // Production added with the sheet closed, or anywhere else, answers once here.
+  const due = originAskAnswer(ask.state, said, connected);
+  const answered = useRef(false);
+  useEffect(() => {
+    if (due === null || answered.current) return;
+    answered.current = true;
+    void onAnswer(due);
+  }, [due, onAnswer]);
   return (
     <OriginAskCard
       application={
         application === undefined || git === undefined ? undefined : { name: application.name, git }
       }
       ask={ask}
-      face={originAskFace(ask.state, said)}
+      face={originAskFace(ask.state, said, connected)}
       mateName={mate?.name ?? "Your Mate"}
       onAnswer={onAnswer}
     />

@@ -8,6 +8,7 @@ import {
   type OriginAskActivityPayload,
 } from "@t3tools/client-runtime/data";
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
 /**
  * The branch stage follows production on when it is added from an origin ask (the orchestrator's
@@ -27,13 +28,54 @@ export type OriginAskSaid = "connected" | "declined";
 
 export type OriginAskFace = OriginAskActivityPayload["state"];
 
-/** What the card draws: the engine's record, else what the person just said here. */
+/**
+ * What the card draws: the engine's record; while it is open, connected once HQ delivers to the
+ * origin — however the person connected it — else what the person just said here.
+ */
 export function originAskFace(
   state: OriginAskActivityPayload["state"],
   said: OriginAskSaid | null,
+  connected: boolean,
 ): OriginAskFace {
-  return state === "open" && said !== null ? said : state;
+  if (state !== "open") return state;
+  return connected ? "connected" : (said ?? state);
 }
+
+/**
+ * What the engine is still to hear of an open ask the person said nothing to here: connected, once
+ * HQ delivers to the origin — production added with the sheet closed, or anywhere else.
+ */
+export function originAskAnswer(
+  state: OriginAskActivityPayload["state"],
+  said: OriginAskSaid | null,
+  connected: boolean,
+): OriginAskSaid | null {
+  return state === "open" && said === null && connected ? "connected" : null;
+}
+
+/**
+ * Whether HQ delivers to the asked origin: the application's production pushes to Git, and the
+ * HQ repository the ask names keeps the asked address as its remote. `false` while HQ has not said.
+ */
+export function originConnected(
+  ask: Pick<OriginAsk, "url" | "repo">,
+  environments:
+    | ReadonlyArray<{ readonly tier: string; readonly target: { readonly kind: string } }>
+    | undefined,
+  repos: ReadonlyArray<RepoListEntry> | undefined,
+): boolean {
+  const remote = repos?.find((entry) => entry.name === ask.repo)?.remote?.url;
+  return (
+    remote !== undefined &&
+    sameAddress(remote, ask.url) &&
+    (environments ?? []).some(
+      (environment) => environment.tier === "production" && environment.target.kind === "git",
+    )
+  );
+}
+
+const sameAddress = (a: string, b: string) =>
+  originAddress(a).toLowerCase() === originAddress(b).toLowerCase();
 
 /** The repository's address as people write it: `github.com/owner/repo`. */
 export function originAddress(url: string): string {

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { GitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
 import { OriginAskCard, type OriginAskCardProps } from "./OriginAskCard";
+import { originAskFace, originConnected } from "./originAsk.logic";
 
 const ask = {
   url: "https://github.com/zeropsio/mate",
@@ -144,6 +145,20 @@ describe("an origin asked of the person", () => {
     await draw({ face: "declined" });
     expect(host.textContent).toContain("Not delivering back");
     expect(button("Connect")).toBeUndefined();
+  });
+
+  it("An origin card whose origin is already connected says so and offers no Not now", async () => {
+    // HQ added production while the sheet was closed: the engine's record is still open.
+    const production = {
+      tier: "production",
+      target: { kind: "git", branch: "main", delivery: "direct" },
+    } as const;
+    await draw({
+      face: originAskFace("open", null, originConnected(ask, [production], connected)),
+    });
+    expect(host.textContent).toContain("github.com/zeropsio/mate · Connected");
+    expect(button("Connect")).toBeUndefined();
+    expect(button("Not now")).toBeUndefined();
   });
 
   it("Closing the sheet keeps the origin ask open", async () => {
