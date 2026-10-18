@@ -459,7 +459,8 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const project = view?.projects.find((found) => found.id === row.mate_project_id);
           const mate = project === undefined ? "Mate" : mateNameIn(project.name, row.app_name);
           const source = sourceOfRow(row.task_source);
-          return { row, mate: mate || "Mate", source, view };
+          const taskLink = row.task_id === null ? null : yield* tasks.link(row.task_id);
+          return { row, mate: mate || "Mate", source, view, taskLink };
         });
 
       /** What the pull request of the change says of it, for the GitHub repository `repository`. */
@@ -493,7 +494,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             description: row.body,
             receipt: row.receipt,
             fixes: fromIssue?.number ?? null,
-            taskLink: row.task_id === null ? null : mateTaskLink(row.mate_project_id),
+            taskLink: facts.taskLink,
             changeLink: `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(appId, repo, number)}`,
             requester,
           }),
@@ -1104,8 +1105,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               message: mergeMessage({
                 description: change.body,
                 coAuthor: login === undefined || id === undefined ? null : { login, id },
-                taskLink:
-                  facts?.row.task_id == null ? null : mateTaskLink(facts.row.mate_project_id),
+                taskLink: facts?.taskLink ?? null,
               }),
             })
             .pipe(Effect.orElseSucceed(() => undefined));

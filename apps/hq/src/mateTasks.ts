@@ -108,11 +108,17 @@ const declinedTooLong = (reason: string | undefined) =>
 const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
 
 /**
- * Where a task is followed in Mate: its Mate's page, which opens on its conversation. The one
- * place a status line, a pull request's footer and a merge's trailer take it from.
+ * Where a task is followed in Mate: its own conversation, once its Mate said which one and HQ
+ * knows the Mate's environment; until then its Mate's page. The one place a status line, a pull
+ * request's footer and a merge's trailer take it from.
  */
-export const mateTaskLink = (mateProjectId: string) =>
-  `${DEFAULT_HOSTED_APP_URL}/mate/${encodeURIComponent(mateProjectId)}`;
+export const mateTaskLink = (
+  mateProjectId: string,
+  conversation?: { readonly environmentId: string; readonly conversationId: string },
+) =>
+  conversation === undefined
+    ? `${DEFAULT_HOSTED_APP_URL}/mate/${encodeURIComponent(mateProjectId)}`
+    : `${DEFAULT_HOSTED_APP_URL}/${encodeURIComponent(conversation.environmentId)}/${encodeURIComponent(conversation.conversationId)}`;
 
 /** What a status line may name of its task. */
 export interface TaskFacts {
@@ -157,6 +163,8 @@ export class MateTasks extends Context.Service<
       taskId: string,
       status: (facts: TaskFacts) => TaskStatus | undefined,
     ) => Effect.Effect<void>;
+    /** Where the task is followed in Mate (`mateTaskLink`); `null` while no Mate took it. */
+    readonly link: (taskId: string) => Effect.Effect<string | null>;
     /**
      * Tasks dropped outside this service (an intake stopped or moved): their status lines say so,
      * and the queue they left moves up.
@@ -226,6 +234,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const sql = yield* SqlClient.SqlClient;
       const leader = yield* Leader;
       const overviews = yield* MateOverviews;
+      /** A task's link, by its Mate's environment as its overview names it and the conversation it said. */
+      const linkTo = (mate: string, conversationId: string | null) =>
+        Effect.map(overviews.all, (all) => {
+          const environmentId = all.get(mate)?.overview?.identity.environmentId;
+          return mateTaskLink(
+            mate,
+            environmentId === undefined || conversationId === null
+              ? undefined
+              : { environmentId, conversationId },
+          );
+        });
       const structure = yield* Structure;
       const changes = yield* Changes;
       const roles = yield* Roles;
@@ -316,9 +335,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly app_name: string | null;
             readonly pr_number: number | null;
             readonly pr_url: string | null;
+            readonly conversation_id: string | null;
           }>`
             SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
-              COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.change_repo,
+              COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.conversation_id,
+              t.change_repo,
               t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
               pr.url AS pr_url
             FROM hq_task t
@@ -348,7 +369,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 );
           const said = status({
             mate: name,
-            link: task.mate === null ? null : mateTaskLink(task.mate),
+            link: task.mate === null ? null : yield* linkTo(task.mate, task.conversation_id),
             pullRequest:
               task.pr_number === null || task.pr_url === null
                 ? null
@@ -1091,6 +1112,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         message: (taskId, message) => messageTask(taskId, message),
         stop: (taskId, reason) => stopTask(taskId, reason),
         tell: (taskId, status) => say(taskId, status),
+        link: (taskId) =>
+          Effect.gen(function* () {
+            const [task] = yield* sql<{
+              readonly mate: string | null;
+              readonly conversation_id: string | null;
+            }>`
+              SELECT COALESCE(mate_project_id, last_mate_project_id) AS mate, conversation_id
+              FROM hq_task WHERE id::text = ${taskId}`;
+            if (task?.mate == null) return null;
+            return yield* linkTo(task.mate, task.conversation_id);
+          }).pipe(Effect.orElseSucceed(() => null)),
         linkFrames: (projectId) =>
           Stream.unwrap(
             Effect.gen(function* () {
