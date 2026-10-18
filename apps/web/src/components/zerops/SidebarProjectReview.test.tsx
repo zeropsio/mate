@@ -11,6 +11,7 @@ vi.mock("~/zerops/review", () => ({ useOpenReview: () => effects.review }));
 import {
   changeReviewItem,
   crewTaskReviewItem,
+  ProjectReviewMarks,
   ProjectReviewTags,
   type ProjectReviewItem,
 } from "./SidebarProjectReview";
@@ -211,4 +212,55 @@ describe("the tags inside a project's row", () => {
     await press(popoverItems()[0]!);
     expect(row).not.toHaveBeenCalled();
   });
+});
+
+it("a run started away from its project stands on its menu row, its step said on hover, and its press opens the release", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const { usePutLive } = await import("~/zerops/putLive");
+  usePutLive.setState({
+    runs: new Map([
+      [
+        "orbit",
+        {
+          orgId: "o-1",
+          groupId: "orbit",
+          project: "Orbit",
+          change: undefined,
+          phase: "releasing",
+          tag: "v0.1.2",
+        },
+      ],
+    ]),
+  });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () =>
+      root.render(
+        <ProjectReviewMarks
+          groupId="orbit"
+          items={[]}
+          projectName="Orbit"
+          release={{ waiting: 2, atLeast: false }}
+          withRun
+        />,
+      ),
+    );
+    const mark = host.querySelector<HTMLElement>(
+      '[data-zerops-surface="sidebar-project-run-mark"]',
+    );
+    expect(mark?.getAttribute("aria-label")).toBe("Releasing v0.1.2");
+    // It stands in the release mark's place: one mark for what goes to production.
+    expect(host.querySelector('[data-zerops-surface="sidebar-project-release-mark"]')).toBeNull();
+    await act(async () => mark?.click());
+    expect(effects.review).toHaveBeenCalledWith(
+      { kind: "release", groupId: "orbit" },
+      expect.anything(),
+    );
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    usePutLive.setState({ runs: new Map() });
+  }
 });

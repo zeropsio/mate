@@ -18,6 +18,7 @@ import {
   putLiveNext,
   putLiveProgress,
   putLiveLandedAt,
+  putLiveMark,
   putLiveOwnLine,
   putLiveReleased,
   putLiveResumed,
@@ -285,6 +286,24 @@ describe("the one wait row and the live card", () => {
     expect(putLiveOwnLine(releasing, undefined)).toBe(true);
     expect(putLiveOwnLine(start(), "v0.1.2")).toBe(true);
     expect(putLiveOwnLine({ ...releasing, phase: "failed" }, "v0.1.2")).toBe(true);
+  });
+
+  it("a run started away from its project shows on the menu's project row: releasing with its step, stopped with its cause", () => {
+    expect(putLiveMark(undefined)).toBeUndefined();
+    expect(putLiveMark({ ...start(), phase: "releasing", tag: "v0.1.2" })).toEqual({
+      kind: "releasing",
+      tip: "Releasing v0.1.2",
+    });
+    expect(putLiveMark(start())).toEqual({ kind: "releasing", tip: "Making production" });
+    expect(
+      putLiveMark({
+        ...start(),
+        phase: "failed",
+        failure: { words: "Zerops needs more credit.", action: "again" },
+      }),
+    ).toEqual({ kind: "failed", tip: "Tea Shop isn't live yet: Zerops needs more credit." });
+    // Live, it is production's to say: the mark goes.
+    expect(putLiveMark({ ...start(), phase: "live", tag: "v0.1.2" })).toBeUndefined();
   });
 
   it("says when it was released: just now, then its age", () => {

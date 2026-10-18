@@ -3738,6 +3738,15 @@ code {
     background: color-mix(in oklab, currentColor 20%, transparent);
   }
 
+  /* This tab's run on its project's row: under way in the busy ink, stopped in the failed one. */
+  .menu-mark-release[data-run="releasing"] {
+    color: var(--zerops-status-busy-text);
+  }
+
+  .menu-mark-release[data-run="failed"] {
+    color: var(--zerops-status-failed-text);
+  }
+
   .menu-mark-icon {
     flex: none;
     width: 12px;

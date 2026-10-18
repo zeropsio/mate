@@ -20,8 +20,11 @@ import {
 } from "react";
 
 import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
+import { usePutLiveRun } from "~/zerops/putLive";
+import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
+import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
@@ -142,9 +145,18 @@ export function ProjectReviewMarks({
   projectName,
   items,
   release,
-}: Parameters<typeof ProjectReviewTags>[0]): ReactNode {
+  withRun = false,
+}: Parameters<typeof ProjectReviewTags>[0] & {
+  /**
+   * The project's own row: a release or Put it live run of this tab stands on it in the release
+   * mark's place, wherever the person is — under way with its step on hover, stopped with why.
+   */
+  readonly withRun?: boolean;
+}): ReactNode {
   const openReview = useOpenReview();
-  if (items.length === 0 && release === undefined) return null;
+  const stored = usePutLiveRun(withRun ? groupId : undefined);
+  const run = putLiveMark(stored);
+  if (items.length === 0 && release === undefined && run === undefined) return null;
   const mark = items.length === 0 ? undefined : reviewMarkOf(items, projectName);
   return (
     <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
@@ -161,7 +173,33 @@ export function ProjectReviewMarks({
           {mark.count > 1 ? <span>{mark.count}</span> : null}
         </span>
       )}
-      {release === undefined ? null : (
+      {run === undefined ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                aria-label={run.tip}
+                className="menu-mark menu-mark-release"
+                data-run={run.kind}
+                data-zerops-surface="sidebar-project-run-mark"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openReview({ kind: "release", groupId }, { from: event.currentTarget });
+                }}
+                role="img"
+              />
+            }
+          >
+            {run.kind === "releasing" ? (
+              <Spinner aria-hidden="true" role="presentation" size="xs" />
+            ) : (
+              <RocketIcon aria-hidden="true" className="menu-mark-icon" />
+            )}
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">{run.tip}</TooltipPopup>
+        </Tooltip>
+      )}
+      {release === undefined || run !== undefined ? null : (
         <span
           aria-label={`Release: ${releaseTagTip(release)}`}
           className="menu-mark menu-mark-release"
