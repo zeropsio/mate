@@ -179,8 +179,8 @@ export function freeWords(names: ReadonlyArray<string>): string {
 
 /**
  * The automated Mates in one line: "Odo works on a task", "Odo and Tess work on tasks" while any
- * works; else "Odo waits for your review" while a change of theirs waits for it (HQ hands such a
- * Mate no task); else "2 automated Mates wait for a task".
+ * works; else "Odo waits for your review" while a change of theirs waits for it (HQ hands it a task
+ * only once no Mate without one is free); else "2 automated Mates wait for a task".
  */
 export function automatedWords(
   mates: ReadonlyArray<{

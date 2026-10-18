@@ -28,11 +28,13 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import { domainFaceWords } from "../addresses/addresses.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
-import type {
-  MateRowAskLine,
-  MateRowReply,
-  MateRowSecond,
-  MateRowView,
+import {
+  changeLineWords,
+  changesInReview,
+  type MateRowAskLine,
+  type MateRowReply,
+  type MateRowSecond,
+  type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 
@@ -508,6 +510,8 @@ export function cardMateReading(input: {
   readonly mine: boolean;
   /** Its change waiting for the viewer's review (`changeShowsReview`). */
   readonly review: FlowPullRequest | undefined;
+  /** How many of its changes wait for review, where several do: the lift says how many. */
+  readonly reviews?: number | undefined;
   /** Its conversations are read: none asked is then a fact the line says, as the menu's does. */
   readonly read?: boolean | undefined;
   /** The menu row's line 2 for it (`cardSecondWords`): said wherever nothing lifts it. */
@@ -543,7 +547,12 @@ export function cardMateReading(input: {
     return { text: input.line.text, tone: input.line.tone, lift };
   // A change lifted for review is named by its title, as its menu row names it: the Mate's last
   // words may be of another moment (a limit it hit).
-  if (lift?.kind === "review") return { text: lift.pull.title, tone: "ink", lift };
+  if (lift?.kind === "review")
+    return {
+      text: (input.reviews ?? 1) > 1 ? changesInReview(input.reviews ?? 1) : lift.pull.title,
+      tone: "ink",
+      lift,
+    };
   return {
     text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,
@@ -608,8 +617,8 @@ export function cardSecondWords(input: {
       return muted(`Paused until ${input.pausedUntil(second.until)}`);
     case "change":
       return second.mine
-        ? { text: second.title, tone: "ink" }
-        : muted(`${second.title} · in review`);
+        ? { text: changeLineWords(second), tone: "ink" }
+        : muted(changeLineWords(second));
     case "task":
       return second.on ? { text: second.text, tone: "ink" } : muted(second.text);
     case "ask":
@@ -621,16 +630,24 @@ export function cardSecondWords(input: {
 }
 
 /**
- * The change of a Mate's that waits for review, by the rule the menu reads (`changeShowsReview`,
- * the flow's `review`): none while it works.
+ * The changes of a Mate's that wait for review, by the rule the menu reads (`changeShowsReview`,
+ * the flow's `review`): none while it works. An automated Mate holds one per task, several at once.
  */
+export function mateChangesForReview(
+  flow: Pick<GroupFlow, "pullRequests">,
+  mateProjectId: string,
+): ReadonlyArray<FlowPullRequest> {
+  return flow.pullRequests
+    .filter((entry) => entry.review && entry.pull.mateProjectId === mateProjectId)
+    .map((entry) => entry.pull);
+}
+
+/** The first of a Mate's changes waiting for review (`mateChangesForReview`): its Review opens it. */
 export function mateChangeForReview(
   flow: Pick<GroupFlow, "pullRequests">,
   mateProjectId: string,
 ): FlowPullRequest | undefined {
-  return flow.pullRequests.find(
-    (entry) => entry.review && entry.pull.mateProjectId === mateProjectId,
-  )?.pull;
+  return mateChangesForReview(flow, mateProjectId)[0];
 }
 
 /** A Mate with something to show stays out of the fold: at work, failed, asking, or a change. */

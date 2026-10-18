@@ -395,8 +395,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
   candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
-  // An application's automated Mates: one at work on a task from GitHub, one whose task's change
-  // waits for review, one waiting for its next.
+  // An application's automated Mates: one at work on a task from GitHub, one whose tasks' changes
+  // wait for review (two, `FLOWS`), one waiting for its next.
   candidate(
     "tea-nova",
     "Nova",
@@ -912,6 +912,20 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
     "design-tokens",
     {
       pullRequests: [],
+      environments: new Map(),
+      releaseOffered: false,
+      recipeRead: true,
+      recipeTiers: ["stage", "production"],
+    },
+  ],
+  [
+    // Rio's changes, one per task, both waiting for review: its line says how many.
+    "tea-shop",
+    {
+      pullRequests: [
+        pull({ number: 7, title: "Show the tea's origin", mateProjectId: "tea-rio" }),
+        pull({ number: 8, title: "Sort teas by strength", mateProjectId: "tea-rio" }),
+      ],
       environments: new Map(),
       releaseOffered: false,
       recipeRead: true,

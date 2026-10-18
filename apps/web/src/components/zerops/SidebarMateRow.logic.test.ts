@@ -20,6 +20,7 @@ import {
   mateRowPropsEqual,
   mateRowSecond,
   mateAutomation,
+  changeLineWords,
   tasksWaitingWords,
   type MateRowView,
   ownerBadge,
@@ -1961,6 +1962,11 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       line: { kind: "change", title: "Rate limit the public API", mine: false },
     },
     {
+      case: "several open changes: how many",
+      over: { view: view("needs"), change: { title: "Cart page", mine: true, count: 2 } },
+      line: { kind: "change", title: "Cart page", mine: true, count: 2 },
+    },
+    {
       case: "an unsent draft over its last words",
       over: { askLine: { kind: "draft", text: "also count", ask: undefined } },
       line: { kind: "ask", pending: false },
@@ -2085,6 +2091,11 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
     expect(mateAutomation({ automated: true }, "missing")).toEqual({ task: null, key: "missing" });
     expect(mateAutomation({ automated: false }, "missing")).toBeUndefined();
   });
+
+  it("carries how many of an automated Mate's changes wait for review, where several do", () => {
+    expect(mateAutomation({ automated: true }, undefined, 3)).toEqual({ task: null, inReview: 3 });
+    expect(mateAutomation({ automated: true }, undefined, 1)).toEqual({ task: null });
+  });
 });
 
 describe("mateRowSecond — an automated Mate's line", () => {
@@ -2175,6 +2186,16 @@ describe("mateRowSecond — an automated Mate's line", () => {
       case: "an automated Mate at rest on a task says the task waits for review",
       over: { automated: { task } },
       line: { kind: "task", text: "#12 Fix the checkout total · up for review", on: false },
+    },
+    {
+      case: "an automated Mate at rest whose changes wait for review, one per task, says how many",
+      over: { automated: { task: { ...task, done: true }, inReview: 2 } },
+      line: { kind: "task", text: "2 changes in review", on: false },
+    },
+    {
+      case: "an automated Mate at work on a task names it, whatever else of its waits for review",
+      over: { automated: { task, inReview: 2 }, view: view("working", { kind: "pending" }) },
+      line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
       case: "an automated Mate whose task's change waits on the viewer says so in ink",
@@ -2464,5 +2485,23 @@ describe("a Mate's row says it is updating while its update restarts it", () => 
   it("away without an update, past half a minute: it isn't answering, as before", () => {
     const reply = row({ nowMs: offMs + 45_000, updating: false, connected: false });
     expect(reply?.kind === "words" ? reply.text : "").toMatch(/^Nova isn't answering since /);
+  });
+});
+
+describe("changeLineWords — the line of a Mate's open changes", () => {
+  it.each([
+    { case: "its own, by title", change: { title: "Cart page", mine: true }, words: "Cart page" },
+    {
+      case: "a colleague's, in review",
+      change: { title: "Cart page", mine: false },
+      words: "Cart page · in review",
+    },
+    {
+      case: "several, how many",
+      change: { title: "Cart page", mine: true, count: 2 },
+      words: "2 changes in review",
+    },
+  ])("$case", ({ change, words }) => {
+    expect(changeLineWords({ kind: "change", ...change })).toBe(words);
   });
 });
