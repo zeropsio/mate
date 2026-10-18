@@ -248,6 +248,7 @@ export const HQ_CLIENT_VERBS = [
   "removeAiKey",
   "slack",
   "slackManifest",
+  "slackChannels",
   "connectSlack",
   "disconnectSlack",
   "discord",
