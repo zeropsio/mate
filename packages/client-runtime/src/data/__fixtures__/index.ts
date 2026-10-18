@@ -30,5 +30,6 @@ export {
   thoughtItem,
   workItem,
 } from "./mateEngine.ts";
+export { GIT_APP, GIT_PRODUCTION, GIT_STAGE, seedGitApplication } from "./gitApplication.ts";
 export { graceOver, liveZerops, ORG, pastGrace } from "./account.ts";
 export { membershipInputs } from "./membership.ts";
