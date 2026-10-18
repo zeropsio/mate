@@ -57,6 +57,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import { NewProjectCards, ReadingCards, TeaShopCards } from "./projectCardsFixtures";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
@@ -1038,10 +1039,9 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle(
-  "dark",
-  new URLSearchParams(location.search).get("theme") === "dark",
-);
+const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+document.documentElement.classList.toggle("dark", appearance === "dark");
+applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 /** A failed deploy's log reads the account's projects: stand-ins that hold none. */
 function Standins({ children }: { readonly children: ReactNode }) {

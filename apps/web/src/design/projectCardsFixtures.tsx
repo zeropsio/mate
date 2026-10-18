@@ -9,8 +9,10 @@ import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { MateFace } from "~/components/zerops/primitives";
 import {
   ProjectAutomationView,
+  type AutomationControls,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
 import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import { ProjectAccessCardView } from "~/components/zerops/projects/ProjectAccessCard";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
@@ -106,6 +108,23 @@ const POOL: ReadonlyArray<PoolMate> = [
   },
   { projectId: "p-tess", name: "Tess", tint: "rose", shape: undefined, automation: { task: null } },
 ];
+const ADMIN: AutomationControls = {
+  onAddMate: nothing,
+  onTakeFrom: nothing,
+  onEdit: nothing,
+  onAskStop: nothing,
+  onKeep: nothing,
+  pressOf: () => ({ kind: "idle" }),
+  onStop: nothing,
+  onReadAgain: nothing,
+  onOpenSettings: nothing,
+};
+
+const TEASHOP_SOURCES: ReadonlyArray<SourceRow> = [
+  { key: "github", kind: "github", words: "GitHub issues labelled “mate”" },
+  { key: "slack", kind: "slack", words: "Slack #teashop-asks", disconnected: false },
+];
+
 const TASK: HqAppTask = {
   id: "t42",
   title: "Prices round wrong in the cart",
@@ -139,6 +158,19 @@ const TASKS: ReadonlyArray<HqAppTask> = [
   },
   {
     ...TASK,
+    id: "t46",
+    title: "“Can we hide sold-out teas?” · Ida Ops",
+    label: "Slack #teashop-asks",
+    url: "https://acme.slack.com/archives/C1/p46",
+    state: "queued",
+    position: 2,
+    mate: null,
+    createdAt: ago(120),
+    startedAt: null,
+    spentUsd: null,
+  },
+  {
+    ...TASK,
     id: "t39",
     title: "Prices no longer round down in the cart",
     state: "merged",
@@ -146,6 +178,28 @@ const TASKS: ReadonlyArray<HqAppTask> = [
     endedAt: ago(300),
     spentUsd: 1.93,
     change: { repo: "teashop", number: 14 },
+    pullRequest: null,
+  },
+  {
+    ...TASK,
+    id: "t31",
+    title: "Fix the sold-out badge on mobile",
+    state: "merged",
+    mate: { projectId: "p-odo", name: "Odo" },
+    endedAt: ago(8 * 24 * 60),
+    spentUsd: 3.68,
+    change: { repo: "teashop", number: 11 },
+    pullRequest: null,
+  },
+  {
+    ...TASK,
+    id: "t30",
+    title: "Answered: “Do we ship to Austria?”",
+    state: "done",
+    mate: { projectId: "p-tess", name: "Tess" },
+    endedAt: ago(9 * 24 * 60),
+    spentUsd: 0.12,
+    change: null,
     pullRequest: null,
   },
 ];
@@ -232,15 +286,17 @@ export function TeaShopCards() {
       access={<ProjectAccessCardView model={TEASHOP_ACCESS} onManage={nothing} />}
       automation={
         <ProjectAutomationView
+          admin={ADMIN}
           board={{
             read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop") },
             spend: "$21.40 of $40 this month",
+            gauge: { words: "$21.40 of $40 · October", share: 0.535 },
             onReadAgain: nothing,
             onOpen: nothing,
           }}
           onOpenMate={nothing}
           pool={POOL}
-          sources={{ rows: [], reading: false, withheld: false }}
+          sources={{ rows: TEASHOP_SOURCES, reading: false, withheld: false }}
           workingOf={(projectId) => projectId === "p-odo"}
         />
       }
