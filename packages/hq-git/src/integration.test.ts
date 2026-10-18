@@ -483,6 +483,32 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 
+  it.live("closing waits for a token handoff under way, leaving git's home empty to remove", () =>
+    fixture(
+      Effect.gen(function* () {
+        yield* git.create({ appId: "app", id: "repo" });
+        const home = NodePath.join(dir, "client-home");
+        yield* Effect.promise(() => NodeFSP.mkdir(home, { recursive: true }));
+        const runner = new GitRunner(home);
+        let settled = false;
+        void runner
+          .remoteAskpass(
+            ["ls-remote", repoDir()],
+            repoDir(),
+            Redacted.make("token"),
+            new AbortController().signal,
+          )
+          .catch(() => {})
+          .finally(() => {
+            settled = true;
+          });
+        yield* Effect.promise(() => runner.close());
+        expect(settled).toBe(true);
+        expect(yield* Effect.promise(() => NodeFSP.readdir(home))).toEqual([]);
+      }),
+    ),
+  );
+
   it.live("disables a malicious hook during real stateless receive-pack without HTTP", () =>
     fixture(
       Effect.gen(function* () {
