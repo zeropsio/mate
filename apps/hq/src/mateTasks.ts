@@ -34,7 +34,8 @@
  *   while on it (it hears each once). Said of a task it is done with, its change waiting for
  *   review, it is a follow-up: kept while the Mate is on another task, told once it is on none —
  *   one task's at a time, again on each link it opens — and owed until the Mate says it is back on
- *   it (or `acceptWithin` passes with no word), so its work never lands in another task's. People stopping a task (`stop`) drop it while no Mate took it; one a Mate took, its Mate
+ *   it (or `followUpWithin`, 5 minutes, passes with no word), so its work never lands in another
+ *   task's. People stopping a task (`stop`) drop it while no Mate took it; one a Mate took, its Mate
  *   is told to stop (`task-stop`, again on each link) and it ends `stopped` on the Mate's word, or
  *   on HQ's after `stopWithin` (10 minutes).
  * - The task's source hears how it stands on ONE status line HQ keeps there through its channel
@@ -288,6 +289,11 @@ export interface MateTasksOptions {
   readonly remindAfter?: Duration.Duration;
   /** How long a task waits for an answer before it stops; three days. */
   readonly giveUpAfter?: Duration.Duration;
+  /**
+   * How long a Mate told a follow-up on a task it is done with has to say it is back on it, while
+   * it takes no new task: its working copies move to the task's change first; 5 minutes.
+   */
+  readonly followUpWithin?: Duration.Duration;
 }
 
 export const mateTasksLayer = (options: MateTasksOptions = {}) =>
@@ -317,6 +323,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       // One status line at a time, in the order the task moved: its source shows them so.
       const telling = yield* Semaphore.make(1);
       const acceptMs = Duration.toMillis(options.acceptWithin ?? Duration.seconds(60));
+      const followUpSecs = Duration.toSeconds(options.followUpWithin ?? Duration.minutes(5));
       const told = yield* PubSub.unbounded<{
         readonly projectId: string;
         readonly frame: string;
@@ -397,7 +404,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         sql`COALESCE(${task}.ended_at, ${task}.updated_at)`;
       /**
        * A follow-up on a task the Mate is done with, its change waiting for review: something said
-       * of it since it ended — not told yet, or told within `acceptWithin` (`follow_up_at`) with no
+       * of it since it ended — not told yet, or told within `followUpWithin` (`follow_up_at`) with no
        * word that the Mate is back on it. The Mate owes it: no new task until it is back on that
        * one, or the time passed with no word.
        */
@@ -408,7 +415,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
           AND msg.created_at > ${endedAt(task)})
         AND (${untold(task)}
-          OR ${task}.follow_up_at > now() - make_interval(secs => ${acceptMs / 1000})))`;
+          OR ${task}.follow_up_at > now() - make_interval(secs => ${followUpSecs})))`;
       /** Said of the task since it ended, and since HQ last told its Mate a follow-up on it. */
       const untold = (task: Statement.Fragment) => sql`EXISTS (
         SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
@@ -424,18 +431,22 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
        */
       const followUps = (mates: Statement.Fragment, all: boolean) =>
         Effect.gen(function* () {
-          const due = yield* leader.write(sql<{
-            readonly task_id: string;
-            readonly mate_project_id: string;
-          }>`
-            WITH due AS (
+          const owed = sql`
               SELECT DISTINCT ON (t.mate_project_id) t.id, t.mate_project_id,
                 ${untold(sql`t`)} AS untold
               FROM hq_task t JOIN hq_task_message msg ON msg.task_id = t.id
               WHERE t.mate_project_id IN (SELECT project_id FROM hq_mate WHERE automated AND ${mates})
                 AND ${followUpOn(sql`t`)} AND NOT ${onATask(sql`t.mate_project_id`)}
                 AND msg.created_at > ${endedAt(sql`t`)}
-              ORDER BY t.mate_project_id, msg.seq)
+              ORDER BY t.mate_project_id, msg.seq`;
+          // Read first: most looks find none, and write nothing.
+          const found = yield* sql<{ readonly untold: boolean }>`SELECT untold FROM (${owed}) o`;
+          if (!found.some((row) => row.untold || all)) return [];
+          const due = yield* leader.write(sql<{
+            readonly task_id: string;
+            readonly mate_project_id: string;
+          }>`
+            WITH due AS (${owed})
             UPDATE hq_task t SET follow_up_at = now() FROM due
             WHERE t.id = due.id AND (due.untold OR ${all})
             RETURNING t.id::text AS task_id, t.mate_project_id`);
