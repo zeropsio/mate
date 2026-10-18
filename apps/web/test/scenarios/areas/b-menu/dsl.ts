@@ -29,8 +29,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
     await page
       .waitForFunction(
         (expected) => {
-          const section = [...document.querySelectorAll("main section")].find(
-            (section) => section.querySelector("h2")?.textContent === "Environments",
+          // The project page's road: each tier's environments stand under its stop.
+          const section = document.querySelector(
+            'main section[data-zerops-surface="project-road"]',
           );
           const rows = [
             ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
@@ -45,8 +46,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
       )
       .catch(async (cause) => {
         const actual = await page.evaluate(() => {
-          const section = [...document.querySelectorAll("main section")].find(
-            (section) => section.querySelector("h2")?.textContent === "Environments",
+          // The project page's road: each tier's environments stand under its stop.
+          const section = document.querySelector(
+            'main section[data-zerops-surface="project-road"]',
           );
           return [
             ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
@@ -60,9 +62,8 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
       });
     expect(
       await page.evaluate(() => {
-        const section = [...document.querySelectorAll("main section")].find(
-          (section) => section.querySelector("h2")?.textContent === "Environments",
-        );
+        // The project page's road: each tier's environments stand under its stop.
+        const section = document.querySelector('main section[data-zerops-surface="project-road"]');
         return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].flatMap(
           (row) => {
             const name = row.firstChild?.textContent?.trim();
@@ -78,9 +79,8 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
   return Effect.promise(async () => {
     const button = await page.waitForFunction(
       (name) => {
-        const section = [...document.querySelectorAll("main section")].find(
-          (section) => section.querySelector("h2")?.textContent === "Environments",
-        );
+        // The project page's road: each tier's environments stand under its stop.
+        const section = document.querySelector('main section[data-zerops-surface="project-road"]');
         return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].find(
           (row) => row.firstChild?.textContent?.trim() === name,
         );
