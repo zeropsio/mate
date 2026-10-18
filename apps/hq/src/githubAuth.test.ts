@@ -16,8 +16,9 @@ const DOCUMENTED = [
   // The push probe (Contents), check runs (Checks), statuses (Commit statuses), workflow runs (Actions).
   ["ci", { contents: "write", checks: "read", statuses: "read", actions: "read" }],
   // Open, edit, list and get pull requests, comment and assign on them (Pull requests); "Get an
-  // issue" on a closed one (Issues: read); its check runs (Checks).
-  ["pullRequests", { pull_requests: "write", issues: "read", checks: "read" }],
+  // issue" on a closed one (Issues: read); its check runs (Checks); the head and base branches an
+  // opened one names (Contents: read).
+  ["pullRequests", { contents: "read", pull_requests: "write", issues: "read", checks: "read" }],
   // "Merge a pull request" takes Contents: write; reading the pull request, Pull requests.
   ["merge", { contents: "write", pull_requests: "write" }],
   // Reactions, comments, labels, closing (Issues: write).
