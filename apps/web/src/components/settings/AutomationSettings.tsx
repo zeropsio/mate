@@ -6,7 +6,7 @@
  * The Owner and Admins see each part's state and its controls; anyone else sees the GitHub app's
  * state, and that the rest is theirs to set.
  */
-import { KeyRoundIcon } from "lucide-react";
+import { KeyRoundIcon, TimerIcon } from "lucide-react";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
@@ -17,8 +17,15 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
 import type { GithubReturn } from "./automationSettings.logic";
 import { GithubAppSettings } from "./GithubAppSettings";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { DiscordMark, IntegrationList, IntegrationRow, SlackMark } from "./IntegrationRow";
+import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
+import {
+  DiscordMark,
+  IntegrationList,
+  IntegrationRow,
+  IntegrationSetting,
+  LimitsList,
+  SlackMark,
+} from "./IntegrationRow";
 import { TaskLimitsSettings, TaskSourcesSettings } from "./TaskSourcesSettings";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
@@ -70,11 +77,14 @@ export function AutomationSettings({
                 surface="settings-discord"
               />
             </IntegrationList>
-            <SettingsRow
-              description="A task that reaches either stops, and says where it got to."
-              status={ADMINS_ONLY}
-              title="Limits per task"
-            />
+            <LimitsList>
+              <IntegrationSetting
+                line={ADMINS_ONLY}
+                mark={<TimerIcon className="size-5" />}
+                name="Limits per task"
+                surface="settings-task-limits"
+              />
+            </LimitsList>
           </>
         )}
       </SettingsSection>
