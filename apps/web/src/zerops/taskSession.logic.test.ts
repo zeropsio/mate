@@ -100,6 +100,11 @@ describe("a task's session: how its conversation's task stands, in one word", ()
       "stopping",
     ],
     [
+      "a stop HQ's record took is stopping, though navigation still says it waits",
+      input({ current: { ...onIt, waiting: true }, record: record({ state: "stopping" }) }),
+      "stopping",
+    ],
+    [
       "a stopping task's record is stopping",
       input({ current: null, record: record({ state: "stopping" }) }),
       "stopping",

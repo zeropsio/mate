@@ -129,7 +129,7 @@ function changeLink(task: HqAppTask, appId: string): RecentRow["change"] {
 
 /** Where a live task stands, with what HQ's navigation says of it (a stop taken, a question). */
 function liveStatus(task: HqAppTask, live: HqNavigationMateTask | undefined): TaskStatus {
-  if (live?.stopping === true) return "stopping";
+  if (live?.stopping === true || task.state === "stopping") return "stopping";
   if (live?.waiting === true) return "waiting";
   return recordStatus(task);
 }

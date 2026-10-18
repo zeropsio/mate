@@ -97,7 +97,12 @@ export function recordOf(
 
 export function taskSession(input: TaskSessionInput): TaskSession {
   const { current, record } = input;
-  const live = fromNavigation(input);
+  const said = fromNavigation(input);
+  // HQ's record says a stop was taken before navigation does: it is stopping.
+  const live =
+    said !== undefined && isStoppableStatus(said) && record?.state === "stopping"
+      ? "stopping"
+      : said;
   const mine = live === undefined ? undefined : (current ?? undefined);
   const status = live ?? (record === undefined ? undefined : recordStatus(record));
   if (status === undefined) return UNKNOWN;

@@ -112,6 +112,11 @@ describe("an application's task board", () => {
       ["1", { id: "1", title: "Task 1", url: null, stopping: true as const }],
     ]);
     expect(boardOf([working], NOW, "app-1", stopping).atWork[0]?.status).toBe("stopping");
+    const waiting = new Map([
+      ["1", { id: "1", title: "Task 1", url: null, waiting: true as const }],
+    ]);
+    const taken = task({ id: "1", state: "stopping" });
+    expect(boardOf([taken], NOW, "app-1", waiting).atWork[0]?.status).toBe("stopping");
   });
 
   it("says a Mate whose last change waits for review is held by it, never that it waits for a task", () => {
