@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
 import type { HqAppTask, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import type { HqNavigationProject } from "@t3tools/shared/hqStream";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import { ROBOT_TASK_LINK, automatedPool } from "../test/harness/automated.ts";
@@ -75,16 +76,31 @@ describe("an application's tasks, what they cost, and the organization's monthly
           );
           assert.strictEqual(row.mate?.task?.workedMs, 60_000);
           assert.isString(row.mate?.task?.startedAt);
+          // Said again while it works: its row moves with it.
+          yield* word(core, {
+            taskId: task.id,
+            state: "working",
+            spentUsd: 0.45,
+            workedMs: 120_000,
+          });
+          const later = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.spentUsd === 0.45,
+          );
+          assert.strictEqual(later.mate?.task?.workedMs, 120_000);
           yield* word(core, { taskId: task.id, state: "done", spentUsd: 0.5, workedMs: 90_000 });
           const [kept] = yield* rowsWhere(
             core.url,
             "SELECT state, spent_usd, worked_ms::float8 AS worked_ms, started_at IS NOT NULL AS taken, ended_at IS NOT NULL AS ended FROM hq_task",
             (rows) => rows[0]?.["state"] === "done",
           );
+          // A word told late, or again, never lowers what it spent or worked.
           assert.deepStrictEqual(kept, {
             state: "done",
             spent_usd: 0.5,
-            worked_ms: 90_000,
+            worked_ms: 120_000,
             taken: true,
             ended: true,
           });
@@ -250,6 +266,208 @@ describe("an application's tasks, what they cost, and the organization's monthly
           });
           yield* limits({ minutes: 60, costUsd: null, monthlyBudgetUsd: 5 });
           yield* toldTask(core, 2);
+        }),
+    );
+
+    it.effect(
+      "this month's spend counts what each word added in the month it came: a task taken last month, or never seen at work, spends this month; a word told again adds nothing",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          const spent = Effect.map(
+            core.call("GET", "/api/org/task-limits", { session: core.owner }),
+            (answer) => (answer.body as HqTaskLimitsView).spentThisMonthUsd,
+          );
+          const kept = (spentUsd: number, workedMs: number) =>
+            rowsWhere(
+              core.url,
+              "SELECT spent_usd, worked_ms::float8 AS worked_ms FROM hq_task",
+              (rows) => rows[0]?.["spent_usd"] === spentUsd && rows[0]?.["worked_ms"] === workedMs,
+            );
+          const sql = (statement: string) => rowsWhere(core.url, statement, () => true);
+          yield* core.issue(1);
+          const task = yield* toldTask(core, 1);
+          yield* word(core, { taskId: task.id, state: "accepted", conversationId: "c-1" });
+          yield* word(core, { taskId: task.id, state: "working", spentUsd: 0.5, workedMs: 1 });
+          yield* kept(0.5, 1);
+          assert.strictEqual(yield* spent, 0.5);
+          // Taken last month, woken by a review this month; and what last month spent stays there.
+          const lastMonth = "date_trunc('month', now() AT TIME ZONE 'UTC') - interval '10 days'";
+          yield* sql(`UPDATE hq_task SET started_at = ${lastMonth}`);
+          yield* sql(
+            `INSERT INTO hq_task_month_spend (month, app_id, spent_usd) SELECT (${lastMonth})::date, id, 7 FROM hq_app`,
+          );
+          yield* word(core, { taskId: task.id, state: "working", spentUsd: 0.8, workedMs: 2 });
+          yield* kept(0.8, 2);
+          assert.strictEqual(yield* spent, 0.8);
+          // Told again, or late with less: nothing added.
+          yield* word(core, { taskId: task.id, state: "working", spentUsd: 0.3, workedMs: 3 });
+          yield* kept(0.8, 3);
+          assert.strictEqual(yield* spent, 0.8);
+          // Never seen at work at all: its spend counts all the same.
+          yield* sql("UPDATE hq_task SET started_at = NULL");
+          yield* word(core, { taskId: task.id, state: "working", spentUsd: 1, workedMs: 4 });
+          yield* kept(1, 4);
+          assert.strictEqual(yield* spent, 1);
+        }),
+    );
+
+    it.effect(
+      "once the budget is reached, a task handed out but not yet taken goes back in line, no try against it, and its Mate is told to drop it, also when its word that it took it comes late; a higher budget hands it out again",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ tasks: { acceptWithin: Duration.minutes(5) } });
+          const limits = (monthlyBudgetUsd: number) =>
+            core.call("PUT", "/api/org/task-limits", {
+              session: core.owner,
+              body: { minutes: 60, costUsd: null, monthlyBudgetUsd },
+            });
+          yield* limits(1);
+          yield* core.issue(1);
+          const first = yield* toldTask(core, 1);
+          yield* word(core, { taskId: first.id, state: "accepted", conversationId: "c-1" });
+          yield* word(core, { taskId: first.id, state: "done", spentUsd: 0.6, workedMs: 1 });
+          yield* core.issue(2);
+          const second = yield* toldTask(core, 2);
+          yield* core.tasks((rows) => rows[1]?.["state"] === "assigned");
+          // The budget lowered under this month's spend while the robot has not taken it yet.
+          yield* limits(0.5);
+          assert.deepStrictEqual(yield* core.robot.link.take("task-stop"), {
+            taskId: second.id,
+            reason: BUDGET_SPENT,
+            requeued: true,
+          });
+          const [, back] = yield* core.tasks((rows) => rows[1]?.["state"] === "queued");
+          assert.deepInclude(back, { mate_project_id: null, attempts: 0 });
+          // Its word that it took it, late: it waits in line still, and its Mate drops it again.
+          yield* word(core, { taskId: second.id, state: "accepted", conversationId: "c-2" });
+          assert.deepStrictEqual(yield* core.robot.link.take("task-stop"), {
+            taskId: second.id,
+            reason: BUDGET_SPENT,
+            requeued: true,
+          });
+          yield* core.tasks((rows) => rows[1]?.["state"] === "queued");
+          yield* limits(5);
+          assert.strictEqual((yield* toldTask(core, 2)).id, second.id);
+        }),
+    );
+
+    it.effect(
+      "while the budget stays spent, a waiting task's line keeps saying so as the queue moves, never its place",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* core.call("PUT", "/api/org/task-limits", {
+            session: core.owner,
+            body: { minutes: 60, costUsd: null, monthlyBudgetUsd: 1 },
+          });
+          yield* core.issue(1);
+          const first = yield* toldTask(core, 1);
+          yield* word(core, { taskId: first.id, state: "accepted", conversationId: "c-1" });
+          yield* word(core, { taskId: first.id, state: "done", spentUsd: 1.5, workedMs: 1 });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.issue(2);
+          yield* core.issue(3);
+          const budgetLines = (count: number) =>
+            core.github.seenWhere(
+              "the budget's lines",
+              (seen) =>
+                seen.filter((request) =>
+                  (request.body as { body?: string })?.body?.startsWith(BUDGET_WAIT),
+                ).length >= count,
+            );
+          yield* budgetLines(2);
+          // The queue moves: the first waiting one goes.
+          const rows = yield* core.tasks((found) => found.length === 3);
+          const stop = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/tasks/${String(rows[1]!["id"])}/stop`,
+            { session: core.owner },
+          );
+          assert.strictEqual(stop.status, 204);
+          yield* core.tasks((found) => found[1]?.["state"] === "dropped");
+          yield* core.issue(4);
+          yield* budgetLines(3);
+          const log = yield* core.github.commentLog;
+          const sinceBudget = log.slice(
+            log.findIndex(([, , text]) => text.startsWith(BUDGET_WAIT)),
+          );
+          assert.isFalse(sinceBudget.some(([, , text]) => text.includes("in line")));
+        }),
+    );
+
+    it.effect(
+      "the board says a task is stopping until its Mate stops it; a stop of one that ended leaves it as it ended",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          const stop = (taskId: string) =>
+            core.call("POST", `/api/apps/${core.appId}/tasks/${taskId}/stop`, {
+              session: core.owner,
+            });
+          yield* core.issue(1);
+          const first = yield* toldTask(core, 1);
+          yield* word(core, { taskId: first.id, state: "accepted", conversationId: "c-1" });
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          assert.strictEqual((yield* stop(first.id)).status, 204);
+          yield* core.robot.link.take("task-stop");
+          assert.deepStrictEqual(
+            tasksOf(yield* board(core)).map((task) => task.state),
+            ["stopping"],
+          );
+          yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.stopping === true,
+          );
+          yield* watching.close;
+          yield* word(core, { taskId: first.id, state: "stopped" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "stopped");
+          assert.deepStrictEqual(
+            tasksOf(yield* board(core)).map((task) => task.state),
+            ["stopped"],
+          );
+          // Ended already: nothing to stop, and it stays as it ended.
+          assert.strictEqual((yield* stop(first.id)).status, 204);
+          assert.strictEqual((yield* stop("not-a-task")).status, 404);
+          assert.deepStrictEqual(
+            tasksOf(yield* board(core)).map((task) => task.state),
+            ["stopped"],
+          );
+        }),
+    );
+
+    it.effect(
+      "the board says a done task whose change was merged is merged, and closed unmerged, closed",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* core.issue(1);
+          const first = yield* toldTask(core, 1);
+          yield* word(core, { taskId: first.id, state: "accepted", conversationId: "c-1" });
+          yield* word(core, { taskId: first.id, state: "done" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          const sql = (statement: string) => rowsWhere(core.url, statement, () => true);
+          yield* sql(
+            "INSERT INTO hq_repo (app_id, name, created_by) SELECT id, 'appdev', 'door-owner' FROM hq_app ON CONFLICT DO NOTHING",
+          );
+          yield* sql(
+            "INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state) SELECT id, 'appdev', 1, 'P_ROBOT', 'Cart', 'closed' FROM hq_app",
+          );
+          yield* sql("UPDATE hq_task SET change_repo = 'appdev', change_number = 1");
+          assert.deepStrictEqual(
+            tasksOf(yield* board(core)).map((task) => task.state),
+            ["closed"],
+          );
+          yield* sql("UPDATE hq_change SET state = 'merged'");
+          assert.deepStrictEqual(
+            tasksOf(yield* board(core)).map((task) => task.state),
+            ["merged"],
+          );
         }),
     );
   });

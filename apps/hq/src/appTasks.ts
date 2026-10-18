@@ -18,7 +18,7 @@ import type { SqlError } from "effect/sql/SqlError";
 import { AutomationRefused } from "./automationRefused.ts";
 import type { NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
-import { MateTasks, mateTaskLink } from "./mateTasks.ts";
+import { MateTasks, isTaskId, mateTaskLink } from "./mateTasks.ts";
 import { readAppTarget } from "./offers.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
@@ -38,7 +38,10 @@ export class AppTasks extends Context.Service<
       userId: string,
       appId: string,
     ) => Effect.Effect<ReadonlyArray<HqAppTask>, AutomationRefused | SqlError | ZeropsError>;
-    /** A task of the application stopped: one no Mate took goes, else its Mate is told to stop. */
+    /**
+     * A task of the application stopped: one no Mate took goes, else its Mate is told to stop; one
+     * that ended already stays as it ended (nothing to stop). One it has not: `not_found`.
+     */
     readonly stop: (
       userId: string,
       appId: string,
@@ -65,15 +68,21 @@ interface TaskRow {
   readonly change_state: string | null;
   readonly pr_number: number | null;
   readonly pr_url: string | null;
+  readonly stopping: boolean;
   readonly seq: number;
 }
 
 const LIVE = ["queued", "assigned", "working", "waiting"] as const;
 
-/** A task's state as the board says it: dropped is stopped; done with its change merged, merged. */
+/**
+ * A task's state as the board says it: live with a stop taken, stopping; dropped is stopped; done
+ * with its change merged, merged, and closed unmerged, closed.
+ */
 const stateOf = (row: TaskRow): HqAppTask["state"] | undefined => {
+  if (row.stopping && (LIVE as ReadonlyArray<string>).includes(row.state)) return "stopping";
   if (row.state === "dropped") return "stopped";
   if (row.state === "done" && row.change_state === "merged") return "merged";
+  if (row.state === "done" && row.change_state === "closed") return "closed";
   switch (row.state) {
     case "queued":
     case "assigned":
@@ -96,7 +105,7 @@ const COLUMNS = `t.id::text AS id, t.source, t.state,
   ${ISO("t.ended_at")} AS ended_at, t.spent_usd, t.worked_ms::float8 AS worked_ms,
   CASE WHEN t.state = 'waiting' THEN t.question ELSE t.detail END AS detail,
   t.change_repo, t.change_number, c.state AS change_state, pr.pr_number, pr.url AS pr_url,
-  t.seq::float8 AS seq`;
+  t.stop_requested_at IS NOT NULL AS stopping, t.seq::float8 AS seq`;
 
 const JOINS = `LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
     AND c.number = t.change_number
@@ -140,12 +149,12 @@ export const appTasksLayer = Layer.effect(
                   THEN row_number() OVER (PARTITION BY t.state = 'queued' ORDER BY t.seq)::int
                 END AS position
               FROM hq_task t ${sql.literal(JOINS)}
-              WHERE t.app_id::text = ${appId} AND t.state IN ${sql.in(LIVE)}) live
+              WHERE t.app_id = ${appId}::uuid AND t.state IN ${sql.in(LIVE)}) live
             UNION ALL
             SELECT * FROM (
               SELECT ${sql.literal(COLUMNS)}, NULL::int AS position
               FROM hq_task t ${sql.literal(JOINS)}
-              WHERE t.app_id::text = ${appId} AND t.ended_at IS NOT NULL
+              WHERE t.app_id = ${appId}::uuid AND t.ended_at IS NOT NULL
               ORDER BY t.ended_at DESC LIMIT ${ENDED_SHOWN}) ended`;
           // Queued by place, then at work by when it came, then ended, newest first.
           const group = (row: TaskRow) =>
@@ -223,11 +232,11 @@ export const appTasksLayer = Layer.effect(
             const verdict = can({ kind: "person", userId }, "keep_intake", null, view);
             if (!verdict.allow) return yield* refuse("forbidden", verdict.reason);
             yield* appExists(appId);
-            const live = yield* sql`
-              SELECT 1 FROM hq_task
-              WHERE id::text = ${taskId} AND app_id::text = ${appId}
-                AND state IN ${sql.in(LIVE)}`;
-            if (live.length === 0) return yield* refuse("not_found", "task_not_found");
+            const found = isTaskId(taskId)
+              ? yield* sql`
+                  SELECT 1 FROM hq_task WHERE id = ${taskId}::uuid AND app_id = ${appId}::uuid`
+              : [];
+            if (found.length === 0) return yield* refuse("not_found", "task_not_found");
             const name =
               view.members.find((member) => member.userId === userId)?.name.trim() || "Someone";
             yield* tasks.stop(taskId, stoppedInMate(name));

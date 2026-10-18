@@ -1073,7 +1073,8 @@ export const structureLayer = (options: {
                            'source', task.source, 'waiting', task.state = 'waiting')
                            || jsonb_strip_nulls(jsonb_build_object('startedAt', to_char(task.started_at
                              AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-                             'spentUsd', task.spent_usd, 'workedMs', task.worked_ms))
+                             'spentUsd', task.spent_usd, 'workedMs', task.worked_ms,
+                             'stopping', CASE WHEN task.stopping THEN true END))
                            || CASE WHEN task.ended IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('ended', task.ended) END
                            || CASE WHEN task_pr.pr_number IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
                              'pullRequest', jsonb_strip_nulls(jsonb_build_object('number', task_pr.pr_number,
@@ -1086,6 +1087,8 @@ export const structureLayer = (options: {
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
                   t.source, t.state, t.app_id, t.change_repo, t.change_number, t.started_at,
                   t.spent_usd, t.worked_ms,
+                  t.state IN ('assigned', 'working', 'waiting') AND t.stop_requested_at IS NOT NULL
+                    AS stopping,
                   CASE WHEN t.state IN ('assigned', 'working', 'waiting') OR tc.state = 'open' THEN NULL
                     WHEN tc.state IN ('merged', 'closed') THEN tc.state
                     WHEN t.state = 'dropped' THEN 'stopped'
@@ -1118,6 +1121,7 @@ export const structureLayer = (options: {
                       readonly startedAt?: string;
                       readonly spentUsd?: number;
                       readonly workedMs?: number;
+                      readonly stopping?: true;
                     }
                   | null
                   | undefined;
@@ -1137,6 +1141,7 @@ export const structureLayer = (options: {
                             startedAt: task.startedAt,
                             spentUsd: task.spentUsd,
                             workedMs: task.workedMs,
+                            stopping: task.stopping === true,
                           }),
                   };
                 }

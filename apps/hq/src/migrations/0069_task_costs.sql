@@ -1,7 +1,7 @@
--- What a task cost and how long it worked (`MateTaskReport.spentUsd`/`workedMs`), as its Mate last
--- reported; when its Mate took it (`started_at`) and when it ended (`ended_at`), kept by the
--- trigger below whichever path moves it — its Mate's word or HQ's own (overdue, gone, stopped).
--- An application's board lists them (`appTasks.ts`); the month's spend is their sum.
+-- What a task cost and how long it worked (`MateTaskReport.spentUsd`/`workedMs`), the most its Mate
+-- reported (a report told again, or late, never lowers them); when its Mate took it (`started_at`)
+-- and when it ended (`ended_at`), kept by the trigger below whichever path moves it — its Mate's
+-- word or HQ's own (overdue, gone, stopped). An application's board lists them (`appTasks.ts`).
 ALTER TABLE hq_task
   ADD COLUMN spent_usd double precision CHECK (spent_usd >= 0),
   ADD COLUMN worked_ms bigint CHECK (worked_ms >= 0),
@@ -30,8 +30,16 @@ CREATE TRIGGER hq_task_times BEFORE INSERT OR UPDATE OF state ON hq_task
 
 -- An application's board: its latest ended tasks, newest first.
 CREATE INDEX hq_task_ended ON hq_task (app_id, ended_at DESC) WHERE ended_at IS NOT NULL;
--- This month's spend: the tasks taken since the month began.
-CREATE INDEX hq_task_started ON hq_task (started_at) WHERE spent_usd IS NOT NULL;
+
+-- What each application's tasks spent in each calendar month (UTC), counted in the month each
+-- report said it: a task woken by a review next month, or at work across the month's turn, spends
+-- in the month it spent (`taskLimits.ts`, the month's spend is its rows' sum).
+CREATE TABLE hq_task_month_spend (
+  month date NOT NULL,
+  app_id uuid NOT NULL,
+  spent_usd double precision NOT NULL DEFAULT 0 CHECK (spent_usd >= 0),
+  PRIMARY KEY (month, app_id)
+);
 
 -- What the organization's automated Mates may spend in a calendar month (UTC), all tasks together;
 -- none: no budget (`HqTaskLimitsView.monthlyBudgetUsd`).

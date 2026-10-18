@@ -403,6 +403,12 @@ export const MateLinkDown = Schema.Union([
     type: Schema.Literal("task-stop"),
     taskId: TrimmedNonEmptyString,
     reason: Schema.String,
+    /**
+     * HQ put the task back in line before it heard the Mate take it (the monthly budget was
+     * reached): its runs stop, and nothing of the stop is kept, so the Mate takes it again when
+     * HQ hands it again. Absent: people stopped it for good. A Mate that predates it stops it so.
+     */
+    requeued: Schema.optionalKey(Schema.Literal(true)),
   }),
   /**
    * The organization's API keys an automated Mate's agents run on, by the variable its provider

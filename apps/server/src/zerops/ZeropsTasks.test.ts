@@ -1053,6 +1053,53 @@ describe("a stop always lands", () => {
   );
 });
 
+describe("a task HQ puts back in line is dropped, and taken again when handed again", () => {
+  it.effect(
+    "a task put back in line stops its runs and says nothing; handed again, it is taken again in its conversation",
+    () =>
+      Effect.gen(function* () {
+        const { delivered, id, link, move, sent } = yield* working("task-1");
+        const said = sent.length;
+        yield* link.stop("task-1", "it reached the organization's monthly budget.", true);
+        yield* settle;
+        assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
+        const stopped = run(id, principalOf("task-1"), "ended", {
+          kind: "stopped",
+          by: { kind: "person", subject: "zerops-user:nova" },
+        } as RunEnd);
+        yield* move(id, view(id, { lastEnded: stopped }));
+        yield* settle;
+        assert.strictEqual(sent.length, said);
+        // Handed again: its brief goes into the same conversation once more, and it works.
+        yield* link.receive(task("task-1"));
+        yield* link.receive(task("task-1"));
+        assert.deepStrictEqual(
+          delivered.flatMap((each) => (each.command._tag === "Send" ? [each.commandId] : [])),
+          ["task:task-1", "task:task-1:1"],
+        );
+        assert.deepStrictEqual(sent.slice(said, said + 1), [
+          { taskId: "task-1", state: "accepted", conversationId: id },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "a task put back in line that this Mate never took keeps nothing: handed later, it is taken",
+    () =>
+      Effect.gen(function* () {
+        const { delivered, link, sent } = yield* rig();
+        yield* link.stop("task-1", "it reached the organization's monthly budget.", true);
+        assert.deepStrictEqual(sent, []);
+        yield* link.receive(task("task-1"));
+        assert.deepStrictEqual(
+          delivered.map((each) => each.commandId),
+          ["task:task-1"],
+        );
+        assert.strictEqual(sent.at(-1)?.state, "accepted");
+      }),
+  );
+});
+
 describe("a task stops at its limits", () => {
   it.effect("a task's run stops at its minutes limit and says failed in a plain sentence", () =>
     Effect.gen(function* () {
@@ -1220,6 +1267,28 @@ describe("a task's report says what it cost and how long it worked", () => {
         spentUsd: 0.42,
         workedMs: 200_000,
       });
+    }),
+  );
+
+  it.effect("a run that just ended counts in the report a link opened before its read says", () =>
+    Effect.gen(function* () {
+      const { id, tasks, views } = yield* working("task-1");
+      // The run ends, and the link drops and opens again before the move is read.
+      const first = run(id, principalOf("task-1"), "ended", { kind: "completed" });
+      views.set(id, view(id, { lastEnded: { ...first, startedAt: 0, endedAt: 200_000 } }));
+      const again: Array<MateTaskReport> = [];
+      const link = yield* tasks.open((report) => Effect.sync(() => void again.push(report)));
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      assert.deepStrictEqual(
+        again.map(({ state, workedMs }) => ({ state, workedMs })),
+        [{ state: "done", workedMs: 200_000 }],
+      );
+      // Counted once: a later run's end adds its own time to it, never this one's again.
+      const second = run(id, principalOf("task-1"), "ended", { kind: "completed" }, 2);
+      views.set(id, view(id, { lastEnded: { ...second, startedAt: 300_000, endedAt: 360_000 } }));
+      yield* link.message("task-1", message("m-9", "Thanks."));
+      assert.strictEqual(again.at(-1)?.workedMs, 260_000);
     }),
   );
 

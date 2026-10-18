@@ -189,6 +189,8 @@ export const navigationTaskOf = (task: {
   readonly id: string;
   readonly source: MateTaskSource;
   readonly waiting: boolean;
+  /** HQ took a person's stop of it, and its Mate has not stopped yet. */
+  readonly stopping?: boolean | undefined;
   /** Its change's pull request on GitHub, where it has one. */
   readonly pullRequest?: HqNavigationMateTask["pullRequest"] | undefined;
   /** How it ended, for a Mate's most recent task while none is live. */
@@ -206,6 +208,7 @@ export const navigationTaskOf = (task: {
   url: mateTaskSourceLink(task.source)?.url ?? null,
   label: mateTaskSourceLabel(task.source),
   ...(task.waiting ? { waiting: true as const } : {}),
+  ...(task.stopping === true ? { stopping: true as const } : {}),
   ...(task.pullRequest === undefined ? {} : { pullRequest: task.pullRequest }),
   ...(task.ended === undefined ? {} : { ended: task.ended }),
   ...(task.startedAt === undefined ? {} : { startedAt: task.startedAt }),
