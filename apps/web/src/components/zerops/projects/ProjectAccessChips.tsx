@@ -47,6 +47,7 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { PersonAvatar } from "../primitives";
+import { foldedFaces } from "../place/place.logic";
 import { CardRowsHeld, ProjectPageCard } from "./ProjectPageCard";
 import {
   ACCESS_LEVEL_LINES,
@@ -105,7 +106,15 @@ export interface ProjectAccessChipsProps {
    * focus, and *Add* in the card's head.
    */
   readonly card?: boolean;
+  /**
+   * Folded to a row of faces, how many reach it and *Manage*, which opens the chips: a place's
+   * page holds fifteen people in one line rather than a grid on every visit.
+   */
+  readonly fold?: boolean;
 }
+
+/** How many faces a folded access row shows before it counts the rest. */
+const FOLDED_FACES = 8;
 
 /** A badge's level: a chip's, or `owner` on a project someone owns. */
 export type BadgeLevel = ChipLevel | "owner";
@@ -133,7 +142,9 @@ export function ProjectAccessChips({
   adding = false,
   personPage,
   card = false,
+  fold = false,
 }: ProjectAccessChipsProps) {
+  const [unfolded, setUnfolded] = useState(false);
   const people = view.kind === "people" ? view.people : [];
   const said = Object.entries(troubles ?? {}).flatMap(([key, line]) => {
     if (key === ADD_TROUBLE) return [{ key, line }];
@@ -181,6 +192,32 @@ export function ProjectAccessChips({
         ))}
       </ProjectPageCard>
     );
+  if (fold && !unfolded && view.kind === "people" && said.length === 0) {
+    const folded = foldedFaces(view.people, FOLDED_FACES);
+    return (
+      <section aria-label={label} className="ov-access" data-folded="">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="flex items-center -space-x-1.5">
+            {folded.faces.map((person) => (
+              <PersonAvatar
+                className="ring-2 ring-card"
+                key={person.key}
+                name={person.name}
+                picture={person.avatarUrl}
+                size={24}
+              />
+            ))}
+          </span>
+          <span className="text-body text-muted-foreground">
+            {view.people.length === 1 ? "1 person" : `${String(view.people.length)} people`}
+          </span>
+          <Button onClick={() => setUnfolded(true)} size="sm" variant="ghost">
+            Manage
+          </Button>
+        </span>
+      </section>
+    );
+  }
   return (
     <section className={heading ? "ov-sec" : "ov-access"} aria-label={label}>
       {heading ? <h3 className="ov-sec-name">{label}</h3> : null}
@@ -213,6 +250,13 @@ export function ProjectAccessChips({
           {line}
         </p>
       ))}
+      {fold && unfolded ? (
+        <span>
+          <Button onClick={() => setUnfolded(false)} size="sm" variant="ghost">
+            Done
+          </Button>
+        </span>
+      ) : null}
     </section>
   );
 }
