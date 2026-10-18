@@ -115,6 +115,11 @@ function ServiceStatus({
   );
 }
 
+/** A state that needs saying, in its tone, at the end of the service's line. */
+function ServiceStatusWord({ label, tone }: { label: string; tone: ZeropsServiceTone }) {
+  return <Badge tone={STATUS_BADGE_TONE[STATUS_TONE[tone]]}>{label}</Badge>;
+}
+
 const factText = (fact: ZeropsServiceFact): string =>
   fact.at === undefined ? fact.label : `${fact.label} ${formatRelativeTimeLabel(fact.at)}`;
 
@@ -199,30 +204,29 @@ function ServiceHeader({
   const [main] = routes;
   return (
     <div className="flex min-w-0 max-w-full items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <ServiceStatus
-          label={statusLabel}
-          needsWord={statusNeedsWord}
-          service={service}
-          tone={tone}
-        />
-        {/* The name is one line of its own: never squeezed to wrap, cut only where the
-            card is narrower — the hover pop names it whole. */}
-        <span className="mt-0.5 block min-w-0 truncate text-sm leading-snug font-semibold tracking-tight">
+      {/* Its state, name, ports and what it runs on one line: the dot before the name, a state
+          that needs its word (stopped, failed, busy) said at the line's end; the name is cut only
+          where the card is narrower, and the hover pop names it whole. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <ServiceStatus label={statusLabel} needsWord={false} service={service} tone={tone} />
+        <span className="min-w-0 truncate text-sm leading-snug font-semibold tracking-tight">
           {title}
         </span>
         {portLabel === undefined && aside === undefined ? null : (
-          <div
-            className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs leading-snug text-muted-foreground"
+          <span
+            className="flex shrink-0 items-baseline gap-x-2 text-xs leading-snug text-muted-foreground"
             data-zerops-service-ports
           >
             {/* One size for the port and what it is: they are one fact's two halves. */}
-            {portLabel === undefined ? null : (
-              <span className="min-w-0 tabular-nums">{portLabel}</span>
-            )}
+            {portLabel === undefined ? null : <span className="tabular-nums">{portLabel}</span>}
             {aside === undefined ? null : <span>{aside}</span>}
-          </div>
+          </span>
         )}
+        {statusNeedsWord ? (
+          <span className="shrink-0 text-xs" data-zerops-service-state-word>
+            <ServiceStatusWord label={statusLabel} tone={tone} />
+          </span>
+        ) : null}
       </div>
       {routes.length === 0 && openData === null ? null : (
         <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
