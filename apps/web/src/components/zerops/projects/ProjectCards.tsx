@@ -792,15 +792,19 @@ function PutLiveWaits({ onPut }: { readonly onPut: (() => void) | "busy" | undef
 function ProjectChips<T>({
   entry,
   props,
+  held = false,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
+  /** Its row's room is held where it says nothing: a page's header keeps one height. */
+  readonly held?: boolean;
 }) {
   const people = props.renderCardPeople?.(entry);
   const automated = [...entry.mates.values()].filter(
     (item) => props.isAutomated?.(item) === true,
   ).length;
-  if (!drawn(people) && automated === 0) return null;
+  if (!drawn(people) && automated === 0)
+    return held ? <div aria-hidden="true" className="pp-road-chips" /> : null;
   return (
     <div className="pp-road-chips">
       {people}
@@ -978,7 +982,7 @@ export function ProjectPage<T>({
           <h1 className="pp-road-title">
             <GroupName entry={entry} />
           </h1>
-          <ProjectChips entry={entry} props={props} />
+          <ProjectChips entry={entry} held props={props} />
         </div>
         <div className="pp-road-header-acts">
           {onAddMate === undefined ? null : (

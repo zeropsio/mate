@@ -8493,7 +8493,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .pp-road-header {
   display: flex;
   min-height: 124px;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
