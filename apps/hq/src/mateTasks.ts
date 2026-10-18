@@ -209,6 +209,21 @@ interface TaskRow {
   readonly body: string;
 }
 
+/**
+ * Whether the task's Mate hears what is said of it now: on it, or done with it while its change
+ * waits for review (a review comment, or a reply where the task came from, is for the Mate that
+ * made the change).
+ */
+export const taskHears = (sql: SqlClient.SqlClient, task: Statement.Fragment) => sql`(
+  ${task}.state IN ('working', 'waiting')
+  OR (${task}.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
+    WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
+      AND c.number = ${task}.change_number AND c.state = 'open')))`;
+
+/** Whether what is said of the task is kept for it: its Mate hears it now, or once it takes it. */
+export const taskListens = (sql: SqlClient.SqlClient, task: Statement.Fragment) =>
+  sql`(${task}.state IN ('queued', 'assigned') OR ${taskHears(sql, task)})`;
+
 const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
@@ -1002,15 +1017,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         ),
       );
 
-      /**
-       * Whether the task's Mate hears what is said of it now: on it, or done with it while its
-       * change waits for review (a review comment is for the Mate that made the change).
-       */
-      const hears = (task: Statement.Fragment) => sql`(
-        ${task}.state IN ('working', 'waiting')
-        OR (${task}.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
-          WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
-            AND c.number = ${task}.change_number AND c.state = 'open')))`;
+      const hears = (task: Statement.Fragment) => taskHears(sql, task);
 
       /** The messages kept of `taskIds`, in the order they came, as frames. */
       const messagesOf = (taskIds: ReadonlyArray<string>) =>
