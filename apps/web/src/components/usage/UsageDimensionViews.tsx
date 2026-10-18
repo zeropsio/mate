@@ -230,6 +230,7 @@ function MateCells({
   metric,
   showOwner,
   indent,
+  showProject,
   disclosureRoom,
   open,
   onToggle,
@@ -240,6 +241,8 @@ function MateCells({
   readonly metric: UsageDimensionMetric;
   readonly showOwner: boolean;
   readonly indent: boolean;
+  /** Under its project's own row the project is said already. */
+  readonly showProject: boolean;
   /** Its siblings open: a row that does not keeps their names aligned. */
   readonly disclosureRoom: boolean;
   readonly open: boolean;
@@ -267,7 +270,7 @@ function MateCells({
             {showOwner ? <OwnerAvatar owner={mate.owner} /> : null}
             <span className="truncate">
               {mate.mateName}
-              {mate.projectName === null ? null : (
+              {mate.projectName === null || !showProject ? null : (
                 <span className="text-muted-foreground"> · {mate.projectName}</span>
               )}
             </span>
@@ -322,6 +325,7 @@ export function UsageDimensionTable({
         metric={metric}
         showOwner={showOwner}
         indent={nested}
+        showProject={dimension !== "project"}
         disclosureRoom={room}
         open={open}
         onToggle={source === null ? null : () => toggle(key)}
@@ -334,6 +338,7 @@ export function UsageDimensionTable({
               key={`${key}:tasks`}
               appId={source.appId}
               mateProjectId={source.mateProjectId}
+              nested={nested}
               since={period.since}
               until={period.until}
             />,

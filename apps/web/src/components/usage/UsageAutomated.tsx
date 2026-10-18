@@ -25,6 +25,8 @@ export function AutomatedMatesMark() {
 }
 
 const ROW = "border-b border-border/50";
+/** A task's title starts a step in from its Mate's name, nested under a person or a project or not. */
+const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
 
 function TaskTitle({ row }: { readonly row: UsageTaskRow }) {
   const link = "min-w-0 truncate text-primary underline-offset-2 hover:underline";
@@ -52,10 +54,16 @@ function TaskTitle({ row }: { readonly row: UsageTaskRow }) {
 }
 
 /** One line in the task rows' place: what is not a task list yet, at a task row's height. */
-function TaskNote({ children }: { readonly children: ReactNode }) {
+function TaskNote({
+  nested,
+  children,
+}: {
+  readonly nested: boolean;
+  readonly children: ReactNode;
+}) {
   return (
     <tr className={ROW}>
-      <td className="py-2 ps-14 text-xs text-muted-foreground" colSpan={3}>
+      <td className={cn("py-2 text-xs text-muted-foreground", taskIndent(nested))} colSpan={3}>
         {children}
       </td>
     </tr>
@@ -69,46 +77,54 @@ function TaskNote({ children }: { readonly children: ReactNode }) {
 export function UsageMateTaskRows({
   appId,
   mateProjectId,
+  nested,
   since,
   until,
 }: {
   readonly appId: string;
   readonly mateProjectId: string;
+  /** Its Mate's row sits under a person's or a project's. */
+  readonly nested: boolean;
   readonly since: string | null;
   readonly until: string;
 }) {
   const { read, again } = useAppTaskSource("hqAppTasks", appId);
   const setting = read.setting;
   if (setting.state === "unsupported")
-    return <TaskNote>This HQ does not list tasks yet. Update HQ to see each one.</TaskNote>;
+    return (
+      <TaskNote nested={nested}>
+        This HQ does not list tasks yet. Update HQ to see each one.
+      </TaskNote>
+    );
   if (setting.state === "failed")
     return (
-      <TaskNote>
+      <TaskNote nested={nested}>
         Tasks could not be read.{" "}
         <InlineButton onClick={again} tone="muted">
           Try again
         </InlineButton>
       </TaskNote>
     );
-  if (setting.state === "withheld") return <TaskNote>Tasks are not shown to you.</TaskNote>;
+  if (setting.state === "withheld")
+    return <TaskNote nested={nested}>Tasks are not shown to you.</TaskNote>;
   if (setting.state !== "known")
     return (
       <tr aria-busy className={ROW}>
-        <td className="py-2 ps-14" colSpan={3}>
+        <td className={cn("py-2", taskIndent(nested))} colSpan={3}>
           <Skeleton className="h-5 w-2/3" />
         </td>
       </tr>
     );
   const rows = usageMateTasks({ tasks: setting.held, mateProjectId, since, until });
-  if (rows.length === 0) return <TaskNote>No tasks in this period.</TaskNote>;
+  if (rows.length === 0) return <TaskNote nested={nested}>No tasks in this period.</TaskNote>;
   return rows.map((row) => (
     <tr key={row.id} className={cn(ROW, "text-xs")}>
-      <td className="py-2 ps-14">
+      <td className={cn("py-2", taskIndent(nested))}>
         <span className="flex min-w-0 items-baseline gap-2">
           <TaskTitle row={row} />
           <span className="shrink-0 text-muted-foreground">{row.state}</span>
           <span className="ms-auto shrink-0 text-muted-foreground tabular-nums">
-            {row.worked ?? "—"}
+            {row.worked === null ? "—" : `${row.worked} worked`}
           </span>
         </span>
       </td>
