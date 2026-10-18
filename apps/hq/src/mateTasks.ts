@@ -74,6 +74,7 @@ import type { SqlError } from "effect/sql/SqlError";
 import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
+import { GitHost, type MainConflict } from "./gitHost.ts";
 import { GithubAuth, botCommitAuthor } from "./githubAuth.ts";
 import { marked, statusWords } from "./githubChannel.ts";
 import { GithubIssues } from "./githubIssues.ts";
@@ -243,6 +244,28 @@ export const taskHears = (sql: SqlClient.SqlClient, task: Statement.Fragment) =>
 export const taskListens = (sql: SqlClient.SqlClient, task: Statement.Fragment) =>
   sql`(${task}.state IN ('queued', 'assigned') OR ${taskHears(sql, task)})`;
 
+/** Who a word on a task's change from HQ itself is by: no person wrote it. */
+export const HQ_AUTHOR = "HQ";
+
+/** How many of a conflict's files its message names; the rest it counts. */
+const CONFLICT_PATHS_NAMED = 8;
+
+/**
+ * What a task's Mate is told when `main` moved under its change and the change no longer merges:
+ * what landed, the files both changed, and to merge `main` in — never to rebase: a change's branch
+ * only moves forward, here and on GitHub.
+ */
+export const mainMovedWords = (conflict: Pick<MainConflict, "landed" | "paths">): string => {
+  const named = conflict.paths.slice(0, CONFLICT_PATHS_NAMED).join(", ");
+  const more = conflict.paths.length - CONFLICT_PATHS_NAMED;
+  const files =
+    conflict.paths.length === 0
+      ? ""
+      : ` (conflicts in ${named}${more > 0 ? ` and ${String(more)} more` : ""})`;
+  const moved = conflict.landed === null ? "main moved" : `main moved: ‘${conflict.landed}’ landed`;
+  return `${moved} and your change no longer merges cleanly${files}. Fetch origin, merge origin/main into your change (never rebase), resolve each conflict keeping both changes' intent, run the checks and deliver it again.`;
+};
+
 const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
@@ -345,6 +368,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         });
       const structure = yield* Structure;
       const changes = yield* Changes;
+      const gitHost = yield* GitHost;
       const roles = yield* Roles;
       const aiKeys = yield* OrgAiKeys;
       const channels = yield* TaskSourceChannels;
@@ -1219,6 +1243,26 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 from: "review",
                 author,
                 text: cleanTaskText(comment.body),
+              });
+            }),
+          ),
+        ),
+      );
+      // A task's change that no longer merges into `main` as it moved: HQ's word on the change,
+      // said to its task once per head (`main:<head>`) — again only once its Mate delivered anew.
+      yield* Effect.forkScoped(
+        Stream.runForEach(gitHost.conflicts, (conflict) =>
+          logged("a conflict with main not told")(
+            Effect.gen(function* () {
+              const [task] = yield* sql<{ readonly id: string }>`
+                SELECT t.id::text AS id FROM hq_task t
+                WHERE t.id::text = ${conflict.taskId} AND ${taskListens(sql, sql`t`)}`;
+              if (task === undefined) return;
+              yield* messageTask(task.id, {
+                id: `main:${conflict.head}`,
+                from: "review",
+                author: HQ_AUTHOR,
+                text: cleanTaskText(mainMovedWords(conflict)),
               });
             }),
           ),

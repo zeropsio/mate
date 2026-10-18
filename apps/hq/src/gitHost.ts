@@ -76,6 +76,24 @@ export type GitMove =
   | ({ readonly kind: "change" } & PushedChange)
   | { readonly kind: "main"; readonly repo: Repo; readonly by: string };
 
+/**
+ * A task's open change that no longer merges into `main` as `main` moved (`GitHost.conflicts`): the
+ * heads it was judged at, the files both sides changed, and what `main` landed — its newest
+ * commit's subject, where it reads.
+ */
+export interface MainConflict {
+  readonly repo: Repo;
+  readonly taskId: string;
+  readonly number: number;
+  readonly head: string;
+  readonly main: string;
+  readonly paths: ReadonlyArray<string>;
+  readonly landed: string | null;
+}
+
+/** How long one change's judging may take after `main` moved: past it, it reads `unknown`. */
+const JUDGED_WITHIN = Duration.seconds(30);
+
 /** Where git stands on this Core: open, opening (leading, its takeover not through), or closed. */
 export type GitState = "open" | "opening" | "closed";
 
@@ -143,6 +161,11 @@ export class GitHost extends Context.Service<
     readonly pushes: Queue.Dequeue<PushedChange>;
     /** Every ref the log follows from now on, after it followed it; each subscriber sees each. */
     readonly moves: Stream.Stream<GitMove>;
+    /**
+     * Each task's change found conflicting with `main` after `main` moved, or on taking the lead,
+     * once its record says so: told again on every move while it conflicts.
+     */
+    readonly conflicts: Stream.Stream<MainConflict>;
   }
 >()("@t3tools/hq/gitHost") {}
 
@@ -182,21 +205,37 @@ export const holdingRepo = <A, E, R>(repo: Repo, effect: Effect.Effect<A, E, R>)
 export interface Judged {
   readonly mergeability: MergeabilityKind;
   readonly behind: boolean;
+  /** A conflict's files, and the heads they conflict at. */
+  readonly conflict?: {
+    readonly head: string;
+    readonly main: string;
+    readonly paths: ReadonlyArray<string>;
+  };
 }
 
 const UNJUDGED: Judged = { mergeability: "unknown", behind: false };
 
 /**
- * How the change merges into `main` now, and whether `main` has moved past its merge base. A change
- * with nothing pushed, or one git cannot judge, is `unknown`.
+ * How the change merges into `main` now, and whether `main` has moved past its merge base — both
+ * read at one change head and one `main`. A change with nothing pushed, or one git cannot judge, is
+ * `unknown`.
  */
 export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
   Effect.gen(function* () {
-    const mergeability = yield* git.mergeability(repo, mateId, number);
-    if (mergeability.kind === "no_change") return UNJUDGED;
-    const base = yield* git.mergeBase(repo, mateId, number);
+    const head = yield* git.changeHead(repo, mateId, number);
     const main = yield* mainOf(git, repo);
-    return { mergeability: mergeability.kind, behind: base !== null && base !== main };
+    if (head === null || main === null) return UNJUDGED;
+    const snapshot = { head, main };
+    const mergeability = yield* git.mergeability(repo, mateId, number, snapshot);
+    if (mergeability.kind === "no_change") return UNJUDGED;
+    const base = yield* git.mergeBase(repo, mateId, number, snapshot);
+    const judged: Judged = {
+      mergeability: mergeability.kind,
+      behind: base !== null && base !== main,
+    };
+    return mergeability.kind === "conflict"
+      ? { ...judged, conflict: { head, main, paths: mergeability.paths } }
+      : judged;
   }).pipe(Effect.orElseSucceed(() => UNJUDGED));
 
 export const gitHostLayer = (options: {
@@ -260,33 +299,64 @@ export const gitHostLayer = (options: {
       };
 
       /**
-       * After `main` moved: the repository's newest {@link JUDGED_PER_MAIN_MOVE} open changes
-       * judged again, the rest `unknown` until their detail is read.
+       * After `main` moved: the repository's newest {@link JUDGED_PER_MAIN_MOVE} open changes judged
+       * again, the rest `unknown` until their detail is read — and every task's change, one at a
+       * time, each within {@link JUDGED_WITHIN}: its Mate is told of a conflict (`conflicts`).
        */
       const rejudge = (git: HqGit, repo: Repo) =>
         Effect.gen(function* () {
-          const open = yield* sql<{ readonly number: number; readonly mate_project_id: string }>`
-            SELECT number, mate_project_id FROM hq_change
+          const open = yield* sql<{
+            readonly number: number;
+            readonly mate_project_id: string;
+            readonly task_id: string | null;
+          }>`
+            SELECT number, mate_project_id, task_id::text AS task_id FROM hq_change
             WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND state = 'open'
             ORDER BY number DESC`;
-          const judged = yield* Effect.forEach(open, (row, i) =>
-            i < JUDGED_PER_MAIN_MOVE
-              ? Effect.map(judge(git, repo, row.mate_project_id, row.number), (verdict) => ({
-                  number: row.number,
-                  verdict,
-                }))
-              : Effect.succeed({ number: row.number, verdict: UNJUDGED }),
+          let others = 0;
+          const judged = yield* Effect.forEach(open, (row) =>
+            row.task_id === null && others++ >= JUDGED_PER_MAIN_MOVE
+              ? Effect.succeed({ row, verdict: UNJUDGED })
+              : judge(git, repo, row.mate_project_id, row.number).pipe(
+                  Effect.timeoutOrElse({
+                    duration: JUDGED_WITHIN,
+                    orElse: () => Effect.succeed(UNJUDGED),
+                  }),
+                  Effect.map((verdict) => ({ row, verdict })),
+                ),
           );
           yield* leader.write(
             Effect.forEach(
               judged,
-              ({ number, verdict }) => sql`
+              ({ row, verdict }) => sql`
                 UPDATE hq_change
                 SET mergeability = ${verdict.mergeability}, behind = ${verdict.behind}
-                WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${number}`,
+                WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${row.number}`,
               { discard: true },
             ),
           );
+          const conflicting = judged.flatMap(({ row, verdict }) =>
+            row.task_id === null || verdict.conflict === undefined
+              ? []
+              : [{ taskId: row.task_id, number: row.number, ...verdict.conflict }],
+          );
+          if (conflicting.length === 0) return;
+          // What landed: `main`'s newest commit, as its subject says it.
+          const landedOf = (main: string) =>
+            git.commit(repo, main).pipe(
+              Effect.map((commit) => commit.message.split("\n")[0]?.trim() || null),
+              Effect.orElseSucceed(() => null),
+            );
+          const landed = new Map<string, string | null>();
+          for (const conflict of conflicting) {
+            if (!landed.has(conflict.main))
+              landed.set(conflict.main, yield* landedOf(conflict.main));
+            yield* PubSub.publish(conflicts, {
+              repo,
+              ...conflict,
+              landed: landed.get(conflict.main) ?? null,
+            });
+          }
         });
 
       /**
@@ -307,6 +377,7 @@ export const gitHostLayer = (options: {
       const tick = SubscriptionRef.update(ticks, (n) => n + 1);
       const pushes = yield* Queue.unbounded<PushedChange>();
       const moves = yield* PubSub.unbounded<GitMove>();
+      const conflicts = yield* PubSub.unbounded<MainConflict>();
 
       /** A ref the layer wrote: the change it is the branch of judged, or the repository's main. */
       const record = (git: HqGit, event: GitEvent) =>
@@ -620,6 +691,7 @@ export const gitHostLayer = (options: {
         recorded: SubscriptionRef.changes(ticks),
         pushes,
         moves: Stream.fromPubSub(moves),
+        conflicts: Stream.fromPubSub(conflicts),
       });
     }),
   );

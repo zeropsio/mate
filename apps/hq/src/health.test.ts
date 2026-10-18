@@ -107,6 +107,7 @@ const getHealth = (
                 recorded: Stream.make(0),
                 pushes,
                 moves: Stream.empty,
+                conflicts: Stream.empty,
               }),
             ),
           ),
