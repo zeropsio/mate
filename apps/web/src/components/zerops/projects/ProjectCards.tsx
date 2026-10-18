@@ -653,6 +653,7 @@ function CardMates<T>({
             automated.map((mate) => ({
               name: mate.mate.name,
               working: mate.mate.working === true,
+              reviewing: mateChangeForReview(flow, mate.mate.projectId) !== undefined,
             })),
           )}
         />
