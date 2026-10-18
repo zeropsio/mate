@@ -41,7 +41,7 @@ import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn, ProjectPageStandIn } from "./OverviewStandIn";
-import { CardRoad, PageRoad, ProjectStateLine, type RoadReading } from "./ProjectRoad";
+import { CardRoad, PageRoad, PlaceDot, ProjectStateLine, type RoadReading } from "./ProjectRoad";
 import {
   automatedWords,
   freeWords,
@@ -155,11 +155,6 @@ function CardRow({
       </button>
     </div>
   );
-}
-
-/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
-export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
-  return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }
 
 /** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */

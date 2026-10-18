@@ -13,7 +13,6 @@ import type { ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 
-import { PlaceDot } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 import {
   failedWords,
@@ -215,4 +214,9 @@ export function PageRoad({
       </div>
     </section>
   );
+}
+
+/** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
+export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
+  return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }

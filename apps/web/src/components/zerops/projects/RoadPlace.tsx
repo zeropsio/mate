@@ -26,7 +26,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { useAccountDataOptional, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { MicroLabel } from "../primitives";
 import { ResourceGraph } from "../ZeropsServiceMap";
-import { PlaceDot } from "./ProjectCards";
+import { PlaceDot } from "./ProjectRoad";
 import type { PlaceLine } from "./projectCard.logic";
 
 const NO_TOPOLOGY = Atom.make(EMPTY_PROJECT_TOPOLOGY_SNAPSHOT);
