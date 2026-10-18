@@ -147,6 +147,7 @@ import {
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ProjectAccess } from "./projects/ProjectPeople";
 import { ProjectPageStandIn } from "./projects/OverviewStandIn";
+import { RoadEnvironmentRows } from "./projects/RoadEnvironments";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -453,6 +454,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
+      roadEnvironments: (tier: GroupEnvironmentTier) => (
+        <RoadEnvironmentsLive groupId={groupId} tier={tier} />
+      ),
       onAddMate: () => {
         addMate(groupId);
       },
@@ -468,6 +472,103 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 }
 
 const NO_SEARCH = {};
+
+/**
+ * One tier's environments under its stop on the project page's road, from the page's reads: the
+ * same `environmentSlots` every door to adding an environment asks.
+ */
+function RoadEnvironmentsLive({
+  groupId,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  if (flow === undefined) return null;
+  return <KnownRoadEnvironments flow={flow} groupId={groupId} tier={tier} />;
+}
+
+function KnownRoadEnvironments({
+  groupId,
+  flow,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const deployments = useStopDeploymentsShown();
+  const environments = flow.environments;
+  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
+  const release = useReleaseOffer(groupId, flow);
+  const { withheldNotice } = useWithheldStops(environments);
+  const firstDeployOf = useStageFirstDeploys(flow);
+  const offered = useEnvironmentOffers()(groupId);
+  const addEnvironment = useAddEnvironment();
+  const openPutLive = useOpenPutLive();
+  const devstages = useDevstages(groupId);
+  const pendingEnvironments = useGroupPendingEnvironments(groupId);
+  const { listing } = useZeropsCandidates();
+  const { halfMade } = useEnvironmentSetup(
+    useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
+  );
+  const production = environments.find((entry) => entry.tier === "production");
+  // Drawn once HQ has told the environments: before that, or where HQ refuses them to the reader,
+  // nothing is known to be absent.
+  const slots = !flow.declarationsRead
+    ? []
+    : environmentSlots({
+        environments: environments.map((entry) => ({
+          id: entry.id,
+          target: entry.target,
+          tier: entry.tier,
+        })),
+        devstages,
+        pending: pendingEnvironments,
+        halfMade: halfMade
+          .filter((entry) => entry.groupId === groupId)
+          .map((entry) => ({ id: entry.projectId, tier: entry.tier, finish: entry.finish })),
+        recipeTiers: flow.recipeTiers,
+        recipeRead: flow.recipeRead,
+        offered: offered ?? { stage: false, production: false },
+        productionRuns:
+          production?.target.kind !== "zerops"
+            ? "unknown"
+            : productionRunsOf(deployments.get(production.target.projectId)),
+        waiting: { count: waiting.total, atLeast: waiting.atLeast },
+        mainHasCode:
+          flow.release.entries.length > 0
+            ? true
+            : flow.repos === undefined || !flow.recipeRead
+              ? undefined
+              : false,
+        releaseOffered: release.offered,
+        releasing: flow.release.inFlight,
+      });
+  return (
+    <RoadEnvironmentRows
+      facts={{
+        groupId,
+        slots,
+        environments,
+        repos: flow.repos,
+        withheldNotice,
+        firstDeployOf,
+        release,
+        onAdd: (added) => {
+          if (added === "production") openPutLive(groupId);
+          else addEnvironment(groupId, added);
+        },
+      }}
+      tier={tier}
+    />
+  );
+}
 
 /** The page's column: what the project's card has no room for, once its flow is read. */
 function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {

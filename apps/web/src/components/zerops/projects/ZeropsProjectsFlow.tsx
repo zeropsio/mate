@@ -32,7 +32,7 @@ import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 
 /** How a place's panel is drawn (`renderPlacePanel`). */
-export type PlacePanelLook = "column" | "lift";
+export type PlacePanelLook = "column" | "detail" | "lift";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -91,8 +91,14 @@ export interface ProjectsFlowGroup<T> {
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The column beside the card. */
+  /** The page's own cards, under its road. */
   readonly aside: ReactNode;
+  /**
+   * Each tier's environments under its stop on the road (`RoadEnvironmentRows`): a stage or
+   * production by its name and what it runs, or its quiet slot with its Add. Absent, the road
+   * says what the flow says.
+   */
+  readonly roadEnvironments?: ((tier: "stage" | "production") => ReactNode) | undefined;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
@@ -125,6 +131,11 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly layout: "card" | "row";
       readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
+      /**
+       * Whether what it waits on the viewer for may lift it: a card lifts one thing, and a further
+       * waiting Mate is an ordinary row that says it waits on you (`unlifted`).
+       */
+      readonly lift?: boolean | undefined;
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
@@ -184,8 +195,9 @@ export interface ZeropsProjectsFlowProps<T> {
     | undefined;
   /**
    * A place's panel: its facts and its actions; without it, its line. `column` is its column on
-   * the project page's road, under its stop's name; `lift` only what went wrong there and its
-   * buttons, lifted on a card.
+   * the project page's road, under its stop's name; `detail` the same under the road's row that
+   * already names what runs there; `lift` only what went wrong there and its buttons, lifted on a
+   * card.
    */
   readonly renderPlacePanel?:
     | ((entry: ProjectsFlowGroup<T>, line: PlaceLine, look: PlacePanelLook) => ReactNode)
@@ -299,6 +311,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
             entry={entry}
             addMateWhy={page.addMateWhy ?? null}
             onAddMate={page.onAddMate}
+            roadEnvironments={page.roadEnvironments}
             props={props}
           />
         )}

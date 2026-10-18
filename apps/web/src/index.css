@@ -8387,21 +8387,22 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .pp-road-chip {
   display: inline-flex;
-  height: 22px;
+  min-height: 28px;
   align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--ov-ground, var(--card));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  background: var(--popover);
   color: var(--foreground);
-  font-size: var(--text-caption);
+  font-size: var(--text-line);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .pp-road-chip[data-tone="failed"] {
+  border-color: transparent;
   background: color-mix(in oklab, var(--zerops-status-failed) 12%, var(--ov-ground, var(--card)));
-  box-shadow: none;
   color: var(--zerops-status-failed-text);
 }
 
@@ -8565,12 +8566,6 @@ label.tm-advanced-row:not([data-disabled]) {
   line-height: 20px;
 }
 
-.pp-road-follows {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: var(--text-line);
-}
-
 .pp-road-mates {
   display: grid;
   gap: 8px;
@@ -8601,16 +8596,251 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: var(--text-line);
 }
 
-.ov-panel[data-look="column"] .ov-panel-host {
-  margin-left: 0;
+/* A tier's environments under its stop: its name, what runs, its state — or its quiet slot. */
+.pp-road-envs {
+  display: grid;
+  gap: 2px;
 }
 
-.ov-panel-version {
+.pp-road-env {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: var(--text-line);
+  text-align: left;
+}
+
+button.pp-road-env {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-road-env:hover {
+  background: var(--ov-hover);
+}
+
+.pp-road-env-name {
+  flex: none;
+  font-weight: 500;
+}
+
+.pp-road-env[data-quiet] .pp-road-env-name {
+  color: var(--muted-foreground);
+}
+
+.pp-road-env-line {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-env-version {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-zerops-road-environments="production"] .pp-road-env-version {
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+}
+
+.pp-road-env-go {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+
+/* A place's column: what runs, since when, one health line, its address, its tiles, its row. */
+.pp-road-place {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: 8px;
+}
+
+.pp-road-place-version {
   font-size: var(--text-title);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 26px;
   font-variant-numeric: tabular-nums;
+}
+
+.pp-road-place-quiet {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+.pp-road-place-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-road-place-link {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-line);
+  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+  text-overflow: ellipsis;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.pp-road-place-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.pp-road-place-lift {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--ov-lift);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+  font-size: var(--text-line);
+}
+
+.pp-road-place-lift > p[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.pp-road-place-lift > p[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-place-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pp-road-place-acts:empty {
+  display: none;
+}
+
+/* A service as a compact tile: name:port and what it is; CPU, RAM and disk against their limits;
+   its last day. */
+.pp-road-svcs {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+}
+
+.pp-road-svc {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+.pp-road-svc-head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pp-road-svc-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-prose);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-svc-port,
+.pp-road-svc-type {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 400;
+}
+
+.pp-road-svc-type {
+  flex: none;
+}
+
+.pp-road-svc-meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pp-road-meter {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pp-road-meter-figure {
+  overflow: hidden;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-meter-unit {
+  margin-left: 3px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.pp-road-meter-track {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.pp-road-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--info);
+}
+
+.pp-road-svc-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 @container flow (max-width: 900px) {

@@ -551,6 +551,22 @@ export function cardMateReading(input: {
   };
 }
 
+/** What a Mate's second line says where it waits on the viewer and another is lifted first. */
+export const WAITS_ON_YOU = "Waits on you";
+
+/**
+ * A Mate's reading where its card lifts another first — a card lifts one thing: an ordinary row
+ * whose second line starts by saying it waits on the viewer.
+ */
+export function unlifted(reading: CardMateReading): CardMateReading {
+  if (reading.lift === undefined) return reading;
+  return {
+    text: reading.text === undefined ? WAITS_ON_YOU : `${WAITS_ON_YOU} · ${reading.text}`,
+    tone: "ink",
+    lift: undefined,
+  };
+}
+
 /**
  * The menu row's line 2 (`mateRowSecond`) in words, as a card draws it: the same words in the
  * same ink, so a Mate says the same in both places.

@@ -107,17 +107,10 @@ export function PlacePanel({
    * for a stage with no address yet.
    */
   readonly roomy?: boolean;
-  /**
-   * `column`: its column on the project page's road, under its stop's name — what runs there
-   * large, no name of its own. `lift`: only what went wrong and its buttons, lifted on a card.
-   */
-  readonly look?: "card" | "column" | "lift" | undefined;
+  /** `lift`: only what went wrong and its buttons, lifted on a card. */
+  readonly look?: "card" | "lift" | undefined;
 }) {
-  // On its road column what runs stands large above: its line does not say it again.
-  const line =
-    look === "column" && model.line.kind === "production" && model.version !== undefined
-      ? { ...model.line, words: model.line.words.filter((word) => word !== model.version) }
-      : model.line;
+  const { line } = model;
   const label = placeLabel(line);
   const orgId = useAccountOrgId();
   const { projectId } = line;
@@ -168,11 +161,8 @@ export function PlacePanel({
     );
   return (
     <div aria-label={label} className="ov-panel" data-look={look} data-zerops-surface="place-panel">
-      {look === "column" && line.kind === "production" && model.version !== undefined ? (
-        <b className="ov-panel-version">{model.version}</b>
-      ) : null}
       <div className="ov-panel-head">
-        {look === "column" ? null : <b className="ov-panel-name">{label}</b>}
+        <b className="ov-panel-name">{label}</b>
         {head === undefined ? null : (
           <a
             aria-label={`Open ${label}`}

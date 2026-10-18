@@ -8,7 +8,10 @@
  * three columns.
  */
 
+import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
+
+import { Button } from "~/components/ui/button";
 
 import { PlaceDot } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
@@ -165,12 +168,9 @@ export function CardRoad({
  */
 export function PageRoad({
   road,
-  stageFollows,
   columns,
 }: {
   readonly road: RoadReading;
-  /** What the stage follows ("follows main"), beside its name. */
-  readonly stageFollows: string | undefined;
   readonly columns: readonly [ReactNode, ReactNode, ReactNode];
 }) {
   return (
@@ -182,7 +182,13 @@ export function PageRoad({
           </span>
           <span className="pp-road-name">Development</span>
           <span className="pp-road-seg">
-            {road.review === 0 ? null : <LineChip>{inReviewWords(road.review, true)}</LineChip>}
+            {/* The changes in review open where the page lists them (its Changes card). */}
+            {road.review === 0 ? null : (
+              <Button render={<a href="#project-changes" />} size="sm" variant="secondary">
+                {inReviewWords(road.review, true)}
+                <ChevronRightIcon aria-hidden="true" />
+              </Button>
+            )}
           </span>
         </h2>
         {columns[0]}
@@ -191,9 +197,6 @@ export function PageRoad({
         <h2 className="pp-road-head">
           <Stop line={road.stage} />
           <span className="pp-road-name">Stage</span>
-          {stageFollows === undefined ? null : (
-            <span className="pp-road-follows">{stageFollows}</span>
-          )}
           <span
             className="pp-road-seg"
             data-zerops-card-ready={readyShown(road.segment) ? "true" : undefined}

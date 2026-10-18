@@ -63,7 +63,12 @@ import {
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { CardMate, CardMateTime } from "./ProjectCards";
-import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
+import {
+  cardMateReading,
+  cardSecondWords,
+  unlifted,
+  type CardMateReading,
+} from "./projectCard.logic";
 
 export function OverviewCardMate({
   candidate,
@@ -80,6 +85,7 @@ export function OverviewCardMate({
   containerLine,
   containerActions,
   onOpen,
+  lift = true,
 }: {
   readonly candidate: ZeropsCandidate;
   readonly name: string;
@@ -101,6 +107,8 @@ export function OverviewCardMate({
   /** A verb its container needs (Start, Remove). */
   readonly containerActions: ReactNode;
   readonly onOpen: (() => void) | undefined;
+  /** Whether what it waits on the viewer for may lift it: a card lifts one thing (`unlifted`). */
+  readonly lift?: boolean;
 }) {
   const projectId = candidate.project.id;
   // What its row in the menu reads (`useProjectMateActivity`): HQ's word, or its socket's.
@@ -236,7 +244,7 @@ export function OverviewCardMate({
     automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
   });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
-  const reading: CardMateReading =
+  const said: CardMateReading =
     view.coming !== undefined
       ? { text: undefined, tone: "muted", lift: undefined }
       : cardMateReading({
@@ -252,6 +260,7 @@ export function OverviewCardMate({
             pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
           }),
         });
+  const reading = lift ? said : unlifted(said);
   const askMate = useAskMate();
   const askToFix = useAskMateToFix();
   const openReview = useOpenReview();

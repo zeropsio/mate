@@ -562,11 +562,14 @@ function CardMates<T>({
   entry,
   props,
   all = false,
+  liftTaken = false,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   /** Every Mate drawn, none folded as free: the project's page. */
   readonly all?: boolean;
+  /** Something else is lifted on the card already: no Mate lifts. */
+  readonly liftTaken?: boolean;
 }) {
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(NO_FOLDS);
   const unfold = (fold: string) => setUnfolded((current) => new Set([...current, fold]));
@@ -590,6 +593,12 @@ function CardMates<T>({
   const shown = people
     .filter((mate) => !free.includes(mate as Listed<T>))
     .toSorted((left, right) => Number(waits(right)) - Number(waits(left)));
+  // A card lifts one thing: production's trouble, else the first Mate that waits on the viewer.
+  const lifted = all
+    ? undefined
+    : liftTaken
+      ? null
+      : shown.find((mate) => mate.kind === "listed" && waits(mate));
   const draw = (mate: FlowMateEntry<T>) => {
     const row =
       mate.kind === "coming" ? (
@@ -604,6 +613,7 @@ function CardMates<T>({
               entry.changesAwaiting || entry.changesUnknown !== undefined
                 ? undefined
                 : mateChangeForReview(flow, mate.mate.projectId),
+            lift: lifted === undefined || lifted === mate,
           })}
         </Fragment>
       );
@@ -869,7 +879,7 @@ function ProjectCard<T>({
           <GroupName entry={entry} />
         </h2>
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
-        <ProjectChips entry={entry} props={props} />
+        <ProjectChips entry={entry} held props={props} />
       </header>
       <CardRoad
         putLive={putLive === undefined ? null : <PutLive onPut={putLive} />}
@@ -890,7 +900,7 @@ function ProjectCard<T>({
           {trouble}
         </div>
       ) : null}
-      <CardMates entry={entry} props={props} />
+      <CardMates entry={entry} liftTaken={drawn(trouble)} props={props} />
       {/* spend: Part C's ProjectSpendLine goes here */}
       {unknown.kind === "unread" ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
@@ -914,10 +924,13 @@ export function ProjectPage<T>({
   aside,
   onAddMate,
   addMateWhy = null,
+  roadEnvironments,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly aside: ReactNode;
+  /** Each tier's environments under its stop, from the page's reads (`RoadEnvironmentRows`). */
+  readonly roadEnvironments?: ((tier: "stage" | "production") => ReactNode) | undefined;
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy?: string | null;
@@ -938,13 +951,24 @@ export function ProjectPage<T>({
         <div className="ov-page-aside">{aside}</div>
       </div>
     );
+  // Where the page reads its environments (`roadEnvironments`), each tier's rows say what stands
+  // there or its slot with its Add, and its place's detail follows; else the flow says it.
+  const look = roadEnvironments === undefined ? "column" : "detail";
   const panel = (line: PlaceLine) =>
-    props.renderPlacePanel?.(entry, line, "column") ?? <PlainPanel line={line} />;
+    props.renderPlacePanel?.(entry, line, look) ?? <PlainPanel line={line} />;
   const stageColumn =
-    stages.length > 0 ? (
+    roadEnvironments !== undefined ? (
+      <>
+        {roadEnvironments("stage")}
+        {stages.map((line) => (
+          <div data-zerops-place="stage" key={line.projectId ?? line.name}>
+            {panel(line)}
+          </div>
+        ))}
+      </>
+    ) : stages.length > 0 ? (
       stages.map((line) => (
         <div
-          className="pp-road-tile"
           data-zerops-place="stage"
           data-zerops-setting-up={settingUp === undefined ? undefined : "true"}
           key={line.projectId ?? line.name}
@@ -962,18 +986,23 @@ export function ProjectPage<T>({
         {stageSetUp === undefined ? null : <SetUpPanel line={NEW_STAGE} onSetUp={stageSetUp} />}
       </div>
     );
-  const productionColumn = road.productionAbsent ? (
-    <div className="pp-road-tile" data-ghost="" data-zerops-place="production">
-      <p className="pp-road-ghost-words">Not live yet.</p>
-      {putLive === undefined ? null : <PutLive onPut={putLive} />}
-      <PutLiveWaits onPut={putLive} />
-    </div>
-  ) : (
-    <div className="pp-road-tile" data-zerops-place="production">
-      {panel(production)}
-    </div>
-  );
-  const mainStage = flow.stages.find((stop) => stop.source === "main") ?? flow.stages[0];
+  const productionColumn =
+    roadEnvironments !== undefined ? (
+      <>
+        {roadEnvironments("production")}
+        {road.productionAbsent ? null : (
+          <div data-zerops-place="production">{panel(production)}</div>
+        )}
+      </>
+    ) : road.productionAbsent ? (
+      <div className="pp-road-tile" data-ghost="" data-zerops-place="production">
+        <p className="pp-road-ghost-words">Not live yet.</p>
+        {putLive === undefined ? null : <PutLive onPut={putLive} />}
+        <PutLiveWaits onPut={putLive} />
+      </div>
+    ) : (
+      <div data-zerops-place="production">{panel(production)}</div>
+    );
   return (
     <div className="ov-page" data-zerops-group={group.groupId} data-zerops-surface="project-page">
       <header className="pp-road-card pp-road-header" ref={detail.ref}>
@@ -1013,7 +1042,6 @@ export function ProjectPage<T>({
             <Fragment key="production">{productionColumn}</Fragment>,
           ]}
           road={road}
-          stageFollows={mainStage?.source === undefined ? undefined : `follows ${mainStage.source}`}
         />
         <StopReads entry={entry} />
       </div>

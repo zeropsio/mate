@@ -31,6 +31,8 @@ import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
+import { RoadPlace, ServiceTiles } from "~/components/zerops/projects/RoadPlace";
+import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
   CardActivity,
   CardMate,
@@ -41,6 +43,7 @@ import {
   cardMateReading,
   cardPeople,
   releaseLineOpens,
+  unlifted,
 } from "~/components/zerops/projects/projectCard.logic";
 import {
   ZeropsProjectsFlow,
@@ -285,6 +288,34 @@ const readPlace = (
 /** Tea Shop's production has no domain of its own yet: Put it on your domain. */
 const inAccount = withPlaceAddresses({ "tea-prod": readPlace([], ["app"]) });
 
+/** A service as the service map reads it, its use and its last day made up. */
+const tileRow = (hostname: string, typeShort: string): ZeropsServiceRow => {
+  const trend = Array.from({ length: 24 }, (_, hour) => ({
+    at: ago((24 - hour) * 60),
+    used: 0.2 + 0.15 * Math.sin(hour / 2.5) + (hour % 7 === 0 ? 0.2 : 0),
+    limit: 1,
+  }));
+  return {
+    isControlPlane: false,
+    service: { serviceId: hostname, hostname } as ZeropsServiceRow["service"],
+    tone: "ok",
+    statusLabel: "Running",
+    statusNeedsWord: false,
+    typeLabel: typeShort,
+    typeShort,
+    title: hostname,
+    portLabel: hostname === "db" ? ":5432" : ":3000",
+    meta: [],
+    dashboardUrl: "",
+    metrics: [
+      { id: "cores", label: "CPU", value: "1", used: "0.2", unit: "core", fraction: 0.2 },
+      { id: "memory", label: "RAM", value: "1", used: "0.4", unit: "GB", fraction: 0.4 },
+      { id: "disk", label: "Disk", value: "5", used: "1.1", unit: "GB", fraction: 0.22 },
+    ],
+    trends: { cores: trend, memory: trend, disk: trend },
+  } as unknown as ZeropsServiceRow;
+};
+
 const JUNO_ASKS = mate("juno", "Juno", "sky", {
   face: "needs",
   status: "input",
@@ -323,6 +354,17 @@ const PROJECTS: ReadonlyArray<Project> = [
     mates: [
       JUNO_ASKS,
       working("raya", "Raya", "olive", "Building the weekly leaderboard", "2m"),
+      mate("tess-p", "Tess", "rose", {
+        face: "needs",
+        status: "planReady",
+        time: "20m",
+        view: {
+          state: "needs",
+          ask: "Scores",
+          reply: words("Plan: weekly scores reset on Monday. Go ahead?", "ink"),
+          dot: "attention",
+        },
+      }),
       mate("vera", "Vera", "violet", { owner: INES, time: "1h" }),
     ],
     production: { kind: "absent" },
@@ -340,7 +382,10 @@ const PROJECTS: ReadonlyArray<Project> = [
     id: "tea",
     name: "Tea Shop",
     mates: [
-      working("raya-t", "Raya", "olive", "Gift wrapping at checkout", "3m"),
+      {
+        ...working("raya-t", "Raya", "olive", "Gift wrapping at checkout", "3m"),
+        flow: { previews: [{ service: "app", url: "https://raya-teashop-c3d4.prg1.zerops.app" }] },
+      },
       working("vera-t", "Vera", "amber", "Tea of the month email", "11m"),
       {
         ...working("odo", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
@@ -523,12 +568,13 @@ function HarnessPage() {
               </Button>
             )}
             renderMate={(entry, options) => {
-              const reading = cardMateReading({
+              const read = cardMateReading({
                 view: entry.view,
                 status: entry.status,
                 mine: mineOf(entry),
                 review: options.review,
               });
+              const reading = options.lift === false ? unlifted(read) : read;
               return (
                 <CardMate
                   actions={
@@ -552,6 +598,7 @@ function HarnessPage() {
                   key={entry.id}
                   name={entry.name}
                   onOpen={() => acted.push(`open:${entry.id}`)}
+                  previews={options.previews}
                   reading={reading}
                   time={<CardMateTime dot={entry.view.dot}>{entry.time}</CardMateTime>}
                 />
@@ -562,6 +609,43 @@ function HarnessPage() {
               const found = byId.get(entry.group.groupId);
               const model = found?.panels[line.kind];
               if (found === undefined || model === undefined) return null;
+              if (look === "column" || look === "detail")
+                return (
+                  <RoadPlace
+                    actions={(found.actions[line.kind] ?? []).map((label, index) => (
+                      <Button
+                        key={label}
+                        size="sm"
+                        variant={index === 0 && line.trouble ? "primary" : "secondary"}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                    model={{
+                      line,
+                      version: line.kind === "production" ? model.version : undefined,
+                      released:
+                        line.kind === "production" ? "Released 6d ago by Nova Dev" : undefined,
+                      up: line.kind === "production" ? "6d" : undefined,
+                      services: model.services.length,
+                      address:
+                        line.kind === "production" && line.addresses[0] !== undefined
+                          ? { host: "teashop-a1b2.prg1.zerops.app", url: line.addresses[0].url }
+                          : undefined,
+                      follows:
+                        line.kind === "stage" ? "follows main · deployed 25m ago" : undefined,
+                      note: line.trouble ? model.note : undefined,
+                    }}
+                    tiles={
+                      <ServiceTiles
+                        rows={model.services.map((service, index) =>
+                          tileRow(service.hostname, index === 0 ? "Node.js 22" : "PostgreSQL 16"),
+                        )}
+                        usageRead
+                      />
+                    }
+                  />
+                );
               return inAccount(
                 <PlacePanel
                   groupId={entry.group.groupId}

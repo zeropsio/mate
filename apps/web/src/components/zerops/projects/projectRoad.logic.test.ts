@@ -9,6 +9,7 @@ import {
   releaseSegment,
   stageUnder,
 } from "./projectRoad.logic";
+import { unlifted } from "./projectCard.logic";
 
 const RUNS = { dot: "running", trouble: false } as const;
 const NONE = { dot: "none", trouble: false } as const;
@@ -186,5 +187,22 @@ describe("a card's folded Mates", () => {
     },
   ])("folds automated Mates into one line: $want", ({ mates, want }) => {
     expect(automatedWords(mates)).toBe(want);
+  });
+});
+
+describe("a card that lifts one thing", () => {
+  it.each([
+    {
+      name: "says a second waiting Mate waits on you, as an ordinary row",
+      reading: { text: "Stripe or Adyen?", tone: "ink", lift: { kind: "question" } },
+      want: { text: "Waits on you · Stripe or Adyen?", tone: "ink", lift: undefined },
+    },
+    {
+      name: "leaves a Mate that waits on nobody as it is",
+      reading: { text: "Done.", tone: "muted", lift: undefined },
+      want: { text: "Done.", tone: "muted", lift: undefined },
+    },
+  ] as const)("$name", ({ reading, want }) => {
+    expect(unlifted(reading)).toEqual(want);
   });
 });

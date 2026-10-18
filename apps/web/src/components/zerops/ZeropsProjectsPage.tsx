@@ -2300,10 +2300,12 @@ export function ZeropsProjectsContent({
       layout,
       previews,
       review,
+      lift,
     }: {
       readonly layout: "card" | "row";
       readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
+      readonly lift?: boolean | undefined;
     },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
@@ -2381,6 +2383,7 @@ export function ZeropsProjectsContent({
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
+          lift={lift !== false}
           previews={previews}
           key={candidate.key}
           name={name}

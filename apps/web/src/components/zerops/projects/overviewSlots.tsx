@@ -51,10 +51,14 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
+import { PlaceServiceTiles, RoadPlace } from "./RoadPlace";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { ActionHeld, CardActivity, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
   historyOffered,
+  panelAddresses,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
@@ -402,6 +406,61 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ) : null}
       </>
     ) : null;
+    if (look === "column" || look === "detail") {
+      const ago = (at: string | undefined) =>
+        at === undefined || Number.isNaN(Date.parse(at))
+          ? undefined
+          : compactSidebarTimeLabel(formatRelativeTimeLabel(at, nowMs));
+      const live = releases.find((release) => release.standing === "live");
+      const releasedAgo = line.kind === "production" ? ago(live?.taggedAt) : undefined;
+      const by = stop?.version?.taggedBy;
+      const deployedAgo =
+        line.projectId === undefined ? undefined : ago(places.stageSince.get(line.projectId));
+      const listed = panelAddresses({
+        kind: line.kind,
+        listed: line.addresses,
+        place: undefined,
+        runs: true,
+      });
+      return (
+        <RoadPlace
+          actions={
+            line.trouble
+              ? actions
+              : line.kind === "production"
+                ? back === undefined
+                  ? null
+                  : actions
+                : null
+          }
+          model={{
+            line,
+            version:
+              line.kind === "production" && look === "column"
+                ? (stop?.version?.label ?? chip?.version)
+                : undefined,
+            released:
+              releasedAgo === undefined
+                ? undefined
+                : `Released ${releasedAgo} ago${by === undefined ? "" : ` by ${by}`}`,
+            up: line.kind === "production" ? ago(places.since) : undefined,
+            services: item?.services?.statuses.length,
+            address: line.kind === "production" ? listed.head : undefined,
+            follows:
+              line.kind === "stage"
+                ? [
+                    `follows ${stop?.source ?? "main"}`,
+                    deployedAgo === undefined ? undefined : `deployed ${deployedAgo} ago`,
+                  ]
+                    .filter((word) => word !== undefined)
+                    .join(" · ")
+                : undefined,
+            note: line.trouble ? note : undefined,
+          }}
+          tiles={<PlaceServiceTiles projectId={line.projectId} />}
+        />
+      );
+    }
     // A release on its way is production's line alone: the line opens its review, as the card's
     // own block of it did — a roll back's by the release it goes back to.
     const opens = releaseLineOpens(line, entry.flow.production, places.rollsBackTo);
