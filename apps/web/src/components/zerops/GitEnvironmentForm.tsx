@@ -51,7 +51,11 @@ export interface GitEnvironmentFormProps {
     | undefined;
   readonly onBack?: () => void;
   readonly onCancel: () => void;
-  readonly onAdded: (name: string) => void;
+  /** Added: its name, and the repository it was added on, as the person addressed it. */
+  readonly onAdded: (
+    name: string,
+    repository: { readonly address: string; readonly repo: string },
+  ) => void;
 }
 
 export function GitEnvironmentForm({
@@ -181,7 +185,9 @@ export function GitEnvironmentForm({
           if (connected && !busy && !uncertain) setStep("branch");
         } else {
           setReadBranch(branch);
-          if (!canAdd || adoption === undefined || name === undefined) return;
+          if (!canAdd || adoption === undefined || name === undefined || repository === undefined)
+            return;
+          const added = { address, repo: repository.name };
           void act("add", async () => {
             await setup.add({
               tier,
@@ -189,7 +195,7 @@ export function GitEnvironmentForm({
               target: { kind: "git", branch, delivery: "direct" },
               adoption,
             });
-            if (mounted.current) onAdded(name);
+            if (mounted.current) onAdded(name, added);
           });
         }
       }}

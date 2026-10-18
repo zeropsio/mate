@@ -155,7 +155,10 @@ describe("Git environment setup's real form", () => {
         target: { kind: "git", branch, delivery: "direct" },
         adoption: [{ ...review, branch }],
       });
-      expect(props.onAdded).toHaveBeenCalledWith(expected);
+      expect(props.onAdded).toHaveBeenCalledWith(expected, {
+        address: "https://github.com/acme/shop",
+        repo: "app",
+      });
     },
   );
 
@@ -290,7 +293,10 @@ describe("Git environment setup's real form", () => {
       target: { kind: "git", branch: "main", delivery: "direct" },
       adoption: [review],
     });
-    expect(props.onAdded).toHaveBeenCalledExactlyOnceWith("shop-production");
+    expect(props.onAdded).toHaveBeenCalledExactlyOnceWith("shop-production", {
+      address: "https://github.com/acme/shop",
+      repo: "app",
+    });
   });
   it("changed repository evidence refreshes the first-push sentence before Add", async () => {
     await chooseRepository();

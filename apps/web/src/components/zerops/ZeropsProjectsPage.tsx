@@ -2822,6 +2822,10 @@ export function ZeropsProjectsContent({
                       },
                     }
               }
+              stageNext={
+                creationRequest.role === "prod" &&
+                addableTiers({ groupId: creationRequest.groupId }).includes("stage")
+              }
               tier={groupRecipe.tier}
               tierServices={groupRecipe.services}
               recipe={creationRecipe(groupRecipe)}
