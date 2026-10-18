@@ -14466,7 +14466,43 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* pp-cards: the project page's card grid under the road — one idea per card on the overview card's
-   ground, groups named in small caps, rows on hairline rhythm, what waits on you lifted. */
+   ground, groups named in small caps, rows on hairline rhythm, what waits on you lifted. Two
+   columns while the page has room for them, what moves wide on the left; stacked only below. */
+.pp-cards {
+  min-width: 0;
+  container: pp-cards / inline-size;
+}
+
+.pp-cards-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.pp-cards-grid > * {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.pp-cards-wide {
+  grid-column: 1 / -1;
+}
+
+@container pp-cards (min-width: 720px) {
+  .pp-cards-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+@container pp-cards (min-width: 1100px) {
+  .pp-cards-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
 .pp-cards-card {
   gap: 16px;
   padding: 20px 24px 20px;
