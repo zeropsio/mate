@@ -283,11 +283,14 @@ function useProjectAccess(projects: AccessProjects) {
 
 const LINKED = () => true;
 
-/** The People on an app's page, for the group `groupId`: every project of the app at once. */
-export function ProjectPeople({ groupId }: { groupId: string }) {
+/**
+ * The People on an app's page, for the group `groupId`: every project of the app at once — as a
+ * card of the page's grid where `card`.
+ */
+export function ProjectPeople({ groupId, card = false }: { groupId: string; card?: boolean }) {
   const projects = useGroupProjects(groupId);
   const access = useProjectAccess(projects);
-  return <ProjectAccessChips label="People" {...access} />;
+  return <ProjectAccessChips card={card} label="People" {...access} />;
 }
 
 /** One Zerops project's access: an environment's page, or a Mate's *Project access…*. */

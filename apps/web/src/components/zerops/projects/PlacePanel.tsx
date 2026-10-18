@@ -43,7 +43,10 @@ const NOT_READ = Atom.make<PlaceAddresses>({
 });
 
 /** A place's addresses as read, held while its panel is drawn. */
-function usePlaceAddresses(orgId: string | null, projectId: string | undefined): PlaceAddresses {
+export function usePlaceAddresses(
+  orgId: string | null,
+  projectId: string | undefined,
+): PlaceAddresses {
   const place = useProjection(
     placeAddresses,
     orgId === null || projectId === undefined ? null : { orgId, projectId },

@@ -14464,3 +14464,209 @@ button.rv-relrow:hover .rv-relrow-go {
     transform: translateY(3px) scale(0.96);
   }
 }
+
+/* pp-cards: the project page's card grid under the road — one idea per card on the overview card's
+   ground, groups named in small caps, rows on hairline rhythm, what waits on you lifted. */
+.pp-cards-card {
+  gap: 16px;
+  padding: 20px 24px 20px;
+}
+
+.pp-cards-group-name {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.pp-cards-row {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.pp-cards-press {
+  margin-inline: -6px;
+  width: calc(100% + 12px);
+  padding-inline: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.pp-cards-press:hover {
+  background-color: var(--ov-hover);
+}
+
+.pp-cards-press:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-held {
+  height: 12px;
+  flex: 1;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.pp-cards-face {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.pp-cards-lift {
+  display: grid;
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+}
+
+.dark .pp-cards-lift {
+  background: var(--ov-lift);
+}
+
+.pp-cards-waiting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+}
+
+.pp-cards-waiting + .pp-cards-waiting {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-cards-waiting-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+}
+
+.pp-cards-waiting-text:hover > :first-child {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pp-cards-waiting-text:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pp-cards-rule {
+  height: 1px;
+  min-width: 16px;
+  flex: 1;
+  background: var(--ov-rule);
+}
+
+.pp-cards-empty {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-cards-dashed {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  border-radius: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.pp-cards-dashed:hover {
+  background-color: var(--ov-hover);
+}
+
+.pp-cards-dashed:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  column-gap: 16px;
+}
+
+.pp-cards-person {
+  display: flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  gap: 4px;
+}
+
+.pp-cards-person > :first-child {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-cards-person[data-pending] > :first-child {
+  opacity: 0.6;
+}
+
+.pp-cards-person-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-cards-person-text > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A person's ⋮ waits for the row's hover or focus: the list reads as names, not buttons. */
+.pp-cards-person[data-menu] > :last-child {
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.pp-cards-person[data-menu]:hover > :last-child,
+.pp-cards-person[data-menu]:focus-within > :last-child,
+.pp-cards-person[data-menu] > [data-popup-open] {
+  opacity: 1;
+}
+
+a.pp-cards-person-who:hover {
+  text-decoration: underline;
+}
