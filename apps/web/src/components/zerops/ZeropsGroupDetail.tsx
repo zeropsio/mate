@@ -1623,7 +1623,8 @@ export function ZeropsStopPane({
           >
             {readServices === undefined ? (
               <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
-            ) : services.length === 0 ? (
+            ) : table.length === 0 ? (
+              // Its code services and the platform's both: a place with a database alone has one.
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : stop.target.kind !== "zerops" ? null : (
               <PlaceServiceTable

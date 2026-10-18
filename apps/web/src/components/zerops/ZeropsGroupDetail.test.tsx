@@ -1201,6 +1201,23 @@ describe("ZeropsStopPane", () => {
     expect(markup.slice(services)).toContain("None yet");
   });
 
+  it("lists a place's platform services though it has no code service, never None yet under their count", () => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "production",
+      services: [],
+      deployment: NONE,
+      platformServices: [mapRow("db", "postgresql@17", "PostgreSQL 17")],
+    });
+    expect(document.body.textContent).toContain("Services · 1");
+    expect(document.body.textContent).not.toContain("None yet");
+    expect(
+      [...document.querySelectorAll("[data-zerops-place-service]")].map((row) =>
+        row.getAttribute("data-zerops-place-service"),
+      ),
+    ).toEqual(["db"]);
+  });
+
   it("offers the way back only to an earlier release, never to the one that runs", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
     expect(count(markup, ">Roll back to this</button>")).toBe(1);
