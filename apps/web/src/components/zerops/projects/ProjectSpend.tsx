@@ -32,6 +32,7 @@ import {
   dayLabel,
   formatUsd,
   moneyParts,
+  spendBarPx,
   spendState,
   subscriptionLine,
   TOKEN_SOURCE,
@@ -140,7 +141,7 @@ function SpendBars({
   readonly average?: boolean;
 }) {
   const scale = series.maxUsd > 0 ? (geometry.height - SEGMENT_GAP) / series.maxUsd : 0;
-  const px = (usd: number) => (usd > 0 ? Math.max(1, Math.round(usd * scale)) : 0);
+  const px = (usd: number) => spendBarPx(usd, scale);
   const today = series.todayIndex >= 0 ? series.days[series.todayIndex]?.day : undefined;
   const [handle] = useState(() => TooltipCreateHandle<number>());
   return (
@@ -189,7 +190,8 @@ function SpendBars({
               style={geometry.slot === null ? undefined : { width: geometry.slot }}
             >
               {row.totalUsd === 0 ? (
-                <span className={cn("h-px bg-border", geometry.bar)} />
+                // Every day keeps its slot visible, so the plot reads as 30 days to today.
+                <span className={cn("h-0.5 bg-border", geometry.bar)} />
               ) : (
                 <span
                   className={cn("flex flex-col-reverse", geometry.bar, isToday && "opacity-55")}
