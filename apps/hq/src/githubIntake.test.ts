@@ -20,7 +20,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
-import { NO_ANSWER } from "./mateTasks.ts";
+import { NO_ANSWER, TASK_CHANGES_SINCE } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -293,6 +293,54 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
           yield* said("Anyone?");
           const answered = (yield* refusals(core, 1)).filter((words) => words === line);
           assert.strictEqual(answered.length, 1);
+          assert.isFalse(
+            (yield* core.robot.link.collected).some((frame) => frame.type === "task-message"),
+          );
+        }),
+    );
+
+    it.effect(
+      "a member's comment kept while the issue's Mate works another task is answered with how the task ended once its change is merged or closed first",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ version: TASK_CHANGES_SINCE });
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* labelled(core, 1);
+          const first = yield* working(core, 1);
+          const opened = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (opened.body as { change: { number: number } }).change.number;
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: first.id, state: "done" },
+          });
+          yield* taskRows(core, (rows) => rows[0]?.["state"] === "done");
+          yield* labelled(core, 2);
+          yield* working(core, 2);
+          // Its Mate is on issue 2: the comment on issue 1 is kept for it.
+          yield* deliver(core, core.hook, "issue_comment", commentEvent(1, "Use the blue kettle."));
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_task_message", (rows) => rows.length === 1);
+          yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/close`,
+            {
+              session: core.owner,
+              body: { expectedHead: null },
+            },
+          );
+          const line = "This task is finished. Open a new issue labelled `mate` to start another.";
+          yield* core.github.seenWhere("the end said on issue 1", (seen) =>
+            seen.some(
+              (request) =>
+                request.path.endsWith("/issues/1/comments") &&
+                (request.body as { body?: string } | undefined)?.body?.startsWith(line) === true,
+            ),
+          );
           assert.isFalse(
             (yield* core.robot.link.collected).some((frame) => frame.type === "task-message"),
           );

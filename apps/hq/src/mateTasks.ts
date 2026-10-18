@@ -496,10 +496,50 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       let automated: ReadonlySet<string> = new Set();
       /** The Mates held so, as last read: their rows read that task until it is let go. */
       let held: ReadonlySet<string> = new Set();
+      /**
+       * Replies kept for a task while its Mate worked another, its change merged or closed before
+       * the Mate got to them: each source says how the task ended, once per end (`end_answered_at`,
+       * as a reply after its end is answered), never silence. What was said in HQ's own review
+       * reads the change's fate there.
+       */
+      const unheardEnds = Effect.gen(function* () {
+        const ended = yield* leader.write(sql<{
+          readonly id: string;
+          readonly app_id: string;
+          readonly source: unknown;
+          readonly source_key: string;
+          readonly state: string;
+          readonly why: string | null;
+        }>`
+          UPDATE hq_task t SET end_answered_at = t.ended_at
+          WHERE t.state IN ('done', 'stopped') AND t.ended_at IS NOT NULL
+            AND t.end_answered_at IS DISTINCT FROM t.ended_at
+            AND EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = t.app_id
+              AND c.repo = t.change_repo AND c.number = t.change_number AND c.state <> 'open')
+            AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = t.id
+              AND msg.source <> 'review'
+              AND msg.created_at > GREATEST(t.ended_at,
+                COALESCE(t.follow_up_at, '-infinity'::timestamptz)))
+          RETURNING t.id::text AS id, t.app_id::text AS app_id, t.source, t.source_key, t.state,
+            COALESCE(t.detail, t.stop_reason) AS why`);
+        for (const task of ended) {
+          const source = sourceOfRow(task.source);
+          if (source === undefined) continue;
+          const channel = yield* channels.of(source.kind);
+          yield* (
+            channel?.answerEnd?.(
+              { taskId: task.id, appId: task.app_id, source, sourceKey: task.source_key },
+              task.state === "done" ? { kind: "finished" } : { kind: "stopped", why: task.why },
+            ) ?? Effect.void
+          );
+        }
+      });
+
       /** A change moved: every Mate it holds or let go told, and HQ looks again for free Mates. */
       const changeMoved = Effect.gen(function* () {
         // An HQ with no automated Mate has nothing a change could hold or let go.
         if (automated.size === 0 && held.size === 0) return;
+        yield* unheardEnds.pipe(Effect.catchTags({ NotLeader: () => Effect.void }));
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT m.project_id FROM hq_mate m WHERE m.automated AND ${heldBy(sql`m.project_id`)}`;
         const now = new Set(rows.map((row) => row.project_id));

@@ -30,6 +30,7 @@ import {
   type TaskOnSource,
   TaskSourceChannels,
   type TaskStatus,
+  taskEndWords,
 } from "./taskSources.ts";
 
 /** The label an issue carries while its task waits for a person's answer. */
@@ -206,6 +207,26 @@ export const githubChannelLayer = Layer.effectDiscard(
               Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
             );
         }).pipe(quietly("a task's reminder not posted", task), Effect.asVoid),
+      answerEnd: (task, end) =>
+        Effect.gen(function* () {
+          const issue = yield* issueOf(task);
+          if (issue === undefined) return;
+          const [intake] = yield* sql<{ readonly label: string }>`
+            SELECT label FROM hq_intake WHERE app_id::text = ${task.appId}`;
+          const again =
+            intake === undefined
+              ? "Open a new issue"
+              : `Open a new issue labelled \`${intake.label}\``;
+          yield* github
+            .comment(issue.remote, issue.token, issue.number, marked(taskEndWords(end, again)))
+            .pipe(
+              Effect.filterOrFail(
+                (answer) => answer.status === 201,
+                (answer) => ({ _tag: "GithubRefused", status: answer.status }) as const,
+              ),
+              Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
+            );
+        }).pipe(quietly("a task's end not answered", task), Effect.asVoid),
     });
   }),
 );

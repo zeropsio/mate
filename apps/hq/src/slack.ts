@@ -692,6 +692,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
         kind: "slack-thread",
         acknowledge: (task) =>
           inThread(task, (link, thread) => heard(link, thread.channel_id, thread.ask_ts)),
+        answerEnd: (task, end) =>
+          inThread(task, (link, thread) =>
+            say(link, thread.channel_id, thread.thread_ts, endedText(end)),
+          ),
         status: (task, status) =>
           inThread(task, (link, thread) =>
             Effect.gen(function* () {

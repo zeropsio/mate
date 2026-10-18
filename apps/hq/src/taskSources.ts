@@ -169,6 +169,12 @@ export interface TaskSourceChannel {
    * again (an edit tells nobody). Absent: HQ says the waiting status again instead.
    */
   readonly remind?: (task: TaskOnSource, question: string) => Effect.Effect<void>;
+  /**
+   * How the task ended (`taskEndWords`), said as a new message once: a reply kept for it while its
+   * Mate worked another task, its change merged or closed before the Mate got to it. Absent: the
+   * source says nothing more than its status line.
+   */
+  readonly answerEnd?: (task: TaskOnSource, end: TaskEnd) => Effect.Effect<void>;
 }
 
 /** The registered channels, by source kind: each source's layer registers its own. */
