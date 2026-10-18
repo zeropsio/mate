@@ -6,6 +6,7 @@ import {
   boardOf,
   costWords,
   poolLine,
+  predictedBoard,
   spendLine,
   taskRoute,
 } from "./taskBoard.logic";
@@ -47,6 +48,7 @@ describe("an application's task board", () => {
           state: "working",
           startedAt: "2026-10-18T11:48:00.000Z",
           spentUsd: 0.42,
+          workedMs: 9 * 60_000,
         }),
         task({ id: "0", state: "merged", endedAt: "2026-10-18T08:00:00.000Z", spentUsd: 0.31 }),
       ],
@@ -55,8 +57,8 @@ describe("an application's task board", () => {
     expect(board.atWork).toEqual([
       expect.objectContaining({
         id: "1",
-        status: { word: "Working", tone: "working" },
-        elapsed: "12m",
+        status: "working",
+        worked: "9m",
         cost: "$0.42",
       }),
     ]);
@@ -67,31 +69,66 @@ describe("an application's task board", () => {
     expect(board.recent).toEqual([
       expect.objectContaining({
         id: "0",
-        outcome: { word: "Merged", tone: "merged" },
+        outcome: "merged",
         mate: "Juno",
-        when: "4h",
+        when: "4h ago",
         cost: "$0.31",
       }),
     ]);
   });
 
   it.each([
-    ["assigned", "Starting", "starting"],
-    ["working", "Working", "working"],
-    ["waiting", "Needs an answer", "waiting"],
-  ] as const)("a task %s at work says %s", (state, word, tone) => {
-    expect(boardOf([task({ id: "1", state })], NOW).atWork[0]?.status).toEqual({ word, tone });
+    ["assigned", "starting"],
+    ["working", "working"],
+    ["waiting", "waiting"],
+    ["stopping", "stopping"],
+  ] as const)("a task %s is at work, %s", (state, status) => {
+    expect(boardOf([task({ id: "1", state })], NOW).atWork[0]?.status).toBe(status);
   });
 
   it.each([
-    ["done", "Done", "done"],
-    ["merged", "Merged", "merged"],
-    ["failed", "Failed", "failed"],
-    ["stopped", "Stopped", "stopped"],
-    ["declined", "Declined", "stopped"],
-  ] as const)("a task that ended %s says %s", (state, word, tone) => {
+    ["done", "done"],
+    ["merged", "merged"],
+    ["closed", "closed"],
+    ["failed", "failed"],
+    ["stopped", "stopped"],
+    ["declined", "declined"],
+  ] as const)("a task that ended %s says so, and when it ended", (state, status) => {
     const ended = task({ id: "1", state, endedAt: "2026-10-18T11:00:00.000Z" });
-    expect(boardOf([ended], NOW).recent[0]?.outcome).toEqual({ word, tone });
+    expect(boardOf([ended], NOW).recent[0]).toMatchObject({ outcome: status, when: "1h ago" });
+  });
+
+  it("takes a live task's cost, time and state from navigation, which says each report", () => {
+    const working = task({ id: "1", state: "working", spentUsd: 0.1, workedMs: 60_000 });
+    const live = new Map([
+      ["1", { id: "1", title: "Task 1", url: null, spentUsd: 0.9, workedMs: 15 * 60_000 }],
+    ]);
+    expect(boardOf([working], NOW, "app-1", live).atWork[0]).toMatchObject({
+      worked: "15m",
+      cost: "$0.90",
+      status: "working",
+    });
+    const stopping = new Map([
+      ["1", { id: "1", title: "Task 1", url: null, stopping: true as const }],
+    ]);
+    expect(boardOf([working], NOW, "app-1", stopping).atWork[0]?.status).toBe("stopping");
+  });
+
+  it("says a Mate whose last change waits for review is held by it, never that it waits for a task", () => {
+    const done = task({
+      id: "1",
+      state: "done",
+      endedAt: "2026-10-18T11:00:00.000Z",
+      change: { repo: "web", number: 3 },
+    });
+    const live = new Map([["1", { id: "1", title: "Task 1", url: null }]]);
+    expect(boardOf([done], NOW, "app-1", live).blocked).toEqual([
+      {
+        projectId: "P_JUNO",
+        change: { label: "Change #3", href: "/change/app-1/web/3", external: false },
+      },
+    ]);
+    expect(boardOf([done], NOW, "app-1").blocked).toEqual([]);
   });
 
   it("links an ended task's pull request on GitHub, else its change in Mate", () => {
@@ -121,7 +158,7 @@ describe("an application's task board", () => {
       null,
     ]);
     // Done with its change still open: it waits for someone's review.
-    expect(board.recent[1]?.outcome).toEqual({ word: "Up for review", tone: "review" });
+    expect(board.recent[1]?.outcome).toBe("review");
   });
 
   it(`lists the latest ${String(RECENT_SHOWN)} that ended, and says how many more there are`, () => {
@@ -149,6 +186,17 @@ describe("an application's task board", () => {
     expect(taskRoute("https://mate.zerops.io/mate/P_JUNO")).toBe("/mate/P_JUNO");
     expect(taskRoute(null)).toBeNull();
     expect(taskRoute("https://elsewhere.example/x")).toBeNull();
+  });
+});
+
+describe("the board's rows while it reads", () => {
+  it("holds a row per Mate on a live task, one line for those free, the queue, and what ended", () => {
+    const on = { id: "1", title: "Task 1", url: null };
+    const over = { id: "2", title: "Task 2", url: null, ended: "merged" as const };
+    expect(predictedBoard([on, on, over, null], 3)).toEqual({ atWork: 3, queued: 3, recent: 1 });
+    expect(predictedBoard([], 0)).toEqual({ atWork: 1, queued: 1, recent: 1 });
+    const many = Array.from({ length: 8 }, () => over);
+    expect(predictedBoard(many, 0).recent).toBe(RECENT_SHOWN);
   });
 });
 

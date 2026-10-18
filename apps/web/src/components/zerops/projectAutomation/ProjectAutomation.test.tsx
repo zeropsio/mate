@@ -159,7 +159,7 @@ describe("a project's Automation section", () => {
     );
     const text = words(root);
     expect(text).toContain("Nova, Juno · 2 automated Mates");
-    expect(text).toContain("Nova Add a search box Working 12m $0.42");
+    expect(text).toContain("Nova Add a search box Working Worked 10m $0.42");
     expect(text).toContain("Juno waits for a task.");
     // Each face says what its Mate is on.
     expect(
@@ -398,8 +398,8 @@ describe("a project's Automation section", () => {
     );
     const block = (name: string) =>
       words(root.find((node) => node.props["data-zerops-board"] === name));
-    expect(block("Queued")).toContain("1 Show prices in euros acme/tea-shop#3 4m");
-    expect(block("Recent")).toContain("Merged List six teas Nova 4h $0.31 PR #2");
+    expect(block("Queued")).toContain("1 Show prices in euros acme/tea-shop#3 Waited 4m");
+    expect(block("Recent")).toContain("Merged List six teas Nova Ended 4h ago $0.31 PR #2");
     expect(words(root)).toContain("$6.44 of $50 this month");
     // A task's title opens its conversation inside Mate.
     act(() => {
@@ -439,6 +439,84 @@ describe("a project's Automation section", () => {
       buttons(asking, "Stop")[0]?.props.onClick();
     });
     expect(stop.onStop).toHaveBeenCalledWith("t1");
+  });
+
+  it("offers Stop on a queued task too, asked on its row", () => {
+    const stop = {
+      pressOf: () => ({ kind: "idle" as const }),
+      onAsk: vi.fn(),
+      onKeep: vi.fn(),
+      onStop: vi.fn(),
+    };
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({ stop })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => true}
+      />,
+    );
+    const queued = root.find(
+      (node) => node.type === "li" && node.props["data-zerops-task"] === "t2",
+    );
+    act(() => {
+      buttons(queued, "Stop")[0]?.props.onClick();
+    });
+    expect(stop.onAsk).toHaveBeenCalledWith("t2");
+  });
+
+  it("offers no Stop of a task HQ already stops, and says it is stopping", () => {
+    const stopping = TASKS.map((task) =>
+      task.id === "t1" ? { ...task, state: "stopping" as const } : task,
+    );
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({
+          read: { state: "known", board: boardOf(stopping, NOW, "tea-shop") },
+          stop: {
+            pressOf: () => ({ kind: "idle" }),
+            onAsk: vi.fn(),
+            onKeep: vi.fn(),
+            onStop: vi.fn(),
+          },
+        })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => true}
+      />,
+    );
+    const row = root.find((node) => node.type === "li" && node.props["data-zerops-task"] === "t1");
+    expect(words(row)).toContain("Stopping");
+    expect(buttons(row, "Stop")).toHaveLength(0);
+  });
+
+  it("says a Mate whose change waits for review waits for it to be merged or closed, the change linked", () => {
+    const done = [
+      {
+        ...TASK,
+        state: "done" as const,
+        endedAt: "2026-10-18T11:58:00.000Z",
+        change: { repo: "web", number: 3 },
+      },
+    ];
+    const live = new Map([["t1", { id: "t1", title: TASK.title, url: null }]]);
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({ read: { state: "known", board: boardOf(done, NOW, "tea-shop", live) } })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA, JUNO]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const atWork = words(root.find((node) => node.props["data-zerops-board"] === "At work"));
+    expect(atWork).toContain("Nova waits for change #3 to be merged or closed.");
+    expect(atWork).toContain("Juno waits for a task.");
+    expect(atWork).not.toContain("Nova and Juno");
+    const link = root.find((node) => node.type === "a" && words(node) === "change #3");
+    expect(link.props.href).toBe("/change/tea-shop/web/3");
   });
 
   it("offers no Stop of a task to anyone but an Owner or Admin", () => {

@@ -1,41 +1,35 @@
 /**
  * A project's task board, in words: what its automated Mates are on (at work), what waits for
- * them by its place (queued), and what ended (recent) — each row's status as one short word with
- * its tone for the dot, its time and its cost as the numbers column shows them, and where it opens.
- * Above it, the pool as one line and the organization's spend this month against its budget.
+ * them by its place (queued), and what ended (recent) — each row's status in the one vocabulary
+ * every surface says it in (`taskStatus`), how long a live task worked and what it cost (from
+ * HQ's navigation, which says each report, where it names the task), and when an ended one ended;
+ * and where each opens. Above it, the pool as one line and the organization's spend this month
+ * against its budget.
  */
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { HqAppTask, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
+import {
+  endedWords,
+  isLiveStatus,
+  recordStatus,
+  workedWords,
+  type TaskStatus,
+} from "~/zerops/taskStatus";
 
 /** How many ended tasks the board shows; HQ answers more. */
 export const RECENT_SHOWN = 5;
-
-/** A status dot's meaning: its colour is the component's. */
-export type BoardTone =
-  | "starting"
-  | "working"
-  | "waiting"
-  | "review"
-  | "done"
-  | "merged"
-  | "failed"
-  | "stopped";
-
-export interface BoardStatus {
-  readonly word: string;
-  readonly tone: BoardTone;
-}
 
 export interface AtWorkRow {
   readonly id: string;
   readonly title: string;
   readonly mate: HqAppTask["mate"];
-  readonly status: BoardStatus;
-  /** Since its Mate took it (or was handed it), as a short age. */
-  readonly elapsed: string;
+  readonly status: TaskStatus;
+  /** How long it worked, as its Mate last reported (`workedWords`); "—" where none. */
+  readonly worked: string;
   readonly cost: string;
   /** Its conversation in Mate, as an in-app path; `null` while none. */
   readonly route: string | null;
@@ -54,10 +48,10 @@ export interface QueuedRow {
 
 export interface RecentRow {
   readonly id: string;
-  readonly outcome: BoardStatus;
+  readonly outcome: TaskStatus;
   readonly title: string;
   readonly mate: string | null;
-  /** Since it ended. */
+  /** When it ended (`endedWords`): "3h ago"; "—" where not known. */
   readonly when: string;
   readonly cost: string;
   /** Its pull request on GitHub, else its change in Mate; `null` where it made none. */
@@ -71,8 +65,17 @@ export interface RecentRow {
   readonly detail: string | null;
 }
 
+/** A Mate HQ hands no task while the change of its last one waits for review. */
+export interface BlockedMate {
+  readonly projectId: string;
+  /** Its change in Mate, else its pull request on GitHub. */
+  readonly change: NonNullable<RecentRow["change"]>;
+}
+
 export interface Board {
   readonly atWork: ReadonlyArray<AtWorkRow>;
+  /** Its Mates whose last task's change is open: HQ gives them no task until it is merged or closed. */
+  readonly blocked: ReadonlyArray<BlockedMate>;
   readonly queued: ReadonlyArray<QueuedRow>;
   readonly recent: ReadonlyArray<RecentRow>;
   /** How many more ended than `recent` shows. */
@@ -105,44 +108,52 @@ export function costWords(usd: number | null | undefined): string {
   return DOLLARS.format(usd);
 }
 
-const AT_WORK: Partial<Record<HqAppTask["state"], BoardStatus>> = {
-  assigned: { word: "Starting", tone: "starting" },
-  working: { word: "Working", tone: "working" },
-  waiting: { word: "Needs an answer", tone: "waiting" },
-};
-
-function outcomeOf(task: HqAppTask): BoardStatus {
-  switch (task.state) {
-    case "done":
-      return task.change === null
-        ? { word: "Done", tone: "done" }
-        : { word: "Up for review", tone: "review" };
-    case "merged":
-      return { word: "Merged", tone: "merged" };
-    case "failed":
-      return { word: "Failed", tone: "failed" };
-    case "declined":
-      return { word: "Declined", tone: "stopped" };
-    default:
-      return { word: "Stopped", tone: "stopped" };
-  }
-}
-
 /** Where a task's link opens inside Mate: its path, where it was made for Mate's own address. */
 export function taskRoute(link: string | null): string | null {
   if (link === null || !link.startsWith(`${DEFAULT_HOSTED_APP_URL}/`)) return null;
   return link.slice(DEFAULT_HOSTED_APP_URL.length);
 }
 
-/** The board's rows from HQ's tasks of the application, as of `nowMs`. */
-export function boardOf(tasks: ReadonlyArray<HqAppTask>, nowMs: number, appId = ""): Board {
+/** A task's change, as the board links it: its pull request on GitHub, else its change in Mate. */
+function changeLink(task: HqAppTask, appId: string): RecentRow["change"] {
+  if (task.pullRequest !== null)
+    return { label: pullRequestName(task.pullRequest), href: task.pullRequest.url, external: true };
+  if (task.change !== null)
+    return {
+      label: `Change #${String(task.change.number)}`,
+      href: changeRoutePath(appId, task.change.repo, task.change.number),
+      external: false,
+    };
+  return null;
+}
+
+/** Where a live task stands, with what HQ's navigation says of it (a stop taken, a question). */
+function liveStatus(task: HqAppTask, live: HqNavigationMateTask | undefined): TaskStatus {
+  if (live?.stopping === true) return "stopping";
+  if (live?.waiting === true) return "waiting";
+  return recordStatus(task);
+}
+
+/**
+ * The board's rows from HQ's tasks of the application, as of `nowMs`; `live` is what HQ's
+ * navigation says of the tasks its Mates are on now, by id: a live row's cost, time and state
+ * come from there, so they move as each report lands without the board read again.
+ */
+export function boardOf(
+  tasks: ReadonlyArray<HqAppTask>,
+  nowMs: number,
+  appId = "",
+  live: ReadonlyMap<string, HqNavigationMateTask> = new Map(),
+): Board {
   const atWork: Array<AtWorkRow> = [];
+  const blocked: Array<BlockedMate> = [];
   const queued: Array<QueuedRow> = [];
   const ended: Array<RecentRow> = [];
   for (const task of tasks) {
     const route = taskRoute(task.link);
-    const live = AT_WORK[task.state];
-    if (task.state === "queued") {
+    const now = live.get(task.id);
+    const status = liveStatus(task, now);
+    if (status === "queued") {
       queued.push({
         id: task.id,
         position: task.position ?? queued.length + 1,
@@ -151,38 +162,36 @@ export function boardOf(tasks: ReadonlyArray<HqAppTask>, nowMs: number, appId = 
         url: task.url,
         waited: shortAge(task.createdAt, nowMs),
       });
-    } else if (live !== undefined) {
+    } else if (isLiveStatus(status)) {
+      const workedMs = now?.workedMs ?? task.workedMs;
       atWork.push({
         id: task.id,
         title: task.title,
         mate: task.mate,
-        status: live,
-        elapsed: shortAge(task.startedAt ?? task.createdAt, nowMs),
-        cost: costWords(task.spentUsd),
+        status,
+        worked: workedMs == null ? "—" : workedWords(workedMs),
+        cost: costWords(now?.spentUsd ?? task.spentUsd),
         route,
       });
     } else {
+      // Done with its change open while navigation still names it: its Mate waits for the change.
+      const change = changeLink(task, appId);
+      if (status === "review" && now !== undefined && task.mate !== null && change !== null)
+        blocked.push({
+          projectId: task.mate.projectId,
+          change: changeLink(
+            { ...task, pullRequest: task.change === null ? task.pullRequest : null },
+            appId,
+          )!,
+        });
       ended.push({
         id: task.id,
-        outcome: outcomeOf(task),
+        outcome: status,
         title: task.title,
         mate: task.mate?.name ?? null,
-        when: shortAge(task.endedAt, nowMs),
-        cost: costWords(task.spentUsd),
-        change:
-          task.pullRequest !== null
-            ? {
-                label: pullRequestName(task.pullRequest),
-                href: task.pullRequest.url,
-                external: true,
-              }
-            : task.change !== null
-              ? {
-                  label: `Change #${String(task.change.number)}`,
-                  href: changeRoutePath(appId, task.change.repo, task.change.number),
-                  external: false,
-                }
-              : null,
+        when: endedWords(task.endedAt, nowMs) ?? "—",
+        cost: costWords(now?.spentUsd ?? task.spentUsd),
+        change,
         route,
         detail: task.state === "failed" || task.state === "stopped" ? task.detail : null,
       });
@@ -191,9 +200,31 @@ export function boardOf(tasks: ReadonlyArray<HqAppTask>, nowMs: number, appId = 
   queued.sort((a, b) => a.position - b.position);
   return {
     atWork,
+    blocked,
     queued,
     recent: ended.slice(0, RECENT_SHOWN),
     recentMore: Math.max(0, ended.length - RECENT_SHOWN),
+  };
+}
+
+/**
+ * How many rows each block will hold, from HQ's navigation while the board reads, so it keeps its
+ * height when the read lands: At work, a row per Mate on a live task and a line per Mate waiting
+ * on its change (its pull request open), plus one line for those that wait for a task; Queued, its
+ * waiting tasks or the line saying none; Recent, the tasks navigation says ended, up to what it
+ * shows, or the line saying none.
+ */
+export function predictedBoard(
+  tasks: ReadonlyArray<HqNavigationMateTask | null | undefined>,
+  waiting: number,
+): { readonly atWork: number; readonly queued: number; readonly recent: number } {
+  const known = tasks.filter((task) => task != null);
+  const live = known.filter((task) => task.ended === undefined).length;
+  const free = tasks.length - live;
+  return {
+    atWork: Math.max(1, live + (free > 0 ? 1 : 0)),
+    queued: Math.max(1, waiting),
+    recent: Math.min(RECENT_SHOWN, Math.max(1, known.length - live)),
   };
 }
 
