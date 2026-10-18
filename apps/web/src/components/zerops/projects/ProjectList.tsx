@@ -15,7 +15,7 @@ import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
 import { PlaceWords } from "./ProjectCards";
-import { PlaceDot } from "./ProjectRoad";
+import { PlaceDot } from "./ProjectState";
 import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";

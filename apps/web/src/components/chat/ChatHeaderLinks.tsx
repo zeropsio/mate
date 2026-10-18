@@ -10,13 +10,14 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { ChevronDownIcon, GlobeIcon } from "lucide-react";
+import { ChevronDownIcon, GlobeIcon, LayoutDashboardIcon } from "lucide-react";
 
 import { useMateAddresses } from "~/zerops/useMateAddresses";
 import type { ProjectSitesInput } from "../zerops/SidebarProjectSites";
 import { HeaderSites } from "../zerops/SidebarProjectSites";
 import { Button } from "../ui/button";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { browserSiteGroups } from "../zerops/browserSites.logic";
 import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresses";
 
@@ -35,22 +36,25 @@ export function ChatHeaderLinks({
   const { addresses } = useMateAddresses(environmentId, threadId);
   if (sites !== undefined && mateProjectId !== undefined) {
     return (
-      <HeaderSites
-        mateProjectId={mateProjectId}
-        sites={sites}
-        trigger={
-          <Button
-            aria-label="Open the Mate's sites"
-            data-chat-header-ghost
-            size="sm"
-            variant="ghost"
-          />
-        }
-      >
-        <GlobeIcon className="size-3.5 shrink-0" />
-        <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
-        <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
-      </HeaderSites>
+      <>
+        <ProjectPageLink sites={sites} />
+        <HeaderSites
+          mateProjectId={mateProjectId}
+          sites={sites}
+          trigger={
+            <Button
+              aria-label="Open the Mate's sites"
+              data-chat-header-ghost
+              size="sm"
+              variant="ghost"
+            />
+          }
+        >
+          <GlobeIcon className="size-3.5 shrink-0" />
+          <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
+          <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
+        </HeaderSites>
+      </>
     );
   }
   if (addresses.length === 0) return null;
@@ -93,5 +97,35 @@ export function ChatHeaderLinks({
         ))}
       </MenuPopup>
     </Menu>
+  );
+}
+
+/**
+ * The project's own page, one press from its Mate's conversation, just before Sites — the menu
+ * row's door to it, with its icon (the owner, 2026-10-18: "we should add a link to project detail
+ * somewhere to the app bar"). Drawn only where the menu draws that door: a Mate in a project.
+ */
+export function ProjectPageLink({ sites }: { readonly sites: ProjectSitesInput | undefined }) {
+  const open = sites?.onOpenPage;
+  if (sites === undefined || open === undefined) return null;
+  const label = `Open ${sites.projectName}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            data-chat-header-ghost
+            data-zerops-surface="header-project-page"
+            onClick={open}
+            size="icon-sm"
+            variant="ghost"
+          />
+        }
+      >
+        <LayoutDashboardIcon aria-hidden="true" className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
+    </Tooltip>
   );
 }

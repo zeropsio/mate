@@ -9,7 +9,7 @@
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { PutLiveRow } from "~/components/zerops/PutLiveTop";
+import { PutLiveRow } from "~/components/zerops/ProductionRun";
 import { PutLiveSheet } from "~/components/zerops/PutLiveSheet";
 import { ZeropsNextStepStrip } from "~/components/zerops/ZeropsNextStepBanner";
 import { Dialog } from "~/components/ui/dialog";
@@ -116,24 +116,21 @@ function Harness() {
             />
           }
         />
+        {/* A run is its project's production's: drawn there, never above a composer. */}
         {ROWS.map(({ name, run }) => (
-          <Composer
-            key={name}
-            name={name}
-            top={
-              <PutLiveRow
-                address={ADDRESS}
-                copied={false}
-                face={{ tint: "coral" }}
-                nowMs={NOW}
-                onAgain={noop}
-                onCopy={noop}
-                onDismiss={noop}
-                onOpenProject={noop}
-                run={run}
-              />
-            }
-          />
+          <section className="grid max-w-md gap-2" key={name}>
+            <h3 className="text-xs text-muted-foreground">{name}</h3>
+            <PutLiveRow
+              address={ADDRESS}
+              copied={false}
+              nowMs={NOW}
+              onAgain={noop}
+              onCopy={noop}
+              onDismiss={noop}
+              onOpenProject={noop}
+              run={run}
+            />
+          </section>
         ))}
       </div>
       <Dialog onOpenChange={noop} open={SHEET}>

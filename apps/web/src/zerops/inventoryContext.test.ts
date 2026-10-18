@@ -134,6 +134,17 @@ describe("withheldProjectNotice", () => {
     ).toEqual(["Checking your access to this project…", "Your access to this project changed."]);
   });
 
+  it("renaming a project raises no removal notice", () => {
+    // A rename's realtime remove can prove a project deleted for a moment; the overview names no
+    // project gone, so the notice neither lies about a rename nor hangs for a real removal.
+    expect(
+      withheldProjectNotices({
+        ...inventory({ kind: "withheld", reason: "access-denied", cause: null }),
+        deleted: ["p1"],
+      }),
+    ).toEqual([]);
+  });
+
   it("says why a project withheld alone is not shown", () => {
     expect(
       withheldProjectNotices(

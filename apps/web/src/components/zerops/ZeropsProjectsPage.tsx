@@ -158,6 +158,7 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
+import { ProductionRun } from "./ProductionRun";
 import { putLiveHasChange } from "./projects/projectCard.logic";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
@@ -2730,6 +2731,7 @@ export function ZeropsProjectsContent({
         })}
         renderCardPeople={overview.renderCardPeople}
         renderActivity={overview.renderActivity}
+        renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
         waitsOnYou={({ group }) => filterFacts.waits.has(group.groupId)}
         isAutomated={(candidate: ZeropsCandidatePresentation) =>
           candidate.project.hq?.mate?.automated === true

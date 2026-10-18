@@ -5,7 +5,7 @@ import type { PutLiveRun } from "~/zerops/putLive.logic";
 
 import { visitElements } from "../../test/reactElementTree";
 import { Button } from "../ui/button";
-import { PutLiveRow, type PutLiveRowProps } from "./PutLiveTop";
+import { PutLiveRow, type PutLiveRowProps } from "./ProductionRun";
 import { ZeropsNextStepStrip, type ZeropsNextStepStripModel } from "./ZeropsNextStepBanner";
 
 const RUN: PutLiveRun = {
@@ -20,7 +20,6 @@ const row = (run: Partial<PutLiveRun>, over: Partial<PutLiveRowProps> = {}) =>
     <PutLiveRow
       address={undefined}
       copied={false}
-      face={{ tint: "coral" }}
       nowMs={0}
       onAgain={() => {}}
       onCopy={() => {}}
@@ -31,7 +30,7 @@ const row = (run: Partial<PutLiveRun>, over: Partial<PutLiveRowProps> = {}) =>
     />,
   );
 
-describe("Put it live in the conversation", () => {
+describe("a release on its way, on its project's production", () => {
   it("says a step that never answered in plain words, with its source's words under Details", () => {
     const markup = row({
       phase: "failed",
@@ -45,7 +44,7 @@ describe("Put it live in the conversation", () => {
 
   it("shows the run as one wait row whose step words replace each other in place", () => {
     const making = row({ phase: "creating" });
-    expect(making).toContain('data-composer-top="live-progress"');
+    expect(making).toContain('data-zerops-production-run="progress"');
     expect(making).toContain("Putting Tea Shop live");
     expect(making).toContain("Making production");
 
@@ -64,7 +63,7 @@ describe("Put it live in the conversation", () => {
         },
       },
     );
-    expect(markup).toContain('data-composer-top="live"');
+    expect(markup).toContain('data-zerops-production-run="live"');
     expect(markup).toContain('href="https://app-abcd-3000.prg1.zerops.app"');
     expect(markup).toContain(">app-abcd-3000.prg1.zerops.app<");
     expect(markup).toContain("Copy link");
@@ -87,7 +86,6 @@ describe("Put it live in the conversation", () => {
     const props: PutLiveRowProps = {
       address: undefined,
       copied: false,
-      face: { tint: "coral" },
       nowMs: 0,
       onAgain: vi.fn(),
       onCopy: () => {},
@@ -127,7 +125,6 @@ describe("Put it live in the conversation", () => {
     const props: PutLiveRowProps = {
       address: undefined,
       copied: false,
-      face: { tint: "coral" },
       nowMs: 0,
       onAgain,
       onCopy: () => {},

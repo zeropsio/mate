@@ -76,10 +76,14 @@ export function withheldProjectNotice(
 
 /**
  * Why withheld projects are not shown: each source reason once, however many projects it affects.
+ * A project proven deleted is not named: a rename's realtime remove can prove one deleted for a
+ * moment (the owner's renamed project read "This project was removed."), and nothing ever clears a
+ * proof, so a real removal's notice would hang there for good. Its own route still says it.
  */
 export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<string> {
   const notices = new Set<string>();
   for (const { projectId } of inventory.projectRefs.values()) {
+    if (inventory.deleted.includes(projectId)) continue;
     const notice = withheldProjectNotice(inventory, projectId);
     if (notice !== null) notices.add(notice);
   }

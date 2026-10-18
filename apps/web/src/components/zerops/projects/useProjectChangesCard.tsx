@@ -124,6 +124,16 @@ export function useProjectChangesCard(
           },
     [groupId, navigate, productionId],
   );
+  // The ready group's Release opens the same review as the road's chip.
+  const onRelease = useMemo(
+    () =>
+      productionId === undefined
+        ? undefined
+        : (from: HTMLElement) => {
+            openReview({ kind: "release", groupId }, { from });
+          },
+    [groupId, openReview, productionId],
+  );
   return {
     groups,
     read:
@@ -135,5 +145,6 @@ export function useProjectChangesCard(
     mateOf: (projectId) => mates.get(projectId),
     onOpen,
     onOpenRelease,
+    onRelease,
   };
 }

@@ -31,8 +31,11 @@ import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 
-/** How a place's panel is drawn (`renderPlacePanel`). */
-export type PlacePanelLook = "column" | "detail" | "lift";
+/**
+ * How a place's panel is drawn (`renderPlacePanel`): `card` on an overview card, `detail` as a
+ * block of the project page's Production or Stages, `lift` as only what went wrong.
+ */
+export type PlacePanelLook = "card" | "detail" | "lift";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -86,19 +89,21 @@ export interface ProjectsFlowGroup<T> {
 }
 
 /**
- * A project's own page: its card at the page's width, every Mate unfolded, and the page's own
- * column beside it — the people on it, its environments, its repositories and its history.
+ * A project's own page: its head, its Production, Stages and Mates in the wide column, and the
+ * page's own cards beside them — its changes, spend, automation, access, people and repositories.
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The page's own cards, under its road. */
+  /** The page's own cards, beside its places and Mates. */
   readonly aside: ReactNode;
   /**
-   * Each tier's environments under its stop on the road (`RoadEnvironmentRows`): a stage or
-   * production by its name and what it runs, or its quiet slot with its Add. Absent, the road
-   * says what the flow says.
+   * Each tier's environments in its section (`RoadEnvironmentRows`): a stage or production by its
+   * name and what it runs — its head, which opens its page — with `detail` of its place under it;
+   * or its quiet slot with its Add. Absent, the sections say what the flow says.
    */
-  readonly roadEnvironments?: ((tier: "stage" | "production") => ReactNode) | undefined;
+  readonly roadEnvironments?:
+    | ((tier: "stage" | "production", detail: (projectId: string) => ReactNode) => ReactNode)
+    | undefined;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
@@ -194,14 +199,17 @@ export interface ZeropsProjectsFlowProps<T> {
       })
     | undefined;
   /**
-   * A place's panel: its facts and its actions; without it, its line. `column` is its column on
-   * the project page's road, under its stop's name; `detail` the same under the road's row that
-   * already names what runs there; `lift` only what went wrong there and its buttons, lifted on a
-   * card.
+   * A place's panel: its facts and its actions; without it, its line. `card` on an overview card;
+   * `detail` on the project page, under the row that names it and opens its page (`PlacePanelLook`).
    */
   readonly renderPlacePanel?:
     | ((entry: ProjectsFlowGroup<T>, line: PlaceLine, look: PlacePanelLook) => ReactNode)
     | undefined;
+  /**
+   * A release or *Put it live* run on the project's production (`ProductionRun`): under way, live
+   * for a while, or stopped with its one action — the project's, never a Mate's conversation's.
+   */
+  readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The newest event a card has not said above: the latest merged change, with whose. */
   readonly renderActivity?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** A Mate's lift or a change waits on the viewer in the project (the overview's Waiting filter). */

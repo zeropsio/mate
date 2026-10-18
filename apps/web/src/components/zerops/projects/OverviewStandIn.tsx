@@ -67,8 +67,9 @@ export function ProjectCardStandIn({
 }
 
 /**
- * A project's page while it is read: its header and its road in their final boxes, their words
- * grey, so the page lands in them without moving what follows (`ProjectPage`).
+ * A project's page while it is read: its head and its Production and Stages sections in their
+ * final boxes, their words grey, so the page lands in them without moving what follows
+ * (`ProjectPage`).
  */
 export function ProjectPageStandIn({
   label,
@@ -81,26 +82,25 @@ export function ProjectPageStandIn({
     <div
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
-      className="flex flex-col gap-4"
+      className="pp-main"
       ref={ref}
     >
-      <div className="pp-road-card pp-road-header" data-zerops-stand-in="project-header">
+      <div className="pp-road-header" data-zerops-stand-in="project-header">
         <div className="pp-road-header-text">
           <Skeleton className="h-3 w-20" />
           <Skeleton className="mt-2 h-6 w-48" />
           <Skeleton className="mt-3 h-5 w-24" shape="pill" />
         </div>
       </div>
-      <div className="pp-road-card" data-zerops-stand-in="project-road">
-        <div className="pp-road-page">
-          {[0, 1, 2].map((column) => (
-            <div className="pp-road-col" key={column}>
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-24 w-full" shape="card" />
-            </div>
-          ))}
+      {["production", "stages"].map((place) => (
+        <div className="pp-sec" data-zerops-stand-in={place} key={place}>
+          <div className="pp-sec-head">
+            <Skeleton className="h-4 w-24" />
+          </div>
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-24 w-full" shape="card" />
         </div>
-      </div>
+      ))}
     </div>
   );
 }

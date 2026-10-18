@@ -1,12 +1,9 @@
 /**
- * A place's column on the project page's road — Stage or Production — under its stop's name: what
- * runs there large, since when and by whom, one health line, its address, its services as compact
- * tiles (each one's name and port, what it is, its cores, RAM and disk against what it holds, and
- * its last day), and one quiet row of what can be done. What went wrong is lifted on its own
- * sub-card with its buttons, still saying what runs.
- *
- * Addresses beyond the one that stands for the place, and putting it on a domain, are the page's
- * Access card's: one fact in one place.
+ * A place's block on the project page — production, or a stage — under the row that names it and
+ * opens its page: its status line, its addresses, what went wrong lifted with its buttons, and its
+ * services as compact rows (each one's name and port, what it is, its CPU and RAM now with their
+ * last day; a service that only stores, its kind alone), however many it runs. What else can be
+ * done there sits behind the block's ···.
  */
 import {
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
@@ -24,57 +21,50 @@ import type { ReactNode } from "react";
 
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAccountDataOptional, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
-import { MicroLabel } from "../primitives";
 import { ResourceGraph } from "../ZeropsServiceMap";
-import { PlaceDot } from "./ProjectRoad";
+import { PlaceDot } from "./ProjectState";
+import { serviceRowReading } from "./placeServices.logic";
 import type { PlaceLine } from "./projectCard.logic";
 
 const NO_TOPOLOGY = Atom.make(EMPTY_PROJECT_TOPOLOGY_SNAPSHOT);
 
-const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =
-  [
-    { id: "cores", label: "CPU" },
-    { id: "memory", label: "RAM" },
-    { id: "disk", label: "Disk" },
-  ];
-
-/** One resource against what the service holds: "0.4 / 1 GB", its fill under it. */
+/** One resource now, "0.2 / 1 core", and its last day beside it. */
 function Meter({
   label,
   metric,
+  trend,
   read,
+  id,
 }: {
   readonly label: string;
   readonly metric: ZeropsServiceMetric | undefined;
+  readonly trend: NonNullable<ZeropsServiceRow["trends"]>["cores"] | undefined;
   readonly read: boolean;
+  readonly id: string;
 }) {
-  const fraction = metric?.fraction;
   return (
-    <span className="pp-road-meter">
-      <MicroLabel>{label}</MicroLabel>
+    <span className="pp-svc-meter">
+      <span className="pp-svc-label">{label}</span>
       {!read ? (
         <Skeleton className="h-3 w-12" />
-      ) : metric?.value === undefined ? (
-        <span className="pp-road-meter-figure">—</span>
       ) : (
-        <span className="pp-road-meter-figure">
-          {metric.used === undefined ? metric.value : `${metric.used} / ${metric.value}`}
-          {metric.unit === undefined ? null : (
-            <span className="pp-road-meter-unit">{metric.unit}</span>
+        <span className="pp-svc-figure">
+          {metric?.value === undefined
+            ? "—"
+            : metric.used === undefined
+              ? metric.value
+              : `${metric.used} / ${metric.value}`}
+          {metric?.unit === undefined || metric.value === undefined ? null : (
+            <span className="pp-svc-unit">{metric.unit}</span>
           )}
         </span>
       )}
-      <span aria-hidden="true" className="pp-road-meter-track">
-        <span
-          className="pp-road-meter-fill"
-          style={{ inlineSize: `${String(Math.round(Math.min(1, fraction ?? 0) * 100))}%` }}
-        />
-      </span>
+      {trend === undefined ? null : <ResourceGraph id={id} trend={trend} />}
     </span>
   );
 }
 
-/** A service as a compact tile: name and port, what it is, three meters and its last day. */
+/** A service as a compact row: name and port, what it is, its CPU and RAM — or its kind alone. */
 export function ServiceTile({
   row,
   usageRead,
@@ -82,43 +72,41 @@ export function ServiceTile({
   readonly row: ZeropsServiceRow;
   readonly usageRead: boolean;
 }) {
-  const trend = row.trends?.cores;
+  const reading = serviceRowReading({ type: row.service.type, typeShort: row.typeShort });
+  const metric = (id: ZeropsServiceMetric["id"]) => row.metrics.find((entry) => entry.id === id);
   return (
-    <li className="pp-road-svc" data-zerops-road-service={row.service.hostname}>
-      <span className="pp-road-svc-head">
-        <span className="pp-road-svc-name">
-          {row.title}
-          {row.portLabel === undefined ? null : (
-            <span className="pp-road-svc-port">{row.portLabel}</span>
-          )}
-        </span>
-        {row.typeShort === undefined ? null : (
-          <span className="pp-road-svc-type">{row.typeShort}</span>
-        )}
+    <li className="pp-svc" data-zerops-road-service={row.service.hostname}>
+      <span className="pp-svc-name">
+        <i aria-hidden="true" className="ov-service-dot" data-tone={row.tone} />
+        <span className="truncate">{row.title}</span>
+        {row.portLabel === undefined ? null : <span className="pp-svc-port">{row.portLabel}</span>}
       </span>
-      <span className="pp-road-svc-meters">
-        {METERS.map((meter) => (
+      {reading.kind === "storage" ? (
+        <span className="pp-svc-kind">{reading.words}</span>
+      ) : (
+        <>
+          <span className="pp-svc-kind">{row.typeShort}</span>
           <Meter
-            key={meter.id}
-            label={meter.label}
-            metric={row.metrics.find((metric) => metric.id === meter.id)}
+            id={`cpu-${row.service.serviceId}`}
+            label="CPU"
+            metric={metric("cores")}
             read={usageRead}
+            trend={row.trends?.cores}
           />
-        ))}
-      </span>
-      <span className="pp-road-svc-day">
-        <MicroLabel>24 h</MicroLabel>
-        {trend === undefined ? (
-          <Skeleton className="h-3.5 w-12" />
-        ) : (
-          <ResourceGraph id={`road-${row.service.serviceId}`} trend={trend} />
-        )}
-      </span>
+          <Meter
+            id={`ram-${row.service.serviceId}`}
+            label="RAM"
+            metric={metric("memory")}
+            read={usageRead}
+            trend={row.trends?.memory}
+          />
+        </>
+      )}
     </li>
   );
 }
 
-/** A place's services as tiles; their room held while they are read. */
+/** A place's services as compact rows; their room held while they are read. */
 export function ServiceTiles({
   rows,
   usageRead,
@@ -128,16 +116,15 @@ export function ServiceTiles({
 }) {
   if (rows === undefined)
     return (
-      <ul className="pp-road-svcs" aria-hidden="true">
-        <li className="pp-road-svc" data-held="">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-8 w-full" />
+      <ul className="pp-svcs" aria-hidden="true">
+        <li className="pp-svc" data-held="">
+          <Skeleton className="h-4 w-full" />
         </li>
       </ul>
     );
   if (rows.length === 0) return null;
   return (
-    <ul className="pp-road-svcs">
+    <ul aria-label="Services" className="pp-svcs">
       {rows.map((row) => (
         <ServiceTile key={row.service.serviceId} row={row} usageRead={usageRead} />
       ))}
@@ -168,61 +155,54 @@ export function PlaceServiceTiles({ projectId }: { readonly projectId: string | 
 }
 
 export interface RoadPlaceModel {
+  /** Its line, in the words its block says (`productionWords`, `stageWords`). */
   readonly line: PlaceLine;
-  /** What runs there, large; `undefined` where nothing does, or where the road's row says it. */
-  readonly version: string | undefined;
-  /** "Released 6d ago by Nova Dev": production's release, when it is known. */
-  readonly released: string | undefined;
-  /** "up 6d". */
-  readonly up: string | undefined;
-  /** How many services serve there; `undefined` while unread. */
-  readonly services: number | undefined;
-  /** The one address that stands for it. */
-  readonly address: { readonly host: string; readonly url: string } | undefined;
-  /** A stage's one line: "follows main · deployed 25m ago". */
-  readonly follows: string | undefined;
+  /** Every address it answers at. */
+  readonly addresses: ReadonlyArray<{ readonly host: string; readonly url: string }>;
   /** What went wrong, in sentences. */
   readonly note: { readonly text: string; readonly tone: "attention" | "failed" } | undefined;
 }
 
-/** A place's column on the road. `actions` are the page's: Roll back, or a failure's fixes. */
+/**
+ * A place's block. `actions` are what went wrong's buttons, beside its note; `menu` the block's
+ * quiet ··· (Roll back).
+ */
 export function RoadPlace({
   model,
   tiles,
   actions,
+  menu,
 }: {
   readonly model: RoadPlaceModel;
   readonly tiles: ReactNode;
   readonly actions: ReactNode;
+  readonly menu?: ReactNode;
 }) {
   const { line } = model;
-  const health = [
-    line.words[0],
-    model.up === undefined ? undefined : `up ${model.up}`,
-    model.services === undefined
-      ? undefined
-      : `${String(model.services)} service${model.services === 1 ? "" : "s"}`,
-  ].filter((word) => word !== undefined);
-  const trouble = model.note !== undefined;
   return (
     <div className="pp-road-place" data-zerops-surface="road-place">
-      {model.version === undefined ? null : (
-        <b className="pp-road-place-version">{model.version}</b>
-      )}
-      {model.released === undefined ? null : (
-        <span className="pp-road-place-quiet">{model.released}</span>
-      )}
-      {line.kind === "production" && !trouble ? (
-        <span className="pp-road-place-health">
+      <div className="pp-road-place-top">
+        <span className="pp-road-place-health" data-tone={line.trouble ? "failed" : undefined}>
           <PlaceDot dot={line.dot} />
-          {health.join(" · ")}
+          {line.words.join(" · ")}
         </span>
-      ) : null}
-      {model.address === undefined ? null : (
-        <a className="pp-road-place-link" href={model.address.url} rel="noreferrer" target="_blank">
-          {model.address.host}
-          <ArrowUpRightIcon aria-hidden="true" className="size-3" />
-        </a>
+        {menu}
+      </div>
+      {model.addresses.length === 0 ? null : (
+        <span className="pp-road-place-links">
+          {model.addresses.map((address) => (
+            <a
+              className="pp-road-place-link"
+              href={address.url}
+              key={address.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {address.host}
+              <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+            </a>
+          ))}
+        </span>
       )}
       {model.note === undefined ? null : (
         <div className="pp-road-place-lift">
@@ -231,10 +211,6 @@ export function RoadPlace({
         </div>
       )}
       {tiles}
-      {model.follows === undefined ? null : (
-        <span className="pp-road-place-quiet">{model.follows}</span>
-      )}
-      {trouble ? null : <div className="pp-road-place-acts">{actions}</div>}
     </div>
   );
 }

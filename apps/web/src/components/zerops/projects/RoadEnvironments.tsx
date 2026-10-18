@@ -1,6 +1,5 @@
 /**
- * A project's environments where its road stands them: each tier's rows under its stop on the
- * project page (`environmentSlots`) — a stage or production by its name, what it runs and its
+ * A project's environments in its page's Production and Stages (`environmentSlots`) — a stage or production by its name, what it runs and its
  * state, opened by its identity; a Mate that is also the stage; a tier being set up or not
  * finished; and a tier nobody added, quiet, with its Add where HQ offers it.
  *
@@ -65,6 +64,8 @@ export interface RoadEnvironmentFacts {
   readonly release: ReleaseOffer;
   /** Adds a tier: Put it live for production, Add stage for a stage. */
   readonly onAdd: (tier: GroupEnvironmentTier) => void;
+  /** Its place's block under an environment's row, by its project (`RoadPlace`). */
+  readonly detail?: ((projectId: string) => React.ReactNode) | undefined;
 }
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
@@ -175,7 +176,7 @@ const TIER_NAME: Record<GroupEnvironmentTier, string> = {
   production: "Production",
 };
 
-/** One tier's rows under its stop on the road. */
+/** One tier's rows in its section: each environment's row, its place's block under it. */
 export function RoadEnvironmentRows({
   tier,
   facts,
@@ -227,6 +228,9 @@ export function RoadEnvironmentRows({
                   groupId={groupId}
                   notice={projectId === undefined ? null : (withheldNotice?.(projectId) ?? null)}
                 />
+                {projectId === undefined || facts.detail === undefined ? null : (
+                  <li className="pp-place-detail">{facts.detail(projectId)}</li>
+                )}
                 {environment.target.kind === "git" ? (
                   <li>
                     <GitDeliveryStatus

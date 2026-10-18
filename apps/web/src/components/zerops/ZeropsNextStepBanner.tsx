@@ -24,7 +24,7 @@
  * the strip from here and hands it to the composer as its top.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
@@ -44,12 +44,10 @@ import {
 } from "../../zerops/composerReviewDismissal";
 import { useHeldBehindReview } from "../../zerops/heldBehindReview";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
-import { useZeropsMate } from "../../zerops/useZeropsMates";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
-import { useConversationGroup, usePutLiveRow } from "./PutLiveTop";
 
 /** What waits on the person in the composer right now. */
 export interface ZeropsNextStepPending {
@@ -292,11 +290,6 @@ export function useZeropsNextStepStrip(
     dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),
     pending,
   });
-  // A Put it live run is drawn here once pressed from the project, in the strip's place — read
-  // in a part of its own, once the conversation's project is known.
-  const groupId = useConversationGroup(threadRef);
-  const held = pending.question || pending.approval;
-  const environmentId = threadRef?.environmentId;
   // The composer is memoised: the strip keeps its identity while what it
   // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
@@ -343,25 +336,8 @@ export function useZeropsNextStepStrip(
       ) : (
         drawn()
       );
-    return groupId === undefined || environmentId === undefined ? (
-      top()
-    ) : (
-      <PutLiveComposerTop environmentId={environmentId} groupId={groupId} held={held} top={top} />
-    );
-  }, [
-    dismiss,
-    environmentId,
-    folded,
-    folding,
-    groupId,
-    held,
-    hidden,
-    navigate,
-    openReview,
-    reserved,
-    shown,
-    yours,
-  ]);
+    return top();
+  }, [dismiss, folded, folding, hidden, navigate, openReview, reserved, shown, yours]);
 }
 
 /**
@@ -386,27 +362,4 @@ function HeldComposerTop({
       {children}
     </div>
   );
-}
-
-/**
- * The composer's top where the conversation's project is known: a *Put it live* run pressed from
- * the project, in the strip's place — giving way only to what the Mate itself waits on, a question
- * or an approval — else the strip.
- */
-function PutLiveComposerTop({
-  groupId,
-  environmentId,
-  held,
-  top,
-}: {
-  readonly groupId: string;
-  readonly environmentId: EnvironmentId;
-  readonly held: boolean;
-  readonly top: () => ReactNode;
-}) {
-  const known = useZeropsMate(environmentId);
-  const mate = known.kind === "mate" ? known.mate : undefined;
-  const row = usePutLiveRow(groupId, { tint: mate?.tint ?? "slate", shape: mate?.shape });
-  if (row !== null && !held) return row;
-  return top();
 }

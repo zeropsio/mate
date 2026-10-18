@@ -153,6 +153,14 @@ const partsOf = (day: SpendDay) => {
   return { weekday: part("weekday"), date: part("day"), month: part("month") };
 };
 
+/** A visible bar's least height: a day that cost anything never reads as a day that cost nothing. */
+const LEAST_BAR_PX = 2;
+
+/** A day's bar segment, in pixels at `scale` px a dollar: none for nothing, else at least 2 px. */
+export function spendBarPx(usd: number, scale: number): number {
+  return usd > 0 ? Math.max(LEAST_BAR_PX, Math.round(usd * scale)) : 0;
+}
+
 /** An axis's day: "19 Sep", or "Today". */
 export function dayLabel(day: SpendDay, today: SpendDay): string {
   if (day === today) return "Today";

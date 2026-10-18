@@ -320,7 +320,7 @@ describe("a card's production", () => {
       'data-zerops-group="aaa"',
     );
     expect(withheld).not.toContain("Put it live");
-    expect(withheld).toContain("not live");
+    expect(withheld).toContain("Not released yet");
   });
 
   // The onboarding run: while a stage was being set up the button gave way to "Not released yet",
@@ -342,7 +342,7 @@ describe("a card's production", () => {
         render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
         'data-zerops-group="aaa"',
       ),
-    ).not.toContain("Not released yet");
+    ).toContain("Put it live");
   });
 });
 
@@ -490,7 +490,7 @@ describe("a card's stage", () => {
 // The onboarding run: an Admin who joined looked 11 s for a way to add their own Mate.
 describe("a card's Mates", () => {
   it("closes with Add a Mate where the person may add one, and says why where it stands off", () => {
-    // On the project's page, where Add Mate stands in its header (and the card's ··· holds it).
+    // On the project's page: Add Mate in its header, and Add a Mate at the foot of its Mates.
     const added: string[] = [];
     const open = mount(
       <ZeropsProjectsFlow<Item>
@@ -507,11 +507,11 @@ describe("a card's Mates", () => {
     const button = open.root.findAll(
       (node) => node.type === "button" && node.props["data-zerops-surface"] === "add-mate",
     );
-    expect(button).toHaveLength(1);
+    expect(button).toHaveLength(2);
     act(() => {
-      button[0]!.props.onClick();
+      for (const each of button) each.props.onClick();
     });
-    expect(added).toEqual(["aaa"]);
+    expect(added).toEqual(["aaa", "aaa"]);
     const held = section(
       render({
         groups: [entry([WREN])],
@@ -564,7 +564,7 @@ describe("production's version", () => {
 
   it("is nowhere without production", () => {
     const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("not live");
+    expect(row).toContain("Not released yet");
     expect(row).not.toContain(">Running<");
   });
 });

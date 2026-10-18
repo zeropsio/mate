@@ -52,8 +52,6 @@ import {
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
 import { PlaceServiceTiles, RoadPlace } from "./RoadPlace";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { ActionHeld, CardActivity, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
@@ -71,6 +69,8 @@ import {
 import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { PlacePanelLook, ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
+import { EllipsisIcon } from "lucide-react";
 
 /** What a card's places need of an environment: how its services stand and where they answer. */
 export interface PlaceItem {
@@ -406,57 +406,45 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ) : null}
       </>
     ) : null;
-    if (look === "column" || look === "detail") {
-      const ago = (at: string | undefined) =>
-        at === undefined || Number.isNaN(Date.parse(at))
-          ? undefined
-          : compactSidebarTimeLabel(formatRelativeTimeLabel(at, nowMs));
-      const live = releases.find((release) => release.standing === "live");
-      const releasedAgo = line.kind === "production" ? ago(live?.taggedAt) : undefined;
-      const by = stop?.version?.taggedBy;
-      const deployedAgo =
-        line.projectId === undefined ? undefined : ago(places.stageSince.get(line.projectId));
-      const listed = panelAddresses({
-        kind: line.kind,
-        listed: line.addresses,
-        place: undefined,
-        runs: true,
-      });
+    if (look === "detail") {
+      // Every address the place answers at, as its flow lists them.
+      const addresses = line.addresses.map((address) => ({
+        host: hostOf(address.url),
+        url: address.url,
+      }));
       return (
         <RoadPlace
-          actions={
-            line.trouble
-              ? actions
-              : line.kind === "production"
-                ? back === undefined
-                  ? null
-                  : actions
-                : null
+          actions={line.trouble ? actions : null}
+          menu={
+            back === undefined ? null : (
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      aria-label={`More for ${line.kind === "production" ? "production" : line.name}`}
+                      size="icon-sm"
+                      variant="ghost"
+                    />
+                  }
+                >
+                  <EllipsisIcon aria-hidden="true" />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  <MenuItem
+                    onClick={(event) => {
+                      openReview(
+                        { kind: "rollback", groupId, tag: back },
+                        { from: event.currentTarget },
+                      );
+                    }}
+                  >
+                    Roll back to {back}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            )
           }
-          model={{
-            line,
-            version:
-              line.kind === "production" && look === "column"
-                ? (stop?.version?.label ?? chip?.version)
-                : undefined,
-            released:
-              releasedAgo === undefined
-                ? undefined
-                : `Released ${releasedAgo} ago${by === undefined ? "" : ` by ${by}`}`,
-            up: line.kind === "production" ? ago(places.since) : undefined,
-            services: item?.services?.statuses.length,
-            address: line.kind === "production" ? listed.head : undefined,
-            follows:
-              line.kind === "stage"
-                ? [
-                    `follows ${stop?.source ?? "main"}`,
-                    deployedAgo === undefined ? undefined : `deployed ${deployedAgo} ago`,
-                  ]
-                    .filter((word) => word !== undefined)
-                    .join(" · ")
-                : undefined,
-            note: line.trouble ? note : undefined,
-          }}
+          model={{ line, addresses, note: line.trouble ? note : undefined }}
           tiles={<PlaceServiceTiles projectId={line.projectId} />}
         />
       );
@@ -542,6 +530,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             { from },
           );
         }}
+        onShowAll={
+          input.onPage === true
+            ? undefined
+            : () => {
+                void navigate({
+                  to: "/group/$groupId/flow",
+                  params: { groupId: entry.group.groupId },
+                });
+              }
+        }
       />
     );
   };
@@ -600,6 +598,14 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
 
   return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople, renderActivity };
 }
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
 
 /** A working Mate's clock, a step a second (R6). */
 function CardClock({ since }: { readonly since: string }) {
