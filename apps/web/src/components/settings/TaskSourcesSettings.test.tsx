@@ -401,7 +401,11 @@ describe("the limits per task and the monthly budget, saved apart", () => {
   /** The words a row of the two shows, by its surface. */
   const words = (root: ReactTestInstance, surface: string): string => {
     const text = (node: ReactTestInstance | string): string =>
-      typeof node === "string" ? node : node.children.map(text).join(" ");
+      typeof node === "string"
+        ? node
+        : node.props["aria-hidden"] === true
+          ? ""
+          : node.children.map(text).join(" ");
     return text(root.findAll((node) => node.props?.["data-zerops-surface"] === surface)[0]!)
       .replace(/\s+/gu, " ")
       .trim();

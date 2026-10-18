@@ -764,7 +764,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
                 size="sm"
                 type="submit"
               >
-                {sent ? "Saving…" : "Save"}
+                <SaveWords sent={sent} />
               </Button>
             </LimitsFields>
           </form>
@@ -852,7 +852,7 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
             size="sm"
             type="submit"
           >
-            {sent ? "Saving…" : "Save"}
+            <SaveWords sent={sent} />
           </Button>
         </form>
       }
@@ -871,6 +871,18 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
 }
 
 type LimitsAction = Controls<"hqTaskLimits">["read"]["action"];
+
+/** A limits row's press: as wide as "Saving…" from the first frame, so nothing beside it moves. */
+function SaveWords({ sent }: { readonly sent: boolean }) {
+  return (
+    <span className="grid">
+      <span aria-hidden className="invisible col-start-1 row-start-1">
+        Saving…
+      </span>
+      <span className="col-start-1 row-start-1">{sent ? "Saving…" : "Save"}</span>
+    </span>
+  );
+}
 
 /**
  * A row's own save on the limits record the two rows share: sent from it until HQ answers the
