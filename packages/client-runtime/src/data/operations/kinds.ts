@@ -25,6 +25,7 @@ import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { HQ_BIRTH_KINDS } from "./hqBirth.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
+import { stopTask } from "./hqTaskStop.ts";
 import { hqUpdate } from "./hqUpdate.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
@@ -101,6 +102,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...HQ_WRITE_KINDS,
   ...HQ_BIRTH_KINDS,
   ...HQ_CHIEF_KINDS,
+  stopTask,
   changeComment,
   renameApp,
   deleteApp,

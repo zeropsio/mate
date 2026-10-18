@@ -87,6 +87,7 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
+  Partial<Pick<HqApi, "stopTask">> &
   Partial<Pick<HqApi, "repoRemoteViaApp">> &
   FlowWrites &
   Partial<HqGitWrites> &
@@ -738,6 +739,18 @@ export function makeHqExecutor(ports: {
           });
         if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
           return yield* chiefWrite(requestId, api, intent);
+        if (intent.kind === "stop-task") {
+          const stop = api.stopTask;
+          // An HQ that predates a person's stop: nothing was sent.
+          if (stop === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to stop a task from Mate.",
+            });
+          // A task HQ holds as ended has nothing left to stop: the stop is done.
+          yield* doneWhenRefused("conflict", () => stop(intent.appId, intent.taskId));
+          return answered(requestId, intent.taskId);
+        }
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
             try: () => api.commentOnChange(intent.link, intent.body),

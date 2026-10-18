@@ -465,6 +465,11 @@ export interface HqApi {
   readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
   readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
   readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
+  /**
+   * A person stops the application's task (`POST /api/apps/:appId/tasks/:taskId/stop`): its Mate
+   * is told to stop; one that ended is HQ's `conflict`. Absent: this HQ predates it.
+   */
+  readonly stopTask?: (appId: string, taskId: string) => Promise<void>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits?: () => Promise<HqTaskLimitsView>;
   readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
@@ -1473,6 +1478,13 @@ export function makeHqApi(input: {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/schedules/${encodeURIComponent(scheduleId)}`,
         { method: "DELETE" },
+        true,
+      );
+    },
+    stopTask: async (appId, taskId) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/stop`,
+        { method: "POST" },
         true,
       );
     },
