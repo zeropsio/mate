@@ -280,6 +280,51 @@ describe("a takeover after git moved past HQ's records", () => {
 
     // Main's order decides which merge was the application's first, whether the record of a squash
     // is open and lagging or missing altogether.
+    it.effect("an HQ restart keeps each of a Mate's open task changes", () =>
+      Effect.gen(function* () {
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        const { appId } = ada;
+        yield* first.call("POST", "/api/mate/repos", {
+          headers: ada.auth,
+          body: { name: "appdev" },
+        });
+        const sql = (query: string) => rowsWhere(first.url, query, () => true);
+        // Two tasks, each delivered to a change of its own: both wait for review at once.
+        for (const number of [1, 2]) {
+          yield* sql(`
+            INSERT INTO hq_task (app_id, title, body, delivery_id, state, source_kind, source,
+              source_key, mate_project_id)
+            VALUES ('${appId}', 'Task ${String(number)}', '', 'delivery-${String(number)}', 'done',
+              'webhook', '{}'::jsonb, 'key-${String(number)}', 'P_MATE')`);
+          yield* first.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: `Task ${String(number)}'s change` },
+          });
+          yield* sql(`
+            UPDATE hq_change SET task_id = (SELECT id FROM hq_task WHERE delivery_id = 'delivery-${String(number)}')
+            WHERE number = ${String(number)}`);
+        }
+        yield* first.stop;
+
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+        assert.deepStrictEqual(
+          yield* rowsWhere(
+            next.url,
+            `SELECT number, state FROM hq_change WHERE repo = 'appdev' ORDER BY number`,
+            () => true,
+          ),
+          [
+            { number: 1, state: "open" },
+            { number: 2, state: "open" },
+          ],
+        );
+      }),
+    );
+
     it.effect("recovers unrecorded squashes in the order main merged them", () =>
       Effect.gen(function* () {
         const first = yield* startCore(true);

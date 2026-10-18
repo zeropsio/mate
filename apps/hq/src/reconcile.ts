@@ -11,9 +11,10 @@
  *   creation an older build cut short, recording before making (H1): `catchUp` makes it.
  * - **What git holds beyond the records is recorded** (`catchUp`): a repository of a known
  *   application without its row; a change whose squash is on `main`, merged; a change branch
- *   without its record, a change again — a Mate opens a number only while none of its own is open,
- *   so of a Mate's open changes in a repository only the newest stays open, the rest closed,
- *   superseded; a release tag of the recipe repository without its record, a release. Each is logged
+ *   without its record, a change again — off any task a Mate opens a number only while none of its
+ *   own is open, so of a Mate's open changes on no task in a repository only the newest stays open,
+ *   the rest closed, superseded; each task's change stays open beside them (an automated Mate holds
+ *   one per task); a release tag of the recipe repository without its record, a release. Each is logged
  *   `reconciled`. The heads and `main` themselves follow in the takeover (`gitHost.ts`), as at every
  *   takeover.
  *
@@ -180,6 +181,8 @@ interface ChangeRow {
   readonly number: number;
   readonly mate_project_id: string;
   readonly state: string;
+  /** The task it was opened on: each task's change stays open beside its Mate's others. */
+  readonly task_id: string | null;
 }
 
 /**
@@ -247,7 +250,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
   Effect.gen(function* () {
     const branches = yield* git.changeRefs(repo);
     const records = yield* sql<ChangeRow>`
-      SELECT number, mate_project_id, state FROM hq_change
+      SELECT number, mate_project_id, state, task_id::text AS task_id FROM hq_change
       WHERE app_id::text = ${repo.appId} AND repo = ${repo.id}`;
     const known = new Set(records.map((row) => row.number));
     const orphans = branches.filter((branch) => !known.has(branch.number));
@@ -262,7 +265,8 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     const squashOf = (mateId: string, number: number) =>
       squashes.get(`${mateId}/${String(number)}`) ?? null;
     const headOf = new Map(branches.map((branch) => [branch.number, branch.sha]));
-    // Of each Mate's open changes, its newest stays open.
+    // Of each Mate's open changes on no task, its newest stays open; a task's change is its own,
+    // open beside its Mate's others.
     const newest = new Map<string, number>();
     // A branch with no record, recorded: merged where main holds its squash, else open if it is its
     // Mate's newest, else closed.
@@ -363,7 +367,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     }
     const candidates = [
       ...open
-        .filter((row) => !merged.has(row.number))
+        .filter((row) => !merged.has(row.number) && row.task_id === null)
         .map((row) => ({ mateId: row.mate_project_id, number: row.number })),
       ...orphans
         .filter((branch) => squashOf(branch.mateId, branch.number) === null)
@@ -373,7 +377,12 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
       newest.set(mateId, Math.max(newest.get(mateId) ?? 0, number));
     }
     for (const row of open) {
-      if (merged.has(row.number) || newest.get(row.mate_project_id) === row.number) continue;
+      if (
+        merged.has(row.number) ||
+        row.task_id !== null ||
+        newest.get(row.mate_project_id) === row.number
+      )
+        continue;
       yield* leader.write(
         Effect.andThen(
           sql`
