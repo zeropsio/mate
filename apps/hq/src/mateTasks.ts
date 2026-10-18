@@ -6,7 +6,8 @@
  * - A Mate is free while it is automated, of the application's projects, online, on no task, owes
  *   no follow-up (below), and its agents work on nothing (its attention says `working: 0`). Each
  *   task delivers to a change of its own (`changes.ts`), so a Mate whose changes wait for review is
- *   still free — handed a task only once no free Mate of the application holds none. The oldest
+ *   still free — handed a task only once no free Mate of the application holds none (an older Mate
+ *   than `TASK_CHANGES_SINCE`, its one working copy holding that work, is not). The oldest
  *   waiting task of an application goes to a free Mate of it (`assigned`), told over the Mate's
  *   link (`task`), and told again on each link it opens until it takes it. HQ looks again when a
  *   task waits, a Mate's link or attention moves, and a task ends.
@@ -94,6 +95,13 @@ import {
  * older one passes such a `task` frame by, so it is never handed one.
  */
 export const TASK_SOURCES_SINCE = "0.15.159";
+
+/**
+ * The first Mate that puts its working copies on each task's base (`ZeropsWorkingCopy`): HQ hands
+ * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
+ * holding that work, takes none until they are merged or closed.
+ */
+export const TASK_CHANGES_SINCE = "0.15.176";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -479,11 +487,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /** A Mate HQ may hand a task to now, of those its records name free. */
       // A Mate that declined a task is not offered one again until this passes: it said it was busy.
       const declinedUntil = new Map<string, number>();
-      const freeNow = (projectIds: ReadonlyArray<string>) =>
+      const freeNow = (
+        mates: ReadonlyArray<{ readonly project_id: string; readonly held: boolean }>,
+      ) =>
         Effect.gen(function* () {
           const all = yield* overviews.all;
           const now = yield* Clock.currentTimeMillis;
-          return projectIds.flatMap((projectId) => {
+          return mates.flatMap(({ project_id: projectId, held }) => {
             const entry = all.get(projectId);
             const cooled = (declinedUntil.get(projectId) ?? 0) <= now;
             if (!cooled || entry?.presence.online !== true || entry.attention?.working !== 0)
@@ -491,9 +501,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             // Only a Mate whose overview says it runs a version that reads them takes tasks from
             // beyond GitHub; one that has not said its version yet takes issues alone.
             const version = entry.overview?.identity.serverVersion;
-            const everySource =
-              version !== undefined && compareSemverVersions(version, TASK_SOURCES_SINCE) >= 0;
-            return [{ projectId, everySource }];
+            const since = (first: string) =>
+              version !== undefined && compareSemverVersions(version, first) >= 0;
+            // One whose task's change waits for review takes another only where it moves its
+            // working copies to each task's base.
+            if (held && !since(TASK_CHANGES_SINCE)) return [];
+            return [{ projectId, everySource: since(TASK_SOURCES_SINCE) }];
           });
         });
 
@@ -732,15 +745,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         const apps = yield* sql<{ readonly app_id: string }>`
           SELECT DISTINCT app_id::text AS app_id FROM hq_task WHERE state = 'queued'`;
         for (const { app_id: appId } of apps) {
-          const idle = yield* sql<{ readonly project_id: string }>`
-            SELECT m.project_id FROM hq_mate m
+          const idle = yield* sql<{ readonly project_id: string; readonly held: boolean }>`
+            SELECT m.project_id, ${heldBy(sql`m.project_id`)} AS held FROM hq_mate m
             JOIN hq_app_project p ON p.project_id = m.project_id
             WHERE p.app_id::text = ${appId} AND p.kind IN ('mate', 'devstage') AND m.automated
               AND NOT ${onATask(sql`m.project_id`)}
               AND NOT EXISTS (SELECT 1 FROM hq_task t
                 WHERE t.mate_project_id = m.project_id AND ${followUpOn(sql`t`)})
             ORDER BY ${holdsChange(sql`m.project_id`)}, m.seq`;
-          const free = [...(yield* freeNow(idle.map((row) => row.project_id)))];
+          const free = [...(yield* freeNow(idle))];
           if (free.length === 0) continue;
           // An issue's only from the intake's own repository: one it left or stopped gives nobody work.
           const waiting = yield* sql<TaskRow & { readonly source_kind: string }>`

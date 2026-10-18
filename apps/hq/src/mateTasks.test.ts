@@ -26,7 +26,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
 import { ISSUE_CLOSED } from "./intake.ts";
-import { DECLINED_FOR, MATE_AWAY, UNTAKEN } from "./mateTasks.ts";
+import { DECLINED_FOR, MATE_AWAY, TASK_CHANGES_SINCE, UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -443,7 +443,7 @@ describe("tasks for automated Mates", () => {
       "HQ hands a task to a Mate without an open change first, and to one holding a change when no other is free, its row reading the task it is on",
       () =>
         Effect.gen(function* () {
-          const core = yield* withPool();
+          const core = yield* withPool({ version: TASK_CHANGES_SINCE });
           const watching = yield* core.socket(
             `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
           );
@@ -481,7 +481,7 @@ describe("tasks for automated Mates", () => {
       "a task's delivery opens its own change while the Mate's earlier change waits for review",
       () =>
         Effect.gen(function* () {
-          const core = yield* withPool();
+          const core = yield* withPool({ version: TASK_CHANGES_SINCE });
           const { first, second } = yield* twoChanges(core);
           assert.notStrictEqual(second.number, first.number);
           assert.isTrue(second.created);
@@ -511,7 +511,7 @@ describe("tasks for automated Mates", () => {
 
     it.effect("a follow-up's delivery lands in its own task's change", () =>
       Effect.gen(function* () {
-        const core = yield* withPool();
+        const core = yield* withPool({ version: TASK_CHANGES_SINCE });
         const { first, second } = yield* twoChanges(core);
         yield* second.task.word({ state: "done" });
         yield* core.tasks((rows) => rows[1]?.["state"] === "done");
@@ -535,7 +535,7 @@ describe("tasks for automated Mates", () => {
       "a review comment on an earlier change waits while its Mate works another task, then reaches it, and the Mate takes no new task before it is back on it",
       () =>
         Effect.gen(function* () {
-          const core = yield* withPool();
+          const core = yield* withPool({ version: TASK_CHANGES_SINCE });
           const { first, second } = yield* twoChanges(core);
           yield* commentOn(core, first.number, "Rename the kettle.");
           yield* rowsWhere(core.url, "SELECT 1 FROM hq_task_message", (rows) => rows.length === 1);
@@ -562,6 +562,37 @@ describe("tasks for automated Mates", () => {
             (rows) => rows.length === 1,
           );
           assert.strictEqual(order!["after"], true);
+        }),
+    );
+
+    it.effect(
+      "a Mate from before each task had its own change takes no new task while its task's change waits for review, until it is merged or closed",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* repoOf(core);
+          yield* core.issue(1);
+          const first = yield* onTask(core, core.robot.link, 1);
+          const { number } = yield* openOn(core, "Hotter tea");
+          yield* first.word({ state: "done" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.issue(2);
+          yield* core.github.seenWhere("the second issue's line", (seen) =>
+            seen.some((request) => request.path.includes("/issues/2/comments")),
+          );
+          // Its one working copy still holds the first task's work.
+          assert.isFalse(
+            (yield* core.robot.link.collected).some(
+              (frame) => frame.type === "task" && issueNumberOf(frame["task"] as MateTask) === 2,
+            ),
+          );
+          const closed = yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/close`,
+            { session: core.owner, body: { expectedHead: null } },
+          );
+          assert.strictEqual(closed.status, 200);
+          yield* toldTask(core.robot.link, 2);
         }),
     );
 
