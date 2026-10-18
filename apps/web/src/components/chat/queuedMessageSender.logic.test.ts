@@ -27,6 +27,7 @@ import {
   type QueuedComposerMessage,
   type QueuedMessageSendSettings,
 } from "../../queuedMessageStore";
+import { sendOutcomeOf } from "../../hooks/useComposerSendRequests";
 import type { Thread } from "../../types";
 import {
   backgroundQueuedMessageDue,
@@ -404,6 +405,28 @@ describe("sendQueuedMessageInBackground", () => {
     expect(deps.startTurn).not.toHaveBeenCalled();
     expect(queued()).toEqual([]);
   });
+
+  it.each([
+    { through: "as a turn", crew: false },
+    { through: "through the crew engine", crew: true },
+  ])(
+    "a queued request sent in the background $through tells its asker it went",
+    async ({ crew }) => {
+      const ids = { commandId: CommandId.make("asked-1"), messageId: MessageId.make("asked-1") };
+      const message = queue("tell Mira", { sendIds: ids });
+      const thread = crew
+        ? makeThread({
+            ...endedThread,
+            crew: { crew: "crew-1", crewmate: "reviewer" },
+          } as Partial<Thread>)
+        : endedThread;
+      const told = sendOutcomeOf(ids.messageId);
+
+      await sendQueuedMessageInBackground(threadKey, message.id, makeDeps(thread));
+
+      await expect(told).resolves.toEqual({ kind: "sent" });
+    },
+  );
 
   it("Stop during its uploads starts no turn; it waits at the head for Send now", async () => {
     const message = queue("with a picture", {

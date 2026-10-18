@@ -572,6 +572,8 @@ interface ComposerDraftStoreState {
   requestSend: (threadRef: ComposerThreadTarget, prompt: string, ids?: ComposerSendIds) => void;
   /** Taken once by the composer, so a re-render never sends twice. */
   takeSendRequest: (threadRef: ComposerThreadTarget) => ComposerSendRequest | null;
+  /** Withdraws the filed request carrying `messageId`; false when none is filed. */
+  withdrawSendRequest: (messageId: MessageId) => boolean;
   setTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   setModelSelection: (
     threadRef: ComposerThreadTarget,
@@ -2867,6 +2869,20 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { sendRequestsByThreadKey: next };
           });
           return pending;
+        },
+
+        withdrawSendRequest: (messageId) => {
+          const requests = get().sendRequestsByThreadKey;
+          const threadKey = Object.keys(requests).find(
+            (key) => requests[key]?.ids?.messageId === messageId,
+          );
+          if (threadKey === undefined) return false;
+          set((state) => {
+            const next = { ...state.sendRequestsByThreadKey };
+            delete next[threadKey];
+            return { sendRequestsByThreadKey: next };
+          });
+          return true;
         },
 
         setPrompt: (threadRef, prompt) => {
