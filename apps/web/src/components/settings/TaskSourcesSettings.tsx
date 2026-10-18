@@ -408,6 +408,32 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
   );
 }
 
+/**
+ * Keys typed for HQ, kept until HQ accepts them: a refused key stays in its field to be fixed,
+ * never pasted again. `sent` marks a write; its keys clear once that write is done.
+ */
+function useKeysUntilAccepted(action: Controls<"hqSlack">["read"]["action"]) {
+  const [botToken, setBotToken] = useState("");
+  const [signingSecret, setSigningSecret] = useState("");
+  // Where the last write stands: sent, then seen working; only its own end clears the keys.
+  const [write, setWrite] = useState<"none" | "sent" | "working">("none");
+  if (write === "sent" && action.kind === "working") setWrite("working");
+  if (write === "working" && action.kind !== "working") {
+    setWrite("none");
+    if (action.kind === "done") {
+      setBotToken("");
+      setSigningSecret("");
+    }
+  }
+  return {
+    botToken,
+    setBotToken,
+    signingSecret,
+    setSigningSecret,
+    sent: () => setWrite("sent"),
+  };
+}
+
 /** A connected Slack's keys replaced in place: either alone, the other kept. */
 function SlackReplaceKeys({
   controls,
@@ -417,8 +443,9 @@ function SlackReplaceKeys({
   /** The signing secret is what needs replacing: its field first, focused. */
   readonly secretFirst: boolean;
 }) {
-  const [botToken, setBotToken] = useState("");
-  const [signingSecret, setSigningSecret] = useState("");
+  const { botToken, setBotToken, signingSecret, setSigningSecret, sent } = useKeysUntilAccepted(
+    controls.read.action,
+  );
   const ready = replaceKeysReady(botToken, signingSecret);
   const busy = working(controls.read.action);
   const secret = (
@@ -457,8 +484,7 @@ function SlackReplaceKeys({
             ...(signingSecret.trim() === "" ? {} : { signingSecret: signingSecret.trim() }),
           },
         );
-        setBotToken("");
-        setSigningSecret("");
+        sent();
       }}
     >
       {secretFirst ? [secret, token] : [token, secret]}
@@ -494,8 +520,9 @@ function SlackSteps({
   readonly view: HqSlackView;
   readonly onCancel: () => void;
 }) {
-  const [botToken, setBotToken] = useState("");
-  const [signingSecret, setSigningSecret] = useState("");
+  const { botToken, setBotToken, signingSecret, setSigningSecret, sent } = useKeysUntilAccepted(
+    controls.read.action,
+  );
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "Slack manifest" });
   const read = manifest.read.setting;
   const text = read.state === "known" ? read.held : null;
@@ -514,8 +541,7 @@ function SlackSteps({
           { kind: "slack-connect" },
           { botToken: botToken.trim(), signingSecret: signingSecret.trim() },
         );
-        setBotToken("");
-        setSigningSecret("");
+        sent();
       }}
       ready={ready}
       submit={pressWords(controls.read.action, ["slack-connect"], "Connect")}

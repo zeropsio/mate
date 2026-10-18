@@ -117,6 +117,19 @@ describe("Slack in Settings", () => {
       { kind: "slack-connect" },
       { botToken: BOT_TOKEN, signingSecret: SIGNING },
     );
+    // Cleared once HQ took them.
+    for (const action of [
+      { kind: "working", verb: "slack-connect" },
+      { kind: "done", verb: "slack-connect" },
+    ]) {
+      view.update(
+        <SlackSettingsView
+          controls={{ ...slack, read: { ...slack.read, action } as TaskSourceSettingValue<never> }}
+          defaultOpen
+          manifest={controls(known("{}"))}
+        />,
+      );
+    }
     const after = view.root.findAllByType(Input).filter((node) => node.props.type === "password");
     expect(after.map((node) => node.props.value)).toEqual(["", ""]);
     view.unmount();
@@ -259,6 +272,46 @@ describe("Slack in Settings", () => {
     view.type(secret!, SIGNING);
     view.submit();
     expect(slack.write).toHaveBeenCalledWith({ kind: "slack-connect" }, { signingSecret: SIGNING });
+    view.unmount();
+  });
+
+  it("Replace keeps a typed key until HQ accepts it, so a refused one is never pasted again", () => {
+    const setting = known({ ...slackOff, connected: true, workspace: "Acme" });
+    const slack = controls(setting);
+    const withAction = (action: unknown) => ({
+      ...slack,
+      read: { ...slack.read, action } as TaskSourceSettingValue<never>,
+    });
+    const view = rendered(
+      <SlackSettingsView
+        channels={controls(known({ bot: "mate", channels: [] }))}
+        controls={slack}
+        defaultOpen
+      />,
+    );
+    const typed = () =>
+      view.root
+        .findAllByType(Input)
+        .filter((node) => node.props.type === "password")
+        .map((node) => node.props.value);
+    const token = view.root.findAllByType(Input).find((node) => node.props.type === "password");
+    view.type(token!, BOT_TOKEN);
+    view.submit();
+    const show = (action: unknown) =>
+      view.update(
+        <SlackSettingsView
+          channels={controls(known({ bot: "mate", channels: [] }))}
+          controls={withAction(action)}
+          defaultOpen
+        />,
+      );
+    show({ kind: "working", verb: "slack-connect" });
+    show({ kind: "failed", words: "Slack refused the bot token." });
+    expect(typed()).toContain(BOT_TOKEN);
+    view.submit();
+    show({ kind: "working", verb: "slack-connect" });
+    show({ kind: "done", verb: "slack-connect" });
+    expect(typed()).not.toContain(BOT_TOKEN);
     view.unmount();
   });
 
