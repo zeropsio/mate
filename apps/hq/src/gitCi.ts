@@ -3,7 +3,7 @@
  * token after the hand-over is confirmed and kept on that push's evidence (`HqPushCi`), so the
  * person and the Mate read it where they read the push.
  */
-import { type HqPushCi, type HqPushCiFailure, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
+import type { HqPushCi, HqPushCiFailure } from "@t3tools/shared/hqDeploys";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -68,7 +68,12 @@ const BranchRules = Schema.Array(
     parameters: Schema.optionalKey(
       Schema.Struct({
         required_status_checks: Schema.optionalKey(
-          Schema.Array(Schema.Struct({ context: Schema.String })),
+          Schema.Array(
+            Schema.Struct({
+              context: Schema.String,
+              integration_id: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+            }),
+          ),
         ),
       }),
     ),
@@ -82,10 +87,11 @@ const decodeMessage = Schema.decodeUnknownOption(
 );
 
 export type CheckRun = (typeof CheckRuns.Type)["check_runs"][number];
+type BranchRules = typeof BranchRules.Type;
 export type CommitStatus = (typeof CombinedStatus.Type)["statuses"][number];
 
 /** The checks every required-check rule of the branch names; null where none does. */
-export const requiredChecks = (rules: typeof BranchRules.Type): ReadonlyArray<string> | null => {
+export const requiredChecks = (rules: BranchRules): ReadonlyArray<string> | null => {
   const names = [
     ...new Set(
       rules.flatMap((rule) =>
@@ -97,6 +103,18 @@ export const requiredChecks = (rules: typeof BranchRules.Type): ReadonlyArray<st
   ];
   return names.length === 0 ? null : names;
 };
+
+/** A check run some required-check rule names, from the app it names where it names one. */
+const requires = (rules: BranchRules, run: CheckRun) =>
+  rules.some(
+    (rule) =>
+      rule.type === "required_status_checks" &&
+      (rule.parameters?.required_status_checks ?? []).some(
+        (check) =>
+          check.context === run.name &&
+          (check.integration_id == null || check.integration_id === run.app?.id),
+      ),
+  );
 
 const PASSING = new Set(["success", "neutral", "skipped"]);
 interface Check {
@@ -188,7 +206,8 @@ const sameRecord = (a: HqPushCi, b: Omit<HqPushCi, "sha" | "readAt" | "until">) 
   a.reason === b.reason &&
   a.watch === b.watch &&
   encode(a.failed) === encode(b.failed) &&
-  encode(a.required) === encode(b.required);
+  encode(a.required) === encode(b.required) &&
+  encode(a.missing ?? []) === encode(b.missing ?? []);
 
 const stoppedAfterWindow = `Mate stopped watching CI ${Duration.toMinutes(CI_WINDOW)} minutes after the push.`;
 
@@ -197,7 +216,9 @@ export const GITHUB_ACTIONS_APP = 15368;
 
 /**
  * The pushed commit HQ reads CI for: where it went, when the hand-over was confirmed, what was read.
- * `only` counts just the named check run of one app, never commit statuses or branch rules.
+ * `gate` reads it as a release to `branch` waits on it: only check runs count — those the branch
+ * rules require, or every GitHub Actions run where they require none or can't be read — and a
+ * failed one ends the read.
  */
 export interface CiTarget {
   readonly appId: string;
@@ -207,7 +228,7 @@ export interface CiTarget {
   readonly sha: string;
   readonly pushedAt: number;
   readonly previous: HqPushCi | undefined;
-  readonly only?: { readonly name: string; readonly appId: number };
+  readonly gate?: true;
 }
 /** Where each changed record lands, and whether a newer push to the branch replaced this one. */
 export interface CiStore<E> {
@@ -223,12 +244,12 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
   Effect.gen(function* () {
     const remotes = yield* Remotes;
     const transport = yield* GitTransport;
-    const { remote, sha, pushedAt, branch, only } = target;
+    const { remote, sha, pushedAt, branch, gate } = target;
     const until = pushedAt + Duration.toMillis(CI_WINDOW);
     let last = target.previous;
-    let required: ReadonlyArray<string> | null =
-      only === undefined ? (last?.required ?? null) : [only.name];
-    let counted: Pick<HqPushCi, "verdict" | "done" | "total" | "failed"> = last ?? {
+    let rules: BranchRules | null = null;
+    let required = last?.required ?? null;
+    let counted: Pick<HqPushCi, "verdict" | "done" | "total" | "failed" | "missing"> = last ?? {
       verdict: "none",
       done: 0,
       total: 0,
@@ -340,23 +361,28 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
       });
 
     // The branch rules decide which checks count; they are read once per watch.
-    while (only === undefined) {
-      const rules = yield* get(`/rules/branches/${encodeURIComponent(branch)}`, (reply) =>
+    for (;;) {
+      const answer = yield* get(`/rules/branches/${encodeURIComponent(branch)}`, (reply) =>
         Option.getOrUndefined(decodeMessage(reply.body))?.message ===
         "Upgrade to GitHub Pro or make this repository public to enable this feature."
           ? ""
           : `Mate couldn't read the rules of ${branch} (HTTP ${reply.status}), so it can't tell which checks count.`,
       );
       const decoded =
-        rules._tag === "body" ? Option.getOrUndefined(decodeRules(rules.body)) : undefined;
+        answer._tag === "body" ? Option.getOrUndefined(decodeRules(answer.body)) : undefined;
       if (decoded !== undefined) {
         required = requiredChecks(decoded);
+        if (required !== null) rules = decoded;
         break;
       }
-      // GitHub has no branch rules on this plan: every check counts.
-      if (rules._tag === "refused" && rules.reason === "") break;
-      if (rules._tag === "refused") return yield* refuse(rules.reason);
-      if (!(yield* rules._tag === "wait" ? waitFor(rules) : recover)) return;
+      // GitHub has no branch rules on this plan, and a release has no gate it could honour: every
+      // check counts.
+      if (answer._tag === "refused" && (answer.reason === "" || gate)) {
+        required = null;
+        break;
+      }
+      if (answer._tag === "refused") return yield* refuse(answer.reason);
+      if (!(yield* answer._tag === "wait" ? waitFor(answer) : recover)) return;
     }
 
     let poll = 0;
@@ -382,10 +408,10 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
         runs.push(...decoded.check_runs);
         if (runs.length >= decoded.total_count || decoded.check_runs.length === 0) break;
       }
-      // GitHub Actions writes no commit statuses: one named check run never reads them.
+      // GitHub Actions writes no commit statuses: a release's gate never reads them.
       const read: Read =
         failedRead ??
-        (only !== undefined
+        (gate
           ? { _tag: "body", body: '{"statuses":[]}' }
           : yield* get(
               `/commits/${sha}/status?per_page=100`,
@@ -400,19 +426,32 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
         continue;
       }
       transient = 0;
-      counted =
-        only === undefined
-          ? ciVerdict(runs, statuses, required)
-          : ciVerdict(
-              runs.filter((run) => run.name === only.name && run.app?.id === only.appId),
-              [],
-              null,
-            );
+      const counts = runs.filter((run) =>
+        rules !== null ? requires(rules, run) : !gate || run.app?.id === GITHUB_ACTIONS_APP,
+      );
+      const missing =
+        gate && required !== null
+          ? required.filter((name) => !counts.some((run) => run.name === name))
+          : [];
+      counted = {
+        ...ciVerdict(counts, statuses, required),
+        // A release's gate where none of what main requires reported is a gate nothing ran for.
+        ...(required !== null && missing.length === required.length ? { verdict: "none" } : {}),
+        ...(missing.length === 0 ? {} : { missing }),
+      };
       const now = yield* Clock.currentTimeMillis;
-      const finished =
-        counted.verdict === "none"
-          ? now >= pushedAt + Duration.toMillis(CI_NONE_AFTER)
-          : counted.done === counted.total;
+      const quiet = now >= pushedAt + Duration.toMillis(CI_NONE_AFTER);
+      const finished = !gate
+        ? counted.verdict === "none"
+          ? quiet
+          : counted.done === counted.total
+        : counted.verdict === "failed" ||
+          (counted.verdict !== "none" && counted.done === counted.total) ||
+          // A required job GitHub reports only once the jobs it needs ended may still start
+          // while anything on the commit runs.
+          (required === null
+            ? counted.verdict === "none" && quiet
+            : quiet && runs.every((run) => run.status === "completed"));
       if (finished) return yield* keep("finished");
       if (now >= until) return yield* keep("stopped", stoppedAfterWindow);
       yield* keep("watching");
@@ -421,18 +460,19 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
   });
 
 /**
- * Stage's `RELEASE_CHECK` on the commit a release pushes to its origin's main: read from when
- * stage took it (`pushedAt`) until it completed, none reported five minutes after, or the window
- * passed; `save` is told each change. The record it ends on, as `releaseGateWords` reads it.
+ * Stage's CI on the commit a release pushes to its origin's main, counted as main's rules count it
+ * (`CiTarget.gate`): read from when stage took it (`pushedAt`) until it completed or failed, none
+ * reported five minutes after, or the window passed; `save` is told each change. The record it
+ * ends on, as `releaseGateWords` reads it.
  */
 export const stageCheck = <E>(
-  target: Omit<CiTarget, "only">,
+  target: Omit<CiTarget, "gate">,
   save: (gate: HqPushCi) => Effect.Effect<void, E>,
 ) =>
   Effect.gen(function* () {
     let gate = target.previous;
     yield* followCi(
-      { ...target, only: { name: RELEASE_CHECK, appId: GITHUB_ACTIONS_APP } },
+      { ...target, gate: true },
       {
         save: (ci) =>
           Effect.flatMap(
@@ -445,7 +485,15 @@ export const stageCheck = <E>(
     return gate;
   });
 
-/** What a release says of stage's check before it pushes: wait, push, or refuse in these words. */
+const quoted = (names: ReadonlyArray<string>) => names.map((name) => `"${name}"`).join(", ");
+const neverRan = (names: ReadonlyArray<string>, at: string) =>
+  `Stage CI ${quoted(names)} never ran on ${at}, so this release can't go out. ${
+    names.length === 1
+      ? `Add a CI job named ${quoted(names)} that runs`
+      : `Add CI jobs named ${quoted(names)} that run`
+  } on pushes to stage, then release again.`;
+
+/** What a release says of stage's CI before it pushes: wait, push, or refuse in these words. */
 export const releaseGateWords = (
   gate: HqPushCi | undefined,
 ): { readonly verdict: "wait" | "push" | "refuse"; readonly words: string } => {
@@ -455,11 +503,14 @@ export const releaseGateWords = (
       words: "Mate couldn't read stage CI, so this release can't go out. Release again.",
     };
   const at = gate.sha.slice(0, 7);
+  const required = gate.required;
+  const what = required === null ? "stage CI" : `stage CI ${quoted(required)}`;
+  const many = required !== null && required.length > 1;
   if (gate.verdict === "passed" && gate.watch === "finished") return { verdict: "push", words: "" };
   if (gate.verdict === "failed")
     return {
       verdict: "refuse",
-      words: `Stage CI "${RELEASE_CHECK}" failed on ${at}, so this release can't go out. Fix it on main, then release again.`,
+      words: `Stage CI ${quoted(gate.failed.map((check) => check.name))} failed on ${at}, so this release can't go out. Fix it on main, then release again.`,
     };
   if (gate.verdict === "unreadable")
     return {
@@ -471,19 +522,22 @@ export const releaseGateWords = (
     return {
       verdict: "wait",
       words:
-        gate.verdict === "none"
-          ? `Waiting for stage CI "${RELEASE_CHECK}" to start on ${at}; the release pushes once it passes.`
-          : `Waiting for stage CI "${RELEASE_CHECK}" to pass on ${at}; the release pushes once it does.`,
+        gate.verdict !== "none"
+          ? `Waiting for ${what} to pass on ${at}; the release pushes once ${many ? "they do" : "it does"}.`
+          : required === null
+            ? `Waiting for stage CI to start on ${at}; main requires no checks, so the release goes out without CI if none starts within ${Duration.toMinutes(CI_NONE_AFTER)} minutes.`
+            : `Waiting for ${what} to start on ${at}; the release pushes once ${many ? "they pass" : "it passes"}.`,
     };
+  if (gate.missing !== undefined) return { verdict: "refuse", words: neverRan(gate.missing, at) };
   if (gate.verdict === "none" && gate.watch === "finished")
     return {
-      verdict: "refuse",
-      words: `Stage CI "${RELEASE_CHECK}" never ran on ${at}, so this release can't go out. Add a CI job named "${RELEASE_CHECK}" that runs on pushes to stage, then release again.`,
+      verdict: "push",
+      words: `No stage CI reported on ${at} and main requires no checks, so the release goes out without CI.`,
     };
   return {
     verdict: "refuse",
     words:
-      `Stage CI "${RELEASE_CHECK}" hadn't passed on ${at} when Mate stopped waiting, so this release can't go out. ${gate.reason ?? ""}`.trim(),
+      `S${what.slice(1)} hadn't passed on ${at} when Mate stopped waiting, so this release can't go out. ${gate.reason ?? ""}`.trim(),
   };
 };
 
@@ -536,8 +590,13 @@ export const gitCiLayer = Layer.effect(
                 WHERE id = ${jobId}::bigint AND state = 'pushed'`,
             )
             .pipe(Effect.andThen(changed));
-        // The fast-forward to main runs CI there again; the stage run the release waited for decides.
-        if (evidence.gate?.verdict === "passed" && evidence.gate.sha === evidence.after)
+        // The fast-forward to main runs CI there again; the stage run the release waited for decides,
+        // and a stage commit that reported none went out saying so.
+        if (
+          evidence.gate?.watch === "finished" &&
+          (evidence.gate.verdict === "passed" || evidence.gate.verdict === "none") &&
+          evidence.gate.sha === evidence.after
+        )
           return yield* save({ ...evidence.gate, watch: "finished" });
         const remote = remoteIdentity(evidence.remote);
         // Only GitHub's checks are read; elsewhere the push carries no CI record.

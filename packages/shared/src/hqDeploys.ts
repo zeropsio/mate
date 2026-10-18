@@ -120,7 +120,7 @@ export type HqPushCiFailure = typeof HqPushCiFailure.Type;
  * `none` (no check reported), `running` (`done` of `total` counted checks complete), `passed`,
  * `failed` (`failed` names each counted check that did not pass) or `unreadable` (`reason` says
  * why). `required` lists the branch rules' required checks, which alone count; null counts every
- * check. `watch` is `watching` until every counted check completed (`finished`) or HQ stopped
+ * check. `missing` names the required checks a release's gate saw no run of. `watch` is `watching` until every counted check completed (`finished`) or HQ stopped
  * reading before that (`stopped`, `reason` says why); `until` is when watching stops at the latest
  * and `readAt` when HQ first read what the record now says (HQ writes only what changed).
  * Absent where HQ does not read CI: before the hand-over is confirmed or on a host other than GitHub.
@@ -132,6 +132,7 @@ export const HqPushCi = Schema.Struct({
   total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   failed: Schema.Array(HqPushCiFailure),
   required: Schema.NullOr(Schema.Array(Schema.String)),
+  missing: Schema.optionalKey(Schema.Array(Schema.String)),
   reason: Schema.NullOr(Schema.String),
   watch: Schema.Literals(["watching", "finished", "stopped"]),
   readAt: HqTargetTimestamp,
@@ -139,20 +140,14 @@ export const HqPushCi = Schema.Struct({
 });
 export type HqPushCi = typeof HqPushCi.Type;
 
-/**
- * The check run a release to an origin's main waits for on stage, from GitHub Actions — the one
- * HQ asks the person to require on main.
- */
-export const RELEASE_CHECK = "check";
-
 export const HqPushEvidence = Schema.Struct({
   attempt: Schema.optionalKey(HqPushAttempt),
   confirmed: Schema.optionalKey(HqPushReceipt),
   observed: Schema.optionalKey(Schema.NullOr(Sha)),
   ci: Schema.optionalKey(HqPushCi),
   /**
-   * A release to an origin's main that has a stage: `RELEASE_CHECK` on the attempted commit, as
-   * stage's push ran it and HQ read it before pushing.
+   * A release to an origin's main that has a stage: stage's CI on the attempted commit, counted as
+   * main's rules require it, as stage's push ran it and HQ read it before pushing.
    */
   gate: Schema.optionalKey(HqPushCi),
   nextActor: HqDeployEvidence.fields.nextActor,

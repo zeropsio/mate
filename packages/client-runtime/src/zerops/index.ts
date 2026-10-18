@@ -612,6 +612,7 @@ export {
 
 export {
   gitCiLine,
+  gitRequiredChecks,
   gitDeliveryOf,
   type GitCiLine,
   type GitDelivery,

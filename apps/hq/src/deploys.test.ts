@@ -750,7 +750,7 @@ describe("deploys", () => {
               {
                 environment: "git-production",
                 state: "refused",
-                reason: `Stage never took ${sha.slice(0, 7)}, so stage CI "check" never ran on it and this release can't go out. Release again once stage has main's head.`,
+                reason: `Stage never took ${sha.slice(0, 7)}, so stage CI never ran on it and this release can't go out. Release again once stage has main's head.`,
               },
             ]);
             expect(

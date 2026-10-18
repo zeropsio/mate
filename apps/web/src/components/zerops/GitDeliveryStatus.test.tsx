@@ -664,6 +664,39 @@ describe("the origin's CI on a Git environment's last push", () => {
       lines("refused", ci({ verdict: "none", watch: "finished", required: ["check"] })),
     ).toEqual([{ words: 'Stage CI "check" never ran', links: [] }]);
   });
+  it("a release names the required checks stage never ran, and says when stage reported no CI", () => {
+    const lines = (gate: HqPushCi) => {
+      const refused = job("refused");
+      const env = environment([
+        { ...refused, evidence: { ...refused.evidence!, gate } },
+        job("pushed", "web"),
+      ]);
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <GitDeliveryStatus
+          environment={env}
+          repos={repos}
+          delivery={gitDeliveryOf(env, { releases: [release()], repos })}
+        />,
+      );
+      return [...host.querySelectorAll("[data-git-ci]")].map((line) => line.textContent);
+    };
+    expect(
+      lines(
+        ci({
+          verdict: "running",
+          done: 1,
+          total: 2,
+          watch: "finished",
+          required: ["Check", "Test"],
+          missing: ["Test"],
+        }),
+      ),
+    ).toEqual(['Stage CI "Test" never ran']);
+    expect(lines(ci({ verdict: "none", watch: "finished", required: null }))).toEqual([
+      "No CI reported",
+    ]);
+  });
   it("a push HQ does not read CI for shows no CI line", () => {
     const env = environment([job("pushed"), job("pushed", "web")]);
     const html = renderToStaticMarkup(

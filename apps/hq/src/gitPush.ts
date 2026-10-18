@@ -23,7 +23,7 @@ import { GitTransport, remoteIdentity } from "./gitTransport.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { operationBackoff } from "./operationWatch.ts";
-import { type HqPushCi, type HqPushEvidence, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
+import type { HqPushCi, HqPushEvidence } from "@t3tools/shared/hqDeploys";
 
 export interface PushInput {
   readonly directory: string;
@@ -72,7 +72,7 @@ export interface PushEvidence {
   readonly repositoryId?: string | null;
   /** Written by `gitCi.ts` once the job is pushed. */
   readonly ci?: HqPushCi;
-  /** Stage's check of `sha`, read before a release pushes to its origin's main (`stageCheck`). */
+  /** Stage's CI of `sha` as main's rules count it, read before a release pushes there (`stageCheck`). */
   readonly gate?: HqPushCi;
 }
 /** One surface derivation; child handles and filesystem paths never leave HQ. */
@@ -555,11 +555,12 @@ export const gitPushLayer = Layer.effect(
             });
           if (!use.ok) return yield* refuse(use.reason);
           // A release to an origin's main that has a stage pushes the very commit stage took, once
-          // stage's check passed on it: GitHub's required check on main reads that commit's runs.
+          // the checks main requires passed on it: GitHub's required checks on main read that
+          // commit's runs.
           let holdUntil: number | undefined;
           if (environment.tier === "production" && environment.staged) {
             const at = job.sha.slice(0, 7);
-            const waiting = `Waiting for stage to take ${at} first; the release pushes once stage CI "${RELEASE_CHECK}" passes on it.`;
+            const waiting = `Waiting for stage to take ${at} first; the release pushes once stage CI passes on it.`;
             let since: number | undefined;
             let stageAt: string | undefined;
             for (;;) {
@@ -578,7 +579,7 @@ export const gitPushLayer = Layer.effect(
                 now >= since + Duration.toMillis(CI_WINDOW)
               )
                 return yield* refuse(
-                  `Stage never took ${at}, so stage CI "${RELEASE_CHECK}" never ran on it and this release can't go out. Release again once stage has main's head.`,
+                  `Stage never took ${at}, so stage CI never ran on it and this release can't go out. Release again once stage has main's head.`,
                 );
               if (pending?.nextAction !== waiting) yield* tell({ nextAction: waiting });
               yield* Effect.race(next, Effect.sleep("15 seconds"));
@@ -605,6 +606,7 @@ export const gitPushLayer = Layer.effect(
               ).pipe(Effect.provide(reads));
               const said = releaseGateWords(gate);
               if (said.verdict !== "push") return yield* refuse(said.words);
+              if (said.words !== "") yield* tell({ nextAction: said.words });
               holdUntil = DateTime.toEpochMillis(DateTime.makeUnsafe(gate!.until));
             }
           }
