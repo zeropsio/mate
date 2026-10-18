@@ -261,7 +261,7 @@ describe("VaultPanelBody — a row opens in place", () => {
     const body = q(container, '[data-vault-body="SESSION_SECRET"]')!;
     const field = body.querySelector<HTMLInputElement>('input[aria-label="Session secret"]')!;
     expect(field.value).toBe("");
-    expect(field.type).toBe("password");
+    expect(field.hasAttribute("data-secret")).toBe(true);
     expect(hasButton(body, "Hide it")).toBe(false);
     await typeInto(field, "s3cret");
     await click(button(body, "Save"));
@@ -313,7 +313,7 @@ describe("VaultPanelBody — a row opens in place", () => {
     await click(body.querySelector('button[aria-label="Show"]'));
     expect(asked).toEqual([{ scope: { kind: "shared" }, id: "v-session" }]);
     expect(field.value).toBe("session-value");
-    expect(field.type).toBe("text");
+    expect(field.hasAttribute("data-secret")).toBe(false);
     expect(button(body, "Save").disabled).toBe(true);
   });
 

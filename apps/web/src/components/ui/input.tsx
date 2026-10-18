@@ -13,15 +13,36 @@ type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputEleme
   nativeInput?: boolean;
 };
 
+/**
+ * A password field here always holds a key or a token, never an account's password (sign-in is
+ * Zerops'): it is drawn as dots in a text field, so no browser or password manager offers to save it.
+ */
+const SECRET_FIELD = {
+  type: "text",
+  autoComplete: "off",
+  autoCapitalize: "off",
+  autoCorrect: "off",
+  spellCheck: false,
+  "data-1p-ignore": "",
+  "data-lpignore": "true",
+  "data-bwignore": "",
+  "data-form-type": "other",
+  /** Drawn as dots: what a test or a style asks of a hidden secret. */
+  "data-secret": "",
+} as const;
+
 function Input({
   className,
   size = "default",
   font = "default",
   unstyled = false,
   nativeInput = false,
-  ...props
+  ...given
 }: InputProps) {
+  const secret = given.type === "password";
+  const props = secret ? { ...given, ...SECRET_FIELD } : given;
   const inputClassName = cn(
+    secret && "[-webkit-text-security:disc]",
     "h-8.5 w-full min-w-0 rounded-[inherit] px-[calc(--spacing(3)-1px)] leading-8.5 outline-none placeholder:text-placeholder sm:h-7.5 sm:leading-7.5 [transition:background-color_5000000s_ease-in-out_0s]",
     size === "compact" && "h-7 px-[calc(--spacing(2.5)-1px)] text-xs leading-7 sm:h-7 sm:leading-7",
     size === "sm" && "h-7.5 px-[calc(--spacing(2.5)-1px)] leading-7.5 sm:h-6.5 sm:leading-6.5",
