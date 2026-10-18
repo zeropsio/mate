@@ -74,8 +74,14 @@ export function useProjectSpend({ appId, projectIds }: ProjectSpendInput): Spend
     orgId === null ? null : { orgId, owner },
     READING_TOKENS,
   );
-  return useMemo(() => spendState(compute, tokens, today), [compute, tokens, today]);
+  // No organization shown: nothing is read, so nothing is drawn and no room is kept.
+  return useMemo(
+    () => (orgId === null ? NO_SPEND : spendState(compute, tokens, today)),
+    [orgId, compute, tokens, today],
+  );
 }
+
+const NO_SPEND: SpendState = { kind: "unknown" };
 
 /** "$64" at the figure's size, ".30" smaller and quiet. */
 function Money({ usd, size }: { readonly usd: number; readonly size: "line" | "card" }) {
