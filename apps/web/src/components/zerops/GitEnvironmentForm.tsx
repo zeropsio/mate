@@ -17,7 +17,6 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
-  GIT_STAGE_BRANCH,
   gitAdoptionSentence,
   gitCiAccessRows,
   gitSetupBranchValid,
@@ -39,23 +38,20 @@ export interface GitEnvironmentFormProps {
   readonly unavailableReason?: string | undefined;
   /**
    * What an origin ask fills in (`OriginGitSheet`): the repository's address, the HQ repository
-   * its Mate will wire, and whether the form opens at the branch — the repository already
-   * connected.
+   * its Mate will wire, the branch, and whether the form opens at the branch — the repository
+   * already connected.
    */
   readonly prefill?:
     | {
         readonly address: string;
         readonly repo: string;
+        readonly branch?: string | undefined;
         readonly atBranch?: boolean | undefined;
       }
     | undefined;
   readonly onBack?: () => void;
   readonly onCancel: () => void;
-  /** Added: its name, and the repository it was added on, as the person addressed it. */
-  readonly onAdded: (
-    name: string,
-    repository: { readonly address: string; readonly repo: string },
-  ) => void;
+  readonly onAdded: (name: string) => void;
 }
 
 export function GitEnvironmentForm({
@@ -79,7 +75,9 @@ export function GitEnvironmentForm({
     prefill?.atBranch === true ? "branch" : "repository",
   );
   const [address, setAddress] = useState(prefill?.address ?? "");
-  const [branch, setBranch] = useState(tier === "production" ? "main" : GIT_STAGE_BRANCH);
+  const [branch, setBranch] = useState(
+    prefill?.branch ?? (tier === "production" ? "main" : "staging"),
+  );
   const [readBranch, setReadBranch] = useState(branch);
   const [preview, setPreview] = useState<{
     key: string;
@@ -185,9 +183,7 @@ export function GitEnvironmentForm({
           if (connected && !busy && !uncertain) setStep("branch");
         } else {
           setReadBranch(branch);
-          if (!canAdd || adoption === undefined || name === undefined || repository === undefined)
-            return;
-          const added = { address, repo: repository.name };
+          if (!canAdd || adoption === undefined || name === undefined) return;
           void act("add", async () => {
             await setup.add({
               tier,
@@ -195,7 +191,7 @@ export function GitEnvironmentForm({
               target: { kind: "git", branch, delivery: "direct" },
               adoption,
             });
-            if (mounted.current) onAdded(name, added);
+            if (mounted.current) onAdded(name);
           });
         }
       }}

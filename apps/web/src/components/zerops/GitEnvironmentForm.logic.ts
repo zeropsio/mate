@@ -26,9 +26,6 @@ export function gitSetupRepositories(repos: ReadonlyArray<RepoListEntry> | undef
 }
 
 export const gitSetupBranchValid = Schema.is(HqGitBranch);
-
-/** The branch a Git stage follows production on, however it is added, until the person names another. */
-export const GIT_STAGE_BRANCH = "mate-stage";
 const gitSetupRepoNameValid = Schema.is(RepoName);
 
 /** Any changed tip, identity, branch or included roster needs the person's review again. */

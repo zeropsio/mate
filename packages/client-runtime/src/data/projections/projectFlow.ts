@@ -273,8 +273,6 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
               },
             },
       declarations: stops?.declarations ?? [],
-      // Read once HQ told its environments, whatever they deliver to: the join reads Zerops ones.
-      declarationsRead: stops !== undefined,
       environmentInputs: stops?.environments ?? [],
       codeRepos:
         recipe === undefined || detail.repos === undefined

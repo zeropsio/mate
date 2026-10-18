@@ -19,7 +19,6 @@ import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { GitEnvironmentForm, type GitEnvironmentFormProps } from "./GitEnvironmentForm";
-import { GitProductionSheet } from "./GitProductionSheet";
 
 import { Button } from "../ui/button";
 import {
@@ -115,13 +114,8 @@ export interface ZeropsEnvironmentCreationFormProps {
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
   readonly git?:
-    | (Omit<
-        GitEnvironmentFormProps,
-        "groupName" | "tier" | "defaultName" | "onCancel" | "onBack" | "onAdded"
-      > & { readonly onAdded: () => void })
+    | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
-  /** Whether a Git production added here offers stage next in the same sheet: the application takes one. */
-  readonly stageNext?: boolean | undefined;
 }
 
 const PRESS_STEP_STATES: Readonly<
@@ -200,24 +194,13 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
  */
 function EnvironmentDestinationForm(props: ZeropsEnvironmentCreationFormProps) {
   const [view, setView] = useState<"sheet" | "form" | "git">("sheet");
-  if (view === "git" && props.git !== undefined && props.role === "prod")
-    return (
-      <GitProductionSheet
-        {...props.git}
-        groupName={props.groupName}
-        defaultName={props.defaultName}
-        stageNext={props.stageNext === true}
-        onBack={() => setView("sheet")}
-        onCancel={props.onCancel}
-      />
-    );
   if (view === "git" && props.git !== undefined)
     return (
       <GitEnvironmentForm
         {...props.git}
         groupName={props.groupName}
         defaultName={props.defaultName}
-        tier="stage"
+        tier={props.role === "prod" ? "production" : "stage"}
         onBack={() => setView("sheet")}
         onCancel={props.onCancel}
       />
