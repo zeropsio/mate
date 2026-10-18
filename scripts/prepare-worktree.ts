@@ -114,44 +114,40 @@ export function acquireWorktree(
   if (exists.status === 0) throw new Error(`Branch ${job} already exists; choose a new job name.`);
   if (exists.status !== 1) throw new Error(`Cannot inspect branch ${job}`);
   git(cwd, ["rev-parse", "--verify", "origin/main"]);
-  const layout = worktreeLayout(cwd);
-  const cwds = liveCwds(layout.roots);
-  for (const candidate of parseWorktrees(git(cwd, ["worktree", "list", "--porcelain", "-z"]))) {
-    if (
-      candidate.path === layout.main ||
-      candidate.locked ||
-      !layout.roots.some((root) => inside(candidate.path, root)) ||
-      !NodeFS.existsSync(candidate.path)
-    )
-      continue;
+  const { main, pool } = worktreeLayout(cwd);
+  const worktrees = parseWorktrees(git(cwd, ["worktree", "list", "--porcelain", "-z"]));
+  const paths = worktrees.map((worktree) => worktree.path);
+  const idle = (candidate: (typeof worktrees)[number], cwds: ReadonlyArray<string>) => {
     const state = inspectWorktree(cwd, candidate);
-    if (
+    return (
       idleDecision(state.worktree, {
-        ...layout,
-        merged: state.merged,
+        main,
+        pool,
+        landed: state.landed,
+        unpushed: state.unpushed,
         clean: state.clean,
         cwds,
-      }) !== undefined
+        worktrees: paths,
+      }) === undefined
+    );
+  };
+  const cwds = liveCwds([pool]);
+  for (const candidate of worktrees) {
+    if (
+      candidate.locked ||
+      !inside(candidate.path, pool) ||
+      !NodeFS.existsSync(candidate.path) ||
+      !idle(candidate, cwds)
     )
       continue;
     const before = worktreeEntries(candidate.path);
     // Refresh all safety evidence after inventory, immediately before switching the lane.
-    const refreshed = inspectWorktree(cwd, candidate);
-    if (
-      idleDecision(refreshed.worktree, {
-        ...layout,
-        merged: refreshed.merged,
-        clean: refreshed.clean,
-        cwds: liveCwds(layout.roots),
-      }) !== undefined
-    )
-      continue;
+    if (!idle(candidate, liveCwds([pool]))) continue;
     git(candidate.path, ["switch", "--no-track", "--create", job, "origin/main"]);
     return { path: candidate.path, reused: true, before };
   }
-  const path = NodePath.resolve(layout.roots[0]!, job);
-  if (path === layout.roots[0] || !inside(path, layout.roots[0]!))
-    throw new Error(`Job name escapes the pool: ${job}`);
+  const path = NodePath.resolve(pool, job);
+  if (path === pool || !inside(path, pool)) throw new Error(`Job name escapes the pool: ${job}`);
   git(cwd, ["worktree", "add", "--no-track", "-b", job, path, "origin/main"]);
   return { path, reused: false, before: new Set() };
 }

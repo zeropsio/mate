@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeEvents from "node:events";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   idleDecision,
@@ -20,66 +21,81 @@ afterEach(() => {
 const candidate = { path: "/repo/z3-wt/done", branch: "refs/heads/done", locked: false };
 const evidence = {
   main: "/repo/z3",
-  roots: ["/repo/z3-wt", "/repo/z3/.claude/worktrees"],
-  merged: true,
+  pool: "/wt/z3",
+  landed: true,
+  unpushed: false,
   clean: true,
   cwds: [] as string[],
+  worktrees: ["/repo/z3", "/repo/z3-wt/done"],
 };
 it.each([
-  { name: "merged clean idle lane", worktree: candidate, evidence, reason: "idle pool member" },
-  { name: "no commits beyond main", worktree: candidate, evidence, reason: "idle pool member" },
+  { name: "landed clean idle worktree", worktree: candidate, evidence, prune: undefined },
+  {
+    name: "landed detached worktree",
+    worktree: { ...candidate, branch: undefined },
+    evidence,
+    prune: undefined,
+  },
   {
     name: "main checkout",
     worktree: { ...candidate, path: evidence.main },
     evidence,
-    reason: "main checkout",
+    prune: "main checkout",
   },
   {
-    name: "outside managed roots",
-    worktree: { ...candidate, path: "/repo/z3-wt-other/lane" },
+    name: "lane in the pool",
+    worktree: { ...candidate, path: "/wt/z3/done" },
     evidence,
-    reason: "outside managed roots",
+    prune: "in the pool",
+    reuse: undefined,
   },
   {
     name: "dirty lane",
     worktree: candidate,
     evidence: { ...evidence, clean: false },
-    reason: "dirty",
+    prune: "dirty",
   },
   {
-    name: "unmerged lane",
+    name: "pushed lane not in origin/main",
     worktree: candidate,
-    evidence: { ...evidence, merged: false },
-    reason: "unmerged",
+    evidence: { ...evidence, landed: false },
+    prune: "not in origin/main",
+  },
+  {
+    name: "lane with commits on no remote",
+    worktree: candidate,
+    evidence: { ...evidence, unpushed: true },
+    prune: "commits on no remote",
   },
   {
     name: "live process in nested directory",
     worktree: candidate,
     evidence: { ...evidence, cwds: ["/repo/z3-wt/done/apps/web"] },
-    reason: "live process cwd",
+    prune: "live process cwd",
   },
   {
     name: "live process at root",
     worktree: candidate,
     evidence: { ...evidence, cwds: [candidate.path] },
-    reason: "live process cwd",
+    prune: "live process cwd",
   },
   {
     name: "similar cwd is elsewhere",
     worktree: candidate,
     evidence: { ...evidence, cwds: ["/repo/z3-wt/done-other"] },
-    reason: "idle pool member",
+    prune: undefined,
   },
-  { name: "locked worktree", worktree: { ...candidate, locked: true }, evidence, reason: "locked" },
+  { name: "locked worktree", worktree: { ...candidate, locked: true }, evidence, prune: "locked" },
   {
-    name: "detached worktree",
-    worktree: { ...candidate, branch: undefined },
-    evidence,
-    reason: undefined,
+    name: "worktree holding another worktree",
+    worktree: candidate,
+    evidence: { ...evidence, worktrees: [...evidence.worktrees, "/repo/z3-wt/done/.plans/x"] },
+    prune: "holds another worktree",
   },
-])("prune keeps $name safe", ({ worktree, evidence, reason }) => {
-  expect(pruneDecision(worktree, evidence)).toBe(reason);
-  expect(idleDecision(worktree, evidence)).toBe(reason === "idle pool member" ? undefined : reason);
+])("prune keeps $name safe", ({ worktree, evidence, prune, ...row }) => {
+  expect(pruneDecision(worktree, evidence)).toBe(prune);
+  // prepare-worktree reuses only lanes in the pool, never one prune would consider.
+  expect(idleDecision(worktree, evidence)).toBe("reuse" in row ? row.reuse : "outside the pool");
 });
 
 it("reads worktree paths with spaces and lsof cwd records", () => {
@@ -123,70 +139,162 @@ it.each([
   },
 );
 
-it("dry-run keeps eligible worktrees; apply removes only an unassigned clean merged worktree", () => {
-  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-"));
+function fixture(root: string) {
   const main = NodePath.join(root, "z3");
   const git = (cwd: string, ...args: string[]) => {
     const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
-    return result.stdout;
+    return result.stdout.trim();
   };
+  NodeFS.mkdirSync(main);
+  git(main, "init", "-q");
+  git(main, "config", "user.name", "Prune fixture");
+  git(main, "config", "user.email", "prune@example.test");
+  NodeFS.writeFileSync(NodePath.join(main, ".gitignore"), ".plans/\n");
+  NodeFS.writeFileSync(NodePath.join(main, "file"), "initial");
+  git(main, "add", ".");
+  git(main, "commit", "-qm", "base");
+  git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+  const add = (path: string, ...args: string[]) => {
+    const target = NodePath.join(root, path);
+    git(main, "worktree", "add", "-q", ...args, target);
+    return target;
+  };
+  const run = (...args: string[]) =>
+    NodeChildProcess.spawnSync(
+      process.execPath,
+      [NodePath.join(import.meta.dirname, "prune-worktrees.ts"), ...args],
+      { cwd: main, encoding: "utf8", env: { ...process.env, WT_ROOT: NodePath.join(root, "wt") } },
+    );
+  return { main, git, add, run };
+}
+
+it("dry-run keeps eligible worktrees; apply removes only an unassigned clean merged worktree", () => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+  );
+  const { main, git, add, run } = fixture(root);
   try {
-    NodeFS.mkdirSync(main);
-    git(main, "init", "-q");
-    git(main, "config", "user.name", "Prune fixture");
-    git(main, "config", "user.email", "prune@example.test");
-    NodeFS.writeFileSync(NodePath.join(main, "file"), "initial");
-    git(main, "add", ".");
-    git(main, "commit", "-qm", "base");
-    git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
-    for (const name of ["merged", "dirty", "unmerged"])
-      git(main, "worktree", "add", "-qb", name, NodePath.join(root, "z3-wt", name));
-    const merged = NodePath.join(root, "z3-wt/merged");
-    const detached = NodePath.join(root, "z3-wt/detached");
-    git(main, "worktree", "add", "--detach", detached);
-    const dirty = NodePath.join(root, "z3-wt/dirty");
-    const unmerged = NodePath.join(root, "z3-wt/unmerged");
+    const merged = add("z3-wt/merged", "-b", "merged");
+    const detached = add("z3-wt/detached", "--detach");
+    const dirty = add("z3-wt/dirty", "-b", "dirty");
+    const pooled = add("wt/z3/pooled", "-b", "pooled");
     NodeFS.writeFileSync(NodePath.join(dirty, "new"), "dirty");
-    NodeFS.writeFileSync(NodePath.join(unmerged, "file"), "unmerged");
-    git(unmerged, "commit", "-qam", "lane");
-    const script = NodePath.join(import.meta.dirname, "prune-worktrees.ts");
-    const run = (...args: string[]) =>
-      NodeChildProcess.spawnSync(process.execPath, [script, ...args], {
-        cwd: main,
-        encoding: "utf8",
-        env: { ...process.env, WT_ROOT: undefined },
-      });
     const preview = run();
     expect(preview.status, preview.stderr).toBe(0);
-    expect(preview.stdout).toContain(`would remove ${detached}`);
-    expect(preview.stdout).toContain(`keep ${merged}: idle pool member`);
+    expect(preview.stdout).toContain(`would remove ${merged} (refs/heads/merged)`);
+    expect(preview.stdout).toContain(`would remove ${detached} (detached)`);
+    expect(preview.stdout).toContain(`keep ${dirty}: dirty`);
+    expect(preview.stdout).toContain(`keep ${pooled}: in the pool`);
+    expect(preview.stdout).toContain(`keep ${main}: main checkout`);
     expect(NodeFS.existsSync(merged)).toBe(true);
+    expect(NodeFS.existsSync(detached)).toBe(true);
     const apply = run("--apply");
     expect(apply.status, apply.stderr).toBe(0);
-    expect(apply.stdout).toContain("Removed 1 worktrees");
-    expect(NodeFS.existsSync(merged)).toBe(true);
+    expect(apply.stdout).toContain("Removed 2 worktrees");
+    expect(NodeFS.existsSync(merged)).toBe(false);
     expect(NodeFS.existsSync(detached)).toBe(false);
     expect(NodeFS.existsSync(dirty)).toBe(true);
-    expect(NodeFS.existsSync(unmerged)).toBe(true);
+    expect(NodeFS.existsSync(pooled)).toBe(true);
     expect(NodeFS.existsSync(main)).toBe(true);
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
 
+it("prune removes a worktree outside WT_ROOT once its content landed in origin/main and keeps its branch", () => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+  );
+  const { main, git, add, run } = fixture(root);
+  try {
+    const squashed = add("z3-wt/squashed", "-b", "squashed");
+    NodeFS.writeFileSync(NodePath.join(squashed, "file"), "feature");
+    git(squashed, "commit", "-qam", "feature");
+    git(main, "update-ref", "refs/remotes/origin/squashed", "squashed");
+    // origin/main gains the same content under another commit, then moves on.
+    git(main, "switch", "-q", "--detach", "origin/main");
+    NodeFS.writeFileSync(NodePath.join(main, "file"), "feature");
+    NodeFS.writeFileSync(NodePath.join(main, "later"), "later");
+    git(main, "add", ".");
+    git(main, "commit", "-qm", "squash merge");
+    git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+    const apply = run("--apply");
+    expect(apply.status, apply.stderr).toBe(0);
+    expect(apply.stdout).toContain(`removed ${squashed} (refs/heads/squashed)`);
+    expect(NodeFS.existsSync(squashed)).toBe(false);
+    expect(git(main, "log", "-1", "--format=%s", "squashed")).toBe("feature");
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("prune never removes a locked, live, dirty, unpushed, unlanded or nesting worktree and lists each with its reason", async () => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+  );
+  const { git, add, run } = fixture(root);
+  let live: NodeChildProcess.ChildProcess | undefined;
+  try {
+    const locked = add("z3-wt/locked", "-b", "locked");
+    git(locked, "worktree", "lock", "--reason", "lane lease", locked);
+    const busy = add("z3-wt/busy", "-b", "busy");
+    NodeFS.mkdirSync(NodePath.join(busy, "apps"));
+    live = NodeChildProcess.spawn(
+      process.execPath,
+      ["-e", "process.stdout.write('ready'); process.stdin.resume()"],
+      { cwd: NodePath.join(busy, "apps"), stdio: ["pipe", "pipe", "pipe"] },
+    );
+    await NodeEvents.EventEmitter.once(live.stdout!, "data");
+    const dirty = add("z3-wt/dirty", "-b", "dirty");
+    NodeFS.writeFileSync(NodePath.join(dirty, "file"), "edited");
+    const unpushed = add(".claude/worktrees/unpushed", "-b", "unpushed");
+    NodeFS.writeFileSync(NodePath.join(unpushed, "file"), "local only");
+    git(unpushed, "commit", "-qam", "local only");
+    const unlanded = add("z3-wt/unlanded", "-b", "unlanded");
+    NodeFS.writeFileSync(NodePath.join(unlanded, "file"), "pushed");
+    git(unlanded, "commit", "-qam", "pushed");
+    git(unlanded, "update-ref", "refs/remotes/origin/unlanded", "HEAD");
+    const holder = add("z3-wt/holder", "-b", "holder");
+    const nested = add("z3-wt/holder/.plans/nested", "-b", "nested");
+    const apply = run("--apply");
+    expect(apply.status, apply.stderr).toBe(0);
+    for (const [path, reason] of [
+      [locked, "locked"],
+      [busy, "live process cwd"],
+      [dirty, "dirty"],
+      [unpushed, "commits on no remote"],
+      [unlanded, "not in origin/main"],
+      [holder, "holds another worktree"],
+    ] as const) {
+      expect(apply.stdout).toContain(`keep ${path}: ${reason}`);
+      expect(NodeFS.existsSync(path)).toBe(true);
+    }
+    // The nested worktree itself has nothing worth keeping and goes; its holder stays this run.
+    expect(apply.stdout).toContain(`removed ${nested}`);
+    expect(apply.stdout).toContain("Removed 1 worktrees");
+  } finally {
+    if (live) {
+      const exited = NodeEvents.EventEmitter.once(live, "exit");
+      live.stdin?.end();
+      await exited;
+    }
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it.each([
   {
-    name: "WT_ROOT set: new lanes go to $WT_ROOT/<repo>; ../z3-wt and .claude/worktrees stay managed",
+    name: "WT_ROOT set: lanes live only under $WT_ROOT/<repo>",
     wtRoot: "wt",
-    roots: ["wt/z3", "z3-wt", "z3/.claude/worktrees"],
+    pool: "wt/z3",
   },
   {
-    name: "WT_ROOT unset: new lanes go to ../z3-wt as before",
+    name: "WT_ROOT unset: lanes live in ../z3-wt as before",
     wtRoot: undefined,
-    roots: ["z3-wt", "z3/.claude/worktrees"],
+    pool: "z3-wt",
   },
-])("worktree pool roots: $name", ({ wtRoot, roots }) => {
+])("worktree pool roots: $name", ({ wtRoot, pool }) => {
   const root = NodeFS.realpathSync(
     NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-layout-")),
   );
@@ -195,7 +303,7 @@ it.each([
     NodeFS.mkdirSync(main);
     NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: main });
     vi.stubEnv("WT_ROOT", wtRoot && NodePath.join(root, wtRoot));
-    expect(worktreeLayout(main).roots).toEqual(roots.map((path) => NodePath.join(root, path)));
+    expect(worktreeLayout(main).pool).toBe(NodePath.join(root, pool));
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
