@@ -2,6 +2,8 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
+import type { HqPushCi } from "@t3tools/shared/hqDeploys";
+import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -64,12 +66,73 @@ describe("Git environment detail", () => {
     expect(guide(true)).toEqual([
       {
         words:
-          'Protect main on GitHub so only a commit stage tested lands there: add a ruleset on main that requires the status check "check" from GitHub Actions, blocks force pushes and restricts deletions. Open web\'s rulesets',
+          "Protect main on GitHub so only a commit stage tested lands there: add a ruleset on main that requires the CI checks that must pass, blocks force pushes and restricts deletions. Open web's rulesets",
         links: ["https://github.com/acme/shop/settings/rules"],
       },
     ]);
     expect(guide(false)).toEqual([]);
     expect(guide(true, "stage")).toEqual([]);
+  });
+  it("the sheet shows which checks main's rules required when HQ last read them, or that main is unprotected", () => {
+    const said = (record: Pick<HqPushCi, "verdict" | "required">, on: "ci" | "gate") => {
+      const ci: HqPushCi = {
+        sha: "a".repeat(40),
+        done: 0,
+        total: 0,
+        failed: [],
+        reason: null,
+        watch: "finished",
+        readAt: "2026-10-14T10:00:00Z",
+        until: "2026-10-14T11:00:00Z",
+        ...record,
+      };
+      const job: HqPushNavigationJob = {
+        id: "v1/web/refused",
+        kind: "push",
+        service: "web",
+        sha: ci.sha,
+        state: "refused",
+        cause: "release",
+        ref: "v1",
+        reason: "refused",
+        appVersionId: null,
+        processId: null,
+        requestedBy: "ada",
+        at: "2026-10-14T10:00:00Z",
+        endedAt: "2026-10-14T10:05:00Z",
+        supersededBy: null,
+        evidence: {
+          attempt: {
+            remote: { url: "https://github.com/acme/shop.git", repositoryId: "123" },
+            ref: "refs/heads/main",
+            sha: ci.sha,
+            before: null,
+            credentialKeptAt: "2026-10-14T10:00:00Z",
+            phase: "closed",
+          },
+          [on]: ci,
+          nextActor: "person",
+          nextAction: "refused",
+        },
+      };
+      const env = { ...environment, jobs: [job] };
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <GitStopDetail environment={env} repos={repos} staged />,
+      );
+      return host.querySelector("[data-git-ruleset]")?.textContent;
+    };
+    const guide =
+      "Protect main on GitHub so only a commit stage tested lands there: add a ruleset on main that requires the CI checks that must pass, blocks force pushes and restricts deletions.";
+    expect(said({ verdict: "passed", required: ["Check", "Test"] }, "ci")).toBe(
+      `${guide} As HQ last read them, main's rules require "Check", "Test". Open web's rulesets`,
+    );
+    expect(said({ verdict: "failed", required: null }, "gate")).toBe(
+      `${guide} As HQ last read them, main's rules require no checks: main is unprotected, so a release waits on every GitHub Actions check of stage's commit. Open web's rulesets`,
+    );
+    expect(said({ verdict: "unreadable", required: null }, "gate")).toBe(
+      `${guide} Open web's rulesets`,
+    );
   });
   it("PR-only steer is informational until pull-request delivery exists", () => {
     const html = renderToStaticMarkup(

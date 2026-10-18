@@ -13,11 +13,11 @@ import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
   flowReleaseOf,
   gitDeliveryOf,
+  gitRequiredChecks,
   type GitDelivery,
   type GitDeliveryEnvironment,
 } from "@t3tools/client-runtime/zerops";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import { RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
@@ -32,13 +32,24 @@ import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
 
 /**
  * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
- * sentence and the repository's ruleset settings; none off GitHub.
+ * sentence, what the branch's rules required when HQ last read them (`required`), and the
+ * repository's ruleset settings; none off GitHub.
  */
-function gitRulesetGuide(remoteUrl: string, branch: string) {
+function gitRulesetGuide(
+  remoteUrl: string,
+  branch: string,
+  required: ReadonlyArray<string> | null | undefined,
+) {
   const guide = gitTokenGuide(remoteUrl, "");
   if (guide.kind !== "guide" || guide.host !== "github") return undefined;
+  const now =
+    required === undefined
+      ? ""
+      : required === null
+        ? ` As HQ last read them, ${branch}'s rules require no checks: ${branch} is unprotected, so a release waits on every GitHub Actions check of stage's commit.`
+        : ` As HQ last read them, ${branch}'s rules require ${required.map((name) => `"${name}"`).join(", ")}.`;
   return {
-    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the status check "${RELEASE_CHECK}" from GitHub Actions, blocks force pushes and restricts deletions.`,
+    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the CI checks that must pass, blocks force pushes and restricts deletions.${now}`,
     url: `https://github.com/${guide.repository}/settings/rules`,
   };
 }
@@ -122,7 +133,11 @@ export function GitStopDetail({
             const guide =
               repo.remote == null
                 ? undefined
-                : gitRulesetGuide(repo.remote.url, environment.target.branch);
+                : gitRulesetGuide(
+                    repo.remote.url,
+                    environment.target.branch,
+                    gitRequiredChecks(environment.jobs, repo.name),
+                  );
             return guide === undefined ? null : (
               <p className="rv-note" data-git-ruleset key={repo.name}>
                 {guide.words}{" "}

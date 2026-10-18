@@ -140,12 +140,6 @@ export const HqPushCi = Schema.Struct({
 });
 export type HqPushCi = typeof HqPushCi.Type;
 
-/**
- * The check run a release to an origin's main waits for on stage, from GitHub Actions — the one
- * HQ asks the person to require on main.
- */
-export const RELEASE_CHECK = "check";
-
 export const HqPushEvidence = Schema.Struct({
   attempt: Schema.optionalKey(HqPushAttempt),
   confirmed: Schema.optionalKey(HqPushReceipt),
