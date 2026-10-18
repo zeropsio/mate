@@ -295,6 +295,7 @@ const automated = (
     readonly number?: number;
     readonly title: string;
     readonly waiting?: true;
+    readonly stopping?: true;
   } | null,
 ): HqPlacement => ({
   appId,
@@ -320,6 +321,7 @@ const automated = (
               number: task.number,
               title: task.title,
               url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
+              ...(task.stopping === true ? { stopping: true as const } : {}),
             },
   },
 });
@@ -406,6 +408,12 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
     automated("tea-shop", "Tea Shop", { number: 7, title: "Show the tea's origin" }),
   ),
   candidate("tea-sol", "Sol", automated("tea-shop", "Tea Shop", null)),
+  // One whose task a person stopped, its Mate not stopped yet.
+  candidate(
+    "tea-raya",
+    "Raya",
+    automated("tea-shop", "Tea Shop", { number: 9, title: "Rename the shop", stopping: true }),
+  ),
   // One whose task from Slack waits for a person's answer.
   candidate(
     "tea-lea",
