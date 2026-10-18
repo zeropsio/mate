@@ -14706,3 +14706,89 @@ button.rv-relrow:hover .rv-relrow-go {
 a.pp-cards-person-who:hover {
   text-decoration: underline;
 }
+
+.pp-cards-gauge {
+  position: relative;
+  height: 2px;
+  margin-top: -6px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--ov-rule);
+}
+
+.pp-cards-gauge > span {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--color-status-busy);
+}
+
+.pp-cards-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  outline: none;
+}
+
+button.pp-cards-chip {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-cards-chip:hover {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+button.pp-cards-chip:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-chip[data-tone="attention"] {
+  background: var(--color-status-attention-surface);
+  color: var(--color-status-attention-text);
+}
+
+.pp-cards-board {
+  display: grid;
+  gap: 16px;
+  container-type: inline-size;
+}
+
+.pp-cards-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@container (min-width: 600px) {
+  .pp-cards-pair {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+  }
+}
+
+.pp-cards-glyph {
+  display: inline-flex;
+  min-width: 20px;
+  height: 18px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
