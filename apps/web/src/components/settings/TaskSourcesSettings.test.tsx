@@ -385,6 +385,72 @@ describe("limits saved in Settings", () => {
   });
 });
 
+describe("the limits per task and the monthly budget, saved apart", () => {
+  // Both rows write the one limits record HQ holds: what a save says belongs to the row pressed.
+  const held = { minutes: 45, costUsd: 3, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 };
+  const at = (action: unknown) => ({
+    ...controls(known(held)),
+    read: { setting: known(held), action, revealed: null } as TaskSourceSettingValue<never>,
+  });
+  const both = (limits: ReturnType<typeof at>) => (
+    <>
+      <TaskLimitsView controls={limits} />
+      <MonthlyBudgetView controls={limits} />
+    </>
+  );
+  /** The words a row of the two shows, by its surface. */
+  const words = (root: ReactTestInstance, surface: string): string => {
+    const text = (node: ReactTestInstance | string): string =>
+      typeof node === "string" ? node : node.children.map(text).join(" ");
+    return text(root.findAll((node) => node.props?.["data-zerops-surface"] === surface)[0]!)
+      .replace(/\s+/gu, " ")
+      .trim();
+  };
+  const submitBudget = (view: ReturnType<typeof rendered>) => {
+    act(() => {
+      view.root.findAllByType("form")[1]!.props.onSubmit({ preventDefault: () => {} });
+    });
+  };
+  const refusal = "HQ refused the budget: it is an amount above $0 and at most $100,000.";
+
+  it("says a refused budget beside the budget, keeping the amount typed, and nothing of it under the limits per task", () => {
+    const view = rendered(both(at({ kind: "idle" })));
+    const budget = view.root.findAllByType(Input)[2]!;
+    view.type(budget, "80");
+    submitBudget(view);
+    view.update(both(at({ kind: "working", verb: "task-limits" })));
+    view.update(both(at({ kind: "failed", words: refusal })));
+    expect(words(view.root, "settings-monthly-budget")).toContain(refusal);
+    expect(words(view.root, "settings-task-limits")).not.toContain(refusal);
+    expect(view.root.findAllByType(Input)[2]!.props.value).toBe("80");
+    view.unmount();
+  });
+
+  it("says Saving… only on the budget while the budget saves", () => {
+    const view = rendered(both(at({ kind: "idle" })));
+    view.type(view.root.findAllByType(Input)[2]!, "80");
+    submitBudget(view);
+    view.update(both(at({ kind: "working", verb: "task-limits" })));
+    expect(words(view.root, "settings-monthly-budget")).toContain("Saving…");
+    expect(words(view.root, "settings-task-limits")).not.toContain("Saving…");
+    view.unmount();
+  });
+
+  it("says a refusal of the limits per task under them, never beside the budget", () => {
+    const view = rendered(both(at({ kind: "idle" })));
+    view.type(view.root.findAllByType(Input)[0]!, "30");
+    act(() => {
+      view.root.findAllByType("form")[0]!.props.onSubmit({ preventDefault: () => {} });
+    });
+    view.update(both(at({ kind: "working", verb: "task-limits" })));
+    expect(words(view.root, "settings-monthly-budget")).not.toContain("Saving…");
+    view.update(both(at({ kind: "failed", words: "Minutes are a whole number from 1 to 1,440." })));
+    expect(words(view.root, "settings-task-limits")).toContain("Minutes are a whole number");
+    expect(words(view.root, "settings-monthly-budget")).not.toContain("Minutes are a whole number");
+    view.unmount();
+  });
+});
+
 describe("taking a public repository's issues", () => {
   const NONE: AppIntakeRead = { intake: null, action: { kind: "idle" }, answer: null };
 
