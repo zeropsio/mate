@@ -34,9 +34,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
-import { Switch } from "../ui/switch";
 import { cn } from "~/lib/utils";
-import { newMateKeyNote, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 import {
   faceName,
   newMateDoorTitle,
@@ -62,19 +60,7 @@ export interface NewMateChoice {
   readonly face: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
-  /** Made automated: it takes tasks from GitHub issues, on the organization's API key. */
-  readonly automated?: true;
 }
-
-/** The Automated choice's one line. */
-export const NEW_MATE_AUTOMATED_LINE =
-  "Takes tasks from your GitHub issues and works them on your organization's API key. Nobody signs in to it.";
-/** Beside the choice, where the organization holds no API key for automated Mates yet. */
-export const NEW_MATE_NO_KEY_LINE = "Your organization has no API key for it yet.";
-/** After it, for one who can't set the key: who does. */
-const NEW_MATE_KEY_SETTER_LINE = "An Owner or Admin of your organization sets it.";
-/** In its place, where HQ turned out older than automated Mates after the choice was offered. */
-const NEW_MATE_UPDATE_HQ_LINE = "Update HQ to make automated Mates.";
 
 export interface ZeropsNewMateFormProps {
   readonly groupName: string;
@@ -102,17 +88,6 @@ export interface ZeropsNewMateFormProps {
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
-  /**
-   * The Automated choice, whether the organization holds the API key it runs on, and whether the
-   * viewer may set it (an Owner or Admin): `missing` says so beside the choice — with the way to
-   * where it is set for one who can, else who sets it. Absent, or `unsupported` (an HQ older
-   * than automated Mates) when the dialog opens: no choice offered.
-   */
-  readonly automation?: { readonly key: AutomatedKeyState; readonly admin: boolean } | undefined;
-  /** The Automated choice made already: an Add started over that was automated. */
-  readonly defaultAutomated?: boolean | undefined;
-  /** Leaves the dialog for where the organization's API key is set (Settings › Automation). */
-  readonly onOpenKeySettings?: (() => void) | undefined;
 }
 
 /**
@@ -140,23 +115,8 @@ export function ZeropsNewMateForm({
   onCreate,
   access,
   forecast,
-  automation,
-  defaultAutomated = false,
-  onOpenKeySettings,
 }: ZeropsNewMateFormProps) {
   const id = useId();
-  const [chosenAutomated, setAutomated] = useState(defaultAutomated);
-  // Whether it is offered, and whether the key's note holds its room, are decided by the first
-  // frame: what is read after it changes the words, never what is there (the cardinal sin).
-  const [offersAutomated] = useState(
-    () => automation !== undefined && automation.key !== "unsupported",
-  );
-  const [holdsKeyNote] = useState(() => automation?.key === "unknown");
-  // An HQ found unable to make one after the choice was offered: it stays, unavailable.
-  const automatedUnavailable = automation === undefined || automation.key === "unsupported";
-  const automated = chosenAutomated && !automatedUnavailable;
-  const keyNote =
-    automation === undefined ? null : newMateKeyNote(automation.key, automation.admin);
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
@@ -215,7 +175,6 @@ export function ZeropsNewMateForm({
       recipe: choice,
       face,
       ...(userRoles.length === 0 ? {} : { userRoles }),
-      ...(automated ? { automated: true as const } : {}),
     });
   };
   const press = () => {
@@ -321,78 +280,18 @@ export function ZeropsNewMateForm({
                   />
                 </div>
               </MateFacePicker>
-              {!offersAutomated ? null : (
-                <div
-                  className="flex items-start justify-between gap-4"
-                  data-zerops-surface="new-mate-automated"
-                >
-                  <div className="grid min-w-0 gap-1">
-                    <Label htmlFor={`${id}-automated`}>Automated</Label>
-                    <p className="text-sm text-muted-foreground" id={`${id}-automated-line`}>
-                      {NEW_MATE_AUTOMATED_LINE}
-                    </p>
-                    {keyNote === null && !holdsKeyNote ? null : (
-                      // One cell: a note held from the first frame lands in the room the
-                      // longest one it can be takes, so nothing under it moves.
-                      <div
-                        className="grid"
-                        data-zerops-new-mate-key-note={holdsKeyNote ? "held" : "shown"}
-                      >
-                        {holdsKeyNote ? (
-                          <p aria-hidden className="invisible col-start-1 row-start-1 text-sm">
-                            {NEW_MATE_NO_KEY_LINE}{" "}
-                            {automation?.admin === true
-                              ? "Set it in Settings › Automation"
-                              : NEW_MATE_KEY_SETTER_LINE}
-                          </p>
-                        ) : null}
-                        {keyNote === null ? null : (
-                          <p
-                            className="col-start-1 row-start-1 text-sm text-muted-foreground"
-                            data-zerops-new-mate-no-key=""
-                          >
-                            {keyNote.kind === "update" ? (
-                              NEW_MATE_UPDATE_HQ_LINE
-                            ) : (
-                              <>
-                                {NEW_MATE_NO_KEY_LINE}{" "}
-                                {!keyNote.canSet ? (
-                                  NEW_MATE_KEY_SETTER_LINE
-                                ) : onOpenKeySettings === undefined ? (
-                                  "Set it in Settings › Automation."
-                                ) : (
-                                  <InlineButton onClick={onOpenKeySettings} type="button">
-                                    Set it in Settings › Automation
-                                  </InlineButton>
-                                )}
-                              </>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <Switch
-                    aria-describedby={`${id}-automated-line`}
-                    checked={automated}
-                    disabled={automatedUnavailable}
-                    id={`${id}-automated`}
-                    onCheckedChange={setAutomated}
-                  />
-                </div>
-              )}
               {/* What happens once it is added, both ways the project may read: learning it has
                   nothing to deploy changes the words and moves nothing. */}
               <WhatHappensNext
                 versions={[
                   {
                     key: "recipe",
-                    next: newMateNext({ groupName, botName, recipe: "recipe", automated }),
+                    next: newMateNext({ groupName, botName, recipe: "recipe" }),
                     shown: recipe !== "none",
                   },
                   {
                     key: "none",
-                    next: newMateNext({ groupName, botName, recipe: "none", automated }),
+                    next: newMateNext({ groupName, botName, recipe: "none" }),
                     shown: recipe === "none",
                   },
                 ]}
