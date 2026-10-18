@@ -56,6 +56,14 @@ import {
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
+import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
+import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
+import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
+import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
+import type {
+  ProjectPeopleView,
+  ProjectPerson,
+} from "~/components/zerops/projects/projectPeople.logic";
 import { NewProjectCards, ReadingCards, TeaShopCards } from "./projectCardsFixtures";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
@@ -242,6 +250,220 @@ const BEVIRO_ROUTES = [
   },
 ];
 
+/** A day of one resource, made up: what was used of `limit`, hour by hour. */
+const day = (base: number, limit: number) =>
+  Array.from({ length: 24 }, (_, hour) => ({
+    at: new Date(NOW - (24 - hour) * 3_600_000).toISOString(),
+    used: limit * Math.max(0.02, base + 0.12 * Math.sin(hour / 2.4) + (hour % 6 === 0 ? 0.08 : 0)),
+    limit,
+  }));
+
+/** A service as the service map reads it: what it is, its use now and its last day. */
+function mapRow(
+  hostname: string,
+  type: string,
+  typeShort: string,
+  portLabel: string | undefined,
+  use?: {
+    readonly cores: string;
+    readonly ram: string;
+    readonly ramOf: string;
+    readonly disk: string;
+  },
+): ZeropsServiceRow {
+  return {
+    isControlPlane: false,
+    service: { serviceId: `svc-${hostname}`, hostname, type } as ZeropsServiceRow["service"],
+    tone: "ok",
+    statusLabel: "Running",
+    statusNeedsWord: false,
+    typeLabel: type,
+    typeShort,
+    title: hostname,
+    ...(portLabel === undefined ? {} : { portLabel }),
+    meta: [],
+    dashboardUrl: `https://app.zerops.io/service-stack/svc-${hostname}`,
+    metrics:
+      use === undefined
+        ? []
+        : [
+            {
+              id: "cores",
+              label: "CPU",
+              value: "2",
+              used: use.cores,
+              fraction: Number(use.cores) / 2,
+            },
+            {
+              id: "memory",
+              label: "RAM",
+              value: use.ramOf,
+              used: use.ram,
+              unit: "GB",
+              fraction: Number(use.ram) / Number(use.ramOf),
+            },
+            {
+              id: "disk",
+              label: "Disk",
+              value: "5",
+              used: use.disk,
+              unit: "GB",
+              fraction: Number(use.disk) / 5,
+            },
+          ],
+    ...(use === undefined
+      ? {}
+      : { trends: { cores: day(0.06, 2), memory: day(0.3, 1), disk: day(0.2, 5) } }),
+    routes: [],
+    routesFolded: false,
+    production: [],
+  } as unknown as ZeropsServiceRow;
+}
+
+/**
+ * Acme's production: two code services HQ deploys from their repositories, and a database, a
+ * cache, a search engine and a bucket beside them — six in all.
+ */
+/** A service whose newest deploy names its Zerops process, so its row offers View deploy. */
+const inspectable = (entry: EnvironmentServiceState): EnvironmentServiceState =>
+  entry.deploy?.latest === undefined
+    ? entry
+    : {
+        ...entry,
+        deploy: {
+          ...entry.deploy,
+          latest: { ...entry.deploy.latest, processId: `process-${entry.hostname}` },
+        },
+      };
+
+const ACME_LIVE = [
+  inspectable(service("shop", MEDUSA, "v0.1.9", "live", "acme-shop")),
+  inspectable(service("storefront", NEXTSTORE[0], "v0.1.13", "live", "acme-storefront")),
+  managed("db"),
+  managed("redis"),
+  managed("search"),
+  managed("storage"),
+];
+
+const ACME_SERVICES = [
+  mapRow("db", "postgresql@17", "PostgreSQL 17", ":5432, :6432", {
+    cores: "0.12",
+    ram: "0.41",
+    ramOf: "1",
+    disk: "1.8",
+  }),
+  mapRow("redis", "valkey@7.2", "Valkey 7.2", ":6379, :6380", {
+    cores: "0.03",
+    ram: "0.06",
+    ramOf: "0.25",
+    disk: "0.1",
+  }),
+  mapRow("search", "meilisearch@1.10", "Meilisearch", ":7700", {
+    cores: "0.05",
+    ram: "0.22",
+    ramOf: "0.5",
+    disk: "0.6",
+  }),
+  mapRow("shop", "nodejs@22", "Node.js 22", ":9000", {
+    cores: "0.08",
+    ram: "0.31",
+    ramOf: "1",
+    disk: "0.9",
+  }),
+  mapRow("storage", "object-storage", "Object storage", undefined),
+  mapRow("storefront", "nodejs@22", "Node.js 22", ":8000", {
+    cores: "0.21",
+    ram: "0.52",
+    ramOf: "1",
+    disk: "1.2",
+  }),
+];
+
+/** Beviro's releases under Acme's names: medusa is the shop, nextstore the storefront. */
+const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release) => ({
+  ...release,
+  line: release.line.replace("medusa", "shop").replace("nextstore", "storefront"),
+  entries: release.entries.map((entry) => ({
+    ...entry,
+    service: entry.service === "medusa" ? "shop" : "storefront",
+  })),
+}));
+
+/** Fifteen people who reach Acme's production, as its access reads them. */
+const ACME_PEOPLE: ProjectPeopleView = {
+  kind: "people",
+  invite: true,
+  candidates: [],
+  people: [
+    "Juno Park",
+    "Raya Stone",
+    "Ines Vale",
+    "Mira Holt",
+    "Theo Lind",
+    "Ada Brook",
+    "Noa Reed",
+    "Kai Moss",
+    "Lev Hart",
+    "Uma Frost",
+    "Ole Finch",
+    "Pia West",
+    "Rex Dale",
+    "Sia Lane",
+    "Tom Gale",
+  ].map((name, index) => ({
+    key: `cu-${String(index)}`,
+    name,
+    short: `${name.split(" ")[0] ?? name} ${name.split(" ")[1]?.[0] ?? ""}.`,
+    initials: name
+      .split(" ")
+      .map((part) => part[0])
+      .join(""),
+    avatarUrl: null,
+    email: null,
+    role: "Member",
+    you: index === 0,
+    creator: false,
+    pending: false,
+    access: "Full access",
+    line: "Full access",
+    level: "full",
+    across: [],
+    note: null,
+    change: null,
+  })) as unknown as ReadonlyArray<ProjectPerson>,
+};
+
+/** Acme's six-service production at the widths a page has beside the 435 px menu. */
+const SIX_SERVICES = [
+  {
+    label: "Six services in production",
+    note: "A 1786 window: the vault beside the page; one row per service, meters under each compute one, none under the bucket. The storefront answers on its own domains, so nothing calls it closed.",
+    width: 1351,
+  },
+  {
+    label: "Six services in production at 1280",
+    note: "A 1280 window: no room beside the page, so the vault goes under it and the table keeps one row per service.",
+    width: 845,
+  },
+  {
+    label: "Six services in production on a phone",
+    note: "A phone: each service in three lines — name, type and state; what runs and where; its meters.",
+    width: 390,
+  },
+] as const;
+
+/** Acme's addresses: the storefront on two domains of its own, the shop on its subdomain. */
+const ACME_ROUTES = [
+  {
+    service: "shop",
+    port: 9000,
+    host: "shop-2ff9-9000.prg1.zerops.app",
+    url: "https://shop-2ff9-9000.prg1.zerops.app",
+  },
+  { service: "storefront", port: 8000, host: "acme.example", url: "https://acme.example" },
+  { service: "storefront", port: 8000, host: "www.acme.example", url: "https://www.acme.example" },
+];
+
 /** The three changes merged to main that Beviro's production does not run. */
 const BEVIRO_WAITING = [
   {
@@ -406,7 +628,32 @@ interface StopFixture {
   /** The production deploys that failed, each as a release's. */
   readonly failedDeploys?: ReadonlyArray<ReleaseDeployFailure>;
   readonly releasedAge?: string;
+  /** Every service the platform lists there, with its use and its last day. */
+  readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
+  /** Who reaches the place, as its page draws them. */
+  readonly access?: ReactNode;
+  /** Whether the place's vault is open beside (or under) its page. */
+  readonly vault?: boolean;
 }
+
+/** Acme production's vault, its values the vault fixture's. */
+const HARNESS_VAULT = {
+  orgId: "harness",
+  open: true,
+  onToggle: () => {},
+  body: (
+    <VaultPanelBody
+      actor="environment"
+      impactOf={(scope, write) => vaultFixtureImpact(VAULT_FIXTURE, scope, write)}
+      onRestart={() => Promise.resolve()}
+      onWrite={() => Promise.resolve({ ok: true })}
+      pending={new Map()}
+      restarting={new Set()}
+      view={VAULT_FIXTURE}
+      who={{ kind: "environment", name: "Production" }}
+    />
+  ),
+};
 
 /** The full commit each service runs, as the release rows and the stop's name read it. */
 function runningCommits(
@@ -577,6 +824,10 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       view={view}
       untold={[]}
       waiting={{ commits: waiting, total: waiting.length, atLeast: false }}
+      platformServices={fixture.platformServices}
+      usageRead
+      access={fixture.access}
+      vault={fixture.vault === true ? HARNESS_VAULT : undefined}
     />
   );
 }
@@ -891,6 +1142,26 @@ function Harness() {
           }}
         />
       </State>
+
+      {SIX_SERVICES.map(({ label, note, width }) => (
+        <State key={label} label={label} note={note}>
+          <div style={{ maxWidth: width }}>
+            <StopState
+              fixture={{
+                tier: "production",
+                group: "Acme",
+                services: ACME_LIVE,
+                deployment: BEVIRO_RUNNING,
+                routes: ACME_ROUTES,
+                releases: ACME_RELEASES,
+                platformServices: ACME_SERVICES,
+                access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
+                vault: true,
+              }}
+            />
+          </div>
+        </State>
+      ))}
 
       <State
         label="A production whose release failed to deploy"

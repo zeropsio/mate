@@ -4,10 +4,12 @@
  * on every environment's page until the person opens it again.
  */
 import { Vault } from "lucide-react";
+import type { ReactNode } from "react";
 import { create } from "zustand";
 
 import { PreviewPanelShell } from "../../RightPanelShell";
 import { Button } from "../../ui/button";
+import type { SidePlacement } from "../landing/ZeropsHostedFrame";
 import { ProjectVaultPanel } from "./VaultPanelContainer";
 
 const WIDTH_KEY = "mate:stop-vault-width";
@@ -38,24 +40,53 @@ export function StopVaultToggle({
   );
 }
 
-/** The environment's vault in a column beside its page, as wide as the person left it. */
+/**
+ * The environment's vault in a column beside its page, as wide as the person left it — or, where
+ * the page has no room beside it, under the page at the page's width.
+ */
 export function StopVaultSide({
   orgId,
   projectId,
   name,
+  placement = "beside",
+  body,
 }: {
   readonly orgId: string;
   readonly projectId: string;
-  /** The environment as the page names it (`prod`, `stage`). */
+  /** The environment as the page names it (`Production`, `Stage`). */
   readonly name: string;
+  readonly placement?: SidePlacement;
+  /** What the column holds; the project's vault, read from the account, unless given. */
+  readonly body?: ReactNode;
 }) {
+  // Whose values these are: the column reads as the place's own, not the page's.
+  const head = (
+    <h2 className="flex h-10 flex-none items-end gap-1.5 px-3 text-body font-medium text-foreground">
+      Vault
+      <span className="font-normal text-muted-foreground">· {name}</span>
+    </h2>
+  );
+  const panel = body ?? (
+    <ProjectVaultPanel
+      actor="environment"
+      project={{ orgId, projectId }}
+      who={{ kind: "environment", name }}
+    />
+  );
+  if (placement === "under")
+    return (
+      <section
+        className="flex flex-col overflow-hidden rounded-card border border-border"
+        data-zerops-surface="stop-vault-under"
+      >
+        {head}
+        {panel}
+      </section>
+    );
   return (
     <PreviewPanelShell mode="inline" widthStorageKey={WIDTH_KEY}>
-      <ProjectVaultPanel
-        actor="environment"
-        project={{ orgId, projectId }}
-        who={{ kind: "environment", name }}
-      />
+      {head}
+      {panel}
     </PreviewPanelShell>
   );
 }

@@ -78,19 +78,16 @@ import {
   DEPLOYS_ASIDE,
   earlierReleasesLabel,
   NONE_YET,
-  NOT_PUBLIC_YET,
   notInZerops,
   serviceRows,
   stopCardTitle,
   rowsRunningAgain,
   stopFailedDeploys,
   stopKeyGap,
-  stopMetaLine,
   stopTierStops,
   stopVerdict,
   stopView,
   type Deployment,
-  type RunAgain,
   type StopFailedDeploy,
   type StopServiceRow,
   type StopTierStop,
@@ -138,7 +135,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFrame";
 import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ProjectAccessCard, type AccessPlace } from "./projects/ProjectAccessCard";
 import { ProjectChangesCard } from "./projects/ProjectChangesCard";
@@ -153,8 +150,7 @@ import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./Zero
 import { ProjectAutomation } from "./projectAutomation/ProjectAutomation";
 import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
-import { ZeropsDeployLog } from "./ZeropsDeployLog";
-import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
+import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
@@ -169,6 +165,17 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
 import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
+import { MiddleTruncate } from "../ui/middle-truncate";
+import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
+import { PlaceServiceTable, type StopDeployAgain } from "./place/PlaceServices";
+import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
+import {
+  placeAddress,
+  placeServiceRows,
+  placeStatus,
+  placeTitle,
+  rollBackTarget,
+} from "./place/place.logic";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -987,6 +994,8 @@ function ZeropsProjectStopDetailPage({
   const platform = useStopServices(
     withheld === null ? findInventoryProjectRef(inventory, projectId) : null,
   );
+  // Every service the place runs, with its use and its last day, for the services table.
+  const serviceMap = usePlaceServiceMap(withheld === null ? projectId : undefined);
   // Only a countdown reads the clock, and nothing here counts down: the time
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
@@ -1079,7 +1088,9 @@ function ZeropsProjectStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
-        access={<ProjectAccess heading={false} kind={stop.tier} projectId={projectId} />}
+        access={<ProjectAccess fold heading={false} kind={stop.tier} projectId={projectId} />}
+        platformServices={serviceMap.rows}
+        usageRead={serviceMap.usageRead}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
@@ -1199,16 +1210,6 @@ interface StopRunAgain {
   /** Why HQ refused the last one, until another is pressed. */
   readonly refused: string | null;
   readonly onRunAgain: () => void;
-}
-
-/**
- * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
- * HQ's live commit there, asked again by whoever may *Run again* (the deploy-jobs design).
- */
-interface StopDeployAgain {
-  /** Whether it is under way for the service. */
-  readonly running: (service: string) => boolean;
-  readonly onDeployAgain: (redeploy: RunAgain) => void;
 }
 
 /**
@@ -1363,7 +1364,16 @@ export function ZeropsStopPane({
   waiting,
   vault,
   access,
+  platformServices,
+  usageRead = false,
 }: {
+  /**
+   * Every service the platform lists in the place, with its use and its last day (the service
+   * map's rows); undefined while unread, when the table holds only the code services.
+   */
+  readonly platformServices?: ReadonlyArray<ZeropsServiceRow> | undefined;
+  /** Whether the services' use has been read: until then their meters hold their room. */
+  readonly usageRead?: boolean;
   /** Who reaches the environment's project, as people chips, under its card. */
   readonly access?: React.ReactNode;
   /** The environment's vault, where the account reads its organization: shown beside the page. */
@@ -1372,6 +1382,8 @@ export function ZeropsStopPane({
         readonly orgId: string;
         readonly open: boolean;
         readonly onToggle: () => void;
+        /** What the vault column holds; the project's vault unless given (a harness's fixture). */
+        readonly body?: React.ReactNode;
       }
     | undefined;
   readonly readFailures?: React.ReactNode;
@@ -1464,6 +1476,20 @@ export function ZeropsStopPane({
           ),
         };
   const projectId = stop.target.kind === "zerops" ? stop.target.projectId : undefined;
+  const table = placeServiceRows(services, platformServices);
+  const head = placeTitle(stop.name, stop.tier);
+  const live = releases.find((entry) => entry.standing === "live");
+  const status = placeStatus({
+    tier: stop.tier,
+    view,
+    releasedAge: live === undefined ? undefined : formatRelativeTimeLabel(live.taggedAt),
+    since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
+    source: stop.source,
+    services: readServices === undefined ? 0 : table.length,
+  });
+  const address = placeAddress(stop.tier, routes);
+  const rollBackTo = production ? rollBackTarget(releases) : undefined;
+  const statusDot = STOP_DOT_TONE[status.tone];
   return (
     <DetailShell
       actions={
@@ -1479,21 +1505,63 @@ export function ZeropsStopPane({
               onOpenStop={undefined}
               routes={routes}
               stop={view}
+              {...(rollBackTo === undefined
+                ? {}
+                : {
+                    rollBack: {
+                      tag: rollBackTo,
+                      onRollBack: (from: HTMLElement) => onRollBack(rollBackTo, from),
+                    },
+                  })}
               triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
           ) : null}
         </>
       }
-      crumbs={crumbs}
+      crumbs={[...crumbs, { label: head.title }]}
       side={
-        vault?.open === true && stop.target.kind === "zerops" ? (
-          <StopVaultSide name={title} orgId={vault.orgId} projectId={projectId!} />
-        ) : undefined
+        vault?.open === true && stop.target.kind === "zerops"
+          ? (placement) => (
+              <StopVaultSide
+                body={vault.body}
+                name={head.title}
+                orgId={vault.orgId}
+                placement={placement}
+                projectId={projectId!}
+              />
+            )
+          : undefined
       }
-
-      subtitle={stopMetaLine({ tier: stop.tier, source: stop.source, services: services.length })}
-      title={title}
-      titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
+      subtitle={
+        <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <span data-zerops-place-status="">
+            {statusDot === undefined ? (
+              status.text
+            ) : (
+              <Badge dot tone={STATUS_BADGE_TONE[statusDot]}>
+                <span className="text-foreground">{status.text}</span>
+              </Badge>
+            )}
+          </span>
+          {address === undefined ? null : (
+            <a
+              className="flex max-w-full min-w-0 items-center gap-1 text-foreground underline-offset-2 hover:underline"
+              data-zerops-place-address=""
+              href={address.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <MiddleTruncate value={address.host} />
+              <ExternalLinkIcon
+                aria-hidden="true"
+                className="size-3.5 shrink-0 text-muted-foreground"
+              />
+            </a>
+          )}
+        </span>
+      }
+      title={head.title}
+      titleTag={head.tag === undefined ? undefined : <ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
     >
       {readFailures}
       <div>
@@ -1546,28 +1614,24 @@ export function ZeropsStopPane({
             </CardGroup>
           )}
 
-          <CardGroup title={stopCardTitle("services", readServices?.length)}>
+          <CardGroup
+            title={stopCardTitle("services", readServices === undefined ? undefined : table.length)}
+          >
             {readServices === undefined ? (
               <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
             ) : services.length === 0 ? (
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
-            ) : (
-              <ul className="flex flex-col">
-                {stop.target.kind !== "zerops"
-                  ? null
-                  : services.map((row) => (
-                      <StopServiceLine
-                        projectId={projectId!}
-                        deployAgain={deployAgain}
-                        answer={answered.get(row.hostname)}
-                        enablingServiceId={enablingServiceId ?? null}
-                        key={row.hostname}
-                        onEnableRoute={onEnableRoute}
-                        row={row}
-                        said={verdict.detail}
-                      />
-                    ))}
-              </ul>
+            ) : stop.target.kind !== "zerops" ? null : (
+              <PlaceServiceTable
+                answered={answered}
+                deployAgain={deployAgain}
+                enablingServiceId={enablingServiceId ?? null}
+                onEnableRoute={onEnableRoute}
+                projectId={stop.target.projectId}
+                rows={table}
+                said={verdict.detail}
+                usageRead={usageRead}
+              />
             )}
             {notInZerops.length === 0 ? null : (
               <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
@@ -1697,15 +1761,6 @@ export function ZeropsStopPane({
 const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
 
 /**
- * A service's row: the same four places on every row, so the status dots run
- * down one column — collapsed to name and state over the rest on a phone.
- */
-const SERVICE_ROW_CLASS = cn(
-  CARD_ROW_CLASS,
-  "grid-cols-[minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
-);
-
-/**
  * One group of the stop's card, under its label: the first 12px under the
  * card's edge, each later one 24px under the hairline between them.
  */
@@ -1729,198 +1784,6 @@ function CardGroup({
       </h2>
       {children}
     </section>
-  );
-}
-
-/**
- * One service of a stop: what it is, what it runs, how that deploy went, and
- * where it answers.
- */
-function StopServiceLine({
-  projectId,
-  row,
-  onEnableRoute,
-  enablingServiceId,
-  deployAgain,
-  answer,
-  said,
-}: {
-  readonly projectId: string;
-  readonly row: StopServiceRow;
-  readonly answer: DeployAnswerJob | undefined;
-  readonly onEnableRoute: ((serviceId: string) => void) | undefined;
-  readonly enablingServiceId: string | null;
-  readonly deployAgain: StopDeployAgain | undefined;
-  /** What the verdict over the rows already says: HQ's words for a failure, never said twice. */
-  readonly said: string | undefined;
-}) {
-  const publicAccess = usePublicAccess(projectId);
-  const dot = STOP_DOT_TONE[row.tone];
-  // HQ's live commit, asked again over a version HQ did not deploy, where HQ takes the ask.
-  const again = row.drift?.redeploy;
-  // Nothing to offer where the caller cannot act on it — a row with a button
-  // that does nothing is worse than no row.
-  const offers = onEnableRoute === undefined ? [] : row.offers;
-  const deployLog =
-    answer === undefined
-      ? row.deployLog
-      : answer.jobId === row.deployLog?.jobId
-        ? row.deployLog
-        : answer.deployLog;
-  return (
-    <li className="flex flex-col">
-      <div className={SERVICE_ROW_CLASS}>
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm leading-5 font-medium text-foreground">
-            {row.hostname}
-          </span>
-          <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
-        </span>
-        <span className="col-span-2 col-start-1 flex min-w-0 flex-col sm:col-span-1 sm:col-start-2 sm:row-start-1">
-          {/* No commit and a state: what runs is not stated yet, so nothing is claimed. */}
-          {row.commit !== undefined ? (
-            <span className="truncate font-mono text-[13px] leading-5 text-foreground tabular-nums">
-              {row.commit}
-            </span>
-          ) : row.status === undefined ? (
-            <span className="truncate text-sm leading-5 text-muted-foreground">{row.word}</span>
-          ) : null}
-          {row.line === undefined ? null : (
-            <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
-          )}
-        </span>
-        <span className="col-start-2 row-start-1 flex min-w-0 text-line text-foreground sm:col-start-3">
-          {row.status === undefined ||
-          (answer !== undefined &&
-            (row.runs === undefined || row.job !== undefined)) ? null : dot === undefined ? (
-            <span className="min-w-0 break-words text-muted-foreground">{row.status}</span>
-          ) : (
-            <Badge dot tone={STATUS_BADGE_TONE[dot]}>
-              {row.status}
-            </Badge>
-          )}
-        </span>
-        <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
-          {(!publicAccess.bound || publicAccess.state === "ready") &&
-          row.routes.length === 0 &&
-          offers.length === 0 ? (
-            <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
-          ) : null}
-          <StopPublicAccessStatus access={publicAccess} serviceId={row.serviceId ?? null} />
-          {row.routes.map((route) => (
-            <a
-              className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"
-              href={route.url}
-              key={route.host}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <span className="min-w-0 truncate">{route.host}</span>
-              <ExternalLinkIcon
-                aria-hidden="true"
-                className="size-3.5 shrink-0 text-muted-foreground"
-              />
-            </a>
-          ))}
-          {/* A service that serves HTTP and answers to nobody: the row that
-              would list its address is the row you add one from. */}
-          {offers.map((offer) => {
-            const opening = enablingServiceId === offer.serviceId;
-            return (
-              <span
-                className="flex min-w-0 flex-col items-start gap-0.5"
-                data-zerops-surface="stop-route-offer"
-                key={offer.serviceId}
-              >
-                <Button
-                  disabled={opening || enablingServiceId !== null}
-                  onClick={() => onEnableRoute?.(offer.serviceId)}
-                  size="sm"
-                  variant="secondary"
-                >
-                  {opening ? "Opening…" : "Open to the internet"}
-                </Button>
-                <span className="truncate text-xs text-muted-foreground">
-                  {offer.service} answers on {offer.port}, but not from outside
-                </span>
-              </span>
-            );
-          })}
-        </span>
-      </div>
-      {/* Its newest job, where it is not what the service runs: where it stands, and why. */}
-      {answer !== undefined ? (
-        <span
-          className="pb-2 text-xs leading-4 text-muted-foreground"
-          data-zerops-job-state={answer.state}
-        >
-          {answer.line}
-        </span>
-      ) : row.job === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-col items-start pb-2 text-xs leading-4 text-muted-foreground"
-          data-zerops-surface="stop-service-job"
-          data-zerops-job-state={row.job.state}
-        >
-          <span className="truncate">{row.job.line}</span>
-          {row.job.redeploy === undefined || deployAgain === undefined ? null : (
-            <Button
-              disabled={deployAgain.running(row.job.redeploy.service)}
-              onClick={() =>
-                row.job?.redeploy !== undefined && deployAgain.onDeployAgain(row.job.redeploy)
-              }
-              size="sm"
-              variant="secondary"
-            >
-              {flowVerbLabel("redeploy", deployAgain.running(row.job.redeploy.service))}
-            </Button>
-          )}
-          {row.job.reason === undefined || row.job.reason === said ? null : (
-            <span>{row.job.reason}</span>
-          )}
-        </span>
-      )}
-      {deployLog === undefined ? null : (
-        <ZeropsDeployLog
-          key={deployLog.jobId}
-          projectId={projectId}
-          service={row.hostname}
-          target={deployLog}
-        />
-      )}
-      {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
-      {row.drift === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-wrap items-center gap-2 pb-2 text-xs leading-4"
-          data-zerops-surface="stop-service-drift"
-        >
-          <span className="text-status-attention-text">{row.drift.line}</span>
-          {deployAgain === undefined || again === undefined ? null : (
-            <Button
-              disabled={deployAgain.running(again.service)}
-              onClick={() => deployAgain.onDeployAgain(again)}
-              size="sm"
-              variant="secondary"
-            >
-              {deployAgain.running(again.service)
-                ? flowVerbLabel("redeploy", true)
-                : `Deploy ${shortCommit(again.sha)} again`}
-            </Button>
-          )}
-          {row.drift.zerops === undefined ? null : (
-            <a
-              className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline"
-              href={row.drift.zerops}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Open in Zerops
-              <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-            </a>
-          )}
-        </span>
-      )}
-    </li>
   );
 }
 
@@ -2030,7 +1893,8 @@ export function detailTrail(
 /** One step of the trail above a page's name. */
 export interface Crumb {
   readonly label: string;
-  readonly onClick: () => void;
+  /** Opens the page it names; none on the page itself, the trail's last step. */
+  readonly onClick?: () => void;
 }
 
 /**
@@ -2079,7 +1943,7 @@ function DetailShell({
   readonly title: string | undefined;
   /** What kind of thing the page is about, as a pill trailing its name. */
   readonly titleTag?: React.ReactNode;
-  readonly subtitle?: string;
+  readonly subtitle?: React.ReactNode;
   /** The verbs this page carries, beside its name rather than under it. */
   readonly actions?: React.ReactNode;
   /**
@@ -2088,8 +1952,8 @@ function DetailShell({
    * and coming in again.
    */
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** A column beside the page: an environment's vault. */
-  readonly side?: React.ReactNode;
+  /** A column beside the page, or under it where the frame is narrow: an environment's vault. */
+  readonly side?: ((placement: SidePlacement) => React.ReactNode) | undefined;
   readonly children: React.ReactNode;
 }) {
   return (
@@ -2112,7 +1976,7 @@ function DetailShell({
               {titleTag}
             </div>
             {subtitle === undefined ? null : (
-              <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+              <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>
             )}
           </div>
           {actions === undefined ? null : (
@@ -2133,13 +1997,19 @@ function Crumbs({ crumbs }: { readonly crumbs: ReadonlyArray<Crumb> }) {
         <Fragment key={crumb.label}>
           {index === 0 ? null : <WorkspaceBreadcrumbSeparator />}
           <WorkspaceBreadcrumbItem className="min-w-0 shrink">
-            <button
-              className="min-w-0 cursor-pointer truncate hover:text-foreground"
-              onClick={crumb.onClick}
-              type="button"
-            >
-              {crumb.label}
-            </button>
+            {crumb.onClick === undefined ? (
+              <span aria-current="page" className="min-w-0 truncate text-foreground">
+                {crumb.label}
+              </span>
+            ) : (
+              <button
+                className="min-w-0 cursor-pointer truncate hover:text-foreground"
+                onClick={crumb.onClick}
+                type="button"
+              >
+                {crumb.label}
+              </button>
+            )}
           </WorkspaceBreadcrumbItem>
         </Fragment>
       ))}
