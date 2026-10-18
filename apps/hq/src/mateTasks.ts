@@ -436,13 +436,18 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
        * one, or the time passed with no word.
        */
       const followUpOn = (task: Statement.Fragment) => sql`(
+        ${pendingOn(task)} AND (${untold(task)}
+          OR ${task}.follow_up_at > now() - make_interval(secs => ${followUpSecs})))`;
+      /**
+       * Something said of a task the Mate is done with, its change waiting for review, since it
+       * ended: told or not, what a link opening tells it, however long its Mate was away.
+       */
+      const pendingOn = (task: Statement.Fragment) => sql`(
         ${task}.state = 'done' AND ${task}.mate_project_id IS NOT NULL
         AND EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = ${task}.app_id
           AND c.repo = ${task}.change_repo AND c.number = ${task}.change_number AND c.state = 'open')
         AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
-          AND msg.created_at > ${endedAt(task)})
-        AND (${untold(task)}
-          OR ${task}.follow_up_at > now() - make_interval(secs => ${followUpSecs})))`;
+          AND msg.created_at > ${endedAt(task)}))`;
       /** Said of the task since it ended, and since HQ last told its Mate a follow-up on it. */
       const untold = (task: Statement.Fragment) => sql`EXISTS (
         SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
@@ -454,7 +459,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /**
        * Each automated Mate's one follow-up to tell now — of the tasks it is done with, the one
        * said of first — once it is on no task: one task's work at a time, on its own change.
-       * `all` tells it again (a link opening); else only one with something not told yet.
+       * `all` tells it again (a link opening): any said of since its task ended, told before or
+       * not; else only one with something not told yet.
        */
       const followUps = (mates: Statement.Fragment, all: boolean) =>
         Effect.gen(function* () {
@@ -463,7 +469,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 ${untold(sql`t`)} AS untold
               FROM hq_task t JOIN hq_task_message msg ON msg.task_id = t.id
               WHERE t.mate_project_id IN (SELECT project_id FROM hq_mate WHERE automated AND ${mates})
-                AND ${followUpOn(sql`t`)} AND NOT ${onATask(sql`t.mate_project_id`)}
+                AND ${all ? pendingOn(sql`t`) : followUpOn(sql`t`)}
+                AND NOT ${onATask(sql`t.mate_project_id`)}
                 AND msg.created_at > ${endedAt(sql`t`)}
               ORDER BY t.mate_project_id, msg.seq`;
           // Read first: most looks find none, and write nothing.
@@ -788,8 +795,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
        */
       const dispatch = Effect.gen(function* () {
         if (!(yield* leading)) return;
-        // A Mate on no task first hears the follow-up it owes, whatever the key or the budget.
-        yield* followUps(sql`TRUE`, false);
+        // A Mate on no task first hears the follow-up it owes, whatever the key or the budget —
+        // one whose link is open: one away hears it as its link opens.
+        const present = yield* overviews.all;
+        const online = [...automated].filter((id) => present.get(id)?.presence.online === true);
+        if (online.length > 0) yield* followUps(sql`project_id IN ${sql.in(online)}`, false);
         const keyed = yield* sql`
           SELECT 1 FROM hq_org_ai_key WHERE provider = ${AUTOMATED_PROVIDER.id}`;
         if (keyed.length === 0) return;

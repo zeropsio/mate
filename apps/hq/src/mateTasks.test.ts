@@ -597,6 +597,35 @@ describe("tasks for automated Mates", () => {
     );
 
     it.effect(
+      "a review comment on a done task's change that arrives while its Mate is offline reaches it when it is back, however long it was away",
+      () =>
+        Effect.gen(function* () {
+          // A follow-up told is owed for no time at all: only the link's own telling remains.
+          const core = yield* withPool({
+            version: TASK_CHANGES_SINCE,
+            tasks: { followUpWithin: Duration.millis(0) },
+          });
+          yield* repoOf(core);
+          yield* core.issue(1);
+          const first = yield* onTask(core, core.robot.link, 1);
+          const { number } = yield* openOn(core, "Hotter tea");
+          yield* first.word({ state: "done" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* core.robot.link.close;
+          yield* commentOn(core, number, "Rename the kettle.");
+          // Away for a while: HQ looks at its tasks every 50 ms meanwhile.
+          yield* rowsWhere(
+            core.url,
+            "SELECT 1 FROM hq_task_message WHERE created_at < now() - interval '300 milliseconds'",
+            (rows) => rows.length === 1,
+          );
+          const back = yield* linkOf(core, core.robot.credential);
+          const message = yield* back.link.take("task-message");
+          assert.strictEqual(message["taskId"], first.id);
+        }),
+    );
+
+    it.effect(
       "GitHub hears from the Mate by name: it picked the issue up, opened a change for review, couldn't finish",
       () =>
         Effect.gen(function* () {
