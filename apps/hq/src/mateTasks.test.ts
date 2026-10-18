@@ -14,6 +14,7 @@ import {
   issueEvent,
   linkOf,
   mateLinked,
+  throughOrgApp,
 } from "../test/harness/automated.ts";
 import { githubFake } from "../test/harness/githubFake.ts";
 import { addProject, rowsWhere } from "../test/harness/mates.ts";
@@ -833,6 +834,30 @@ describe("tasks for automated Mates", () => {
         yield* toldTask(core.robot.link, 1);
         const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "assigned");
         assert.strictEqual(row!["mate_project_id"], "P_ROBOT");
+      }),
+    );
+
+    it.effect(
+      "a task of an application mirrored to GitHub through the organization's app carries the app's bot as its commits' author",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const app = yield* throughOrgApp(core, "acme-mate");
+          yield* app.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          assert.deepStrictEqual(task.commitAuthor, {
+            name: "acme-mate[bot]",
+            email: `${String(core.github.state.botUserId)}+acme-mate[bot]@users.noreply.github.com`,
+          });
+        }),
+    );
+
+    it.effect("a task of an application mirrored with a kept token carries no commit author", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool();
+        yield* core.issue(1);
+        const task = yield* toldTask(core.robot.link, 1);
+        assert.notProperty(task, "commitAuthor");
       }),
     );
   });

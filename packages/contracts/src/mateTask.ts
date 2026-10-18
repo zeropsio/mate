@@ -106,6 +106,16 @@ export type MateTaskLimits = typeof MateTaskLimits.Type;
 export const TASK_SPENT_MAX = 100_000;
 export const TASK_WORKED_MAX = 100 * 24 * 60 * 60_000;
 
+/**
+ * Who a task's commits are by: the organization's GitHub app's bot (`<slug>[bot]`, its address
+ * `<bot user id>+<slug>[bot]@users.noreply.github.com`), so GitHub shows them as the bot's.
+ */
+export const MateTaskCommitAuthor = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  email: TrimmedNonEmptyString,
+});
+export type MateTaskCommitAuthor = typeof MateTaskCommitAuthor.Type;
+
 /** A task as HQ hands it to a Mate. */
 export const MateTask = Schema.Struct({
   /** HQ's id of the task: the same task handed twice is one task. */
@@ -115,6 +125,12 @@ export const MateTask = Schema.Struct({
   body: Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX)),
   /** What it may spend; absent from an older HQ: the Mate's own defaults. */
   limits: Schema.optionalKey(MateTaskLimits),
+  /**
+   * Who its commits are by, where its application mirrors to GitHub through the organization's
+   * app and HQ knows the app's bot; absent otherwise (a token's mirror, none, GitHub out of reach),
+   * and from an older HQ: the Mate leaves its working copies' author as it is.
+   */
+  commitAuthor: Schema.optionalKey(MateTaskCommitAuthor),
 });
 export type MateTask = typeof MateTask.Type;
 

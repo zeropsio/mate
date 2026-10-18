@@ -54,6 +54,7 @@ import {
   ConversationId,
   type ConversationAgent,
   type MateTask,
+  type MateTaskCommitAuthor,
   type MateTaskLimits,
   type MateTaskMessage,
   type MateTaskReport,
@@ -85,6 +86,7 @@ import {
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { ZeropsTaskLedger, type TaskEntry } from "./ZeropsTaskLedger.ts";
 
@@ -145,6 +147,12 @@ const REFUSALS = {
   busy: "This Mate is still at work on something else.",
   notNow: "This Mate could not start the task now.",
 } as const;
+
+/** Why some of a task's commits may show another author: the dev services that kept theirs. */
+const authorUnsetDetail = (author: MateTaskCommitAuthor, where: ReadonlyArray<string>) =>
+  where.length === 0
+    ? `This Mate could not reach its code to make ${author.name} its commits' author, so they may show another.`
+    : `This Mate could not make ${author.name} the author of its commits on ${where.join(", ")}, so they may show another.`;
 
 /**
  * The question the agent's last words end on — their last line, `QUESTION: …`, with nothing after
@@ -398,6 +406,7 @@ export const make = Effect.gen(function* () {
   const standUp = yield* ZeropsStandUpReceipt;
   const ledger = yield* ZeropsTaskLedger;
   const bus = yield* ProviderRuntimeEventBus;
+  const commitAuthor = yield* ZeropsCommitAuthor;
   // One frame at a time: two told at once never both pass the one-task check.
   const taking = yield* Semaphore.make(1);
   // How each task stands once its conversation moved, for every link that follows them.
@@ -694,6 +703,19 @@ export const make = Effect.gen(function* () {
       // Its limits kept before its first run can start, so the run is held to them from the start.
       const { limits } = task;
       if (limits !== undefined) yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
+      // Its commits by the organization's app's bot, set before its run can commit; a working copy
+      // that keeps its author never stops the task, and its report says where.
+      const author = task.commitAuthor;
+      const authorUnset =
+        author === undefined
+          ? undefined
+          : yield* commitAuthor.set(author).pipe(
+              Effect.as(undefined),
+              Effect.catchTags({
+                CommitAuthorUnset: (unset) =>
+                  Effect.succeed(authorUnsetDetail(author, unset.where)),
+              }),
+            );
       const ask = task.body.trim();
       const result = yield* engine.deliver(
         conversationId,
@@ -715,6 +737,7 @@ export const make = Effect.gen(function* () {
         taskId: task.id,
         state: "accepted",
         conversationId,
+        ...(authorUnset === undefined ? {} : { detail: authorUnset }),
         ...taskSpendOf(task.id, yield* ledger.entry(task.id), undefined),
       });
     }).pipe(

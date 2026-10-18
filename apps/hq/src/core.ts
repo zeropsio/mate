@@ -193,6 +193,7 @@ const services = (options: CoreOptions) => {
   const tasks = mateTasksLayer(options.tasks).pipe(
     Layer.provide(orgAiKeysLayer),
     Layer.provide(taskSourceChannelsLayer),
+    Layer.provide(githubApp),
   );
   const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
   // GitHub's default branch upstream for repositories mirrored through the app: one, as the app;

@@ -9,6 +9,7 @@ import {
   type CommandResult,
   type ConversationAgent,
   type MateTask,
+  type MateTaskCommitAuthor,
   type MateTaskMessage,
   type MateTaskReport,
   type Principal,
@@ -34,6 +35,7 @@ import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { CommitAuthorUnset, ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import { emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
@@ -52,6 +54,12 @@ const task = (id: string, number = 42): MateTask => ({
   },
   body: "Add two teas, reload: the cart is empty.",
 });
+
+/** The organization's GitHub app's bot, as HQ names a task's commit author. */
+const BOT: MateTaskCommitAuthor = {
+  name: "acme-mate[bot]",
+  email: "4242+acme-mate[bot]@users.noreply.github.com",
+};
 
 /** The default OpenCode instance as its probe reads it: on, signed in to Nebius, models listed. */
 const openCode = (overrides: Partial<ServerProvider> = {}): ServerProvider => ({
@@ -143,6 +151,8 @@ const rig = (
     readonly ledger?: Map<string, TaskEntry>;
     /** The conversations the engine holds as the Mate starts: a restart's record. */
     readonly held?: ReadonlyArray<ConversationView>;
+    /** Setting a task's commit author fails on these dev services. */
+    readonly authorUnsetOn?: ReadonlyArray<string>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -152,6 +162,8 @@ const rig = (
     const unreadable = new Set<ConversationId>();
     const assigned: Array<{ conversationId: ConversationId; agent: ConversationAgent }> = [];
     const delivered: Array<Delivered> = [];
+    /** Each commit author set on the working copies, and how many messages were sent by then. */
+    const authored: Array<{ author: MateTaskCommitAuthor; sentBefore: number }> = [];
     /** The engine's receipts: a command id told again is answered by its first result. */
     const receipts = new Map<string, CommandResult>();
     const changes = yield* PubSub.unbounded<ConversationId>();
@@ -231,6 +243,14 @@ const rig = (
     const standUp = Layer.mock(ZeropsStandUpReceipt)({
       settled: Effect.succeed(options.standUpSettled ?? true),
     });
+    const commitAuthor = Layer.mock(ZeropsCommitAuthor)({
+      set: (author) =>
+        Effect.suspend(() => {
+          authored.push({ author, sentBefore: delivered.length });
+          const where = options.authorUnsetOn ?? [];
+          return where.length === 0 ? Effect.void : Effect.fail(new CommitAuthorUnset({ where }));
+        }),
+    });
     const bus = ProviderRuntimeEventBusTest.make(
       Stream.fromPubSub(runtime) as Stream.Stream<SpiEvent>,
     );
@@ -244,6 +264,7 @@ const rig = (
             instances,
             standUp,
             bus,
+            commitAuthor,
             ZeropsTaskLedgerModule.layerMemory(options.ledger),
           ),
         ),
@@ -303,6 +324,7 @@ const rig = (
       unreadable,
       assigned,
       delivered,
+      authored,
       link,
       sent,
       reports,
@@ -392,6 +414,50 @@ describe("an automated Mate takes a task from outside", () => {
       if (first?.command._tag !== "Send") return;
       assert.notProperty(first.command, "taskAsk");
     }),
+  );
+
+  it.effect(
+    "an automated Mate sets the task's commit author on its working copies before the run",
+    () =>
+      Effect.gen(function* () {
+        const { authored, delivered, link, sent } = yield* rig();
+        yield* link.receive({ ...task("task-1"), commitAuthor: BOT });
+        assert.deepStrictEqual(authored, [{ author: BOT, sentBefore: 0 }]);
+        assert.strictEqual(delivered.length, 1);
+        assert.deepStrictEqual(sent, [
+          { taskId: "task-1", state: "accepted", conversationId: taskConversationId("task-1") },
+        ]);
+      }),
+  );
+
+  it.effect("a task with no commit author changes no working copy", () =>
+    Effect.gen(function* () {
+      const { authored, delivered, link } = yield* rig();
+      yield* link.receive(task("task-1"));
+      assert.deepStrictEqual(authored, []);
+      assert.strictEqual(delivered.length, 1);
+    }),
+  );
+
+  it.effect("a Mate that is not automated sets no commit author", () =>
+    Effect.gen(function* () {
+      const { authored, link } = yield* rig({ automated: false });
+      yield* link.receive({ ...task("task-1"), commitAuthor: BOT });
+      assert.deepStrictEqual(authored, []);
+    }),
+  );
+
+  it.effect(
+    "a commit author the Mate cannot set does not stop the task, and its report says where",
+    () =>
+      Effect.gen(function* () {
+        const { delivered, link, sent } = yield* rig({ authorUnsetOn: ["apidev"] });
+        yield* link.receive({ ...task("task-1"), commitAuthor: BOT });
+        assert.strictEqual(delivered.length, 1);
+        assert.strictEqual(sent[0]?.state, "accepted");
+        assert.include(sent[0]?.detail ?? "", "acme-mate[bot]");
+        assert.include(sent[0]?.detail ?? "", "apidev");
+      }),
   );
 
   it.effect(

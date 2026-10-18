@@ -40,7 +40,13 @@
  *
  * @module mateTasks
  */
-import type { MateTask, MateTaskLimits, MateTaskMessage, MateTaskReport } from "@t3tools/contracts";
+import type {
+  MateTask,
+  MateTaskCommitAuthor,
+  MateTaskLimits,
+  MateTaskMessage,
+  MateTaskReport,
+} from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
@@ -60,6 +66,7 @@ import type { SqlError } from "effect/sql/SqlError";
 import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
+import { GithubAuth, botCommitAuthor } from "./githubAuth.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
@@ -206,14 +213,33 @@ const TASK_COLUMNS = "id::text AS id, app_id::text AS app_id, source, body";
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
-/** A task as its Mate is told it, with what it may spend; none where its source does not read. */
-const taskOf = (row: TaskRow, limits: MateTaskLimits): MateTask | undefined => {
+/**
+ * A task as its Mate is told it, with what it may spend and who its commits are by, where HQ
+ * knows; none where its source does not read.
+ */
+const taskOf = (
+  row: TaskRow,
+  limits: MateTaskLimits,
+  commitAuthor: MateTaskCommitAuthor | undefined,
+): MateTask | undefined => {
   const source = sourceOfRow(row.source);
-  return source === undefined ? undefined : { id: row.id, source, body: row.body, limits };
+  return source === undefined
+    ? undefined
+    : {
+        id: row.id,
+        source,
+        body: row.body,
+        limits,
+        ...(commitAuthor === undefined ? {} : { commitAuthor }),
+      };
 };
 /** Its `task` frame, or none (`taskOf`). */
-const taskFrame = (row: TaskRow, limits: MateTaskLimits) => {
-  const task = taskOf(row, limits);
+const taskFrame = (
+  row: TaskRow,
+  limits: MateTaskLimits,
+  commitAuthor: MateTaskCommitAuthor | undefined,
+) => {
+  const task = taskOf(row, limits, commitAuthor);
   return task === undefined ? undefined : encodeDown({ type: "task", task });
 };
 
@@ -285,6 +311,30 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /** What each task may spend, as the organization says now (`taskLimits.ts`). */
       const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
       const overBudget = Effect.provideService(budgetSpent, SqlClient.SqlClient, sql);
+      const github = yield* GithubAuth;
+      /**
+       * Who the commits of the application's tasks are by: the organization's app's bot, where a
+       * repository of the application is mirrored through the app (its bot read once, then kept
+       * with the app). None otherwise, and none while HQ cannot tell: the task goes out anyway.
+       */
+      const commitAuthorOf = (appId: string) =>
+        Effect.gen(function* () {
+          const [through] = yield* sql`
+            SELECT 1 FROM hq_repo_remote WHERE app_id::text = ${appId} AND via = 'app' LIMIT 1`;
+          if (through === undefined) return undefined;
+          const bot = yield* github.bot;
+          return bot === undefined ? undefined : botCommitAuthor(bot);
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.as(
+              Effect.logWarning("a task goes out with no commit author: its bot is not known", {
+                appId,
+                reason: error._tag === "GithubAuthUnavailable" ? error.reason : error._tag,
+              }),
+              undefined,
+            ),
+          ),
+        );
 
       /**
        * Whether the Mate's last task's change still waits for review: its copy of the code holds
@@ -588,6 +638,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             ORDER BY seq LIMIT ${Math.max(free.length * 4, 20)}`;
           let handedAny = false;
           const limits = yield* limitsNow;
+          // Read once a task of the application is handed out, the same for each.
+          let commitAuthor: { readonly is: MateTaskCommitAuthor | undefined } | undefined;
           for (const task of waiting) {
             if (free.length === 0) break;
             // The first free Mate that reads the task; one none of them reads waits for one.
@@ -614,7 +666,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               );
             if (handed.length === 0) continue;
             handedAny = true;
-            const frame = taskFrame(task, limits);
+            commitAuthor ??= { is: yield* commitAuthorOf(appId) };
+            const frame = taskFrame(task, limits, commitAuthor.is);
             if (frame !== undefined) yield* tellMate(projectId, frame);
             yield* structure.mateTouched(projectId);
           }
@@ -1286,6 +1339,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 SELECT ${sql.literal(TASK_COLUMNS)} FROM hq_task
                 WHERE mate_project_id = ${projectId} AND state = 'assigned'`;
               const limits = handed.length === 0 ? DEFAULT_TASK_LIMITS : yield* limitsNow;
+              const frames = yield* Effect.forEach(handed, (row) =>
+                Effect.map(commitAuthorOf(row.app_id), (author) => taskFrame(row, limits, author)),
+              );
               // On it, or its change waiting for review: what was said of it, and whether people
               // stopped it.
               const on = yield* sql<{ readonly id: string; readonly stop_reason: string | null }>`
@@ -1312,11 +1368,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 }),
               );
               return Stream.concat(
-                Stream.fromIterable([
-                  ...handed.flatMap((row) => taskFrame(row, limits) ?? []),
-                  ...said,
-                  ...stops,
-                ]),
+                Stream.fromIterable([...frames.flatMap((frame) => frame ?? []), ...said, ...stops]),
                 Stream.fromSubscription(live).pipe(
                   Stream.filter((message) => message.projectId === projectId),
                   Stream.map((message) => message.frame),
