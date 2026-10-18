@@ -387,6 +387,7 @@ export const ChatHeader = memo(function ChatHeader({
     threadRef: isServerThread && crewOrigin === null ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
     onStartRename: startRename,
+    automatedMate: mate?.automated === true,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleMenuTimerRef = useRef<number | null>(null);

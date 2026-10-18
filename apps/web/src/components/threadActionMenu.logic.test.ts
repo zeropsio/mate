@@ -50,6 +50,17 @@ describe("buildThreadActionMenuItems", () => {
     expect(allIds(baseState)).not.toContain("copy-branch");
   });
 
+  it("an automated Mate offers no new thread", () => {
+    // Tasks start its conversation's turns; people don't start threads beside it.
+    const automated = allIds({ ...baseState, branch: "feat/menu", automatedMate: true });
+    expect(automated).not.toContain("new-thread-on-branch");
+    expect(automated).toContain("copy-branch");
+    // A personal Mate's thread still offers one.
+    expect(allIds({ ...baseState, branch: "feat/menu", automatedMate: false })).toContain(
+      "new-thread-on-branch",
+    );
+  });
+
   it("disables title regeneration while one is in flight", () => {
     const item = buildThreadActionMenuItems({ ...baseState, isRegeneratingTitle: true }).find(
       (candidate) => candidate.id === "regenerate-title",
