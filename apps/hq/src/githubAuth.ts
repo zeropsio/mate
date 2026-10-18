@@ -6,6 +6,7 @@
  *
  * @module githubAuth
  */
+import type { MateTaskCommitAuthor } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,12 @@ export interface GithubBot {
   /** The bot user's id: commits it authors use `<userId>+<login>@users.noreply.github.com`. */
   readonly userId: number;
 }
+
+/** The bot as a commit's author: GitHub shows a commit by this name and address as the bot's. */
+export const botCommitAuthor = (bot: GithubBot): MateTaskCommitAuthor => ({
+  name: bot.login,
+  email: `${String(bot.userId)}+${bot.login}@users.noreply.github.com`,
+});
 
 /**
  * What HQ uses an app token on one repository for, and the most GitHub grants it for that: what
