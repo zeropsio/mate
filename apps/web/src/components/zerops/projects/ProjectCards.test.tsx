@@ -334,3 +334,32 @@ it("a project with no stage offers to add one where HQ offers it, and assumes no
     container.remove();
   }
 });
+
+it("a release in progress shows on the project's production, never in a Mate's conversation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  const group = entry([WREN]);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <ProjectCards
+        focusGroup={undefined}
+        groups={[group]}
+        props={{
+          ...FLOW_PROPS,
+          renderProductionRun: () => <p data-test-run="">Releasing v0.1.1</p>,
+        }}
+      />,
+    ),
+  );
+  try {
+    const production = container.querySelector('[data-zerops-place="production"]');
+    expect(production?.querySelector("[data-test-run]")?.textContent).toBe("Releasing v0.1.1");
+    expect(container.querySelectorAll("[data-test-run]")).toHaveLength(1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

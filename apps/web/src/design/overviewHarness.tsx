@@ -34,6 +34,7 @@ import type { AppRouter } from "~/router";
 import { createRoot } from "react-dom/client";
 
 import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
+import { PutLiveRow } from "~/components/zerops/ProductionRun";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
@@ -680,6 +681,29 @@ function HarnessPage() {
                 />
               );
             }}
+            renderProductionRun={(entry) =>
+              entry.group.groupId === "tea" ? (
+                <PutLiveRow
+                  address={undefined}
+                  copied={false}
+                  nowMs={NOW}
+                  onAgain={() => acted.push("run-again")}
+                  onCopy={() => {}}
+                  onDismiss={() => acted.push("run-dismiss")}
+                  onOpenProject={() => {}}
+                  onSeeCode={() => {}}
+                  run={{
+                    orgId: "harness",
+                    groupId: "tea",
+                    project: "Tea Shop",
+                    change: undefined,
+                    phase: "releasing",
+                    tag: "v0.1.4",
+                    stepAt: NOW - 42_000,
+                  }}
+                />
+              ) : null
+            }
             renderCardPeople={(entry) => {
               const people = cardPeople([...entry.mates.values()].map((value) => value.owner));
               return people.length === 0 ? null : (

@@ -1,25 +1,21 @@
 /**
- * *Put it live* in the conversation, at the composer's top where the change waited (G7, G8): while
- * the run is under way, the one wait row — its step's words replacing each other in place; once
- * live, the live card — the address, large and the way in, *Copy link*, and the release it runs;
- * stopped, the cause and the one action that fixes it. With no run of this tab, it says from the
- * project's flow how a release ended (`putLiveResumed`): one on its way, followed to the live card
- * wherever it was pressed; production the person's own run made and a reload stopped short of its
- * release, with *Release* one press away.
+ * A release or a *Put it live* run on its project's production — the overview card's Production
+ * and the project page's (the owner, of the run drawn above one Mate's composer: "should this be
+ * tied to a single mate also?" No): while it is under way, one line whose step's words replace
+ * each other in place, with its clock; once live, "v0.1.1 is live", its address and *Copy link*,
+ * for as long as the person keeps it; stopped, the cause and the one action that fixes it. With no
+ * run of this tab, it says from the project's flow how a release ended (`putLiveResumed`).
  *
- * The wait row is drawn by `PutLiveProgress` alone, so the shared progress piece can take its
- * place in one spot.
+ * The run belongs to the project: it is drawn wherever its production is, never in a Mate's
+ * conversation.
  */
-import { productionProjectOf, readZeropsMembership } from "@t3tools/client-runtime/zerops";
-import type { ScopedThreadRef } from "@t3tools/contracts";
-import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { productionProjectOf } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useCompactProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
 import {
@@ -32,21 +28,17 @@ import {
 } from "~/zerops/putLive.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useOpenReview } from "~/zerops/review";
-import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 
-import { ComposerAsk } from "../chat/ComposerAsk";
 import { Button } from "../ui/button";
 import { FailureDetails } from "../ui/failure";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useGroupName, useProductionAddresses } from "./review/reviewReads";
-import { MateFace } from "./primitives";
 import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
 
 /**
- * The one wait row's step: the wait line's spinner and words, at the composer top's detail size so
- * the row keeps the strip's height — until the shared progress piece lands, here alone. Its clock
- * says how long the step has run, so a long wait reads as one; it ticks here alone, never the row.
+ * The run's step: a spinner and its words. Its clock says how long the step has run, so a long
+ * wait reads as one; it ticks here alone, never the line.
  */
 export function PutLiveProgress({
   step,
@@ -76,7 +68,6 @@ function PutLiveClock({ since }: { readonly since: number }) {
 
 export interface PutLiveRowProps {
   readonly run: PutLiveRun;
-  readonly face: { readonly tint: MateTintId; readonly shape?: MateShapeId | undefined };
   /** Production's address, once read. */
   readonly address: { readonly url: string; readonly host: string } | undefined;
   readonly nowMs: number;
@@ -95,99 +86,83 @@ const FAILURE_ACTION = {
   release: "Release",
 } as const;
 
+/** The run on production: under way, live, or stopped with its one action. */
 export function PutLiveRow(props: PutLiveRowProps) {
-  const { run, face, address } = props;
+  const { run, address } = props;
   const progress = putLiveProgress(run);
   if (run.phase === "live") {
     return (
-      <ComposerAsk
-        actions={
-          <>
-            {address === undefined ? null : (
-              <Button
-                onClick={() => {
-                  props.onCopy(address.url);
-                }}
-                size="sm"
-                variant="link"
-              >
-                {props.copied ? "Copied" : "Copy link"}
-              </Button>
-            )}
-            <DismissButton onDismiss={props.onDismiss} />
-          </>
-        }
-        detail={putLiveReleased(run, props.nowMs)}
-        face={<MateFace shape={face.shape} size={24} state="done" tint={face.tint} />}
-        kind="live"
-        label={progress.title}
-        title={
-          address === undefined ? (
-            progress.title
-          ) : (
-            <a
-              className="block truncate text-base text-foreground leading-4.5 underline-offset-4 hover:underline"
-              href={address.url}
-              rel="noreferrer"
-              target="_blank"
-            >
+      <div className="pp-run" data-zerops-production-run="live" role="status">
+        <p className="pp-run-line">
+          <i aria-hidden="true" className="ov-dot" data-dot="running" />
+          <span className="truncate">
+            {run.tag === undefined ? progress.title : `${run.tag} is live`}
+          </span>
+          <span className="pp-run-quiet">{putLiveReleased(run, props.nowMs)}</span>
+          <DismissButton onDismiss={props.onDismiss} />
+        </p>
+        {address === undefined ? null : (
+          <p className="pp-run-acts">
+            <a className="pp-road-place-link" href={address.url} rel="noreferrer" target="_blank">
               {address.host}
             </a>
-          )
-        }
-      />
+            <Button
+              onClick={() => {
+                props.onCopy(address.url);
+              }}
+              size="sm"
+              variant="link"
+            >
+              {props.copied ? "Copied" : "Copy link"}
+            </Button>
+          </p>
+        )}
+      </div>
     );
   }
   if (run.phase === "failed") {
     const action = run.failure?.action ?? "again";
     return (
-      <ComposerAsk
-        actions={
-          <>
-            {run.failure?.alsoProject === true ? (
-              <Button onClick={props.onOpenProject} size="sm" variant="link">
-                {FAILURE_ACTION.project}
-              </Button>
-            ) : null}
-            <Button
-              onClick={
-                action === "again" || action === "release"
-                  ? props.onAgain
-                  : action === "see-code"
-                    ? props.onSeeCode
-                    : props.onOpenProject
-              }
-            >
-              {FAILURE_ACTION[action]}
+      <div className="pp-run" data-zerops-production-run="failed" role="status">
+        <p className="pp-run-line" data-tone="failed">
+          <i aria-hidden="true" className="ov-dot" data-dot="failed" />
+          <span className="truncate">{progress.title}</span>
+          <DismissButton onDismiss={props.onDismiss} />
+        </p>
+        <div className="pp-run-cause">
+          {progress.step}
+          {run.failure?.detail === undefined ? null : (
+            <FailureDetails>{run.failure.detail}</FailureDetails>
+          )}
+        </div>
+        <p className="pp-run-acts">
+          <Button
+            onClick={
+              action === "again" || action === "release"
+                ? props.onAgain
+                : action === "see-code"
+                  ? props.onSeeCode
+                  : props.onOpenProject
+            }
+            size="sm"
+          >
+            {FAILURE_ACTION[action]}
+          </Button>
+          {run.failure?.alsoProject === true ? (
+            <Button onClick={props.onOpenProject} size="sm" variant="link">
+              {FAILURE_ACTION.project}
             </Button>
-            <DismissButton onDismiss={props.onDismiss} />
-          </>
-        }
-        detail={
-          run.failure?.detail === undefined ? (
-            progress.step
-          ) : (
-            <>
-              {progress.step}
-              <FailureDetails>{run.failure.detail}</FailureDetails>
-            </>
-          )
-        }
-        face={<MateFace shape={face.shape} size={24} state="needs" tint={face.tint} />}
-        kind="live-failed"
-        label={progress.title}
-        title={progress.title}
-      />
+          ) : null}
+        </p>
+      </div>
     );
   }
   return (
-    <ComposerAsk
-      detail={<PutLiveProgress since={progress.since} step={progress.step} />}
-      face={<MateFace shape={face.shape} size={24} state="working" tint={face.tint} />}
-      kind="live-progress"
-      label={progress.title}
-      title={progress.title}
-    />
+    <div aria-label={progress.title} className="pp-run" data-zerops-production-run="progress">
+      <p className="pp-run-line" data-tone="releasing">
+        <PutLiveProgress since={progress.since} step={progress.step} />
+      </p>
+    </div>
   );
 }
 
@@ -195,28 +170,13 @@ function DismissButton({ onDismiss }: { readonly onDismiss: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={
-          <button
-            aria-label="Dismiss"
-            className="composer-top-dismiss"
-            onClick={onDismiss}
-            type="button"
-          >
-            <XIcon aria-hidden="true" />
-          </button>
-        }
-      />
+        render={<Button aria-label="Dismiss" onClick={onDismiss} size="icon-sm" variant="ghost" />}
+      >
+        <XIcon aria-hidden="true" />
+      </TooltipTrigger>
       <TooltipPopup side="top">Hide</TooltipPopup>
     </Tooltip>
   );
-}
-
-/** The Mate's project (group) of a conversation, once the inventory places it. */
-export function useConversationGroup(threadRef: ScopedThreadRef | null): string | undefined {
-  const inventory = useZeropsInventory();
-  const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
-  const project = inventory.projects.find((entry) => entry.id === projectId);
-  return readZeropsMembership(project).groupId;
 }
 
 /** What a run resumed from the project's flow reads; `undefined` until it is read. */
@@ -263,8 +223,16 @@ function usePutLiveResumed(groupId: string, current: PutLiveRun | undefined) {
   return resumed;
 }
 
-/** A project's run, as the conversation draws it: the row, or nothing while there is none. */
-export function usePutLiveRow(groupId: string, face: PutLiveRowProps["face"]): React.ReactNode {
+/**
+ * A project's run on its production, while it has one of this tab or one the person's own run made
+ * (`kept`): only then does it read the project's flow to resume it.
+ */
+export function ProductionRun({ groupId }: { readonly groupId: string }) {
+  const known = usePutLive((state) => state.runs.has(groupId) || state.kept.has(groupId));
+  return known ? <ProductionRunRead groupId={groupId} /> : null;
+}
+
+function ProductionRunRead({ groupId }: { readonly groupId: string }) {
   const stored = usePutLiveRun(groupId);
   const resumed = usePutLiveResumed(groupId, stored);
   // Drawn in the frame the flow says it, before the store holds it.
@@ -277,15 +245,11 @@ export function usePutLiveRow(groupId: string, face: PutLiveRowProps["face"]): R
   const nowMs = useNowMs();
   const addresses = useProductionAddresses(run?.phase === "live" ? run.productionId : undefined);
   const { copyToClipboard, isCopied } = useCopyToClipboard();
-  // The person's own attempt is known and the flow not yet: the strip holds its room.
-  if (resumed.kind === "reading")
-    return <div aria-label="Reading production" data-composer-top="unread" className="h-[61px]" />;
-  if (run === undefined) return null;
+  if (resumed.kind === "reading" || run === undefined) return null;
   return (
     <PutLiveRow
       address={putLiveAddress(addresses)}
       copied={isCopied}
-      face={face}
       nowMs={nowMs}
       onAgain={() => {
         // A row said from the flow becomes the run its press resumes: production is released to.

@@ -2,7 +2,7 @@
  * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and
  * each project's run, driven from here so it outlives the sheet and the view the person moves to.
  * A run makes production with what the project already says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
- * the conversation draws where it got (`PutLiveTop`).
+ * its project's production draws where it got (`ProductionRun`).
  */
 import { buildZeropsGroupTree, productionProjectOf } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";

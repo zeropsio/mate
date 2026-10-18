@@ -205,6 +205,11 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderPlacePanel?:
     | ((entry: ProjectsFlowGroup<T>, line: PlaceLine, look: PlacePanelLook) => ReactNode)
     | undefined;
+  /**
+   * A release or *Put it live* run on the project's production (`ProductionRun`): under way, live
+   * for a while, or stopped with its one action — the project's, never a Mate's conversation's.
+   */
+  readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The newest event a card has not said above: the latest merged change, with whose. */
   readonly renderActivity?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** A Mate's lift or a change waits on the viewer in the project (the overview's Waiting filter). */

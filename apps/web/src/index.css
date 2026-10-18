@@ -8790,6 +8790,52 @@ button.pp-road-env:hover {
   color: var(--zerops-status-failed-text);
 }
 
+/* A release or Put it live run on production: its line, then its address or its cause. */
+.pp-run {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-run-line {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-run-line > :last-child:not(:first-child) {
+  margin-left: auto;
+}
+
+.pp-run-line[data-tone="releasing"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.pp-run-line[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-run-quiet,
+.pp-run-cause {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+}
+
+.pp-run-quiet {
+  flex: none;
+}
+
+.pp-run-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .pp-road-place-links {
   display: flex;
   min-width: 0;

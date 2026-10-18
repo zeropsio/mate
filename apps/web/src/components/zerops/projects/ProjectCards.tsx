@@ -865,6 +865,7 @@ function CardProduction<T>({
       ) : (
         (props.renderPlacePanel?.(entry, production, "card") ?? <PlainPanel line={production} />)
       )}
+      {props.renderProductionRun?.(entry)}
       {releaseDoor === null ? null : (
         <div className="ov-acts" data-zerops-card-ready="true">
           {releaseDoor}
@@ -1165,6 +1166,7 @@ export function ProjectPage<T>({
                 </span>
               )}
             </div>
+            {props.renderProductionRun?.(entry)}
             {roadEnvironments !== undefined ? (
               roadEnvironments("production", detailOf)
             ) : read.productionAbsent ? (
