@@ -58,6 +58,8 @@ import {
   type MateTaskReport,
   type Principal,
   type RunEnd,
+  MATE_TASK_CONVERSATION_PREFIX,
+  mateTaskIdOfConversation,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -85,24 +87,18 @@ import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { ZeropsTaskLedger, type TaskEntry } from "./ZeropsTaskLedger.ts";
 
-const TASK_PREFIX = "task-";
-
 /**
  * The conversation a task is worked in, named by the task: HQ's id with every character a
  * conversation id does not carry (a slash ends one) spelled out, so it reads back exactly.
  */
 export const taskConversationId = (taskId: string): ConversationId =>
   ConversationId.make(
-    `${TASK_PREFIX}${taskId.replace(/[^A-Za-z0-9_-]/gu, (char) => `.${char.codePointAt(0)!.toString(16)}.`)}`,
+    `${MATE_TASK_CONVERSATION_PREFIX}${taskId.replace(/[^A-Za-z0-9_-]/gu, (char) => `.${char.codePointAt(0)!.toString(16)}.`)}`,
   );
 
-/** The task a conversation is worked for, when it is a task's. */
+/** The task a conversation is worked for, when it is a task's (`mateTaskIdOfConversation`). */
 export const taskIdOfConversation = (id: ConversationId): string | undefined =>
-  id.startsWith(TASK_PREFIX)
-    ? id
-        .slice(TASK_PREFIX.length)
-        .replace(/\.([0-9a-f]+)\./gu, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
-    : undefined;
+  mateTaskIdOfConversation(id);
 
 /** The line a task's agent ends its turn on when it cannot go on without a person's answer. */
 const QUESTION_MARK = "QUESTION:";
