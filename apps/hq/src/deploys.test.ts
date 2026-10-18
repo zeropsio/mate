@@ -671,6 +671,101 @@ describe("deploys", () => {
     });
 
     it.effect(
+      "a release to an origin's main pushes the SHA stage tested, as a fast-forward",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, request, drained, planned }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* commit("code", { "README.md": "one" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-production");
+              yield* gitEnvironment(appId, "git-stage", "stage");
+              const head = (branch: string) =>
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "rev-parse", `refs/heads/${branch}`],
+                  { encoding: "utf8" },
+                ).trim();
+              const released: Array<{ readonly sha: string; readonly before: string | null }> = [];
+              for (const [tag, text] of [
+                ["v0.1.0", "two"],
+                ["v0.2.0", "three"],
+              ] as const) {
+                const sha = yield* commit("code", { "README.md": text });
+                yield* planned;
+                yield* drained;
+                expect(head("git-stage")).toBe(sha);
+                yield* gitRelease(appId, "git-production", tag, [{ service: "code", sha }]);
+                yield* request({ cause: "release", appId, tag, by: "owner" });
+                yield* drained;
+                const [job] = yield* sql<{
+                  readonly state: string;
+                  readonly before: string | null;
+                }>`SELECT state, evidence->>'before' AS before FROM hq_deploy_job j
+                WHERE kind='push' AND environment_id='git-production' AND sha=${sha}`;
+                expect(job?.state).toBe("pushed");
+                // The very commit stage carries, never a new merge commit on main.
+                expect(head("git-production")).toBe(sha);
+                released.push({ sha, before: job!.before });
+              }
+              const [first, second] = released;
+              expect(second!.before).toBe(first!.sha);
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "rev-list", "--parents", "-n", "1", second!.sha],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe(`${second!.sha} ${first!.sha}`);
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
+
+    it.effect("a release to an origin's main refuses a commit stage never took", () => {
+      const destinations = new Map<string, { url: string; keptAt: string }>();
+      return withDeploys(
+        ({ appId, commit, request, drained, planned }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const sha = yield* commit("code", { "README.md": "one" });
+            yield* planned;
+            const remote = yield* localRemote(appId, "code", destinations);
+            yield* gitEnvironment(appId, "git-production");
+            // Stage is attached after main moved: it takes nothing until the next merge.
+            yield* gitEnvironment(appId, "git-stage", "stage");
+            yield* gitRelease(appId, "git-production", "v0.1.0", [{ service: "code", sha }]);
+            yield* request({ cause: "release", appId, tag: "v0.1.0", by: "owner" });
+            yield* drained;
+            const jobs = yield* sql<{
+              readonly environment: string;
+              readonly state: string;
+              readonly reason: string | null;
+            }>`SELECT environment_id AS environment, state, reason FROM hq_deploy_job WHERE kind='push'`;
+            expect(jobs).toEqual([
+              {
+                environment: "git-production",
+                state: "refused",
+                reason: `Stage never took ${sha.slice(0, 7)}, so stage CI "check" never ran on it and this release can't go out. Release again once stage has main's head.`,
+              },
+            ]);
+            expect(
+              NodeChildProcess.execFileSync(
+                "git",
+                ["--git-dir", remote, "for-each-ref", "--format=%(objectname)"],
+                { encoding: "utf8" },
+              ).trim(),
+            ).toBe("");
+          }),
+        { pushLayer: localPushLayer(destinations) },
+      );
+    });
+
+    it.effect(
       "Replacing a remote's token pushes what each environment through it is waiting for.",
       () => {
         const destinations = new Map<string, { url: string; keptAt: string }>();

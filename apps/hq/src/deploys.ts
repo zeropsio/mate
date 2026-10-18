@@ -125,7 +125,7 @@ import { changesLayer } from "./changes.ts";
 import { repoRemotesLayer } from "./repoRemotes.ts";
 import type { GithubAuth } from "./githubAuth.ts";
 import { githubProbesLayer } from "./githubProbes.ts";
-import { gitTransportLayer } from "./gitTransport.ts";
+import { type GitTransport, gitTransportLayer } from "./gitTransport.ts";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { Leader, type NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
@@ -152,7 +152,7 @@ export interface DeploysOptions {
   readonly pushLayer?: Layer.Layer<
     GitPush,
     never,
-    GitHost | Leader | SqlClient.SqlClient | Roles | DeployKeys
+    GitHost | Leader | SqlClient.SqlClient | Roles | DeployKeys | GitTransport
   >;
 }
 
@@ -2056,7 +2056,11 @@ export const deploysLayer = (
                 if (job === undefined || job.state === "building") return;
                 if (job.kind === "push") {
                   if (job.state === "unresolved") return;
-                  yield* gitPush.run(job, tick);
+                  yield* gitPush.run(
+                    job,
+                    tick,
+                    Stream.runDrain(Stream.take(Stream.drop(SubscriptionRef.changes(ticks), 1), 1)),
+                  );
                   yield* watchCi(job.id);
                   yield* tick;
                   continue;
@@ -2646,7 +2650,7 @@ const deliveryLayer = (pushLayer: DeploysOptions["pushLayer"]) => {
     Layer.provide(githubProbesLayer.pipe(Layer.provide(transport))),
   );
   return Layer.merge(
-    pushLayer ?? gitPushLayer.pipe(Layer.provide(remotes)),
+    (pushLayer ?? gitPushLayer.pipe(Layer.provide(remotes))).pipe(Layer.provide(transport)),
     gitCiLayer.pipe(Layer.provide(Layer.merge(remotes, transport))),
   );
 };

@@ -139,11 +139,22 @@ export const HqPushCi = Schema.Struct({
 });
 export type HqPushCi = typeof HqPushCi.Type;
 
+/**
+ * The check run a release to an origin's main waits for on stage, from GitHub Actions — the one
+ * HQ asks the person to require on main.
+ */
+export const RELEASE_CHECK = "check";
+
 export const HqPushEvidence = Schema.Struct({
   attempt: Schema.optionalKey(HqPushAttempt),
   confirmed: Schema.optionalKey(HqPushReceipt),
   observed: Schema.optionalKey(Schema.NullOr(Sha)),
   ci: Schema.optionalKey(HqPushCi),
+  /**
+   * A release to an origin's main that has a stage: `RELEASE_CHECK` on the attempted commit, as
+   * stage's push ran it and HQ read it before pushing.
+   */
+  gate: Schema.optionalKey(HqPushCi),
   nextActor: HqDeployEvidence.fields.nextActor,
   nextAction: HqDeployEvidence.fields.nextAction,
 }).check(
@@ -152,6 +163,8 @@ export const HqPushEvidence = Schema.Struct({
     const c = value.confirmed;
     if (value.ci !== undefined && value.ci.sha !== c?.after)
       return "Expected CI of the confirmed commit";
+    if (value.gate !== undefined && value.gate.sha !== a?.sha)
+      return "Expected stage's check of the attempted commit";
     return c === undefined ||
       (a !== undefined &&
         a.remote.url === c.remote.url &&

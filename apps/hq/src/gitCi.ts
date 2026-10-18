@@ -3,7 +3,7 @@
  * token after the hand-over is confirmed and kept on that push's evidence (`HqPushCi`), so the
  * person and the Mate read it where they read the push.
  */
-import type { HqPushCi, HqPushCiFailure } from "@t3tools/shared/hqDeploys";
+import { type HqPushCi, type HqPushCiFailure, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -49,6 +49,7 @@ const CheckRuns = Schema.Struct({
       conclusion: Schema.NullOr(Schema.String),
       html_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
       details_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      app: Schema.optionalKey(Schema.NullOr(Schema.Struct({ id: Schema.Number }))),
     }),
   ),
 });
@@ -191,7 +192,13 @@ const sameRecord = (a: HqPushCi, b: Omit<HqPushCi, "sha" | "readAt" | "until">) 
 
 const stoppedAfterWindow = `Mate stopped watching CI ${Duration.toMinutes(CI_WINDOW)} minutes after the push.`;
 
-/** The pushed commit HQ reads CI for: where it went, when the hand-over was confirmed, what was read. */
+/** GitHub Actions' app id on github.com: a check run another app reports under the same name is not it. */
+export const GITHUB_ACTIONS_APP = 15368;
+
+/**
+ * The pushed commit HQ reads CI for: where it went, when the hand-over was confirmed, what was read.
+ * `only` counts just the named check run of one app, never commit statuses or branch rules.
+ */
 export interface CiTarget {
   readonly appId: string;
   readonly repo: string;
@@ -200,6 +207,7 @@ export interface CiTarget {
   readonly sha: string;
   readonly pushedAt: number;
   readonly previous: HqPushCi | undefined;
+  readonly only?: { readonly name: string; readonly appId: number };
 }
 /** Where each changed record lands, and whether a newer push to the branch replaced this one. */
 export interface CiStore<E> {
@@ -215,10 +223,11 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
   Effect.gen(function* () {
     const remotes = yield* Remotes;
     const transport = yield* GitTransport;
-    const { remote, sha, pushedAt, branch } = target;
+    const { remote, sha, pushedAt, branch, only } = target;
     const until = pushedAt + Duration.toMillis(CI_WINDOW);
     let last = target.previous;
-    let required: ReadonlyArray<string> | null = last?.required ?? null;
+    let required: ReadonlyArray<string> | null =
+      only === undefined ? (last?.required ?? null) : [only.name];
     let counted: Pick<HqPushCi, "verdict" | "done" | "total" | "failed"> = last ?? {
       verdict: "none",
       done: 0,
@@ -331,7 +340,7 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
       });
 
     // The branch rules decide which checks count; they are read once per watch.
-    for (;;) {
+    while (only === undefined) {
       const rules = yield* get(`/rules/branches/${encodeURIComponent(branch)}`, (reply) =>
         Option.getOrUndefined(decodeMessage(reply.body))?.message ===
         "Upgrade to GitHub Pro or make this repository public to enable this feature."
@@ -373,13 +382,16 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
         runs.push(...decoded.check_runs);
         if (runs.length >= decoded.total_count || decoded.check_runs.length === 0) break;
       }
-      const read =
+      // GitHub Actions writes no commit statuses: one named check run never reads them.
+      const read: Read =
         failedRead ??
-        (yield* get(
-          `/commits/${sha}/status?per_page=100`,
-          () =>
-            "The token can't read commit statuses. Add Commit statuses: Read to the token to show CI.",
-        ));
+        (only !== undefined
+          ? { _tag: "body", body: '{"statuses":[]}' }
+          : yield* get(
+              `/commits/${sha}/status?per_page=100`,
+              () =>
+                "The token can't read commit statuses. Add Commit statuses: Read to the token to show CI.",
+            ));
       const statuses =
         read._tag === "body" ? Option.getOrUndefined(decodeStatus(read.body))?.statuses : undefined;
       if (read._tag === "refused") return yield* refuse(read.reason);
@@ -388,7 +400,14 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
         continue;
       }
       transient = 0;
-      counted = ciVerdict(runs, statuses, required);
+      counted =
+        only === undefined
+          ? ciVerdict(runs, statuses, required)
+          : ciVerdict(
+              runs.filter((run) => run.name === only.name && run.app?.id === only.appId),
+              [],
+              null,
+            );
       const now = yield* Clock.currentTimeMillis;
       const finished =
         counted.verdict === "none"
@@ -400,6 +419,73 @@ export const followCi = <E>(target: CiTarget, store: CiStore<E>) =>
       if (!(yield* pause(POLL_MS[Math.min(poll++, POLL_MS.length - 1)]!))) return;
     }
   });
+
+/**
+ * Stage's `RELEASE_CHECK` on the commit a release pushes to its origin's main: read from when
+ * stage took it (`pushedAt`) until it completed, none reported five minutes after, or the window
+ * passed; `save` is told each change. The record it ends on, as `releaseGateWords` reads it.
+ */
+export const stageCheck = <E>(
+  target: Omit<CiTarget, "only">,
+  save: (gate: HqPushCi) => Effect.Effect<void, E>,
+) =>
+  Effect.gen(function* () {
+    let gate = target.previous;
+    yield* followCi(
+      { ...target, only: { name: RELEASE_CHECK, appId: GITHUB_ACTIONS_APP } },
+      {
+        save: (ci) =>
+          Effect.flatMap(
+            Effect.sync(() => void (gate = ci)),
+            () => save(ci),
+          ),
+        replaced: Effect.succeed(false),
+      },
+    );
+    return gate;
+  });
+
+/** What a release says of stage's check before it pushes: wait, push, or refuse in these words. */
+export const releaseGateWords = (
+  gate: HqPushCi | undefined,
+): { readonly verdict: "wait" | "push" | "refuse"; readonly words: string } => {
+  if (gate === undefined)
+    return {
+      verdict: "refuse",
+      words: "Mate couldn't read stage CI, so this release can't go out. Release again.",
+    };
+  const at = gate.sha.slice(0, 7);
+  if (gate.verdict === "passed" && gate.watch === "finished") return { verdict: "push", words: "" };
+  if (gate.verdict === "failed")
+    return {
+      verdict: "refuse",
+      words: `Stage CI "${RELEASE_CHECK}" failed on ${at}, so this release can't go out. Fix it on main, then release again.`,
+    };
+  if (gate.verdict === "unreadable")
+    return {
+      verdict: "refuse",
+      words:
+        `Mate couldn't read stage CI for ${at}, so this release can't go out. ${gate.reason ?? ""}`.trim(),
+    };
+  if (gate.watch === "watching")
+    return {
+      verdict: "wait",
+      words:
+        gate.verdict === "none"
+          ? `Waiting for stage CI "${RELEASE_CHECK}" to start on ${at}; the release pushes once it passes.`
+          : `Waiting for stage CI "${RELEASE_CHECK}" to pass on ${at}; the release pushes once it does.`,
+    };
+  if (gate.verdict === "none" && gate.watch === "finished")
+    return {
+      verdict: "refuse",
+      words: `Stage CI "${RELEASE_CHECK}" never ran on ${at}, so this release can't go out. Add a CI job named "${RELEASE_CHECK}" that runs on pushes to stage, then release again.`,
+    };
+  return {
+    verdict: "refuse",
+    words:
+      `Stage CI "${RELEASE_CHECK}" hadn't passed on ${at} when Mate stopped waiting, so this release can't go out. ${gate.reason ?? ""}`.trim(),
+  };
+};
 
 export class GitCi extends Context.Service<
   GitCi,
@@ -441,6 +527,18 @@ export const gitCiLayer = Layer.effect(
           (evidence.ci !== undefined && evidence.ci.watch !== "watching")
         )
           return;
+        const save = (ci: HqPushCi) =>
+          leader
+            .write(
+              sql`
+                UPDATE hq_deploy_job
+                SET evidence = jsonb_set(evidence, '{ci}', ${encode(ci)}::jsonb), updated_at = now()
+                WHERE id = ${jobId}::bigint AND state = 'pushed'`,
+            )
+            .pipe(Effect.andThen(changed));
+        // The fast-forward to main runs CI there again; the stage run the release waited for decides.
+        if (evidence.gate?.verdict === "passed" && evidence.gate.sha === evidence.after)
+          return yield* save({ ...evidence.gate, watch: "finished" });
         const remote = remoteIdentity(evidence.remote);
         // Only GitHub's checks are read; elsewhere the push carries no CI record.
         if (remote?.kind !== "github") return;
@@ -455,15 +553,7 @@ export const gitCiLayer = Layer.effect(
             previous: evidence.ci,
           },
           {
-            save: (ci) =>
-              leader
-                .write(
-                  sql`
-                    UPDATE hq_deploy_job
-                    SET evidence = jsonb_set(evidence, '{ci}', ${encode(ci)}::jsonb), updated_at = now()
-                    WHERE id = ${jobId}::bigint AND state = 'pushed'`,
-                )
-                .pipe(Effect.andThen(changed)),
+            save,
             replaced: Effect.map(
               sql`
                 SELECT id FROM hq_deploy_job

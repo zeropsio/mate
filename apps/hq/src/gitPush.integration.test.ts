@@ -8,7 +8,9 @@ import * as NodeFS from "node:fs";
 import * as NodeUtil from "node:util";
 import { afterEach, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Redacted from "effect/Redacted";
+import { TestClock } from "effect/testing";
 import { deliverRef, type PushEvidence } from "./gitPush.ts";
 import { withGitCredential } from "./gitAskpass.ts";
 import { startGitChild, type GitChildAnswer, type GitChildRequest } from "./gitPushChild.ts";
@@ -82,6 +84,90 @@ it.live("delivers the fixed commit by an atomic old-tip compare after proving an
       f.second,
     );
   }),
+);
+
+/**
+ * The remote answers each push as GitHub does when main's ruleset requires `check` (GH013): one
+ * answer per push, `ok` accepts it.
+ */
+const requireCheck = (remote: string, answers: ReadonlyArray<string>) =>
+  Effect.promise(async () => {
+    const hook = NodePath.join(remote, "hooks", "pre-receive");
+    await NodeFSP.writeFile(`${hook}.answers`, answers.join("\n") + "\n");
+    await NodeFSP.writeFile(
+      hook,
+      [
+        "#!/bin/sh",
+        'first=$(head -n 1 "$0.answers")',
+        'tail -n +2 "$0.answers" > "$0.rest" && mv "$0.rest" "$0.answers"',
+        '[ "$first" = ok ] && exit 0',
+        'echo "error: GH013: Repository rule violations found for refs/heads/main." >&2',
+        'echo "Review all repository rules at https://github.com/acme/app/rules?ref=refs%2Fheads%2Fmain" >&2',
+        'echo "" >&2',
+        'echo "- Required status check \\"check\\" is $first." >&2',
+        "exit 1",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+  });
+
+it.effect.each([
+  {
+    answers: ["in progress", "ok"],
+    holdUntil: undefined,
+    state: "pushed",
+    reason: undefined,
+    waited: true,
+  },
+  {
+    answers: ["failing"],
+    holdUntil: undefined,
+    state: "refused",
+    reason: `GitHub refused SHORT: its required check "check" failed. Fix it on main, then release again.`,
+    waited: false,
+  },
+  {
+    answers: ["expected"],
+    holdUntil: undefined,
+    state: "refused",
+    reason: `GitHub refused SHORT: its required check "check" never ran on it. Release a commit stage tested.`,
+    waited: false,
+  },
+  {
+    answers: ["in progress"],
+    holdUntil: 0,
+    state: "refused",
+    reason: `GitHub still held SHORT when Mate stopped waiting: its required check "check" hadn't passed. Release again once it does.`,
+    waited: false,
+  },
+])(
+  "GitHub's required-check refusal reads as waiting, red or never ran: $answers",
+  ({ answers, holdUntil, state, reason, waited }) =>
+    Effect.gen(function* () {
+      const f = yield* Effect.promise(() => fixture());
+      yield* requireCheck(f.remote, answers);
+      const said: string[] = [];
+      const fiber = yield* deliverRef(
+        { ...f.input, ...(holdUntil === undefined ? {} : { holdUntil }) },
+        (evidence) => Effect.sync(() => void said.push(evidence.nextAction)),
+      ).pipe(Effect.forkChild);
+      // The writer's half-minute wait runs on the test clock; Git itself runs on the real one.
+      while (fiber.pollUnsafe() === undefined) {
+        yield* TestClock.withLive(Effect.sleep("50 millis"));
+        yield* TestClock.adjust("30 seconds");
+      }
+      const result = yield* Fiber.join(fiber);
+      const short = f.second.slice(0, 7);
+      expect([result.state, result.reason]).toEqual([state, reason?.replace("SHORT", short)]);
+      expect(
+        said.includes(
+          `GitHub holds ${short} until its required check "check" passes; Mate pushes again then.`,
+        ),
+      ).toBe(waited);
+      expect(yield* Effect.promise(() => git(f.remote, ["rev-parse", "refs/heads/main"]))).toBe(
+        state === "pushed" ? f.second : f.first,
+      );
+    }),
 );
 
 it.live(

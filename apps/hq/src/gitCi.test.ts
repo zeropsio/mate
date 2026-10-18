@@ -20,7 +20,9 @@ import {
   followCi,
   GitCi,
   gitCiLayer,
+  releaseGateWords,
   requiredChecks,
+  stageCheck,
 } from "./gitCi.ts";
 import { pushEvidenceForWire, type PushEvidence } from "./gitPush.ts";
 import { GitTransport, type HostReply, remoteIdentity } from "./gitTransport.ts";
@@ -541,6 +543,113 @@ describe("HQ reading the origin's CI after a push", () => {
   );
 });
 
+/** A check run GitHub Actions (app 15368) reported. */
+const actions = (checkRun: CheckRun): CheckRun => ({ ...checkRun, app: { id: 15368 } });
+const SHORT = SHA.slice(0, 7);
+
+describe("a release to an origin's main reads stage's check before it pushes", () => {
+  it.effect.each<{
+    readonly title: string;
+    readonly answers: ReadonlyArray<HostReply>;
+    readonly said: ReadonlyArray<ReturnType<typeof releaseGateWords>>;
+    readonly failed?: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  }>([
+    {
+      title: "running, then passed: it waits, then pushes",
+      answers: [
+        runs(actions(run("check", "in_progress"))),
+        runs(actions(run("check", "completed", "success"))),
+      ],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "check" to pass on ${SHORT}; the release pushes once it does.`,
+        },
+        { verdict: "push", words: "" },
+      ],
+    },
+    {
+      title: "failed: it refuses, naming the check with its link",
+      answers: [runs(actions(run("check", "completed", "failure")))],
+      said: [
+        {
+          verdict: "refuse",
+          words: `Stage CI "check" failed on ${SHORT}, so this release can't go out. Fix it on main, then release again.`,
+        },
+      ],
+      failed: [{ name: "check", url: "https://github.com/acme/app/actions/runs/7/job/check" }],
+    },
+    {
+      title: "never ran: it waits five minutes, then refuses",
+      answers: [runs(actions(run("unit", "completed", "success")))],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "check" to start on ${SHORT}; the release pushes once it passes.`,
+        },
+        {
+          verdict: "refuse",
+          words: `Stage CI "check" never ran on ${SHORT}, so this release can't go out. Add a CI job named "check" that runs on pushes to stage, then release again.`,
+        },
+      ],
+    },
+    {
+      title: "a check named check from another app is not GitHub Actions' and never ran",
+      answers: [runs({ ...run("check", "completed", "success"), app: { id: 99 } })],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "check" to start on ${SHORT}; the release pushes once it passes.`,
+        },
+        {
+          verdict: "refuse",
+          words: `Stage CI "check" never ran on ${SHORT}, so this release can't go out. Add a CI job named "check" that runs on pushes to stage, then release again.`,
+        },
+      ],
+    },
+    {
+      title: "still running an hour after stage took it: it stops waiting and refuses",
+      answers: [runs(actions(run("check", "in_progress")))],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "check" to pass on ${SHORT}; the release pushes once it does.`,
+        },
+        {
+          verdict: "refuse",
+          words: `Stage CI "check" hadn't passed on ${SHORT} when Mate stopped waiting, so this release can't go out. Mate stopped watching CI 60 minutes after the push.`,
+        },
+      ],
+    },
+  ])(
+    "a release waits while the stage SHA's check runs, and refuses when it failed or never ran: $title",
+    ({ answers, said, failed }) =>
+      Effect.gen(function* () {
+        const host = github({ [RUNS]: answers });
+        const seen: Array<HqPushCi> = [];
+        const fiber = yield* stageCheck(
+          {
+            appId: "app",
+            repo: "code",
+            branch: "main",
+            remote,
+            sha: SHA,
+            pushedAt: 0,
+            previous: undefined,
+          },
+          (gate) => Effect.sync(() => void seen.push(gate)),
+        ).pipe(Effect.provide(Layer.merge(remotes(), host.layer)), Effect.forkChild);
+        for (let minute = 0; minute <= 61; minute++) yield* TestClock.adjust(Duration.minutes(1));
+        const gate = yield* Fiber.join(fiber);
+        expect(seen.map(releaseGateWords)).toEqual(said);
+        expect(gate).toEqual(seen.at(-1));
+        expect(gate?.failed).toEqual(failed ?? []);
+        // Only GitHub's check runs answer: never the combined status, never branch rules.
+        expect(host.reads.every((read) => read.path.startsWith(RUNS))).toBe(true);
+      }),
+  );
+});
+
 const leader = Layer.succeed(
   Leader,
   Leader.of({
@@ -647,6 +756,37 @@ describe("the CI record on a push's evidence", () => {
             const resumable = yield* (yield* GitCi).resumable;
             expect(resumable.toSorted()).toEqual([newest, unread].toSorted());
             assert.notInclude(resumable, older);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a release's push to main reads as the stage run it waited for, never waiting for main's own run",
+      () =>
+        withPushes((insert) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const id = yield* insert("git-prod", SHA);
+            const gate: HqPushCi = {
+              sha: SHA,
+              verdict: "passed",
+              done: 1,
+              total: 1,
+              failed: [],
+              required: ["check"],
+              reason: null,
+              watch: "finished",
+              readAt: "2026-10-17T09:58:00.000Z",
+              until: "2026-10-17T10:50:00.000Z",
+            };
+            yield* sql`UPDATE hq_deploy_job SET evidence = jsonb_set(evidence, '{gate}', ${encodeJson(gate)}::jsonb)
+              WHERE id=${id}::bigint`;
+            // GitHub answers nothing here: any read of main's run would never finish.
+            yield* (yield* GitCi).watch(id, Effect.void);
+            const [row] = yield* sql<{ readonly evidence: PushEvidence }>`
+              SELECT evidence FROM hq_deploy_job WHERE id=${id}::bigint`;
+            expect(row?.evidence.ci).toEqual(gate);
+            expect(pushEvidenceForWire(row!.evidence).ci).toEqual(gate);
           }),
         ),
     );

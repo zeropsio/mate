@@ -17,6 +17,8 @@ import {
   type GitDeliveryEnvironment,
 } from "@t3tools/client-runtime/zerops";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
@@ -27,6 +29,19 @@ import { toastManager } from "~/components/ui/toast";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
+
+/**
+ * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
+ * sentence and the repository's ruleset settings; none off GitHub.
+ */
+function gitRulesetGuide(remoteUrl: string, branch: string) {
+  const guide = gitTokenGuide(remoteUrl, "");
+  if (guide.kind !== "guide" || guide.host !== "github") return undefined;
+  return {
+    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the status check "${RELEASE_CHECK}" from GitHub Actions, blocks force pushes and restricts deletions.`,
+    url: `https://github.com/${guide.repository}/settings/rules`,
+  };
+}
 
 type GitEnvironment = Omit<GitDeliveryEnvironment, "target"> & {
   readonly target: Extract<GitDeliveryEnvironment["target"], { readonly kind: "git" }>;
@@ -45,10 +60,17 @@ export function GitStopDetailPage({
   const detail = useHqAppDetail(appId);
   const { flows } = useCompactProjectFlows(useMemo(() => [appId], [appId]));
   const delivery = flows.get(appId)?.environments.find((row) => row.id === environment.id)?.git;
+  const orgId = useAccountOrgId();
+  const environments = useProjection(
+    canonicalAppEnvironments,
+    orgId === null ? null : { orgId, appId },
+    UNTOLD,
+  ).environments;
   return (
     <GitStopDetail
       environment={environment}
       delivery={delivery}
+      staged={environments?.some((row) => row.tier === "stage" && row.target.kind === "git")}
       repos={detail.repos}
       releases={detail.releases}
       can={environment.can}
@@ -73,12 +95,15 @@ export function GitStopDetail({
   repos,
   releases,
   can = environment.can,
+  staged = false,
   onRemove,
   onRunAgain,
   live = true,
 }: {
   readonly environment: GitEnvironment;
   readonly delivery?: GitDelivery | undefined;
+  /** The application has a Git stage: a release to this production pushes what stage tested. */
+  readonly staged?: boolean | undefined;
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly releases?: ReadonlyArray<Release> | undefined;
   readonly can?: HqOffers | undefined;
@@ -91,6 +116,22 @@ export function GitStopDetail({
   return (
     <div data-zerops-surface="git-stop-detail">
       <GitDeliveryStatus environment={environment} delivery={delivery} repos={repos} />
+      {environment.tier !== "production" || !staged
+        ? null
+        : repos?.map((repo) => {
+            const guide =
+              repo.remote == null
+                ? undefined
+                : gitRulesetGuide(repo.remote.url, environment.target.branch);
+            return guide === undefined ? null : (
+              <p className="rv-note" data-git-ruleset key={repo.name}>
+                {guide.words}{" "}
+                <a href={guide.url} rel="noreferrer" target="_blank">
+                  Open {repo.name}'s rulesets
+                </a>
+              </p>
+            );
+          })}
       {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
         <p className="rv-note">Pull-request delivery is not available here yet.</p>
       )}

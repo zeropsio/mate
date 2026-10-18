@@ -74,31 +74,45 @@ export interface GitCiLine {
   readonly notes: ReadonlyArray<string>;
 }
 
-/** HQ's CI record on the confirmed hand-over is the only source; no record, no line. */
+/**
+ * HQ's CI record on the confirmed hand-over is the only source; before one, the stage check a
+ * release read before pushing. No record, no line.
+ */
 export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
-  const ci = repo.confirmed === undefined ? undefined : repo.job?.evidence?.ci;
+  const stage = repo.confirmed === undefined;
+  const ci = stage ? repo.job?.evidence?.gate : repo.job?.evidence?.ci;
   if (ci === undefined) return undefined;
+  const what = !stage
+    ? "CI"
+    : ci.required === null
+      ? "Stage CI"
+      : `Stage CI ${ci.required.map((name) => `"${name}"`).join(", ")}`;
   const count = ci.done < ci.total ? [`${ci.done} of ${ci.total} done`] : [];
   const stopped = ci.watch === "stopped" && ci.reason !== null ? [ci.reason] : [];
   switch (ci.verdict) {
     case "unreadable":
       return {
-        words: `CI unreadable: ${ci.reason ?? "HQ couldn't read it"}`,
+        words: `${what} unreadable: ${ci.reason ?? "HQ couldn't read it"}`,
         failed: [],
         notes: [],
       };
     case "none":
       return {
-        words: ci.watch === "watching" ? "CI not reported yet" : "No CI reported",
+        words:
+          ci.watch === "watching"
+            ? `${what} not reported yet`
+            : stage
+              ? `${what} never ran`
+              : "No CI reported",
         failed: [],
         notes: stopped,
       };
     case "running":
-      return { words: "CI running", failed: [], notes: [...count, ...stopped] };
+      return { words: `${what} running`, failed: [], notes: [...count, ...stopped] };
     case "failed":
-      return { words: "CI failed", failed: ci.failed, notes: [...count, ...stopped] };
+      return { words: `${what} failed`, failed: ci.failed, notes: [...count, ...stopped] };
     case "passed":
-      return { words: "CI passed", failed: [], notes: [] };
+      return { words: `${what} passed`, failed: [], notes: [] };
   }
 }
 
