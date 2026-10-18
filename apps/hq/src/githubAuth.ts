@@ -21,22 +21,48 @@ export interface GithubBot {
 }
 
 /**
- * What HQ uses an app token on one repository for, and the permissions GitHub grants it for that
- * and nothing more: each within what the app may do (`GITHUB_APP_PERMISSIONS`).
+ * What HQ uses an app token on one repository for, and the most GitHub grants it for that: what
+ * GitHub documents each of the use's calls needs
+ * (https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps).
  */
 export const GITHUB_TOKEN_USES = {
   /** Whether the app reaches the repository: nothing of it but its metadata. */
   reach: { metadata: "read" },
-  /** Fetching and pushing its branches: a mirror's, an environment's, a release's. */
-  git: { contents: "write" },
-  /** Its branches, and what its CI says of them: check runs, statuses and workflow runs. */
+  /**
+   * Fetching and pushing its branches over HTTPS — a mirror's, an environment's, a release's — and
+   * the release's probe of `.github/workflows`: a pushed commit may touch the workflows.
+   */
+  git: { contents: "write", workflows: "write" },
+  /** Its branches, probed for push, and what its CI says of them: check runs, statuses, runs. */
   ci: { contents: "write", checks: "read", statuses: "read", actions: "read" },
-  /** Its pull requests the bot opens, follows and answers on, and their check runs. */
-  pullRequests: { pull_requests: "write", checks: "read" },
+  /** Its pull requests the bot opens, follows and answers on, their closing and check runs. */
+  pullRequests: { pull_requests: "write", issues: "read", checks: "read" },
+  /** Merging its pull request: GitHub's merge writes the repository's contents. */
+  merge: { contents: "write", pull_requests: "write" },
   /** Its issues the bot answers on: reactions, comments, labels, closing. */
   issues: { issues: "write" },
 } as const;
 export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
+
+const LEVELS = ["read", "write", "admin"] as const;
+
+/**
+ * The permissions a token for `use` asks GitHub for: each of the use's, lowered to what the
+ * installation was `granted`, none it was not granted — GitHub refuses a token asking more.
+ * `undefined` where it was granted none of them: no token, since GitHub reads no permissions asked
+ * as all of the installation's.
+ */
+export const askedPermissions = (
+  use: GithubTokenUse,
+  granted: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> | undefined => {
+  const asked: Record<string, string> = {};
+  for (const [name, wanted] of Object.entries(GITHUB_TOKEN_USES[use])) {
+    const has = LEVELS.indexOf(granted[name] as (typeof LEVELS)[number]);
+    if (has >= 0) asked[name] = LEVELS[Math.min(has, LEVELS.indexOf(wanted))]!;
+  }
+  return Object.keys(asked).length === 0 ? undefined : asked;
+};
 
 /** GitHub refused or could not be reached for a token. */
 export class GithubAuthUnavailable extends Data.TaggedError("GithubAuthUnavailable")<{
@@ -49,8 +75,9 @@ export class GithubAuth extends Context.Service<
   {
     /**
      * A token for `repository` (`owner/name`, case-insensitive) while the app is installed on it,
-     * reaching that repository alone with the permissions of `use`; `undefined` when HQ has no app
-     * or the app does not reach it. Cached per repository and use until shortly before GitHub
+     * reaching that repository alone with the permissions of `use` its installation was granted
+     * (`askedPermissions`); `undefined` when HQ has no app, the app does not reach it or was
+     * granted none of them. Cached per repository and permissions until shortly before GitHub
      * expires it. With `id` (the repository's id on GitHub, as a remote keeps it), only while the
      * repository of that name is still the one of that id: one deleted and made again is
      * `replaced`, never a token.

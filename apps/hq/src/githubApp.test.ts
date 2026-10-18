@@ -547,6 +547,53 @@ describe("the organization's GitHub app", () => {
         }),
     );
 
+    it.effect("a mint never asks for a permission the installation lacks", () =>
+      Effect.gen(function* () {
+        const core = yield* appCore;
+        const { hook } = yield* connected(core);
+        yield* core.call("PUT", "/api/org/ai-keys/nebius", {
+          session: core.owner,
+          body: { value: NEBIUS_KEY },
+        });
+        yield* connectedRepo(core, core.appId, "web", "acme/tea-shop");
+        // The organization granted the app less than its manifest asks: issues it may only read.
+        const granted = { metadata: "read", contents: "read", issues: "read" } as const;
+        core.github.state.installations.get(7001)!.permissions = granted;
+        const updated = "SELECT updated_at::text AS at FROM hq_github_installation WHERE id = 7001";
+        const [before] = yield* rowsWhere(core.url, updated, (rows) => rows.length === 1);
+        yield* deliver(core, hook, "installation", {
+          action: "new_permissions_accepted",
+          installation: { id: 7001 },
+        });
+        yield* rowsWhere(core.url, updated, (rows) => rows[0]?.["at"] !== before?.["at"]);
+        const minted = core.github.state.minted.length;
+        const kept = yield* core.call("PUT", `/api/apps/${core.appId}/intake`, {
+          session: core.owner,
+          body: { repo: "acme/tea-shop", label: "mate" },
+        });
+        assert.deepStrictEqual((kept.body as HqIntakeView).hook, { kind: "app" });
+        addProject(core.fake, "P_ROBOT");
+        const robot = yield* mateLinked(core, core.owner, "P_ROBOT", { appId: core.appId });
+        yield* robot.link.send(overviewAt(TASK_SOURCES_SINCE));
+        yield* robot.link.send(attention(1));
+        yield* deliver(
+          core,
+          hook,
+          "issues",
+          issueEvent("labeled", { number: 1, labels: ["mate"] }, "mate"),
+        );
+        yield* core.github.seenWhere("the issue's writer asked after", (requests) =>
+          requests.some((request) => request.path.endsWith("/permission")),
+        );
+        // What it asked: whether it reaches the repository, and its issues as far as granted.
+        assert.deepStrictEqual(
+          core.github.state.minted.slice(minted).map((token) => token.permissions),
+          [{ metadata: "read" }, { issues: "read" }],
+        );
+        yield* robot.link.close;
+      }),
+    );
+
     it.effect("a token for one repository is never handed out for another", () =>
       Effect.gen(function* () {
         const core = yield* appCore;

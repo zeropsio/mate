@@ -34,7 +34,21 @@ export interface FakeInstallation {
     readonly private?: boolean;
     readonly default_branch?: string;
   }>;
+  /** What the installation was granted; the app's whole manifest when not named. */
+  permissions?: Readonly<Record<string, string>>;
 }
+
+/** What an installation of the app is granted when a test names nothing: all its manifest asks. */
+const GRANTED = {
+  contents: "write",
+  pull_requests: "write",
+  issues: "write",
+  metadata: "read",
+  checks: "read",
+  statuses: "read",
+  actions: "read",
+};
+const LEVEL: Readonly<Record<string, number>> = { read: 1, write: 2, admin: 3 };
 
 /** Whether `jwt` is RS256-signed under `publicKey` and good now. */
 const jwtHolds = (jwt: string, publicKey: string) => {
@@ -221,6 +235,7 @@ export const githubFake = Effect.gen(function* () {
                     account: { login: found.account, type: found.accountType ?? "Organization" },
                     repository_selection: found.selection ?? "selected",
                     suspended_at: found.suspended === true ? "2026-10-01T00:00:00Z" : null,
+                    permissions: found.permissions ?? GRANTED,
                   });
                 if (request.method === "POST") {
                   if (found.suspended === true)
@@ -230,6 +245,16 @@ export const githubFake = Effect.gen(function* () {
                     readonly repository_ids?: ReadonlyArray<number>;
                     readonly permissions?: Readonly<Record<string, string>>;
                   };
+                  // GitHub grants a token nothing the installation was not granted: it refuses.
+                  const granted: Readonly<Record<string, string>> = found.permissions ?? GRANTED;
+                  if (
+                    Object.entries(asked.permissions ?? {}).some(
+                      ([name, level]) => (LEVEL[level] ?? 9) > (LEVEL[granted[name] ?? ""] ?? 0),
+                    )
+                  )
+                    return reply(422, {
+                      message: "The permissions requested are not granted to this installation.",
+                    });
                   state.minted.push({
                     token,
                     installation: id,

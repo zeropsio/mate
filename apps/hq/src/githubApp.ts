@@ -58,8 +58,8 @@ import type { SqlError } from "effect/sql/SqlError";
 import { AutomationRefused } from "./automationRefused.ts";
 import { DeployKeys } from "./deployKeys.ts";
 import {
-  GITHUB_TOKEN_USES,
   GithubAuth,
+  askedPermissions,
   GithubAuthUnavailable,
   type GithubBot,
   type GithubTokenUse,
@@ -317,6 +317,8 @@ interface InstallationRow {
   readonly account_type: "Organization" | "User";
   readonly repository_selection: "all" | "selected";
   readonly suspended: boolean;
+  /** What the organization granted the app; `null` until HQ reads the installation again. */
+  readonly permissions: Readonly<Record<string, string>> | null;
   readonly repositories: ReadonlyArray<{
     readonly id: number;
     readonly fullName: string;
@@ -342,6 +344,7 @@ const Installation = Schema.Struct({
   account: Schema.Struct({ login: Schema.String, type: Schema.optionalKey(Schema.String) }),
   repository_selection: Schema.Literals(["all", "selected"]),
   suspended_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  permissions: Schema.Record(Schema.String, Schema.String),
 });
 const decodeInstallation = Schema.decodeUnknownOption(Schema.fromJsonString(Installation));
 
@@ -529,20 +532,21 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
       /** The whole installation's token: only for listing the repositories it reaches. */
       const installationToken = (app: MadeApp, id: number) => mint(app, id, "*");
 
-      /** A token of the installation `id` for `repositoryId` alone, with `use`'s permissions. */
+      /** A token of the installation `id` for `repositoryId` alone, with `permissions`. */
       const repositoryToken = (
         app: MadeApp,
         id: number,
         repositoryId: number,
-        use: GithubTokenUse,
+        permissions: Readonly<Record<string, string>>,
       ) =>
-        mint(app, id, `${String(repositoryId)}:${use}`, {
+        mint(app, id, `${String(repositoryId)}:${encodeJson(permissions)}`, {
           repository_ids: [repositoryId],
-          permissions: GITHUB_TOKEN_USES[use],
+          permissions,
         });
 
       const installations = sql<InstallationRow>`
-        SELECT id::text AS id, account, account_type, repository_selection, suspended, repositories
+        SELECT id::text AS id, account, account_type, repository_selection, suspended, permissions,
+          repositories
         FROM hq_github_installation ORDER BY account, id`;
 
       /**
@@ -596,14 +600,16 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
           const accountType = installation.account.type === "User" ? "User" : "Organization";
           yield* leader.write(sql`
             INSERT INTO hq_github_installation (id, account, account_type, repository_selection,
-              suspended, repositories, repositories_at, updated_at)
+              suspended, permissions, repositories, repositories_at, updated_at)
             VALUES (${id}, ${installation.account.login}, ${accountType},
               ${installation.repository_selection}, ${suspended},
+              ${encodeJson(installation.permissions)}::jsonb,
               ${encodeJson(repositories)}::jsonb, ${suspended ? null : sql`now()`}, now())
             ON CONFLICT (id) DO UPDATE SET account = EXCLUDED.account,
               account_type = EXCLUDED.account_type,
               repository_selection = EXCLUDED.repository_selection,
               suspended = EXCLUDED.suspended,
+              permissions = EXCLUDED.permissions,
               repositories = CASE WHEN EXCLUDED.suspended THEN hq_github_installation.repositories
                 ELSE EXCLUDED.repositories END,
               repositories_at = COALESCE(EXCLUDED.repositories_at, hq_github_installation.repositories_at),
@@ -665,12 +671,23 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
               return yield* new GithubAuthUnavailable({ reason: "replaced" });
             if (reached.row.suspended)
               return yield* new GithubAuthUnavailable({ reason: "suspended" });
-            return yield* repositoryToken(
-              reached.app,
-              Number(reached.row.id),
-              reached.repo.id,
-              use,
-            );
+            const installation = Number(reached.row.id);
+            // Kept before HQ read what the organization granted: read once, then kept with it.
+            const granted =
+              reached.row.permissions ??
+              (yield* refreshInstallation(reached.app, installation).pipe(
+                Effect.andThen(
+                  installations.pipe(
+                    Effect.mapError(() => new GithubAuthUnavailable({ reason: "unreachable" })),
+                  ),
+                ),
+                Effect.map((rows) => rows.find((row) => row.id === reached.row.id)?.permissions),
+              ));
+            if (granted === undefined || granted === null)
+              return yield* new GithubAuthUnavailable({ reason: "not_installed" });
+            const permissions = askedPermissions(use, granted);
+            if (permissions === undefined) return undefined;
+            return yield* repositoryToken(reached.app, installation, reached.repo.id, permissions);
           }),
         bot: Effect.gen(function* () {
           const app = yield* madeOrUnavailable;
