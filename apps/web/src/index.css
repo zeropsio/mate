@@ -8228,7 +8228,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 16px;
@@ -8287,7 +8287,7 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
   background: color-mix(in oklab, var(--zerops-status-busy) 12%, transparent);
   color: var(--zerops-status-busy-text);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -8311,7 +8311,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 .pp-road-names {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 14px;
@@ -8429,7 +8429,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .pp-road-lift {
   margin: 10px 0 2px;
   padding: 12px 12px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
   box-shadow:
     0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
@@ -8489,7 +8489,7 @@ label.tm-advanced-row:not([data-disabled]) {
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   min-width: 0;
   padding: 20px 24px;
-  border-radius: 20px;
+  border-radius: var(--radius-sheet);
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -8587,7 +8587,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .pp-road-tile {
   min-width: 0;
   padding: 6px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   box-shadow: inset 0 0 0 1px var(--ov-rule);
 }
 
@@ -8622,7 +8622,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 10px;
   padding: 4px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   font-size: var(--text-line);
   text-align: left;
 }
@@ -8737,7 +8737,7 @@ button.pp-road-env:hover {
   width: 100%;
   gap: 10px;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
   font-size: var(--text-line);
@@ -8774,7 +8774,7 @@ button.pp-road-env:hover {
   min-width: 0;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   box-shadow: inset 0 0 0 1px var(--ov-rule);
 }
 
@@ -15170,7 +15170,7 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .pp-cards-group-name {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 16px;
@@ -15207,7 +15207,7 @@ button.rv-relrow:hover .rv-relrow-go {
 .pp-cards-held {
   height: 12px;
   flex: 1;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
@@ -15222,7 +15222,7 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .pp-cards-lift {
   display: grid;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--background);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent),
@@ -15260,14 +15260,14 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .pp-cards-waiting-text:focus-visible {
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-shadow: 0 0 0 2px var(--ring);
 }
 
 .pp-cards-tag {
   flex: none;
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   font-family: var(--font-mono);
   font-size: 12px;
@@ -15372,14 +15372,14 @@ a.pp-cards-person-who:hover {
   height: 2px;
   margin-top: -6px;
   overflow: hidden;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--ov-rule);
 }
 
 .pp-cards-gauge > span {
   display: block;
   height: 100%;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--color-status-busy);
 }
 
@@ -15390,7 +15390,7 @@ a.pp-cards-person-who:hover {
   align-items: center;
   padding: 0 8px;
   overflow: hidden;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   color: var(--foreground);
   font-size: var(--text-caption);
@@ -15445,10 +15445,10 @@ button.pp-cards-chip:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0 4px;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 600;
   line-height: 1;
 }
