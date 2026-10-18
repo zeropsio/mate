@@ -196,6 +196,8 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly failedTag?: string | undefined;
         /** When each stage last took a deploy, by its project. */
         readonly stageSince?: ReadonlyMap<string, string> | undefined;
+        /** When this tab's run began releasing (wall ms): production's line counts from it. */
+        readonly releaseSince?: number | undefined;
       })
     | undefined;
   /**

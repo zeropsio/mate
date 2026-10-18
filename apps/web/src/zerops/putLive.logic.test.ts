@@ -18,6 +18,7 @@ import {
   putLiveNext,
   putLiveProgress,
   putLiveLandedAt,
+  putLiveOwnLine,
   putLiveReleased,
   putLiveResumed,
   putLiveSettle,
@@ -276,6 +277,14 @@ describe("the one wait row and the live card", () => {
     expect(putLiveProgress({ ...run, phase: "releasing", tag: "v0.1.0" }).step).toBe(
       "Releasing v0.1.0",
     );
+  });
+
+  it("a release on its way is said once: production's line carries it once the flow says it", () => {
+    const releasing: PutLiveRun = { ...start(), phase: "releasing", tag: "v0.1.2", stepAt: 1_000 };
+    expect(putLiveOwnLine(releasing, "v0.1.2")).toBe(false);
+    expect(putLiveOwnLine(releasing, undefined)).toBe(true);
+    expect(putLiveOwnLine(start(), "v0.1.2")).toBe(true);
+    expect(putLiveOwnLine({ ...releasing, phase: "failed" }, "v0.1.2")).toBe(true);
   });
 
   it("says when it was released: just now, then its age", () => {

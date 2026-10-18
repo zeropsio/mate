@@ -558,6 +558,18 @@ function releasedLine(run: Pick<PutLiveRun, "tag" | "rollsBackTo">): string {
   return run.tag === undefined ? "Released" : `Released ${run.tag}`;
 }
 
+/**
+ * Whether the run needs a line of its own on production: not while it releases and the project's
+ * flow already says that release on its way (`inFlight`) — production's line carries it then,
+ * with the run's clock, once (the reviewer read "Releasing v0.1.2" twice, one under the other).
+ */
+export function putLiveOwnLine(
+  run: Pick<PutLiveRun, "phase">,
+  inFlight: string | undefined,
+): boolean {
+  return !(run.phase === "releasing" && inFlight !== undefined);
+}
+
 /** The live card's second line: "Released v0.1.0 · just now", "Rolled back to v0.1.0 · 3 min ago". */
 export function putLiveReleased(run: PutLiveRun, nowMs: number): string {
   const line = releasedLine(run);

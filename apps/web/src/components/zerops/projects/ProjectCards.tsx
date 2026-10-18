@@ -694,9 +694,14 @@ function readPlaces<T>(
       ? undefined
       : flow.production.stop.version?.label);
   const told = lines.find((line) => line.kind === "production") ?? lines.at(-1)!;
+  const releaseSince = facts?.releaseSince;
   const production: PlaceLine = {
     ...told,
     words: productionWords(told, { version, up: ageOf(facts?.since, nowMs) }),
+    // A release on its way is said once, here: with the clock of the run that sent it.
+    ...(told.dot === "releasing" && releaseSince !== undefined
+      ? { clock: { since: releaseSince } }
+      : {}),
   };
   // Each stage in its own words: what it follows and when it was deployed, or how far its adding
   // has got.

@@ -22,6 +22,7 @@ import type { ReactNode } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAccountDataOptional, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { ResourceGraph } from "../ZeropsServiceMap";
+import { PlaceWords } from "./ProjectCards";
 import { PlaceDot } from "./ProjectState";
 import { serviceRowReading } from "./placeServices.logic";
 import type { PlaceLine } from "./projectCard.logic";
@@ -184,7 +185,7 @@ export function RoadPlace({
       <div className="pp-road-place-top">
         <span className="pp-road-place-health" data-tone={line.trouble ? "failed" : undefined}>
           <PlaceDot dot={line.dot} />
-          {line.words.join(" · ")}
+          <PlaceWords line={line} />
         </span>
         {menu}
       </div>
