@@ -476,7 +476,7 @@ export const makeOperations = (
             }),
       ),
     );
-  const acceptAdoption: HqGit["acceptAdoption"] = (repo, source, preview, author) =>
+  const acceptAdoption: HqGit["acceptAdoption"] = (repo, source, preview, author, recorded) =>
     inRepo("acceptAdoption", repo, async (dir, signal) => {
       const env = identity(author);
       const main = await bornMain("acceptAdoption", dir, signal);
@@ -493,17 +493,26 @@ export const makeOperations = (
         acceptExitCodes: [1],
       });
       if (ancestor.code === 0) return { kind: "unchanged" } as const;
-      const sha = (
-        await run(
-          dir,
-          ["commit-tree", projected.tree, "-p", main, "-p", remoteTip],
-          signal,
-          "Adopt remote history\n",
-          env,
-        )
-      )
-        .toString()
-        .trim();
+      // An untouched seed nothing else holds gives way: the remote's history gains no HQ commit.
+      const untouched =
+        projected.seed &&
+        !recorded &&
+        (await text(dir, ["for-each-ref", "--contains", main, "--format=%(refname)"], signal))
+          .split("\n")
+          .every((ref) => ref === "" || ref === "refs/heads/main");
+      const sha = untouched
+        ? remoteTip
+        : (
+            await run(
+              dir,
+              ["commit-tree", projected.tree, "-p", main, "-p", remoteTip],
+              signal,
+              "Adopt remote history\n",
+              env,
+            )
+          )
+            .toString()
+            .trim();
       if (!(await cas(dir, "refs/heads/main", sha, main, signal)))
         return { kind: "stale" } as const;
       emit({ kind: "main_moved", repo, old: main, new: sha, by: "commit" });

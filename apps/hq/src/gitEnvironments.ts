@@ -23,6 +23,7 @@ import { environmentNameProblem } from "@t3tools/shared/hqEnvironment";
 import { GitHost, holdingRepo } from "./gitHost.ts";
 import { Leader } from "./leader.ts";
 import { can } from "./permissions.ts";
+import { recordedBeyondMain } from "./reconcile.ts";
 import { gitEnvironmentRemovalOffer } from "./offers.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles, decidedFresh } from "./roles.ts";
@@ -194,8 +195,9 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
                   return yield* refuse("review_stale");
                 const heads: Array<{ readonly repo: string; readonly sha: string }> = [];
                 for (const result of inspected) {
+                  const repo = { appId, id: result.review.repo };
                   const outcome = yield* result.git.acceptAdoption(
-                    { appId, id: result.review.repo },
+                    repo,
                     {
                       url: result.source.remote.url,
                       token: result.source.token,
@@ -203,6 +205,8 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
                     },
                     result.preview,
                     { name: "HQ", email: "hq@hq.invalid" },
+                    result.preview.seed &&
+                      (yield* recordedBeyondMain(sql, repo, result.preview.main)),
                   );
                   if (outcome.kind === "stale") return yield* refuse("review_stale");
                   heads.push({

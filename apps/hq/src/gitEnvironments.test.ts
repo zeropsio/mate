@@ -58,202 +58,213 @@ const reason = <A, E>(effect: Effect.Effect<A, E>) =>
     onFailure: (e) =>
       typeof e === "object" && e !== null && "reason" in e ? String(e.reason) : "failed",
   });
-const fixture = Effect.gen(function* () {
-  const url = yield* (yield* TempPostgres).createMigratedDatabase;
-  const root = yield* Effect.acquireRelease(
-    Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-lifecycle-"))),
-    (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
-  );
-  const world = emptyWorld();
-  const state = { role: "OWNER", projectRole: undefined as string | undefined, refused: false };
-  const view = Effect.sync(
-    () =>
-      ({
-        orgId: "ORG",
-        freshness: "fresh",
-        members: [
-          {
-            kind: "person",
-            userId: "owner",
-            clientUserId: "owner",
-            name: "Owner",
-            roleCode: state.role,
-            status: "ACTIVE",
-            canCreateProjects: true,
-          },
-        ],
-        projects: ["P_MATE", "P_PROD"].map((id) => ({
-          id,
+/** An application with one repository, `web`, whose main is one commit of `files`. */
+const fixtureWith = (files: Readonly<Record<string, string>>) =>
+  Effect.gen(function* () {
+    const url = yield* (yield* TempPostgres).createMigratedDatabase;
+    const root = yield* Effect.acquireRelease(
+      Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-git-lifecycle-"))),
+      (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
+    );
+    const world = emptyWorld();
+    const state = { role: "OWNER", projectRole: undefined as string | undefined, refused: false };
+    const view = Effect.sync(
+      () =>
+        ({
           orgId: "ORG",
-          name: "Mate",
-          status: "ACTIVE",
-          tags: [],
-          publicZone: "fixture.invalid",
-          userRoles:
-            state.projectRole === undefined
-              ? []
-              : [{ clientUserId: "owner", roleCode: state.projectRole }],
-        })),
-      }) satisfies OrgView,
-  );
-  const roles = Layer.succeed(Roles, {
-    view: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
-    forWrite: view,
-    recent: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
-    readSince: () => Effect.die("HQ's door is outside this fixture"),
-    exists: () => Effect.succeed(true),
-    answeredAt: Effect.undefined,
-    views: Stream.never,
-  });
-  const remoteRows = new Map<string, RemoteRecord>();
-  const remotes = Remotes.of({
-    changes: Stream.empty,
-    listRepos: () => Effect.die("Repository reads are outside this fixture"),
-    mateRepos: () => Effect.die("Repository reads are outside this fixture"),
-    write: () => Effect.die("Remote writes are outside this fixture"),
-    tokenOf: () => Effect.die("Remote tokens are outside this fixture"),
-    connectViaApp: () => Effect.die("Remotes through the GitHub app are outside this fixture"),
-    receipt: () => Effect.succeed(null),
-    get: (ref) => Effect.sync(() => remoteRows.get(ref.repo)),
-    connect: () => Effect.die("not used"),
-    updateAddress: () => Effect.die("not used"),
-    disconnect: () => Effect.die("external disconnect is forbidden"),
-    invalidate: () => Effect.void,
-    ciAccess: () => Effect.succeed({}),
-    forUse: (ref) =>
-      Effect.suspend(() =>
-        state.refused
-          ? Effect.fail(new RemoteRefused({ reason: "credential_invalid" }))
-          : Effect.succeed({ remote: remoteRows.get(ref.repo)!, token: Redacted.make("fixture") }),
+          freshness: "fresh",
+          members: [
+            {
+              kind: "person",
+              userId: "owner",
+              clientUserId: "owner",
+              name: "Owner",
+              roleCode: state.role,
+              status: "ACTIVE",
+              canCreateProjects: true,
+            },
+          ],
+          projects: ["P_MATE", "P_PROD"].map((id) => ({
+            id,
+            orgId: "ORG",
+            name: "Mate",
+            status: "ACTIVE",
+            tags: [],
+            publicZone: "fixture.invalid",
+            userRoles:
+              state.projectRole === undefined
+                ? []
+                : [{ clientUserId: "owner", roleCode: state.projectRole }],
+          })),
+        }) satisfies OrgView,
+    );
+    const roles = Layer.succeed(Roles, {
+      view: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
+      forWrite: view,
+      recent: Effect.map(view, (v) => ({ ...v, freshness: "cached" as const })),
+      readSince: () => Effect.die("HQ's door is outside this fixture"),
+      exists: () => Effect.succeed(true),
+      answeredAt: Effect.undefined,
+      views: Stream.never,
+    });
+    const remoteRows = new Map<string, RemoteRecord>();
+    const remotes = Remotes.of({
+      changes: Stream.empty,
+      listRepos: () => Effect.die("Repository reads are outside this fixture"),
+      mateRepos: () => Effect.die("Repository reads are outside this fixture"),
+      write: () => Effect.die("Remote writes are outside this fixture"),
+      tokenOf: () => Effect.die("Remote tokens are outside this fixture"),
+      connectViaApp: () => Effect.die("Remotes through the GitHub app are outside this fixture"),
+      receipt: () => Effect.succeed(null),
+      get: (ref) => Effect.sync(() => remoteRows.get(ref.repo)),
+      connect: () => Effect.die("not used"),
+      updateAddress: () => Effect.die("not used"),
+      disconnect: () => Effect.die("external disconnect is forbidden"),
+      invalidate: () => Effect.void,
+      ciAccess: () => Effect.succeed({}),
+      forUse: (ref) =>
+        Effect.suspend(() =>
+          state.refused
+            ? Effect.fail(new RemoteRefused({ reason: "credential_invalid" }))
+            : Effect.succeed({
+                remote: remoteRows.get(ref.repo)!,
+                token: Redacted.make("fixture"),
+              }),
+        ),
+    });
+    const context = yield* Layer.build(
+      Layer.mergeAll(
+        structureLayer({ hqProjectId: "HQ", credential: Option.none() }),
+        deploysLayer({
+          observer: fakeOperationWatch(world),
+          pushLayer: gitPushLayer.pipe(Layer.provide(Layer.succeed(Remotes, remotes))),
+        }).pipe(Layer.provideMerge(releasesLayer)),
+      ).pipe(
+        Layer.provide(deployKeysLayer(testKey())),
+        Layer.provide(githubAuthAbsentLayer),
+        Layer.provideMerge(gitHostLayer({ rootDir: NodePath.join(root, "hq") })),
+        Layer.provideMerge(rolloutsLayer),
+        Layer.provideMerge(activeCoreLayer(url)),
+        Layer.provide(roles),
+        Layer.provide(Layer.effect(MateOverviews, makeMateOverviews(memoryStore().store))),
+        Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
+        Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
+        Layer.provide(
+          Layer.succeed(RecipeTiers, {
+            read: () => Effect.succeed({ state: "absent", mainHead: null }),
+          }),
+        ),
+        Layer.provideMerge(Layer.succeed(Remotes, remotes)),
       ),
-  });
-  const context = yield* Layer.build(
-    Layer.mergeAll(
-      structureLayer({ hqProjectId: "HQ", credential: Option.none() }),
-      deploysLayer({
-        observer: fakeOperationWatch(world),
-        pushLayer: gitPushLayer.pipe(Layer.provide(Layer.succeed(Remotes, remotes))),
-      }).pipe(Layer.provideMerge(releasesLayer)),
-    ).pipe(
-      Layer.provide(deployKeysLayer(testKey())),
-      Layer.provide(githubAuthAbsentLayer),
-      Layer.provideMerge(gitHostLayer({ rootDir: NodePath.join(root, "hq") })),
-      Layer.provideMerge(rolloutsLayer),
-      Layer.provideMerge(activeCoreLayer(url)),
-      Layer.provide(roles),
-      Layer.provide(Layer.effect(MateOverviews, makeMateOverviews(memoryStore().store))),
-      Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(world))),
-      Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(world))),
-      Layer.provide(
-        Layer.succeed(RecipeTiers, {
-          read: () => Effect.succeed({ state: "absent", mainHead: null }),
-        }),
+    );
+    yield* untilActive.pipe(Effect.provide(context));
+    const sql = Context.get(context, SqlClient.SqlClient);
+    const structure = Context.get(context, Structure);
+    const host = Context.get(context, GitHost);
+    const deploys = Context.get(context, Deploys);
+    const git = yield* host.opened(Duration.seconds(10));
+    const app = yield* structure.createApp("owner", "Shop");
+    yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES ('P_MATE',${app.id}::uuid,'mate','owner')`;
+    const remoteDir = NodePath.join(root, "remote.git");
+    gitAt(root, ["init", "--bare", remoteDir]);
+    const blob = gitAt(remoteDir, ["hash-object", "-w", "--stdin"], "remote");
+    const tree = gitAt(remoteDir, ["mktree"], `100644 blob ${blob}\tremote\n`);
+    const remoteTip = gitAt(remoteDir, ["commit-tree", tree, "-m", "Remote"]);
+    gitAt(remoteDir, ["update-ref", "refs/heads/main", remoteTip]);
+    const repo = { appId: app.id, id: "web" };
+    yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app.id}::uuid,'web','owner')`;
+    yield* git.create(repo);
+    const dir = NodePath.join(root, "hq", app.id, "web.git");
+    gitAt(dir, ["config", `url.file://${remoteDir}.insteadOf`, "https://fixture.invalid/web.git"]);
+    gitAt(dir, ["config", "protocol.file.allow", "always"]);
+    const made = yield* git.commitFiles(repo, "refs/heads/main", {
+      files,
+      message: "Initial",
+      expectedHead: null,
+      author,
+    });
+    if (!("sha" in made)) throw new Error("initial commit refused");
+    yield* Stream.runHead(
+      Stream.filterEffect(host.recorded, () =>
+        Effect.map(
+          sql<{
+            readonly main_head: string;
+          }>`SELECT main_head FROM hq_repo WHERE app_id::text=${app.id} AND name='web'`,
+          ([row]) => row?.main_head === made.sha,
+        ),
       ),
-      Layer.provideMerge(Layer.succeed(Remotes, remotes)),
-    ),
-  );
-  yield* untilActive.pipe(Effect.provide(context));
-  const sql = Context.get(context, SqlClient.SqlClient);
-  const structure = Context.get(context, Structure);
-  const host = Context.get(context, GitHost);
-  const deploys = Context.get(context, Deploys);
-  const git = yield* host.opened(Duration.seconds(10));
-  const app = yield* structure.createApp("owner", "Shop");
-  yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES ('P_MATE',${app.id}::uuid,'mate','owner')`;
-  const remoteDir = NodePath.join(root, "remote.git");
-  gitAt(root, ["init", "--bare", remoteDir]);
-  const blob = gitAt(remoteDir, ["hash-object", "-w", "--stdin"], "remote");
-  const tree = gitAt(remoteDir, ["mktree"], `100644 blob ${blob}\tremote\n`);
-  const remoteTip = gitAt(remoteDir, ["commit-tree", tree, "-m", "Remote"]);
-  gitAt(remoteDir, ["update-ref", "refs/heads/main", remoteTip]);
-  const repo = { appId: app.id, id: "web" };
-  yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${app.id}::uuid,'web','owner')`;
-  yield* git.create(repo);
-  const dir = NodePath.join(root, "hq", app.id, "web.git");
-  gitAt(dir, ["config", `url.file://${remoteDir}.insteadOf`, "https://fixture.invalid/web.git"]);
-  gitAt(dir, ["config", "protocol.file.allow", "always"]);
-  const made = yield* git.commitFiles(repo, "refs/heads/main", {
-    files: { local: "local" },
-    message: "Initial",
-    expectedHead: null,
-    author,
-  });
-  if (!("sha" in made)) throw new Error("initial commit refused");
-  yield* Stream.runHead(
-    Stream.filterEffect(host.recorded, () =>
-      Effect.map(
-        sql<{
-          readonly main_head: string;
-        }>`SELECT main_head FROM hq_repo WHERE app_id::text=${app.id} AND name='web'`,
-        ([row]) => row?.main_head === made.sha,
-      ),
-    ),
-  ).pipe(Effect.timeout(Duration.seconds(10)));
-  const remote = {
-    appId: app.id,
-    repo: "web",
-    url: "https://fixture.invalid/web.git",
-    urlKey: "fixture.invalid/web",
-    host: "other",
-    hostRepoId: null,
-    keptBy: "owner",
-    keptAt: "2026-10-13 12:00:00+00",
-    invalidSince: null,
-    expiresAt: null,
-    expiryLabel: "Expiry not reported",
-    credentialState: "kept",
-  } satisfies RemoteRecord;
-  remoteRows.set("web", remote);
-  yield* sql`INSERT INTO hq_repo_remote(app_id,repo,url,url_key,host,sealed,key_id,kept_by,kept_at)
+    ).pipe(Effect.timeout(Duration.seconds(10)));
+    const remote = {
+      appId: app.id,
+      repo: "web",
+      url: "https://fixture.invalid/web.git",
+      urlKey: "fixture.invalid/web",
+      host: "other",
+      hostRepoId: null,
+      keptBy: "owner",
+      keptAt: "2026-10-13 12:00:00+00",
+      invalidSince: null,
+      expiresAt: null,
+      expiryLabel: "Expiry not reported",
+      credentialState: "kept",
+    } satisfies RemoteRecord;
+    remoteRows.set("web", remote);
+    yield* sql`INSERT INTO hq_repo_remote(app_id,repo,url,url_key,host,sealed,key_id,kept_by,kept_at)
     VALUES (${app.id}::uuid,'web',${remote.url},${remote.urlKey},'other',decode('01','hex'),'fixture','owner',now())`;
-  const target = { kind: "git", branch: "main", delivery: "direct" } as const;
-  const preview = () =>
-    structure.previewGitEnvironment("owner", app.id, { target }).pipe(Effect.provide(context));
-  const add = (tier: "stage" | "production", name: string = tier, branch = "main") =>
-    Effect.gen(function* () {
-      const target = { kind: "git", branch, delivery: "direct" } as const;
-      const adoption = yield* structure.previewGitEnvironment("owner", app.id, { target });
-      return yield* structure.addGitEnvironment("owner", app.id, { tier, name, target, adoption });
-    }).pipe(Effect.provide(context));
-  const remove = (id: string, confirm = false) =>
-    structure
-      .removeGitEnvironment("owner", app.id, id, { loseUnresolvedHistory: confirm })
-      .pipe(Effect.provide(context));
-  const settled = Effect.gen(function* () {
-    for (const row of yield* sql<{
-      readonly id: string;
-    }>`SELECT id::text FROM hq_rollout WHERE planned_at IS NULL ORDER BY id`)
-      yield* deploys.run(row.id);
-    yield* deploys.drain;
-  });
-  const job = (id: string, jobState: "submitting" | "unresolved", drained: boolean) => sql`
+    const target = { kind: "git", branch: "main", delivery: "direct" } as const;
+    const preview = () =>
+      structure.previewGitEnvironment("owner", app.id, { target }).pipe(Effect.provide(context));
+    const add = (tier: "stage" | "production", name: string = tier, branch = "main") =>
+      Effect.gen(function* () {
+        const target = { kind: "git", branch, delivery: "direct" } as const;
+        const adoption = yield* structure.previewGitEnvironment("owner", app.id, { target });
+        return yield* structure.addGitEnvironment("owner", app.id, {
+          tier,
+          name,
+          target,
+          adoption,
+        });
+      }).pipe(Effect.provide(context));
+    const remove = (id: string, confirm = false) =>
+      structure
+        .removeGitEnvironment("owner", app.id, id, { loseUnresolvedHistory: confirm })
+        .pipe(Effect.provide(context));
+    const settled = Effect.gen(function* () {
+      for (const row of yield* sql<{
+        readonly id: string;
+      }>`SELECT id::text FROM hq_rollout WHERE planned_at IS NULL ORDER BY id`)
+        yield* deploys.run(row.id);
+      yield* deploys.drain;
+    });
+    const job = (id: string, jobState: "submitting" | "unresolved", drained: boolean) => sql`
     INSERT INTO hq_deploy_job(rollout_id,environment_id,kind,repo,sha,state,ended_at,evidence,ord)
     SELECT id,${id},'push','web',${made.sha},${jobState},CASE WHEN ${jobState}='unresolved' THEN now() ELSE NULL END,
       jsonb_build_object('phase','recovering','writerDrained',${drained}),0 FROM hq_rollout WHERE environment_id=${id} LIMIT 1`;
-  return {
-    sql,
-    structure,
-    host,
-    git,
-    deploys,
-    app,
-    repo,
-    dir,
-    remoteDir,
-    remoteTip,
-    main: made.sha,
-    target,
-    preview,
-    add,
-    remove,
-    settled,
-    job,
-    state,
-    remoteRows,
-    context,
-    view,
-  };
-});
+    return {
+      sql,
+      structure,
+      host,
+      git,
+      deploys,
+      app,
+      repo,
+      dir,
+      remoteDir,
+      remoteTip,
+      main: made.sha,
+      target,
+      preview,
+      add,
+      remove,
+      settled,
+      job,
+      state,
+      remoteRows,
+      context,
+      view,
+    };
+  });
+const fixture = fixtureWith({ local: "local" });
 
 describe("Structure Git environments", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -573,6 +584,35 @@ describe("Structure Git environments", () => {
           1,
         );
       }),
+    );
+    it.effect(
+      "Adding Git production to an untouched repository takes the origin's history as main, with no commit of HQ's own.",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixtureWith({});
+          yield* f.add("production");
+          assert.strictEqual(gitAt(f.dir, ["rev-parse", "main"]), f.remoteTip);
+          assert.deepStrictEqual(
+            yield* f.sql`SELECT main_head FROM hq_repo WHERE app_id::text=${f.app.id} AND name='web'`,
+            [{ main_head: f.remoteTip }],
+          );
+        }),
+    );
+    it.effect(
+      "A seed a delivery record names stays under main: adding Git production merges the origin into it.",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixtureWith({});
+          // The remote has no `stage` branch: its attachment leaves the seed as main.
+          const stage = yield* f.add("stage", "stage", "stage");
+          assert.strictEqual(gitAt(f.dir, ["rev-parse", "main"]), f.main);
+          yield* f.job(stage.environmentId, "unresolved", true);
+          yield* f.add("production");
+          assert.strictEqual(
+            gitAt(f.dir, ["show", "-s", "--format=%P", "main"]),
+            `${f.main} ${f.remoteTip}`,
+          );
+        }),
     );
     it.effect("A stale attachment review preserves HQ main and creates no environment.", () =>
       Effect.gen(function* () {

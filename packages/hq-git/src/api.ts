@@ -284,12 +284,18 @@ export interface HqGit {
     repo: Repo,
     source: AdoptionSource,
   ) => Effect.Effect<AdoptionPreview, GitError>;
-  /** Caller holds Core's repository write lock; rereads both tips and CAS moves main once. */
+  /**
+   * Caller holds Core's repository write lock; rereads both tips and CAS moves main once. An
+   * untouched seed — `preview.seed`, held by no other ref and named by none of the caller's
+   * records (`recorded`) — gives way to the remote tip, so the remote's history gains no commit
+   * of HQ's; any other main takes one two-parent commit, keeping what holds it reachable.
+   */
   readonly acceptAdoption: (
     repo: Repo,
     source: AdoptionSource,
     preview: AdoptionPreview,
     author: Author,
+    recorded: boolean,
   ) => Effect.Effect<AdoptionResult, GitError>;
   /**
    * The remote's default branch — its `HEAD`, `main` where it names none — and that branch's tip,
