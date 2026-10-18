@@ -88,6 +88,7 @@ import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
+import { useKnownMate } from "../../zerops/useZeropsMates";
 import { RunShimmer } from "./RunShimmer";
 import { CommandScript } from "./CommandScript";
 import { FileWriteDetail } from "./FileWriteDetail";
@@ -245,6 +246,7 @@ import {
   type RunFold,
   type RunScrollPosition,
   standsAtFoot,
+  thinkingLine,
 } from "./runCard.logic";
 import { useRunScrollResettle } from "./useRunScrollResettle";
 import {
@@ -1445,15 +1447,43 @@ function useRunsPast(
  * in view while it streams, its head in the log and the whole of it a press
  * away (D4: nothing is cut without a way to reach it).
  */
+/**
+ * An agent's thinking, in its box. On an automated Mate — GLM on OpenCode thinks out loud at
+ * length, and people read a task's work for what it did — it stands as one quiet line,
+ * "Thinking · 12 s", its words behind it.
+ */
 function ThoughtBubble({ messages: recorded }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const messages = useEngineLiveMessages(recorded);
+  const ctx = use(TimelineRowCtx);
+  const quiet = useKnownMate(ctx.activeThreadEnvironmentId)?.automated === true;
+  const disclosure = useDisclosure();
   const text = messages.map((message) => message.text).join("\n\n");
   if (text.trim().length === 0) return null;
+  const words = (
+    <OpensWhole follows={messages.some((message) => message.streaming)} what="thought">
+      <ThoughtParagraphs messages={messages} />
+    </OpensWhole>
+  );
+  if (!quiet)
+    return (
+      <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
+        {words}
+      </Bubble>
+    );
+  const line = thinkingLine(messages);
   return (
     <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
-      <OpensWhole follows={messages.some((message) => message.streaming)} what="thought">
-        <ThoughtParagraphs messages={messages} />
-      </OpensWhole>
+      <DisclosureButton
+        label={`${line}. ${disclosure.open ? "Hide" : "Show"} the thought`}
+        onToggle={disclosure.toggle}
+        open={disclosure.open}
+      >
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          {line}
+          <OpensMark />
+        </span>
+      </DisclosureButton>
+      {disclosure.open ? words : null}
     </Bubble>
   );
 }
