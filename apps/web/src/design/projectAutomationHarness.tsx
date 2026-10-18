@@ -24,7 +24,7 @@ import {
   type BoardView,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
-import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import { boardOf, predictedBoard } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import {
   connectionMissing,
@@ -101,6 +101,13 @@ const POOL: ReadonlyArray<PoolMate> = [
     automation: { task: { number: 4, title: "Show prices in euros" } },
   },
   { projectId: "p-ines", name: "Ines", tint: "sky", shape: undefined, automation: { task: null } },
+  {
+    projectId: "p-raya",
+    name: "Raya",
+    tint: "slate",
+    shape: undefined,
+    automation: { task: null },
+  },
 ];
 const WORKING = new Set(["p-juno"]);
 
@@ -179,9 +186,19 @@ const TASKS: ReadonlyArray<HqAppTask> = [
     id: "t2",
     title: "Show each tea's price per 100 g",
     state: "done",
+    mate: { projectId: "p-raya", name: "Raya" },
     endedAt: ago(300),
     spentUsd: 0.27,
     change: { repo: "web", number: 3 },
+  },
+  {
+    ...TASK,
+    id: "t8",
+    title: "Translate the menu",
+    state: "closed",
+    endedAt: ago(700),
+    spentUsd: 0.66,
+    change: { repo: "web", number: 1 },
   },
   {
     ...TASK,
@@ -202,8 +219,14 @@ const TASKS: ReadonlyArray<HqAppTask> = [
     detail: "Ales stopped it in Mate.",
   },
 ];
+/** What navigation says of the tasks the pool is on: Raya's change waits for review. */
+const LIVE = new Map([
+  ["t4", { id: "t4", title: TASK.title, url: null, spentUsd: 0.42, workedMs: 754_000 }],
+  ["t7", { id: "t7", title: "Fix the checkout total rounding", url: null, waiting: true as const }],
+  ["t2", { id: "t2", title: "Show each tea's price per 100 g", url: null }],
+]);
 const BOARD: BoardView = {
-  read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop") },
+  read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop", LIVE) },
   spend: "$6.44 of $50 this month",
   onReadAgain: nothing,
   onOpen: nothing,
@@ -216,7 +239,30 @@ const BOARD: BoardView = {
 };
 const READING: BoardView = {
   ...BOARD,
-  read: { state: "reading", predicted: { atWork: 2, queued: 2, recent: 2 } },
+  read: {
+    state: "reading",
+    predicted: { ...predictedBoard([...LIVE.values(), null, null], 2), recent: 5 },
+  },
+};
+/** Nova's task stopping, Juno's Stop refused. */
+const STOPPING: BoardView = {
+  ...BOARD,
+  read: {
+    state: "known",
+    board: boardOf(
+      TASKS.map((task) => (task.id === "t7" ? { ...task, state: "stopping" as const } : task)),
+      NOW,
+      "tea-shop",
+      LIVE,
+    ),
+  },
+  stop: {
+    ...BOARD.stop!,
+    pressOf: (id) =>
+      id === "t4"
+        ? { kind: "refused", words: "Only an Owner or Admin can stop a task." }
+        : { kind: "idle" },
+  },
 };
 
 const SCHEDULE = {
@@ -266,6 +312,7 @@ const AT: TaskSession = {
 const SESSIONS: ReadonlyArray<readonly [string, TaskSession]> = [
   ["Not read yet", AT],
   ["Queued", { ...AT, status: "queued", stoppable: true, workedMs: 0, spentUsd: 0 }],
+  ["Starting", { ...AT, status: "starting", stoppable: true, workedMs: 0, spentUsd: 0 }],
   ["Working", { ...AT, status: "working", stoppable: true, workedMs: 754_000, spentUsd: 0.42 }],
   [
     "Waiting for you",
@@ -312,6 +359,16 @@ const SESSIONS: ReadonlyArray<readonly [string, TaskSession]> = [
       workedMs: 3_840_000,
       spentUsd: 6.44,
       pullRequest: { ...PR, state: "merged" },
+    },
+  ],
+  [
+    "Closed",
+    {
+      ...AT,
+      status: "closed",
+      workedMs: 900_000,
+      spentUsd: 0.66,
+      change: { repo: "web", number: 1 },
     },
   ],
   ["Failed", { ...AT, status: "failed", workedMs: 3_600_000, spentUsd: 0.004 }],
@@ -392,6 +449,16 @@ function Harness() {
           <ProjectAutomationView
             admin={ADMIN}
             board={READING}
+            onOpenMate={nothing}
+            pool={POOL}
+            sources={SOURCES}
+            workingOf={(id) => WORKING.has(id)}
+          />
+        </Panel>
+        <Panel title="A task stopping, a task's Stop refused">
+          <ProjectAutomationView
+            admin={ADMIN}
+            board={STOPPING}
             onOpenMate={nothing}
             pool={POOL}
             sources={SOURCES}

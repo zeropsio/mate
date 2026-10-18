@@ -212,3 +212,18 @@ export function mateTaskSourceLink(
 export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
   return source.kind === "schedule" ? null : source.author;
 }
+
+/** What starts the id of every conversation a task is worked in (the server's `taskConversationId`). */
+export const MATE_TASK_CONVERSATION_PREFIX = "task-";
+
+/**
+ * HQ's id of the task a conversation is worked for, read back from the conversation's id: the
+ * server names it by the task, every character a conversation id does not carry spelled out as
+ * `.<hex>.`. `undefined` for any other conversation.
+ */
+export function mateTaskIdOfConversation(conversationId: string): string | undefined {
+  if (!conversationId.startsWith(MATE_TASK_CONVERSATION_PREFIX)) return undefined;
+  return conversationId
+    .slice(MATE_TASK_CONVERSATION_PREFIX.length)
+    .replace(/\.([0-9a-f]+)\./gu, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
+}

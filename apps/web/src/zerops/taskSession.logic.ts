@@ -4,52 +4,30 @@
  * and whether a person can stop it now. The Mate's latest task is read from HQ's navigation (live);
  * a task before it from the task's own record (`HqAppTask`, the application's task board).
  */
-import { mateTaskSourceLink, type MateTaskSource } from "@t3tools/contracts";
+import type { TaskStopAction } from "@t3tools/client-runtime/data";
+import type { MateTaskSource } from "@t3tools/contracts";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 
-import { taskChain, type TaskChain } from "./automatedMate.logic";
-
-export type TaskStatus =
-  | "queued"
-  | "working"
-  | "waiting"
-  | "stopping"
-  | "review"
-  | "merged"
-  | "closed"
-  | "done"
-  | "failed"
-  | "stopped"
-  | "declined";
-
-/** Each status in a word or two, as the header says it beside its dot. */
-export const TASK_STATUS_WORDS: Record<TaskStatus, string> = {
-  queued: "Queued",
-  working: "Working",
-  waiting: "Waiting for you",
-  stopping: "Stopping",
-  review: "Up for review",
-  merged: "Merged",
-  closed: "Closed",
-  done: "Done",
-  failed: "Failed",
-  stopped: "Stopped",
-  declined: "Not taken",
-};
+import { taskChain } from "./automatedMate.logic";
+import { isLiveStatus, isStoppableStatus, recordStatus, type TaskStatus } from "./taskStatus";
 
 export interface TaskSessionInput {
   /** The task the conversation's first message brought. */
   readonly source: MateTaskSource;
+  /** HQ's id of the conversation's task (`mateTaskIdOfConversation`); `null` where it names none. */
+  readonly taskId: string | null;
   /** Its Mate's latest task (`HqNavigationMate.task`): `undefined` while not read. */
   readonly current: HqNavigationMateTask | null | undefined;
   /** Its Mate is at work now. */
   readonly working: boolean;
-  /** The task's own record on its application's board, when read. */
+  /** The task's own record on its application's board, by its id (`recordOf`), when read. */
   readonly record: HqAppTask | undefined;
-  /** The person asked HQ to stop it, and HQ took the stop. */
-  readonly stopAsked: boolean;
+  /** The person may stop it: an Owner or Admin, as HQ's `keep_intake` asks. */
+  readonly canStop: boolean;
+  /** Where this account's stop of it stands (`appTaskStops`); absent: none asked. */
+  readonly stop?: TaskStopAction | undefined;
 }
 
 export interface TaskSession {
@@ -74,78 +52,69 @@ const UNKNOWN: TaskSession = {
   pullRequest: null,
 };
 
-const LIVE: ReadonlySet<TaskStatus> = new Set(["queued", "working", "waiting"]);
-
-/** A finished task by its pull request: merged or closed say so; open is up for review. */
-function finished(pullRequest: HqPullRequest | undefined | null, reviewable: boolean): TaskStatus {
-  if (pullRequest?.state === "merged") return "merged";
-  if (pullRequest?.state === "closed") return "closed";
-  return pullRequest != null || reviewable ? "review" : "done";
-}
-
-/** Where the Mate's latest task stands (`taskChain`); `undefined`: it is not this one, or unread. */
-function fromChain(chain: TaskChain): TaskStatus | undefined {
+/**
+ * Where the Mate's latest task stands, as navigation says it, while it is this one. A task
+ * navigation names without `ended` is live, or done with its change still open: its record says
+ * which (done with a change is up for review); a pull request open says it is up for review; else
+ * it is at work, between its runs. `undefined`: it is not this one, or not read.
+ */
+function fromNavigation(input: TaskSessionInput): TaskStatus | undefined {
+  const chain = taskChain(input.source, input.current, input.working, input.taskId);
   switch (chain.kind) {
     case "unknown":
     case "earlier":
       return undefined;
     case "ended":
-      return chain.ended === "done" ? finished(chain.pullRequest, false) : chain.ended;
+      // Done, with a pull request it left open: up for review.
+      return chain.ended === "done" && chain.pullRequest !== undefined
+        ? chain.pullRequest.state === "open"
+          ? "review"
+          : chain.pullRequest.state
+        : chain.ended;
     case "working":
     case "waiting":
-    case "review":
+    case "stopping":
       return chain.kind;
     case "pull-request":
-      return finished(chain.pullRequest, true);
+      return chain.pullRequest.state === "open" ? "review" : chain.pullRequest.state;
+    case "at-rest": {
+      const recorded = input.record === undefined ? undefined : recordStatus(input.record);
+      if (recorded === "review" || recorded === "starting") return recorded;
+      // Its Mate holds it: never queued, and not over while navigation says it is not.
+      return "working";
+    }
   }
 }
 
-function fromRecord(task: HqAppTask): TaskStatus {
-  switch (task.state) {
-    case "queued":
-    case "assigned":
-      return "queued";
-    case "done":
-      return finished(
-        task.pullRequest === null ? null : { ...task.pullRequest, state: "open" },
-        task.change !== null,
-      );
-    default:
-      return task.state;
-  }
-}
-
-/**
- * The conversation's task on its application's board: the latest task its Mate took from the same
- * source (by address; a schedule, which has none, by title). `undefined`: none, or not read.
- */
+/** The conversation's task on its application's board, by HQ's id. `undefined`: none, or not read. */
 export function recordOf(
-  source: MateTaskSource,
-  projectId: string,
+  taskId: string | null,
   tasks: ReadonlyArray<HqAppTask> | null,
 ): HqAppTask | undefined {
-  const url = mateTaskSourceLink(source)?.url ?? null;
-  let latest: HqAppTask | undefined;
-  for (const task of tasks ?? []) {
-    if (task.mate?.projectId !== projectId) continue;
-    if (url === null ? task.title !== source.title : task.url !== url) continue;
-    if (latest === undefined || task.createdAt > latest.createdAt) latest = task;
-  }
-  return latest;
+  if (taskId === null) return undefined;
+  return tasks?.find((task) => task.id === taskId);
 }
 
 export function taskSession(input: TaskSessionInput): TaskSession {
   const { current, record } = input;
-  const fromNavigation = fromChain(taskChain(input.source, current, input.working));
-  const mine = fromNavigation === undefined ? undefined : (current ?? undefined);
-  const status = fromNavigation ?? (record === undefined ? undefined : fromRecord(record));
+  const said = fromNavigation(input);
+  // HQ's record says a stop was taken before navigation does: it is stopping.
+  const live =
+    said !== undefined && isStoppableStatus(said) && record?.state === "stopping"
+      ? "stopping"
+      : said;
+  const mine = live === undefined ? undefined : (current ?? undefined);
+  const status = live ?? (record === undefined ? undefined : recordStatus(record));
   if (status === undefined) return UNKNOWN;
-  const live = LIVE.has(status);
+  // A stop sent and not yet shown in what HQ says: it is stopping from the press on.
+  const pressed = input.stop?.kind === "working" && isLiveStatus(status);
+  const shown: TaskStatus = pressed ? "stopping" : status;
+  const taskId = input.taskId ?? mine?.id ?? record?.id ?? null;
   const recordPr = record?.pullRequest ?? null;
   return {
-    status: live && input.stopAsked ? "stopping" : status,
-    taskId: mine?.id ?? record?.id ?? null,
-    stoppable: live && !input.stopAsked,
+    status: shown,
+    taskId,
+    stoppable: input.canStop && taskId !== null && isStoppableStatus(shown),
     workedMs: mine?.workedMs ?? record?.workedMs ?? null,
     spentUsd: mine?.spentUsd ?? record?.spentUsd ?? null,
     change: record?.change ?? null,
@@ -153,16 +122,16 @@ export function taskSession(input: TaskSessionInput): TaskSession {
       mine?.pullRequest ??
       (recordPr === null
         ? null
-        : { ...recordPr, state: record?.state === "merged" ? "merged" : "open" }),
+        : {
+            ...recordPr,
+            state:
+              record?.state === "merged"
+                ? "merged"
+                : record?.state === "closed"
+                  ? "closed"
+                  : "open",
+          }),
   };
-}
-
-/** How long a task worked, at the minute its Mate reports it: "<1m", "12m", "1h 04m". */
-export function workedWords(ms: number): string {
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "<1m";
-  if (minutes < 60) return `${String(minutes)}m`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 /** What a task cost in US dollars, to the cent: "$0.42", "<$0.01". */

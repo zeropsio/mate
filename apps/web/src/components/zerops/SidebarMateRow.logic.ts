@@ -8,6 +8,7 @@ import {
 } from "../../zerops/lastKnownMate.logic";
 import { pullRequestName, type AutomatedKeyState } from "../../zerops/automatedMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
+import { TASK_STATUS_WORDS, type TaskStatus } from "../../zerops/taskStatus";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
@@ -1014,6 +1015,9 @@ export function mateTaskLine(task: {
   return task.number === undefined ? task.title : `#${String(task.number)} ${task.title}`;
 }
 
+/** A task's state after its title, in the words every surface says it in (`taskStatus`). */
+const statusWords = (status: TaskStatus): string => TASK_STATUS_WORDS[status].toLowerCase();
+
 const WAITING_FOR_A_TASK = "Waiting for a task";
 const WAITING_FOR_A_KEY = "Waiting for an API key";
 
@@ -1038,7 +1042,9 @@ export function pullRequestWords(
   if (pullRequest.state === "merged") return `${pr} merged`;
   if (pullRequest.state === "closed") return `${pr} closed`;
   if (working) return `${pr} open`;
-  return pullRequest.checks === "failing" ? `${pr} checks failing` : `${pr} waiting for review`;
+  return pullRequest.checks === "failing"
+    ? `${pr} checks failing`
+    : `${pr} ${statusWords("review")}`;
 }
 
 /** An automated Mate's input to `mateRowSecond` (`mateAutomation`). */
@@ -1051,6 +1057,8 @@ export interface MateAutomationLine {
     readonly number?: number | undefined;
     readonly title: string;
     readonly waiting?: true | undefined;
+    /** HQ took a person's stop of it; its Mate has not stopped yet. */
+    readonly stopping?: true | undefined;
     readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
   /**
@@ -1089,15 +1097,18 @@ export function mateAutomatedLine(
   const pullRequest = pullRequestWords(task.pullRequest, working);
   const line = (words: string | null) =>
     words === null ? mateTaskLine(task) : `${mateTaskLine(task)} · ${words}`;
+  if (task.stopping === true)
+    return { kind: "task", text: line(statusWords("stopping")), on: false };
   if (working) {
-    const words = options.saysWorking === true ? ["working", pullRequest] : [pullRequest];
+    const words =
+      options.saysWorking === true ? [statusWords("working"), pullRequest] : [pullRequest];
     const said = words.filter((word) => word !== null).join(" · ");
     return { kind: "task", text: line(said === "" ? null : said), on: true };
   }
-  if (task.waiting === true) return { kind: "task", text: line("waiting for you"), on: true };
+  if (task.waiting === true) return { kind: "task", text: line(statusWords("waiting")), on: true };
   const review = state === "needs" || state === "unread";
   if (task.pullRequest === undefined)
-    return { kind: "task", text: line("waiting for review"), on: review };
+    return { kind: "task", text: line(statusWords("review")), on: review };
   return {
     kind: "task",
     text: line(pullRequest),
@@ -1124,6 +1135,7 @@ export function mateAutomation(
               readonly number?: number | undefined;
               readonly title: string;
               readonly waiting?: true | undefined;
+              readonly stopping?: true | undefined;
               readonly pullRequest?: MateTaskPullRequest | undefined;
               readonly ended?: string | undefined;
             }
@@ -1146,6 +1158,7 @@ export function mateAutomation(
             ...(task.number === undefined ? {} : { number: task.number }),
             title: task.title,
             ...(task.waiting === true ? { waiting: true } : {}),
+            ...(task.stopping === true ? { stopping: true } : {}),
             ...(task.pullRequest === undefined
               ? {}
               : {

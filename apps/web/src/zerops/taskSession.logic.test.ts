@@ -2,13 +2,8 @@ import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  recordOf,
-  spentWords,
-  taskSession,
-  workedWords,
-  type TaskSessionInput,
-} from "./taskSession.logic";
+import { recordOf, spentWords, taskSession, type TaskSessionInput } from "./taskSession.logic";
+import { workedWords } from "./taskStatus";
 
 const issue = {
   kind: "github-issue",
@@ -57,10 +52,11 @@ const record = (overrides: Partial<HqAppTask> = {}): HqAppTask => ({
 
 const input = (overrides: Partial<TaskSessionInput>): TaskSessionInput => ({
   source: issue,
+  taskId: "task-12",
   current: undefined,
   working: false,
   record: undefined,
-  stopAsked: false,
+  canStop: true,
   ...overrides,
 });
 
@@ -78,7 +74,46 @@ describe("a task's session: how its conversation's task stands, in one word", ()
       input({ current: { ...onIt, pullRequest: prOpen } }),
       "review",
     ],
-    ["at rest with no pull request yet is up for review", input({ current: onIt }), "review"],
+    [
+      "live with its Mate at rest between runs is still working",
+      input({ current: onIt, record: record({ state: "working", change: null }) }),
+      "working",
+    ],
+    [
+      "live with its Mate at rest, before the board is read, is still working",
+      input({ current: onIt }),
+      "working",
+    ],
+    [
+      "just handed to its Mate is starting",
+      input({ current: onIt, record: record({ state: "assigned", change: null }) }),
+      "starting",
+    ],
+    [
+      "done with its change open and no pull request is up for review",
+      input({ current: onIt, record: record() }),
+      "review",
+    ],
+    [
+      "a stop HQ took is stopping, though its Mate still works",
+      input({ current: { ...onIt, stopping: true }, working: true }),
+      "stopping",
+    ],
+    [
+      "a stop HQ's record took is stopping, though navigation still says it waits",
+      input({ current: { ...onIt, waiting: true }, record: record({ state: "stopping" }) }),
+      "stopping",
+    ],
+    [
+      "a stopping task's record is stopping",
+      input({ current: null, record: record({ state: "stopping" }) }),
+      "stopping",
+    ],
+    [
+      "a closed change's record is closed",
+      input({ current: null, record: record({ state: "closed" }) }),
+      "closed",
+    ],
     [
       "its pull request merged is merged",
       input({ current: { ...onIt, ended: "merged", pullRequest: { ...prOpen, state: "merged" } } }),
@@ -93,9 +128,20 @@ describe("a task's session: how its conversation's task stands, in one word", ()
     ],
     ["done with nothing to review is done", input({ current: { ...onIt, ended: "done" } }), "done"],
     [
-      "stopped by the person and not yet ended is stopping",
-      input({ current: onIt, working: true, stopAsked: true }),
+      "stopped by the person, before HQ's answer shows, is stopping",
+      input({ current: onIt, working: true, stop: { kind: "working", verb: "task-stop" } }),
       "stopping",
+    ],
+    [
+      "yesterday's run of a schedule says its own record, never today's run of the same title",
+      input({
+        source: { kind: "schedule", name: "Nightly", title: "Nightly dependency check" },
+        taskId: "task-9",
+        current: { id: "task-12", title: "Nightly dependency check", url: null },
+        working: true,
+        record: record({ id: "task-9", state: "merged" }),
+      }),
+      "merged",
     ],
     [
       "a task before its Mate's latest says what its own record says",
@@ -131,42 +177,54 @@ describe("a task's session: how its conversation's task stands, in one word", ()
     ).toMatchObject({ spentUsd: 1.2, workedMs: 29 * 60_000, change: { repo: "web", number: 3 } });
   });
 
-  it("can be stopped while queued, at work or waiting, and once only", () => {
+  it("can be stopped by an Owner or Admin while queued, at work or waiting, and once only", () => {
     expect(taskSession(input({ current: onIt, working: true }))).toMatchObject({
       stoppable: true,
       taskId: "task-12",
     });
     expect(taskSession(input({ current: { ...onIt, waiting: true } })).stoppable).toBe(true);
-    expect(taskSession(input({ current: onIt })).stoppable).toBe(false);
-    expect(taskSession(input({ current: onIt, working: true, stopAsked: true })).stoppable).toBe(
+    expect(
+      taskSession(input({ current: null, record: record({ state: "queued" }) })).stoppable,
+    ).toBe(true);
+    expect(taskSession(input({ current: onIt, record: record() })).stoppable).toBe(false);
+    expect(
+      taskSession(
+        input({ current: onIt, working: true, stop: { kind: "working", verb: "task-stop" } }),
+      ).stoppable,
+    ).toBe(false);
+    expect(taskSession(input({ current: { ...onIt, stopping: true } })).stoppable).toBe(false);
+    expect(taskSession(input({ current: { ...onIt, ended: "failed" } })).stoppable).toBe(false);
+    expect(taskSession(input({ current: onIt, working: true, canStop: false })).stoppable).toBe(
       false,
     );
-    expect(taskSession(input({ current: { ...onIt, ended: "failed" } })).stoppable).toBe(false);
+  });
+
+  it("stops the conversation's own task, never the run its Mate is on now", () => {
+    const today = { id: "task-12", title: "Nightly dependency check", url: null };
+    const session = taskSession(
+      input({
+        source: { kind: "schedule", name: "Nightly", title: "Nightly dependency check" },
+        taskId: "task-9",
+        current: today,
+        working: true,
+        record: record({ id: "task-9", state: "working", change: null }),
+      }),
+    );
+    expect(session).toMatchObject({ taskId: "task-9", status: "working", stoppable: true });
   });
 });
 
 describe("a task's record on its application's board", () => {
-  it("is the latest of its Mate's tasks from the same source", () => {
+  it("is the record of the conversation's own task, by HQ's id", () => {
     const earlier = record({ id: "task-9", createdAt: "2026-10-16T10:00:00.000Z" });
     const latest = record({ id: "task-12" });
-    const otherMate = record({ id: "task-13", mate: { projectId: "p-rhea", name: "Rhea" } });
-    const otherIssue = record({ id: "task-14", url: "https://github.com/acme/tea-shop/issues/13" });
-    expect(recordOf(issue, "p-juno", [earlier, otherMate, latest, otherIssue])?.id).toBe("task-12");
+    expect(recordOf("task-9", [earlier, latest])?.id).toBe("task-9");
   });
 
-  it("is none where no task of its Mate came from that source", () => {
-    expect(recordOf(issue, "p-juno", [record({ mate: null })])).toBeUndefined();
-    expect(recordOf(issue, "p-juno", null)).toBeUndefined();
-  });
-
-  it("is found by title for a schedule, which has no address", () => {
-    const schedule = {
-      kind: "schedule",
-      name: "nightly",
-      title: "Nightly dependency check",
-    } as const;
-    const nightly = record({ url: null, title: "Nightly dependency check" });
-    expect(recordOf(schedule, "p-juno", [nightly])?.id).toBe("task-12");
+  it("is none where the board holds no task by its id, or is not read", () => {
+    expect(recordOf("task-12", [record({ id: "task-13" })])).toBeUndefined();
+    expect(recordOf("task-12", null)).toBeUndefined();
+    expect(recordOf(null, [record()])).toBeUndefined();
   });
 });
 

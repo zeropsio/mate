@@ -50,7 +50,7 @@ describe("a project's pool of automated Mates", () => {
       "one at rest on its pull request says it waits for review",
       { task: { ...task, pullRequest: { number: 2, state: "open" as const } } },
       false,
-      "#1 Add a search box · PR #2 waiting for review",
+      "#1 Add a search box · PR #2 up for review",
     ],
     [
       "one waiting for a person's answer says so",

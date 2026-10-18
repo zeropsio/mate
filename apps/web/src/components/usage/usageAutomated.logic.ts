@@ -8,7 +8,12 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import type { HqAppTask, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { formatUsd } from "@t3tools/shared/usageFormat";
 
-import { formatWorkDuration } from "../chat/conversation.logic";
+import {
+  TASK_STATUS_WORDS,
+  recordStatus,
+  workedWords,
+  type TaskStatus,
+} from "../../zerops/taskStatus";
 
 /** Where a task is followed: in this app where HQ links to it, else where HQ says. */
 export type UsageTaskTarget =
@@ -40,25 +45,13 @@ export interface UsageTaskRow {
   readonly title: string;
   /** Where to follow it in Mate; null where HQ names none. */
   readonly target: UsageTaskTarget | null;
+  /** Where it stands, in the words and with the dot every surface uses (`taskStatusDot`). */
+  readonly status: TaskStatus;
   readonly state: string;
   /** Null where its Mate never reported one: never a made-up zero. */
   readonly cost: string | null;
   readonly worked: string | null;
 }
-
-const STATE_WORDS: Readonly<Record<HqAppTask["state"], string>> = {
-  queued: "Queued",
-  assigned: "Starting",
-  working: "Working",
-  waiting: "Waiting",
-  stopping: "Stopping",
-  done: "Done",
-  merged: "Merged",
-  closed: "Closed",
-  failed: "Failed",
-  stopped: "Stopped",
-  declined: "Declined",
-};
 
 /**
  * The tasks one automated Mate worked on in the report's period, newest first: one that started
@@ -85,9 +78,10 @@ export function usageMateTasks(input: {
       id: task.id,
       title: task.title,
       target: usageTaskTarget(task.link),
-      state: STATE_WORDS[task.state],
+      status: recordStatus(task),
+      state: TASK_STATUS_WORDS[recordStatus(task)],
       cost: task.spentUsd === null ? null : formatUsd(task.spentUsd),
-      worked: task.workedMs === null ? null : formatWorkDuration(task.workedMs),
+      worked: task.workedMs === null ? null : workedWords(task.workedMs),
     }));
 }
 

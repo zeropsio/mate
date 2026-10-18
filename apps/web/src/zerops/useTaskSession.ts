@@ -1,35 +1,44 @@
 /**
  * A task conversation's session (`taskSession`), read for the Mate living in the conversation's
- * environment — HQ's navigation for its latest task, its activity for whether it works now, its
- * application's board (`hqAppTasks`) for a task before it — and the person's stop of it, the same
- * write the board's Stop sends (`task-stop`).
+ * environment and the task the conversation's id names (HQ's id): HQ's navigation for its Mate's
+ * latest task, its activity for whether it works now, its application's board (`hqAppTasks`,
+ * read again as navigation says its tasks moved) for the task's own record — and the person's
+ * stop of it, the same write and the same record the board's Stop has (`appTaskStops`).
  */
 import type { EnvironmentId, MateTaskSource } from "@t3tools/contracts";
+import { mateTaskIdOfConversation } from "@t3tools/contracts";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { toastManager } from "~/components/ui/toast";
 
 import { hqPlacementsAtom } from "../state/zerops";
 import { recordOf, taskSession, type TaskSession } from "./taskSession.logic";
-import { useAppTaskSource } from "./useTaskSourceSettings";
+import { useAppTaskSource, useAppTaskStops } from "./useTaskSourceSettings";
 import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface TaskSessionView {
   readonly session: TaskSession;
   /** The application the task is of: its change opens there. */
   readonly appId: string | null;
-  /** Stops the task; `null` while it cannot be stopped from here. HQ's refusal is a toast. */
+  /** Stops the task, once confirmed; `null` while it cannot be stopped from here. */
   readonly stop: (() => void) | null;
 }
 
 export function useTaskSession(
   task: MateTaskSource,
   environmentId: EnvironmentId,
+  conversationId: string,
 ): TaskSessionView {
+  const taskId = mateTaskIdOfConversation(conversationId) ?? null;
   const projectId = useKnownMate(environmentId)?.projectId;
   const placements = useAtomValue(hqPlacementsAtom);
+  const { activeOrganization } = useZeropsSession();
+  // HQ takes a task's stop from whoever keeps where its tasks come from: an Owner or Admin.
+  const canStop = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
   const working = useProjectMateActivity(projectId ?? "")?.kind === "working";
   const placement = projectId === undefined ? undefined : placements?.get(projectId);
   // Not known while the Mate, HQ's placements or its record's task (an older HQ) are not read.
@@ -38,34 +47,29 @@ export function useTaskSession(
   const appId = placement?.appId ?? null;
   const board = useAppTaskSource("hqAppTasks", appId);
   const setting = board.read.setting;
-  const record =
-    projectId === undefined
-      ? undefined
-      : recordOf(task, projectId, setting.state === "known" ? setting.held : null);
-  // The task HQ was asked to stop, by its id: it says it is stopping until its Mate says it stopped.
-  const [stopAskedOf, setStopAskedOf] = useState<string | null>(null);
-  const read = { source: task, current, working, record };
-  const plain = taskSession({ ...read, stopAsked: false });
-  const shown =
-    plain.taskId !== null && stopAskedOf === plain.taskId
-      ? taskSession({ ...read, stopAsked: true })
-      : plain;
-  const taskId = shown.taskId;
-  const { action } = board.read;
-  // Where the board's writes stood at the press: a refusal shown before it is not this stop's.
-  const before = useRef(action);
+  const record = recordOf(taskId, setting.state === "known" ? setting.held : null);
+  const stops = useAppTaskStops(appId, taskId === null ? [] : [taskId]);
+  const stop = taskId === null ? undefined : stops.stops[taskId];
+  const session = taskSession({
+    source: task,
+    taskId,
+    current,
+    working,
+    record,
+    canStop: canStop && appId !== null,
+    stop,
+  });
+  // HQ's refusal of this stop, said once as it lands: one that stood before this view is not news.
+  const said = useRef(stop);
   useEffect(() => {
-    if (stopAskedOf === null || action === before.current) return;
-    if (action.kind !== "failed" && action.kind !== "unresolved") return;
-    setStopAskedOf(null);
-    toastManager.add({ type: "error", title: action.words });
-  }, [action, stopAskedOf]);
-  const stop = () => {
-    if (taskId === null) return;
-    before.current = action;
-    setStopAskedOf(taskId);
-    board.write({ kind: "task-stop", taskId });
+    if (stop === said.current) return;
+    said.current = stop;
+    if (stop?.kind === "failed" || stop?.kind === "unresolved")
+      toastManager.add({ type: "error", title: stop.words });
+  }, [stop]);
+  return {
+    session,
+    appId,
+    stop: session.stoppable && taskId !== null ? () => stops.stop(taskId) : null,
   };
-  const canStop = shown.stoppable && appId !== null;
-  return { session: shown, appId, stop: canStop ? stop : null };
 }

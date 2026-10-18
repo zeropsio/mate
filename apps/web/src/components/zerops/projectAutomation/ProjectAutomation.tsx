@@ -1,8 +1,9 @@
 /**
  * A project's Automation section, on its page's column: the pool of its automated Mates as one
  * line (their faces and names, *Add*, and the organization's spend this month against its
- * budget); its task board — what they are on (at work, with Stop), what waits by its place, and
- * what ended — read from HQ and read again as HQ's navigation says they moved; then the sources
+ * budget); its task board — what they are on (at work), what waits by its place (each with Stop
+ * for an Owner or Admin), and what ended — read from HQ, and read again by the data layer as HQ's
+ * navigation says their tasks moved (`hqTaskBoardRefresh`); then the sources
  * its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks, schedules —
  * one row each with its own Edit and Stop, and *Take tasks from…* to add one. Configured where the
  * project is: Settings keeps only what is the organization's (its key, its GitHub app, its Slack
@@ -13,6 +14,7 @@
  */
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import {
   assignCandidateMateTints,
@@ -21,12 +23,18 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon, TimerIcon } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
-import { useAppTaskSource, useGithubApp, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
+import {
+  useAppTaskSource,
+  useAppTaskStops,
+  useGithubApp,
+  useOrgTaskSource,
+} from "~/zerops/useTaskSourceSettings";
+import { TASK_STATUS_WORDS, taskStatusDot, type TaskStatus } from "~/zerops/taskStatus";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -67,10 +75,10 @@ import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from
 import {
   boardOf,
   poolLine,
+  predictedBoard,
   spendLine,
   type Board,
-  type BoardStatus,
-  type BoardTone,
+  type BlockedMate,
 } from "./taskBoard.logic";
 
 /** Where the organization's connections are set: Settings › Automation. */
@@ -110,7 +118,7 @@ export function ProjectAutomation({
   const keys = useOrgAiKeys(admin);
   const held = useAutomatedKey();
   const key = admin ? automatedKeyState(keys.read.keys) : held;
-  const { pool, signature, predicted } = usePool(groupId);
+  const { pool, live, tasks } = usePool(groupId);
   const intake = useAppIntake(groupId);
   const addMate = useAddAutomatedMate(groupId);
   const openMate = useOpenMate();
@@ -119,8 +127,8 @@ export function ProjectAutomation({
   };
   const board = useTaskBoard(
     groupId,
-    signature,
-    { ...predicted, queued: intake.read.intake?.waiting ?? 0 },
+    live,
+    predictedBoard(tasks, intake.read.intake?.waiting ?? 0),
     admin,
   );
   if (!admin) {
@@ -171,14 +179,14 @@ export function ProjectAutomation({
 const WITHHELD = { state: "withheld" } as const;
 
 /**
- * The pool: the project's automated Mates, as HQ places them, each with what it is on; what HQ's
- * navigation says of their tasks, as one value that moves when any of them does (the board reads
- * again on it); and how many rows the board will hold, as navigation knows it while it reads.
+ * The pool: the project's automated Mates, as HQ places them, each with what it is on; and what
+ * HQ's navigation says of the task each is on — by the task's id, for the board's live rows, and
+ * as a list, for how many rows the board will hold while it reads.
  */
 function usePool(groupId: string): {
   readonly pool: ReadonlyArray<PoolMate>;
-  readonly signature: string;
-  readonly predicted: { readonly atWork: number; readonly recent: number };
+  readonly live: ReadonlyMap<string, HqNavigationMateTask>;
+  readonly tasks: ReadonlyArray<HqNavigationMateTask | null>;
 } {
   const { listing } = useZeropsCandidates();
   const key = useAutomatedKey();
@@ -206,49 +214,63 @@ function usePool(groupId: string): {
     };
   });
   const tasks = automated.map((candidate) => candidate.project.hq?.mate?.task ?? null);
-  const live = tasks.filter((task) => task != null && task.ended === undefined).length;
-  return {
-    pool,
-    signature: JSON.stringify(tasks),
-    predicted: {
-      // A row per task at work, and the line naming those that wait for one.
-      atWork: live + (tasks.length > live ? 1 : 0),
-      recent: tasks.filter((task) => task?.ended !== undefined).length,
-    },
-  };
+  // One map while the listing holds the same: the board's rows are made again only as it moves.
+  const live = useMemo(
+    () =>
+      new Map(
+        automated.flatMap((candidate) => {
+          const task = candidate.project.hq?.mate?.task;
+          return task == null ? [] : [[task.id, task] as const];
+        }),
+      ),
+    [automated],
+  );
+  return { pool, live, tasks };
+}
+
+/** How many rows each block will hold while the board reads (`predictedBoard`). */
+interface Predicted {
+  readonly atWork: number;
+  readonly queued: number;
+  readonly recent: number;
+  /** The line saying how many more ended earlier. */
+  readonly recentMore?: boolean | undefined;
 }
 
 /**
- * The application's task board: HQ's tasks of it, read while the section is drawn and again each
- * time HQ's navigation says its automated Mates' tasks moved (HQ streams no board of its own);
- * the organization's spend this month; and an Owner's or Admin's Stop of a task, asked on its row.
+ * How Recent last landed, per application, while this page lives: navigation names only each
+ * Mate's latest task, so the next read's placeholders take Recent's size from the last answer.
+ */
+const landed = new Map<string, { readonly recent: number; readonly recentMore: boolean }>();
+
+/**
+ * The application's task board: HQ's tasks of it, read while the section is drawn (and again by
+ * the data layer as navigation says its tasks moved), live rows moving with navigation; the
+ * organization's spend this month; and an Owner's or Admin's Stop of a task, asked on its row,
+ * each task's stop its own record (`appTaskStops`), the one its conversation's band reads too.
  */
 function useTaskBoard(
   groupId: string,
-  signature: string,
-  predicted: { readonly atWork: number; readonly queued: number; readonly recent: number },
-  /** An Owner or Admin: each task at work has its Stop. */
+  live: ReadonlyMap<string, HqNavigationMateTask>,
+  predicted: Predicted,
+  /** An Owner or Admin: each live task has its Stop. */
   admin: boolean,
 ): BoardView {
   const tasks = useAppTaskSource("hqAppTasks", groupId);
   const limits = useOrgTaskSource("hqTaskLimits");
   const nowMs = useNowMs();
   const navigate = useNavigate();
-  const { again } = tasks;
-  const seen = useRef(signature);
-  useEffect(() => {
-    if (seen.current === signature) return;
-    seen.current = signature;
-    again();
-  }, [signature, again]);
   const [asking, setAsking] = useState<string | null>(null);
-  const [pressed, setPressed] = useState<string | null>(null);
   const setting = tasks.read.setting;
   const held = setting.state === "known" ? setting.held : null;
-  const board = useMemo(
-    () => (held === null ? null : boardOf(held, nowMs, groupId)),
-    [held, nowMs, groupId],
-  );
+  const board = useMemo(() => {
+    if (held === null) return null;
+    const made = boardOf(held, nowMs, groupId, live);
+    landed.set(groupId, { recent: made.recent.length, recentMore: made.recentMore > 0 });
+    return made;
+  }, [held, nowMs, groupId, live]);
+  const stoppable = board === null ? [] : [...board.atWork, ...board.queued].map((row) => row.id);
+  const stops = useAppTaskStops(groupId, stoppable);
   return {
     read:
       board !== null
@@ -257,7 +279,7 @@ function useTaskBoard(
           ? { state: "failed", words: setting.words }
           : setting.state === "withheld" || setting.state === "unsupported"
             ? { state: "none" }
-            : { state: "reading", predicted },
+            : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
     spend: limits.read.setting.state === "known" ? spendLine(limits.read.setting.held) : null,
     onReadAgain: tasks.again,
     onOpen: (route) => {
@@ -267,7 +289,12 @@ function useTaskBoard(
       ? undefined
       : {
           pressOf: (taskId) =>
-            sourceRowPress({ key: taskId, asking, pressed, action: tasks.read.action }),
+            sourceRowPress({
+              key: taskId,
+              asking,
+              pressed: taskId,
+              action: stops.stops[taskId] ?? { kind: "idle" },
+            }),
           onAsk: (taskId) => {
             setAsking(taskId);
           },
@@ -276,8 +303,7 @@ function useTaskBoard(
           },
           onStop: (taskId) => {
             setAsking(null);
-            setPressed(taskId);
-            tasks.write({ kind: "task-stop", taskId });
+            stops.stop(taskId);
           },
         },
   };
@@ -572,11 +598,7 @@ export interface BoardView {
   readonly read:
     | {
         readonly state: "reading";
-        readonly predicted: {
-          readonly atWork: number;
-          readonly queued: number;
-          readonly recent: number;
-        };
+        readonly predicted: Predicted;
       }
     | { readonly state: "known"; readonly board: Board }
     | { readonly state: "failed"; readonly words: string }
@@ -586,7 +608,7 @@ export interface BoardView {
   readonly onReadAgain: () => void;
   /** Opens a task's conversation or its change, by its in-app path. */
   readonly onOpen: (route: string) => void;
-  /** An Owner's or Admin's Stop of a task at work, asked on its row; absent for anyone else. */
+  /** An Owner's or Admin's Stop of a live task, asked on its row; absent for anyone else. */
   readonly stop?:
     | {
         readonly pressOf: (taskId: string) => RowPress;
@@ -757,23 +779,14 @@ function AutomationBody({
   );
 }
 
-/** A status's dot colour, by what it means. */
-const DOT: Record<BoardTone, string> = {
-  starting: "bg-muted-foreground/50",
-  working: "bg-info",
-  waiting: "bg-warning",
-  review: "bg-info",
-  done: "bg-success",
-  merged: "bg-success",
-  failed: "bg-destructive",
-  stopped: "bg-muted-foreground/50",
-};
-
-function StatusWord({ status, why }: { readonly status: BoardStatus; readonly why?: string }) {
+function StatusWord({ status, why }: { readonly status: TaskStatus; readonly why?: string }) {
   const word = (
     <>
-      <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${DOT[status.tone]}`} />
-      <span className="truncate">{status.word}</span>
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
+      />
+      <span className="truncate">{TASK_STATUS_WORDS[status]}</span>
     </>
   );
   if (why === undefined) return <span className="flex min-w-0 items-center gap-1.5">{word}</span>;
@@ -850,6 +863,113 @@ function Placeholders({ count }: { readonly count: number }) {
   );
 }
 
+/**
+ * A live task's Stop on its row, for an Owner or Admin: it asks under the row first, then says it
+ * stops while HQ answers, and HQ's refusal there. None while the task is stopping already.
+ */
+function TaskStop({
+  board,
+  taskId,
+  status,
+}: {
+  readonly board: BoardView;
+  readonly taskId: string;
+  readonly status: TaskStatus;
+}) {
+  const press = board.stop?.pressOf(taskId) ?? { kind: "idle" as const };
+  if (board.stop === undefined || status === "stopping" || press.kind === "asking") return null;
+  return (
+    <Button
+      disabled={press.kind === "working"}
+      onClick={() => {
+        board.stop?.onAsk(taskId);
+      }}
+      size="sm"
+      variant="ghost"
+    >
+      {press.kind === "working" ? "Stopping…" : "Stop"}
+    </Button>
+  );
+}
+
+/** What a live task's Stop says under its row: the ask, or HQ's refusal. */
+function TaskStopAsk({ board, taskId }: { readonly board: BoardView; readonly taskId: string }) {
+  const press = board.stop?.pressOf(taskId) ?? { kind: "idle" as const };
+  if (press.kind === "asking")
+    return (
+      <div className="flex h-8 items-center justify-end gap-1 px-2">
+        <span className="text-xs text-muted-foreground">
+          Stop this task? Its Mate stops where it got to.
+        </span>
+        <Button onClick={board.stop?.onKeep} size="sm" variant="ghost">
+          Keep
+        </Button>
+        <Button
+          onClick={() => {
+            board.stop?.onStop(taskId);
+          }}
+          size="sm"
+          variant="destructive"
+        >
+          Stop
+        </Button>
+      </div>
+    );
+  if (press.kind === "refused")
+    return (
+      <p className="px-2 text-xs text-destructive-foreground" role="alert">
+        {press.words}
+      </p>
+    );
+  return null;
+}
+
+/** "Juno waits for change #3 to be merged or closed.", the change linked. */
+function BlockedLine({
+  mate,
+  blocked,
+  onOpen,
+}: {
+  readonly mate: string;
+  readonly blocked: BlockedMate;
+  readonly onOpen: (route: string) => void;
+}) {
+  const label = blocked.change.label.replace(/^Change/u, "change");
+  return (
+    <p
+      className="flex h-8 min-w-0 items-center gap-1 px-2 text-sm text-muted-foreground"
+      data-zerops-board-line="blocked"
+    >
+      <span className="truncate">
+        {mate} waits for{" "}
+        {blocked.change.external ? (
+          <a
+            className="text-info-foreground underline-offset-2 hover:underline"
+            href={blocked.change.href}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {label}
+          </a>
+        ) : (
+          <a
+            className="text-info-foreground underline-offset-2 hover:underline"
+            href={blocked.change.href}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.button !== 0) return;
+              event.preventDefault();
+              onOpen(blocked.change.href);
+            }}
+          >
+            {label}
+          </a>
+        )}{" "}
+        to be merged or closed.
+      </span>
+    </p>
+  );
+}
+
 /** "Juno waits for a task." / "Raya and Ines wait for a task." */
 function idleWords(names: ReadonlyArray<string>): string | null {
   if (names.length === 0) return null;
@@ -888,12 +1008,16 @@ export function TaskBoardView({
         </BoardBlock>
         <BoardBlock name="Recent">
           <Placeholders count={Math.max(1, read.predicted.recent)} />
+          {read.predicted.recentMore === true ? <div aria-hidden="true" className="h-6" /> : null}
         </BoardBlock>
       </div>
     );
-  const { atWork, queued, recent, recentMore } = read.board;
+  const { atWork, blocked, queued, recent, recentMore } = read.board;
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
-  const busy = new Set(atWork.flatMap((row) => (row.mate === null ? [] : [row.mate.projectId])));
+  const busy = new Set([
+    ...atWork.flatMap((row) => (row.mate === null ? [] : [row.mate.projectId])),
+    ...blocked.map((line) => line.projectId),
+  ]);
   const idle = idleWords(pool.filter((mate) => !busy.has(mate.projectId)).map((mate) => mate.name));
   return (
     <div className="grid gap-1" data-zerops-surface="project-automation-board">
@@ -902,7 +1026,6 @@ export function TaskBoardView({
           <ul className="grid">
             {atWork.map((row) => {
               const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
-              const press = board.stop?.pressOf(row.id) ?? { kind: "idle" as const };
               return (
                 <li className="grid" data-zerops-task={row.id} key={row.id}>
                   <div className={ROW}>
@@ -911,7 +1034,7 @@ export function TaskBoardView({
                         <MateFace
                           shape={mate.shape}
                           size={16}
-                          state={row.status.tone === "waiting" ? "needs" : "working"}
+                          state={row.status === "waiting" ? "needs" : "working"}
                           tint={mate.tint}
                         />
                       )}
@@ -920,52 +1043,31 @@ export function TaskBoardView({
                       </span>
                     </span>
                     <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
-                    <span className="w-36 shrink-0 text-muted-foreground">
+                    <span className="w-32 shrink-0 text-muted-foreground">
                       <StatusWord status={row.status} />
                     </span>
-                    <span className={`w-9 ${NUMBER}`}>{row.elapsed}</span>
+                    <span className={`flex w-16 items-center justify-end gap-1 ${NUMBER}`}>
+                      <TimerIcon aria-hidden="true" className="size-3.5" />
+                      <span className="sr-only">Worked </span>
+                      {row.worked}
+                    </span>
                     <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
-                    {board.stop === undefined ? null : press.kind === "asking" ? null : (
-                      <Button
-                        disabled={press.kind === "working"}
-                        onClick={() => {
-                          board.stop?.onAsk(row.id);
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {press.kind === "working" ? "Stopping…" : "Stop"}
-                      </Button>
-                    )}
+                    <TaskStop board={board} status={row.status} taskId={row.id} />
                   </div>
-                  {press.kind === "asking" ? (
-                    <div className="flex h-8 items-center justify-end gap-1 px-2">
-                      <span className="text-xs text-muted-foreground">
-                        Stop this task? Its Mate stops where it got to.
-                      </span>
-                      <Button onClick={board.stop?.onKeep} size="sm" variant="ghost">
-                        Keep
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          board.stop?.onStop(row.id);
-                        }}
-                        size="sm"
-                        variant="destructive"
-                      >
-                        Stop
-                      </Button>
-                    </div>
-                  ) : press.kind === "refused" ? (
-                    <p className="px-2 text-xs text-destructive-foreground" role="alert">
-                      {press.words}
-                    </p>
-                  ) : null}
+                  <TaskStopAsk board={board} taskId={row.id} />
                 </li>
               );
             })}
           </ul>
         )}
+        {blocked.map((line) => (
+          <BlockedLine
+            blocked={line}
+            key={line.projectId}
+            mate={faces.get(line.projectId)?.name ?? "A Mate"}
+            onOpen={board.onOpen}
+          />
+        ))}
         {idle === null ? null : (
           <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">{idle}</p>
         )}
@@ -978,24 +1080,31 @@ export function TaskBoardView({
         ) : (
           <ul className="grid">
             {queued.map((row) => (
-              <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                <span className={`w-5 ${NUMBER}`}>{row.position}</span>
-                <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                {row.url === null ? (
-                  <span className="max-w-44 shrink-0 truncate text-muted-foreground">
-                    {row.source}
+              <li className="grid" data-zerops-task={row.id} key={row.id}>
+                <div className={ROW}>
+                  <span className={`w-5 ${NUMBER}`}>{row.position}</span>
+                  <span className="min-w-0 flex-1 truncate">{row.title}</span>
+                  {row.url === null ? (
+                    <span className="max-w-44 shrink-0 truncate text-muted-foreground">
+                      {row.source}
+                    </span>
+                  ) : (
+                    <a
+                      className="max-w-44 shrink-0 truncate text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      href={row.url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {row.source}
+                    </a>
+                  )}
+                  <span className={`w-9 ${NUMBER}`}>
+                    <span className="sr-only">Waited </span>
+                    {row.waited}
                   </span>
-                ) : (
-                  <a
-                    className="max-w-44 shrink-0 truncate text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    href={row.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {row.source}
-                  </a>
-                )}
-                <span className={`w-9 ${NUMBER}`}>{row.waited}</span>
+                  <TaskStop board={board} status="queued" taskId={row.id} />
+                </div>
+                <TaskStopAsk board={board} taskId={row.id} />
               </li>
             ))}
           </ul>
@@ -1010,7 +1119,7 @@ export function TaskBoardView({
           <ul className="grid">
             {recent.map((row) => (
               <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                <span className="w-28 shrink-0 text-muted-foreground">
+                <span className="w-32 shrink-0 text-muted-foreground">
                   <StatusWord
                     status={row.outcome}
                     {...(row.detail === null ? {} : { why: row.detail })}
@@ -1020,7 +1129,10 @@ export function TaskBoardView({
                 <span className="w-16 shrink-0 truncate text-muted-foreground">
                   {row.mate ?? ""}
                 </span>
-                <span className={`w-9 ${NUMBER}`}>{row.when}</span>
+                <span className={`w-16 ${NUMBER}`}>
+                  <span className="sr-only">Ended </span>
+                  {row.when}
+                </span>
                 <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
                 <span className="w-20 shrink-0 text-end">
                   {row.change === null ? null : row.change.external ? (
@@ -1052,7 +1164,9 @@ export function TaskBoardView({
           </ul>
         )}
         {recentMore === 0 ? null : (
-          <p className="px-2 text-xs text-muted-foreground">{recentMore} more ended earlier.</p>
+          <p className="flex h-6 items-center px-2 text-xs text-muted-foreground">
+            {recentMore} more ended earlier.
+          </p>
         )}
       </BoardBlock>
     </div>

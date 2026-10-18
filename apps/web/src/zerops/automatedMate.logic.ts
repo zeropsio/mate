@@ -97,7 +97,9 @@ export type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
  * Where a conversation's task stands now, from the task its Mate is on or last worked (HQ's
  * navigation): not read yet; a task before its Mate's most recent one, which HQ no longer names;
  * ended, how, and the pull request it left; its Mate at work on it; waiting for a person's answer;
- * its change waiting for review; or the pull request its change is on GitHub.
+ * a person's stop taken, its Mate not stopped yet; live with its Mate at rest and no pull request
+ * (between runs, or done with its change open: the task's record says which); or the pull request
+ * its change is on GitHub.
  */
 export type TaskChain =
   | { readonly kind: "unknown" }
@@ -109,11 +111,21 @@ export type TaskChain =
     }
   | { readonly kind: "working"; readonly pullRequest: HqPullRequest | undefined }
   | { readonly kind: "waiting" }
-  | { readonly kind: "review" }
+  | { readonly kind: "stopping" }
+  | { readonly kind: "at-rest" }
   | { readonly kind: "pull-request"; readonly pullRequest: HqPullRequest };
 
-/** Whether the task a Mate is on is the one a conversation's first message brought. */
-function isTaskOf(source: MateTaskSource, task: HqNavigationMateTask): boolean {
+/**
+ * Whether the task a Mate is on is the one a conversation is worked for: by HQ's id, which the
+ * conversation's id carries (a schedule's runs share their title); where it carries none, by the
+ * source its first message brought.
+ */
+function isTaskOf(
+  source: MateTaskSource,
+  task: HqNavigationMateTask,
+  taskId: string | null,
+): boolean {
+  if (taskId !== null) return task.id === taskId;
   if (source.kind === "github-issue")
     return task.repo === source.repo && task.number === source.number;
   const url = source.kind === "schedule" ? null : source.url;
@@ -126,15 +138,18 @@ export function taskChain(
   current: HqNavigationMateTask | null | undefined,
   /** Its Mate is at work now. */
   working: boolean,
+  /** HQ's id of the conversation's task (`mateTaskIdOfConversation`); `null` where it names none. */
+  taskId: string | null = null,
 ): TaskChain {
   if (current === undefined) return { kind: "unknown" };
-  if (current === null || !isTaskOf(source, current)) return { kind: "earlier" };
+  if (current === null || !isTaskOf(source, current, taskId)) return { kind: "earlier" };
   if (current.ended !== undefined)
     return { kind: "ended", ended: current.ended, pullRequest: current.pullRequest };
+  if (current.stopping === true) return { kind: "stopping" };
   if (working) return { kind: "working", pullRequest: current.pullRequest };
   if (current.waiting === true) return { kind: "waiting" };
   return current.pullRequest === undefined
-    ? { kind: "review" }
+    ? { kind: "at-rest" }
     : { kind: "pull-request", pullRequest: current.pullRequest };
 }
 

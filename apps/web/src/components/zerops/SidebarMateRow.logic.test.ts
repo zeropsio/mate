@@ -2166,12 +2166,12 @@ describe("mateRowSecond — an automated Mate's line", () => {
     {
       case: "an automated Mate at rest on a task says the task waits for review",
       over: { automated: { task } },
-      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: false },
+      line: { kind: "task", text: "#12 Fix the checkout total · up for review", on: false },
     },
     {
       case: "an automated Mate whose task's change waits on the viewer says so in ink",
       over: { automated: { task }, view: view("needs") },
-      line: { kind: "task", text: "#12 Fix the checkout total · waiting for review", on: true },
+      line: { kind: "task", text: "#12 Fix the checkout total · up for review", on: true },
     },
     {
       case: "an automated Mate whose task waits for a person's answer says it waits for you, in ink",
@@ -2199,7 +2199,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
       over: { automated: { task: { ...task, pullRequest: { number: 14, state: "open" } } } },
       line: {
         kind: "task",
-        text: "#12 Fix the checkout total · PR #14 waiting for review",
+        text: "#12 Fix the checkout total · PR #14 up for review",
         on: false,
       },
     },
@@ -2213,7 +2213,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
       },
       line: {
         kind: "task",
-        text: "#12 Fix the checkout total · PR #14 waiting for review",
+        text: "#12 Fix the checkout total · PR #14 up for review",
         on: true,
       },
     },
@@ -2259,9 +2259,17 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "task", text: "#12 Fix the checkout total · waiting for you", on: true },
     },
     {
+      case: "an automated Mate whose task HQ stops says it is stopping, at work or not",
+      over: {
+        automated: { task: { ...task, stopping: true } },
+        view: view("working", { kind: "pending" }),
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · stopping", on: false },
+    },
+    {
       case: "an automated Mate on a task from elsewhere names it by its title",
       over: { automated: { task: { title: "Update the price list" } } },
-      line: { kind: "task", text: "Update the price list · waiting for review", on: false },
+      line: { kind: "task", text: "Update the price list · up for review", on: false },
     },
     {
       case: "an automated Mate at rest with no task and no organization key says it waits for the key",

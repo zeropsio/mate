@@ -9,7 +9,10 @@ import type {
   HqWebhookView,
 } from "@t3tools/shared/hqIntake";
 import { HqError } from "../../zerops/hq/client.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
 import type { TaskSourceSetting } from "../families/hqTaskSources.ts";
+import { appTaskStops } from "../projections/hqTaskSources.ts";
+import { commitOwn } from "./hqSettingsReads.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { taskSourceSetting } from "../projections/hqTaskSources.ts";
 import type { HqGithubManifestView, HqGithubView } from "@t3tools/shared/hqGithub";
@@ -446,7 +449,13 @@ describe("an application's tasks", () => {
     const release = r.host.demandApp("hqAppTasks", SHOP);
     await waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
     await r.host.write(SHOP, { kind: "task-stop", taskId: "1" });
-    await waitFor(r.store, () => r.read("hqAppTasks", "shop").action.kind === "done");
+    const stopOf = () =>
+      appTaskStops.derive(readsOfState(r.store.state()), {
+        orgId: "org",
+        appId: "shop",
+        taskIds: ["1"],
+      })["1"];
+    await waitFor(r.store, () => stopOf()?.kind === "done");
     expect(stopped).toEqual([["shop", "1"]]);
     expect(r.read("hqAppTasks", "shop").setting).toMatchObject({
       state: "known",
@@ -617,6 +626,161 @@ describe("an application's tasks", () => {
     const release = r.host.demandApp("hqAppTasks", SHOP);
     await read;
     expect(r.read("hqAppTasks", "shop").setting.state).toBe("unsupported");
+    release();
+    r.close();
+  });
+});
+
+describe("a task's stop and the board's reads", () => {
+  const task = (id: string, state: HqAppTask["state"]): HqAppTask => ({
+    id,
+    title: `Task ${id}`,
+    label: `acme/tea-shop#${id}`,
+    url: null,
+    state,
+    mate: { projectId: "P_JUNO", name: "Juno" },
+    requestedBy: "nova",
+    createdAt: "2026-10-18T08:00:00.000Z",
+    startedAt: "2026-10-18T08:01:00.000Z",
+    endedAt: null,
+    spentUsd: 0.2,
+    workedMs: 60_000,
+    detail: null,
+    change: null,
+    pullRequest: null,
+    link: null,
+  });
+  /** HQ's navigation placing Juno, automated, in Tea Shop, on `onTask`. */
+  const place = (r: ReturnType<typeof rig>, onTask: Record<string, unknown> | null) =>
+    commitOwn(r.store, "placement", placementsScope("org"), "P_JUNO", {
+      projectId: "P_JUNO",
+      appId: "shop",
+      name: "Juno",
+      kind: "mate",
+      mate: { automated: true, task: onTask },
+    } as never);
+  const stops = (r: ReturnType<typeof rig>, taskIds: ReadonlyArray<string>) =>
+    appTaskStops.derive(readsOfState(r.store.state()), { orgId: "org", appId: "shop", taskIds });
+
+  it("keeps each task's stop apart: a second stop never hides the first one's refusal", async () => {
+    const r = rig({
+      appTasks: async () => [task("1", "working"), task("2", "queued")],
+      stopAppTask: async (_appId, taskId) => {
+        if (taskId === "1")
+          throw new HqError({ kind: "refused", code: "conflict", message: "HQ said no." });
+      },
+    });
+    const release = r.host.demandApp("hqAppTasks", SHOP);
+    await waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
+    await r.host.write(SHOP, { kind: "task-stop", taskId: "1" });
+    await r.host.write(SHOP, { kind: "task-stop", taskId: "2" });
+    await waitFor(r.store, () => stops(r, ["2"])["2"]?.kind === "done");
+    expect(stops(r, ["1", "2"])).toEqual({
+      "1": { kind: "failed", words: "HQ said no." },
+      "2": { kind: "done", verb: "task-stop" },
+    });
+    expect(r.read("hqAppTasks", "shop").action).toEqual({ kind: "idle" });
+    release();
+    r.close();
+  });
+
+  it.each([
+    [
+      "asks for HQ to be updated where it has no stop of a task",
+      new HqError({
+        kind: "refused",
+        code: "http_404",
+        status: 404,
+        message: "HQ refused this (http_404).",
+      }),
+      "Update HQ to stop tasks from Mate.",
+    ],
+    [
+      "says only an Owner or Admin stops a task where HQ refuses the person",
+      new HqError({
+        kind: "refused",
+        code: "forbidden",
+        status: 403,
+        message: "HQ refused this (forbidden).",
+      }),
+      "Only an Owner or Admin can stop a task.",
+    ],
+    [
+      "says a task that ended meanwhile has nothing to stop",
+      new HqError({
+        kind: "refused",
+        code: "not_found",
+        reason: "task_not_found",
+        status: 404,
+        message: "HQ refused this (task_not_found).",
+      }),
+      "That task has ended already.",
+    ],
+  ])("%s", async (_title, refusal, words) => {
+    const r = rig({
+      appTasks: async () => [task("1", "working")],
+      stopAppTask: async () => {
+        throw refusal;
+      },
+    });
+    await r.host.write(SHOP, { kind: "task-stop", taskId: "1" });
+    expect(stops(r, ["1"])).toEqual({ "1": { kind: "failed", words } });
+    r.close();
+  });
+
+  it("reads the board again as navigation says a Mate's task moved, never as only its cost and time do", async () => {
+    let reads = 0;
+    const r = rig({
+      appTasks: async () => {
+        reads++;
+        return [task("1", "working")];
+      },
+    });
+    place(r, { id: "1", title: "Task 1", url: null, spentUsd: 0.1, workedMs: 1_000 });
+    const release = r.host.demandApp("hqAppTasks", SHOP);
+    await waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
+    expect(reads).toBe(1);
+    place(r, { id: "1", title: "Task 1", url: null, spentUsd: 0.4, workedMs: 90_000 });
+    await Promise.resolve();
+    expect(reads).toBe(1);
+    const reread = waitFor(r.store, () => reads === 2);
+    place(r, {
+      id: "1",
+      title: "Task 1",
+      url: null,
+      waiting: true,
+      spentUsd: 0.4,
+      workedMs: 90_000,
+    });
+    await reread;
+    const again = waitFor(r.store, () => reads === 3);
+    place(r, { id: "2", title: "Task 2", url: null });
+    await again;
+    release();
+    place(r, { id: "2", title: "Task 2", url: null, ended: "done" });
+    await Promise.resolve();
+    expect(reads).toBe(3);
+    r.close();
+  });
+
+  it("reads the month's spend again as an automated task ends", async () => {
+    let reads = 0;
+    const r = rig({
+      taskLimits: async () => {
+        reads++;
+        return { minutes: 60, costUsd: null, spentThisMonthUsd: reads };
+      },
+    });
+    place(r, { id: "1", title: "Task 1", url: null });
+    const release = r.host.demandOrg("hqTaskLimits", ORG);
+    await waitFor(r.store, () => r.read("hqTaskLimits").setting.state === "known");
+    const reread = waitFor(r.store, () => reads === 2);
+    place(r, { id: "1", title: "Task 1", url: null, ended: "merged" });
+    await reread;
+    expect(r.read("hqTaskLimits").setting).toMatchObject({
+      state: "known",
+      held: { spentThisMonthUsd: 2 },
+    });
     release();
     r.close();
   });
