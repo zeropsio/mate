@@ -8,6 +8,11 @@ import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import { agentIdForDriverKind, type MateTaskSource } from "@t3tools/contracts";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import {
+  OPENCODE_KEY_PROVIDERS,
+  automatedOpenCodeModel,
+  openCodeKeyProviderOfModel,
+} from "@t3tools/shared/openCodeKeyProviders";
 
 /** The agents a conversation offers: on an automated Mate, none that a person signs in. */
 export function automatedMateEntries<E extends { readonly driverKind: string }>(
@@ -17,6 +22,27 @@ export function automatedMateEntries<E extends { readonly driverKind: string }>(
   if (!automated) return entries;
   const kept = entries.filter((entry) => agentIdForDriverKind(entry.driverKind) === undefined);
   return kept.length === entries.length ? entries : kept;
+}
+
+/**
+ * What an automated Mate's composer says in place of the model picker: the organization's key's
+ * provider and the model the conversation runs, "Runs on Nebius · GLM-5.3" — its automated model
+ * while the conversation names none.
+ */
+export function automatedRunsOnLine(model: string | null | undefined): string {
+  const provider = openCodeKeyProviderOfModel(model);
+  const fallback = OPENCODE_KEY_PROVIDERS[0];
+  const slug =
+    provider !== undefined || (model ?? "").trim() !== ""
+      ? (model ?? "").trim()
+      : fallback === undefined
+        ? ""
+        : automatedOpenCodeModel(fallback);
+  const named = provider ?? openCodeKeyProviderOfModel(slug);
+  const modelName = slug.split("/").at(-1) ?? slug;
+  return named === undefined
+    ? `Runs on ${modelName}`
+    : `Runs on ${named.name.split(" ")[0]} · ${modelName}`;
 }
 
 /** What a task is called wherever it is named: "#12 Fix the checkout total"; else its title. */
@@ -110,52 +136,6 @@ export function taskChain(
   return current.pullRequest === undefined
     ? { kind: "review" }
     : { kind: "pull-request", pullRequest: current.pullRequest };
-}
-
-const ENDINGS: Record<TaskEnding, string> = {
-  merged: "Merged",
-  closed: "Closed",
-  done: "Done",
-  failed: "Failed",
-  stopped: "Stopped",
-};
-
-/**
- * The chain's line: its state in a word or two, then its pull request, linked; either may be none.
- * A task that ended with its pull request merged or closed lets the pull request say so.
- */
-export function taskChainLine(chain: TaskChain): {
-  readonly status: string | null;
-  readonly pullRequest: { readonly words: string; readonly url: string } | null;
-} {
-  const linked = (pullRequest: HqPullRequest | undefined) =>
-    pullRequest === undefined
-      ? null
-      : {
-          words: `${pullRequestName(pullRequest)} · ${pullRequestStateWords(pullRequest)}`,
-          url: pullRequest.url,
-        };
-  switch (chain.kind) {
-    case "unknown":
-    case "earlier":
-      return { status: null, pullRequest: null };
-    case "ended":
-      return {
-        status:
-          chain.pullRequest !== undefined && (chain.ended === "merged" || chain.ended === "closed")
-            ? null
-            : ENDINGS[chain.ended],
-        pullRequest: linked(chain.pullRequest),
-      };
-    case "working":
-      return { status: "Working", pullRequest: linked(chain.pullRequest) };
-    case "waiting":
-      return { status: "Waiting for you", pullRequest: null };
-    case "review":
-      return { status: "Waiting for review", pullRequest: null };
-    case "pull-request":
-      return { status: null, pullRequest: linked(chain.pullRequest) };
-  }
 }
 
 /** The provider whose organization key automated Mates run on (Nebius by default). */
