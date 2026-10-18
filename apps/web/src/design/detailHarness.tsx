@@ -58,6 +58,8 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
+import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
+import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
 import type {
   ProjectPeopleView,
   ProjectPerson,
@@ -431,6 +433,25 @@ const ACME_PEOPLE: ProjectPeopleView = {
   })) as unknown as ReadonlyArray<ProjectPerson>,
 };
 
+/** Acme's six-service production at the widths a page has beside the 435 px menu. */
+const SIX_SERVICES = [
+  {
+    label: "Six services in production",
+    note: "A 1786 window: the vault beside the page; one row per service, meters under each compute one, none under the bucket. The storefront answers on its own domains, so nothing calls it closed.",
+    width: 1351,
+  },
+  {
+    label: "Six services in production at 1280",
+    note: "A 1280 window: no room beside the page, so the vault goes under it and the table keeps one row per service.",
+    width: 845,
+  },
+  {
+    label: "Six services in production on a phone",
+    note: "A phone: each service in three lines — name, type and state; what runs and where; its meters.",
+    width: 390,
+  },
+] as const;
+
 /** Acme's addresses: the storefront on two domains of its own, the shop on its subdomain. */
 const ACME_ROUTES = [
   {
@@ -611,7 +632,28 @@ interface StopFixture {
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
   /** Who reaches the place, as its page draws them. */
   readonly access?: ReactNode;
+  /** Whether the place's vault is open beside (or under) its page. */
+  readonly vault?: boolean;
 }
+
+/** Acme production's vault, its values the vault fixture's. */
+const HARNESS_VAULT = {
+  orgId: "harness",
+  open: true,
+  onToggle: () => {},
+  body: (
+    <VaultPanelBody
+      actor="environment"
+      impactOf={(scope, write) => vaultFixtureImpact(VAULT_FIXTURE, scope, write)}
+      onRestart={() => Promise.resolve()}
+      onWrite={() => Promise.resolve({ ok: true })}
+      pending={new Map()}
+      restarting={new Set()}
+      view={VAULT_FIXTURE}
+      who={{ kind: "environment", name: "Production" }}
+    />
+  ),
+};
 
 /** The full commit each service runs, as the release rows and the stop's name read it. */
 function runningCommits(
@@ -785,6 +827,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       platformServices={fixture.platformServices}
       usageRead
       access={fixture.access}
+      vault={fixture.vault === true ? HARNESS_VAULT : undefined}
     />
   );
 }
@@ -1100,45 +1143,25 @@ function Harness() {
         />
       </State>
 
-      <State
-        label="Six services in production"
-        note="Acme: two code services and four the platform runs beside them, as one table; meters under each compute service, none under the bucket. The storefront answers on its own domains, so nothing calls it closed."
-      >
-        <div className="max-w-[790px]">
-          <StopState
-            fixture={{
-              tier: "production",
-              group: "Acme",
-              services: ACME_LIVE,
-              deployment: BEVIRO_RUNNING,
-              routes: ACME_ROUTES,
-              releases: ACME_RELEASES,
-              platformServices: ACME_SERVICES,
-              access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
-            }}
-          />
-        </div>
-      </State>
-
-      <State
-        label="Six services in production, narrow"
-        note="The same table at a 1280 window with the vault open: each row stacks."
-      >
-        <div className="max-w-[460px]">
-          <StopState
-            fixture={{
-              tier: "production",
-              group: "Acme",
-              services: ACME_LIVE,
-              deployment: BEVIRO_RUNNING,
-              routes: ACME_ROUTES,
-              releases: ACME_RELEASES,
-              platformServices: ACME_SERVICES,
-              access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
-            }}
-          />
-        </div>
-      </State>
+      {SIX_SERVICES.map(({ label, note, width }) => (
+        <State key={label} label={label} note={note}>
+          <div style={{ maxWidth: width }}>
+            <StopState
+              fixture={{
+                tier: "production",
+                group: "Acme",
+                services: ACME_LIVE,
+                deployment: BEVIRO_RUNNING,
+                routes: ACME_ROUTES,
+                releases: ACME_RELEASES,
+                platformServices: ACME_SERVICES,
+                access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
+                vault: true,
+              }}
+            />
+          </div>
+        </State>
+      ))}
 
       <State
         label="A production whose release failed to deploy"
