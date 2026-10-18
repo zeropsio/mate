@@ -5,21 +5,25 @@ import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as PlatformNodePath from "@effect/platform-node/NodePath";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import { CI_WINDOW, releaseGateWords, stageCheck } from "./gitCi.ts";
 import { withGitCredential } from "./gitAskpass.ts";
 import { type GitChildRequest, startGitChild } from "./gitPushChild.ts";
 import { GitHost } from "./gitHost.ts";
+import { GitTransport, remoteIdentity } from "./gitTransport.ts";
 import { Leader, NotLeader } from "./leader.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { operationBackoff } from "./operationWatch.ts";
-import type { HqPushCi, HqPushEvidence } from "@t3tools/shared/hqDeploys";
+import { type HqPushCi, type HqPushEvidence, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
 
 export interface PushInput {
   readonly directory: string;
@@ -32,6 +36,8 @@ export interface PushInput {
   readonly confirmed: string | null;
   readonly repositoryId?: string | null;
   readonly deadlineMs?: number;
+  /** Until when GitHub holding the push for a required check still running is waited out. */
+  readonly holdUntil?: number;
 }
 
 const ChildAnswer = Schema.Struct({
@@ -66,6 +72,8 @@ export interface PushEvidence {
   readonly repositoryId?: string | null;
   /** Written by `gitCi.ts` once the job is pushed. */
   readonly ci?: HqPushCi;
+  /** Stage's check of `sha`, read before a release pushes to its origin's main (`stageCheck`). */
+  readonly gate?: HqPushCi;
 }
 /** One surface derivation; child handles and filesystem paths never leave HQ. */
 export const pushEvidenceForWire = (evidence: PushEvidence): HqPushEvidence => {
@@ -93,6 +101,7 @@ export const pushEvidenceForWire = (evidence: PushEvidence): HqPushEvidence => {
         }),
     ...(evidence.observed === undefined ? {} : { observed: evidence.observed }),
     ...(evidence.ci === undefined ? {} : { ci: evidence.ci }),
+    ...(evidence.gate === undefined ? {} : { gate: evidence.gate }),
     nextActor: evidence.nextActor,
     nextAction: evidence.nextAction,
   };
@@ -103,6 +112,27 @@ export interface PushResult {
   readonly evidence: PushEvidence;
   readonly credentialRefused?: boolean;
 }
+/**
+ * GitHub's refusal of a push for the branch's required status checks (GH013), check by check:
+ * `expected` never ran on the commit, `failing` failed, `in progress` still runs.
+ */
+export const requiredCheckRefusal = (output: string) => {
+  const checks = [
+    ...output.matchAll(/Required status check "([^"]+)" is (expected|failing|in progress)/gu),
+  ].map(([, name, state]) => ({
+    name: name!,
+    state:
+      state === "expected"
+        ? ("never-ran" as const)
+        : state === "failing"
+          ? ("failed" as const)
+          : ("waiting" as const),
+  }));
+  return checks.length === 0 ? undefined : checks;
+};
+/** GitHub re-checks the required checks on every push: one try every half minute while they run. */
+const HOLD_RETRY_MS = 30_000;
+
 export class PushUnavailable extends Schema.TaggedError<PushUnavailable>()("PushUnavailable", {}) {}
 const receipt = (witness: string) =>
   Effect.tryPromise({
@@ -189,6 +219,8 @@ export const deliverRef = <E = never, R = never>(
         };
       });
     yield* record(evidence);
+    const holdUntil =
+      input.holdUntil ?? (yield* Clock.currentTimeMillis) + Duration.toMillis(CI_WINDOW);
     if (
       previous !== undefined &&
       (previous.remote !== input.url ||
@@ -304,6 +336,39 @@ export const deliverRef = <E = never, R = never>(
         yield* save({ after: input.sha, via: "answer" });
         return yield* end("pushed");
       }
+      const held = answer.timedOut
+        ? undefined
+        : requiredCheckRefusal(answer.stderr + "\n" + answer.stdout);
+      if (held !== undefined) {
+        const at = input.sha.slice(0, 7);
+        const named = (state: (typeof held)[number]["state"]) =>
+          held
+            .filter((check) => check.state === state)
+            .map((check) => `"${check.name}"`)
+            .join(", ");
+        if (named("failed") !== "")
+          return yield* end(
+            "refused",
+            `GitHub refused ${at}: its required check ${named("failed")} failed. Fix it on main, then release again.`,
+          );
+        if (named("never-ran") !== "")
+          return yield* end(
+            "refused",
+            `GitHub refused ${at}: its required check ${named("never-ran")} never ran on it. Release a commit stage tested.`,
+          );
+        if ((yield* Clock.currentTimeMillis) + HOLD_RETRY_MS >= holdUntil)
+          return yield* end(
+            "refused",
+            `GitHub still held ${at} when Mate stopped waiting: its required check ${named("waiting")} hadn't passed. Release again once it does.`,
+          );
+        yield* save({
+          phase: "recovering",
+          nextActor: "hq",
+          nextAction: `GitHub holds ${at} until its required check ${named("waiting")} passes; Mate pushes again then.`,
+        });
+        yield* Effect.sleep(HOLD_RETRY_MS);
+        continue;
+      }
       // A positive receive-pack rejection is authoritative. Transport loss is not.
       const lines = (answer.stderr + "\n" + answer.stdout).split("\n");
       const rejection = lines.find((line) =>
@@ -339,9 +404,11 @@ export interface PushJob {
 export class GitPush extends Context.Service<
   GitPush,
   {
+    /** `next` ends at the next change of any job, for a release waiting on stage's push. */
     readonly run: (
       job: PushJob,
       changed?: Effect.Effect<void>,
+      next?: Effect.Effect<void>,
     ) => Effect.Effect<
       void,
       import("effect/sql/SqlError").SqlError | import("./leader.ts").NotLeader
@@ -356,13 +423,18 @@ export const gitPushLayer = Layer.effect(
     const leader = yield* Leader;
     const host = yield* GitHost;
     const remotes = yield* Remotes;
+    const reads = yield* Effect.context<Remotes | GitTransport>();
 
     return GitPush.of({
-      run: (job, changed = Effect.void) =>
+      run: (job, changed = Effect.void, next = Effect.never) =>
         Effect.gen(function* () {
           const [environment] = yield* sql<{
             readonly branch: string;
-          }>`SELECT branch FROM hq_environment WHERE id=${job.environment_id} AND target='git'`;
+            readonly tier: "stage" | "production";
+            readonly staged: boolean;
+          }>`SELECT branch, tier, EXISTS (SELECT 1 FROM hq_environment s
+              WHERE s.app_id=e.app_id AND s.target='git' AND s.tier='stage') AS staged
+            FROM hq_environment e WHERE id=${job.environment_id} AND target='git'`;
           if (environment === undefined) return;
           const [saved] = yield* sql<{
             readonly evidence: PushEvidence | null;
@@ -465,20 +537,76 @@ export const gitPushLayer = Layer.effect(
               );
             }
           });
-          if (!use.ok) {
-            if (pending !== undefined) {
-              pending = {
-                ...pending,
-                phase: "closed",
-                nextActor: "person",
-                nextAction: use.reason,
-              };
+          const refuse = (reason: string) =>
+            Effect.gen(function* () {
+              if (pending !== undefined) {
+                pending = { ...pending, phase: "closed", nextActor: "person", nextAction: reason };
+                yield* record(pending);
+              }
+              yield* leader.write(
+                sql`UPDATE hq_deploy_job SET state=${saved?.evidence?.witness !== undefined ? "unresolved" : "refused"}, reason=${reason.slice(0, 240)}, ended_at=now(), updated_at=now() WHERE id=${job.id}::bigint AND ended_at IS NULL`,
+              );
+            });
+          const tell = (patch: Pick<PushEvidence, "nextAction"> & Partial<PushEvidence>) =>
+            Effect.gen(function* () {
+              if (pending === undefined) return;
+              pending = { ...pending, nextActor: "hq", ...patch };
               yield* record(pending);
+            });
+          if (!use.ok) return yield* refuse(use.reason);
+          // A release to an origin's main that has a stage pushes the very commit stage took, once
+          // stage's check passed on it: GitHub's required check on main reads that commit's runs.
+          let holdUntil: number | undefined;
+          if (environment.tier === "production" && environment.staged) {
+            const at = job.sha.slice(0, 7);
+            const waiting = `Waiting for stage to take ${at} first; the release pushes once stage CI "${RELEASE_CHECK}" passes on it.`;
+            let since: number | undefined;
+            let stageAt: string | undefined;
+            for (;;) {
+              const taken = yield* sql<{ readonly state: string; readonly at: string | null }>`
+                SELECT j.state, j.evidence->>'at' AS at FROM hq_deploy_job j
+                JOIN hq_environment s ON s.id=j.environment_id AND s.target='git' AND s.tier='stage'
+                WHERE s.app_id::text=${job.app_id} AND j.kind='push' AND j.repo=${job.repo} AND j.sha=${job.sha}
+                ORDER BY j.id`;
+              stageAt =
+                taken.find((row) => row.state === "pushed" && row.at !== null)?.at ?? undefined;
+              if (stageAt !== undefined) break;
+              const now = yield* Clock.currentTimeMillis;
+              since ??= now;
+              if (
+                !taken.some((row) => row.state === "queued" || row.state === "submitting") ||
+                now >= since + Duration.toMillis(CI_WINDOW)
+              )
+                return yield* refuse(
+                  `Stage never took ${at}, so stage CI "${RELEASE_CHECK}" never ran on it and this release can't go out. Release again once stage has main's head.`,
+                );
+              if (pending?.nextAction !== waiting) yield* tell({ nextAction: waiting });
+              yield* Effect.race(next, Effect.sleep("15 seconds"));
             }
-            yield* leader.write(
-              sql`UPDATE hq_deploy_job SET state=${saved?.evidence?.witness !== undefined ? "unresolved" : "refused"}, reason=${use.reason.slice(0, 240)}, ended_at=now(), updated_at=now() WHERE id=${job.id}::bigint AND ended_at IS NULL`,
-            );
-            return;
+            const remote = remoteIdentity(use.value.remote.url);
+            if (remote?.kind === "github") {
+              const gate = yield* stageCheck(
+                {
+                  appId: job.app_id,
+                  repo: job.repo,
+                  branch: environment.branch,
+                  remote,
+                  sha: job.sha,
+                  pushedAt: DateTime.toEpochMillis(DateTime.makeUnsafe(stageAt)),
+                  previous: pending?.gate,
+                },
+                (gate) => {
+                  const said = releaseGateWords(gate);
+                  return tell({
+                    gate,
+                    nextAction: said.verdict === "wait" ? said.words : (pending?.nextAction ?? ""),
+                  });
+                },
+              ).pipe(Effect.provide(reads));
+              const said = releaseGateWords(gate);
+              if (said.verdict !== "push") return yield* refuse(said.words);
+              holdUntil = DateTime.toEpochMillis(DateTime.makeUnsafe(gate!.until));
+            }
           }
           const directory = yield* Effect.promise(() =>
             NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-git-push-")),
@@ -521,6 +649,7 @@ export const gitPushLayer = Layer.effect(
               ...input,
               directory: NodePath.join(directory, "snapshot.git"),
               confirmed: confirmed?.sha ?? null,
+              ...(holdUntil === undefined ? {} : { holdUntil }),
             },
             record,
             pending,
