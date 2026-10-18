@@ -21,7 +21,6 @@ import {
   type CallResultPage,
   type CrewSeam,
   type MateTaskMessage,
-  type MateTaskSource,
   type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
@@ -690,8 +689,6 @@ type MessagesTimelineRowBody =
   | { kind: "notice"; id: string; createdAt: string; noticeId: string }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
-  /** A task's first message on an automated Mate: the issue it brings, never the brief. */
-  | { kind: "task-card"; id: string; createdAt: string; task: MateTaskSource }
   /** Something said about the task after its Mate took it: its author's, never the viewer's. */
   | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
@@ -1108,7 +1105,6 @@ function opensRun(row: MessagesTimelineRow): boolean {
   return (
     (row.kind === "background" && row.id.startsWith("woke:")) ||
     row.kind === "crew-card" ||
-    row.kind === "task-card" ||
     row.kind === "task-message" ||
     (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
   );
@@ -2640,11 +2636,14 @@ export function deriveMessagesTimelineRows(input: {
       newSinceDrawn = true;
     }
   };
-  const personRow = (entry: MessageEntry, index: number, aside: boolean): MessagesTimelineRow => {
-    const issue = entry.message.task;
-    if (issue !== undefined) {
-      return { kind: "task-card", id: entry.id, createdAt: entry.createdAt, task: issue };
-    }
+  // A task's first message is its brief: its issue stands in the session band above the
+  // conversation, so it draws no row, and the run under it opens the conversation.
+  const personRow = (
+    entry: MessageEntry,
+    index: number,
+    aside: boolean,
+  ): MessagesTimelineRow | null => {
+    if (entry.message.task !== undefined) return null;
     const heard = entry.message.taskMessage;
     if (heard !== undefined) {
       return { kind: "task-message", id: entry.id, createdAt: entry.createdAt, message: heard };
@@ -2879,7 +2878,8 @@ export function deriveMessagesTimelineRows(input: {
       // Keyed by the message, as a loose message's seam is: the seam must not
       // change its identity when a turn claims the message it stands before.
       seamBefore(lead.createdAt, lead.id);
-      rows.push(personRow(lead, first.leadIndex!, first.aside));
+      const person = personRow(lead, first.leadIndex!, first.aside);
+      if (person !== null) rows.push(person);
       // A /compact is its own event line: it says when the context is
       // condensed, so its run draws no card and no second compaction line.
       // What the person sent while it ran is theirs all the same: it stands
@@ -2978,8 +2978,11 @@ export function deriveMessagesTimelineRows(input: {
           },
         });
       }
-      if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
-        const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
+      const person =
+        index > 0 && stretch.lead !== null && stretch.leadIndex !== null
+          ? personRow(stretch.lead, stretch.leadIndex, stretch.aside)
+          : null;
+      if (person !== null && stretch.lead !== null) {
         exchanges.push(person);
         items.push({
           kind: "person",
@@ -3490,8 +3493,10 @@ export function deriveMessagesTimelineRows(input: {
         continue;
       }
       seamBefore(entry.createdAt, entry.id);
-      if (isUserMessageEntry(entry)) rows.push(personRow(entry, index, false));
-      else if (entry.kind === "message" && entry.message.role === "assistant") {
+      if (isUserMessageEntry(entry)) {
+        const person = personRow(entry, index, false);
+        if (person !== null) rows.push(person);
+      } else if (entry.kind === "message" && entry.message.role === "assistant") {
         // A message no turn owns (a notice from before turns were recorded): the Mate's words all the same.
         rows.push({
           kind: "message",

@@ -2684,7 +2684,13 @@ describe("deriveMessagesTimelineRows", () => {
       ] as never,
       settled: "t1",
     });
-    expect(list[1]).toMatchObject({ kind: "task-card", id: "m0", task: issue });
+    // The issue's card is the session band's, pinned above the conversation: here the brief
+    // draws no row at all, and the run it started opens under the day's line.
+    expect(list.filter((row) => row.id === "m0")).toEqual([]);
+    expect(list.map((row) => [row.kind, row.gap ?? "none"])).toEqual([
+      ["seam", "none"],
+      ["record", "part"],
+    ]);
     expect(JSON.stringify(list)).not.toContain("Work issue #12");
   });
 

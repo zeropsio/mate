@@ -2838,7 +2838,8 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
-      {/* A task's first message is its brief: its session stands above the conversation. */}
+      {/* What is said of a task after its Mate took it; its brief draws no row, its issue
+          standing in the session band above the conversation. */}
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
