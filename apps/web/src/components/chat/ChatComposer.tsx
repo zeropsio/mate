@@ -662,6 +662,8 @@ export interface ChatComposerProps {
   // Callbacks
   onCompactContext: () => void;
   onSend: (e?: { preventDefault: () => void }, intent?: ComposerSubmissionIntent) => void;
+  /** Whether this composer's send would go now: told as it changes, and false once it unmounts. */
+  onSendableChange?: (sendable: boolean) => void;
   /** Work the turn started that runs on after it, which the composer offers to stop. */
   backgroundWork: { readonly stopping: boolean; readonly onStop: () => void } | null;
   /** A person's Stop is in force (`conversationStop`): the Stop says so. */
@@ -731,6 +733,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     sendDisabledReason: externalSendDisabledReason,
     sendHint = null,
     zeropsSendBlockReason,
+    onSendableChange,
     isPreparingWorktree,
     environmentUnavailable,
     activePendingApproval,
@@ -1004,6 +1007,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const providerSendBlockReason =
     getAntigravitySendBlockReason(selectedProviderEntry?.snapshot, selectedModel) ??
     getProviderCatalogSendBlockReason(selectedProviderEntry?.snapshot);
+  // Whether its agent takes this turn here: a provider picked that can, and no Zerops block.
+  const providerSendable =
+    !noProviderAvailable && providerSendBlockReason === null && zeropsSendBlockReason === null;
+  useEffect(() => {
+    onSendableChange?.(providerSendable);
+    return () => onSendableChange?.(false);
+  }, [onSendableChange, providerSendable]);
   const sendDisabledReason =
     externalSendDisabledReason ??
     (activePendingProgress
@@ -3400,10 +3410,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         selectedPromptEffort,
         selectedModelOptionsForDispatch,
         selectedModelSelection,
-        providerAvailable:
-          !noProviderAvailable &&
-          providerSendBlockReason === null &&
-          zeropsSendBlockReason === null,
+        providerAvailable: providerSendable,
         selectedProvider,
         selectedModel,
         selectedProviderModels,
@@ -3446,9 +3453,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedModel,
       selectedModelOptionsForDispatch,
       selectedModelSelection,
-      noProviderAvailable,
-      providerSendBlockReason,
-      zeropsSendBlockReason,
+      providerSendable,
       selectedPromptEffort,
       selectedProvider,
       selectedProviderModels,
