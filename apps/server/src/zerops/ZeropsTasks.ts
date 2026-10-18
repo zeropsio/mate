@@ -23,6 +23,10 @@
  * - **Stopped:** a `task-stop` stops every run of the task's and is kept (`ZeropsTaskLedger`): the
  *   task says `stopped` with HQ's reason from then on, takes no more messages and, told again,
  *   never starts; a run the Mate's restart continued on it is stopped as the Mate starts.
+ * - **Dropped:** a `task-stop` that says HQ put the task back in line (`requeued`: the monthly
+ *   budget was reached before HQ heard the Mate take it) stops its runs as a stop does, and the
+ *   Mate says nothing of it, no longer its own; HQ handing it again, it takes it again in the same
+ *   conversation. One it never took leaves nothing to keep.
  * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end; reaching
  *   either stops its runs and the task says `failed` with the limit, and a follow-up past one
@@ -288,6 +292,10 @@ const atWork = (view: ConversationView): boolean =>
   view.turnDue === true ||
   view.pausedUntil !== null;
 
+/** HQ put the task back in line since the Mate last took it: its runs stop, it says nothing. */
+const droppedIn = (entry: TaskEntry | undefined): boolean =>
+  (entry?.requeued ?? 0) > (entry?.retaken ?? 0);
+
 const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRun =>
   run?.principal.kind === "task" && run.principal.taskId === taskId;
 
@@ -363,9 +371,10 @@ export interface TaskLink {
   readonly message: (taskId: string, message: MateTaskMessage) => Effect.Effect<void>;
   /**
    * HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason — once per
-   * link; a stop told again, or for a task this Mate never took, changes nothing else.
+   * link; a stop told again, or for a task this Mate never took, changes nothing else. One that
+   * put it back in line (`requeued`) drops it, saying nothing.
    */
-  readonly stop: (taskId: string, reason: string) => Effect.Effect<void>;
+  readonly stop: (taskId: string, reason: string, requeued?: boolean) => Effect.Effect<void>;
   /** The latest task's report, then each report that moved, for as long as the link runs. */
   readonly run: Effect.Effect<void>;
 }
@@ -440,6 +449,7 @@ export const make = Effect.gen(function* () {
   const reportFor = (taskId: string, view: ConversationView) =>
     Effect.gen(function* () {
       const entry = yield* counted(taskId, view);
+      if (droppedIn(entry)) return undefined;
       const own = afterTheTask(taskId, view)
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
@@ -472,7 +482,7 @@ export const make = Effect.gen(function* () {
         isTasks(run, taskId),
       );
       const { reached, leftMs } = reachedLimit(taskId, entry, view, now);
-      const stopped = entry?.stopped !== undefined;
+      const stopped = entry?.stopped !== undefined || droppedIn(entry);
       if (own.length > 0 && (stopped || reached !== undefined)) {
         yield* FiberMap.remove(deadlines, taskId);
         if (!stopped && entry?.limitHit === undefined && reached !== undefined) {
@@ -588,8 +598,12 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const conversationId = taskConversationId(task.id);
       const held = yield* engine.conversation(conversationId);
+      // Put back in line since it was taken: taken again below, in the same conversation.
+      const dropped = yield* ledger.entry(task.id);
+      const again = held !== undefined && droppedIn(dropped) ? dropped?.requeued : undefined;
       // Taken before: said again. One whose brief never went out is sent on below.
-      const told = held === undefined ? undefined : yield* reportFor(task.id, held);
+      const told =
+        held === undefined || again !== undefined ? undefined : yield* reportFor(task.id, held);
       if (told !== undefined) return Option.some(told);
       // Stopped before it was taken: it stays stopped.
       const kept = yield* ledger.entry(task.id);
@@ -633,11 +647,13 @@ export const make = Effect.gen(function* () {
       const result = yield* engine.deliver(
         conversationId,
         { _tag: "Send", text: taskBrief(task), task: task.source },
-        CommandId.make(`task:${task.id}`),
+        CommandId.make(again === undefined ? `task:${task.id}` : `task:${task.id}:${again}`),
         principalOf(task.id),
       );
       // Refused now (an update draining it, say): another Mate, or this one later, takes it.
       if (result._tag === "Rejected") return refused(REFUSALS.notNow);
+      if (again !== undefined)
+        yield* ledger.update(task.id, (entry) => ({ ...entry, retaken: again }));
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
       return Option.some<MateTaskReport>({
         taskId: task.id,
@@ -665,7 +681,7 @@ export const make = Effect.gen(function* () {
       // Not a task this Mate took: nothing to steer.
       if (held === undefined || !hasRuns(held)) return Option.none<MateTaskReport>();
       const entry = yield* ledger.entry(taskId);
-      if (entry?.stopped === undefined && entry?.limitHit === undefined) {
+      if (entry?.stopped === undefined && entry?.limitHit === undefined && !droppedIn(entry)) {
         const { reached } = reachedLimit(taskId, entry, held, yield* Clock.currentTimeMillis);
         if (reached !== undefined) {
           yield* ledger.update(taskId, (kept) => ({ ...kept, limitHit: reached }));
@@ -714,6 +730,20 @@ export const make = Effect.gen(function* () {
       Effect.catchTags({ ViewUnreadable: () => Effect.succeed(Option.none<MateTaskReport>()) }),
     );
 
+  /**
+   * HQ put the task back in line: its runs stopped, nothing said; one it never took leaves nothing
+   * to keep. One frame at a time with the takes, so a take told just before is dropped after it.
+   */
+  const dropTask = (taskId: string) =>
+    Effect.gen(function* () {
+      const held = yield* engine.conversation(taskConversationId(taskId));
+      if (held === undefined || !hasRuns(held)) return;
+      const entry = yield* ledger.entry(taskId);
+      if (entry?.stopped !== undefined || droppedIn(entry)) return;
+      yield* ledger.update(taskId, (kept) => ({ ...kept, requeued: (kept.requeued ?? 0) + 1 }));
+      yield* enforce(taskId, held);
+    }).pipe(taking.withPermit, Effect.catchTags({ ViewUnreadable: () => Effect.void }));
+
   /** The task worked last: the newest task conversation. */
   const latest = Effect.map(taskViews, (found) =>
     Option.flatMap(found, (entries) =>
@@ -756,11 +786,13 @@ export const make = Effect.gen(function* () {
         message: (taskId, message) => Effect.flatMap(hear(taskId, message), answer),
         // Answered only when it moved what this link said: HQ answers a word on a stopped task
         // with a stop, so one answer each would never end.
-        stop: (taskId, reason) =>
-          Effect.flatMap(
-            stopTask(taskId, reason),
-            Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
-          ),
+        stop: (taskId, reason, requeued = false) =>
+          requeued
+            ? dropTask(taskId)
+            : Effect.flatMap(
+                stopTask(taskId, reason),
+                Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
+              ),
         // Following the reports first, so a move between the first read and them is heard.
         run: Effect.scoped(
           Effect.gen(function* () {

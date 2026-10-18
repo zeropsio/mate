@@ -28,6 +28,12 @@ const TaskEntry = Schema.Struct({
   limits: Schema.optionalKey(MateTaskLimits),
   /** People stopped it (`task-stop`), with HQ's reason: it takes no more messages. */
   stopped: Schema.optionalKey(Schema.String),
+  /**
+   * How many times HQ put it back in line after the Mate took it (`task-stop` `requeued`), and at
+   * how many of them the Mate took it again: dropped while the first is ahead.
+   */
+  requeued: Schema.optionalKey(Schema.Number),
+  retaken: Schema.optionalKey(Schema.Number),
   /** The limit that stopped it, or turned a follow-up away. */
   limitHit: Schema.optionalKey(Schema.Literals(["minutes", "cost"])),
   /** Each ended run of the task's, by its id: how long it ran. */
