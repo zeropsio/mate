@@ -40,32 +40,45 @@ export function parseCwds(output: string): string[] {
 export const inside = (path: string, parent: string) =>
   path === parent || path.startsWith(`${parent}${NodePath.sep}`);
 
-/** Undefined means clean, merged and idle; missing evidence never grants eligibility. */
-export function idleDecision(
-  worktree: Worktree,
-  evidence: {
-    readonly main: string;
-    readonly roots: ReadonlyArray<string>;
-    readonly merged: boolean;
-    readonly clean: boolean;
-    readonly cwds: ReadonlyArray<string>;
-  },
-): string | undefined {
+export interface Evidence {
+  readonly main: string;
+  readonly pool: string;
+  /** HEAD's content is already in origin/main: an ancestor, or every file it changed matches there. */
+  readonly landed: boolean;
+  /** HEAD has commits that no remote-tracking ref holds. */
+  readonly unpushed: boolean;
+  readonly clean: boolean;
+  /** The directory's .git link leads to this repository; a broken link makes git read the repository around it. */
+  readonly checkout: boolean;
+  readonly cwds: ReadonlyArray<string>;
+  readonly worktrees: ReadonlyArray<string>;
+}
+
+/** Why the worktree must stay as it is; undefined means its work is safe elsewhere and nothing uses it. */
+export function keepReason(worktree: Worktree, evidence: Evidence): string | undefined {
   if (worktree.path === evidence.main) return "main checkout";
-  if (!evidence.roots.some((root) => worktree.path !== root && inside(worktree.path, root)))
-    return "outside managed roots";
+  if (!evidence.checkout) return "not a checkout of this repository";
   if (worktree.locked) return "locked";
-  if (!evidence.merged) return "unmerged";
-  if (!evidence.clean) return "dirty";
   if (evidence.cwds.some((cwd) => inside(cwd, worktree.path))) return "live process cwd";
+  if (!evidence.clean) return "dirty";
+  if (evidence.unpushed) return "commits on no remote";
+  if (!evidence.landed) return "not in origin/main";
+  if (evidence.worktrees.some((path) => path !== worktree.path && inside(path, worktree.path)))
+    return "holds another worktree";
   return undefined;
 }
 
-export function pruneDecision(
-  worktree: Worktree,
-  evidence: Parameters<typeof idleDecision>[1],
-): string | undefined {
-  return idleDecision(worktree, evidence) ?? (worktree.branch ? "idle pool member" : undefined);
+/** A lane prepare-worktree may switch to a new job: only inside the pool. */
+export function idleDecision(worktree: Worktree, evidence: Evidence): string | undefined {
+  if (worktree.path === evidence.pool || !inside(worktree.path, evidence.pool))
+    return "outside the pool";
+  return keepReason(worktree, evidence);
+}
+
+/** A worktree prune removes: only outside the pool, which prepare-worktree reuses instead. */
+export function pruneDecision(worktree: Worktree, evidence: Evidence): string | undefined {
+  if (inside(worktree.path, evidence.pool)) return "in the pool";
+  return keepReason(worktree, evidence);
 }
 
 export function worktreeLayout(cwd: string) {
@@ -73,31 +86,54 @@ export function worktreeLayout(cwd: string) {
     git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
   );
   const main = NodePath.dirname(common);
-  const roots = [NodePath.resolve(main, "../z3-wt"), NodePath.join(main, ".claude/worktrees")];
-  // roots[0] is where new lanes are created; WT_ROOT moves it, the older roots stay managed.
+  // Lanes live in one place: $WT_ROOT/<repo> (kept out of backup and Spotlight), else ../z3-wt.
   const wtRoot = process.env.WT_ROOT;
-  if (wtRoot) roots.unshift(NodePath.resolve(wtRoot, NodePath.basename(main)));
-  return { common, main, roots };
+  const pool = wtRoot
+    ? NodePath.resolve(wtRoot, NodePath.basename(main))
+    : NodePath.resolve(main, "../z3-wt");
+  return { common, main, pool };
+}
+
+const exit = (cwd: string, args: string[], meaning: string) => {
+  const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0 && result.status !== 1)
+    throw new Error(result.stderr || result.error?.message || `Cannot ${meaning}`);
+  return result;
+};
+
+function landed(cwd: string, head: string): boolean {
+  if (
+    exit(cwd, ["merge-base", "--is-ancestor", head, "origin/main"], "compare to origin/main")
+      .status === 0
+  )
+    return true;
+  // Squash and rebase merges land the content under other commits.
+  const base = exit(cwd, ["merge-base", head, "origin/main"], "find the merge base");
+  if (base.status !== 0) return false;
+  const names = (from: string, to: string) =>
+    git(cwd, ["diff", "--no-renames", "--name-only", "-z", from, to]).split("\0").filter(Boolean);
+  const differs = new Set(names(head, "origin/main"));
+  return names(base.stdout.trim(), head).every((path) => !differs.has(path));
 }
 
 export function inspectWorktree(cwd: string, worktree: Worktree) {
+  const common = (path: string) =>
+    NodeFS.realpathSync(
+      git(path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
+    );
+  if (common(worktree.path) !== common(cwd))
+    return { worktree, checkout: false, landed: false, unpushed: true, clean: false };
   const head = git(worktree.path, ["rev-parse", "HEAD"]).trim();
-  const merged = NodeChildProcess.spawnSync(
-    "git",
-    ["merge-base", "--is-ancestor", head, "origin/main"],
-    { cwd, encoding: "utf8" },
+  const branch = exit(
+    worktree.path,
+    ["symbolic-ref", "--quiet", "HEAD"],
+    "inspect worktree branch",
   );
-  if (merged.status !== 0 && merged.status !== 1)
-    throw new Error(merged.stderr || "Cannot compare worktree to origin/main");
-  const branch = NodeChildProcess.spawnSync("git", ["symbolic-ref", "--quiet", "HEAD"], {
-    cwd: worktree.path,
-    encoding: "utf8",
-  });
-  if (branch.status !== 0 && branch.status !== 1)
-    throw new Error(branch.stderr || "Cannot inspect worktree branch");
   return {
     worktree: { ...worktree, head, branch: branch.status === 0 ? branch.stdout.trim() : undefined },
-    merged: merged.status === 0,
+    checkout: true,
+    landed: landed(cwd, head),
+    unpushed: git(cwd, ["rev-list", "--count", head, "--not", "--remotes"]).trim() !== "0",
     clean: git(worktree.path, ["status", "--porcelain=v1", "--untracked-files=all"]) === "",
   };
 }
@@ -152,7 +188,7 @@ if (import.meta.main) {
   if (args.some((arg) => arg !== "--apply" && arg !== "--locked"))
     throw new Error("Usage: node scripts/prune-worktrees.ts [--apply]");
   const cwd = process.cwd();
-  const { common, main, roots } = worktreeLayout(cwd);
+  const { common, main, pool } = worktreeLayout(cwd);
   if (args.includes("--apply") && !args.includes("--locked")) {
     const result = NodeChildProcess.spawnSync(
       "flock",
@@ -170,38 +206,39 @@ if (import.meta.main) {
   }
   const worktrees = parseWorktrees(git(cwd, ["worktree", "list", "--porcelain", "-z"]));
   const apply = args.includes("--apply");
+  const paths = worktrees.map((worktree) => worktree.path);
   const before = freeBytes(main);
   let count = 0;
-  let cwds = liveCwds(roots);
+  let cwds = liveCwds(paths);
   for (const worktree of worktrees) {
-    if (worktree.path === main || !roots.some((root) => inside(worktree.path, root))) continue;
     if (!NodeFS.existsSync(worktree.path)) {
       console.log(`keep ${worktree.path}: missing directory; registration retained`);
       continue;
     }
     const decision = (processCwds: ReadonlyArray<string>) => {
-      const state = inspectWorktree(cwd, worktree);
-      return pruneDecision(state.worktree, {
+      const { worktree: inspected, ...facts } = inspectWorktree(cwd, worktree);
+      return pruneDecision(inspected, {
         main,
-        roots,
-        merged: state.merged,
-        clean: state.clean,
+        pool,
+        ...facts,
         cwds: processCwds,
+        worktrees: paths,
       });
     };
-    const reason = decision(cwds);
+    const reason = worktree.path === main ? "main checkout" : decision(cwds);
     if (reason) {
       console.log(`keep ${worktree.path}: ${reason}`);
       continue;
     }
     if (apply) {
       // Refresh safety evidence at the destructive boundary; git remove independently rejects dirt.
-      cwds = liveCwds(roots);
+      cwds = liveCwds(paths);
       const refreshed = decision(cwds);
       if (refreshed) {
         console.log(`keep ${worktree.path}: ${refreshed}`);
         continue;
       }
+      // Removing the worktree keeps its branch and commits in the main repository.
       git(cwd, ["worktree", "remove", worktree.path]);
     }
     count += 1;
