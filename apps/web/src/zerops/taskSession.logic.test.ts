@@ -128,6 +128,16 @@ describe("a task's session: how its conversation's task stands, in one word", ()
     ],
     ["done with nothing to review is done", input({ current: { ...onIt, ended: "done" } }), "done"],
     [
+      "finished by its Mate, as HQ says, is up for review, even while its Mate works on",
+      input({ current: { ...onIt, done: true }, working: true }),
+      "review",
+    ],
+    [
+      "finished by its Mate with its pull request merged is merged",
+      input({ current: { ...onIt, done: true, pullRequest: { ...prOpen, state: "merged" } } }),
+      "merged",
+    ],
+    [
       "stopped by the person, before HQ's answer shows, is stopping",
       input({ current: onIt, working: true, stop: { kind: "working", verb: "task-stop" } }),
       "stopping",
@@ -195,6 +205,12 @@ describe("a task's session: how its conversation's task stands, in one word", ()
     expect(taskSession(input({ current: { ...onIt, stopping: true } })).stoppable).toBe(false);
     expect(taskSession(input({ current: { ...onIt, ended: "failed" } })).stoppable).toBe(false);
     expect(taskSession(input({ current: onIt, working: true, canStop: false })).stoppable).toBe(
+      false,
+    );
+  });
+
+  it("offers no Stop for a task its Mate finished, whose change waits for review", () => {
+    expect(taskSession(input({ current: { ...onIt, done: true }, working: true })).stoppable).toBe(
       false,
     );
   });

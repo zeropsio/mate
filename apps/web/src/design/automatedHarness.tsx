@@ -39,7 +39,11 @@ import {
   TaskSourcesUnsupported,
   WebhooksSettingsView,
 } from "~/components/settings/TaskSourcesSettings";
-import { MateTaskMessageRow, MateTaskSessionBar } from "~/components/zerops/MateTaskCard";
+import {
+  MateTaskAskRow,
+  MateTaskMessageRow,
+  MateTaskSessionBar,
+} from "~/components/zerops/MateTaskCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -48,6 +52,15 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const NEBIUS = OPENCODE_KEY_PROVIDERS[0]!;
 // Built from parts: never a whole secret-shaped literal in the source.
 const SECRET = ["whsec", "3f9a", "tea", "shop", "c1d2"].join("_");
+
+const TEA_ISSUE = {
+  kind: "github-issue",
+  repo: "acme/tea-shop",
+  number: 12,
+  url: "https://github.com/acme/tea-shop/issues/12",
+  title: "Fix the checkout total",
+  author: "nova-dev",
+} as const;
 
 const KEY_UNSET: OrgAiKeysRead = {
   keys: { state: "known", keys: [{ provider: "nebius", set: false, setAt: null }], stale: false },
@@ -204,7 +217,7 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
-        <Panel title="A task's session, and a follow-up">
+        <Panel title="A task's session, its ask, and a follow-up">
           <div className="grid max-w-2xl gap-3">
             <MateTaskSessionBar
               onStop={nothing}
@@ -217,14 +230,31 @@ function Harness() {
                 change: null,
                 pullRequest: null,
               }}
-              task={{
-                kind: "github-issue",
-                repo: "acme/tea-shop",
-                number: 12,
-                url: "https://github.com/acme/tea-shop/issues/12",
-                title: "Fix the checkout total",
-                author: "nova-dev",
+              task={TEA_ISSUE}
+            />
+            <MateTaskAskRow
+              source={TEA_ISSUE}
+              text={[
+                "The checkout total skips the tax line when the cart holds a gift card.",
+                "",
+                "Steps: add two teas and a gift card, open checkout, compare the total with the sum of the lines.",
+                "Expected: the total includes 21 % VAT on the teas, never on the gift card.",
+                "Actual: the total is the lines' sum without any tax.",
+                "",
+                "It started after Tuesday's deploy; the invoices still look right, only the cart is off.",
+                "Juno saw it on a phone too, so it is not the browser.",
+              ].join("\n")}
+            />
+            <MateTaskAskRow
+              source={{
+                kind: "slack-thread",
+                workspace: "Acme",
+                channel: "support",
+                url: "https://acme.slack.com/archives/C1/p1",
+                title: "Can the shop show prices with tax?",
+                author: "Raya",
               }}
+              text="Can the shop show prices with tax on the product page?"
             />
             <MateTaskMessageRow
               message={{

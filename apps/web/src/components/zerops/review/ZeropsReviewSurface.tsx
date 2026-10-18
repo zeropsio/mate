@@ -239,64 +239,73 @@ export function ZeropsReviewSurface({
         ) : null}
       </header>
       <div className="rv-body">{children}</div>
-      <footer className="rv-foot">
-        <div className="rv-btns">
-          {answers !== undefined ? (
-            answers
-          ) : (
-            <>
-              {primary === undefined ? null : (
-                <Button
-                  data-review-primary=""
-                  data-safe={
-                    primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
-                  }
-                  data-zerops-primary-action={primary.label}
-                  disabled={!primary.enabled || primary.busy === true}
-                  onClick={primary.onPress}
-                >
-                  {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
-                  {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
-                  {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
-                  {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
-                  {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                    <kbd aria-hidden="true" className="rv-keys">
-                      {PRESS_KEYS}
-                    </kbd>
-                  ) : null}
-                </Button>
-              )}
-              {settled === undefined ? null : (
-                <span className="rv-settled">
-                  <CheckIcon aria-hidden="true" />
-                  {settled}
-                </span>
-              )}
-              {ask === undefined ? null : (
-                <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
-                  {ask.label}
-                </Button>
-              )}
-              {secondary === undefined ? null : (
-                <Button
-                  data-review-secondary=""
-                  disabled={!secondary.enabled}
-                  onClick={secondary.onPress}
-                  variant="ghost"
-                >
-                  {secondary.label}
-                </Button>
-              )}
-              {dismiss === undefined || frame === "page" ? null : (
-                <Button onClick={onClose} variant="ghost">
-                  {dismiss}
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-        {consequence === "" ? null : <p className="rv-conseq">{consequence}</p>}
-      </footer>
+      {/* Nothing left to press or say (a merged change on its page): no empty bar. */}
+      {answers === undefined &&
+      primary === undefined &&
+      settled === undefined &&
+      ask === undefined &&
+      secondary === undefined &&
+      (dismiss === undefined || frame === "page") &&
+      consequence === "" ? null : (
+        <footer className="rv-foot">
+          <div className="rv-btns">
+            {answers !== undefined ? (
+              answers
+            ) : (
+              <>
+                {primary === undefined ? null : (
+                  <Button
+                    data-review-primary=""
+                    data-safe={
+                      primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
+                    }
+                    data-zerops-primary-action={primary.label}
+                    disabled={!primary.enabled || primary.busy === true}
+                    onClick={primary.onPress}
+                  >
+                    {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
+                    {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
+                    {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
+                    {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
+                    {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
+                      <kbd aria-hidden="true" className="rv-keys">
+                        {PRESS_KEYS}
+                      </kbd>
+                    ) : null}
+                  </Button>
+                )}
+                {settled === undefined ? null : (
+                  <span className="rv-settled">
+                    <CheckIcon aria-hidden="true" />
+                    {settled}
+                  </span>
+                )}
+                {ask === undefined ? null : (
+                  <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
+                    {ask.label}
+                  </Button>
+                )}
+                {secondary === undefined ? null : (
+                  <Button
+                    data-review-secondary=""
+                    disabled={!secondary.enabled}
+                    onClick={secondary.onPress}
+                    variant="ghost"
+                  >
+                    {secondary.label}
+                  </Button>
+                )}
+                {dismiss === undefined || frame === "page" ? null : (
+                  <Button onClick={onClose} variant="ghost">
+                    {dismiss}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+          {consequence === "" ? null : <p className="rv-conseq">{consequence}</p>}
+        </footer>
+      )}
     </>
   );
   if (frame !== "page") return content;

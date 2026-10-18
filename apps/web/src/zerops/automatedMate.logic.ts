@@ -112,6 +112,7 @@ export type TaskChain =
   | { readonly kind: "working"; readonly pullRequest: HqPullRequest | undefined }
   | { readonly kind: "waiting" }
   | { readonly kind: "stopping" }
+  | { readonly kind: "done"; readonly pullRequest: HqPullRequest | undefined }
   | { readonly kind: "at-rest" }
   | { readonly kind: "pull-request"; readonly pullRequest: HqPullRequest };
 
@@ -146,6 +147,8 @@ export function taskChain(
   if (current.ended !== undefined)
     return { kind: "ended", ended: current.ended, pullRequest: current.pullRequest };
   if (current.stopping === true) return { kind: "stopping" };
+  // HQ says its Mate finished it: up for review, whatever the Mate does meanwhile.
+  if (current.done === true) return { kind: "done", pullRequest: current.pullRequest };
   if (working) return { kind: "working", pullRequest: current.pullRequest };
   if (current.waiting === true) return { kind: "waiting" };
   return current.pullRequest === undefined

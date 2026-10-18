@@ -354,12 +354,16 @@ interface OpenCodeStep {
 }
 /**
  * Each step-finish part is one model call's exact meter; an assistant message's own `tokens`
- * hold only its last step. Steps of the session and its subagents count once, at the turn's end.
+ * hold only its last step. Steps of the session and its subagents count once, at the turn's end;
+ * their cost so far is read on the way (`running`), the same sum the end's fact carries.
  */
 export function makeOpenCodeTurnUsage() {
   const modelByMessage = new Map<string, string>();
   const pending = new Map<string, OpenCodeStep>();
   const counted = new Set<string>();
+  // The running cost last read, so each read tells only a change; summed again only after a step.
+  let told: string | undefined;
+  let stepped = false;
   return {
     observe: (event: unknown): void => {
       const envelope = record(event);
@@ -379,12 +383,26 @@ export function makeOpenCodeTurnUsage() {
         messageId = text(part?.messageID);
       if (part?.type !== "step-finish" || !id || !messageId || counted.has(id)) return;
       const charge = cost(part.cost, "provider-reported-estimate");
+      stepped = true;
       pending.set(id, {
         messageId,
         components: openCodeComponents(record(part.tokens)),
         // OpenCode reports 0 for a model it has no price for: unknown, never free.
         nativeCost: charge === null || charge.amount === "0" ? null : charge,
       });
+    },
+    /** The turn's cost so far, when its steps moved it since the last read; else nothing. */
+    running: (): UsageNativeCost | undefined => {
+      // Every event of the session passes here; only a finished step can move the sum.
+      if (!stepped) return undefined;
+      stepped = false;
+      const total = [...pending.values()].reduce<UsageNativeCost | null>(
+        (sum, step) => addCost(sum, step.nativeCost),
+        null,
+      );
+      if (total === null || total.amount === told) return undefined;
+      told = total.amount;
+      return total;
     },
     complete: (
       nativeThreadId: string,
@@ -407,6 +425,7 @@ export function makeOpenCodeTurnUsage() {
         );
       }
       pending.clear();
+      told = undefined;
       const models = [...lines.values()]
         .map((line) => ({ ...line, components: normalizeComponents(line.components) }))
         .filter((line) => hasTokens(line.components))

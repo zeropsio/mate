@@ -223,6 +223,22 @@ function Remote({
     sameRepository !== null &&
     app !== null &&
     app.repositories.some((name) => name.toLowerCase() === sameRepository.toLowerCase());
+  const showReplace = permitted && tokenRemote && !editing;
+  const showReview =
+    remote?.repositoryId != null &&
+    remote.via !== "app" &&
+    new URL(remote.url).hostname === "github.com" &&
+    allowed("update_remote_address") &&
+    actions?.reviewAddress !== undefined &&
+    actions.updateAddress !== undefined &&
+    !editing;
+  const canDisconnect =
+    remote != null &&
+    dependencies.length === 0 &&
+    allowed("disconnect_remote") &&
+    actions?.disconnect !== undefined &&
+    !editing;
+  const showDisconnect = canDisconnect && !disconnecting;
   const review =
     verifiedAddress === undefined || actions?.updateAddress === undefined
       ? actions?.addressReview
@@ -376,12 +392,15 @@ function Remote({
           to mirror without a token.
         </p>
       ) : null}
-      {permitted && remote != null && remote.via !== "app" && !editing ? (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-            Replace token
-          </Button>
-          {switchable ? (
+      {showReplace || showReview || showDisconnect ? (
+        // A mirrored repository's actions in one row; Disconnect apart, at its end.
+        <div className="flex flex-wrap items-center gap-2">
+          {showReplace ? (
+            <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+              Replace token
+            </Button>
+          ) : null}
+          {showReplace && switchable ? (
             <Button
               disabled={busy}
               size="sm"
@@ -393,28 +412,30 @@ function Remote({
               Use {app.name} instead
             </Button>
           ) : null}
-        </div>
-      ) : null}
-      {remote?.repositoryId != null &&
-      remote.via !== "app" &&
-      new URL(remote.url).hostname === "github.com" &&
-      allowed("update_remote_address") &&
-      actions?.reviewAddress !== undefined &&
-      actions.updateAddress !== undefined &&
-      !editing ? (
-        <div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              setUrl(remote.url);
-              setVerifiedAddress(undefined);
-              setReviewingAddress(true);
-              setEditing(true);
-            }}
-          >
-            Review address
-          </Button>
+          {showReview && remote != null ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setUrl(remote.url);
+                setVerifiedAddress(undefined);
+                setReviewingAddress(true);
+                setEditing(true);
+              }}
+            >
+              Review address
+            </Button>
+          ) : null}
+          {showDisconnect ? (
+            <Button
+              className="ms-auto"
+              size="sm"
+              variant="ghost"
+              onClick={() => setDisconnecting(true)}
+            >
+              Disconnect
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {tokenForm ? (
@@ -499,11 +520,7 @@ function Remote({
           environments first.
         </p>
       ) : null}
-      {remote != null &&
-      dependencies.length === 0 &&
-      allowed("disconnect_remote") &&
-      actions?.disconnect !== undefined &&
-      !editing ? (
+      {canDisconnect && actions?.disconnect !== undefined ? (
         disconnecting ? (
           <div className="grid gap-2">
             <p className="rv-note">
@@ -537,13 +554,7 @@ function Remote({
               </Button>
             </div>
           </div>
-        ) : (
-          <div>
-            <Button size="sm" variant="ghost" onClick={() => setDisconnecting(true)}>
-              Disconnect
-            </Button>
-          </div>
-        )
+        ) : null
       ) : null}
       {sameId && allowed("update_remote_address") ? (
         <div className="grid gap-2">
