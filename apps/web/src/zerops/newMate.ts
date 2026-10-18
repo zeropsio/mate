@@ -83,6 +83,21 @@ export function useAddMate(): (groupId: string) => void {
   );
 }
 
+/**
+ * Asks for automated Mates in a project: *Add automated Mates* opens over the view on screen — from
+ * the menu's Add, or a project's Automation section.
+ */
+export function useAddAutomatedMates(): (groupId: string) => void {
+  const ask = useNewMateDialog((state) => state.ask);
+  const offer = useAddMateOffer();
+  return useCallback(
+    (groupId) => {
+      if (offer(groupId).kind === "allowed") ask(groupId, { automated: true });
+    },
+    [ask, offer],
+  );
+}
+
 /** Where a new Mate lives until it is up: its own view, by the project the platform made for it. */
 export function newMateView(projectId: string): {
   readonly to: "/mate/$projectId";
