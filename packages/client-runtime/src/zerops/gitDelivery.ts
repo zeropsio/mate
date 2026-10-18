@@ -82,11 +82,12 @@ export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
   const stage = repo.confirmed === undefined;
   const ci = stage ? repo.job?.evidence?.gate : repo.job?.evidence?.ci;
   if (ci === undefined) return undefined;
+  const quoted = (names: ReadonlyArray<string>) => names.map((name) => `"${name}"`).join(", ");
   const what = !stage
     ? "CI"
     : ci.required === null
       ? "Stage CI"
-      : `Stage CI ${ci.required.map((name) => `"${name}"`).join(", ")}`;
+      : `Stage CI ${quoted(ci.required)}`;
   const count = ci.done < ci.total ? [`${ci.done} of ${ci.total} done`] : [];
   const stopped = ci.watch === "stopped" && ci.reason !== null ? [ci.reason] : [];
   switch (ci.verdict) {
@@ -101,19 +102,37 @@ export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
         words:
           ci.watch === "watching"
             ? `${what} not reported yet`
-            : stage
+            : stage && ci.required !== null
               ? `${what} never ran`
               : "No CI reported",
         failed: [],
         notes: stopped,
       };
     case "running":
-      return { words: `${what} running`, failed: [], notes: [...count, ...stopped] };
+      return ci.watch !== "watching" && ci.missing !== undefined
+        ? { words: `Stage CI ${quoted(ci.missing)} never ran`, failed: [], notes: stopped }
+        : { words: `${what} running`, failed: [], notes: [...count, ...stopped] };
     case "failed":
       return { words: `${what} failed`, failed: ci.failed, notes: [...count, ...stopped] };
     case "passed":
       return { words: `${what} passed`, failed: [], notes: [] };
   }
+}
+
+/**
+ * The checks the environment branch's rules required when HQ last read them for a push of `repo`
+ * (jobs newest first): null where they required none, undefined where HQ read none.
+ */
+export function gitRequiredChecks(
+  jobs: GitDeliveryEnvironment["jobs"],
+  repo: string,
+): ReadonlyArray<string> | null | undefined {
+  for (const job of jobs) {
+    if (job.kind !== "push" || job.service !== repo) continue;
+    const ci = job.evidence?.ci ?? job.evidence?.gate;
+    if (ci !== undefined && ci.verdict !== "unreadable") return ci.required;
+  }
+  return undefined;
 }
 
 /** No remote/service/version reads and no receiver inference: a push never proves `live`. */

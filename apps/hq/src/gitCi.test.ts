@@ -546,6 +546,39 @@ describe("HQ reading the origin's CI after a push", () => {
 /** A check run GitHub Actions (app 15368) reported. */
 const actions = (checkRun: CheckRun): CheckRun => ({ ...checkRun, app: { id: 15368 } });
 const SHORT = SHA.slice(0, 7);
+const requires = (
+  ...checks: ReadonlyArray<{ readonly context: string; readonly integration_id?: number }>
+) =>
+  json([
+    { type: "deletion" },
+    { type: "required_status_checks", parameters: { required_status_checks: checks } },
+  ]);
+/** What the release said as the gate changed, each sentence once. */
+const saidOf = (seen: ReadonlyArray<HqPushCi>) =>
+  seen
+    .map(releaseGateWords)
+    .filter((said, index, all) => index === 0 || all[index - 1]!.words !== said.words);
+/** Stage's gate as a release reads it, an hour of the test clock long. */
+const gateOf = (answers: Record<string, ReadonlyArray<HostReply>>) =>
+  Effect.gen(function* () {
+    const host = github(answers);
+    const seen: Array<HqPushCi> = [];
+    const fiber = yield* stageCheck(
+      {
+        appId: "app",
+        repo: "code",
+        branch: "main",
+        remote,
+        sha: SHA,
+        pushedAt: 0,
+        previous: undefined,
+      },
+      (gate) => Effect.sync(() => void seen.push(gate)),
+    ).pipe(Effect.provide(Layer.merge(remotes(), host.layer)), Effect.forkChild);
+    for (let minute = 0; minute <= 61; minute++) yield* TestClock.adjust(Duration.minutes(1));
+    const gate = yield* Fiber.join(fiber);
+    return { gate, seen, reads: host.reads };
+  });
 
 describe("a release to an origin's main reads stage's check before it pushes", () => {
   it.effect.each<{
@@ -625,27 +658,179 @@ describe("a release to an origin's main reads stage's check before it pushes", (
     "a release waits while the stage SHA's check runs, and refuses when it failed or never ran: $title",
     ({ answers, said, failed }) =>
       Effect.gen(function* () {
-        const host = github({ [RUNS]: answers });
-        const seen: Array<HqPushCi> = [];
-        const fiber = yield* stageCheck(
-          {
-            appId: "app",
-            repo: "code",
-            branch: "main",
-            remote,
-            sha: SHA,
-            pushedAt: 0,
-            previous: undefined,
-          },
-          (gate) => Effect.sync(() => void seen.push(gate)),
-        ).pipe(Effect.provide(Layer.merge(remotes(), host.layer)), Effect.forkChild);
-        for (let minute = 0; minute <= 61; minute++) yield* TestClock.adjust(Duration.minutes(1));
-        const gate = yield* Fiber.join(fiber);
+        const { gate, seen, reads } = yield* gateOf({
+          [RULES]: [requires({ context: "check", integration_id: 15368 })],
+          [RUNS]: answers,
+        });
         expect(seen.map(releaseGateWords)).toEqual(said);
         expect(gate).toEqual(seen.at(-1));
         expect(gate?.failed).toEqual(failed ?? []);
-        // Only GitHub's check runs answer: never the combined status, never branch rules.
-        expect(host.reads.every((read) => read.path.startsWith(RUNS))).toBe(true);
+        // Main's rules, then GitHub's check runs: never the combined status.
+        expect(reads[0]?.path).toBe(RULES);
+        expect(reads.slice(1).every((read) => read.path.startsWith(RUNS))).toBe(true);
+      }),
+  );
+
+  it.effect.each<{
+    readonly title: string;
+    readonly answers: ReadonlyArray<HostReply>;
+    readonly said: ReadonlyArray<ReturnType<typeof releaseGateWords>>;
+    readonly failed?: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  }>([
+    {
+      title: "a job that starts after the others finish is still waited for, then it pushes",
+      answers: [
+        runs(actions(run("Check", "in_progress")), actions(run("Signal", "completed", "failure"))),
+        runs(actions(run("Check", "completed", "success"))),
+        runs(actions(run("Check", "completed", "success"))),
+        runs(actions(run("Check", "completed", "success")), actions(run("Test", "in_progress"))),
+        runs(
+          actions(run("Check", "completed", "success")),
+          actions(run("Test", "completed", "success")),
+        ),
+      ],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "Check", "Test" to pass on ${SHORT}; the release pushes once they do.`,
+        },
+        { verdict: "push", words: "" },
+      ],
+    },
+    {
+      title: "a required check that failed refuses at once, naming it with its link",
+      answers: [
+        runs(actions(run("Check", "completed", "failure")), actions(run("Test", "in_progress"))),
+      ],
+      said: [
+        {
+          verdict: "refuse",
+          words: `Stage CI "Check" failed on ${SHORT}, so this release can't go out. Fix it on main, then release again.`,
+        },
+      ],
+      failed: [{ name: "Check", url: "https://github.com/acme/app/actions/runs/7/job/Check" }],
+    },
+    {
+      title: "a required check from another app than the rule names does not count",
+      answers: [
+        runs(
+          { ...run("Check", "completed", "success"), app: { id: 99 } },
+          actions(run("Test", "completed", "success")),
+        ),
+      ],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "Check", "Test" to pass on ${SHORT}; the release pushes once they do.`,
+        },
+        {
+          verdict: "refuse",
+          words: `Stage CI "Check" never ran on ${SHORT}, so this release can't go out. Add a CI job named "Check" that runs on pushes to stage, then release again.`,
+        },
+      ],
+    },
+    {
+      title: "none of the required checks reported five minutes after stage took it: never ran",
+      answers: [runs(actions(run("lint", "completed", "success")))],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI "Check", "Test" to start on ${SHORT}; the release pushes once they pass.`,
+        },
+        {
+          verdict: "refuse",
+          words: `Stage CI "Check", "Test" never ran on ${SHORT}, so this release can't go out. Add CI jobs named "Check", "Test" that run on pushes to stage, then release again.`,
+        },
+      ],
+    },
+  ])(
+    "a release waits on every check the origin's main requires, by the names the repository gives them: $title",
+    ({ answers, said, failed }) =>
+      Effect.gen(function* () {
+        const { gate, seen } = yield* gateOf({
+          [RULES]: [requires({ context: "Check", integration_id: 15368 }, { context: "Test" })],
+          [RUNS]: answers,
+        });
+        expect(saidOf(seen)).toEqual(said);
+        expect(gate?.required).toEqual(["Check", "Test"]);
+        expect(gate?.failed).toEqual(failed ?? []);
+      }),
+  );
+
+  it.effect.each<{
+    readonly title: string;
+    readonly rules: HostReply;
+    readonly answers: ReadonlyArray<HostReply>;
+    readonly said: ReadonlyArray<ReturnType<typeof releaseGateWords>>;
+  }>([
+    {
+      title: "every Actions check passes, another app's red check aside: it pushes",
+      rules: noRules,
+      answers: [
+        runs(actions(run("lint", "completed", "success")), actions(run("unit", "in_progress")), {
+          ...run("deploy-preview", "completed", "failure"),
+          app: { id: 99 },
+        }),
+        runs(
+          actions(run("lint", "completed", "success")),
+          actions(run("unit", "completed", "success")),
+        ),
+      ],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI to pass on ${SHORT}; the release pushes once it does.`,
+        },
+        { verdict: "push", words: "" },
+      ],
+    },
+    {
+      title: "an Actions check failed: it refuses, naming it",
+      rules: noRules,
+      answers: [
+        runs(
+          actions(run("lint", "completed", "success")),
+          actions(run("unit", "completed", "failure")),
+        ),
+      ],
+      said: [
+        {
+          verdict: "refuse",
+          words: `Stage CI "unit" failed on ${SHORT}, so this release can't go out. Fix it on main, then release again.`,
+        },
+      ],
+    },
+    {
+      title: "no CI reported within five minutes: it goes out, saying so",
+      rules: noRules,
+      answers: [runs()],
+      said: [
+        {
+          verdict: "wait",
+          words: `Waiting for stage CI to start on ${SHORT}; main requires no checks, so the release goes out without CI if none starts within 5 minutes.`,
+        },
+        {
+          verdict: "push",
+          words: `No stage CI reported on ${SHORT} and main requires no checks, so the release goes out without CI.`,
+        },
+      ],
+    },
+    {
+      title: "rules GitHub keeps from this plan count as none",
+      rules: refusedReply(
+        403,
+        "Upgrade to GitHub Pro or make this repository public to enable this feature.",
+      ),
+      answers: [runs(actions(run("lint", "completed", "success")))],
+      said: [{ verdict: "push", words: "" }],
+    },
+  ])(
+    "a release to an unprotected main waits on every Actions check of the stage commit: $title",
+    ({ rules, answers, said }) =>
+      Effect.gen(function* () {
+        const { gate, seen } = yield* gateOf({ [RULES]: [rules], [RUNS]: answers });
+        expect(saidOf(seen)).toEqual(said);
+        expect(gate?.required).toBeNull();
       }),
   );
 });
@@ -786,6 +971,35 @@ describe("the CI record on a push's evidence", () => {
             const [row] = yield* sql<{ readonly evidence: PushEvidence }>`
               SELECT evidence FROM hq_deploy_job WHERE id=${id}::bigint`;
             expect(row?.evidence.ci).toEqual(gate);
+            expect(pushEvidenceForWire(row!.evidence).ci).toEqual(gate);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a release to an unprotected main whose stage commit reported no CI keeps saying so after the push",
+      () =>
+        withPushes((insert) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const id = yield* insert("git-prod", SHA);
+            const gate: HqPushCi = {
+              sha: SHA,
+              verdict: "none",
+              done: 0,
+              total: 0,
+              failed: [],
+              required: null,
+              reason: null,
+              watch: "finished",
+              readAt: "2026-10-17T09:58:00.000Z",
+              until: "2026-10-17T10:50:00.000Z",
+            };
+            yield* sql`UPDATE hq_deploy_job SET evidence = jsonb_set(evidence, '{gate}', ${encodeJson(gate)}::jsonb)
+              WHERE id=${id}::bigint`;
+            yield* (yield* GitCi).watch(id, Effect.void);
+            const [row] = yield* sql<{ readonly evidence: PushEvidence }>`
+              SELECT evidence FROM hq_deploy_job WHERE id=${id}::bigint`;
             expect(pushEvidenceForWire(row!.evidence).ci).toEqual(gate);
           }),
         ),
