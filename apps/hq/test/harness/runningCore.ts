@@ -34,7 +34,7 @@ import { Backup, directoryStore } from "../../src/backup.ts";
 import { Remotes } from "../../src/repoRemotes.ts";
 import { Deploys } from "../../src/deploys.ts";
 import { ChiefUpstream, makeChiefUpstreamHttp } from "../../src/chiefProxy.ts";
-import { coreApp } from "../../src/core.ts";
+import { type CoreOptions, coreApp } from "../../src/core.ts";
 import type { HealthObserver } from "../../src/health.ts";
 import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
 import { makeOperationWire } from "../../src/operationWire.ts";
@@ -219,6 +219,10 @@ export const startCore = (
     readonly tasks?: MateTasksOptions;
     /** How often HQ looks for schedules due; 30 s. */
     readonly scheduleEvery?: Duration.Duration;
+    /** The git mirror to GitHub as the test stands it in (`CoreOptions.githubMirror`). */
+    readonly githubMirror?: CoreOptions["githubMirror"];
+    /** How often HQ looks at every open change's pull request; a minute. */
+    readonly pullRequests?: CoreOptions["pullRequests"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -265,6 +269,8 @@ export const startCore = (
       githubApi: given.githubApi ?? "http://127.0.0.1:9",
       ...(given.tasks === undefined ? {} : { tasks: given.tasks }),
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
+      ...(given.githubMirror === undefined ? {} : { githubMirror: given.githubMirror }),
+      ...(given.pullRequests === undefined ? {} : { pullRequests: given.pullRequests }),
     };
     const scope = yield* Scope.make();
     const platform =

@@ -111,7 +111,7 @@ export interface ZeropsNewMateFormProps {
   readonly automation?: { readonly key: AutomatedKeyState; readonly admin: boolean } | undefined;
   /** The Automated choice made already: an Add started over that was automated. */
   readonly defaultAutomated?: boolean | undefined;
-  /** Leaves the dialog for where the organization's API key is set (Settings › Zerops). */
+  /** Leaves the dialog for where the organization's API key is set (Settings › Automation). */
   readonly onOpenKeySettings?: (() => void) | undefined;
 }
 
@@ -342,7 +342,7 @@ export function ZeropsNewMateForm({
                           <p aria-hidden className="invisible col-start-1 row-start-1 text-sm">
                             {NEW_MATE_NO_KEY_LINE}{" "}
                             {automation?.admin === true
-                              ? "Set it in Settings › Zerops"
+                              ? "Set it in Settings › Automation"
                               : NEW_MATE_KEY_SETTER_LINE}
                           </p>
                         ) : null}
@@ -359,10 +359,10 @@ export function ZeropsNewMateForm({
                                 {!keyNote.canSet ? (
                                   NEW_MATE_KEY_SETTER_LINE
                                 ) : onOpenKeySettings === undefined ? (
-                                  "Set it in Settings › Zerops."
+                                  "Set it in Settings › Automation."
                                 ) : (
                                   <InlineButton onClick={onOpenKeySettings} type="button">
-                                    Set it in Settings › Zerops
+                                    Set it in Settings › Automation
                                   </InlineButton>
                                 )}
                               </>

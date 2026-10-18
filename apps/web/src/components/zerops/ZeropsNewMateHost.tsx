@@ -223,16 +223,20 @@ function NewMateDialog({
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
-        name === again?.botName ? again.tint : newMateTint(candidates, name)
+        again?.botName !== undefined && name === again.botName
+          ? again.tint
+          : newMateTint(candidates, name)
       }
-      defaultShapeFor={(name) => (name === again?.botName ? again.shape : undefined)}
+      defaultShapeFor={(name) =>
+        again?.botName !== undefined && name === again.botName ? again.shape : undefined
+      }
       defaultWithAgent
       automation={automation}
       defaultAutomated={again?.automated === true}
       onOpenKeySettings={() => {
         // The dialog gives way to where the key is set.
         dismiss();
-        void navigate({ to: "/settings/zerops" });
+        void navigate({ to: "/settings/automation" });
       }}
       groupName={group.name}
       // Add lands on the new Mate's page, which takes the focus.

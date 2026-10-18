@@ -56,6 +56,7 @@ import { Roles } from "./roles.ts";
 import { environmentBirths } from "./births.ts";
 import { type RolloutCause, Rollouts, addRollout, rolloutsLayer } from "./rollouts.ts";
 import { ZeropsApi, ZeropsDeploy, ZeropsRefused, type ZeropsMember } from "./zerops/api.ts";
+import { githubAuthAbsentLayer } from "./githubAuth.ts";
 
 const decodeDeployAnswer = Schema.decodeUnknownEffect(DeployAnswerSchema);
 
@@ -248,6 +249,7 @@ const withDeploys = <A, E>(
     }).pipe(
       Layer.provideMerge(releasesLayer),
       Layer.provide(deployKeysLayer(keySecret)),
+      Layer.provide(githubAuthAbsentLayer),
       Layer.provideMerge(gitHostLayer({ rootDir: root })),
       Layer.provideMerge(rolloutsLayer),
       Layer.provideMerge(activeCoreLayer(url)),
@@ -510,6 +512,8 @@ const localPushLayer = (
           mateRepos: () => Effect.die("Repository reads are outside this fixture"),
           write: () => Effect.die("Remote writes are outside this fixture"),
           tokenOf: () => Effect.die("Remote tokens are outside this fixture"),
+          connectViaApp: () =>
+            Effect.die("Remotes through the GitHub app are outside this fixture"),
           receipt: () => Effect.succeed(null),
           get: ({ appId, repo }) =>
             Effect.sync(() => {

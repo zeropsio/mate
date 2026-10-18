@@ -18,6 +18,7 @@ import {
   SearchIcon,
   Settings2Icon,
   UsersIcon,
+  WorkflowIcon,
   XIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -55,6 +56,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/zerops": CloudIcon,
+  "/settings/automation": WorkflowIcon,
   "/settings/team": UsersIcon,
   "/settings/archived": ArchiveIcon,
 };

@@ -132,6 +132,7 @@ import {
 
 import { RepositoryQuery } from "@t3tools/shared/hqGit";
 import { ChangeRefused, Changes } from "./changes.ts";
+import { PullRequests } from "./pullRequests.ts";
 import { RecipeTier } from "@t3tools/shared/hqRecipe";
 import { NO_DEPLOYS } from "@t3tools/shared/hqDeploys";
 import { CreateReleaseRequest, RollbackRequest } from "@t3tools/shared/hqRelease";
@@ -881,7 +882,7 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const { appId, repo, number } = yield* appChangePath;
-              const change = yield* (yield* Changes).mergeChange(
+              const change = yield* (yield* PullRequests).merge(
                 userId,
                 appId,
                 repo,
@@ -909,7 +910,7 @@ const routes = (
               const { userId } = yield* principal;
               const { appId, repo, number } = yield* appChangePath;
               return json(
-                yield* (yield* Changes).closeChange(userId, appId, repo, number, expectedHead),
+                yield* (yield* PullRequests).close(userId, appId, repo, number, expectedHead),
                 200,
               );
             }),

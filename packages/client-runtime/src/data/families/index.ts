@@ -26,6 +26,7 @@ import {
   hqSlackFamily,
   hqSlackManifestFamily,
   hqTaskLimitsFamily,
+  hqGithubFamily,
   hqTaskSourceRequestFamily,
   hqWebhookRevealFamily,
 } from "./hqTaskSources.ts";
@@ -147,6 +148,7 @@ export const FAMILIES = defineFamilies([
   hqSlackManifestFamily,
   hqDiscordFamily,
   hqTaskLimitsFamily,
+  hqGithubFamily,
   hqAppSlackFamily,
   hqAppDiscordFamily,
   hqAppWebhooksFamily,

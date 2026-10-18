@@ -446,11 +446,22 @@ describe("HQ scoped socket", () => {
           );
           // The app's emptiness subquery also mentions hq_change; count it with structure. An
           // automated Mate's task reads (`hq_task`: the Mates' one query, the dispatcher's) mention
-          // it too, read once for everyone, never per person.
+          // it too, read once for everyone, never per person; so does the pull-request keeper's
+          // read of the changes due on GitHub (`pullRequests.ts`), which the apps' last creation
+          // above wakes after its debounce, inside this window or after it.
+          const keeperQueries = queries.filter(
+            (query) => /\bhq_pull_request\b/.test(query) && /\bhq_repo_remote\b/.test(query),
+          );
+          assert.isAtMost(
+            keeperQueries.length,
+            1,
+            "the keeper reads due changes once, not per Mate",
+          );
           const changeQueries = queries.filter(
             (query) =>
               /\bhq_change\b/.test(query) &&
               !/\bhq_task\b/.test(query) &&
+              !keeperQueries.includes(query) &&
               !structureQueries.includes(query),
           );
           process.stdout.write(
@@ -487,13 +498,15 @@ describe("HQ scoped socket", () => {
           // and one organization policy SELECT shared by every navigation recipient.
           // Each person also reads seen results and key health. The asynchronous release read
           // starts three shared SELECTs and its first recipe lookup before the scope receipts.
+          // The pull-request keeper's due read may land here too.
           const statementsPerStructureRead = 1 + 5 + 4 + 1;
           const sqlBudget =
             people.length * (sessionReadsPerPerson + 1 + 1) +
             structureQueries.length * statementsPerStructureRead +
             1 +
             3 +
-            1;
+            1 +
+            keeperQueries.length;
           assert.isAtMost(
             queries.length,
             sqlBudget,

@@ -18,14 +18,13 @@ import { useState } from "react";
 import { zeropsOrganizationRoleLabel } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { PersonAvatar } from "../zerops/primitives";
 import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
 import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { AutomatedMatesSettings } from "./AutomatedMatesSettings";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { signInTokensWords, type SignInTokensCleanup } from "./zeropsSettings.logic";
@@ -247,7 +246,12 @@ export function ZeropsSettings() {
           <div className="px-3 sm:px-4">
             <ZeropsHqCard />
           </div>
-          {admin ? <AutomatedMatesSettings /> : null}
+          <p className="px-3 text-xs text-muted-foreground sm:px-4">
+            Automated Mates:{" "}
+            <InlineButton render={<Link to="/settings/automation" />}>
+              Settings › Automation
+            </InlineButton>
+          </p>
         </SettingsSection>
       ) : null}
     </SettingsPageContainer>

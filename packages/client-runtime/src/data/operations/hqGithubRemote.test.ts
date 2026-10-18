@@ -1,0 +1,111 @@
+import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
+
+import { HqError } from "../../zerops/hq/client.ts";
+import { operationProgress } from "../projections/operation.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
+import { makeOperations } from "./coordinator.ts";
+import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
+
+const orgId = "org";
+const appId = "tea-shop";
+const zerops = {
+  mintIntegrationToken: async () => {
+    throw new Error("Mirroring through the app mints no keys.");
+  },
+  deleteIntegrationToken: async () => {
+    throw new Error("Mirroring through the app deletes no keys.");
+  },
+};
+const intent = {
+  kind: "connect-git-remote-via-app",
+  orgId,
+  appId,
+  repo: "appdev",
+  repository: "acme/tea-shop",
+} as const;
+
+function rig(api: Partial<HqWrites>) {
+  const store = makeAccountStore(AtomRegistry.make());
+  const operations = makeOperations({
+    store,
+    makeId: () => "request",
+    executors: { hq: makeHqExecutor({ apiOf: () => api as HqWrites, zerops }) },
+  });
+  const scope = `hq:${orgId}:hq-app-detail:${appId}` as const;
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+  const publish = (remote: Record<string, unknown> | null) =>
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: 1 }],
+      reset: true,
+      rows: [
+        {
+          family: "hqAppDetail",
+          id: `${appId}/repos`,
+          revision: { kind: "hq", incarnation: "i", revision: 1 },
+          value: {
+            kind: "repos",
+            value: [{ name: "appdev", mainHead: null, updatedAt: null, remote }],
+          } as never,
+        },
+      ],
+      removals: [],
+    });
+  const stage = () => operationProgress.derive(readsOfState(store.state()), "request");
+  return { store, operations, publish, stage };
+}
+
+describe("mirroring a repository through the organization's GitHub app", () => {
+  it.effect("asks HQ for that repository, and says it is saving until HQ's record shows it", () =>
+    Effect.gen(function* () {
+      const sent: Array<unknown> = [];
+      const r = rig({
+        repoRemoteViaApp: async (...args) => {
+          sent.push(args);
+        },
+      });
+      yield* r.operations.submit(intent);
+      expect(sent).toEqual([[appId, "appdev", { repository: "acme/tea-shop" }]]);
+      expect(r.stage().stage).not.toBe("done");
+      r.publish({
+        url: "https://github.com/acme/tea-shop.git",
+        repositoryId: "7",
+        keptAt: "2026-10-17T09:00:00Z",
+        keptBy: "Acme Mate",
+        expiresAt: null,
+        invalidSince: null,
+        via: "app",
+      });
+      expect(r.stage()).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+
+  it.effect("says HQ's refusal in its words", () =>
+    Effect.gen(function* () {
+      const r = rig({
+        repoRemoteViaApp: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "repository_not_installed",
+            status: 409,
+            message: "Acme Mate is not installed on acme/tea-shop.",
+          });
+        },
+      });
+      yield* r.operations.submit(intent);
+      expect(r.stage()).toMatchObject({ stage: "refused" });
+    }),
+  );
+
+  it.effect("asks for an update where HQ cannot mirror through the app", () =>
+    Effect.gen(function* () {
+      const r = rig({});
+      yield* r.operations.submit(intent);
+      expect(r.stage()).toMatchObject({ stage: "refused" });
+    }),
+  );
+});

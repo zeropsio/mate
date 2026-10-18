@@ -1,3 +1,4 @@
+import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Effect from "effect/Effect";
@@ -21,12 +22,20 @@ export const readChangeNavigationSource = Effect.fnUntraced(function* (sql: SqlC
     readonly updated_at: string;
     readonly mergeability: HqNavigationChange["mergeability"];
     readonly ready: boolean;
-  }>`SELECT app_id::text AS app_id, repo, number, mate_project_id, title,
-      head IS NOT NULL AS has_head,
-      to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
-      mergeability, (repo = ${RECIPE_REPO} OR COALESCE(ready_head = head, false)) AS ready
-    FROM hq_change WHERE state = 'open'
-    ORDER BY app_id, updated_at DESC, number DESC, repo`;
+    readonly pr_number: number | null;
+    readonly pr_url: string | null;
+    readonly pr_state: HqPullRequest["state"] | null;
+    readonly pr_checks: HqPullRequest["checks"] | null;
+  }>`SELECT c.app_id::text AS app_id, c.repo, c.number, c.mate_project_id, c.title,
+      c.head IS NOT NULL AS has_head,
+      to_char(c.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
+      c.mergeability, (c.repo = ${RECIPE_REPO} OR COALESCE(c.ready_head = c.head, false)) AS ready,
+      pr.pr_number, pr.url AS pr_url, pr.state AS pr_state, pr.checks AS pr_checks
+    FROM hq_change c
+    LEFT JOIN hq_pull_request pr
+      ON pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
+    WHERE c.state = 'open'
+    ORDER BY c.app_id, c.updated_at DESC, c.number DESC, c.repo`;
   const apps = new Map<string, HqNavigationChange[]>();
   for (const row of rows) {
     let list = apps.get(row.app_id);
@@ -44,6 +53,18 @@ export const readChangeNavigationSource = Effect.fnUntraced(function* (sql: SqlC
       updatedAt: row.updated_at,
       mergeability: row.mergeability,
       ready: row.ready,
+      ...(row.pr_number === null || row.pr_url === null || row.pr_state === null
+        ? {}
+        : {
+            pullRequest: {
+              number: row.pr_number,
+              url: row.pr_url,
+              state: row.pr_state,
+              ...(row.pr_checks === null || row.pr_checks === undefined
+                ? {}
+                : { checks: row.pr_checks }),
+            },
+          }),
     });
   }
   return {

@@ -116,12 +116,6 @@ const HOOK = {
   url: "https://hq-acme.zerops.app/api/intake/webhook/9f2c41",
   createdAt: "2026-10-17T09:00:00.000Z",
 };
-const channelOf = (appId: string) =>
-  controls(
-    known({
-      channel: appId === "tea-shop" ? { appId, channelId: "C042", channel: "support" } : null,
-    }),
-  );
 
 function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
@@ -235,19 +229,14 @@ function Harness() {
         <Panel title="Settings › Zerops › HQ — tasks from elsewhere">
           <SettingsSection title="HQ">
             <SlackSettingsView
-              apps={APPS}
               controls={controls(known(SLACK_OFF))}
               manifest={controls(known("{}"))}
             />
             <SlackSettingsView
-              apps={APPS}
-              channel={channelOf}
               controls={controls(known({ ...SLACK_OFF, connected: true, workspace: "Acme" }))}
             />
-            <DiscordSettingsView apps={APPS} controls={controls(known(DISCORD_OFF))} />
+            <DiscordSettingsView controls={controls(known(DISCORD_OFF))} />
             <DiscordSettingsView
-              apps={APPS}
-              channel={(appId) => channelOf(appId === "tea-shop" ? "shop-front" : "tea-shop")}
               controls={controls(
                 known({
                   ...DISCORD_OFF,
@@ -292,7 +281,7 @@ function Harness() {
         </Panel>
         <Panel title="Tasks from elsewhere — reading, and an older HQ">
           <SettingsSection title="HQ">
-            <SlackSettingsView apps={APPS} controls={controls({ state: "reading" })} />
+            <SlackSettingsView controls={controls({ state: "reading" })} />
             <ul className="grid gap-3 px-3 pb-3 sm:px-4">
               <AppChannelView controls={controls({ state: "reading" })} source="slack" />
             </ul>
@@ -310,8 +299,8 @@ function Settle({ landed }: { readonly landed: boolean }) {
   return (
     <div className="max-w-4xl bg-background p-8 text-foreground">
       <SettingsSection title="HQ">
-        <SlackSettingsView apps={APPS} controls={at(SLACK_OFF)} manifest={controls(known("{}"))} />
-        <DiscordSettingsView apps={APPS} controls={at({ ...DISCORD_OFF, interactionsUrl: "" })} />
+        <SlackSettingsView controls={at(SLACK_OFF)} manifest={controls(known("{}"))} />
+        <DiscordSettingsView controls={at({ ...DISCORD_OFF, interactionsUrl: "" })} />
         <WebhooksSettingsView apps={APPS}>
           {(app) => <AppWebhooksView controls={at([])} name={app.name} />}
         </WebhooksSettingsView>

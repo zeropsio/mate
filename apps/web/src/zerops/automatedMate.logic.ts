@@ -6,6 +6,8 @@
  */
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import { agentIdForDriverKind, type MateTaskSource } from "@t3tools/contracts";
+import type { HqPullRequest } from "@t3tools/shared/hqGithub";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 
 /** The agents a conversation offers: on an automated Mate, none that a person signs in. */
 export function automatedMateEntries<E extends { readonly driverKind: string }>(
@@ -31,6 +33,129 @@ export function conversationTask(
 ): MateTaskSource | null {
   const first = messages.find((message) => message.role === "user");
   return first?.task ?? null;
+}
+
+/**
+ * What a pull request on GitHub is called on every surface: "PR #14", GitHub's own name for it.
+ * One place, so the word is changed in one place (design-system.md §2 says "change" for Mate's own).
+ */
+export function pullRequestName(pullRequest: { readonly number: number }): string {
+  return `PR #${String(pullRequest.number)}`;
+}
+
+/** The link to a change's pull request: "PR #14 on GitHub · open · checks passing". */
+export function pullRequestLinkWords(
+  pullRequest: Pick<HqPullRequest, "number" | "state" | "checks">,
+): string {
+  return `${pullRequestName(pullRequest)} on GitHub · ${pullRequestStateWords(pullRequest)}`;
+}
+
+/** A pull request's state in words, its checks while it is open: "open · checks passing". */
+export function pullRequestStateWords(
+  pullRequest: Pick<HqPullRequest, "state" | "checks">,
+): string {
+  if (pullRequest.state !== "open" || pullRequest.checks === undefined) return pullRequest.state;
+  const checks =
+    pullRequest.checks === "pending"
+      ? "running"
+      : pullRequest.checks === "passing"
+        ? "passing"
+        : "failing";
+  return `open · checks ${checks}`;
+}
+
+/** How a task ended (`HqNavigationMateTask.ended`). */
+export type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
+
+/**
+ * Where a conversation's task stands now, from the task its Mate is on or last worked (HQ's
+ * navigation): not read yet; a task before its Mate's most recent one, which HQ no longer names;
+ * ended, how, and the pull request it left; its Mate at work on it; waiting for a person's answer;
+ * its change waiting for review; or the pull request its change is on GitHub.
+ */
+export type TaskChain =
+  | { readonly kind: "unknown" }
+  | { readonly kind: "earlier" }
+  | {
+      readonly kind: "ended";
+      readonly ended: TaskEnding;
+      readonly pullRequest: HqPullRequest | undefined;
+    }
+  | { readonly kind: "working"; readonly pullRequest: HqPullRequest | undefined }
+  | { readonly kind: "waiting" }
+  | { readonly kind: "review" }
+  | { readonly kind: "pull-request"; readonly pullRequest: HqPullRequest };
+
+/** Whether the task a Mate is on is the one a conversation's first message brought. */
+function isTaskOf(source: MateTaskSource, task: HqNavigationMateTask): boolean {
+  if (source.kind === "github-issue")
+    return task.repo === source.repo && task.number === source.number;
+  const url = source.kind === "schedule" ? null : source.url;
+  return url !== null && task.url !== null ? url === task.url : task.title === source.title;
+}
+
+export function taskChain(
+  source: MateTaskSource,
+  /** The task its Mate is on or last worked (`HqNavigationMate.task`): `undefined` while not read. */
+  current: HqNavigationMateTask | null | undefined,
+  /** Its Mate is at work now. */
+  working: boolean,
+): TaskChain {
+  if (current === undefined) return { kind: "unknown" };
+  if (current === null || !isTaskOf(source, current)) return { kind: "earlier" };
+  if (current.ended !== undefined)
+    return { kind: "ended", ended: current.ended, pullRequest: current.pullRequest };
+  if (working) return { kind: "working", pullRequest: current.pullRequest };
+  if (current.waiting === true) return { kind: "waiting" };
+  return current.pullRequest === undefined
+    ? { kind: "review" }
+    : { kind: "pull-request", pullRequest: current.pullRequest };
+}
+
+const ENDINGS: Record<TaskEnding, string> = {
+  merged: "Merged",
+  closed: "Closed",
+  done: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+/**
+ * The chain's line: its state in a word or two, then its pull request, linked; either may be none.
+ * A task that ended with its pull request merged or closed lets the pull request say so.
+ */
+export function taskChainLine(chain: TaskChain): {
+  readonly status: string | null;
+  readonly pullRequest: { readonly words: string; readonly url: string } | null;
+} {
+  const linked = (pullRequest: HqPullRequest | undefined) =>
+    pullRequest === undefined
+      ? null
+      : {
+          words: `${pullRequestName(pullRequest)} · ${pullRequestStateWords(pullRequest)}`,
+          url: pullRequest.url,
+        };
+  switch (chain.kind) {
+    case "unknown":
+    case "earlier":
+      return { status: null, pullRequest: null };
+    case "ended":
+      return {
+        status:
+          chain.pullRequest !== undefined && (chain.ended === "merged" || chain.ended === "closed")
+            ? null
+            : ENDINGS[chain.ended],
+        pullRequest: linked(chain.pullRequest),
+      };
+    case "working":
+      return { status: "Working", pullRequest: linked(chain.pullRequest) };
+    case "waiting":
+      return { status: "Waiting for you", pullRequest: null };
+    case "review":
+      return { status: "Waiting for review", pullRequest: null };
+    case "pull-request":
+      return { status: null, pullRequest: linked(chain.pullRequest) };
+  }
 }
 
 /** The provider whose organization key automated Mates run on (Nebius by default). */

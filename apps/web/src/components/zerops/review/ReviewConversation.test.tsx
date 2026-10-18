@@ -142,6 +142,24 @@ describe("a change's conversation in its review", () => {
     },
   );
 
+  it("names words said on GitHub by their login, linked to them there", () => {
+    const markup = html({
+      remarks: [
+        {
+          id: "g1",
+          speaker: "nova-dev on GitHub",
+          url: "https://github.com/nova-dev",
+          mine: false,
+          body: "Please keep the old rounding.",
+          at: "2026-09-29T11:00:00Z",
+        },
+      ],
+    });
+    expect(markup).toMatch(
+      /<a[^>]*href="https:\/\/github.com\/nova-dev"[^>]*>nova-dev on GitHub<\/a>/u,
+    );
+  });
+
   it.each([
     ["the page: every comment", "page", 9, 9, false],
     ["the dialog: the newest three, the rest one press away", "dialog", 9, 3, true],

@@ -25,6 +25,7 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { type ChangeReceipt, changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
@@ -106,6 +107,8 @@ export interface FlowPullRequest {
    * single-part application, which never carries one.
    */
   readonly receipt?: ChangeReceipt | undefined;
+  /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
+  readonly pullRequest?: HqPullRequest | undefined;
 }
 
 /** Whether a change asks for the person's review at all: it is no draft. */
@@ -175,6 +178,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     commentCount: change.comments ?? undefined,
     ready: change.ready,
     ...(change.receipt === undefined || change.receipt === null ? {} : { receipt: change.receipt }),
+    ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };
 }
 
@@ -227,6 +231,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     updatedAt: change.updatedAt,
     headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     ready: change.ready,
+    ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };
 }
 

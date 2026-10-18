@@ -30,7 +30,7 @@ import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { PersonAvatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -131,7 +131,13 @@ function Remarks({
         <li className="rv-remark" data-zerops-surface="zerops-change-remark" key={remark.id}>
           <PersonAvatar name={remark.speaker} size={20} />
           <span className="rv-remark-who">
-            {remark.speaker}
+            {remark.url === undefined ? (
+              remark.speaker
+            ) : (
+              <InlineButton render={<a href={remark.url} rel="noreferrer" target="_blank" />}>
+                {remark.speaker}
+              </InlineButton>
+            )}
             <span className="rv-remark-at">{historyAge(remark.at, now)}</span>
           </span>
           <p className="rv-remark-body">{remark.body}</p>
