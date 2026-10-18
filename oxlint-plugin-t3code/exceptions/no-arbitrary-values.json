@@ -584,30 +584,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> border-[var(--zerops-flat-card-border)] in \"relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
     "kind": "Literal",
     "fingerprint": "<> rounded-[var(--control-radius)] in \"inline-flex items-center gap-0.5 rounded-[var(--control-radius)] border border-border\"",

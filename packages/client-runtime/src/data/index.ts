@@ -572,7 +572,6 @@ export {
   browserPrimaryHttpLayer,
   makeBrowserMateDescriptors,
 } from "./adapters/mateTransport.ts";
-export { makeMateBrowserInputCommand } from "./adapters/mateBrowserFrame.ts";
 
 export { demandLocationLatency } from "./adapters/locationLatency.ts";
 export { regionRecommendation } from "./projections/regionRecommendation.ts";

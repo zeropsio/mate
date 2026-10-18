@@ -4004,6 +4004,107 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    // The owner, 2026-10-18: an open site in the Browser panel "is still fucked up and not
+    // fullscreen" — the page started half way down the panel, under the Browser's head.
+    describe("Decision: an open site is its address row and the site, edge to edge, in every panel mode.", () => {
+      /** The open site's frame against its address row and the panel's body, read from the page. */
+      const siteGeometry = (page: Page) =>
+        page.evaluate(() => {
+          const frame = document.querySelector('iframe[title="appdev live preview"]')!;
+          const content = frame.closest("[data-right-panel-surface-content]")!;
+          const row = content.querySelector("[data-site-address-row]")!;
+          const box = (element: Element) => {
+            const rect = element.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+          };
+          return { frame: box(frame), row: box(row), content: box(content) };
+        });
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "an open site's page starts right under its address row and fills the panel to its bottom and sides, at the side, expanded and as a sheet",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              s.drivers.zerops.put("service-stack", {
+                id: "service-appdev",
+                projectId: "Ada",
+                clientId: "ORG",
+                name: "appdev",
+                status: "ACTIVE",
+                subdomainAccess: true,
+                serviceStackTypeInfo: {
+                  serviceStackTypeName: "nodejs",
+                  serviceStackTypeVersionName: "nodejs@22",
+                  serviceStackTypeCategory: "USER",
+                },
+                ports: [{ port: 3000, scheme: "http" }],
+              });
+              // The site's page is any page that answers: its frame's box is what is read.
+              s.drivers.routes["https://appdev-ada-3000.prg1.zerops.app"] =
+                s.drivers.routes["https://zcp-ada-8080.prg1.zerops.app"]!;
+              const chat = mateChat(s);
+              chat.fixture().exchange("And now?", "The existing conversation is still here");
+              yield* s.given.signedIn;
+              yield* chat.when.open();
+              yield* chat.then.text("The existing conversation is still here");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              yield* Effect.promise(async () => {
+                await s.page.locator('button[aria-label^="Toggle right panel"]').click();
+                await s.page.locator("::-p-text(Browser)").setTimeout(8000).click();
+                await s.page
+                  .locator('[data-mate-address="appdev"] button')
+                  .setTimeout(8000)
+                  .click();
+                await s.page.waitForSelector('iframe[title="appdev live preview"]', {
+                  visible: true,
+                  timeout: 8000,
+                });
+                await waitForStillFrames(s.page);
+              });
+              const modes: Array<readonly [string, Awaited<ReturnType<typeof siteGeometry>>]> = [];
+              modes.push(["side", yield* Effect.promise(() => siteGeometry(s.page))]);
+              yield* Effect.promise(async () => {
+                await s.page.locator('button[aria-label="Maximize panel"]').click();
+                await s.page.waitForSelector('[data-preview-panel-maximized="true"]', {
+                  timeout: 8000,
+                });
+                await waitForStillFrames(s.page);
+              });
+              modes.push(["expanded", yield* Effect.promise(() => siteGeometry(s.page))]);
+              yield* Effect.promise(async () => {
+                await s.page.locator('button[aria-label="Restore panel size"]').click();
+                await s.page.setViewport({ width: 900, height: 800 });
+                await s.page.waitForSelector('[data-preview-panel-mode="sheet"] iframe', {
+                  visible: true,
+                  timeout: 8000,
+                });
+                await waitForStillFrames(s.page);
+              });
+              modes.push(["sheet", yield* Effect.promise(() => siteGeometry(s.page))]);
+              for (const [mode, seen] of modes) {
+                const said = `${mode}: ${quoted(seen)}`;
+                expect(
+                  Math.abs(seen.frame.top - seen.row.bottom),
+                  `ASSERTION: the page starts right under its address row: ${said}`,
+                ).toBeLessThanOrEqual(1);
+                expect(
+                  Math.abs(seen.frame.bottom - seen.content.bottom),
+                  `ASSERTION: the page reaches the panel's bottom: ${said}`,
+                ).toBeLessThanOrEqual(1);
+                expect(
+                  Math.abs(seen.frame.left - seen.content.left) +
+                    Math.abs(seen.frame.right - seen.content.right),
+                  `ASSERTION: the page spans the panel's width: ${said}`,
+                ).toBeLessThanOrEqual(1);
+              }
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+
     // Milo's stress run 5 (A): the Helpers surface folded its earlier helpers away each time one
     // started and unfolded them each time none worked, CLS up to 0.205 just after a restart.
     describe("Decision: the Helpers surface keeps its rows where they stand; what is new comes under them.", () => {

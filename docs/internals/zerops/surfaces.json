@@ -139,8 +139,8 @@
       "title": "Zerops browser panel",
       "components": [
         "apps/web/src/components/zerops/MateAddresses.tsx",
-        "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
         "apps/web/src/components/zerops/ZeropsBrowserSurface.tsx",
+        "apps/web/src/components/ServiceBrowserPanel.tsx",
         "packages/client-runtime/src/zerops/browserStream.ts",
         "apps/web/src/zerops/browserStreamLinks.tsx",
         "packages/client-runtime/src/data/projections/mateBrowserFrame.ts"
@@ -164,24 +164,20 @@
       "contracts": [
         "@t3tools/client-runtime/zerops/browserStream",
         "subscribeZeropsBrowserStream",
-        "zerops.browser.input",
         "@t3tools/client-runtime/data"
       ],
       "reverseStates": [
         {
-          "action": "Take over",
-          "reverse": "Let the agent drive"
-        },
-        {
-          "action": "Let the agent drive",
-          "reverse": "Take over"
+          "action": "Open a site",
+          "reverse": "none: its tab closes like any panel tab."
         }
       ],
       "docs": {
         "none": "No docs/user page documents the Browser panel yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsBrowserPanel.test.tsx",
+        "apps/web/src/components/zerops/ZeropsBrowserSurface.test.tsx",
+        "apps/web/src/components/ServiceBrowserPanel.test.tsx",
         "packages/client-runtime/src/zerops/browserStream.test.ts",
         "apps/web/src/zerops/browserStreamLinks.test.ts",
         "packages/client-runtime/src/data/adapters/mateBrowserFrame.test.ts",

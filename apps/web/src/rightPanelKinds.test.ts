@@ -42,7 +42,7 @@ describe("right panel kinds", () => {
       {
         kind: "browser",
         label: "Browser",
-        description: "Watch this Mate's browser live.",
+        description: "Open your app's sites.",
         shortcut: "B",
         unavailableHint: "Available in a Zerops project.",
       },
@@ -325,10 +325,10 @@ describe("right panel kinds", () => {
 });
 
 describe("a side-panel page's head", () => {
-  it("every page the launcher opens heads itself with a title and one line saying what it shows", () => {
-    const kinds = launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
-      ({ kind }) => kind,
-    );
+  it("every page the launcher opens but the Browser heads itself with a title and one line saying what it shows", () => {
+    const kinds = launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT))
+      .map(({ kind }) => kind)
+      .filter((kind) => kind !== "browser");
     expect(kinds.length).toBeGreaterThan(10);
     for (const kind of kinds) {
       const head = rightPanelPageHead(kind, "Nova");
@@ -342,9 +342,10 @@ describe("a side-panel page's head", () => {
     expect(rightPanelPageHead("file", "Nova")).toBeNull();
   });
 
-  it("a site's tab is the site, edge to edge under its address row: the Browser's head stays on its list", () => {
+  // The owner, 2026-10-18: the Browser's head and line were "completely useless".
+  it("the Browser wears no head: its list of sites, or the site open in its place, fills the panel", () => {
     expect(isRightPanelSite({ id: "browser", kind: "browser" })).toBe(false);
-    expect(rightPanelPageHead("browser", "Juno")?.title).toBe("Browser");
+    expect(rightPanelPageHead("browser", "Juno")).toBeNull();
     expect(
       isRightPanelSite({
         id: "service:nextstore production",
