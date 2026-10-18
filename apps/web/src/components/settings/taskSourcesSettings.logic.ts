@@ -100,6 +100,36 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
   }
 }
 
+/**
+ * What the organization's automated Mates spent this month, against its monthly budget; `null`
+ * where HQ does not say (an older HQ).
+ */
+export function budgetLine(limits: HqTaskLimitsView): string | null {
+  const spent = limits.spentThisMonthUsd;
+  if (spent === undefined) return null;
+  const said = `$${spent.toFixed(2)}`;
+  const budget = limits.monthlyBudgetUsd;
+  if (budget == null) return `No monthly budget. ${said} spent this month.`;
+  return spent >= budget
+    ? `${said} of ${dollars(budget)} spent this month: no task starts until next month or a higher budget.`
+    : `${said} of ${dollars(budget)} spent this month.`;
+}
+
+const BUDGET_MAX = 1_000_000;
+const BUDGET_WORDS = "A budget is an amount above $0 and at most $1,000,000, or empty for none.";
+
+/** The monthly budget as typed: an amount up to $1,000,000, or none. */
+export function readBudget(
+  typed: string,
+): { readonly budgetUsd: number | null } | { readonly error: string } {
+  const text = typed.trim();
+  if (text === "") return { budgetUsd: null };
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > BUDGET_MAX)
+    return { error: BUDGET_WORDS };
+  return { budgetUsd: amount };
+}
+
 /** A write's refusal, or its lost answer, in HQ's words; nothing otherwise. */
 export function taskSourceProblem(action: AutomationAction<string>): string | null {
   return action.kind === "failed" || action.kind === "unresolved" ? action.words : null;

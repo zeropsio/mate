@@ -3,7 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   allowlistAfter,
   channelLine,
+  budgetLine,
   limitsLine,
+  readBudget,
   readLimits,
   scheduleLine,
   scheduleNextLine,
@@ -99,6 +101,36 @@ describe("the words a task source's settings say", () => {
     expect(taskSourceProblem({ kind: "working", verb: "channel" })).toBeNull();
     expect(taskSourceProblem({ kind: "done", verb: "channel" })).toBeNull();
     expect(taskSourceProblem({ kind: "idle" })).toBeNull();
+  });
+});
+
+describe("the organization's monthly budget", () => {
+  it.each([
+    [{ minutes: 60, costUsd: null }, null],
+    [
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 },
+      "No monthly budget. $6.44 spent this month.",
+    ],
+    [
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 },
+      "$6.44 of $50 spent this month.",
+    ],
+    [
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 51.2 },
+      "$51.20 of $50 spent this month: no task starts until next month or a higher budget.",
+    ],
+  ] as const)("limits %o say “%s” of the month", (limits, line) => {
+    expect(budgetLine(limits)).toBe(line);
+  });
+
+  it.each([
+    ["", { budgetUsd: null }],
+    [" 50 ", { budgetUsd: 50 }],
+    ["12.5", { budgetUsd: 12.5 }],
+    ["0", { error: "A budget is an amount above $0 and at most $1,000,000, or empty for none." }],
+    ["x", { error: "A budget is an amount above $0 and at most $1,000,000, or empty for none." }],
+  ] as const)("a budget typed as “%s” reads as %o", (typed, read) => {
+    expect(readBudget(typed)).toEqual(read);
   });
 });
 
