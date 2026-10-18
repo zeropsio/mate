@@ -2313,6 +2313,23 @@ export function makeOpenCodeAdapter(
       // Every step of the session and its subagents is billed, shown or suppressed.
       if (payloadSessionId !== undefined && context.relatedSessionIds.has(payloadSessionId)) {
         context.turnUsage.observe(event);
+        // The turn's cost so far, told as its steps move it: one turn can be a whole task run.
+        const runningCost = context.activeTurnId ? context.turnUsage.running() : undefined;
+        if (context.activeTurnId && runningCost) {
+          yield* emit({
+            ...(yield* buildEventBase({
+              threadId: context.session.threadId,
+              turnId: context.activeTurnId,
+              raw: event,
+            })),
+            type: "turn.usage.updated",
+            payload: {
+              nativeThreadId: context.openCodeSessionId,
+              nativeTurnId: context.activeTurnId,
+              nativeCost: runningCost,
+            },
+          });
+        }
       }
       if (!isParentEvent && !isChildRequestEvent) {
         return;

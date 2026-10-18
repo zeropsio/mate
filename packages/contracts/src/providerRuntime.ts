@@ -307,6 +307,17 @@ export const TurnUsageCompletedPayload = Schema.Struct({
 });
 export type TurnUsageCompletedPayload = typeof TurnUsageCompletedPayload.Type;
 
+/**
+ * A native turn's cost so far, told while it runs and each time it grows: what its
+ * `turn.usage.completed`, under the same native ids, will carry as `nativeCost`.
+ */
+export const TurnUsageUpdatedPayload = Schema.Struct({
+  nativeThreadId: TrimmedNonEmptyStringSchema,
+  nativeTurnId: TrimmedNonEmptyStringSchema,
+  nativeCost: UsageNativeCost,
+});
+export type TurnUsageUpdatedPayload = typeof TurnUsageUpdatedPayload.Type;
+
 const ThreadRealtimeStartedPayload = Schema.Struct({
   realtimeSessionId: Schema.optional(TrimmedNonEmptyStringSchema),
 });
@@ -873,6 +884,12 @@ const ProviderRuntimeResponseUsageCompletedEvent = Schema.Struct({
   payload: TurnUsageCompletedPayload,
 });
 
+const ProviderRuntimeTurnUsageUpdatedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: Schema.Literal("turn.usage.updated"),
+  payload: TurnUsageUpdatedPayload,
+});
+
 const ProviderRuntimeThreadRealtimeStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: ThreadRealtimeStartedType,
@@ -1182,6 +1199,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeThreadMetadataUpdatedEvent,
   ProviderRuntimeThreadTokenUsageUpdatedEvent,
   ProviderRuntimeResponseUsageCompletedEvent,
+  ProviderRuntimeTurnUsageUpdatedEvent,
   ProviderRuntimeThreadRealtimeStartedEvent,
   ProviderRuntimeThreadRealtimeItemAddedEvent,
   ProviderRuntimeThreadRealtimeAudioDeltaEvent,
