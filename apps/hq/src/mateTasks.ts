@@ -128,6 +128,8 @@ export interface TaskFacts {
   readonly link: string | null;
   /** Its change's address in Mate, once it has one. */
   readonly change: string | null;
+  /** Its change asks for review: its Mate described its head. A draft does not yet. */
+  readonly changeReady: boolean;
   /** Its change's pull request on GitHub, once it has one. */
   readonly pullRequest: TaskPullRequest | null;
   readonly detail: string | null;
@@ -336,14 +338,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly pr_number: number | null;
             readonly pr_url: string | null;
             readonly conversation_id: string | null;
+            readonly change_ready: boolean;
           }>`
             SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
               COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.conversation_id,
               t.change_repo,
               t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
-              pr.url AS pr_url
+              pr.url AS pr_url, COALESCE(c.ready_head = c.head, false) AS change_ready
             FROM hq_task t
             LEFT JOIN hq_app a ON a.id = t.app_id
+            LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
+              AND c.number = t.change_number
             LEFT JOIN hq_pull_request pr ON pr.app_id = t.app_id AND pr.repo = t.change_repo
               AND pr.number = t.change_number
             WHERE t.id::text = ${taskId}`;
@@ -378,6 +383,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               task.change_repo === null || task.change_number === null
                 ? null
                 : `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(task.app_id, task.change_repo, task.change_number)}`,
+            changeReady: task.change_ready,
             detail: task.detail,
             question: task.question,
           });
@@ -851,8 +857,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       yield* Effect.forkScoped(
         Stream.runForEach(changes.taskChanges, (taskId) =>
-          say(taskId, ({ mate, change, pullRequest }) =>
-            change === null
+          say(taskId, ({ mate, change, changeReady, pullRequest }) =>
+            // A draft is no change for review yet: the line keeps saying the Mate is on it.
+            change === null || !changeReady
               ? undefined
               : {
                   kind: "change",

@@ -470,6 +470,13 @@ describe("tasks for automated Mates", () => {
             body: { repo: "appdev", title: "Hotter tea" },
           });
           const number = (change.body as { change: { number: number } }).change.number;
+          // A draft is no change for review yet: the line says so once the Mate described it.
+          yield* core.sql`UPDATE hq_change SET head = ${"a".repeat(40)} WHERE repo = 'appdev' AND number = ${number}`;
+          const words = yield* core.call("PATCH", `/api/mate/changes/appdev/${String(number)}`, {
+            headers: core.robot.auth,
+            body: { body: "Heats the water hotter." },
+          });
+          assert.strictEqual(words.status, 200);
           yield* said("P_ROBOT opened a change for review");
           yield* core.robot.link.send({
             type: "task-state",

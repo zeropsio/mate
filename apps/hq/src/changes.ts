@@ -1228,7 +1228,7 @@ export const changesLayer: Layer.Layer<
       editChange: (projectId, repo, number, edit) =>
         Effect.gen(function* () {
           const appId = yield* mateChange(projectId, repo, number);
-          return yield* touched(
+          const edited = yield* touched(
             leader.write(
               Effect.gen(function* () {
                 yield* openChangeLocked(appId, repo, number);
@@ -1257,6 +1257,14 @@ export const changesLayer: Layer.Layer<
               }),
             ),
           );
+          // Described, it asks for review: a task's status line says so now, not when it opened.
+          if (edit.body !== undefined) {
+            const tasks = yield* sql<{ readonly id: string }>`
+              SELECT id::text AS id FROM hq_task
+              WHERE app_id = ${appId}::uuid AND change_repo = ${repo} AND change_number = ${number}`;
+            for (const task of tasks) yield* PubSub.publish(taskChanged, task.id);
+          }
+          return edited;
         }),
       attach: (projectId, repo, number, content) =>
         Effect.gen(function* () {
