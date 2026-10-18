@@ -6956,6 +6956,25 @@ code {
   scroll-snap-align: start;
 }
 
+/* A card never stands taller than the window, less the page's gutters above and below it: past
+   that its body scrolls inside it, its head (state, name, ···) standing still. A short card keeps
+   its own height; one that grows past the cap stops growing there, nothing around it moves. */
+.ov-row > .ov-card {
+  max-height: calc(100dvh - 48px);
+}
+
+.ov-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  margin-inline: -12px;
+  padding-inline: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--contrast-border) 78%, transparent) transparent;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ov-card[data-focused] {
     animation: ov-card-ring 900ms var(--ease-out-strong);

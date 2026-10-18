@@ -1040,24 +1040,27 @@ function ProjectCard<T>({
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
         <ProjectChips entry={entry} props={props} />
       </header>
-      <CardProduction entry={entry} props={props} read={read} />
-      <CardStages read={read} />
-      <CardMates
-        addMate={addMate}
-        entry={entry}
-        liftTaken={read.production.trouble}
-        props={props}
-      />
-      {/* Its changes say why they are unknown where the card draws them. */}
-      {unknown.kind === "unread" && props.renderChanges === undefined ? (
-        <p className="ov-card-note" data-zerops-row-line="unread">
-          {unknown.text}
-        </p>
-      ) : null}
-      {props.renderChanges?.(entry)}
-      <ProjectSpendLine appId={group.groupId} projectIds={spendIds} />
-      {props.renderActivity?.(entry)}
-      <StopReads entry={entry} />
+      {/* Past the window's height the card scrolls inside itself, its head standing still. */}
+      <div className="ov-card-body" data-zerops-card-body="">
+        <CardProduction entry={entry} props={props} read={read} />
+        <CardStages read={read} />
+        <CardMates
+          addMate={addMate}
+          entry={entry}
+          liftTaken={read.production.trouble}
+          props={props}
+        />
+        {/* Its changes say why they are unknown where the card draws them. */}
+        {unknown.kind === "unread" && props.renderChanges === undefined ? (
+          <p className="ov-card-note" data-zerops-row-line="unread">
+            {unknown.text}
+          </p>
+        ) : null}
+        {props.renderChanges?.(entry)}
+        <ProjectSpendLine appId={group.groupId} projectIds={spendIds} />
+        {props.renderActivity?.(entry)}
+        <StopReads entry={entry} />
+      </div>
     </article>
   );
 }
