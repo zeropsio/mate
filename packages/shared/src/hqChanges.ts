@@ -407,8 +407,10 @@ export type MateRepo = typeof MateRepo.Type;
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
 
 /**
- * `POST /api/mate/changes`: the Mate's open change in the repository, or the next number opened
- * with `title`. An open change keeps its title: retitling it is zcp's call, by `PATCH`.
+ * `POST /api/mate/changes`: the change a delivery goes to — on a task, the task's own open change
+ * (an automated Mate holds one per task it delivered, several waiting for review at once); on none,
+ * the Mate's one open change in the repository — or the next number opened with `title`. An open
+ * change keeps its title: retitling it is zcp's call, by `PATCH`.
  */
 export const OpenChangeRequest = Schema.Struct({
   repo: RepoName,
@@ -480,8 +482,8 @@ export type MateChange = typeof MateChange.Type;
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
  * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
  * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, the
- * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first — its open one, if any, is the
- * newest, since a number is opened only while none is.
+ * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first. An automated Mate may hold
+ * several open, one per task; a Mate on no task opens a number only while none of its own is.
  */
 export const MateChanges = Schema.Struct({
   appId: Schema.NullOr(Schema.String),

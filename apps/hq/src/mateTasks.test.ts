@@ -32,7 +32,8 @@ const NAV = { kind: "navigation" } as const;
 
 const withPool = automatedPool;
 
-type Link = Effect.Success<ReturnType<typeof withPool>>["robot"]["link"];
+type Core = Effect.Success<ReturnType<typeof withPool>>;
+type Link = Core["robot"]["link"];
 
 /** The next task the link is told, of issue `number`. */
 const toldTask = (link: Link, number: number) =>
@@ -48,6 +49,61 @@ const toldTask = (link: Link, number: number) =>
 /** The issue number of a task HQ told: every task here is a GitHub issue's. */
 const issueNumberOf = (task: MateTask) =>
   task.source.kind === "github-issue" ? task.source.number : undefined;
+
+/** The robot's repository `appdev`, made. */
+const repoOf = (core: Core) =>
+  core.call("POST", "/api/mate/repos", { headers: core.robot.auth, body: { name: "appdev" } });
+
+/** The task of issue `number` told to `link` and taken: its Mate's word on it, from then on. */
+const onTask = (core: Core, link: Link, number: number) =>
+  Effect.gen(function* () {
+    const task = yield* toldTask(link, number);
+    const word = (report: Record<string, unknown>) =>
+      link.send({ type: "task-state", report: { taskId: task.id, ...report } });
+    yield* word({ state: "accepted", conversationId: "conversation-1" });
+    yield* core.tasks((rows) =>
+      rows.some((row) => row["number"] === number && row["state"] === "working"),
+    );
+    return { id: task.id, word };
+  });
+
+/** The robot's delivery to `appdev`: the change HQ answers, and whether it opened it now. */
+const openOn = (core: Core, title: string) =>
+  Effect.map(
+    core.call("POST", "/api/mate/changes", {
+      headers: core.robot.auth,
+      body: { repo: "appdev", title },
+    }),
+    (answer) => {
+      const body = answer.body as { change: { number: number }; created: boolean };
+      return { number: body.change.number, created: body.created };
+    },
+  );
+
+/** A member's review comment on the robot's change `number`. */
+const commentOn = (core: Core, number: number, body: string) =>
+  core.call("POST", `/api/apps/${core.appId}/changes/appdev/${String(number)}/comments`, {
+    session: core.owner,
+    body: { body },
+  });
+
+/**
+ * The robot's first task done, its change waiting for review, and its second taken and delivered:
+ * each task's change.
+ */
+const twoChanges = (core: Core) =>
+  Effect.gen(function* () {
+    yield* repoOf(core);
+    yield* core.issue(1);
+    const firstTask = yield* onTask(core, core.robot.link, 1);
+    const first = yield* openOn(core, "Hotter tea");
+    yield* firstTask.word({ state: "done" });
+    yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+    yield* core.issue(2);
+    const secondTask = yield* onTask(core, core.robot.link, 2);
+    const second = yield* openOn(core, "Cooler cups");
+    return { first: { ...first, task: firstTask }, second: { ...second, task: secondTask } };
+  });
 
 describe("tasks for automated Mates", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -384,7 +440,7 @@ describe("tasks for automated Mates", () => {
     );
 
     it.effect(
-      "an automated Mate takes no new task while its last task's change waits for review, its row reading that task, until the change is merged or closed",
+      "HQ hands a task to a Mate without an open change first, and to one holding a change when no other is free, its row reading the task it is on",
       () =>
         Effect.gen(function* () {
           const core = yield* withPool();
@@ -399,49 +455,113 @@ describe("tasks for automated Mates", () => {
               "project:P_ROBOT",
               (project) => project.mate?.task?.number === number,
             );
-          yield* core.call("POST", "/api/mate/repos", {
-            headers: core.robot.auth,
-            body: { name: "appdev" },
-          });
+          yield* repoOf(core);
           yield* core.issue(1);
-          const task = yield* toldTask(core.robot.link, 1);
-          yield* core.robot.link.send({
-            type: "task-state",
-            report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
-          });
-          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
-          const change = yield* core.call("POST", "/api/mate/changes", {
-            headers: core.robot.auth,
-            body: { repo: "appdev", title: "Hotter tea" },
-          });
-          const number = (change.body as { change: { number: number } }).change.number;
-          yield* core.robot.link.send({
-            type: "task-state",
-            report: { taskId: task.id, state: "done" },
-          });
+          const first = yield* onTask(core, core.robot.link, 1);
+          yield* openOn(core, "Hotter tea");
+          yield* first.word({ state: "done" });
           yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          // Done, its change waiting for review: its row still reads that task.
           yield* rowTask(1);
-          // Another Mate is free, this one is not: its copy of the code still holds the change.
           addProject(core.fake, "P_OTHER");
           const other = yield* mateLinked(core, core.owner, "P_OTHER", { appId: core.appId });
           yield* other.link.send(attention(0));
+          // Both are free; the one holding no change goes first.
           yield* core.issue(2);
-          yield* core.issue(3);
           yield* toldTask(other.link, 2);
-          assert.isFalse(
-            (yield* core.robot.link.collected).some(
-              (frame) => frame.type === "task" && issueNumberOf(frame["task"] as MateTask) !== 1,
-            ),
-          );
-          const closed = yield* core.call(
-            "POST",
-            `/api/apps/${core.appId}/changes/appdev/${String(number)}/close`,
-            { session: core.owner, body: { expectedHead: null } },
-          );
-          assert.strictEqual(closed.status, 200);
+          // The other is on its task: the one holding a change takes the next.
+          yield* core.issue(3);
           yield* toldTask(core.robot.link, 3);
           yield* rowTask(3);
           yield* watching.close;
+        }),
+    );
+
+    it.effect(
+      "a task's delivery opens its own change while the Mate's earlier change waits for review",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const { first, second } = yield* twoChanges(core);
+          assert.notStrictEqual(second.number, first.number);
+          assert.isTrue(second.created);
+          // Delivered again, the task's change is found again.
+          const again = yield* openOn(core, "Cooler cups, again");
+          assert.deepStrictEqual(again, { number: second.number, created: false });
+          const rows = yield* rowsWhere(
+            core.url,
+            "SELECT change_number FROM hq_task ORDER BY seq",
+            (found) => found.length === 2,
+          );
+          assert.deepStrictEqual(
+            rows.map((row) => row["change_number"]),
+            [first.number, second.number],
+          );
+          const open = yield* rowsWhere(
+            core.url,
+            "SELECT number FROM hq_change WHERE state = 'open' ORDER BY number",
+            (found) => found.length === 2,
+          );
+          assert.deepStrictEqual(
+            open.map((row) => row["number"]),
+            [first.number, second.number],
+          );
+        }),
+    );
+
+    it.effect("a follow-up's delivery lands in its own task's change", () =>
+      Effect.gen(function* () {
+        const core = yield* withPool();
+        const { first, second } = yield* twoChanges(core);
+        yield* second.task.word({ state: "done" });
+        yield* core.tasks((rows) => rows[1]?.["state"] === "done");
+        yield* commentOn(core, first.number, "Rename the kettle.");
+        const message = yield* core.robot.link.take("task-message");
+        assert.strictEqual(message["taskId"], first.task.id);
+        // The frame names the task's change: the branch its follow-up's work starts from.
+        assert.deepStrictEqual(message["change"], {
+          repo: "appdev",
+          number: first.number,
+          branch: `mate/P_ROBOT/${String(first.number)}`,
+        });
+        yield* first.task.word({ state: "working", conversationId: "conversation-1" });
+        yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        const delivered = yield* openOn(core, "Renamed kettle");
+        assert.deepStrictEqual(delivered, { number: first.number, created: false });
+      }),
+    );
+
+    it.effect(
+      "a review comment on an earlier change waits while its Mate works another task, then reaches it, and the Mate takes no new task before it is back on it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const { first, second } = yield* twoChanges(core);
+          yield* commentOn(core, first.number, "Rename the kettle.");
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_task_message", (rows) => rows.length === 1);
+          // On the second task: the first's follow-up waits.
+          assert.isFalse(
+            (yield* core.robot.link.collected).some((frame) => frame.type === "task-message"),
+          );
+          yield* second.task.word({ state: "done" });
+          const message = yield* core.robot.link.take("task-message");
+          assert.strictEqual(message["taskId"], first.task.id);
+          // It owes that follow-up: a task coming in now waits until it is done with it.
+          yield* core.issue(3);
+          yield* core.github.seenWhere("the third issue's line", (seen) =>
+            seen.some((request) => request.path.includes("/issues/3/comments")),
+          );
+          yield* first.task.word({ state: "working", conversationId: "conversation-1" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* first.task.word({ state: "done" });
+          yield* toldTask(core.robot.link, 3);
+          const [order] = yield* rowsWhere(
+            core.url,
+            `SELECT (SELECT assigned_at FROM hq_task WHERE number = 3)
+               > (SELECT ended_at FROM hq_task WHERE number = 1) AS after`,
+            (rows) => rows.length === 1,
+          );
+          assert.strictEqual(order!["after"], true);
         }),
     );
 
