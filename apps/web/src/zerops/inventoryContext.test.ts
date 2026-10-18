@@ -145,6 +145,17 @@ describe("withheldProjectNotice", () => {
     ).toEqual([]);
   });
 
+  it("a project page's environment row never says its project was removed; its own route does, once", () => {
+    // A rename on the project page proves its projects deleted for a moment: their rows keep
+    // their place, and only the environment's own route names a real removal.
+    const deleted = {
+      ...inventory({ kind: "withheld", reason: "access-denied", cause: null }),
+      deleted: ["p1"],
+    };
+    expect(withheldProjectNotice(deleted, "p1", "Production", { removal: false })).toBeNull();
+    expect(withheldProjectNotice(deleted, "p1", "Production")).toBe("Production was removed.");
+  });
+
   it("says why a project withheld alone is not shown", () => {
     expect(
       withheldProjectNotices(

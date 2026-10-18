@@ -216,7 +216,9 @@ function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefine
 } {
   const inventory = useZeropsInventory();
   const withheldNotice = useCallback(
-    (projectId: string) => withheldProjectNotice(inventory, projectId),
+    // A row of the project's page: a removal is its own route's to say (a rename proves one).
+    (projectId: string) =>
+      withheldProjectNotice(inventory, projectId, undefined, { removal: false }),
     [inventory],
   );
   const shown = useMemo(
