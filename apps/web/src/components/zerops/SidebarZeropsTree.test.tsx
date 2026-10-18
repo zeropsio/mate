@@ -957,7 +957,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
         [mate({ standupRequestedBy: "u-petra", automated: true, task }, { group: "connected" })],
         { getOwner: () => undefined },
       );
-      expect(html).toContain('aria-label="Automated: takes tasks from GitHub issues"');
+      expect(html).toContain('aria-label="Automated — runs on the organization&#x27;s key"');
       expect(
         /<span[^>]*data-zerops-surface="sidebar-mate-task"[^>]*>([^<]*)<\/span>/u.exec(html)?.[1],
       ).toBe(says);
