@@ -224,7 +224,7 @@ export class Deploys extends Context.Service<
     ) => Effect.Effect<HqDeployAnswer, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a job, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
-    /** Joins the environment workers already admitted by a completed rollout. */
+    /** Joins every run rollout's environment workers, first waiting out runs still admitting theirs. */
     readonly drain: Effect.Effect<void>;
     /** Lifecycle and submission share this lock; unresolved writers retain the occupied slot. */
     readonly withEnvironment: <A, E, R>(
@@ -2121,6 +2121,8 @@ export const deploysLayer = (
         );
       const registry = yield* Semaphore.make(1);
       const workers = new Map<string, Fiber.Fiber<void>>();
+      /** Runs between planning their rollout and admitting its workers. */
+      const admitting = yield* SubscriptionRef.make(0);
 
       /**
        * An environment's worker: it follows what the environment builds, and submits what waits
@@ -2274,17 +2276,27 @@ export const deploysLayer = (
         Effect.gen(function* () {
           const rollout = yield* rolloutRow(rolloutId);
           if (rollout === undefined) return NO_DEPLOYS;
-          yield* plan(rollout);
-          const projects = yield* sql<{ readonly environment_id: string; readonly git: boolean }>`
-            SELECT environment_id,bool_or(kind='push') AS git FROM hq_deploy_job
-            WHERE rollout_id = ${rolloutId}::bigint AND ended_at IS NULL GROUP BY environment_id`;
-          yield* Effect.forEach(
-            projects,
-            ({ environment_id: environmentId, git }) =>
-              git
-                ? worked(environmentId)
-                : Effect.andThen(advance(environmentId), worked(environmentId)),
-            { concurrency: "unbounded", discard: true },
+          yield* Effect.acquireUseRelease(
+            SubscriptionRef.update(admitting, (n) => n + 1),
+            () =>
+              Effect.gen(function* () {
+                yield* plan(rollout);
+                const projects = yield* sql<{
+                  readonly environment_id: string;
+                  readonly git: boolean;
+                }>`
+                  SELECT environment_id,bool_or(kind='push') AS git FROM hq_deploy_job
+                  WHERE rollout_id = ${rolloutId}::bigint AND ended_at IS NULL GROUP BY environment_id`;
+                yield* Effect.forEach(
+                  projects,
+                  ({ environment_id: environmentId, git }) =>
+                    git
+                      ? worked(environmentId)
+                      : Effect.andThen(advance(environmentId), worked(environmentId)),
+                  { concurrency: "unbounded", discard: true },
+                );
+              }),
+            () => SubscriptionRef.update(admitting, (n) => n - 1),
           );
           return yield* answerOf(rolloutId);
         });
@@ -2520,9 +2532,16 @@ export const deploysLayer = (
                 id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
               ),
         changes: SubscriptionRef.changes(ticks),
-        drain: Effect.suspend(() =>
-          Effect.forEach([...workers.values()], Fiber.join, { discard: true }),
-        ).pipe(Effect.repeat({ until: () => workers.size === 0 })),
+        drain: SubscriptionRef.changes(admitting).pipe(
+          Stream.takeUntil((runs) => runs === 0),
+          Stream.runDrain,
+          Effect.andThen(
+            Effect.suspend(() =>
+              Effect.forEach([...workers.values()], Fiber.join, { discard: true }),
+            ),
+          ),
+          Effect.repeat({ until: () => workers.size === 0 }),
+        ),
         // A deploy cannot be taken back: each is asked over roles read for it alone.
         redeploy: (userId, appId, name, service, sha) =>
           decidedFresh(
