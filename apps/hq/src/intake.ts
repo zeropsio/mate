@@ -55,7 +55,7 @@ import { can } from "./permissions.ts";
 import { Remotes } from "./repoRemotes.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Structure } from "./structure.ts";
-import { MateTasks } from "./mateTasks.ts";
+import { MateTasks, taskListens } from "./mateTasks.ts";
 import { HQ_MARK, marked } from "./githubChannel.ts";
 import { type GithubActor, GithubGate } from "./githubGate.ts";
 import { TaskIntake, TaskIntakeUnavailable, cleanTaskText, cleanTaskTitle } from "./taskSources.ts";
@@ -412,6 +412,18 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
           (rows) => rows.length > 0,
         );
 
+      /**
+       * Whether a task of the work item `key` keeps what is said of it: live, or done while its
+       * change waits for review.
+       */
+      const listeningTask = (appId: string, key: string) =>
+        Effect.map(
+          sql`
+            SELECT 1 FROM hq_task t WHERE t.app_id::text = ${appId} AND t.source_key = ${key}
+              AND ${taskListens(sql, sql`t`)}`,
+          (rows) => rows.length > 0,
+        );
+
       /** The intake's repository as GitHub names it, with its token; none where it holds none. */
       const repositoryOf = (target: { readonly appId: string; readonly hqRepo: string }) =>
         Effect.gen(function* () {
@@ -485,7 +497,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               author == null ||
               comment.performed_via_github_app != null ||
               text.includes(HQ_MARK) ||
-              !(yield* liveTask(row.app_id, key))
+              !(yield* listeningTask(row.app_id, key))
             )
               return passed;
             const verdict = yield* verdictOf(target, author);
@@ -559,7 +571,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               yield* intake.stop(key, LABEL_REMOVED);
               return { ...passed, moved: true };
             case "edited": {
-              if (actor === undefined || !(yield* liveTask(row.app_id, key))) return passed;
+              if (actor === undefined || !(yield* listeningTask(row.app_id, key))) return passed;
               const verdict = yield* verdictOf(target, actor);
               if (verdict.kind !== "writer") return passed;
               // Only what the edit changed is taken: the rest of the issue may read as someone

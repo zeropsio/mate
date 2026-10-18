@@ -2201,10 +2201,12 @@ describe("production and the stages are the project's places, behind its globe",
     expect(releaseTagOf(html)).toBe(release);
   });
 
-  // The release is the conversation header's to open (the owner, 2026-10-12: "in the left menu,
-  // just add some clear indication"): the row marks it, and a press there is the row's.
-  it("marks what waits for production on its row, and opens no review from there", () => {
+  // The release is the project's, not one Mate's (the owner, 2026-10-18: "it should be accessible
+  // from the left menu"): its mark after the project's name opens it; the rest of the row is the
+  // row's.
+  it("opens what waits for production from its row's release mark, and the row stays unpressed", () => {
     const opened: Array<unknown> = [];
+    let selected = 0;
     const mounted = mount(
       <ReviewContext value={(target) => opened.push(target)}>
         <SidebarZeropsTree
@@ -2217,21 +2219,30 @@ describe("production and the stages are the project's places, behind its globe",
             })
           }
           onBrowseProjects={() => {}}
-          onSelect={() => {}}
+          onSelect={() => {
+            selected += 1;
+          }}
         />
       </ReviewContext>,
     );
-    expect(
-      mounted.root.findAll(
-        (node) => node.props["data-zerops-surface"] === "sidebar-project-release",
-      ),
-    ).toEqual([]);
-    expect(
-      mounted.root.findAll(
-        (node) => node.props["data-zerops-surface"] === "sidebar-project-release-mark",
-      ),
-    ).not.toEqual([]);
-    expect(opened).toEqual([]);
+    const [mark] = mounted.root.findAll(
+      (node) =>
+        node.props["data-zerops-surface"] === "sidebar-project-release-mark" &&
+        typeof node.props["onClick"] === "function",
+    );
+    expect(mark).toBeDefined();
+    let stopped = false;
+    act(() => {
+      mark!.props["onClick"]({
+        currentTarget: {},
+        stopPropagation: () => {
+          stopped = true;
+        },
+      });
+    });
+    expect(opened).toMatchObject([{ kind: "release" }]);
+    expect(stopped).toBe(true);
+    expect(selected).toBe(0);
   });
 
   it("wears no environment tag while every place is calm, on a solo row or a folded group", () => {
