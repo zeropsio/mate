@@ -132,14 +132,18 @@ export function ProjectReviewTags({
  * The menu's word on what waits in a project (the owner, 2026-10-12: "in the left menu, just add
  * some clear indication without the ability to merge … after the name, one for merge one for
  * release … with small number when there are more"): a mark for the changes waiting on a review
- * and one for what waits for production, after the row's name, never a door — the row's press
- * opens the conversation, whose header holds Review and Release (`ProjectReviewTags`).
+ * and one for what waits for production, after the row's name. The merge mark is no door: the
+ * row's press opens the conversation, whose header holds Review. The release is the project's,
+ * not one Mate's (the owner, 2026-10-18: "it should be accessible from the left menu"): its mark
+ * opens it, and the press goes no further than the mark.
  */
 export function ProjectReviewMarks({
+  groupId,
   projectName,
   items,
   release,
 }: Parameters<typeof ProjectReviewTags>[0]): ReactNode {
+  const openReview = useOpenReview();
   if (items.length === 0 && release === undefined) return null;
   const mark = items.length === 0 ? undefined : reviewMarkOf(items, projectName);
   return (
@@ -162,6 +166,10 @@ export function ProjectReviewMarks({
           aria-label={`Release: ${releaseTagTip(release)}`}
           className="menu-mark menu-mark-release"
           data-zerops-surface="sidebar-project-release-mark"
+          onClick={(event) => {
+            event.stopPropagation();
+            openReview({ kind: "release", groupId }, { from: event.currentTarget });
+          }}
           role="img"
         >
           <RocketIcon aria-hidden="true" className="menu-mark-icon" />

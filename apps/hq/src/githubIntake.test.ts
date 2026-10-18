@@ -235,6 +235,37 @@ describe("who may hand an issue to automated Mates, and steer its task", () => {
     );
 
     it.effect(
+      "a member's comment on the issue reaches its Mate also once it said it was done while its change waits for review",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* labelled(core, 1);
+          const task = yield* working(core, 1);
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          assert.strictEqual(change.status, 200);
+          yield* core.robot.link.send({
+            type: "task-state",
+            report: { taskId: task.id, state: "done" },
+          });
+          yield* taskRows(core, (rows) => rows[0]?.["state"] === "done");
+          yield* deliver(core, core.hook, "issue_comment", commentEvent(1, "Use the blue kettle."));
+          const message = yield* core.robot.link.take("task-message");
+          assert.deepInclude(message, { taskId: task.id });
+          assert.deepInclude(message["message"] as object, {
+            from: "comment",
+            text: "Use the blue kettle.",
+          });
+        }),
+    );
+
+    it.effect(
       "an issue edited before a Mate takes it rewrites its task; edited after, its Mate hears the issue as it reads now",
       () =>
         Effect.gen(function* () {

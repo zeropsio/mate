@@ -19,7 +19,7 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { Leader } from "./leader.ts";
-import { MateTasks } from "./mateTasks.ts";
+import { MateTasks, taskListens } from "./mateTasks.ts";
 import {
   type TaskSourceChannel,
   TaskIntake,
@@ -69,9 +69,18 @@ export const taskIntakeLayer = Layer.effect(
         SELECT id::text AS id, body FROM hq_task
         WHERE source_key = ${sourceKey} AND state IN ('queued', 'assigned', 'working', 'waiting')`;
 
+    /**
+     * The tasks of a work item that keep what is said of them: live, or done while their change
+     * waits for review, where their Mate still hears it.
+     */
+    const listeningOf = (sourceKey: string) =>
+      sql<{ readonly id: string }>`
+        SELECT t.id::text AS id FROM hq_task t
+        WHERE t.source_key = ${sourceKey} AND ${taskListens(sql, sql`t`)}`;
+
     const message = (sourceKey: string, said: MateTaskMessage) =>
       Effect.gen(function* () {
-        const live = yield* liveOf(sourceKey);
+        const live = yield* listeningOf(sourceKey);
         const clean = { ...said, author: authorOf(said.author), text: cleanTaskText(said.text) };
         for (const task of live) yield* tasks.message(task.id, clean);
         return live.length > 0;
