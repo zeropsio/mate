@@ -1,22 +1,30 @@
 /**
  * The tasks from outside an automated Mate takes (decisions 4–7): HQ hands one over the link (a
- * `task` frame), the Mate works it in a conversation of its own and says how it stands (`task-state`
- * frames, `MateTaskReport`).
+ * `task` frame), the Mate works it as a turn of its one conversation for tasks and says how it
+ * stands (`task-state` frames, `MateTaskReport`).
  *
- * - **One conversation per task.** Its id is the task's (`taskConversationId`), so a frame told
- *   again finds it and re-reports, and never opens a second one; the engine's receipt for the
- *   brief's command id holds the same line underneath.
+ * - **One conversation for every task** (`TASKS_CONVERSATION_ID`), as a standard Mate has one:
+ *   each task is a new turn in it, on a fresh agent session (a `task` rotation before its brief),
+ *   so no task carries another's context or cost. A task is its runs' principal and its messages'
+ *   `taskId`, never the conversation: a frame told again finds its runs there and re-reports, and
+ *   the engine's receipt for the brief's command id holds the same line underneath. A task taken
+ *   before a Mate worked them all in one keeps its own conversation (`taskConversationId`), read
+ *   and steered there as history.
  * - **Declined** — handed back with why, never a try against it — on a Mate that is not
  *   automated, while no organization key is set for its agents, while its OpenCode is off or not
- *   ready, until its setup's wait for the stand-up ended (`ZeropsStandUpReceipt`), and while any
- *   of its conversations has a run on, waiting, due or held by a usage limit (its stand-up, another
- *   task: one task per Mate at a time, so a change it opens is the task's).
- * - **Taken:** the conversation gets the automated agent (OpenCode on the organization's key,
- *   `AUTOMATED_MODEL_SELECTION`) and its first message, for the task's principal: the brief the agent
- *   works from, its person item carrying the issue as `task`, so every client draws its card.
+ *   ready, until its setup's wait for the stand-up ended (`ZeropsStandUpReceipt`), and while
+ *   another conversation has a run on, waiting, due or held by a usage limit (its stand-up), or
+ *   the tasks' conversation has work on for another task or a person: one task per Mate at a
+ *   time, so a change it opens is the task's.
+ * - **Taken:** the conversation has the automated agent (OpenCode on the organization's key,
+ *   `AUTOMATED_MODEL_SELECTION`, given once) and gets the task's first message, for the task's
+ *   principal: the brief the agent works from, its person item carrying the issue as `task`, so
+ *   every client draws its card.
  * - **Steered:** a follow-up (`task-message`) goes into the task's conversation as a person's
  *   message does, under its id (`task-message:<id>`), so one told twice is heard once: it joins
- *   the run on, or starts the next — more work on the same task, said `working` again.
+ *   the run on, or starts the next — more work on the same task, said `working` again. It goes on
+ *   the session the conversation runs on then: one told after another task started is heard with
+ *   that task's context, not its own.
  * - **Asking:** an agent that cannot go on without a person's answer ends its turn on a
  *   `QUESTION: …` line (the brief says how); the task then says `waiting` with the question, and
  *   the answer, a follow-up, resumes it.
@@ -35,11 +43,12 @@
  * - **Spent:** each report but a refusal carries what the task cost and how long it worked
  *   (`taskSpendOf`); while it works, those move, and are said, once a minute.
  * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
- *   `failed` (with why) once it ended, as the engine's record shows; a conversation whose brief was
- *   never recorded says nothing, so HQ tells the task again. A task's end is its own last run's,
- *   whatever a person ran in its conversation after. Each link hears the latest task's report
- *   first, so a report missed while the link was down arrives with the next one; the Mate reads a
- *   task conversation that moved many times at once (a streaming answer) once, one read at a time.
+ *   `failed` (with why) once it ended, as the engine's record shows; a task whose brief was never
+ *   recorded says nothing, so HQ tells the task again. A task's end is its own last run's,
+ *   whatever a person or the next task ran in its conversation after. Each link hears the latest
+ *   task's report first, so a report missed while the link was down arrives with the next one;
+ *   the Mate reads a task conversation that moved many times at once (a streaming answer) once,
+ *   one read at a time, and tells of each task whose runs it holds.
  *
  * A task whose state cannot be read now goes unanswered: HQ tells it again until the Mate says.
  *
@@ -60,7 +69,9 @@ import {
   type MateTaskReport,
   type Principal,
   type RunEnd,
+  isMateTaskConversation,
   MATE_TASK_CONVERSATION_PREFIX,
+  MATE_TASKS_CONVERSATION_ID,
   mateTaskIdOfConversation,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -90,16 +101,23 @@ import { ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { ZeropsTaskLedger, type TaskEntry } from "./ZeropsTaskLedger.ts";
 
+/** The one conversation an automated Mate works every task in, each a turn of its own. */
+export const TASKS_CONVERSATION_ID = ConversationId.make(MATE_TASKS_CONVERSATION_ID);
+
+/** Whether tasks are worked in the conversation: the one for them, or an older task's own. */
+export const isTaskConversation = (id: ConversationId): boolean => isMateTaskConversation(id);
+
 /**
- * The conversation a task is worked in, named by the task: HQ's id with every character a
- * conversation id does not carry (a slash ends one) spelled out, so it reads back exactly.
+ * The conversation a task was worked in before a Mate worked them all in one, named by the task:
+ * HQ's id with every character a conversation id does not carry (a slash ends one) spelled out, so
+ * it reads back exactly. Only read now: such a task stays there, as history.
  */
 export const taskConversationId = (taskId: string): ConversationId =>
   ConversationId.make(
     `${MATE_TASK_CONVERSATION_PREFIX}${taskId.replace(/[^A-Za-z0-9_-]/gu, (char) => `.${char.codePointAt(0)!.toString(16)}.`)}`,
   );
 
-/** The task a conversation is worked for, when it is a task's (`mateTaskIdOfConversation`). */
+/** The task an older task's own conversation is worked for (`mateTaskIdOfConversation`). */
 export const taskIdOfConversation = (id: ConversationId): string | undefined =>
   mateTaskIdOfConversation(id);
 
@@ -335,7 +353,11 @@ export const taskReportOf = (
   }
   const active = view.activeRun;
   if (isTasks(active, taskId) || view.queued.some((queued) => isTasks(queued, taskId))) {
-    const started = active?.startedAt != null || view.lastEnded !== null;
+    // In the tasks' one conversation, another task's runs say nothing of this one's start.
+    const started =
+      view.conversationId === TASKS_CONVERSATION_ID
+        ? (isTasks(active, taskId) && active.startedAt !== null) || isTasks(view.lastEnded, taskId)
+        : active?.startedAt != null || view.lastEnded !== null;
     return { ...base, state: started ? "working" : "accepted" };
   }
   const ended = view.lastEnded;
@@ -366,12 +388,56 @@ export const taskReportOf = (
     : { ...base, state: "failed", detail: failure };
 };
 
-/** Whether the view holds none of the task's runs, though it holds runs: a person's came after. */
+/** Whether the view holds any of the task's runs: on, queued, or the last that ended. */
+const holdsTask = (taskId: string, view: ConversationView): boolean =>
+  isTasks(view.activeRun, taskId) ||
+  view.queued.some((queued) => isTasks(queued, taskId)) ||
+  isTasks(view.lastEnded, taskId);
+
+/**
+ * Whether the view holds none of the task's runs, though it holds runs: a person's, or in the
+ * tasks' one conversation the next task's, came after.
+ */
 const afterTheTask = (taskId: string, view: ConversationView): boolean =>
-  hasRuns(view) &&
-  !isTasks(view.activeRun, taskId) &&
-  !view.queued.some((queued) => isTasks(queued, taskId)) &&
-  !isTasks(view.lastEnded, taskId);
+  hasRuns(view) && !holdsTask(taskId, view);
+
+/**
+ * The tasks a move of a task conversation may have moved: an older task's own conversation is its
+ * task's; in the tasks' one, each task with a run on or queued, else the one whose run ended last
+ * (another's run on says nothing new of a task that ended before it), and `current`, the task
+ * taken last, whose end stands whatever a person ran after it.
+ */
+const tasksIn = (view: ConversationView, current: string | undefined): ReadonlyArray<string> => {
+  const own = taskIdOfConversation(view.conversationId);
+  if (own !== undefined) return [own];
+  if (view.conversationId !== TASKS_CONVERSATION_ID) return [];
+  const on = [view.activeRun, ...view.queued];
+  const runs = on.some((run) => run !== null) ? on : [view.lastEnded];
+  const ids = runs.flatMap((run) => (run?.principal.kind === "task" ? [run.principal.taskId] : []));
+  return [...new Set([...ids, ...(current === undefined ? [] : [current])])];
+};
+
+/** The task of the view's newest task run: the last queued, the one on, else the last ended. */
+const newestTaskIn = (view: ConversationView): string | undefined =>
+  [view.lastEnded, view.activeRun, ...view.queued]
+    .flatMap((run) => (run?.principal.kind === "task" ? [run.principal.taskId] : []))
+    .at(-1);
+
+/**
+ * The runs of the view's work on or coming: the run on, the queued, and the last that ended while
+ * its continuation is due or a usage limit holds the queue.
+ */
+const workOf = (view: ConversationView): ReadonlyArray<ViewRun> => [
+  ...(view.activeRun === null ? [] : [view.activeRun]),
+  ...view.queued,
+  ...(view.lastEnded !== null &&
+  (view.runDue === true || view.turnDue === true || view.pausedUntil !== null)
+    ? [view.lastEnded]
+    : []),
+];
+
+const sameAgent = (left: ConversationAgent | null | undefined, right: ConversationAgent) =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 /** One link's side of the tasks: the frames it hears, and the reports it sends while it lives. */
 export interface TaskLink {
@@ -407,6 +473,8 @@ export const make = Effect.gen(function* () {
   const ledger = yield* ZeropsTaskLedger;
   const bus = yield* ProviderRuntimeEventBus;
   const commitAuthor = yield* ZeropsCommitAuthor;
+  // The task taken last in the tasks' one conversation, or seen there newest since the Mate began.
+  let current: string | undefined;
   // One frame at a time: two told at once never both pass the one-task check.
   const taking = yield* Semaphore.make(1);
   // How each task stands once its conversation moved, for every link that follows them.
@@ -435,17 +503,34 @@ export const make = Effect.gen(function* () {
     for (const cost of inFlight.get(taskId)?.values() ?? []) cost.seen = cost.now;
   };
 
-  /** Every task conversation's view; none when the engine could not read them all now. */
-  const taskViews = Effect.map(engine.conversations, (list) =>
-    list.complete
-      ? Option.some(
-          list.views.flatMap((view) => {
-            const taskId = taskIdOfConversation(view.conversationId);
-            return taskId === undefined ? [] : [{ taskId, view }];
-          }),
-        )
-      : Option.none(),
-  );
+  /**
+   * Where the task is worked: its own conversation when it was taken before the Mate worked them
+   * all in one, else the tasks' one; with its view, none while the engine holds no record of it.
+   */
+  const placeOf = (taskId: string) =>
+    Effect.gen(function* () {
+      const legacy = taskConversationId(taskId);
+      const own = yield* engine.conversation(legacy);
+      if (own !== undefined) return { conversationId: legacy, held: own };
+      return {
+        conversationId: TASKS_CONVERSATION_ID,
+        held: yield* engine.conversation(TASKS_CONVERSATION_ID),
+      };
+    });
+
+  /**
+   * Whether the task ever ran in `view`: an older task's own conversation is its runs'; in the
+   * tasks' one, the view holds one of its runs, or the engine's record does under a later one.
+   */
+  const ranIn = (taskId: string, view: ConversationView) =>
+    view.conversationId !== TASKS_CONVERSATION_ID
+      ? Effect.succeed(hasRuns(view))
+      : holdsTask(taskId, view)
+        ? Effect.succeed(true)
+        : Effect.map(
+            engine.runOf({ conversationId: view.conversationId, taskId }),
+            (own) => own !== undefined,
+          );
 
   /**
    * The task's ledger, its last ended run counted once (`runMs`): every report reads its ended
@@ -474,14 +559,22 @@ export const make = Effect.gen(function* () {
       });
     });
 
-  /** How the task stands in `view`, its own last run read when a person's runs came after it. */
+  /**
+   * How the task stands in `view`, its own last run read when a person's runs, or the next task's,
+   * came after it; none for a task that never ran in the tasks' one conversation.
+   */
   const reportFor = (taskId: string, view: ConversationView) =>
     Effect.gen(function* () {
       const entry = yield* counted(taskId, view);
       if (droppedIn(entry)) return undefined;
-      const own = afterTheTask(taskId, view)
+      // In the tasks' one conversation a view without the task's runs may follow them, or hold
+      // none: the engine's record says which.
+      const shared = view.conversationId === TASKS_CONVERSATION_ID;
+      const elsewhere = shared ? !holdsTask(taskId, view) : afterTheTask(taskId, view);
+      const own = elsewhere
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
+      if (shared && elsewhere && own === undefined) return undefined;
       const report = taskReportOf(taskId, view, own?.end, entry);
       return report === undefined
         ? undefined
@@ -562,19 +655,31 @@ export const make = Effect.gen(function* () {
       );
     });
 
-  /** Reads a task conversation that moved: held to its limits, and how it stands told. */
+  /**
+   * Reads a task conversation that moved: each task whose runs it holds is held to its limits,
+   * and how it stands told.
+   */
   const readMoved = (id: ConversationId) => {
-    const taskId = taskIdOfConversation(id);
-    if (taskId === undefined) return Effect.void;
+    if (!isTaskConversation(id)) return Effect.void;
     return engine.conversation(id).pipe(
+      Effect.tap((view) =>
+        Effect.sync(() => {
+          if (view?.conversationId === TASKS_CONVERSATION_ID) current ??= newestTaskIn(view);
+        }),
+      ),
       Effect.flatMap((view) =>
         view === undefined
           ? Effect.void
-          : enforce(taskId, view).pipe(
-              Effect.andThen(reportFor(taskId, view)),
-              Effect.flatMap((report) =>
-                report === undefined ? Effect.void : PubSub.publish(reports, report),
-              ),
+          : Effect.forEach(
+              tasksIn(view, current),
+              (taskId) =>
+                enforce(taskId, view).pipe(
+                  Effect.andThen(reportFor(taskId, view)),
+                  Effect.flatMap((report) =>
+                    report === undefined ? Effect.void : PubSub.publish(reports, report),
+                  ),
+                ),
+              { discard: true },
             ),
       ),
       Effect.catchTags({ ViewUnreadable: () => Effect.void }),
@@ -584,7 +689,7 @@ export const make = Effect.gen(function* () {
   // Following the record from the start, whether or not HQ is linked: limits hold without it.
   yield* Effect.forkScoped(
     Stream.runForEach(engine.changes, (id) =>
-      taskIdOfConversation(id) === undefined ? Effect.void : Queue.offer(moved, id),
+      isTaskConversation(id) ? Queue.offer(moved, id) : Effect.void,
     ),
   );
   yield* Effect.forkScoped(
@@ -603,11 +708,71 @@ export const make = Effect.gen(function* () {
           ...list.views.flatMap((view) => (atWork(view) ? [view.conversationId] : [])),
           ...list.unread,
         ],
-        (id) => (taskIdOfConversation(id) === undefined ? Effect.void : Queue.offer(moved, id)),
+        (id) => (isTaskConversation(id) ? Queue.offer(moved, id) : Effect.void),
         { discard: true },
       ),
     ),
   );
+  /**
+   * The task a provider turn in a task conversation ran for: an older task's own conversation
+   * names it; in the tasks' one, the run the turn went into does (its principal), else the run on.
+   */
+  const taskOfTurn = (conversationId: ConversationId, turnId: string | undefined) => {
+    const own = taskIdOfConversation(conversationId);
+    if (own !== undefined) return Effect.succeed<string | undefined>(own);
+    const ofRun = (run: { readonly principal: Principal } | null | undefined) =>
+      run?.principal.kind === "task" ? run.principal.taskId : undefined;
+    return Effect.gen(function* () {
+      const run =
+        turnId === undefined ? undefined : yield* engine.runOf({ providerTurnId: turnId });
+      if (run !== undefined) return ofRun(run);
+      // The engine has not recorded the turn's start yet: the turn is the run on's.
+      const view = yield* engine.conversation(conversationId);
+      return ofRun(view?.activeRun);
+    }).pipe(Effect.catchTags({ ViewUnreadable: () => Effect.succeed(undefined) }));
+  };
+
+  /**
+   * A turn's cost on its task: its running cost while it works (`updated`), held to the task's
+   * cost limit at once; its final (`completed`), counted once in the ledger.
+   */
+  const usageOf = (
+    taskId: string,
+    conversationId: ConversationId,
+    final: boolean,
+    turn: string,
+    cost: { readonly amount: string; readonly scale: number },
+  ) => {
+    if (!final) {
+      return Effect.flatMap(ledger.entry(taskId), (entry) => {
+        if (entry?.turns.includes(turn)) return Effect.void;
+        const counted = BigInt(entry?.costNano ?? "0");
+        const before = counted + inFlightOf(taskId, entry, "now");
+        const turns = inFlight.get(taskId) ?? new Map<string, { now: bigint; seen: bigint }>();
+        inFlight.set(taskId, turns);
+        turns.set(turn, { now: nanosOf(cost), seen: turns.get(turn)?.seen ?? 0n });
+        const after = counted + inFlightOf(taskId, entry, "now");
+        const { costUsd } = entry?.limits ?? DEFAULT_TASK_LIMITS;
+        const limit = costUsd === null ? undefined : BigInt(Math.round(costUsd * 1e9));
+        // Read again only as it crosses its limit: the rest rides the once-a-minute report.
+        return limit !== undefined && before < limit && after >= limit
+          ? Queue.offer(moved, conversationId)
+          : Effect.void;
+      });
+    }
+    return ledger
+      .update(taskId, (kept) =>
+        kept.turns.includes(turn)
+          ? kept
+          : {
+              ...kept,
+              turns: [...kept.turns, turn],
+              costNano: String(BigInt(kept.costNano) + nanosOf(cost)),
+            },
+      )
+      .pipe(Effect.andThen(Queue.offer(moved, conversationId)));
+  };
+
   // Each turn's cost, as its provider reported it at the turn's end, counted once on its task;
   // and while it runs, as far as its provider tells it, held to the task's cost limit at once.
   yield* Effect.forkScoped(
@@ -615,48 +780,21 @@ export const make = Effect.gen(function* () {
       if (event.type !== "turn.usage.completed" && event.type !== "turn.usage.updated")
         return Effect.void;
       const conversationId = conversationOfThread(event.threadId);
-      const taskId =
-        conversationId === undefined ? undefined : taskIdOfConversation(conversationId);
       const cost = event.payload.nativeCost;
-      if (conversationId === undefined || taskId === undefined) return Effect.void;
+      if (conversationId === undefined || !isTaskConversation(conversationId)) return Effect.void;
       if (cost === null || cost.currency !== "USD") return Effect.void;
       const turn = `${event.payload.nativeThreadId}/${event.payload.nativeTurnId}`;
-      if (event.type === "turn.usage.updated") {
-        return Effect.flatMap(ledger.entry(taskId), (entry) => {
-          if (entry?.turns.includes(turn)) return Effect.void;
-          const counted = BigInt(entry?.costNano ?? "0");
-          const before = counted + inFlightOf(taskId, entry, "now");
-          const turns = inFlight.get(taskId) ?? new Map<string, { now: bigint; seen: bigint }>();
-          inFlight.set(taskId, turns);
-          turns.set(turn, { now: nanosOf(cost), seen: turns.get(turn)?.seen ?? 0n });
-          const after = counted + inFlightOf(taskId, entry, "now");
-          const { costUsd } = entry?.limits ?? DEFAULT_TASK_LIMITS;
-          const limit = costUsd === null ? undefined : BigInt(Math.round(costUsd * 1e9));
-          // Read again only as it crosses its limit: the rest rides the once-a-minute report.
-          return limit !== undefined && before < limit && after >= limit
-            ? Queue.offer(moved, conversationId)
-            : Effect.void;
-        });
-      }
-      return ledger
-        .update(taskId, (kept) =>
-          kept.turns.includes(turn)
-            ? kept
-            : {
-                ...kept,
-                turns: [...kept.turns, turn],
-                costNano: String(BigInt(kept.costNano) + nanosOf(cost)),
-              },
-        )
-        .pipe(Effect.andThen(Queue.offer(moved, conversationId)));
+      const final = event.type === "turn.usage.completed";
+      return Effect.flatMap(taskOfTurn(conversationId, event.turnId), (taskId) =>
+        taskId === undefined ? Effect.void : usageOf(taskId, conversationId, final, turn, cost),
+      );
     }),
   );
 
   /** The report a frame is answered with; none when it cannot be told now. */
   const take = (task: MateTask) =>
     Effect.gen(function* () {
-      const conversationId = taskConversationId(task.id);
-      const held = yield* engine.conversation(conversationId);
+      const { conversationId, held } = yield* placeOf(task.id);
       // Put back in line since it was taken: taken again below, in the same conversation.
       const dropped = yield* ledger.entry(task.id);
       const again = held !== undefined && droppedIn(dropped) ? dropped?.requeued : undefined;
@@ -685,12 +823,13 @@ export const make = Effect.gen(function* () {
       // Ready as its stand-up reads it: probed ready, models listed, the key read as a sign-in.
       if (!isAgentWithoutSignInReady(openCode)) return refused(REFUSALS.openCodeNotReady);
       if (!(yield* standUp.settled)) return refused(REFUSALS.settingUp);
-      // One desk: its stand-up, another task or anything else with work on or coming.
+      // One desk: its stand-up, another task or anything else with work on or coming — in its
+      // conversation too, where only work of its own (a run its drop is stopping) is no other's.
       const desk = yield* engine.conversations;
       if (!desk.complete) return Option.none();
-      const busy = desk.views.some(
-        (view) => view.conversationId !== conversationId && atWork(view),
-      );
+      const busy =
+        desk.views.some((view) => view.conversationId !== conversationId && atWork(view)) ||
+        (held !== undefined && workOf(held).some((run) => !isTasks(run, task.id)));
       if (busy) return refused(REFUSALS.busy);
 
       const agent: ConversationAgent = {
@@ -699,7 +838,14 @@ export const make = Effect.gen(function* () {
         model: AUTOMATED_MODEL_SELECTION.model,
         profile: { kind: "mate" },
       };
-      if (!(yield* engine.assignAgent(conversationId, agent))) return Option.none();
+      // Given once: the conversation keeps it from task to task.
+      if (!sameAgent(held?.agent, agent) && !(yield* engine.assignAgent(conversationId, agent)))
+        return Option.none();
+      // The task before's last run counted now, before this task's runs take the view's place.
+      const before = held?.lastEnded;
+      if (before?.principal.kind === "task" && before.principal.taskId !== task.id) {
+        yield* counted(before.principal.taskId, held!);
+      }
       // Its limits kept before its first run can start, so the run is held to them from the start.
       const { limits } = task;
       if (limits !== undefined) yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
@@ -717,19 +863,33 @@ export const make = Effect.gen(function* () {
               }),
             );
       const ask = task.body.trim();
+      const take = again === undefined ? task.id : `${task.id}:${again}`;
+      // In the tasks' one conversation each task starts on a fresh agent session: no context or
+      // cost carried from the task before, and nothing it assumed.
+      if (conversationId === TASKS_CONVERSATION_ID) {
+        const rotated = yield* engine.deliver(
+          conversationId,
+          { _tag: "RotateSession", reason: "task", fresh: true, seed: null },
+          CommandId.make(`task-session:${take}`),
+          principalOf(task.id),
+        );
+        if (rotated._tag === "Rejected") return refused(REFUSALS.notNow);
+      }
       const result = yield* engine.deliver(
         conversationId,
         {
           _tag: "Send",
           text: taskBrief(task),
           task: task.source,
+          taskId: task.id,
           ...(ask === "" ? {} : { taskAsk: ask }),
         },
-        CommandId.make(again === undefined ? `task:${task.id}` : `task:${task.id}:${again}`),
+        CommandId.make(`task:${take}`),
         principalOf(task.id),
       );
       // Refused now (an update draining it, say): another Mate, or this one later, takes it.
       if (result._tag === "Rejected") return refused(REFUSALS.notNow);
+      if (conversationId === TASKS_CONVERSATION_ID) current = task.id;
       if (again !== undefined)
         yield* ledger.update(task.id, (entry) => ({ ...entry, retaken: again }));
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
@@ -755,10 +915,9 @@ export const make = Effect.gen(function* () {
    */
   const hear = (taskId: string, message: MateTaskMessage) =>
     Effect.gen(function* () {
-      const conversationId = taskConversationId(taskId);
-      const held = yield* engine.conversation(conversationId);
+      const { conversationId, held } = yield* placeOf(taskId);
       // Not a task this Mate took: nothing to steer.
-      if (held === undefined || !hasRuns(held)) return Option.none<MateTaskReport>();
+      if (held === undefined || !(yield* ranIn(taskId, held))) return Option.none<MateTaskReport>();
       const entry = yield* ledger.entry(taskId);
       if (entry?.stopped === undefined && entry?.limitHit === undefined && !droppedIn(entry)) {
         const { reached } = reachedLimit(
@@ -773,7 +932,7 @@ export const make = Effect.gen(function* () {
         } else {
           const result = yield* engine.deliver(
             conversationId,
-            { _tag: "Send", ...followUpOf(message), taskMessage: message },
+            { _tag: "Send", ...followUpOf(message), taskMessage: message, taskId },
             CommandId.make(`task-message:${message.id}`),
             principalOf(taskId),
           );
@@ -800,8 +959,8 @@ export const make = Effect.gen(function* () {
       const entry = yield* ledger.update(taskId, (kept) =>
         kept.stopped === undefined ? { ...kept, stopped: reason } : kept,
       );
-      const held = yield* engine.conversation(taskConversationId(taskId));
-      if (held === undefined) {
+      const { held } = yield* placeOf(taskId);
+      if (held === undefined || !(yield* ranIn(taskId, held))) {
         return Option.some<MateTaskReport>({
           taskId,
           state: "stopped",
@@ -821,26 +980,37 @@ export const make = Effect.gen(function* () {
    */
   const dropTask = (taskId: string) =>
     Effect.gen(function* () {
-      const held = yield* engine.conversation(taskConversationId(taskId));
-      if (held === undefined || !hasRuns(held)) return;
+      const { held } = yield* placeOf(taskId);
+      if (held === undefined || !(yield* ranIn(taskId, held))) return;
       const entry = yield* ledger.entry(taskId);
       if (entry?.stopped !== undefined || droppedIn(entry)) return;
       yield* ledger.update(taskId, (kept) => ({ ...kept, requeued: (kept.requeued ?? 0) + 1 }));
       yield* enforce(taskId, held);
     }).pipe(taking.withPermit, Effect.catchTags({ ViewUnreadable: () => Effect.void }));
 
-  /** The task worked last: the newest task conversation. */
-  const latest = Effect.map(taskViews, (found) =>
-    Option.flatMap(found, (entries) =>
-      Option.fromUndefinedOr(
-        entries.reduce<(typeof entries)[number] | undefined>(
-          (newest, entry) =>
-            newest === undefined || entry.view.createdAt > newest.view.createdAt ? entry : newest,
-          undefined,
-        ),
+  /**
+   * The task worked last: the newest task run's in the tasks' one conversation, else, on a Mate
+   * that has worked none there yet, the newest of the older tasks' own conversations.
+   */
+  const latest = Effect.map(engine.conversations, (list) => {
+    if (!list.complete) return Option.none();
+    const shared = list.views.find((view) => view.conversationId === TASKS_CONVERSATION_ID);
+    const newest = shared === undefined ? undefined : newestTaskIn(shared);
+    if (shared !== undefined && newest !== undefined) {
+      return Option.some({ taskId: newest, view: shared });
+    }
+    const older = list.views.flatMap((view) => {
+      const taskId = taskIdOfConversation(view.conversationId);
+      return taskId === undefined ? [] : [{ taskId, view }];
+    });
+    return Option.fromUndefinedOr(
+      older.reduce<(typeof older)[number] | undefined>(
+        (found, entry) =>
+          found === undefined || entry.view.createdAt > found.view.createdAt ? entry : found,
+        undefined,
       ),
-    ),
-  );
+    );
+  });
 
   const open: ZeropsTasks["Service"]["open"] = (send) =>
     Effect.sync(() => {
