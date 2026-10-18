@@ -28,9 +28,19 @@
  * and only then does recency decide. A pinned chat outranks both, so the user
  * can always overrule us.
  *
+ * ## An automated Mate's main chat is its tasks'
+ *
+ * An automated Mate works every task in its one conversation, a turn each: that conversation is
+ * its main chat, whatever was pinned or spoken in. A Mate on an older server worked each task in a
+ * conversation of its own; its newest task's is its main chat, never an older task's.
+ *
  * @module primaryConversation
  */
-import type { ThreadCrewOrigin } from "@t3tools/contracts";
+import {
+  MATE_TASK_CONVERSATION_PREFIX,
+  MATE_TASKS_CONVERSATION_ID,
+  type ThreadCrewOrigin,
+} from "@t3tools/contracts";
 
 /**
  * The fields this needs from a thread shell. Structural on purpose: a thread
@@ -51,7 +61,7 @@ export interface ZeropsConversationCandidate {
 }
 
 /** Why this thread was chosen — the UI may want to explain itself, and tests must. */
-export type ZeropsPrimaryConversationReason = "pinned" | "spoken" | "newest" | "none";
+export type ZeropsPrimaryConversationReason = "tasks" | "pinned" | "spoken" | "newest" | "none";
 
 export interface ZeropsPrimaryConversation<T extends ZeropsConversationCandidate> {
   /** The conversation to open, or `undefined` when the environment has none yet. */
@@ -108,6 +118,10 @@ export function resolvePrimaryConversation<T extends ZeropsConversationCandidate
   if (live.length === 0) return { primary: undefined, hidden: [], reason: "none" };
 
   const ranked = [...live].sort(compare);
+  const tasks = tasksConversation(live);
+  if (tasks !== undefined) {
+    return { primary: tasks, hidden: ranked.filter((thread) => thread !== tasks), reason: "tasks" };
+  }
   const [primary, ...hidden] = ranked as [T, ...Array<T>];
 
   const reason: ZeropsPrimaryConversationReason =
@@ -118,4 +132,17 @@ export function resolvePrimaryConversation<T extends ZeropsConversationCandidate
         : "newest";
 
   return { primary, hidden, reason };
+}
+
+/** An automated Mate's tasks' conversation: its one, else its newest task's own (an older server's). */
+function tasksConversation<T extends ZeropsConversationCandidate>(
+  live: ReadonlyArray<T>,
+): T | undefined {
+  const one = live.find((thread) => thread.id === MATE_TASKS_CONVERSATION_ID);
+  if (one !== undefined) return one;
+  const own = live.filter((thread) => thread.id.startsWith(MATE_TASK_CONVERSATION_PREFIX));
+  return own.sort(
+    (left, right) =>
+      timestamp(right.createdAt) - timestamp(left.createdAt) || left.id.localeCompare(right.id),
+  )[0];
 }
