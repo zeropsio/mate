@@ -130,6 +130,8 @@ export interface TaskFacts {
   readonly change: string | null;
   /** Its change asks for review: its Mate described its head. A draft does not yet. */
   readonly changeReady: boolean;
+  /** Its change was merged. */
+  readonly changeMerged: boolean;
   /** Its change's pull request on GitHub, once it has one. */
   readonly pullRequest: TaskPullRequest | null;
   readonly detail: string | null;
@@ -339,12 +341,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly pr_url: string | null;
             readonly conversation_id: string | null;
             readonly change_ready: boolean;
+            readonly change_state: string | null;
           }>`
             SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
               COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.conversation_id,
               t.change_repo,
               t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
-              pr.url AS pr_url, COALESCE(c.ready_head = c.head, false) AS change_ready
+              pr.url AS pr_url, COALESCE(c.ready_head = c.head, false) AS change_ready,
+              c.state AS change_state
             FROM hq_task t
             LEFT JOIN hq_app a ON a.id = t.app_id
             LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
@@ -384,6 +388,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 ? null
                 : `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(task.app_id, task.change_repo, task.change_number)}`,
             changeReady: task.change_ready,
+            changeMerged: task.change_state === "merged",
             detail: task.detail,
             question: task.question,
           });
@@ -857,16 +862,21 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       yield* Effect.forkScoped(
         Stream.runForEach(changes.taskChanges, (taskId) =>
-          say(taskId, ({ mate, change, changeReady, pullRequest }) =>
-            // A draft is no change for review yet: the line keeps saying the Mate is on it.
-            change === null || !changeReady
+          say(taskId, ({ mate, change, changeReady, changeMerged, pullRequest }) =>
+            change === null
               ? undefined
-              : {
-                  kind: "change",
-                  mate: mate ?? "Mate",
-                  link: change,
-                  ...(pullRequest === null ? {} : { pullRequest }),
-                },
+              : // Merged in Mate (a pull request's merge is told by its own keeper).
+                changeMerged && pullRequest === null
+                ? { kind: "merged", mate: mate ?? "Mate", change }
+                : // A draft is no change for review yet: the line keeps saying the Mate is on it.
+                  !changeReady || changeMerged
+                  ? undefined
+                  : {
+                      kind: "change",
+                      mate: mate ?? "Mate",
+                      link: change,
+                      ...(pullRequest === null ? {} : { pullRequest }),
+                    },
           ),
         ),
       );

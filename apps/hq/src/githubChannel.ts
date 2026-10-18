@@ -66,7 +66,11 @@ export const statusWords = (status: TaskStatus): string => {
           ? `${status.mate} is done.`
           : `${status.mate} is done; its change: ${status.link}`;
     case "merged":
-      return `Merged in #${String(status.pullRequest.number)}.`;
+      return status.pullRequest !== undefined
+        ? `Merged in #${String(status.pullRequest.number)}.`
+        : status.change == null
+          ? "Merged."
+          : `Merged into main: ${status.change}`;
     case "failed":
       return status.mate === null
         ? `No automated Mate could take this up: ${quieted(status.why)}`

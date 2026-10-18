@@ -91,8 +91,16 @@ export type TaskStatus =
       readonly link: string | null;
       readonly pullRequest?: TaskPullRequest;
     }
-  /** Its change's pull request was merged (on GitHub, or by Merge in Mate). */
-  | { readonly kind: "merged"; readonly mate: string; readonly pullRequest: TaskPullRequest }
+  /**
+   * Its change was merged: its pull request (on GitHub, or by Merge in Mate), or the change itself
+   * in Mate where its repository mirrors through no app (`change`, its address).
+   */
+  | {
+      readonly kind: "merged";
+      readonly mate: string;
+      readonly pullRequest?: TaskPullRequest;
+      readonly change?: string | null;
+    }
   | { readonly kind: "failed"; readonly mate: string | null; readonly why: string }
   | { readonly kind: "stopped"; readonly mate: string | null; readonly why: string };
 

@@ -296,7 +296,11 @@ export const statusWords = (status: TaskStatus): string => {
       case "stopped":
         return `Stopped: ${status.why}`;
       case "merged":
-        return `Merged: ${status.pullRequest.url}`;
+        return status.pullRequest !== undefined
+          ? `Merged: ${status.pullRequest.url}`
+          : status.change == null
+            ? "Merged."
+            : `Merged into main: ${status.change}`;
     }
   })();
   return words.length <= MESSAGE_MAX ? words : `${words.slice(0, MESSAGE_MAX - 1)}…`;

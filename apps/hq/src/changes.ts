@@ -578,6 +578,14 @@ export const changesLayer: Layer.Layer<
     const making = yield* Semaphore.make(1);
     const ticks = yield* SubscriptionRef.make(0);
     const taskChanged = yield* PubSub.unbounded<string>();
+    /** The tasks a change was opened for hear that it moved (`taskChanges`). */
+    const tellTasksOf = (appId: string, repo: string, number: number) =>
+      Effect.gen(function* () {
+        const tasks = yield* sql<{ readonly id: string }>`
+          SELECT id::text AS id FROM hq_task
+          WHERE app_id = ${appId}::uuid AND change_repo = ${repo} AND change_number = ${number}`;
+        for (const task of tasks) yield* PubSub.publish(taskChanged, task.id);
+      });
     const commented = yield* PubSub.unbounded<ChangeCommented>();
     /** After a write that changed a change's record has committed. */
     const touched = <A, E, R>(write: Effect.Effect<A, E, R>) =>
@@ -1258,12 +1266,7 @@ export const changesLayer: Layer.Layer<
             ),
           );
           // Described, it asks for review: a task's status line says so now, not when it opened.
-          if (edit.body !== undefined) {
-            const tasks = yield* sql<{ readonly id: string }>`
-              SELECT id::text AS id FROM hq_task
-              WHERE app_id = ${appId}::uuid AND change_repo = ${repo} AND change_number = ${number}`;
-            for (const task of tasks) yield* PubSub.publish(taskChanged, task.id);
-          }
+          if (edit.body !== undefined) yield* tellTasksOf(appId, repo, number);
           return edited;
         }),
       attach: (projectId, repo, number, content) =>
@@ -1579,7 +1582,10 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           yield* personApp(userId, appId, "merge_change");
           const change = yield* changeIn(appId, repo, number);
-          return yield* land(change, expectedHead, { userId }, asItIs);
+          const merged = yield* land(change, expectedHead, { userId }, asItIs);
+          // Merged in Mate: a task's status line says so where the task came from.
+          yield* tellTasksOf(appId, repo, number);
+          return merged;
         }),
       landImported: (appId, repo, number, mergedSha, mergedHead) =>
         Effect.gen(function* () {

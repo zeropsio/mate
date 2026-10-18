@@ -75,7 +75,11 @@ export const statusText = (status: TaskStatus): string => {
     case "stopped":
       return `Stopped: ${escaped(status.why)}`;
     case "merged":
-      return `Merged: ${link(status.pullRequest.url)}`;
+      return status.pullRequest !== undefined
+        ? `Merged: ${link(status.pullRequest.url)}`
+        : status.change == null
+          ? "Merged."
+          : `Merged into main: ${link(status.change)}`;
   }
 };
 
