@@ -2,6 +2,7 @@ import { act, cloneElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, type UsageReport } from "@t3tools/contracts";
+import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { recordedReport, statistics } from "./usageTestFixtures";
 
 const state = vi.hoisted(() => ({
@@ -16,6 +17,8 @@ const state = vi.hoisted(() => ({
   report: null as UsageReport | null,
   periodsStale: false,
   usageScopes: [] as Array<string | undefined>,
+  tasks: [] as ReadonlyArray<HqAppTask>,
+  tasksAskedFor: [] as Array<string>,
 }));
 vi.mock("@effect/atom-react", async (original) => ({
   ...(await original<object>()),
@@ -72,6 +75,25 @@ vi.mock("../../state/usage", async (original) => {
     },
   };
 });
+vi.mock("../../zerops/useTaskSourceSettings", () => ({
+  useOrgTaskSource: () => ({
+    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+    write: vi.fn(),
+    again: vi.fn(),
+  }),
+  useAppTaskSource: (_family: string, appId: string) => {
+    state.tasksAskedFor.push(appId);
+    return {
+      read: {
+        setting: { state: "known", held: state.tasks, stale: false },
+        action: { kind: "idle" },
+        revealed: null,
+      },
+      write: vi.fn(),
+      again: vi.fn(),
+    };
+  },
+}));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     baseline: state.baseline,
@@ -274,6 +296,7 @@ it("equal-name project rows drill into distinct stable IDs", async () => {
       dimension="project"
       dimensions={dimensions}
       metric="cost"
+      period={null}
       scope={{}}
       onScopeChange={onScopeChange}
     />,
@@ -496,5 +519,93 @@ it("Usage distinguishes coverage from failed reads and recovers the named sectio
   act(() => history!.parent!.props.onValueChange(["legacy-scanner"]));
   expect(text(tree)).toContain("No earlier history is recorded for this period.");
   expect(text(tree)).not.toContain("agents and subagents running in Mate");
+  act(() => tree.unmount());
+});
+
+it("an automated Mate's row opens into its tasks: what each cost and how long it worked", async () => {
+  const { usageDimensions } = await import("./usageDimensions");
+  const { UsageDimensionTable } = await import("./UsageDimensionViews");
+  const { AUTOMATED_MATES_OWNER } = await import("../../zerops/usageEnvironmentIdentities");
+  state.tasksAskedFor = [];
+  state.tasks = [
+    {
+      id: "task-1",
+      title: "Add a search box to the tea list",
+      label: "acme/tea-shop#1",
+      url: null,
+      state: "merged",
+      mate: { projectId: "tea-raya", name: "Raya" },
+      requestedBy: "juno",
+      createdAt: "2026-10-05T08:00:00.000Z",
+      startedAt: "2026-10-05T08:01:00.000Z",
+      endedAt: "2026-10-05T08:21:00.000Z",
+      spentUsd: 1.25,
+      workedMs: 1_200_000,
+      detail: null,
+      change: null,
+      pullRequest: null,
+      link: null,
+    },
+  ];
+  const identities = new Map([
+    [
+      EnvironmentId.make("env-raya"),
+      {
+        mateName: "Raya",
+        projectId: "app-tea",
+        projectName: "Tea Shop",
+        ownerState: "known" as const,
+        owner: AUTOMATED_MATES_OWNER,
+        mateProjectId: "tea-raya",
+      },
+    ],
+    [
+      EnvironmentId.make("env-fern"),
+      {
+        mateName: "Fern",
+        projectId: "app-tea",
+        projectName: "Tea Shop",
+        ownerState: "unknown" as const,
+        owner: null,
+      },
+    ],
+  ]);
+  const dimensions = usageDimensions({
+    identities,
+    labels: new Map(),
+    metric: "cost",
+    byEnvironment: [...identities.keys()].map((environmentId) => ({
+      environmentId,
+      costUsd: 1,
+      totalTokens: 1,
+      records: 1,
+      unpricedRecords: 0,
+      sessions: 1,
+      costShare: 0.5,
+      tokenShare: 0.5,
+      providers: [],
+    })),
+  });
+  const tree = mount(
+    <UsageDimensionTable
+      dimension="mate"
+      dimensions={dimensions}
+      metric="cost"
+      period={{ since: "2026-10-01T00:00:00.000Z", until: "2026-10-08T00:00:00.000Z" }}
+      scope={{}}
+      onScopeChange={vi.fn()}
+    />,
+  );
+  expect(text(tree)).not.toContain("Add a search box");
+  expect(tree.root.findAllByProps({ "aria-label": "Show Fern's tasks" })).toHaveLength(0);
+  act(() => tree.root.findByProps({ "aria-label": "Show Raya's tasks" }).props.onClick());
+  expect(state.tasksAskedFor).toContain("app-tea");
+  const shown = text(tree);
+  expect(shown).toContain("Add a search box to the tea list");
+  expect(shown).toContain("Merged");
+  expect(shown).toContain("20m");
+  expect(shown).toContain("$1.25");
+  act(() => tree.root.findByProps({ "aria-label": "Hide Raya's tasks" }).props.onClick());
+  expect(text(tree)).not.toContain("Add a search box");
   act(() => tree.unmount());
 });

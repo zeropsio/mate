@@ -57,8 +57,8 @@ import {
   HqDiscordView,
   HqIntakeView,
   HqScheduleView,
-  HqSlackView,
   HqAppTasksView,
+  HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
   type HqAppTask,
@@ -735,8 +735,8 @@ const readWebhook = decoded(HqWebhookView);
 const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
 const readSchedule = decoded(HqScheduleView);
 const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
-const readTaskLimits = decoded(HqTaskLimitsView);
 const readAppTasks = decoded(HqAppTasksView);
+const readTaskLimits = decoded(HqTaskLimitsView);
 const readGithub = decoded(HqGithubView);
 const readGithubManifest = decoded(HqGithubManifestView);
 const readComment = decoded(HqChangeComment);

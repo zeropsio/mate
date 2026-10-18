@@ -49,6 +49,8 @@ export interface UsageMateRow extends UsageAmounts {
   readonly projectName: string | null;
   readonly ownerState: "known" | "unassigned" | "unknown";
   readonly owner: UsageEnvironmentOwner | null;
+  /** An automated Mate's Zerops project: the Mate its application's tasks name. */
+  readonly mateProjectId?: string;
 }
 
 export interface UsagePersonRow extends UsageAmounts {
@@ -133,6 +135,7 @@ export function usageDimensions(input: {
         ownerState: identity?.ownerState ?? "unknown",
         projectName: identity?.projectName ?? null,
         owner: identity?.owner ?? null,
+        ...(identity?.mateProjectId === undefined ? {} : { mateProjectId: identity.mateProjectId }),
         costUsd: row.costUsd,
         costPartial: row.costPartial ?? false,
         costKnown: row.costKnown ?? (row.records === 0 || row.unpricedRecords < row.records),

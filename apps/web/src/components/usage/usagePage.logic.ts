@@ -1,9 +1,10 @@
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
 import type { UsageScope } from "./usageDimensions";
-import type { EnvironmentId, UsageReport } from "@t3tools/contracts";
-import type {
-  UsageEnvironmentIdentities,
-  UsageEnvironmentOwner,
+import { USAGE_AUTOMATED_OWNER, type EnvironmentId, type UsageReport } from "@t3tools/contracts";
+import {
+  AUTOMATED_MATES_OWNER,
+  type UsageEnvironmentIdentities,
+  type UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 
 /** One report's attribution joins only that report's independently authorized coverage. */
@@ -16,6 +17,17 @@ export function createUsageIdentityIndex(input: {
   const identities = new Map(input.registered);
   for (const entry of input.report?.coverage ?? []) {
     if (entry.mateId === undefined) continue;
+    if (entry.ownerUserId === USAGE_AUTOMATED_OWNER) {
+      identities.set(entry.mateId as EnvironmentId, {
+        mateName: entry.label ?? entry.mateId,
+        projectId: entry.appId ?? null,
+        projectName: entry.appId == null ? null : (input.projects.get(entry.appId) ?? entry.appId),
+        ownerState: "known",
+        owner: AUTOMATED_MATES_OWNER,
+        ...(entry.projectId === undefined ? {} : { mateProjectId: entry.projectId }),
+      });
+      continue;
+    }
     const owner =
       (entry.ownerUserId == null ? null : input.people?.get(entry.ownerUserId)) ??
       [...input.registered.values()].find((value) => value.owner?.id === entry.ownerUserId)

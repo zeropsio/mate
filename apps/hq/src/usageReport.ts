@@ -5,6 +5,7 @@ import {
   type UsageStatistics,
   type UsageReport,
   UsageReport as UsageReportSchema,
+  USAGE_AUTOMATED_OWNER,
 } from "@t3tools/contracts";
 import { usageDigest } from "@t3tools/shared/agentUsage";
 import * as Context from "effect/Context";
@@ -56,6 +57,7 @@ interface Source {
   readonly made_by: string | null;
   readonly standup_requested_by: string | null;
   readonly signers: Readonly<Record<string, string>> | null;
+  readonly automated: boolean;
 }
 /** Only the scope hub reads reports; cached scope deliveries are permission-fenced by that hub. */
 export const HqUsageReader = Context.Reference<{
@@ -104,7 +106,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
       const sources =
         yield* sql<Source>`SELECT o.origin_id,o.org_id,to_char(o.recorded_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS recorded_since,coalesce(o.project_id,m.project_id) AS project_id,
       coalesce(o.mate_id,m.usage_id)::text AS mate_id,o.coverage,o.provider,coalesce(o.deleted,false) AS deleted,
-      coalesce(o.label,m.project_id) AS label,o.last_app_id,m.usage_id::text AS current_mate,p.app_id::text,m.made_by,m.standup_requested_by,m.signers
+      coalesce(o.label,m.project_id) AS label,o.last_app_id,m.usage_id::text AS current_mate,p.app_id::text,m.made_by,m.standup_requested_by,m.signers,coalesce(m.automated,false) AS automated
       FROM ${sql(originTable)} o FULL JOIN hq_mate m ON m.usage_id=o.mate_id LEFT JOIN hq_app_project p ON p.project_id=coalesce(o.project_id,m.project_id)
       WHERE o.org_id=${current.facts.orgId} OR o.origin_id IS NULL`;
       if (
@@ -136,17 +138,20 @@ export const readUsageReport = Effect.fnUntraced(function* (
             return user == null ? [] : [[login, user]];
           }),
         );
-        const owner = live
-          ? (chiefs.get(source.project_id) ??
-            usageOwner({
-              facts: current.facts,
-              projectId: source.project_id,
-              everSignedIn: { ...source.signers, ...everSignedIn },
-              runsWithoutSignIn: overview?.identity.runsWithoutSignIn === true,
-              madeBy: source.made_by,
-              standupRequestedBy: source.standup_requested_by,
-            }))
-          : null;
+        // An automated Mate works on the organization's key: its spend is nobody's own.
+        const owner = !live
+          ? null
+          : source.automated
+            ? USAGE_AUTOMATED_OWNER
+            : (chiefs.get(source.project_id) ??
+              usageOwner({
+                facts: current.facts,
+                projectId: source.project_id,
+                everSignedIn: { ...source.signers, ...everSignedIn },
+                runsWithoutSignIn: overview?.identity.runsWithoutSignIn === true,
+                madeBy: source.made_by,
+                standupRequestedBy: source.standup_requested_by,
+              }));
         const app = live ? source.app_id : source.last_app_id;
         if (
           (q.projectId !== null && q.projectId !== source.project_id) ||
@@ -208,6 +213,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
         return yield* new UsageRefused({ code: "forbidden" });
       if (
         q.ownerUserId !== null &&
+        q.ownerUserId !== USAGE_AUTOMATED_OWNER &&
         !current.facts.members.some(
           (member) => member.kind === "person" && member.userId === q.ownerUserId,
         )

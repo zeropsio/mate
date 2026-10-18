@@ -573,3 +573,51 @@ describe("the organization's GitHub app", () => {
     r.close();
   });
 });
+
+describe("an application's tasks", () => {
+  const task: HqAppTask = {
+    id: "task-1",
+    title: "Add a search box to the tea list",
+    label: "acme/tea-shop#1",
+    url: "https://github.com/acme/tea-shop/issues/1",
+    state: "merged",
+    mate: { projectId: "tea-raya", name: "Raya" },
+    requestedBy: "juno",
+    createdAt: "2026-10-17T08:00:00.000Z",
+    startedAt: "2026-10-17T08:01:00.000Z",
+    endedAt: "2026-10-17T08:21:00.000Z",
+    spentUsd: 1.25,
+    workedMs: 1_200_000,
+    detail: null,
+    change: { repo: "tea-shop", number: 2 },
+    pullRequest: null,
+    link: null,
+  };
+  it("reads what each cost and how long it worked while a screen shows them", async () => {
+    const asked: Array<string> = [];
+    const r = rig({
+      appTasks: async (appId) => {
+        asked.push(appId);
+        return [task];
+      },
+    });
+    const read = waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
+    const release = r.host.demandApp("hqAppTasks", SHOP);
+    await read;
+    expect(asked).toEqual(["shop"]);
+    expect(r.read("hqAppTasks", "shop").setting).toMatchObject({ state: "known", held: [task] });
+    release();
+    r.close();
+  });
+  it("says HQ is too old where it has no task board", async () => {
+    const r = rig({});
+    const read = waitFor(r.store, () =>
+      ["unsupported", "failed"].includes(r.read("hqAppTasks", "shop").setting.state),
+    );
+    const release = r.host.demandApp("hqAppTasks", SHOP);
+    await read;
+    expect(r.read("hqAppTasks", "shop").setting.state).toBe("unsupported");
+    release();
+    r.close();
+  });
+});
