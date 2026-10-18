@@ -2511,6 +2511,91 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    // The owner, 2026-10-18, at a narrower window: the Mate's name was cut to "Mir" and the blue
+    // Review pill stood over it, while the conversation's subject kept its length to its ellipsis.
+    describe("Decision: the subject gives way in the header; the face, the name and the pill never do.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "at a narrow header the Mate's whole name shows, the pill stands clear of it, and the subject is what is cut",
+          () =>
+            Effect.gen(function* () {
+              const { s, chat } = yield* composerLayout("review");
+              const mate = s.drivers.realMates.get("Ada")!;
+              yield* mate.provider.turn([{ kind: "say", text: "Noted for tomorrow." }]);
+              yield* chat.when.send(
+                "Next for tomorrow's demo: the onboarding flow end to end, the project page's cards side by side, and the release notes for everyone who joins the call",
+              );
+              yield* mate.provider.received;
+              yield* Effect.promise(() => s.page.setViewport({ width: 1280, height: 800 }));
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const header = yield* Effect.promise(async () => {
+                await s.page.waitForFunction(
+                  () => {
+                    const text = document.querySelector<HTMLElement>(
+                      "[data-conversation-subject] .truncate",
+                    );
+                    return text !== null && text.textContent!.startsWith("Next for tomorrow");
+                  },
+                  { polling: "raf", timeout: 8000 },
+                );
+                await waitForStillFrames(s.page);
+                return s.page.evaluate(() => {
+                  const box = (element: Element | null) => {
+                    const rect = element!.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right };
+                  };
+                  const name = document.querySelector<HTMLElement>(
+                    "[data-conversation-mate-press] > span:last-child",
+                  )!;
+                  const subject = document.querySelector<HTMLElement>(
+                    "[data-conversation-subject] .truncate",
+                  )!;
+                  return {
+                    name: {
+                      ...box(name),
+                      text: name.textContent,
+                      cut: name.scrollWidth > name.clientWidth,
+                    },
+                    press: box(document.querySelector("[data-conversation-mate-press]")),
+                    pill: box(document.querySelector(".chat-header-review")),
+                    subject: { ...box(subject), cut: subject.scrollWidth > subject.clientWidth },
+                  };
+                });
+              });
+              yield* Effect.promise(async () => {
+                if (process.env.MATE_LAYOUT_EVIDENCE) {
+                  const bar = await s.page.$("[data-chat-header]");
+                  await bar!.screenshot({
+                    path: `${process.env.MATE_LAYOUT_EVIDENCE}/header-narrow.png`,
+                  });
+                }
+              });
+              const seen = quoted(header);
+              expect(header.name.text, `ASSERTION: the name is the Mate's: ${seen}`).toBe("Ada");
+              expect(header.name.cut, `ASSERTION: the Mate's whole name shows: ${seen}`).toBe(
+                false,
+              );
+              expect(
+                header.name.right,
+                `ASSERTION: the name stands inside its press: ${seen}`,
+              ).toBeLessThanOrEqual(header.press.right + 0.5);
+              expect(
+                header.pill.left,
+                `ASSERTION: the pill stands clear of the name: ${seen}`,
+              ).toBeGreaterThanOrEqual(header.name.right - 0.5);
+              expect(
+                header.subject.left,
+                `ASSERTION: the subject stands after the pill: ${seen}`,
+              ).toBeGreaterThanOrEqual(header.pill.right - 0.5);
+              expect(header.subject.cut, `ASSERTION: the subject is what is cut: ${seen}`).toBe(
+                true,
+              );
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+
     // Milo's stress run 4 (2026-10-10, engine): at the usage limit the notice stood at the top of a
     // viewport-tall row with ~520 px blank under it, then scrolled half out of view; a message sent
     // while paused sat a viewport below it with no sign it was held. Then the owner's pick on the
