@@ -17,6 +17,7 @@ import type {
   OrgAiKeysRead,
   TaskSourceSettingValue,
 } from "@t3tools/client-runtime/data";
+import type { MateTaskSource } from "@t3tools/contracts";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { StrictMode, type ReactNode } from "react";
@@ -45,6 +46,7 @@ import {
   MateTaskStatusView,
 } from "~/components/zerops/MateTaskCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -61,6 +63,70 @@ const TEA_ISSUE = {
   title: "Fix the checkout total",
   author: "nova-dev",
 } as const;
+
+/** An automated Mate's one conversation: each task's card at its turn's start, its run after. */
+const ONE_CONVERSATION: ReadonlyArray<{
+  readonly task: MateTaskSource;
+  readonly text: string;
+  readonly session: TaskSession;
+  readonly reply: string | null;
+}> = [
+  {
+    task: { ...TEA_ISSUE, number: 9, title: "Show the tea's origin", author: "juno" },
+    text: "Each tea's page should say where it was grown.",
+    session: {
+      status: "merged",
+      taskId: "task-9",
+      stoppable: false,
+      workedMs: 1_260_000,
+      spentUsd: 0.88,
+      change: { repo: "web", number: 2 },
+      pullRequest: { number: 7, url: "https://github.com/acme/tea-shop/pull/7", state: "merged" },
+    },
+    reply: "The origin now shows under each tea's name, read from the catalog. PR #7 is merged.",
+  },
+  {
+    task: {
+      kind: "slack-thread",
+      workspace: "Tea Shop",
+      channel: "support",
+      url: "https://tea-shop.slack.com/archives/C1/p2",
+      title: "The receipt email shows the wrong address",
+      author: "Ines",
+    },
+    text: "Receipts still show the old warehouse address.",
+    session: {
+      status: "review",
+      taskId: "task-11",
+      stoppable: false,
+      workedMs: 540_000,
+      spentUsd: 0.31,
+      change: { repo: "web", number: 3 },
+      pullRequest: {
+        number: 8,
+        url: "https://github.com/acme/tea-shop/pull/8",
+        state: "open",
+        checks: "passing",
+      },
+    },
+    reply:
+      "The receipt template reads the shop's address from settings now. PR #8 waits for review.",
+  },
+  {
+    task: TEA_ISSUE,
+    text: "The checkout total skips the tax line when the cart holds a gift card.",
+    session: {
+      status: "working",
+      taskId: "task-12",
+      stoppable: true,
+      workedMs: 154_000,
+      spentUsd: 0.09,
+      change: null,
+      pullRequest: null,
+    },
+    reply: null,
+  },
+];
 
 const KEY_UNSET: OrgAiKeysRead = {
   keys: { state: "known", keys: [{ provider: "nebius", set: false, setAt: null }], stale: false },
@@ -217,6 +283,23 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
+        <Panel title="One conversation, a turn per task: two finished, one at work">
+          <div className="grid max-w-2xl gap-3">
+            {/* The header follows the conversation's current task. */}
+            <MateTaskStatusView onStop={nothing} session={ONE_CONVERSATION[2]!.session} />
+            {ONE_CONVERSATION.map(({ task, text, session, reply }) => (
+              <div className="grid gap-3" key={session.taskId}>
+                <MateTaskCardView
+                  onOpenChange={nothing}
+                  session={session}
+                  task={task}
+                  text={text}
+                />
+                {reply === null ? null : <p className="px-1 text-prose text-foreground">{reply}</p>}
+              </div>
+            ))}
+          </div>
+        </Panel>
         <Panel title="A task's session, its ask, and a follow-up">
           <div className="grid max-w-2xl gap-3">
             <MateTaskStatusView

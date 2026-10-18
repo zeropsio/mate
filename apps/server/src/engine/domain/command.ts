@@ -207,6 +207,8 @@ export type Command =
       readonly taskAsk?: string;
       /** A follow-up told to a task's Mate: drawn as its author's (the person item's `taskMessage`). */
       readonly taskMessage?: MateTaskMessage;
+      /** HQ's id of the task its brief or follow-up is for (the person item's `taskId`). */
+      readonly taskId?: string;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */

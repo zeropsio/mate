@@ -312,6 +312,7 @@ const fakes = (world: World) =>
                 runId: runId(ConversationId.make("c"), 1),
                 end: run.end as never,
                 source: (run.source ?? null) as never,
+                principal: { kind: "standup", startedBy: "zerops-user:ana" },
                 reachedAgent: run.reached ?? (run.end === null ? true : "unknown"),
               };
         }),

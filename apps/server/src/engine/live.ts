@@ -26,6 +26,7 @@ import {
   ConversationAgent,
   type ThreadId,
   ConversationId,
+  Principal,
   RunEnd,
   RunId,
   RunEndSource,
@@ -62,6 +63,7 @@ const ENGINE = { kind: "engine" } as const;
 const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(ConversationAgent));
 const decodeEnd = Schema.decodeUnknownEffect(Schema.fromJsonString(RunEnd));
 const decodeSource = Schema.decodeUnknownEffect(RunEndSource);
+const decodePrincipal = Schema.decodeUnknownEffect(Schema.fromJsonString(Principal));
 
 interface CallDataRow {
   readonly item_id: string;
@@ -75,6 +77,7 @@ interface RunEndRow {
   readonly end_json: string | null;
   readonly end_source: string | null;
   readonly started_at: number | null;
+  readonly principal_json: string;
 }
 
 export interface LiveEngineOptions {
@@ -325,18 +328,18 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at FROM engine_run
+            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
         : "providerTurnId" in find
           ? sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at FROM engine_run
+            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
           : sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at FROM engine_run
+            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE conversation_id = ${find.conversationId}
               AND json_extract(principal_json, '$.kind') = 'task'
               AND json_extract(principal_json, '$.taskId') = ${find.taskId}
@@ -349,12 +352,14 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           return Effect.all({
             end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
             source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
+            principal: decodePrincipal(row.principal_json),
             reachedAgent: reachedAgent(row),
           }).pipe(
-            Effect.map(({ end, source, reachedAgent }) => ({
+            Effect.map(({ end, source, principal, reachedAgent }) => ({
               runId: RunId.make(row.run_id),
               end,
               source,
+              principal,
               reachedAgent,
             })),
           );

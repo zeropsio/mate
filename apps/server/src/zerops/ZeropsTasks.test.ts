@@ -40,7 +40,7 @@ import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import { emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
-import { taskConversationId, ZeropsTasks } from "./ZeropsTasks.ts";
+import { TASKS_CONVERSATION_ID, taskConversationId, ZeropsTasks } from "./ZeropsTasks.ts";
 
 const task = (id: string, number = 42): MateTask => ({
   id,
@@ -131,6 +131,9 @@ interface Delivered {
   readonly principal: Principal;
 }
 
+/** The one conversation every task runs in. */
+const TASKS = TASKS_CONVERSATION_ID;
+
 /** How a report says the task stands, apart from what it spent. */
 const standing = ({ spentUsd: _spentUsd, workedMs: _workedMs, ...rest }: MateTaskReport) => rest;
 
@@ -162,6 +165,10 @@ const rig = (
     const unreadable = new Set<ConversationId>();
     const assigned: Array<{ conversationId: ConversationId; agent: ConversationAgent }> = [];
     const delivered: Array<Delivered> = [];
+    /** Each session rotation told to the engine, and how many messages were sent by then. */
+    const rotations: Array<Delivered & { readonly sentBefore: number }> = [];
+    /** The task each provider turn's run is for, as the engine's runs record it. */
+    const turnOwners = new Map<string, Principal>();
     /** Each commit author set on the working copies, and how many messages were sent by then. */
     const authored: Array<{ author: MateTaskCommitAuthor; sentBefore: number }> = [];
     /** The engine's receipts: a command id told again is answered by its first result. */
@@ -169,18 +176,45 @@ const rig = (
     const changes = yield* PubSub.unbounded<ConversationId>();
     /** The provider runtime's events: what each turn's usage reported. */
     const runtime = yield* PubSub.unbounded<unknown>();
-    /** Each task's own latest run's end, by its conversation, as the engine's runs hold it. */
-    const ownEnds = new Map<ConversationId, RunEnd>();
+    /** Each task's own latest run's end, by its task, as the engine's runs hold it. */
+    const ownEnds = new Map<string, RunEnd>();
     /** How many times a conversation's view was read. */
     const reads = { count: 0 };
     const engine = Layer.succeed(MateEngine, {
       ...inertMateEngine,
+      // A task's latest run: one ended as the test says, or one its sent message opened.
       runOf: (find) =>
         Effect.sync(() => {
-          const end = "taskId" in find ? ownEnds.get(find.conversationId) : undefined;
-          return end === undefined
+          if ("providerTurnId" in find) {
+            const principal = turnOwners.get(find.providerTurnId);
+            return principal === undefined
+              ? undefined
+              : {
+                  runId: RunId.make(`turn/${find.providerTurnId}`),
+                  end: null,
+                  source: null,
+                  principal,
+                  reachedAgent: true,
+                };
+          }
+          if (!("taskId" in find)) return undefined;
+          const end = ownEnds.get(find.taskId);
+          const sent = delivered.some(
+            (each) =>
+              each.conversationId === find.conversationId &&
+              each.command._tag === "Send" &&
+              each.principal.kind === "task" &&
+              each.principal.taskId === find.taskId,
+          );
+          return end === undefined && !sent
             ? undefined
-            : { runId: RunId.make("own"), end, source: "agent" as const, reachedAgent: true };
+            : {
+                runId: RunId.make("own"),
+                end: end ?? null,
+                source: end === undefined ? null : ("agent" as const),
+                principal: principalOf(find.taskId),
+                reachedAgent: true,
+              };
         }),
       conversations: Effect.sync(() => ({
         views: [...views.values()],
@@ -199,7 +233,10 @@ const rig = (
       assignAgent: (conversationId, agent) =>
         Effect.sync(() => {
           assigned.push({ conversationId, agent });
-          if (!views.has(conversationId)) views.set(conversationId, view(conversationId, {}));
+          views.set(conversationId, {
+            ...(views.get(conversationId) ?? view(conversationId, {})),
+            agent,
+          });
           return true;
         }).pipe(Effect.tap(() => PubSub.publish(changes, conversationId))),
       deliver: (conversationId, command, commandId, principal) =>
@@ -215,9 +252,14 @@ const rig = (
           }
           const told = receipts.get(commandId);
           if (told !== undefined) return Effect.succeed(told);
-          delivered.push({ conversationId, command, commandId, principal });
           const result: CommandResult = { _tag: "Accepted", seq: 1 };
           receipts.set(commandId, result);
+          if (command._tag === "RotateSession") {
+            const sentBefore = delivered.filter((each) => each.command._tag === "Send").length;
+            rotations.push({ conversationId, command, commandId, principal, sentBefore });
+            return Effect.succeed(result);
+          }
+          delivered.push({ conversationId, command, commandId, principal });
           // A Stop's end is the test's to move; a sent message's run is queued at once, behind
           // the run on when there is one, as the engine queues it.
           if (command._tag !== "Send") return Effect.succeed(result);
@@ -280,16 +322,22 @@ const rig = (
         sent.push(standing(report));
       }),
     );
+    /** The provider turn, recorded as the task's run's. */
+    const owned = (turn: string, taskId: string) => {
+      turnOwners.set(turn, principalOf(taskId));
+      return turn;
+    };
     /** Moves the conversation's record and tells whoever follows the engine's changes. */
     const move = (conversationId: ConversationId, next: ConversationView) =>
       Effect.sync(() => views.set(conversationId, next)).pipe(
         Effect.andThen(PubSub.publish(changes, conversationId)),
       );
-    /** A turn of the conversation's agent reported its usage: what it cost, in US dollars. */
-    const spent = (conversationId: ConversationId, turn: string, usd: number) =>
+    /** A turn of the task's run reported its usage: what it cost, in US dollars. */
+    const spent = (conversationId: ConversationId, turn: string, usd: number, taskId = "task-1") =>
       PubSub.publish(runtime, {
         type: "turn.usage.completed",
         threadId: `${conversationId}/s/1`,
+        turnId: owned(turn, taskId),
         payload: {
           nativeThreadId: "ses_1",
           nativeTurnId: turn,
@@ -303,11 +351,17 @@ const rig = (
           parentId: null,
         },
       });
-    /** A turn of the conversation's agent still at work told what it has cost so far. */
-    const running = (conversationId: ConversationId, turn: string, usd: number) =>
+    /** A turn of the task's run still at work told what it has cost so far. */
+    const running = (
+      conversationId: ConversationId,
+      turn: string,
+      usd: number,
+      taskId = "task-1",
+    ) =>
       PubSub.publish(runtime, {
         type: "turn.usage.updated",
         threadId: `${conversationId}/s/1`,
+        turnId: owned(turn, taskId),
         payload: {
           nativeThreadId: "ses_1",
           nativeTurnId: turn,
@@ -324,6 +378,7 @@ const rig = (
       unreadable,
       assigned,
       delivered,
+      rotations,
       authored,
       link,
       sent,
@@ -354,7 +409,7 @@ describe("an automated Mate takes a task from outside", () => {
       Effect.gen(function* () {
         const { assigned, delivered, link, sent } = yield* rig();
         yield* link.receive(task("task-1"));
-        const conversationId = taskConversationId("task-1");
+        const conversationId = TASKS;
         assert.deepStrictEqual(assigned, [
           {
             conversationId,
@@ -425,7 +480,7 @@ describe("an automated Mate takes a task from outside", () => {
         assert.deepStrictEqual(authored, [{ author: BOT, sentBefore: 0 }]);
         assert.strictEqual(delivered.length, 1);
         assert.deepStrictEqual(sent, [
-          { taskId: "task-1", state: "accepted", conversationId: taskConversationId("task-1") },
+          { taskId: "task-1", state: "accepted", conversationId: TASKS },
         ]);
       }),
   );
@@ -469,7 +524,7 @@ describe("an automated Mate takes a task from outside", () => {
         yield* link.receive(task("task-1"));
         assert.strictEqual(assigned.length, 1);
         assert.strictEqual(delivered.length, 1);
-        const conversationId = taskConversationId("task-1");
+        const conversationId = TASKS;
         assert.deepStrictEqual(sent, [
           { taskId: "task-1", state: "accepted", conversationId },
           { taskId: "task-1", state: "accepted", conversationId },
@@ -584,7 +639,7 @@ describe("an automated Mate takes a task from outside", () => {
     Effect.gen(function* () {
       const { delivered, link, move } = yield* rig();
       yield* link.receive(task("task-1"));
-      const first = taskConversationId("task-1");
+      const first = TASKS;
       yield* move(
         first,
         view(first, {
@@ -599,7 +654,7 @@ describe("an automated Mate takes a task from outside", () => {
   it.effect("a task whose brief never went out is sent again when HQ tells it again", () =>
     Effect.gen(function* () {
       const { delivered, link, sent, views } = yield* rig();
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       // Its agent was given, then the server went away before the brief was recorded; an older
       // task's went the same way, and keeps no task from being taken.
       views.set(id, view(id, {}));
@@ -640,7 +695,7 @@ describe("an automated Mate takes a task from outside", () => {
   it.effect("a task whose conversation cannot be read now goes unanswered: HQ tells it again", () =>
     Effect.gen(function* () {
       const { delivered, link, sent, unreadable } = yield* rig();
-      unreadable.add(taskConversationId("task-1"));
+      unreadable.add(TASKS);
       yield* link.receive(task("task-1"));
       assert.strictEqual(delivered.length, 0);
       assert.deepStrictEqual(sent, []);
@@ -655,7 +710,7 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       yield* link.receive(task("task-1"));
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       yield* move(id, view(id, { activeRun: run(id, principalOf("task-1"), "running") }));
       yield* settle;
       yield* move(
@@ -713,7 +768,7 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       yield* link.receive(task("task-1"));
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       yield* move(id, view(id, { lastEnded: run(id, principalOf("task-1"), "ended", end) }));
       yield* settle;
       assert.deepStrictEqual(sent.at(-1), {
@@ -731,7 +786,7 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       yield* link.receive(task("task-1"));
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       yield* move(id, {
         ...view(id, {
           lastEnded: run(id, principalOf("task-1"), "ended", {
@@ -752,7 +807,7 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       yield* link.receive(task("task-1"));
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       yield* move(id, {
         ...view(id, {
           lastEnded: run(id, principalOf("task-1"), "ended", {
@@ -773,9 +828,9 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       yield* link.receive(task("task-1"));
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       const failed: RunEnd = { kind: "failed", reason: "upstream 500", next: null };
-      ownEnds.set(id, failed);
+      ownEnds.set("task-1", failed);
       // The person asked why in the task's conversation, and that run completed.
       yield* move(
         id,
@@ -803,7 +858,7 @@ describe("an automated Mate says how its task stands", () => {
         yield* Effect.forkScoped(link.run);
         yield* settle;
         yield* link.receive(task("task-1"));
-        const id = taskConversationId("task-1");
+        const id = TASKS;
         views.set(id, view(id, { activeRun: run(id, principalOf("task-1"), "running") }));
         const before = reads.count;
         // A streaming answer moves the record many times in a row.
@@ -823,8 +878,9 @@ describe("an automated Mate says how its task stands", () => {
   it.effect("re-sends the latest task's report when the link opens again", () =>
     Effect.gen(function* () {
       const { tasks, views } = yield* rig();
+      // A task taken before the Mate worked them all in one keeps its own conversation.
       const older = taskConversationId("task-1");
-      const latest = taskConversationId("task-2");
+      const latest = TASKS;
       views.set(
         older,
         view(
@@ -835,7 +891,14 @@ describe("an automated Mate says how its task stands", () => {
       );
       views.set(
         latest,
-        view(latest, { activeRun: run(latest, principalOf("task-2"), "running") }, 2),
+        view(
+          latest,
+          {
+            lastEnded: run(latest, principalOf("task-2"), "ended", { kind: "completed" }),
+            activeRun: run(latest, principalOf("task-3"), "running", null, 2),
+          },
+          2,
+        ),
       );
       // A conversation of a person's is no task's.
       views.set(ConversationId.make("main"), view(ConversationId.make("main"), {}, 3));
@@ -846,7 +909,7 @@ describe("an automated Mate says how its task stands", () => {
       yield* Effect.forkScoped(link.run);
       yield* settle;
       assert.deepStrictEqual(sent, [
-        { taskId: "task-2", state: "working", conversationId: latest },
+        { taskId: "task-3", state: "working", conversationId: latest },
       ]);
     }),
   );
@@ -873,13 +936,6 @@ describe("an automated Mate says how its task stands", () => {
     assert.include(brief, "Never tell anyone which buttons to press and never paste review links");
     assert.include(brief, "A reviewer's comment on your change comes to you the same way");
   });
-
-  it("a task's conversation is named by its task, whatever HQ's id holds", () => {
-    const named = taskConversationId("task/1 ü");
-    assert.notInclude(named, "/");
-    assert.strictEqual(ZeropsTasksModule.taskIdOfConversation(named), "task/1 ü");
-    assert.isUndefined(ZeropsTasksModule.taskIdOfConversation(ConversationId.make("main")));
-  });
 });
 
 const message = (id: string, text: string, from: MateTaskMessage["from"] = "comment") =>
@@ -896,7 +952,7 @@ const working = (
     yield* Effect.forkScoped(harness.link.run);
     yield* settle;
     yield* harness.link.receive({ ...task(taskId), ...(limits === undefined ? {} : { limits }) });
-    const id = taskConversationId(taskId);
+    const id = TASKS;
     yield* harness.move(
       id,
       view(id, { activeRun: { ...run(id, principalOf(taskId), "running"), startedAt: 0 } }),
@@ -1026,7 +1082,7 @@ describe("people steer a task its Mate works", () => {
   it.effect("re-sends a waiting task's report with its question when the link opens again", () =>
     Effect.gen(function* () {
       const { tasks, views } = yield* rig();
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       views.set(id, {
         ...view(id, { lastEnded: run(id, principalOf("task-1"), "ended", { kind: "completed" }) }),
         ...said("QUESTION: Should the old cart keep its teas?"),
@@ -1114,10 +1170,10 @@ describe("people steer a task its Mate works", () => {
 describe("a stop always lands", () => {
   it.effect.each([
     { title: "people stopped", entry: { stopped: "The issue was closed." } },
-    { title: "that spent its minutes", entry: { runMs: { "task-task-1/r/1": 60 * 60_000 } } },
+    { title: "that spent its minutes", entry: { runMs: { [`${TASKS}/r/1`]: 60 * 60_000 } } },
   ])("a run the Mate's restart continued on a task $title stops at once", ({ entry }) =>
     Effect.gen(function* () {
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       const ledger = new Map<string, TaskEntry>([["task-1", { ...emptyTaskEntry, ...entry }]]);
       const continued = {
         ...run(id, principalOf("task-1"), "running", null, 2),
@@ -1273,7 +1329,7 @@ describe("a task stops at its limits", () => {
   it.effect("the time the Mate was down never counts toward a task's minutes limit", () =>
     Effect.gen(function* () {
       const ledger = new Map<string, TaskEntry>();
-      const id = taskConversationId("task-1");
+      const id = TASKS;
       // 20 minutes of work, then the Mate goes down with the run on.
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -1518,4 +1574,181 @@ describe("the agent's question is no summary", () => {
     assert.strictEqual(read.question, question);
     assert.strictEqual(read.rest, rest);
   });
+});
+
+/** The task's run, ended as the view holds it once it is done: started at `from`, ended at `to`. */
+const doneRun = (taskId: string, ordinal: number, from: number, to: number) => ({
+  ...run(TASKS, principalOf(taskId), "ended", { kind: "completed" }, ordinal),
+  startedAt: from,
+  endedAt: to,
+});
+
+describe("an automated Mate works every task in one conversation", () => {
+  it.effect("every task of an automated Mate runs in its one conversation", () =>
+    Effect.gen(function* () {
+      const { assigned, delivered, link, move, sent, views } = yield* rig();
+      yield* link.receive(task("task-1"));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-1", 1, 0, 1),
+      });
+      yield* link.receive(task("task-2", 43));
+      const sends = delivered.flatMap((each) =>
+        each.command._tag === "Send"
+          ? [{ conversationId: each.conversationId, taskId: each.command.taskId }]
+          : [],
+      );
+      assert.deepStrictEqual(sends, [
+        { conversationId: TASKS, taskId: "task-1" },
+        { conversationId: TASKS, taskId: "task-2" },
+      ]);
+      // Its agent is given once: the conversation keeps it from task to task.
+      assert.strictEqual(assigned.length, 1);
+      assert.deepStrictEqual(
+        sent.filter((report) => report.state === "accepted"),
+        [
+          { taskId: "task-1", state: "accepted", conversationId: TASKS },
+          { taskId: "task-2", state: "accepted", conversationId: TASKS },
+        ],
+      );
+    }),
+  );
+
+  it.effect("each task starts on a fresh agent session", () =>
+    Effect.gen(function* () {
+      const { link, move, rotations, views } = yield* rig();
+      yield* link.receive(task("task-1"));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-1", 1, 0, 1),
+      });
+      yield* link.receive(task("task-2", 43));
+      // Told again, it rotates nothing more: the engine's receipt holds it.
+      yield* link.receive(task("task-2", 43));
+      assert.deepStrictEqual(
+        rotations.map(({ command, principal, sentBefore }) => ({ command, principal, sentBefore })),
+        [
+          {
+            command: { _tag: "RotateSession", reason: "task", fresh: true, seed: null },
+            principal: principalOf("task-1"),
+            sentBefore: 0,
+          },
+          {
+            command: { _tag: "RotateSession", reason: "task", fresh: true, seed: null },
+            principal: principalOf("task-2"),
+            sentBefore: 1,
+          },
+        ],
+      );
+    }),
+  );
+
+  it.effect(
+    "a follow-up on an earlier task, heard after another task, tells the agent that task's brief",
+    () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, views } = yield* rig();
+        yield* link.receive(task("task-1"));
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: null,
+          lastEnded: doneRun("task-1", 1, 0, 1),
+        });
+        yield* link.receive(task("task-2", 43));
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: null,
+          lastEnded: doneRun("task-2", 2, 2, 3),
+        });
+        yield* link.message("task-2", message("m-2", "Also the teapot."));
+        yield* link.message("task-1", message("m-1", "Keep the green tea first."));
+        const contextOf = (id: string) => {
+          const command = delivered.find(
+            (each) => each.commandId === `task-message:${id}`,
+          )?.command;
+          return command?._tag === "Send" ? (command.context ?? []).join("\n") : "";
+        };
+        // Task 2's work is still in the agent's session: its follow-up carries only the words.
+        assert.notInclude(contextOf("m-2"), "an earlier task of yours");
+        // Task 1's no longer is: its brief comes with the follow-up.
+        assert.include(contextOf("m-1"), "an earlier task of yours");
+        assert.include(contextOf("m-1"), ZeropsTasksModule.taskBrief(task("task-1")));
+      }),
+  );
+
+  it.effect("two tasks in one conversation each report only their own spend", () =>
+    Effect.gen(function* () {
+      const { link, move, reports, spent, views } = yield* rig();
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      yield* link.receive(task("task-1"));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: { ...run(TASKS, principalOf("task-1"), "running"), startedAt: 0 },
+      });
+      yield* spent(TASKS, "turn-1", 0.4, "task-1");
+      const first = doneRun("task-1", 1, 0, 200_000);
+      yield* move(TASKS, { ...views.get(TASKS)!, activeRun: null, lastEnded: first });
+      yield* settle;
+      yield* link.receive(task("task-2", 43));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: { ...run(TASKS, principalOf("task-2"), "running", null, 2), startedAt: 300_000 },
+        lastEnded: first,
+      });
+      yield* spent(TASKS, "turn-2", 0.25, "task-2");
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-2", 2, 300_000, 360_000),
+      });
+      yield* settle;
+      const lastOf = (taskId: string) => {
+        const report = reports.findLast((each) => each.taskId === taskId);
+        return { state: report?.state, spentUsd: report?.spentUsd, workedMs: report?.workedMs };
+      };
+      assert.deepStrictEqual(lastOf("task-1"), { state: "done", spentUsd: 0.4, workedMs: 200_000 });
+      assert.deepStrictEqual(lastOf("task-2"), { state: "done", spentUsd: 0.25, workedMs: 60_000 });
+      // Told again after the next task ran: still only its own.
+      yield* link.receive(task("task-1"));
+      assert.deepStrictEqual(lastOf("task-1"), { state: "done", spentUsd: 0.4, workedMs: 200_000 });
+    }),
+  );
+
+  it.effect("Stop stops only its own task's run", () =>
+    Effect.gen(function* () {
+      const { delivered, link, move, sent, views } = yield* rig();
+      yield* Effect.forkScoped(link.run);
+      yield* settle;
+      yield* link.receive(task("task-1"));
+      // The first task waits for an answer; the next is taken and works.
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: null,
+        lastEnded: doneRun("task-1", 1, 0, 1),
+        ...said("QUESTION: Which cart?", 1),
+      });
+      yield* settle;
+      yield* link.receive(task("task-2", 43));
+      yield* move(TASKS, {
+        ...views.get(TASKS)!,
+        activeRun: { ...run(TASKS, principalOf("task-2"), "running", null, 2), startedAt: 2 },
+      });
+      // The answer comes while the next task works: its run waits behind it.
+      yield* link.message("task-1", message("m-1", "The new one."));
+      yield* settle;
+      assert.strictEqual(views.get(TASKS)?.queued.length, 1);
+      yield* link.stop("task-1", "The issue was closed.");
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${TASKS}/r/3`)]);
+      assert.deepStrictEqual(
+        delivered.flatMap((each) => (each.command._tag === "Stop" ? [each.principal] : [])),
+        [principalOf("task-1")],
+      );
+      assert.strictEqual(sent.findLast((each) => each.taskId === "task-1")?.state, "stopped");
+      assert.strictEqual(sent.findLast((each) => each.taskId === "task-2")?.state, "working");
+    }),
+  );
 });

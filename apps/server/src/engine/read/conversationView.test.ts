@@ -436,6 +436,7 @@ describe("a task's own run", () => {
         const own = yield* engine.runOf({ conversationId: mate, taskId: "task-1" });
         assert.strictEqual(own?.runId, runId(mate, 1));
         assert.strictEqual(own?.end?.kind, "failed");
+        assert.deepStrictEqual(own?.principal, { kind: "task", taskId: "task-1" });
         assert.isUndefined(yield* engine.runOf({ conversationId: mate, taskId: "task-2" }));
         yield* w.shutdown;
       }),

@@ -12,6 +12,7 @@
  */
 import {
   CREW_SEAM_ACTIVITY_KIND,
+  MATE_TASKS_CONVERSATION_ID,
   MessageId,
   PROVIDER_DISPLAY_NAMES,
   queuedBehind,
@@ -141,6 +142,11 @@ export interface EngineMessage extends OrchestrationMessage {
   readonly taskAsk?: string;
   /** Something said about a task its Mate took, told to it: drawn as its author's. */
   readonly taskMessage?: MateTaskMessage;
+  /**
+   * HQ's id of the task the message is for (its brief, a follow-up): every task of an automated
+   * Mate runs in its one conversation. Absent on an older task's own conversation, which names it.
+   */
+  readonly taskId?: string;
   /** The person's message waits in the engine's queue: no run has taken it yet. */
   readonly queued?: true;
   /** A person's message whose run is still queued: no agent has it, and the person may withdraw it. */
@@ -178,6 +184,7 @@ function messageOf(
         ...(item.task === undefined ? {} : { task: item.task }),
         ...(item.taskAsk === undefined ? {} : { taskAsk: item.taskAsk }),
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
+        ...(item.taskId === undefined ? {} : { taskId: item.taskId }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
             attachment.type === "image" || attachment.type === "file",
@@ -968,6 +975,13 @@ export function engineThreadOf(
         activities.push(...workActivities(item, cardOf));
         break;
       case "marker": {
+        // Every task of an automated Mate's one conversation starts afresh: its card marks where.
+        if (
+          item.marker.kind === "session-rotated" &&
+          item.marker.reason === "task" &&
+          key.conversationId === MATE_TASKS_CONVERSATION_ID
+        )
+          break;
         const marked = markerActivity(item, cardOf);
         if (marked !== null) activities.push(marked);
         break;

@@ -2758,6 +2758,82 @@ describe("deriveMessagesTimelineRows", () => {
     expect(JSON.stringify(drawn)).not.toContain("Work issue #12");
   });
 
+  it("an automated Mate's conversation draws a task card at each task's start", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 12,
+      url: "https://github.com/acme/tea-shop/issues/12",
+      title: "Fix the checkout total",
+      author: "raya",
+    } as const;
+    const thread = {
+      kind: "slack-thread",
+      workspace: "Tea Shop",
+      channel: "support",
+      url: "https://tea-shop.slack.com/archives/C1/p2",
+      title: "The receipt email shows the wrong address",
+      author: "Ines",
+    } as const;
+    const brief = (id: string, at: number, task: object) => {
+      const entry = user(id, at, "Work the task in the project, then open a change.");
+      return {
+        ...entry,
+        message: { ...(entry as Extract<typeof entry, { kind: "message" }>).message, ...task },
+      };
+    };
+    const drawn = rows({
+      entries: [
+        brief("m0", 0, { task: issue, taskId: "t-12", taskAsk: "The total skips the tax line." }),
+        tool("w1", "t1", 1),
+        // Taken back and given again: the same task, no second card.
+        brief("m2", 2, { task: issue, taskId: "t-12" }),
+        tool("w3", "t3", 3),
+        brief("m4", 4, { task: thread, taskId: "t-13" }),
+        tool("w5", "t5", 5),
+      ] as never,
+      settled: "t5",
+    });
+    // Each task's card stands where its turn begins, read by its own task's id.
+    expect(drawn.filter((row) => row.kind === "task-ask")).toMatchObject([
+      { id: "m0", source: issue, taskId: "t-12", text: "The total skips the tax line." },
+      { id: "m4", source: thread, taskId: "t-13", text: "" },
+    ]);
+    const at = (id: string) => drawn.findIndex((row) => row.id === id);
+    expect(at("m0")).toBeLessThan(at("m4"));
+    expect(drawn.slice(at("m0"), at("m4")).some((row) => row.kind === "record")).toBe(true);
+    expect(JSON.stringify(drawn)).not.toContain("Work the task");
+  });
+
+  it("draws an older server's task conversation's card with no task id of its own", () => {
+    const issue = {
+      kind: "github-issue",
+      repo: "acme/tea-shop",
+      number: 9,
+      url: "https://github.com/acme/tea-shop/issues/9",
+      title: "Show the tea's origin",
+      author: "juno",
+    } as const;
+    const entry = user("m0", 0, "Work issue #9 in the project, then open a change.");
+    const drawn = rows({
+      entries: [
+        {
+          ...entry,
+          message: {
+            ...(entry as Extract<typeof entry, { kind: "message" }>).message,
+            task: issue,
+          },
+        },
+        tool("w1", "t1", 1),
+      ] as never,
+      settled: "t1",
+    });
+    // No task's id on its brief: the card reads the task its conversation's id names.
+    expect(drawn.filter((row) => row.kind === "task-ask")).toMatchObject([
+      { id: "m0", source: issue, taskId: null },
+    ]);
+  });
+
   it("draws a follow-up told to a task's Mate as its author's, from where they said it, never as the viewer's words", () => {
     const issue = {
       kind: "github-issue",

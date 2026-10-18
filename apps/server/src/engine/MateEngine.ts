@@ -253,6 +253,8 @@ export interface MateEngineService {
         readonly runId: RunId;
         readonly end: RunEnd | null;
         readonly source: RunEndSource | null;
+        /** Whose authority it runs for: a task's names the task, in the one conversation of many. */
+        readonly principal: Principal;
         /**
          * Whether its words reached the agent: it started (`true`), provably never (`false`: never
          * sent, or every send refused undelivered), or a send may have (`unknown`).

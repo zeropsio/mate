@@ -630,7 +630,14 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               found === undefined
                 ? "a change's pull request not opened"
                 : "a change's branch on GitHub holds a pull request someone else opened",
-              { appId, repo, number, status: made.status, pull: found?.number },
+              {
+                appId,
+                repo,
+                number,
+                status: made.status,
+                refusal: made.refusal,
+                pull: found?.number,
+              },
             );
           }
           const kept = yield* leader.write(sql`
