@@ -32,7 +32,7 @@ interface Scene {
 }
 
 /** Plays commands through decide and evolve; the scene is the last one, the log every one's. */
-const play = (steps: ReadonlyArray<Command>): Scene => {
+const play = (steps: ReadonlyArray<Command>, principal: Principal = crew): Scene => {
   let state = initialState(conversation);
   const log: Array<KnownEngineEvent> = [];
   let scene: Omit<Scene, "log"> | undefined;
@@ -40,7 +40,7 @@ const play = (steps: ReadonlyArray<Command>): Scene => {
     const envelope = {
       commandId: CommandId.make(`c${index}`),
       conversationId: conversation,
-      principal: crew,
+      principal,
       command,
     };
     const decision = decide(state, envelope, T0);
@@ -154,6 +154,28 @@ describe("decide: a session rotates between turns", () => {
       rotatedFrom: "s1",
     });
     expect(reopened.state.rotation).toBeNull();
+  });
+
+  it("each task starts on a fresh agent session", () => {
+    // An automated Mate's one conversation: the task before ran on s1; the next task's brief
+    // follows a fresh rotation, so its run opens a session that resumes nothing.
+    const task: Principal = { kind: "task", taskId: "task-2" };
+    const next = play(
+      [
+        ...firstTurn,
+        rotate("task", true, null),
+        send("next task's card"),
+        prepared(2),
+        closed("s1"),
+      ],
+      task,
+    );
+    expect(next.effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: { resume: null, fresh: true, seed: null, rotateFrom: "s1" },
+      },
+    ]);
   });
 
   it("a rotation for the budget resumes the same thread in its new session", () => {
