@@ -12,6 +12,16 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { HqEnvironmentId, ProjectId, type EnvironmentId } from "@t3tools/contracts";
 import { environmentRow } from "./flowTestFixtures";
+import { canonicalProjectFlow, environmentById, readsOfState } from "@t3tools/client-runtime/data";
+import {
+  GIT_APP,
+  GIT_PRODUCTION,
+  GIT_STAGE,
+  seedGitApplication,
+} from "@t3tools/client-runtime/data/fixtures";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { AtomRegistry } from "effect/reactivity";
+import { placeLines } from "./projectCard.logic";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -1262,5 +1272,61 @@ describe("overviewPaints — the overview paints its projects once, whole", () =
     },
   ])("$name", ({ name: _name, paints, ...input }) => {
     expect(overviewPaints(input)).toBe(paints);
+  });
+});
+
+describe("an application released to Git branches", () => {
+  const key = {
+    orgId: "org",
+    appId: GIT_APP,
+    hqAddress: "https://hq.test",
+    viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+  };
+  const placed = () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, "org", []);
+    seedGitApplication(store, "org");
+    const reads = readsOfState(store.state());
+    const flow = canonicalProjectFlow.derive(reads, key);
+    const lines = placeLines({
+      flow: groupFlow(
+        groupFlowInputOf({
+          groupId: GIT_APP,
+          members: [],
+          flow,
+          deployments: new Map(),
+          pending: [],
+        }),
+      ),
+      nowMs: 0,
+    });
+    registry.dispose();
+    // What its panel opens: the environment its route names, resolved under the application.
+    const opens = (line: (typeof lines)[number]) =>
+      line.projectId === undefined
+        ? undefined
+        : environmentById.derive(reads, { ...key, id: HqEnvironmentId.make(line.projectId) })
+            ?.target;
+    return { lines, opens };
+  };
+
+  it("a Git production shows on the project with its last release and opens its sheet", () => {
+    const { lines, opens } = placed();
+    const production = lines.find((line) => line.kind === "production")!;
+    expect([production.projectId, production.words, production.git?.version]).toEqual([
+      GIT_PRODUCTION,
+      ["Pushed v0.1.3"],
+      "v0.1.3",
+    ]);
+    expect(opens(production)).toEqual({ kind: "git", branch: "main", delivery: "direct" });
+  });
+
+  it("a Git stage shows on the project with the branch it pushes to and opens its sheet", () => {
+    const { lines, opens } = placed();
+    const stages = lines.filter((line) => line.kind === "stage");
+    expect(stages.map((line) => [line.projectId, line.words])).toEqual([
+      [GIT_STAGE, ["Pushed mate-stage"]],
+    ]);
+    expect(opens(stages[0]!)).toEqual({ kind: "git", branch: "mate-stage", delivery: "direct" });
   });
 });

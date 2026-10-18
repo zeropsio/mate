@@ -2,6 +2,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { GIT_PRODUCTION, GIT_STAGE, seedGitApplication } from "../__fixtures__/gitApplication.ts";
 import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
@@ -642,5 +643,35 @@ describe("what a Mate is told of production", () => {
       projectId: "prod",
     });
     f.registry.dispose();
+  });
+});
+
+describe("an application released to Git branches", () => {
+  it("a Git production and stage are listed in the project's environments", () => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, "org", []);
+    seedGitApplication(store, "org");
+    const flow = canonicalProjectFlow.derive(readsOfState(store.state()), key)!;
+    const slots = flow.declarationsRead
+      ? environmentSlots({
+          environments: flow.environments.map(({ id, target, tier }) => ({ id, target, tier })),
+          devstages: [],
+          pending: [],
+          halfMade: [],
+          recipeTiers: flow.recipeTiers,
+          recipeRead: flow.recipeRead,
+          offered: { stage: true, production: true, git: true },
+          productionRuns: "unknown",
+          waiting: { count: 0, atLeast: false },
+          mainHasCode: undefined,
+          releaseOffered: false,
+          releasing: undefined,
+        })
+      : [];
+    expect(slots.map((slot) => [slot.kind, "id" in slot ? slot.id : slot.tier])).toEqual([
+      ["environment", GIT_STAGE],
+      ["environment", GIT_PRODUCTION],
+    ]);
+    registry.dispose();
   });
 });
