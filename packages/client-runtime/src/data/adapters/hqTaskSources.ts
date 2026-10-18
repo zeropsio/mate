@@ -46,6 +46,7 @@ export type TaskSourceApi = TaskSourceWrites &
     HqApi,
     | "slack"
     | "slackManifest"
+    | "slackChannels"
     | "discord"
     | "taskLimits"
     | "appChannel"
@@ -85,6 +86,8 @@ export function makeTaskSourceSettings(options: {
           return api.slack?.();
         case "hqSlackManifest":
           return api.slackManifest?.().then((manifest) => JSON.stringify(manifest, null, 2));
+        case "hqSlackChannels":
+          return api.slackChannels?.();
         case "hqDiscord":
           return api.discord?.();
         case "hqTaskLimits":
@@ -261,13 +264,14 @@ export function makeTaskSourceSettings(options: {
             after: reads.started(spec),
           });
         reads.readAfterWrite(spec);
-        // HQ drops every application's Slack channel as Slack is disconnected or moved to
-        // another workspace (`apps/hq/src/slack.ts`); Discord keeps its channels.
-        if (change.kind === "slack-connect" || change.kind === "slack-disconnect")
-          reads.againEvery("hqAppSlack", (held) => {
-            const [orgId] = JSON.parse(held) as [string, string];
-            return orgId === key.orgId;
-          });
+        // HQ renames or drops applications' Slack channels as Slack connects again — to another
+        // workspace, all of them (`apps/hq/src/slack.ts`) — and the bot it connects is in
+        // channels of its own; Discord keeps its channels.
+        if (change.kind === "slack-connect" || change.kind === "slack-disconnect") {
+          const ofOrg = (held: string) => (JSON.parse(held) as [string])[0] === key.orgId;
+          reads.againEvery("hqAppSlack", ofOrg);
+          reads.againEvery("hqSlackChannels", ofOrg);
+        }
       }
     }
   };

@@ -1,7 +1,7 @@
 /**
  * Where automated Mates take tasks from besides GitHub, as the settings read it: the
  * organization's Slack app and Discord application (connected or not, never a token), the
- * manifest a Slack app is made from, the limits on each task; and, per application, the channel
+ * manifest a Slack app is made from, the channels its bot is in, the limits on each task; and, per application, the channel
  * it takes tasks from on each, its signed webhooks (never a secret), its schedules, and the tasks
  * its automated Mates took (its Automation board). Each is read
  * while a screen demands it. A webhook's secret, which HQ shows only as it is made, is held only
@@ -13,6 +13,7 @@ import type {
   HqChannelView,
   HqDiscordView,
   HqScheduleView,
+  HqSlackChannels,
   HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
@@ -26,6 +27,8 @@ declare module "../model.ts" {
     readonly hqSlack: HqSlackView;
     /** The manifest's JSON, as the person copies it into Slack. */
     readonly hqSlackManifest: string;
+    /** The channels the bot is in: what an application's Slack channel is picked from. */
+    readonly hqSlackChannels: HqSlackChannels;
     readonly hqDiscord: HqDiscordView;
     readonly hqTaskLimits: HqTaskLimitsView;
     /** The organization's GitHub app: where it is installed, never its key. */
@@ -65,6 +68,7 @@ export interface AppSettingKey {
 export const ORG_SETTINGS = [
   "hqSlack",
   "hqSlackManifest",
+  "hqSlackChannels",
   "hqDiscord",
   "hqTaskLimits",
   "hqGithub",
@@ -86,6 +90,7 @@ export type SettingKeyOf<F extends TaskSourceSetting> = F extends OrgSetting
 const SUFFIX: Readonly<Record<TaskSourceSetting, string>> = {
   hqSlack: "slack",
   hqSlackManifest: "slack-manifest",
+  hqSlackChannels: "slack-channels",
   hqDiscord: "discord",
   hqTaskLimits: "task-limits",
   hqGithub: "github",
@@ -135,6 +140,7 @@ const detail = <F extends TaskSourceSetting | "hqTaskSourceRequest" | "hqWebhook
 
 export const hqSlackFamily = detail("hqSlack", SUFFIX.hqSlack);
 export const hqSlackManifestFamily = detail("hqSlackManifest", SUFFIX.hqSlackManifest);
+export const hqSlackChannelsFamily = detail("hqSlackChannels", SUFFIX.hqSlackChannels);
 export const hqDiscordFamily = detail("hqDiscord", SUFFIX.hqDiscord);
 export const hqTaskLimitsFamily = detail("hqTaskLimits", SUFFIX.hqTaskLimits);
 export const hqGithubFamily = detail("hqGithub", SUFFIX.hqGithub);
