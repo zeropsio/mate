@@ -54,19 +54,35 @@ describe("an automated Mate's tasks in Usage", () => {
         id: "newer",
         title: "Show each tea's price",
         target: { kind: "conversation", environmentId: "env-raya", threadId: "thread-1" },
+        status: "working",
         state: "Working",
         cost: "$0.40",
-        worked: "1m 5s",
+        worked: "1m",
       },
       {
         id: "older",
         title: "Add a search box to the tea list",
         target: { kind: "conversation", environmentId: "env-raya", threadId: "thread-1" },
+        status: "merged",
         state: "Merged",
         cost: "$1.25",
         worked: "20m",
       },
     ]);
+  });
+  it.each([
+    ["assigned", "Starting"],
+    ["waiting", "Waiting for you"],
+    ["stopping", "Stopping"],
+    ["closed", "Closed"],
+    ["declined", "Not taken"],
+  ] as const)("says a task %s in the words every surface uses: %s", (state, words) => {
+    const [row] = usageMateTasks({
+      ...window,
+      mateProjectId: "tea-raya",
+      tasks: [task({ state })],
+    });
+    expect(row?.state).toBe(words);
   });
   it("says nothing it does not know: a task its Mate never reported on shows no cost or time", () => {
     const [row] = usageMateTasks({
