@@ -51,7 +51,7 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
-import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { ActionHeld, CardActivity, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
   historyOffered,
@@ -65,7 +65,7 @@ import {
   type PlaceLine,
 } from "./projectCard.logic";
 import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
-import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
+import type { PlacePanelLook, ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
 
 /** What a card's places need of an environment: how its services stand and where they answer. */
@@ -181,6 +181,14 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       prodStop === undefined
         ? undefined
         : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
+    // When each stage last took a deploy, as its services say it.
+    const stageSince = new Map<string, string>();
+    for (const stop of entry.flow.stages) {
+      const at =
+        deployActivatedAt(deploymentsOf(stop.projectId)) ??
+        itemOf(entry, stop.projectId)?.services?.deployedAt;
+      if (at !== undefined) stageSince.set(stop.projectId, at);
+    }
     // The release on its way, where it is a roll back: production's line says what it goes back to.
     const rollsBackTo = chip?.rollsBackTo;
     return {
@@ -192,6 +200,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       addressOffered,
       rollsBackTo,
       since,
+      stageSince,
       prodItem,
       prodStop,
     };
@@ -225,7 +234,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
-    const { chip, stageChips, down, addressOffered, rollsBackTo, since } = placesOf(entry);
+    const { chip, stageChips, down, addressOffered, rollsBackTo, since, stageSince, releases } =
+      placesOf(entry);
     return {
       chip,
       stageChips,
@@ -233,11 +243,17 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       addressOffered,
       rollsBackTo,
       since,
+      stageSince,
+      failedTag: releases.kind === "answered" ? releases.failure?.tag : undefined,
       releaseOnStage: stageOf(entry)?.runsRelease,
     };
   };
 
-  const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
+  const renderPlacePanel = (
+    entry: ProjectsFlowGroup<T>,
+    line: PlaceLine,
+    look?: PlacePanelLook,
+  ): ReactNode => {
     const places = placesOf(entry);
     const { read, chip } = places;
     const groupId = entry.group.groupId;
@@ -393,6 +409,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       <PlacePanel
         actions={actions}
         groupId={groupId}
+        look={look}
         model={model}
         onOpenLine={
           opens === undefined
@@ -490,7 +507,39 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
   };
 
-  return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople };
+  /**
+   * The newest event a card does not say above: the latest merged change, with its Mate's face,
+   * whose it is, and how long ago — none where nothing merged is read.
+   */
+  const renderActivity = (entry: ProjectsFlowGroup<T>): ReactNode => {
+    const latest = (flows.get(entry.group.groupId)?.merged ?? [])
+      .filter((pull) => pull.kind === "code" && pull.mergedAt !== undefined)
+      .toSorted((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? ""))[0];
+    if (latest === undefined) return null;
+    const item = entry.mates.get(latest.mateProjectId);
+    const by = entry.flow.mates.find((mate) => mate.projectId === latest.mateProjectId)?.name;
+    return (
+      <CardActivity
+        at={latest.mergedAt}
+        face={item === undefined ? undefined : input.mateFace(item)}
+        nowMs={nowMs}
+        onOpen={(from) => {
+          openReview(
+            {
+              kind: "change",
+              groupId: entry.group.groupId,
+              repository: latest.repository,
+              number: latest.number,
+            },
+            { from },
+          );
+        }}
+        words={`${by ?? "A Mate"} merged “${latest.title}”`}
+      />
+    );
+  };
+
+  return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople, renderActivity };
 }
 
 /** A working Mate's clock, a step a second (R6). */

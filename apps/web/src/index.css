@@ -8137,20 +8137,12 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
 }
 
-/* A project's own page: its card — the overview's, at the page's width — and the page's column
-   beside it, each part on the card's own ground. Side by side once both have room, stacked under
-   that. */
+/* A project's own page: its header, its road, then the page's own cards — each at full width. */
 .ov-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 16px;
-}
-
-@container flow (min-width: 980px) {
-  .ov-page {
-    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-  }
 }
 
 .ov-card[data-page] {
@@ -8206,6 +8198,432 @@ label.tm-advanced-row:not([data-disabled]) {
   font-weight: 600;
   line-height: 20px;
 }
+
+/* ── pp-road: a project's state line and its road — on the overview card, and as the project
+   page's header and road (`ProjectRoad.tsx`). Stops are dots on one hairline; what waits between
+   them rides the line as a quiet chip; one quiet line under each stop. ───────────────────────── */
+.pp-road-top {
+  display: flex;
+  height: 20px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-road-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.pp-road-state .ov-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.pp-road-state .ov-dot[data-dot="attention"] {
+  background: var(--zerops-status-attention);
+}
+
+.pp-road-state .ov-dot[data-dot="unknown"] {
+  background: var(--zerops-status-busy);
+}
+
+.pp-road-state[data-state="release-failed"],
+.pp-road-state[data-state="down"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-state[data-state="needs-you"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.pp-road-state[data-state="setting-up"],
+.pp-road-state[data-state="releasing"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.pp-road-state[data-state="running"] {
+  color: var(--zerops-status-ok-text);
+}
+
+.pp-road-chips {
+  display: flex;
+  min-height: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pp-road-chips .ov-card-people {
+  margin-left: 0;
+}
+
+.pp-road-tag {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--zerops-status-busy) 12%, transparent);
+  color: var(--zerops-status-busy-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* The card's road: names, the line, the unders — three columns that never change shape. */
+.pp-road {
+  display: grid;
+  gap: 6px;
+  margin: 16px 6px 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-road-names,
+.pp-road-unders {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+
+.pp-road-names {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.pp-road-names > :nth-child(3),
+.pp-road-unders > :nth-child(3) {
+  justify-self: end;
+}
+
+.pp-road-unders {
+  min-height: 28px;
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+.pp-road-under-stage {
+  justify-self: center;
+}
+
+.pp-road-under-prod {
+  justify-self: end;
+}
+
+.pp-road-under {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-road-under[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-under[data-tone="info"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.pp-road-line {
+  display: grid;
+  height: 28px;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.pp-road-stop {
+  display: grid;
+  width: 10px;
+  height: 10px;
+  place-items: center;
+}
+
+.pp-road-stop[data-ghost] {
+  border: 1px dashed color-mix(in oklab, var(--foreground) 30%, transparent);
+  border-radius: 999px;
+}
+
+.pp-road-stop .ov-dot[data-dev] {
+  background: color-mix(in oklab, var(--foreground) 55%, transparent);
+  box-shadow: none;
+}
+
+/* A stretch of line between two stops: a dotted hairline, its chip riding it in the middle. */
+.pp-road-seg {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 4px;
+}
+
+.pp-road-seg::before {
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px dotted color-mix(in oklab, var(--foreground) 28%, transparent);
+  content: "";
+}
+
+.pp-road-seg > * {
+  position: relative;
+}
+
+.pp-road-chip {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--ov-ground, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pp-road-chip[data-tone="failed"] {
+  background: color-mix(in oklab, var(--zerops-status-failed) 12%, var(--ov-ground, var(--card)));
+  box-shadow: none;
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-note {
+  margin: 0 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+/* What went wrong on production, lifted: the card's one white sub-card. */
+.pp-road-lift {
+  margin: 10px 0 2px;
+  padding: 12px 12px 12px;
+  border-radius: 14px;
+  background: var(--ov-lift);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
+    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+}
+
+.pp-road-lift .ov-panel-note {
+  margin: 0;
+}
+
+/* The newest event, the card's last line: a face, the words, how long ago. */
+.pp-road-activity {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  margin: 8px 0 0;
+  padding: 10px 6px 2px;
+  border-top: 1px solid var(--ov-rule);
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-align: left;
+  transition: color 150ms var(--ease-out-strong);
+}
+
+.pp-road-activity:hover {
+  color: var(--foreground);
+}
+
+.pp-road-activity-face {
+  display: flex;
+  justify-content: center;
+}
+
+.pp-road-activity-face > * {
+  width: 16px;
+  height: 16px;
+}
+
+.pp-road-activity-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-activity-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The project page: its header and its road, each a card at the page's width. */
+.pp-road-card {
+  --ov-ground: var(--card);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
+  min-width: 0;
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: var(--ov-ground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+}
+
+.dark .pp-road-card {
+  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+.pp-road-header {
+  display: flex;
+  min-height: 124px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pp-road-header-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.pp-road-title {
+  margin-top: 4px;
+  font-size: var(--text-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 34px;
+}
+
+.pp-road-header-acts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 50%;
+}
+
+.pp-road-why {
+  flex-basis: 100%;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  text-align: right;
+}
+
+.pp-road-page {
+  display: grid;
+  min-height: 220px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 28px;
+}
+
+.pp-road-col {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+}
+
+.pp-road-head {
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pp-road-head > .pp-road-seg {
+  flex: 1 1 auto;
+  margin: 0 -28px 0 6px;
+}
+
+.pp-road-name {
+  flex: none;
+  font-size: var(--text-emphasis);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pp-road-follows {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+}
+
+.pp-road-mates {
+  display: grid;
+  gap: 8px;
+}
+
+.pp-road-mate,
+.pp-road-tile {
+  min-width: 0;
+  padding: 6px;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+.pp-road-tile {
+  padding: 14px 16px;
+}
+
+.pp-road-tile[data-ghost] {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  box-shadow: none;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+}
+
+.pp-road-ghost-words {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+}
+
+.ov-panel[data-look="column"] .ov-panel-host {
+  margin-left: 0;
+}
+
+.ov-panel-version {
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+@container flow (max-width: 900px) {
+  .pp-road-page {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 20px;
+  }
+
+  .pp-road-head > .pp-road-seg {
+    margin-right: 0;
+  }
+}
+/* ── end pp-road ── */
 
 /* A release ready to go, lifted; then production's line, at every card's foot. */
 

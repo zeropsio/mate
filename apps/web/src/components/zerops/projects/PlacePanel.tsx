@@ -85,6 +85,7 @@ export function PlacePanel({
   actions,
   onOpenLine,
   roomy = false,
+  look = "card",
 }: {
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
@@ -106,8 +107,17 @@ export function PlacePanel({
    * for a stage with no address yet.
    */
   readonly roomy?: boolean;
+  /**
+   * `column`: its column on the project page's road, under its stop's name — what runs there
+   * large, no name of its own. `lift`: only what went wrong and its buttons, lifted on a card.
+   */
+  readonly look?: "card" | "column" | "lift" | undefined;
 }) {
-  const { line } = model;
+  // On its road column what runs stands large above: its line does not say it again.
+  const line =
+    look === "column" && model.line.kind === "production" && model.version !== undefined
+      ? { ...model.line, words: model.line.words.filter((word) => word !== model.version) }
+      : model.line;
   const label = placeLabel(line);
   const orgId = useAccountOrgId();
   const { projectId } = line;
@@ -130,10 +140,39 @@ export function PlacePanel({
             .getState()
             .open({ orgId, projectId, groupId, ...(intent === undefined ? {} : { intent }) });
         };
+  const domainDoor =
+    manage === undefined || !said.offerDomain ? null : (
+      <Button
+        onClick={() => {
+          manage("add-domain");
+        }}
+        size="sm"
+        variant="secondary"
+      >
+        Put it on your domain
+      </Button>
+    );
+  if (look === "lift")
+    return (
+      <div
+        aria-label={label}
+        className="ov-panel"
+        data-look="lift"
+        data-zerops-surface="place-panel"
+      >
+        <p className="ov-panel-note" data-tone={model.note?.tone ?? "attention"}>
+          {model.note?.text ?? line.words.join(" · ")}
+        </p>
+        <div className="ov-panel-acts">{actions}</div>
+      </div>
+    );
   return (
-    <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
+    <div aria-label={label} className="ov-panel" data-look={look} data-zerops-surface="place-panel">
+      {look === "column" && line.kind === "production" && model.version !== undefined ? (
+        <b className="ov-panel-version">{model.version}</b>
+      ) : null}
       <div className="ov-panel-head">
-        <b className="ov-panel-name">{label}</b>
+        {look === "column" ? null : <b className="ov-panel-name">{label}</b>}
         {head === undefined ? null : (
           <a
             aria-label={`Open ${label}`}
@@ -226,17 +265,7 @@ export function PlacePanel({
       )}
       <div className="ov-panel-acts">
         {actions}
-        {manage === undefined || !said.offerDomain ? null : (
-          <Button
-            onClick={() => {
-              manage("add-domain");
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Put it on your domain
-          </Button>
-        )}
+        {domainDoor}
         {manage === undefined || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
           <Button
             onClick={() => {

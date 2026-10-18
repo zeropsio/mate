@@ -12,7 +12,7 @@ import {
 
 const RUNS = { dot: "running", trouble: false } as const;
 const NONE = { dot: "none", trouble: false } as const;
-const MATE = { coming: undefined };
+const MATE = {};
 const COMING = { coming: {} };
 
 describe("a project's state line", () => {
@@ -117,12 +117,12 @@ describe("a project's road", () => {
 
   it.each([
     {
-      name: "carries a failed release on the line it failed on, over a release ready",
+      name: "carries a failed release on the line it failed on, beside the release that mends it",
       production: { dot: "failed", trouble: true },
       ready: { count: 2, atLeast: false },
       productionAbsent: false,
       notLive: 2,
-      want: { kind: "failed", tag: "v0.1.3" },
+      want: { kind: "failed", tag: "v0.1.3", ready: { count: 2, atLeast: false } },
     },
     {
       name: "carries a release ready to go",

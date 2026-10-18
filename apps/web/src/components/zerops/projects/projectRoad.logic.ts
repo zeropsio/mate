@@ -30,7 +30,7 @@ export interface ProjectState {
 }
 
 const STATES: Record<ProjectStateKind, Omit<ProjectState, "kind">> = {
-  "release-failed": { words: "Release failed", dot: "failed" },
+  "release-failed": { words: "Release failed", dot: "down" },
   down: { words: "Down", dot: "down" },
   "needs-you": { words: "Needs you", dot: "attention" },
   "setting-up": { words: "Setting up", dot: "unknown" },
@@ -137,13 +137,18 @@ export function productionUnder(
 /** What the line between Stage and Production carries: one chip at most. */
 export type ReleaseSegment =
   | { readonly kind: "ready"; readonly count: number; readonly atLeast: boolean }
-  | { readonly kind: "failed"; readonly tag: string | undefined }
+  /** A release ready beside it still mends it (D28): `ready` where one is offered. */
+  | {
+      readonly kind: "failed";
+      readonly tag: string | undefined;
+      readonly ready?: { readonly count: number; readonly atLeast: boolean } | undefined;
+    }
   | { readonly kind: "merged"; readonly count: number }
   | { readonly kind: "none" };
 
 /**
- * The chip between Stage and Production: production's failed release on the line it failed on,
- * else a release ready to go (opened by the page's door), else what is merged with no production
+ * The chip between Stage and Production: production's failed release on the line it failed on —
+ * beside a release ready to go where one is, which is how it is mended (D28) — else a release ready (opened by the page's door), else what is merged with no production
  * to go to.
  */
 export function releaseSegment(input: {
@@ -155,7 +160,7 @@ export function releaseSegment(input: {
   readonly notLive: number;
 }): ReleaseSegment {
   if (input.production.trouble && input.production.dot === "failed")
-    return { kind: "failed", tag: input.failedTag };
+    return { kind: "failed", tag: input.failedTag, ready: input.ready };
   if (input.ready !== undefined)
     return { kind: "ready", count: input.ready.count, atLeast: input.ready.atLeast };
   if (input.productionAbsent && input.notLive > 0) return { kind: "merged", count: input.notLive };
