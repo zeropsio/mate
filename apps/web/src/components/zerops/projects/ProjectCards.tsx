@@ -1237,12 +1237,8 @@ export function ProjectPage<T>({
           <div className="pp-sec-head">
             <h2 className="pp-sec-name">Mates</h2>
           </div>
-          <CardMates
-            addMate={onAddMate === undefined ? undefined : { onAdd: onAddMate, why: addMateWhy }}
-            all
-            entry={entry}
-            props={props}
-          />
+          {/* Add Mate is the head's: one door, one reason (they shared its id). */}
+          <CardMates all entry={entry} props={props} />
         </section>
         <StopReads entry={entry} />
       </div>
