@@ -40,9 +40,9 @@ import {
   WebhooksSettingsView,
 } from "~/components/settings/TaskSourcesSettings";
 import {
-  MateTaskAskRow,
+  MateTaskCardView,
   MateTaskMessageRow,
-  MateTaskSessionBar,
+  MateTaskStatusView,
 } from "~/components/zerops/MateTaskCard";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -219,7 +219,7 @@ function Harness() {
       <div className="grid content-start gap-6">
         <Panel title="A task's session, its ask, and a follow-up">
           <div className="grid max-w-2xl gap-3">
-            <MateTaskSessionBar
+            <MateTaskStatusView
               onStop={nothing}
               session={{
                 status: "working",
@@ -230,10 +230,19 @@ function Harness() {
                 change: null,
                 pullRequest: null,
               }}
-              task={TEA_ISSUE}
             />
-            <MateTaskAskRow
-              source={TEA_ISSUE}
+            <MateTaskCardView
+              onOpenChange={nothing}
+              session={{
+                status: "working",
+                taskId: "task-12",
+                stoppable: true,
+                workedMs: 754_000,
+                spentUsd: 0.42,
+                change: { repo: "web", number: 3 },
+                pullRequest: null,
+              }}
+              task={TEA_ISSUE}
               text={[
                 "The checkout total skips the tax line when the cart holds a gift card.",
                 "",
@@ -245,8 +254,8 @@ function Harness() {
                 "Juno saw it on a phone too, so it is not the browser.",
               ].join("\n")}
             />
-            <MateTaskAskRow
-              source={{
+            <MateTaskCardView
+              task={{
                 kind: "slack-thread",
                 workspace: "Acme",
                 channel: "support",

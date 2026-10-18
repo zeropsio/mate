@@ -2640,10 +2640,9 @@ export function deriveMessagesTimelineRows(input: {
       newSinceDrawn = true;
     }
   };
-  // A task's first message is its brief: its issue stands in the session band above the
-  // conversation, so the brief's words are never drawn. What its asker wrote opens the
-  // conversation as theirs; an ask with no text (or a Mate from before asks were kept) draws no
-  // row, and the run under it opens the conversation.
+  // A task's first message is its brief, never drawn: the conversation opens with the task's card
+  // instead — where it came from, its title, and what its asker wrote (none where the ask had no
+  // more text, or its Mate came before asks were kept).
   // Only the conversation's first brief opens it: one sent again (a task put back in line and
   // taken again) draws nothing.
   const firstBriefId = entries.find(
@@ -2656,9 +2655,15 @@ export function deriveMessagesTimelineRows(input: {
   ): MessagesTimelineRow | null => {
     const { task: source, taskAsk } = entry.message;
     if (source !== undefined) {
-      return taskAsk === undefined || taskAsk === "" || entry.id !== firstBriefId
+      return entry.id !== firstBriefId
         ? null
-        : { kind: "task-ask", id: entry.id, createdAt: entry.createdAt, source, text: taskAsk };
+        : {
+            kind: "task-ask",
+            id: entry.id,
+            createdAt: entry.createdAt,
+            source,
+            text: taskAsk ?? "",
+          };
     }
     const heard = entry.message.taskMessage;
     if (heard !== undefined) {

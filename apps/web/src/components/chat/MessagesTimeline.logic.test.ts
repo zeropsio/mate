@@ -2684,17 +2684,19 @@ describe("deriveMessagesTimelineRows", () => {
       ] as never,
       settled: "t1",
     });
-    // The issue's card is the session band's, pinned above the conversation: here the brief
-    // draws no row at all, and the run it started opens under the day's line.
-    expect(list.filter((row) => row.id === "m0")).toEqual([]);
+    // The task's card opens the conversation in the brief's place; the run it started follows.
+    expect(list.filter((row) => row.id === "m0")).toMatchObject([
+      { kind: "task-ask", source: issue, text: "" },
+    ]);
     expect(list.map((row) => [row.kind, row.gap ?? "none"])).toEqual([
       ["seam", "none"],
+      ["task-ask", "part"],
       ["record", "part"],
     ]);
     expect(JSON.stringify(list)).not.toContain("Work issue #12");
   });
 
-  it("draws a task's first message with an ask as its author's, from its source; with none, it draws nothing", () => {
+  it("opens a task's conversation with its card: where it came from, its title and what its asker wrote, never the brief's words", () => {
     const issue = {
       kind: "github-issue",
       repo: "acme/tea-shop",
@@ -2719,7 +2721,9 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     expect(asked.map((row) => row.kind)).toEqual(["seam", "task-ask", "record"]);
     expect(JSON.stringify(asked)).not.toContain("Work issue #12");
-    expect(drawn(undefined).filter((row) => row.id === "m0")).toEqual([]);
+    expect(drawn(undefined).filter((row) => row.id === "m0")).toMatchObject([
+      { kind: "task-ask", source: issue, text: "" },
+    ]);
   });
 
   it("draws nothing for a task's brief sent again when its Mate takes it back, never the brief's words", () => {

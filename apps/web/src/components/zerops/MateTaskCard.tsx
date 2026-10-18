@@ -1,13 +1,11 @@
 /**
- * A task's session, at the top of its conversation on an automated Mate: where the task stands in
- * one word beside its dot, where it came from and who opened it with a way out to it, then the
- * change and pull request it made, how long it worked and what it cost as its Mate last reported,
- * and Stop, for an Owner or Admin, while it is queued, at work or waiting for an answer — asked on
- * the band before anything stops, as the board asks. The title is the conversation
- * header's. Every slot holds its room from the first frame, so nothing moves as the task does. The
- * words the agent got with it are its brief, never the person's, so they are never drawn: what its
- * asker wrote opens the conversation as theirs (`MateTaskAskRow`), and what people say about the
- * task afterwards, told to its Mate, is drawn as theirs too (`MateTaskMessageRow`).
+ * A task on an automated Mate, as its conversation shows it: where it stands beside the Mate in the
+ * header, with Stop for an Owner or Admin, asked first (`MateTaskStatus`); and the conversation
+ * opening with the task, the way an issue page opens — where it came from, its title, what its
+ * asker wrote, how long it worked, what it cost, and the change and pull request it made
+ * (`MateTaskCard`). The words the agent got with it are its brief, never the person's, so they are
+ * never drawn; what people say about the task afterwards, told to its Mate, is drawn as theirs
+ * (`MateTaskMessageRow`).
  */
 import {
   mateTaskSourceAuthor,
@@ -17,7 +15,14 @@ import {
   type MateTaskMessage,
   type MateTaskSource,
 } from "@t3tools/contracts";
-import { ArrowUpRightIcon, TimerIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  CalendarClockIcon,
+  HashIcon,
+  MessagesSquareIcon,
+  TimerIcon,
+  WebhookIcon,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
@@ -27,6 +32,7 @@ import { useTaskSession } from "~/zerops/useTaskSession";
 
 import { cn } from "~/lib/utils";
 
+import { GitHubIcon } from "../Icons";
 import { Button, InlineButton } from "../ui/button";
 
 /** "acme/tea-shop#12 · opened by nova-dev": where the task came from, and whose it is. */
@@ -46,63 +52,63 @@ const NOT_KNOWN: TaskSession = {
   pullRequest: null,
 };
 
-/** The session, for the Mate living in the conversation's environment: read live. */
-export function MateTaskSession({
+/** Where a task came from, as a mark: GitHub's, a Slack channel's, a Discord thread, a webhook, a schedule. */
+function SourceMark({ source }: { readonly source: MateTaskSource }) {
+  const className = "size-3.5 shrink-0";
+  switch (source.kind) {
+    case "github-issue":
+      return <GitHubIcon aria-hidden="true" className={className} />;
+    case "slack-thread":
+      return <HashIcon aria-hidden="true" className={className} />;
+    case "discord-thread":
+      return <MessagesSquareIcon aria-hidden="true" className={className} />;
+    case "webhook":
+      return <WebhookIcon aria-hidden="true" className={className} />;
+    case "schedule":
+      return <CalendarClockIcon aria-hidden="true" className={className} />;
+  }
+}
+
+/**
+ * Where a task stands, beside its Mate in the conversation's header — in sight however far the
+ * conversation scrolls — and Stop, for an Owner or Admin while it can be stopped, asked first.
+ */
+export function MateTaskStatus({
   task,
   environmentId,
   conversationId,
-  onOpenChange,
 }: {
   readonly task: MateTaskSource;
   readonly environmentId: EnvironmentId;
   /** The conversation's id: it names HQ's task (`mateTaskIdOfConversation`). */
   readonly conversationId: string;
-  readonly onOpenChange?: (change: {
-    readonly appId: string;
-    readonly repo: string;
-    readonly number: number;
-  }) => void;
 }) {
-  const { session, appId, stop } = useTaskSession(task, environmentId, conversationId);
-  const openChange =
-    onOpenChange === undefined || appId === null || session.change === null
-      ? undefined
-      : () => onOpenChange({ appId, ...session.change! });
-  return (
-    <MateTaskSessionBar
-      onStop={stop ?? undefined}
-      session={session}
-      task={task}
-      {...(openChange === undefined ? {} : { onOpenChange: openChange })}
-    />
-  );
+  const { session, stop } = useTaskSession(task, environmentId, conversationId);
+  return <MateTaskStatusView onStop={stop ?? undefined} session={session} />;
 }
 
-export function MateTaskSessionBar({
-  task,
+export function MateTaskStatusView({
   session = NOT_KNOWN,
   onStop,
-  onOpenChange,
 }: {
-  readonly task: MateTaskSource;
-  /** Where it stands now (`taskSession`); not known: its slots hold their room, empty. */
+  /** Where it stands now (`taskSession`); not known: its room held, nothing said. */
   readonly session?: TaskSession;
-  /** Stops the task, confirmed on the band; absent while it cannot be stopped from here. */
+  /** Stops the task, confirmed first; absent while it cannot be stopped from here. */
   readonly onStop?: (() => void) | undefined;
-  readonly onOpenChange?: () => void;
 }) {
-  const link = mateTaskSourceLink(task);
-  const { status, pullRequest, change } = session;
+  const { status } = session;
   const [asking, setAsking] = useState(false);
   const confirming = asking && onStop !== undefined;
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center gap-x-4 text-line"
+    <span
+      className="flex min-w-0 shrink-0 items-center gap-2 text-line"
       data-zerops-surface="mate-task-session"
     >
-      {/* Its state first, alone: what lands or changes here moves nothing else. */}
       <span
-        className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"
+        className={cn(
+          "flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-2 py-px font-medium text-foreground",
+          status === null && "invisible",
+        )}
         data-zerops-surface="mate-task-status"
       >
         {status === null ? null : (
@@ -112,130 +118,102 @@ export function MateTaskSessionBar({
           />
         )}
         <span data-zerops-surface="mate-task-status-words">
-          {/* Its room, held while nothing is known: a line of nothing. */}
           {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
         </span>
       </span>
-      <span className="flex min-w-0 flex-1 items-center justify-end gap-x-2">
-        <span className="min-w-0 truncate text-muted-foreground">{mateTaskCardSource(task)}</span>
-        {link === null ? null : (
-          <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
-            {link.words}
-            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
-          </InlineButton>
-        )}
-      </span>
-      <span className="flex shrink-0 items-center gap-x-3" data-zerops-surface="mate-task-facts">
-        {change === null || onOpenChange === undefined ? null : (
-          <InlineButton onClick={onOpenChange}>Change #{change.number}</InlineButton>
-        )}
-        {pullRequest === null ? null : (
-          <span className="flex items-center gap-1.5">
-            <InlineButton render={<a href={pullRequest.url} rel="noreferrer" target="_blank" />}>
-              {pullRequestName(pullRequest)}
-              <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
-            </InlineButton>
-            {pullRequest.state === "open" && pullRequest.checks !== undefined ? (
-              <span className="text-muted-foreground">checks {pullRequest.checks}</span>
-            ) : null}
+      {confirming ? (
+        <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
+          <span className="text-muted-foreground">
+            Stop this task? Its Mate stops where it got to.
           </span>
-        )}
-        <span className="flex min-w-[7ch] items-center justify-end gap-1 text-muted-foreground tabular-nums">
-          {session.workedMs === null ? null : (
-            <>
-              <TimerIcon aria-hidden="true" className="size-3.5" />
-              <span className="sr-only">Worked </span>
-              {workedWords(session.workedMs)}
-            </>
-          )}
-        </span>
-        <span className="min-w-[5ch] text-end text-foreground tabular-nums">
-          {session.spentUsd === null ? null : (
-            <>
-              <span className="sr-only">Cost so far </span>
-              {spentWords(session.spentUsd)}
-            </>
-          )}
-        </span>
-        {confirming ? (
-          <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
-            <span className="text-muted-foreground">
-              Stop this task? Its Mate stops where it got to.
-            </span>
-            <Button
-              onClick={() => {
-                setAsking(false);
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              Keep
-            </Button>
-            <Button
-              onClick={() => {
-                setAsking(false);
-                onStop?.();
-              }}
-              size="sm"
-              variant="destructive"
-            >
-              Stop
-            </Button>
-          </span>
-        ) : onStop !== undefined ? (
           <Button
             onClick={() => {
-              setAsking(true);
+              setAsking(false);
             }}
             size="sm"
-            variant="secondary"
+            variant="ghost"
+          >
+            Keep
+          </Button>
+          <Button
+            onClick={() => {
+              setAsking(false);
+              onStop?.();
+            }}
+            size="sm"
+            variant="destructive"
           >
             Stop
           </Button>
-        ) : status === "stopping" ? (
-          // Its room held while it stops, so nothing on the band moves at the press.
-          <span aria-hidden="true" className="invisible">
-            <Button disabled size="sm" tabIndex={-1} variant="secondary">
-              Stop
-            </Button>
-          </span>
-        ) : null}
-      </span>
-    </div>
+        </span>
+      ) : onStop !== undefined ? (
+        <Button
+          onClick={() => {
+            setAsking(true);
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          Stop
+        </Button>
+      ) : null}
+    </span>
   );
 }
 
-/** Who asked for a task, and where: "nova-dev on GitHub", "The Weekly upkeep schedule". */
-export function mateTaskAskHeading(source: MateTaskSource): string {
-  const who = mateTaskSourceAuthor(source) ?? "Someone";
-  switch (source.kind) {
-    case "github-issue":
-      return `${who} on GitHub`;
-    case "slack-thread":
-      return `${who} on Slack`;
-    case "discord-thread":
-      return `${who} on Discord`;
-    case "webhook":
-      return source.author === null
-        ? `The ${source.name} webhook`
-        : `${source.author} through the ${source.name} webhook`;
-    case "schedule":
-      return `The ${source.name} schedule`;
-  }
+/**
+ * A task at the top of its conversation, the way an issue page opens: where it came from with a
+ * way out to it, its title, what its asker wrote, then how long it worked, what it cost and the
+ * change and pull request it made — read live for the Mate living in the conversation's environment.
+ */
+export function MateTaskCard({
+  task,
+  text,
+  environmentId,
+  conversationId,
+  onOpenChange,
+}: {
+  readonly task: MateTaskSource;
+  /** What its asker wrote; empty: the ask had no more text than its title. */
+  readonly text: string;
+  readonly environmentId: EnvironmentId;
+  readonly conversationId: string;
+  readonly onOpenChange?: (change: {
+    readonly appId: string;
+    readonly repo: string;
+    readonly number: number;
+  }) => void;
+}) {
+  const { session, appId } = useTaskSession(task, environmentId, conversationId);
+  const openChange =
+    onOpenChange === undefined || appId === null || session.change === null
+      ? undefined
+      : () => onOpenChange({ appId, ...session.change! });
+  return (
+    <MateTaskCardView
+      session={session}
+      task={task}
+      text={text}
+      {...(openChange === undefined ? {} : { onOpenChange: openChange })}
+    />
+  );
 }
 
-/**
- * What a task's asker wrote where they asked, opening its conversation as theirs — never the
- * brief the agent got. A long ask stands cut at six lines, as measured before it paints, and opens
- * in place onto the rest.
- */
-export function MateTaskAskRow({
-  source,
-  text,
+export function MateTaskCardView({
+  task,
+  text = "",
+  session = NOT_KNOWN,
+  onOpenChange,
 }: {
-  readonly source: MateTaskSource;
-  readonly text: string;
+  readonly task: MateTaskSource;
+  readonly text?: string;
+  /** Where it stands now (`taskSession`); not known: its facts' line holds its room, empty. */
+  readonly session?: TaskSession;
+  readonly onOpenChange?: () => void;
 }) {
+  const link = mateTaskSourceLink(task);
+  const { pullRequest, change } = session;
+  // A long ask stands cut at six lines, as measured before it paints, and opens in place.
   const [open, setOpen] = useState(false);
   const [cut, setCut] = useState(false);
   const watch = useCallback((element: HTMLParagraphElement | null) => {
@@ -247,28 +225,77 @@ export function MateTaskAskRow({
     return () => observer.disconnect();
   }, []);
   return (
-    <div
-      className="flex flex-col items-start gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
-      data-zerops-surface="mate-task-ask"
+    <article
+      className="flex flex-col gap-1.5 rounded-2xl border border-border/70 bg-card px-5 pt-3.5 pb-3"
+      data-zerops-surface="mate-task-card"
     >
-      <p className="w-full min-w-0 truncate text-line text-muted-foreground">
-        {mateTaskAskHeading(source)}
-      </p>
-      <p
-        ref={open ? undefined : watch}
-        className={cn(
-          "w-full min-w-0 text-prose break-words whitespace-pre-wrap text-foreground",
-          !open && "line-clamp-6",
+      <div className="flex min-w-0 items-center gap-2 text-line text-muted-foreground">
+        <SourceMark source={task} />
+        <span className="min-w-0 truncate">{mateTaskCardSource(task)}</span>
+        {link === null ? null : (
+          <span className="ms-auto shrink-0">
+            <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
+              {link.words}
+              <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+            </InlineButton>
+          </span>
         )}
+      </div>
+      <h3 className="text-emphasis font-semibold text-balance text-foreground">{task.title}</h3>
+      {text === "" ? null : (
+        <div className="flex flex-col items-start gap-1">
+          <p
+            ref={open ? undefined : watch}
+            className={cn(
+              "w-full min-w-0 text-prose break-words whitespace-pre-wrap text-foreground",
+              !open && "line-clamp-6",
+            )}
+          >
+            {text}
+          </p>
+          {open || cut ? (
+            <InlineButton onClick={() => setOpen((value) => !value)}>
+              {open ? "Show less" : "Show all"}
+            </InlineButton>
+          ) : null}
+        </div>
+      )}
+      {/* Its facts' line holds its room from the first frame: what lands moves nothing. */}
+      <div
+        className="mt-1 flex min-h-6 flex-wrap items-center gap-x-4 gap-y-1 text-line text-muted-foreground"
+        data-zerops-surface="mate-task-facts"
       >
-        {text}
-      </p>
-      {open || cut ? (
-        <InlineButton onClick={() => setOpen((value) => !value)}>
-          {open ? "Show less" : "Show all"}
-        </InlineButton>
-      ) : null}
-    </div>
+        {session.workedMs === null ? null : (
+          <span className="flex items-center gap-1 tabular-nums">
+            <TimerIcon aria-hidden="true" className="size-3.5" />
+            <span className="sr-only">Worked </span>
+            {workedWords(session.workedMs)}
+          </span>
+        )}
+        {session.spentUsd === null ? null : (
+          <span className="text-foreground tabular-nums">
+            <span className="sr-only">Cost so far </span>
+            {spentWords(session.spentUsd)}
+          </span>
+        )}
+        <span className="ms-auto flex items-center gap-x-3">
+          {change === null || onOpenChange === undefined ? null : (
+            <InlineButton onClick={onOpenChange}>Change #{change.number}</InlineButton>
+          )}
+          {pullRequest === null ? null : (
+            <span className="flex items-center gap-1.5">
+              <InlineButton render={<a href={pullRequest.url} rel="noreferrer" target="_blank" />}>
+                {pullRequestName(pullRequest)}
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+              </InlineButton>
+              {pullRequest.state === "open" && pullRequest.checks !== undefined ? (
+                <span>checks {pullRequest.checks}</span>
+              ) : null}
+            </span>
+          )}
+        </span>
+      </div>
+    </article>
   );
 }
 

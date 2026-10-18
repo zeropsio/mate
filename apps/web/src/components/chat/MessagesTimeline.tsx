@@ -11,6 +11,7 @@ import {
   type MessageId,
   type ServerProviderSkill,
   type TurnId,
+  type MateTaskSource,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -231,7 +232,8 @@ import {
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
-import { MateTaskAskRow, MateTaskMessageRow } from "../zerops/MateTaskCard";
+import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
@@ -2806,6 +2808,27 @@ function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
   );
 }
 
+/** The task its conversation is for, read for the Mate living in its environment. */
+function TaskCardTimelineRow({ source, text }: { source: MateTaskSource; text: string }) {
+  const { threadRef } = use(TimelineRowCtx);
+  if (threadRef === null) return null;
+  return (
+    <MateTaskCard
+      conversationId={threadRef.threadId}
+      environmentId={threadRef.environmentId}
+      onOpenChange={(change) =>
+        useRightPanelStore.getState().openChange(threadRef, {
+          groupId: change.appId,
+          repository: change.repo,
+          number: change.number,
+        })
+      }
+      task={source}
+      text={text}
+    />
+  );
+}
+
 function TimelineRowBody({ row }: { row: TimelineRow }) {
   const ctx = use(TimelineRowCtx);
   const askLine = isStandUpAskRow(row, ctx.standUpAsk);
@@ -2838,9 +2861,9 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
-      {/* What a task's asker wrote, and what is said of it after its Mate took it; its brief
-          draws no row, its issue standing in the session band above the conversation. */}
-      {row.kind === "task-ask" ? <MateTaskAskRow source={row.source} text={row.text} /> : null}
+      {/* A task opens its conversation as its card; what is said of it after its Mate took it
+          follows as its authors'. Its brief draws no row. */}
+      {row.kind === "task-ask" ? <TaskCardTimelineRow source={row.source} text={row.text} /> : null}
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
