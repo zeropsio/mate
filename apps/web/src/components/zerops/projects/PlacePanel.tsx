@@ -88,6 +88,7 @@ export function PlacePanel({
   actions,
   onOpenLine,
   roomy = false,
+  look = "card",
 }: {
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
@@ -109,6 +110,8 @@ export function PlacePanel({
    * for a stage with no address yet.
    */
   readonly roomy?: boolean;
+  /** `lift`: only what went wrong and its buttons, lifted on a card. */
+  readonly look?: "card" | "lift" | undefined;
 }) {
   const { line } = model;
   const label = placeLabel(line);
@@ -133,8 +136,34 @@ export function PlacePanel({
             .getState()
             .open({ orgId, projectId, groupId, ...(intent === undefined ? {} : { intent }) });
         };
+  const domainDoor =
+    manage === undefined || !said.offerDomain ? null : (
+      <Button
+        onClick={() => {
+          manage("add-domain");
+        }}
+        size="sm"
+        variant="secondary"
+      >
+        Put it on your domain
+      </Button>
+    );
+  if (look === "lift")
+    return (
+      <div
+        aria-label={label}
+        className="ov-panel"
+        data-look="lift"
+        data-zerops-surface="place-panel"
+      >
+        <p className="ov-panel-note" data-tone={model.note?.tone ?? "attention"}>
+          {model.note?.text ?? line.words.join(" · ")}
+        </p>
+        <div className="ov-panel-acts">{actions}</div>
+      </div>
+    );
   return (
-    <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
+    <div aria-label={label} className="ov-panel" data-look={look} data-zerops-surface="place-panel">
       <div className="ov-panel-head">
         <b className="ov-panel-name">{label}</b>
         {head === undefined ? null : (
@@ -229,17 +258,7 @@ export function PlacePanel({
       )}
       <div className="ov-panel-acts">
         {actions}
-        {manage === undefined || !said.offerDomain ? null : (
-          <Button
-            onClick={() => {
-              manage("add-domain");
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Put it on your domain
-          </Button>
-        )}
+        {domainDoor}
         {manage === undefined || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
           <Button
             onClick={() => {

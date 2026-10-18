@@ -49,9 +49,11 @@ import {
   flowVerbLabel,
   projectNameInApp,
   readZeropsMembership,
+  environmentSlots,
   productionRunsOf,
   ENVIRONMENT_UNFINISHED,
   releaseContentsCommits,
+  releaseContentsSummary,
   carriedReads,
   movedCommits,
   movedCount,
@@ -120,6 +122,12 @@ import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppDetailHold, useHqRecipeFailure } from "~/zerops/useHqAppDetail";
+import {
+  useAddEnvironment,
+  useGroupPendingEnvironments,
+  useEnvironmentOffers,
+} from "~/zerops/useAddEnvironment";
+import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -136,7 +144,8 @@ import { ProjectAccessCard, type AccessPlace } from "./projects/ProjectAccessCar
 import { ProjectChangesCard } from "./projects/ProjectChangesCard";
 import { ProjectPageCard } from "./projects/ProjectPageCard";
 import { useProjectChangesCard } from "./projects/useProjectChangesCard";
-import { ProjectCardStandIn } from "./projects/OverviewStandIn";
+import { ProjectPageStandIn } from "./projects/OverviewStandIn";
+import { RoadEnvironmentRows, devstagesOf } from "./projects/RoadEnvironments";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -336,6 +345,15 @@ export function runtimeStopsOf(
   return [...stops.values()];
 }
 
+function useDevstages(
+  groupId: string,
+): ReadonlyArray<{ readonly id: string; readonly name: string }> {
+  const inventory = useZeropsInventory();
+  const held = useContext(HeldInventoryContext);
+  const projects = held?.projects ?? inventory.projects;
+  return useMemo(() => devstagesOf(groupId, projects), [groupId, projects]);
+}
+
 function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
@@ -403,10 +421,10 @@ export function ZeropsRuntimeStops({
 }
 
 /**
- * A project's own page: its card from the overview at the page's width — the same slots, so a
- * Mate's row, a place's panel and the release's door are one thing on both — and the column
- * beside it with what a card has no room for: the people on it, its environments, its
- * repositories and its history.
+ * A project's own page: its header and its road at the page's width — the overview card's slots,
+ * so a Mate's row, a place's panel and the release's door are one thing on both — and under them,
+ * at full width, the page's own cards: the people on it, its environments, its repositories and
+ * its history.
  */
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const groupName = useGroupName(groupId);
@@ -417,7 +435,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
-      people: <ProjectPeople groupId={groupId} />,
+      roadEnvironments: (tier: GroupEnvironmentTier) => (
+        <RoadEnvironmentsLive groupId={groupId} tier={tier} />
+      ),
       onAddMate: () => {
         addMate(groupId);
       },
@@ -433,6 +453,103 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 }
 
 const NO_SEARCH = {};
+
+/**
+ * One tier's environments under its stop on the project page's road, from the page's reads: the
+ * same `environmentSlots` every door to adding an environment asks.
+ */
+function RoadEnvironmentsLive({
+  groupId,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  if (flow === undefined) return null;
+  return <KnownRoadEnvironments flow={flow} groupId={groupId} tier={tier} />;
+}
+
+function KnownRoadEnvironments({
+  groupId,
+  flow,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const deployments = useStopDeploymentsShown();
+  const environments = flow.environments;
+  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
+  const release = useReleaseOffer(groupId, flow);
+  const { withheldNotice } = useWithheldStops(environments);
+  const firstDeployOf = useStageFirstDeploys(flow);
+  const offered = useEnvironmentOffers()(groupId);
+  const addEnvironment = useAddEnvironment();
+  const openPutLive = useOpenPutLive();
+  const devstages = useDevstages(groupId);
+  const pendingEnvironments = useGroupPendingEnvironments(groupId);
+  const { listing } = useZeropsCandidates();
+  const { halfMade } = useEnvironmentSetup(
+    useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
+  );
+  const production = environments.find((entry) => entry.tier === "production");
+  // Drawn once HQ has told the environments: before that, or where HQ refuses them to the reader,
+  // nothing is known to be absent.
+  const slots = !flow.declarationsRead
+    ? []
+    : environmentSlots({
+        environments: environments.map((entry) => ({
+          id: entry.id,
+          target: entry.target,
+          tier: entry.tier,
+        })),
+        devstages,
+        pending: pendingEnvironments,
+        halfMade: halfMade
+          .filter((entry) => entry.groupId === groupId)
+          .map((entry) => ({ id: entry.projectId, tier: entry.tier, finish: entry.finish })),
+        recipeTiers: flow.recipeTiers,
+        recipeRead: flow.recipeRead,
+        offered: offered ?? { stage: false, production: false },
+        productionRuns:
+          production?.target.kind !== "zerops"
+            ? "unknown"
+            : productionRunsOf(deployments.get(production.target.projectId)),
+        waiting: { count: waiting.total, atLeast: waiting.atLeast },
+        mainHasCode:
+          flow.release.entries.length > 0
+            ? true
+            : flow.repos === undefined || !flow.recipeRead
+              ? undefined
+              : false,
+        releaseOffered: release.offered,
+        releasing: flow.release.inFlight,
+      });
+  return (
+    <RoadEnvironmentRows
+      facts={{
+        groupId,
+        slots,
+        environments,
+        repos: flow.repos,
+        withheldNotice,
+        firstDeployOf,
+        release,
+        onAdd: (added) => {
+          if (added === "production") openPutLive(groupId);
+          else addEnvironment(groupId, added);
+        },
+      }}
+      tier={tier}
+    />
+  );
+}
 
 /** The page's column: what the project's card has no room for, once its flow is read. */
 function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
@@ -451,15 +568,15 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
-  // The project's page in its own boxes: its card's place, and its column, where the environments
-  // already read stand as the page's own Environments will.
+  // The project's page in its own boxes: its header and its road at their final size, and under
+  // them the environments already read, as the page's own Environments will stand.
   return (
     <div className="ov-page">
       <UnreadDetail
         groupId={groupId}
         standIn={
           <Loading label="This project">
-            <ProjectCardStandIn page />
+            <ProjectPageStandIn />
           </Loading>
         }
       />

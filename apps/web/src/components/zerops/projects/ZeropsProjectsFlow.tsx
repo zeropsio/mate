@@ -30,6 +30,9 @@ import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
+
+/** How a place's panel is drawn (`renderPlacePanel`). */
+export type PlacePanelLook = "column" | "detail" | "lift";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -88,14 +91,18 @@ export interface ProjectsFlowGroup<T> {
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The column beside the card. */
+  /** The page's own cards, under its road. */
   readonly aside: ReactNode;
+  /**
+   * Each tier's environments under its stop on the road (`RoadEnvironmentRows`): a stage or
+   * production by its name and what it runs, or its quiet slot with its Add. Absent, the road
+   * says what the flow says.
+   */
+  readonly roadEnvironments?: ((tier: "stage" | "production") => ReactNode) | undefined;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
   readonly addMateWhy?: string | null;
-  /** Who can work on it, and how — under its Mates on the card. */
-  readonly people?: ReactNode;
   /** What the page says while the project is not among the read ones yet. */
   readonly unread: ReactNode;
 }
@@ -124,6 +131,11 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly layout: "card" | "row";
       readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
+      /**
+       * Whether what it waits on the viewer for may lift it: a card lifts one thing, and a further
+       * waiting Mate is an ordinary row that says it waits on you (`unlifted`).
+       */
+      readonly lift?: boolean | undefined;
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
@@ -136,8 +148,13 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /** The ready release's door on a card (*Review release*), while one is offered. */
-  readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /**
+   * The ready release's door on a card, while one is offered: the road's chip between Stage and
+   * Production, by its words (`label`, "3 ready").
+   */
+  readonly renderReleaseVerb?:
+    | ((entry: ProjectsFlowGroup<T>, chip: { readonly label: string }) => ReactNode)
+    | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
   /** Re-probes the containers not answering. */
@@ -170,12 +187,27 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly rollsBackTo?: string | undefined;
         /** The stage runs every change a release would carry; `undefined` while unread. */
         readonly releaseOnStage?: boolean | undefined;
+        /** The release production's last attempt failed with (`releaseFailureOf`). */
+        readonly failedTag?: string | undefined;
+        /** When each stage last took a deploy, by its project. */
+        readonly stageSince?: ReadonlyMap<string, string> | undefined;
       })
     | undefined;
-  /** A place's panel: its facts and its actions; without it, its line. */
+  /**
+   * A place's panel: its facts and its actions; without it, its line. `column` is its column on
+   * the project page's road, under its stop's name; `detail` the same under the road's row that
+   * already names what runs there; `lift` only what went wrong there and its buttons, lifted on a
+   * card.
+   */
   readonly renderPlacePanel?:
-    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
+    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine, look: PlacePanelLook) => ReactNode)
     | undefined;
+  /** The newest event a card has not said above: the latest merged change, with whose. */
+  readonly renderActivity?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /** A Mate's lift or a change waits on the viewer in the project (the overview's Waiting filter). */
+  readonly waitsOnYou?: ((entry: ProjectsFlowGroup<T>) => boolean) | undefined;
+  /** An automated Mate: it takes tasks, and its card folds it into one line. */
+  readonly isAutomated?: ((item: T) => boolean) | undefined;
   /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
   readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /**
@@ -279,7 +311,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
             entry={entry}
             addMateWhy={page.addMateWhy ?? null}
             onAddMate={page.onAddMate}
-            people={page.people}
+            roadEnvironments={page.roadEnvironments}
             props={props}
           />
         )}
