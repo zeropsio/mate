@@ -24,6 +24,15 @@ export function IntegrationList({ children }: { readonly children: ReactNode }) 
   );
 }
 
+/** The limits on what automated Mates spend: their own card, a group apart from the connections. */
+export function LimitsList({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="mt-3">
+      <IntegrationList>{children}</IntegrationList>
+    </div>
+  );
+}
+
 /** Where a row stands, as its pill says it; `none`: no pill (its line says why). */
 export type IntegrationState =
   | { readonly kind: "checking" }
@@ -113,8 +122,54 @@ export function IntegrationRow({
 }
 
 /**
+ * A setting in the list's columns: its mark, name and value in words, and its fields with Save
+ * where the status and the press stand in a connection's row; what it says of a save, under it.
+ */
+export function IntegrationSetting({
+  id,
+  surface,
+  mark,
+  name,
+  line,
+  control,
+  children,
+}: {
+  readonly id?: string;
+  readonly surface: string;
+  readonly mark: ReactNode;
+  readonly name: string;
+  /** Its value in words. */
+  readonly line: ReactNode;
+  readonly control?: ReactNode;
+  readonly children?: ReactNode;
+}) {
+  const targetRef = useSettingsSearchTarget<HTMLLIElement>(id);
+  return (
+    <li
+      data-zerops-surface={surface}
+      id={id}
+      ref={targetRef}
+      tabIndex={id === undefined ? undefined : -1}
+    >
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span aria-hidden className="flex size-5 shrink-0 items-center justify-center">
+          {mark}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">{name}</p>
+          <p className="text-xs text-muted-foreground">{line}</p>
+        </div>
+        <div className="flex shrink-0 justify-end">{control}</div>
+      </div>
+      {children ? <div className="pe-4 pb-3 ps-12">{children}</div> : null}
+    </li>
+  );
+}
+
+/**
  * A row's press: *Connect* while it is not, *Manage* or *Replace* once it is — and, while what it
- * opened shows, the press that folds it (`closeWords`).
+ * opened shows, the press that folds it (`closeWords`). `closeWords: null`: what it opened carries
+ * its own Cancel, and the press holds its room unseen until it folds.
  */
 export function IntegrationAction({
   primary,
@@ -128,9 +183,17 @@ export function IntegrationAction({
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly disabled?: boolean;
-  readonly closeWords?: string;
+  readonly closeWords?: string | null;
   readonly children: ReactNode;
 }) {
+  if (open && closeWords === null)
+    return (
+      <span aria-hidden className="invisible">
+        <Button size="sm" tabIndex={-1} variant={primary ? "primary" : "secondary"}>
+          {children}
+        </Button>
+      </span>
+    );
   return (
     <Button
       aria-expanded={open}
