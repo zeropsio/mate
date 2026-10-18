@@ -21,8 +21,11 @@ import {
   ProjectAutomationView,
   SourceDialog,
   type AutomationControls,
+  type BoardView,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import {
   connectionMissing,
   sourceRows,
@@ -100,6 +103,121 @@ const POOL: ReadonlyArray<PoolMate> = [
   { projectId: "p-ines", name: "Ines", tint: "sky", shape: undefined, automation: { task: null } },
 ];
 const WORKING = new Set(["p-juno"]);
+
+const NOW = Date.now();
+const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+const TASK: HqAppTask = {
+  id: "t4",
+  title: "Show prices in euros",
+  label: "acme/tea-shop#4",
+  url: "https://github.com/acme/tea-shop/issues/4",
+  state: "working",
+  mate: { projectId: "p-juno", name: "Juno" },
+  requestedBy: "nova-dev",
+  createdAt: ago(16),
+  startedAt: ago(12),
+  endedAt: null,
+  spentUsd: 0.42,
+  workedMs: 600_000,
+  detail: null,
+  change: null,
+  pullRequest: null,
+  link: "https://mate.zerops.io/env-1/conversation-4",
+};
+const TASKS: ReadonlyArray<HqAppTask> = [
+  {
+    ...TASK,
+    id: "t5",
+    title: "Add a dark mode to the tea list",
+    label: "acme/tea-shop#5",
+    state: "queued",
+    position: 1,
+    mate: null,
+    createdAt: ago(4),
+    startedAt: null,
+    spentUsd: null,
+    link: null,
+  },
+  {
+    ...TASK,
+    id: "t6",
+    title: "Weekly upkeep",
+    label: "Schedule · Weekly upkeep",
+    url: null,
+    state: "queued",
+    position: 2,
+    mate: null,
+    createdAt: ago(1),
+    startedAt: null,
+    spentUsd: null,
+    link: null,
+  },
+  TASK,
+  {
+    ...TASK,
+    id: "t7",
+    title: "Fix the checkout total rounding",
+    label: "#support on Slack",
+    state: "waiting",
+    mate: { projectId: "p-nova", name: "Nova" },
+    startedAt: ago(48),
+    spentUsd: 1.08,
+  },
+  {
+    ...TASK,
+    id: "t1",
+    title: "Add a search box to the tea list",
+    state: "merged",
+    mate: { projectId: "p-nova", name: "Nova" },
+    endedAt: ago(240),
+    spentUsd: 0.31,
+    change: { repo: "web", number: 2 },
+    pullRequest: { number: 2, url: "https://github.com/acme/tea-shop/pull/2" },
+  },
+  {
+    ...TASK,
+    id: "t2",
+    title: "Show each tea's price per 100 g",
+    state: "done",
+    endedAt: ago(300),
+    spentUsd: 0.27,
+    change: { repo: "web", number: 3 },
+  },
+  {
+    ...TASK,
+    id: "t3",
+    title: "Import the spring catalogue",
+    state: "failed",
+    endedAt: ago(1500),
+    spentUsd: 2.02,
+    detail: "the catalogue file was not in the repository.",
+  },
+  {
+    ...TASK,
+    id: "t0",
+    title: "Rename the shop",
+    state: "stopped",
+    endedAt: ago(2900),
+    spentUsd: 0.04,
+    detail: "Ales stopped it in Mate.",
+  },
+];
+const BOARD: BoardView = {
+  read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop") },
+  spend: "$6.44 of $50 this month",
+  onReadAgain: nothing,
+  onOpen: nothing,
+  stop: {
+    pressOf: (id) => (id === "t7" ? { kind: "asking" } : { kind: "idle" }),
+    onAsk: nothing,
+    onKeep: nothing,
+    onStop: nothing,
+  },
+};
+const READING: BoardView = {
+  ...BOARD,
+  read: { state: "reading", predicted: { atWork: 2, queued: 2, recent: 2 } },
+};
 
 const SCHEDULE = {
   id: "s1",
@@ -221,6 +339,17 @@ function Harness() {
         <Panel title="An Owner's or Admin's project page — pool and sources">
           <ProjectAutomationView
             admin={ADMIN}
+            board={BOARD}
+            onOpenMate={nothing}
+            pool={POOL}
+            sources={SOURCES}
+            workingOf={(id) => WORKING.has(id)}
+          />
+        </Panel>
+        <Panel title="The board while it reads">
+          <ProjectAutomationView
+            admin={ADMIN}
+            board={READING}
             onOpenMate={nothing}
             pool={POOL}
             sources={SOURCES}
@@ -264,6 +393,7 @@ function Harness() {
         </Panel>
         <Panel title="A member reads it">
           <ProjectAutomationView
+            board={{ ...BOARD, stop: undefined }}
             onOpenMate={nothing}
             pool={POOL}
             sources={{ rows: SOURCES.rows.slice(0, 1), reading: false, withheld: true }}
