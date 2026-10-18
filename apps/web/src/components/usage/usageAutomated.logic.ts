@@ -91,6 +91,30 @@ export function usageMateTasks(input: {
     }));
 }
 
+/** How many ended tasks of an application HQ lists, newest first (`ENDED_SHOWN` in HQ's board). */
+const HQ_ENDED_LISTED = 20;
+
+/** In place of "no tasks" where HQ's list may leave out some of the period's. */
+export const USAGE_TASKS_CUT_WORDS =
+  "Older tasks are not listed here; they are in the totals above.";
+
+/**
+ * Whether the period reaches back past the oldest ended task HQ's list holds, while that list is
+ * full: a task of the period may then be missing from it. The totals come from the usage ledger
+ * and stay whole either way.
+ */
+export function usageTaskListCut(input: {
+  readonly tasks: ReadonlyArray<HqAppTask>;
+  readonly since: string | null;
+}): boolean {
+  const ended = input.tasks.flatMap((task) =>
+    task.endedAt === null ? [] : [Date.parse(task.endedAt)],
+  );
+  if (ended.length < HQ_ENDED_LISTED) return false;
+  const since = input.since === null ? -Infinity : Date.parse(input.since);
+  return since < Math.min(...ended);
+}
+
 export interface AutomatedBudget {
   readonly spent: string;
   readonly budget: string;

@@ -1,7 +1,12 @@
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { describe, expect, it } from "vite-plus/test";
 
-import { automatedBudget, usageMateTasks, usageTaskTarget } from "./usageAutomated.logic";
+import {
+  automatedBudget,
+  usageMateTasks,
+  usageTaskListCut,
+  usageTaskTarget,
+} from "./usageAutomated.logic";
 
 const task = (change: Partial<HqAppTask>): HqAppTask => ({
   id: "task",
@@ -87,6 +92,46 @@ describe("an automated Mate's tasks in Usage", () => {
       }),
     ).toHaveLength(1);
   });
+});
+
+describe("a period older than the tasks HQ lists", () => {
+  // HQ lists every live task and only the 20 newest ended ones of an application.
+  const ended = (count: number, newest: number) =>
+    Array.from({ length: count }, (_, at) =>
+      task({
+        id: `ended-${at}`,
+        endedAt: new Date(
+          Date.parse("2026-10-07T00:00:00.000Z") - (newest + at) * 3_600_000,
+        ).toISOString(),
+      }),
+    );
+  it.each([
+    { case: "the list holds fewer than HQ keeps", tasks: ended(19, 0), since: null, cut: false },
+    {
+      case: "the period starts after the oldest task listed",
+      tasks: ended(20, 0),
+      since: "2026-10-06T12:00:00.000Z",
+      cut: false,
+    },
+    {
+      case: "the period reaches back past the oldest task listed",
+      tasks: ended(20, 0),
+      since: "2026-10-01T00:00:00.000Z",
+      cut: true,
+    },
+    { case: "the period runs from the start", tasks: ended(20, 0), since: null, cut: true },
+    {
+      case: "live tasks beside the 20 ended",
+      tasks: [...ended(20, 0), task({ id: "live", state: "working", endedAt: null })],
+      since: "2026-10-06T12:00:00.000Z",
+      cut: false,
+    },
+  ])(
+    "knows HQ's list may leave out tasks of the period ($cut) where $case",
+    ({ tasks, since, cut }) => {
+      expect(usageTaskListCut({ tasks, since })).toBe(cut);
+    },
+  );
 });
 
 describe("following a task from Usage", () => {

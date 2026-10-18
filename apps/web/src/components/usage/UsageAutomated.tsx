@@ -10,7 +10,13 @@ import { cn } from "../../lib/utils";
 import { useAppTaskSource, useOrgTaskSource } from "../../zerops/useTaskSourceSettings";
 import { InlineButton } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
-import { automatedBudget, usageMateTasks, type UsageTaskRow } from "./usageAutomated.logic";
+import {
+  automatedBudget,
+  USAGE_TASKS_CUT_WORDS,
+  usageMateTasks,
+  usageTaskListCut,
+  type UsageTaskRow,
+} from "./usageAutomated.logic";
 
 /** In place of a face: automated Mates are nobody's own. Decorative: their name stands beside it. */
 export function AutomatedMatesMark() {
@@ -116,8 +122,15 @@ export function UsageMateTaskRows({
       </tr>
     );
   const rows = usageMateTasks({ tasks: setting.held, mateProjectId, since, until });
-  if (rows.length === 0) return <TaskNote nested={nested}>No tasks in this period.</TaskNote>;
-  return rows.map((row) => (
+  // HQ lists only an application's newest ended tasks: never "none" where the period is older.
+  const cut = usageTaskListCut({ tasks: setting.held, since });
+  if (rows.length === 0)
+    return (
+      <TaskNote nested={nested}>
+        {cut ? USAGE_TASKS_CUT_WORDS : "No tasks in this period."}
+      </TaskNote>
+    );
+  const listed = rows.map((row) => (
     <tr key={row.id} className={cn(ROW, "text-xs")}>
       <td className={cn("py-2", taskIndent(nested))}>
         <span className="flex min-w-0 items-baseline gap-2">
@@ -132,6 +145,14 @@ export function UsageMateTaskRows({
       <td />
     </tr>
   ));
+  return cut ? (
+    <>
+      {listed}
+      <TaskNote nested={nested}>{USAGE_TASKS_CUT_WORDS}</TaskNote>
+    </>
+  ) : (
+    listed
+  );
 }
 
 /** The month's automated spend against the organization's budget; nothing while none is set. */
