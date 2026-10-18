@@ -185,6 +185,28 @@ describe("a card's folded Mates", () => {
       ],
       want: "2 automated Mates wait for a task",
     },
+    {
+      // HQ hands a Mate whose change waits for review no task: it waits on the person, not a task.
+      mates: [
+        { name: "Odo", working: false, reviewing: true },
+        { name: "Tess", working: false, reviewing: true },
+      ],
+      want: "Odo and Tess wait for your review",
+    },
+    {
+      mates: [
+        { name: "Odo", working: false, reviewing: true },
+        { name: "Tess", working: false },
+      ],
+      want: "Odo waits for your review",
+    },
+    {
+      mates: [
+        { name: "Odo", working: true },
+        { name: "Tess", working: false, reviewing: true },
+      ],
+      want: "Odo works on a task",
+    },
   ])("folds automated Mates into one line: $want", ({ mates, want }) => {
     expect(automatedWords(mates)).toBe(want);
   });
