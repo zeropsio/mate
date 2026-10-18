@@ -137,6 +137,8 @@ export interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
   /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
   readonly task?: MateTaskSource;
+  /** With `task`: what its asker wrote where they asked, drawn as theirs; never the brief. */
+  readonly taskAsk?: string;
   /** Something said about a task its Mate took, told to it: drawn as its author's. */
   readonly taskMessage?: MateTaskMessage;
   /** The person's message waits in the engine's queue: no run has taken it yet. */
@@ -174,6 +176,7 @@ function messageOf(
         role: "user",
         text: item.text,
         ...(item.task === undefined ? {} : { task: item.task }),
+        ...(item.taskAsk === undefined ? {} : { taskAsk: item.taskAsk }),
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>

@@ -640,9 +640,15 @@ export const make = Effect.gen(function* () {
       // Its limits kept before its first run can start, so the run is held to them from the start.
       const { limits } = task;
       if (limits !== undefined) yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
+      const ask = task.body.trim();
       const result = yield* engine.deliver(
         conversationId,
-        { _tag: "Send", text: taskBrief(task), task: task.source },
+        {
+          _tag: "Send",
+          text: taskBrief(task),
+          task: task.source,
+          ...(ask === "" ? {} : { taskAsk: ask }),
+        },
         CommandId.make(again === undefined ? `task:${task.id}` : `task:${task.id}:${again}`),
         principalOf(task.id),
       );

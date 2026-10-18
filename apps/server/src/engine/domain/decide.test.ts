@@ -1127,6 +1127,21 @@ describe("decide: a task from outside opens its conversation", () => {
     expect(scene.state.runs[r(1)]?.principal).toEqual(task);
   });
 
+  it("a task's brief carries its asker's words beside it, for the ask's row", () => {
+    const scene = play([
+      {
+        command: send("Work issue #42", { task: source, taskAsk: "Add two teas, reload." }),
+        by: task,
+      },
+    ]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.body).toMatchObject({
+      kind: "person",
+      text: "Work issue #42",
+      taskAsk: "Add two teas, reload.",
+    });
+  });
+
   it("a person's message carries no task", () => {
     const scene = play([send("hello")]);
     const item = scene.events.find((event) => event._tag === "ItemOpened");

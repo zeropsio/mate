@@ -203,6 +203,8 @@ export type Command =
       readonly fromPanel?: true;
       /** A task's brief: the issue it brings, drawn as its card (the person item's `task`). */
       readonly task?: MateTaskSource;
+      /** With `task`: the asker's own words (the person item's `taskAsk`); never the brief. */
+      readonly taskAsk?: string;
       /** A follow-up told to a task's Mate: drawn as its author's (the person item's `taskMessage`). */
       readonly taskMessage?: MateTaskMessage;
     }
