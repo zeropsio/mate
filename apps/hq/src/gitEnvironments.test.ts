@@ -317,6 +317,38 @@ describe("Structure Git environments", () => {
         );
       }),
     );
+    it.effect(
+      "A requested production that adopts the remote's history is added and answered.",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const adoption = yield* f.preview();
+          const request = () =>
+            f.structure
+              .gitTargetWrite("owner", "add-production", {
+                kind: "add-git-environment",
+                orgId: "ORG",
+                hqProjectId: "HQ",
+                appId: f.app.id,
+                request: { tier: "production", name: "production", target: f.target, adoption },
+              })
+              .pipe(Effect.provide(f.context));
+          const receipt = yield* request();
+          assert.strictEqual(receipt.outcome.kind, "succeeded");
+          // A lost answer asked again is the original receipt, never a second attachment.
+          assert.deepStrictEqual(yield* request(), receipt);
+          assert.deepStrictEqual(yield* f.sql`SELECT tier,branch FROM hq_environment`, [
+            { tier: "production", branch: "main" },
+          ]);
+          const [head] = yield* f.sql<{
+            readonly main_head: string;
+          }>`SELECT main_head FROM hq_repo WHERE app_id::text=${f.app.id} AND name='web'`;
+          assert.deepStrictEqual(
+            gitAt(f.dir, ["rev-list", "--parents", "-n", "1", head!.main_head]).split(" ").slice(1),
+            [f.main, f.remoteTip],
+          );
+        }),
+    );
     it.effect.each([
       {
         project: "mate-rig-e2e-c - production",

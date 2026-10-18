@@ -1,6 +1,6 @@
 import { HqGitEnvironmentRefusalReason } from "@t3tools/shared/hqGitTargets";
 import type { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
-import { keepGitReceipt, readGitReceipt } from "./gitTargetReceipts.ts";
+import { keepGitReceipt, keepGitReceiptAtCommit, readGitReceipt } from "./gitTargetReceipts.ts";
 /** Structure's Git lifecycle: no project, no external deletion, and no delivery executor. */
 import type {
   AddGitEnvironmentRequest,
@@ -17,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
+import type { SqlError } from "effect/sql/SqlError";
 import { Deploys } from "./deploys.ts";
 import { environmentNameProblem } from "@t3tools/shared/hqEnvironment";
 import { GitHost, holdingRepo } from "./gitHost.ts";
@@ -155,7 +156,13 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
             );
           }),
         ),
-      addGitEnvironment: (userId: string, appId: string, request: AddGitEnvironmentRequest) =>
+      /** `kept` commits with the attachment: a request's receipt (`keepGitReceiptAtCommit`). */
+      addGitEnvironment: (
+        userId: string,
+        appId: string,
+        request: AddGitEnvironmentRequest,
+        kept: Effect.Effect<void, SqlError> = Effect.void,
+      ) =>
         decidedFresh(
           Effect.gen(function* () {
             const input = yield* decodeAdd(request);
@@ -259,6 +266,7 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
             RETURNING id,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"`;
                 yield* sql`INSERT INTO hq_rollout(app_id,cause,environment_id,environment_created_at,by)
             SELECT app_id,'env_added',id,created_at,${userId} FROM hq_environment WHERE id=${row!.id}`;
+                yield* kept;
                 return { environmentId: row!.id, createdAt: row!.createdAt, target: input.target };
               }),
             );
@@ -325,6 +333,17 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
         decidedFresh(
           Effect.gen(function* () {
             yield* authorizeRequest(userId, intent);
+            if (intent.kind === "add-git-environment") {
+              const receipt = yield* keepGitReceiptAtCommit(
+                sql,
+                userId,
+                requestId,
+                intent,
+                (kept) => lifecycle.addGitEnvironment(userId, intent.appId, intent.request, kept),
+              );
+              yield* changed;
+              return receipt;
+            }
             const receipt = yield* keepGitReceipt(
               sql,
               leader,
@@ -339,9 +358,6 @@ export const makeGitEnvironments = (changed: Effect.Effect<void>) =>
                       intent.appId,
                       intent.request,
                     );
-                  case "add-git-environment":
-                    yield* lifecycle.addGitEnvironment(userId, intent.appId, intent.request);
-                    return undefined;
                   case "remove-git-environment":
                     yield* lifecycle.removeGitEnvironment(
                       userId,
