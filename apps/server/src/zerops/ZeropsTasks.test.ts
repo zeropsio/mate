@@ -1873,7 +1873,7 @@ describe("an automated Mate's working copies hold the task it works", () => {
       yield* link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1);
       assert.deepStrictEqual(copies.at(-1), {
         taskId: "task-1",
-        base: { kind: "change", branch: "mate/P_ROBOT/3" },
+        base: { kind: "change", repo: "appdev", branch: "mate/P_ROBOT/3" },
         sentBefore: 2,
       });
       assert.include(contextOf(delivered, "m-1"), "Your working copy is on this task's own change");
@@ -1891,6 +1891,21 @@ describe("an automated Mate's working copies hold the task it works", () => {
       assert.strictEqual(copies.length, 2);
       assert.isTrue(delivered.some((each) => each.commandId === "task-message:m-2"));
     }),
+  );
+
+  it.effect(
+    "an answer to the task a Mate took before it kept which task its working copies hold leaves them as they are",
+    () =>
+      Effect.gen(function* () {
+        // Taken before the upgrade: the ledger names no task the working copies hold, and the
+        // task waits for its answer, the newest the conversation worked.
+        const { copies, delivered, link } = yield* rig({
+          held: [view(TASKS, { lastEnded: doneRun("task-1", 1, 0, 1) })],
+        });
+        yield* link.message("task-1", message("m-1", "The blue ones."), CHANGE_1);
+        assert.deepStrictEqual(copies, []);
+        assert.isTrue(delivered.some((each) => each.commandId === "task-message:m-1"));
+      }),
   );
 
   it.effect("a follow-up never moves the working copies under another task's run", () =>

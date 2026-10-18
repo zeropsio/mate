@@ -20,6 +20,10 @@ interface Copy {
   unpushed: number;
   /** The branches HQ's git holds for this repository, by name, at their commits. */
   readonly origin: Record<string, string>;
+  /** The repository on HQ's git its `origin` names. */
+  readonly repo: string;
+  /** Its local branches besides HEAD's, by name, at their commits. */
+  readonly local: Record<string, string>;
   /** Fetched so far: `refs/remotes/origin/<name>`. */
   readonly fetched: Record<string, string>;
   /** Git refuses this step (its first argument). */
@@ -33,6 +37,8 @@ const copy = (host: string, given: Partial<Copy> = {}): Copy => ({
   dirty: false,
   unpushed: 0,
   origin: { main: "main1" },
+  repo: host,
+  local: {},
   fetched: {},
   ...given,
 });
@@ -69,6 +75,8 @@ const rig = (copies: ReadonlyArray<Copy>) =>
           ran.push(`${at.host}: ${input.args.join(" ")}`);
           if (at.failing === step) return refuse(input);
           switch (step) {
+            case "remote":
+              return ok(`https://hq.test/git/app-1/${encodeURIComponent(at.repo)}.git\n`);
             case "symbolic-ref":
               return at.branch === undefined ? refuse(input) : ok(`${at.branch}\n`);
             case "fetch": {
@@ -80,7 +88,10 @@ const rig = (copies: ReadonlyArray<Copy>) =>
             }
             case "rev-parse": {
               const ref = rest.at(-1)!.replace("^{commit}", "");
-              const commit = ref === "HEAD" ? at.head : at.fetched[ref];
+              const commit =
+                ref === "HEAD"
+                  ? at.head
+                  : (at.fetched[ref] ?? at.local[ref.replace("refs/heads/", "")]);
               return commit === undefined ? ok("", 1) : ok(`${commit}\n`);
             }
             case "status":
@@ -90,6 +101,10 @@ const rig = (copies: ReadonlyArray<Copy>) =>
               return ok();
             case "rev-list":
               return ok(`${String(at.unpushed)}\n`);
+            case "branch":
+              if (at.local[rest.at(-2)!] !== undefined) return refuse(input);
+              at.local[rest.at(-2)!] = at.head;
+              return ok();
             case "checkout":
               at.head = at.fetched[rest.at(-1)!]!;
               at.unpushed = 0;
@@ -124,11 +139,11 @@ describe("an automated Mate's working copies hold the task it works", () => {
     Effect.gen(function* () {
       const appdev = copy("appdev", { dirty: true, unpushed: 2 });
       const { workingCopy, ran } = yield* rig([appdev]);
-      const held = yield* workingCopy.hold("task-2abcdef9", { kind: "main" });
+      const held = yield* workingCopy.hold("task-2abcdef9", { kind: "main" }, "task-1abcdef9");
       assert.deepStrictEqual(held, { missed: [], unlisted: false });
       assert.deepStrictEqual(changing(ran), [
         "appdev: stash push -u -m mate: kept before task task-2abcdef9",
-        "appdev: branch -f mate-kept/task-2ab HEAD",
+        "appdev: branch mate-kept/task-1ab-aaa HEAD",
         "appdev: checkout -q --no-track -B mate/P_ROBOT refs/remotes/origin/main",
       ]);
       assert.strictEqual(appdev.head, "main1");
@@ -139,10 +154,18 @@ describe("an automated Mate's working copies hold the task it works", () => {
     "a follow-up starts on its own change's branch, where its repository holds it, and on main elsewhere",
     () =>
       Effect.gen(function* () {
+        // Numbers are per repository: apidev's git holds a #3 of its own, another task's.
         const appdev = copy("appdev", { origin: { main: "main1", "mate/P_ROBOT/3": "change3" } });
-        const apidev = copy("apidev", { head: "bbb" });
+        const apidev = copy("apidev", {
+          head: "bbb",
+          origin: { main: "main1", "mate/P_ROBOT/3": "other3" },
+        });
         const { workingCopy, ran } = yield* rig([appdev, apidev]);
-        yield* workingCopy.hold("task-1", { kind: "change", branch: "mate/P_ROBOT/3" });
+        yield* workingCopy.hold("task-1", {
+          kind: "change",
+          repo: "appdev",
+          branch: "mate/P_ROBOT/3",
+        });
         assert.deepStrictEqual(changing(ran).toSorted(), [
           "apidev: checkout -q --no-track -B mate/P_ROBOT refs/remotes/origin/main",
           "appdev: checkout -q --no-track -B mate/P_ROBOT refs/remotes/origin/mate/P_ROBOT/3",
@@ -150,6 +173,23 @@ describe("an automated Mate's working copies hold the task it works", () => {
         assert.strictEqual(appdev.head, "change3");
         assert.strictEqual(apidev.head, "main1");
       }),
+  );
+
+  it.effect("kept commits keep their branch when the working copies move again", () =>
+    Effect.gen(function* () {
+      const appdev = copy("appdev", { unpushed: 1 });
+      const { workingCopy, ran } = yield* rig([appdev]);
+      yield* workingCopy.hold("task-2", { kind: "main" }, "task-1");
+      // Worked on again before the next move, the same task coming to it once more.
+      appdev.head = "ccc";
+      appdev.unpushed = 1;
+      yield* workingCopy.hold("task-2", { kind: "main" }, "task-1");
+      assert.deepStrictEqual(appdev.local, {
+        "mate-kept/task-1-aaa": "aaa",
+        "mate-kept/task-1-ccc": "ccc",
+      });
+      assert.isFalse(ran.some((step) => step.includes("branch -f")));
+    }),
   );
 
   it.effect("a clean working copy already at its base is left alone", () =>

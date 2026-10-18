@@ -856,10 +856,14 @@ export const make = Effect.gen(function* () {
    * The working copies put on the task's base, unless they hold it already: why its work started
    * where it was, where a working copy could not be moved; nothing when all were.
    */
-  const holdFor = (taskId: string, base: WorkingCopyBase) =>
+  const holdFor = (taskId: string, base: WorkingCopyBase, view: ConversationView | undefined) =>
     Effect.gen(function* () {
-      if ((yield* ledger.workingCopyHolds) === taskId) return undefined;
-      const held = yield* workingCopy.hold(taskId, base);
+      // What they hold: the task they were put on last; on a Mate that has put them on none yet
+      // (it took its task before it kept that), the task the conversation worked last.
+      const holds =
+        (yield* ledger.workingCopyHolds) ?? (view === undefined ? undefined : newestTaskIn(view));
+      if (holds === taskId) return undefined;
+      const held = yield* workingCopy.hold(taskId, base, holds);
       const at = yield* Clock.currentTimeMillis;
       yield* ledger.update(taskId, (kept) => ({ ...kept, workingCopyAt: at }));
       return held.unlisted || held.missed.length > 0 ? asItWasDetail(held) : undefined;
@@ -969,7 +973,7 @@ export const make = Effect.gen(function* () {
       // earlier task's change waiting for review) kept, never carried into this task's change.
       const asItWas =
         conversationId === TASKS_CONVERSATION_ID
-          ? yield* holdFor(task.id, { kind: "main" })
+          ? yield* holdFor(task.id, { kind: "main" }, held)
           : undefined;
       const detail = [authorUnset, asItWas].filter((words) => words !== undefined).join(" ");
       const ask = task.body.trim();
@@ -1059,7 +1063,11 @@ export const make = Effect.gen(function* () {
           if (change !== undefined && conversationId === TASKS_CONVERSATION_ID) {
             const desk = yield* engine.conversations;
             if (desk.complete && !desk.views.some(atWork)) {
-              asItWas = yield* holdFor(taskId, { kind: "change", branch: change.branch });
+              asItWas = yield* holdFor(
+                taskId,
+                { kind: "change", repo: change.repo, branch: change.branch },
+                held,
+              );
               onItsChange = asItWas === undefined;
             } else if ((yield* ledger.workingCopyHolds) !== taskId) {
               yield* Effect.logWarning("zerops tasks: a follow-up's working copy left as it was", {

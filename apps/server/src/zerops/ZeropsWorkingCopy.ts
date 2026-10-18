@@ -3,11 +3,13 @@
  * (the reach `ZeropsCommitAuthor` writes its author through), put on the task's base before its
  * work starts. Each task delivers to a change of its own, while the working copy on each dev
  * service is one local branch (zcp's `mate/<project id>`): a new task starts from `main` as HQ's
- * git holds it, and a follow-up on an earlier task from that task's change branch, so no task's
- * work carries another's.
+ * git holds it, and a follow-up on an earlier task from that task's change branch — in the working
+ * copy of the change's own repository (its `origin` names it; numbers are per repository), every
+ * other working copy from `main` — so no task's work carries another's.
  *
  * On each working copy: its work kept first — uncommitted work stashed (`mate: kept before task
- * <id>`), commits on no remote branch kept on `mate-kept/<short id>` — then the local branch, under
+ * <id>`), commits on no remote branch kept on `mate-kept/<task it held>-<commit>`, a name never
+ * written over — then the local branch, under
  * the name zcp gave it, reset onto the base (`git checkout -B`). A working copy already at the
  * base, and clean, is left alone. A step that fails leaves that working copy as it is (anything
  * kept before stays kept) and is named; the others move on. Never a force, never a lost commit.
@@ -32,7 +34,7 @@ const MAIN = "main";
 /** Where a task's work starts: HQ's `main`, or its change's branch on HQ's git. */
 export type WorkingCopyBase =
   | { readonly kind: "main" }
-  | { readonly kind: "change"; readonly branch: string };
+  | { readonly kind: "change"; readonly repo: string; readonly branch: string };
 
 /**
  * What putting the working copies on a task did: the dev services (by host) left as they were,
@@ -46,19 +48,47 @@ export interface WorkingCopiesHeld {
 export class ZeropsWorkingCopy extends Context.Service<
   ZeropsWorkingCopy,
   {
-    /** Every working copy put on `base` for the task `taskId`, each that could not be named. */
-    readonly hold: (taskId: string, base: WorkingCopyBase) => Effect.Effect<WorkingCopiesHeld>;
+    /**
+     * Every working copy put on `base` for the task `taskId`, each that could not be named; what
+     * they held kept under the task they held, `held`, where known.
+     */
+    readonly hold: (
+      taskId: string,
+      base: WorkingCopyBase,
+      held?: string,
+    ) => Effect.Effect<WorkingCopiesHeld>;
   }
 >()("t3/zerops/ZeropsWorkingCopy") {}
 
-/** The short name a task's kept work goes under: the first eight characters of its id. */
+/** A task's short name: the first eight characters of its id. */
 const shortOf = (taskId: string) => taskId.replace(/[^A-Za-z0-9_-]/gu, "").slice(0, 8) || "task";
+
+/** The repository an `origin` on HQ's git names: its last path segment, `.git` off. */
+export const repoOfOrigin = (url: string): string | undefined => {
+  const last = url
+    .trim()
+    .replace(/\/+$/u, "")
+    .split("/")
+    .at(-1)
+    ?.replace(/\.git$/u, "");
+  if (last === undefined || last === "") return undefined;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return undefined;
+  }
+};
 
 export const make = Effect.gen(function* () {
   const source = yield* ZeropsRepositorySource;
   const vcs = yield* VcsProcess;
 
-  const hostOf = (repository: ZeropsRepository, taskId: string, base: WorkingCopyBase) => {
+  const hostOf = (
+    repository: ZeropsRepository,
+    taskId: string,
+    base: WorkingCopyBase,
+    held: string | undefined,
+  ) => {
     const git = (args: ReadonlyArray<string>, timeoutMs = STEP_TIMEOUT_MS) =>
       vcs.run({
         operation: "ZeropsWorkingCopy.hold",
@@ -96,15 +126,21 @@ export const make = Effect.gen(function* () {
       if (branch === "") return yield* Effect.fail("detached");
       yield* fetched(MAIN);
       // A change's branch lives in its own repository's git: a working copy of another starts
-      // from `main`.
+      // from `main` (a branch of the same number there is another change's).
+      const origin = yield* vcs.run({
+        operation: "ZeropsWorkingCopy.hold",
+        command: "git",
+        args: ["remote", "get-url", "origin"],
+        cwd: repository.mountPath,
+        timeoutMs: STEP_TIMEOUT_MS,
+        allowNonZeroExit: true,
+      });
       const onChange =
-        base.kind === "change"
-          ? yield* fetched(base.branch).pipe(
-              Effect.as(true),
-              Effect.orElseSucceed(() => false),
-            )
-          : false;
-      const ref = onChange && base.kind === "change" ? base.branch : MAIN;
+        base.kind === "change" &&
+        origin.exitCode === 0 &&
+        repoOfOrigin(origin.stdout) === base.repo;
+      if (onChange) yield* fetched(base.branch);
+      const ref = onChange ? base.branch : MAIN;
       const target = yield* commitOf(`refs/remotes/origin/${ref}`);
       if (target === undefined) return yield* Effect.fail("no base");
       const dirty = (yield* git(["status", "--porcelain"])).stdout.trim() !== "";
@@ -118,8 +154,14 @@ export const make = Effect.gen(function* () {
         "--not",
         "--remotes=origin",
       ])).stdout.trim();
-      if (unpushed !== "" && unpushed !== "0")
-        yield* git(["branch", "-f", `mate-kept/${shortOf(taskId)}`, "HEAD"]);
+      if (unpushed !== "" && unpushed !== "0") {
+        // Named after what it keeps — the task the working copy held, its commit — and never
+        // written over: kept again unchanged, it is already there.
+        const head = (yield* commitOf("HEAD")) ?? "";
+        const kept = `mate-kept/${shortOf(held ?? "work")}-${head.slice(0, 7)}`;
+        if ((yield* commitOf(`refs/heads/${kept}`)) === undefined)
+          yield* git(["branch", kept, "HEAD"]);
+      }
       yield* git(["checkout", "-q", "--no-track", "-B", branch, `refs/remotes/origin/${ref}`]);
     }).pipe(
       Effect.as(undefined),
@@ -136,7 +178,7 @@ export const make = Effect.gen(function* () {
     );
   };
 
-  const hold = (taskId: string, base: WorkingCopyBase) =>
+  const hold = (taskId: string, base: WorkingCopyBase, held?: string) =>
     Effect.gen(function* () {
       const listed = yield* source.list;
       // Not in a Zerops container: no dev service, no working copy of its.
@@ -149,7 +191,7 @@ export const make = Effect.gen(function* () {
       }
       const missed = yield* Effect.forEach(
         listed.repositories,
-        (repository) => hostOf(repository, taskId, base),
+        (repository) => hostOf(repository, taskId, base, held),
         { concurrency: "unbounded" },
       );
       return { missed: missed.filter((host) => host !== undefined), unlisted: false };
