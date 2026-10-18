@@ -1645,6 +1645,39 @@ describe("an automated Mate works every task in one conversation", () => {
     }),
   );
 
+  it.effect(
+    "a follow-up on an earlier task, heard after another task, tells the agent that task's brief",
+    () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, views } = yield* rig();
+        yield* link.receive(task("task-1"));
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: null,
+          lastEnded: doneRun("task-1", 1, 0, 1),
+        });
+        yield* link.receive(task("task-2", 43));
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: null,
+          lastEnded: doneRun("task-2", 2, 2, 3),
+        });
+        yield* link.message("task-2", message("m-2", "Also the teapot."));
+        yield* link.message("task-1", message("m-1", "Keep the green tea first."));
+        const contextOf = (id: string) => {
+          const command = delivered.find(
+            (each) => each.commandId === `task-message:${id}`,
+          )?.command;
+          return command?._tag === "Send" ? (command.context ?? []).join("\n") : "";
+        };
+        // Task 2's work is still in the agent's session: its follow-up carries only the words.
+        assert.notInclude(contextOf("m-2"), "an earlier task of yours");
+        // Task 1's no longer is: its brief comes with the follow-up.
+        assert.include(contextOf("m-1"), "an earlier task of yours");
+        assert.include(contextOf("m-1"), ZeropsTasksModule.taskBrief(task("task-1")));
+      }),
+  );
+
   it.effect("two tasks in one conversation each report only their own spend", () =>
     Effect.gen(function* () {
       const { link, move, reports, spent, views } = yield* rig();

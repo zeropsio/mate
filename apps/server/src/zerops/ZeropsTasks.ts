@@ -156,6 +156,10 @@ export const taskBrief = (task: MateTask): string => {
   ].join("\n");
 };
 
+/** Told with a follow-up on a task the agent's session no longer holds, before its brief. */
+const EARLIER_TASK =
+  "This follow-up is on an earlier task of yours, worked in a session you no longer have in mind: its brief follows, as it was given then.";
+
 const REFUSALS = {
   notAutomated: "This Mate is not automated, so it takes no tasks.",
   noKey: "No organization API key has reached this Mate yet, so its agents cannot run the task.",
@@ -889,7 +893,11 @@ export const make = Effect.gen(function* () {
       );
       // Refused now (an update draining it, say): another Mate, or this one later, takes it.
       if (result._tag === "Rejected") return refused(REFUSALS.notNow);
-      if (conversationId === TASKS_CONVERSATION_ID) current = task.id;
+      if (conversationId === TASKS_CONVERSATION_ID) {
+        current = task.id;
+        const brief = taskBrief(task);
+        yield* ledger.update(task.id, (kept) => ({ ...kept, brief }));
+      }
       if (again !== undefined)
         yield* ledger.update(task.id, (entry) => ({ ...entry, retaken: again }));
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
@@ -930,9 +938,23 @@ export const make = Effect.gen(function* () {
         if (reached !== undefined) {
           yield* ledger.update(taskId, (kept) => ({ ...kept, limitHit: reached }));
         } else {
+          const words = followUpOf(message);
+          // Another task was worked since: the agent's session starts afresh for this one, so it
+          // hears the task's brief again with the words.
+          const brief =
+            conversationId === TASKS_CONVERSATION_ID && newestTaskIn(held) !== taskId
+              ? entry?.brief
+              : undefined;
           const result = yield* engine.deliver(
             conversationId,
-            { _tag: "Send", ...followUpOf(message), taskMessage: message, taskId },
+            {
+              _tag: "Send",
+              text: words.text,
+              context:
+                brief === undefined ? words.context : [...words.context, EARLIER_TASK, brief],
+              taskMessage: message,
+              taskId,
+            },
             CommandId.make(`task-message:${message.id}`),
             principalOf(taskId),
           );
