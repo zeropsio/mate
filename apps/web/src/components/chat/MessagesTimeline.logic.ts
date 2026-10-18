@@ -21,6 +21,7 @@ import {
   type CallResultPage,
   type CrewSeam,
   type MateTaskMessage,
+  type MateTaskSource,
   type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
@@ -691,6 +692,8 @@ type MessagesTimelineRowBody =
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   /** Something said about the task after its Mate took it: its author's, never the viewer's. */
   | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
+  /** What a task's asker wrote where they asked, opening its conversation: theirs, never the brief. */
+  | { kind: "task-ask"; id: string; createdAt: string; source: MateTaskSource; text: string }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
   | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
   | {
@@ -1106,6 +1109,7 @@ function opensRun(row: MessagesTimelineRow): boolean {
     (row.kind === "background" && row.id.startsWith("woke:")) ||
     row.kind === "crew-card" ||
     row.kind === "task-message" ||
+    row.kind === "task-ask" ||
     (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
   );
 }
@@ -2637,13 +2641,20 @@ export function deriveMessagesTimelineRows(input: {
     }
   };
   // A task's first message is its brief: its issue stands in the session band above the
-  // conversation, so it draws no row, and the run under it opens the conversation.
+  // conversation, so the brief's words are never drawn. What its asker wrote opens the
+  // conversation as theirs; an ask with no text (or a Mate from before asks were kept) draws no
+  // row, and the run under it opens the conversation.
   const personRow = (
     entry: MessageEntry,
     index: number,
     aside: boolean,
   ): MessagesTimelineRow | null => {
-    if (entry.message.task !== undefined) return null;
+    const { task: source, taskAsk } = entry.message;
+    if (source !== undefined) {
+      return taskAsk === undefined || taskAsk === ""
+        ? null
+        : { kind: "task-ask", id: entry.id, createdAt: entry.createdAt, source, text: taskAsk };
+    }
     const heard = entry.message.taskMessage;
     if (heard !== undefined) {
       return { kind: "task-message", id: entry.id, createdAt: entry.createdAt, message: heard };

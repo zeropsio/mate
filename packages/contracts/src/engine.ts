@@ -32,7 +32,7 @@ import {
 import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
-import { MateTaskMessage, MateTaskSource } from "./mateTask.ts";
+import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -498,6 +498,11 @@ const itemBodyFields = {
      * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
      */
     task: Schema.optionalKey(MateTaskSource),
+    /**
+     * With `task`: the asker's own words, as they wrote them where they asked, drawn as theirs
+     * above the conversation's first run. Absent: the ask had no text, or its Mate predates it.
+     */
+    taskAsk: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
     /**
      * Sent for something said about a task its Mate took (`MateTaskMessage`: a comment on its
      * issue, a reply in its thread, a review comment, an edit): drawn as its author's, from where

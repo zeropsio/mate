@@ -56,6 +56,8 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly crewCard?: ContractCrewCard | undefined;
   /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
   readonly task?: MateTaskSource | undefined;
+  /** With `task`: what its asker wrote where they asked, drawn as theirs; never the brief. */
+  readonly taskAsk?: string | undefined;
   /**
    * Something said about the task after its Mate took it (a comment, a reply, a review comment,
    * an edit), told to it: drawn as its author's, never as the viewer's words.

@@ -5,8 +5,9 @@
  * and Stop, for an Owner or Admin, while it is queued, at work or waiting for an answer — asked on
  * the band before anything stops, as the board asks. The title is the conversation
  * header's. Every slot holds its room from the first frame, so nothing moves as the task does. The
- * words the agent got with it are its brief, never the person's, so they are never drawn. What
- * people say about the task afterwards, told to its Mate, is drawn as theirs (`MateTaskMessageRow`).
+ * words the agent got with it are its brief, never the person's, so they are never drawn: what its
+ * asker wrote opens the conversation as theirs (`MateTaskAskRow`), and what people say about the
+ * task afterwards, told to its Mate, is drawn as theirs too (`MateTaskMessageRow`).
  */
 import {
   mateTaskSourceAuthor,
@@ -17,12 +18,14 @@ import {
   type MateTaskSource,
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon, TimerIcon } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
 import { spentWords, type TaskSession } from "~/zerops/taskSession.logic";
 import { TASK_STATUS_WORDS, taskStatusDot, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
+
+import { cn } from "~/lib/utils";
 
 import { Button, InlineButton } from "../ui/button";
 
@@ -198,6 +201,73 @@ export function MateTaskSessionBar({
           </span>
         ) : null}
       </span>
+    </div>
+  );
+}
+
+/** Who asked for a task, and where: "nova-dev on GitHub", "The Weekly upkeep schedule". */
+export function mateTaskAskHeading(source: MateTaskSource): string {
+  const who = mateTaskSourceAuthor(source) ?? "Someone";
+  switch (source.kind) {
+    case "github-issue":
+      return `${who} on GitHub`;
+    case "slack-thread":
+      return `${who} on Slack`;
+    case "discord-thread":
+      return `${who} on Discord`;
+    case "webhook":
+      return source.author === null
+        ? `The ${source.name} webhook`
+        : `${source.author} through the ${source.name} webhook`;
+    case "schedule":
+      return `The ${source.name} schedule`;
+  }
+}
+
+/**
+ * What a task's asker wrote where they asked, opening its conversation as theirs — never the
+ * brief the agent got. A long ask stands cut at six lines, as measured before it paints, and opens
+ * in place onto the rest.
+ */
+export function MateTaskAskRow({
+  source,
+  text,
+}: {
+  readonly source: MateTaskSource;
+  readonly text: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  const watch = useCallback((element: HTMLParagraphElement | null) => {
+    if (element === null) return;
+    const measure = () => setCut(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div
+      className="flex flex-col items-start gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
+      data-zerops-surface="mate-task-ask"
+    >
+      <p className="w-full min-w-0 truncate text-line text-muted-foreground">
+        {mateTaskAskHeading(source)}
+      </p>
+      <p
+        ref={open ? undefined : watch}
+        className={cn(
+          "w-full min-w-0 text-prose break-words whitespace-pre-wrap text-foreground",
+          !open && "line-clamp-6",
+        )}
+      >
+        {text}
+      </p>
+      {open || cut ? (
+        <InlineButton onClick={() => setOpen((value) => !value)}>
+          {open ? "Show less" : "Show all"}
+        </InlineButton>
+      ) : null}
     </div>
   );
 }

@@ -350,6 +350,33 @@ describe("an automated Mate takes a task from outside", () => {
       }),
   );
 
+  it.effect("the first message of a task carries the ask's words, and not the brief", () =>
+    Effect.gen(function* () {
+      const { delivered, link } = yield* rig();
+      yield* link.receive({
+        ...task("task-1"),
+        body: "\n  Add two teas, reload: the cart is empty.\n",
+      });
+      const sends = delivered.flatMap((each) =>
+        each.command._tag === "Send" ? [each.command] : [],
+      );
+      assert.strictEqual(sends[0]?.taskAsk, "Add two teas, reload: the cart is empty.");
+      assert.notInclude(sends[0]?.taskAsk ?? "", "QUESTION:");
+      assert.include(sends[0]?.text ?? "", "QUESTION:");
+    }),
+  );
+
+  it.effect("a task whose ask has no text carries no ask's words", () =>
+    Effect.gen(function* () {
+      const { delivered, link } = yield* rig();
+      yield* link.receive({ ...task("task-1"), body: "  \n" });
+      const [first] = delivered;
+      assert.strictEqual(first?.command._tag, "Send");
+      if (first?.command._tag !== "Send") return;
+      assert.notProperty(first.command, "taskAsk");
+    }),
+  );
+
   it.effect(
     "the same task told again re-reports how it stands and never opens a second conversation",
     () =>
