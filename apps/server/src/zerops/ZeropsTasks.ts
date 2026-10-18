@@ -37,9 +37,11 @@
  *   conversation. One it never took leaves nothing to keep.
  * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end and, for
- *   a turn still at work, as it runs; reaching either stops its runs, mid-turn too, and the task
- *   says `failed` with the limit, and a follow-up past one starts nothing. They hold whether or
- *   not HQ is linked: the Mate follows its own record.
+ *   a turn still at work, as it runs (OpenCode tells it at each model call's end, so a task
+ *   ends at most a call or two past its limit); reaching either stops its runs, mid-turn too,
+ *   checked again at each step past it, and the task says `failed` with the limit, and a
+ *   follow-up past one, or the task handed again, starts nothing. They hold whether or not HQ is
+ *   linked: the Mate follows its own record.
  * - **Spent:** each report but a refusal carries what the task cost and how long it worked
  *   (`taskSpendOf`); while it works, those move, and are said, once a minute.
  * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
@@ -265,6 +267,12 @@ export const taskSpendOf = (
   const spentUsd =
     Math.round(Number((BigInt(entry?.costNano ?? "0") + inFlightNano) / 1000n)) / 1e6;
   return { spentUsd, workedMs: ended + liveMs };
+};
+
+/** The task's cost limit in billionths of a US dollar; none where it has none. */
+const costLimitOf = (entry: TaskEntry | undefined): bigint | undefined => {
+  const { costUsd } = entry?.limits ?? DEFAULT_TASK_LIMITS;
+  return costUsd === null ? undefined : BigInt(Math.round(costUsd * 1e9));
 };
 
 /** A usage record's cost in billionths of its currency. */
@@ -623,7 +631,11 @@ export const make = Effect.gen(function* () {
       if (own.length > 0 && (stopped || reached !== undefined)) {
         yield* FiberMap.remove(deadlines, taskId);
         if (!stopped && entry?.limitHit === undefined && reached !== undefined) {
-          yield* ledger.update(taskId, (kept) => ({ ...kept, limitHit: reached }));
+          const kept = yield* ledger.update(taskId, (kept) => ({ ...kept, limitHit: reached }));
+          yield* Effect.logInfo("zerops tasks: a task reached its limit; its runs are stopped", {
+            limit: reached,
+            ...taskSpendOf(taskId, kept, view, inFlightOf(taskId, kept, "now")),
+          });
         }
         yield* Effect.forEach(
           own,
@@ -750,22 +762,23 @@ export const make = Effect.gen(function* () {
     if (!final) {
       return Effect.flatMap(ledger.entry(taskId), (entry) => {
         if (entry?.turns.includes(turn)) return Effect.void;
-        const counted = BigInt(entry?.costNano ?? "0");
-        const before = counted + inFlightOf(taskId, entry, "now");
         const turns = inFlight.get(taskId) ?? new Map<string, { now: bigint; seen: bigint }>();
         inFlight.set(taskId, turns);
         turns.set(turn, { now: nanosOf(cost), seen: turns.get(turn)?.seen ?? 0n });
-        const after = counted + inFlightOf(taskId, entry, "now");
-        const { costUsd } = entry?.limits ?? DEFAULT_TASK_LIMITS;
-        const limit = costUsd === null ? undefined : BigInt(Math.round(costUsd * 1e9));
-        // Read again only as it crosses its limit: the rest rides the once-a-minute report.
-        return limit !== undefined && before < limit && after >= limit
+        const after = BigInt(entry?.costNano ?? "0") + inFlightOf(taskId, entry, "now");
+        const limit = costLimitOf(entry);
+        // Read again at each step past its limit, not only the one that crossed it: a read that
+        // could not stop the run then (its record unreadable, its stop unrecorded) is tried again
+        // at once. Under it, the rest rides the once-a-minute report.
+        return limit !== undefined && after >= limit
           ? Queue.offer(moved, conversationId)
           : Effect.void;
       });
     }
-    return ledger
-      .update(taskId, (kept) =>
+    return Effect.gen(function* () {
+      // Usage is read one event at a time: nothing counts between this read and the update.
+      const before = BigInt((yield* ledger.entry(taskId))?.costNano ?? "0");
+      const entry = yield* ledger.update(taskId, (kept) =>
         kept.turns.includes(turn)
           ? kept
           : {
@@ -773,8 +786,16 @@ export const make = Effect.gen(function* () {
               turns: [...kept.turns, turn],
               costNano: String(BigInt(kept.costNano) + nanosOf(cost)),
             },
-      )
-      .pipe(Effect.andThen(Queue.offer(moved, conversationId)));
+      );
+      const limit = costLimitOf(entry);
+      // Said in the log as it happens: a turn whose final cost took the task past its limit.
+      if (limit !== undefined && before < limit && BigInt(entry.costNano) >= limit)
+        yield* Effect.logInfo("zerops tasks: a task's turn ended past its cost limit", {
+          spentUsd: taskSpendOf(taskId, entry, undefined).spentUsd,
+          costUsd: entry.limits?.costUsd,
+        });
+      yield* Queue.offer(moved, conversationId);
+    });
   };
 
   // Each turn's cost, as its provider reported it at the turn's end, counted once on its task;
@@ -815,6 +836,35 @@ export const make = Effect.gen(function* () {
           detail: kept.stopped,
           ...taskSpendOf(task.id, kept, undefined),
         });
+      }
+      // Taken before and past its limits (its last turn's cost came in as HQ put it back in
+      // line): handed again, it starts nothing, and says why.
+      if (held !== undefined && kept !== undefined && (yield* ranIn(task.id, held))) {
+        const limits = task.limits ?? kept.limits ?? DEFAULT_TASK_LIMITS;
+        const reached =
+          kept.limitHit ??
+          reachedLimit(
+            task.id,
+            { ...kept, limits },
+            held,
+            yield* Clock.currentTimeMillis,
+            inFlightOf(task.id, kept, "now"),
+          ).reached;
+        if (reached !== undefined) {
+          const limited = yield* ledger.update(task.id, (entry) => ({
+            ...entry,
+            limits,
+            limitHit: reached,
+            ...(again === undefined ? {} : { retaken: again }),
+          }));
+          return Option.some<MateTaskReport>({
+            taskId: task.id,
+            state: "failed",
+            conversationId,
+            detail: limitWords(reached, limits),
+            ...taskSpendOf(task.id, limited, held, inFlightOf(task.id, limited, "seen")),
+          });
+        }
       }
       const refused = (detail: string) =>
         Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
