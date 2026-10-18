@@ -193,6 +193,8 @@ const services = (options: CoreOptions) => {
   const tasks = mateTasksLayer(options.tasks).pipe(
     Layer.provide(orgAiKeysLayer),
     Layer.provide(taskSourceChannelsLayer),
+    Layer.provide(remotes),
+    Layer.provide(github),
     Layer.provide(githubApp),
   );
   const door = taskIntakeLayer.pipe(Layer.provideMerge(tasks));
