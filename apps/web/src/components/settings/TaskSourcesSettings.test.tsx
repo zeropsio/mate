@@ -262,6 +262,24 @@ describe("Slack in Settings", () => {
     view.unmount();
   });
 
+  it("a Slack whose messages are refused never reads as plainly connected", () => {
+    const html = renderToStaticMarkup(
+      <SlackSettingsView
+        controls={controls(
+          known({
+            ...slackOff,
+            connected: true,
+            workspace: "Acme",
+            eventsRefusedAt: "2026-10-18T22:05:00.000Z",
+            eventsAcceptedAt: "2026-10-18T22:01:00.000Z",
+          }),
+        )}
+      />,
+    );
+    expect(html).toContain("Messages refused");
+    expect(html).not.toContain(">Connected<");
+  });
+
   it("says nothing is refused once an event's signature held after the last refusal", () => {
     const html = renderToStaticMarkup(
       <SlackSettingsView

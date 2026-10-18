@@ -332,7 +332,11 @@ export function SlackSettingsView({
       mark={<SlackMark />}
       name="Slack"
       open={open && view !== null}
-      state={sourceState(setting, (held) => held.connected)}
+      state={
+        refused
+          ? { kind: "refused", words: "Messages refused" }
+          : sourceState(setting, (held) => held.connected)
+      }
       surface="settings-slack"
     >
       {view === null ? null : view.connected ? (
