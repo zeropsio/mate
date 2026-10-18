@@ -5,7 +5,11 @@
  * a task before it from the task's own record (`HqAppTask`, the application's task board).
  */
 import type { TaskStopAction } from "@t3tools/client-runtime/data";
-import type { MateTaskSource } from "@t3tools/contracts";
+import {
+  MATE_TASKS_CONVERSATION_ID,
+  mateTaskIdOfConversation,
+  type MateTaskSource,
+} from "@t3tools/contracts";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -16,7 +20,7 @@ import { isLiveStatus, isStoppableStatus, recordStatus, type TaskStatus } from "
 export interface TaskSessionInput {
   /** The task the conversation's first message brought. */
   readonly source: MateTaskSource;
-  /** HQ's id of the conversation's task (`mateTaskIdOfConversation`); `null` where it names none. */
+  /** HQ's id of the task the session is of (`sessionTaskId`); `null` where none is named. */
   readonly taskId: string | null;
   /** Its Mate's latest task (`HqNavigationMate.task`): `undefined` while not read. */
   readonly current: HqNavigationMateTask | null | undefined;
@@ -89,6 +93,24 @@ function fromNavigation(input: TaskSessionInput): TaskStatus | undefined {
       return "working";
     }
   }
+}
+
+/**
+ * HQ's id of the task a conversation's session is of: the one its latest brief names (an automated
+ * Mate's one conversation, a turn per task); else the one an older server's conversation is named
+ * by; else, in the one conversation before its brief is read, the task its Mate is on now.
+ */
+export function sessionTaskId(input: {
+  /** The task's id its latest brief carries (`conversationBrief`); `null` where it carries none. */
+  readonly brief: string | null;
+  readonly conversationId: string;
+  /** Its Mate's latest task (`HqNavigationMate.task`): `undefined` while not read. */
+  readonly current: HqNavigationMateTask | null | undefined;
+}): string | null {
+  if (input.brief !== null) return input.brief;
+  const named = mateTaskIdOfConversation(input.conversationId);
+  if (named !== undefined) return named;
+  return input.conversationId === MATE_TASKS_CONVERSATION_ID ? (input.current?.id ?? null) : null;
 }
 
 /** The conversation's task on its application's board, by HQ's id. `undefined`: none, or not read. */

@@ -1,13 +1,12 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus } from "../../zerops/mateStatus.logic";
-import { taskTitle } from "../../zerops/automatedMate.logic";
+import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
   type EditorId,
-  type MateTaskSource,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
   type ThreadId,
@@ -79,10 +78,11 @@ interface ChatHeaderProps {
   draftId?: DraftId;
   activeThreadTitle: string;
   /**
-   * The task this conversation works, on an automated Mate (`conversationTask`): the conversation
-   * is named by it ("#12 Fix the checkout total"); absent for any other.
+   * The task this conversation works now, on an automated Mate (`conversationTask`): the
+   * conversation is named by it ("#12 Fix the checkout total"), and its status and Stop are its;
+   * absent for any other.
    */
-  activeThreadTask?: MateTaskSource | undefined;
+  activeThreadTask?: ConversationTask | undefined;
   /**
    * The conversation is still being read: the way out to Zerops waits for it, its place held (the
    * owner, 2026-10-12: "the 'open in zerops' doesn't need to be visible while loading").
@@ -338,7 +338,7 @@ export const ChatHeader = memo(function ChatHeader({
   // A task's conversation is named by its task, never by the brief its first message carried.
   const headline =
     activeThreadTask !== undefined
-      ? taskTitle(activeThreadTask)
+      ? taskTitle(activeThreadTask.source)
       : mate === undefined
         ? activeThreadTitle
         : (mateActivity?.subject ?? activeThreadTitle);
@@ -650,7 +650,8 @@ export const ChatHeader = memo(function ChatHeader({
                   <MateTaskStatus
                     conversationId={activeThreadId}
                     environmentId={activeThreadEnvironmentId}
-                    task={activeThreadTask}
+                    task={activeThreadTask.source}
+                    taskId={activeThreadTask.taskId}
                   />
                 ) : // What waits on the person, right after the Mate (the owner, 2026-10-12: "it's
                 // pretty important after all … maybe placed on the left"): its changes to review,

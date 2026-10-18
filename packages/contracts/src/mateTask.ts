@@ -229,7 +229,14 @@ export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
   return source.kind === "schedule" ? null : source.author;
 }
 
-/** What starts the id of every conversation a task is worked in (the server's `taskConversationId`). */
+/**
+ * The one conversation an automated Mate works every task in, a turn each, its agent's context
+ * fresh at each task's start. A Mate on an older server worked each task in its own conversation,
+ * named by the task (`mateTaskIdOfConversation`); those stay as its history.
+ */
+export const MATE_TASKS_CONVERSATION_ID = "tasks";
+
+/** What starts the id of every conversation a task was worked in on its own (`taskConversationId`). */
 export const MATE_TASK_CONVERSATION_PREFIX = "task-";
 
 /**

@@ -61,12 +61,31 @@ describe("a task's conversation", () => {
     expect(taskTitle(issue)).toBe("#12 Fix the checkout total");
   });
 
+  const next = {
+    kind: "schedule",
+    name: "Nightly",
+    title: "Nightly dependency check",
+  } as const;
   it.each([
-    ["a conversation opened by a task is that task's", [{ role: "user", task: issue }], issue],
+    [
+      "a conversation opened by a task is that task's",
+      [{ role: "user", task: issue }],
+      { source: issue, taskId: null },
+    ],
     [
       "a later message carrying nothing leaves it the task's",
       [{ role: "user", task: issue }, { role: "assistant" }, { role: "user" }],
-      issue,
+      { source: issue, taskId: null },
+    ],
+    [
+      "an automated Mate's one conversation is its latest task's",
+      [
+        { role: "user", task: issue, taskId: "task-12" },
+        { role: "assistant" },
+        { role: "user", task: next, taskId: "task-13" },
+        { role: "assistant" },
+      ],
+      { source: next, taskId: "task-13" },
     ],
     ["a conversation a person opened is no task's", [{ role: "user" }], null],
     ["an empty conversation is no task's", [], null],

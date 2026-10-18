@@ -75,15 +75,18 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
  */
 export function MateTaskStatus({
   task,
+  taskId,
   environmentId,
   conversationId,
 }: {
+  /** The conversation's current task (`conversationTask`): its latest brief's. */
   readonly task: MateTaskSource;
+  /** HQ's id of it, as its brief says; `null`: the one the conversation's id names (`sessionTaskId`). */
+  readonly taskId: string | null;
   readonly environmentId: EnvironmentId;
-  /** The conversation's id: it names HQ's task (`mateTaskIdOfConversation`). */
   readonly conversationId: string;
 }) {
-  const { session, stop } = useTaskSession(task, environmentId, conversationId);
+  const { session, stop } = useTaskSession(task, environmentId, conversationId, taskId);
   return <MateTaskStatusView onStop={stop ?? undefined} session={session} />;
 }
 
@@ -162,18 +165,21 @@ export function MateTaskStatusView({
 }
 
 /**
- * A task at the top of its conversation, the way an issue page opens: where it came from with a
- * way out to it, its title, what its asker wrote, then how long it worked, what it cost and the
- * change and pull request it made — read live for the Mate living in the conversation's environment.
+ * A task at the start of its turn, the way an issue page opens: where it came from with a way out
+ * to it, its title, what its asker wrote, then how long it worked, what it cost and the change and
+ * pull request it made — its own task's, by its id: live while its Mate is on it, settled after.
  */
 export function MateTaskCard({
   task,
+  taskId,
   text,
   environmentId,
   conversationId,
   onOpenChange,
 }: {
   readonly task: MateTaskSource;
+  /** HQ's id of the task, as its brief says; `null`: the one the conversation's id names. */
+  readonly taskId: string | null;
   /** What its asker wrote; empty: the ask had no more text than its title. */
   readonly text: string;
   readonly environmentId: EnvironmentId;
@@ -184,7 +190,7 @@ export function MateTaskCard({
     readonly number: number;
   }) => void;
 }) {
-  const { session, appId } = useTaskSession(task, environmentId, conversationId);
+  const { session, appId } = useTaskSession(task, environmentId, conversationId, taskId);
   const openChange =
     onOpenChange === undefined || appId === null || session.change === null
       ? undefined
