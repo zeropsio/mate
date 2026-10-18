@@ -14,7 +14,7 @@ import {
   type ComputeSpendRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { useMemo, useState } from "react";
+import { createContext, useMemo, useState, type ReactNode } from "react";
 
 import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -340,3 +340,9 @@ export function ProjectSpendCard({
     />
   );
 }
+
+/**
+ * The project page's Spend card, handed from the page, which knows the project's Mates, to its card
+ * grid (`ZeropsGroupPane`); none outside a project page.
+ */
+export const ProjectPageSpend = createContext<ReactNode>(null);

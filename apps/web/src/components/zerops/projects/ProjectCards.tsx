@@ -66,6 +66,8 @@ import {
   type PlaceLine,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
+import { ProjectPageSpend, ProjectSpendCard, ProjectSpendLine } from "./ProjectSpend";
+import { spendProjectIds } from "./projectSpend.logic";
 import type {
   ProjectsFlowGroup,
   StageSettingUp,
@@ -838,6 +840,7 @@ function ProjectCard<T>({
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
+  const spendIds = useMemo(() => spendProjectIds(flow), [flow]);
   const detail = useDetailWhileSeen(group.groupId);
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
@@ -901,7 +904,7 @@ function ProjectCard<T>({
         </div>
       ) : null}
       <CardMates entry={entry} liftTaken={drawn(trouble)} props={props} />
-      {/* spend: Part C's ProjectSpendLine goes here */}
+      <ProjectSpendLine appId={group.groupId} projectIds={spendIds} />
       {unknown.kind === "unread" ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
@@ -937,6 +940,8 @@ export function ProjectPage<T>({
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
+  const spendIds = useMemo(() => spendProjectIds(flow), [flow]);
+  const spend = <ProjectSpendCard appId={group.groupId} projectIds={spendIds} />;
   const detail = useDetailWhileSeen(group.groupId);
   const { production, stages, road, state, settingUp, stageSetUp, putLive } = readRoad(
     entry,
@@ -948,7 +953,9 @@ export function ProjectPage<T>({
     return (
       <div className="ov-page" data-zerops-surface="project-page">
         <ProjectPageStandIn label={group.name} ref={detail.ref} />
-        <div className="ov-page-aside">{aside}</div>
+        <ProjectPageSpend value={spend}>
+          <div className="ov-page-aside">{aside}</div>
+        </ProjectPageSpend>
       </div>
     );
   // Where the page reads its environments (`roadEnvironments`), each tier's rows say what stands
@@ -1045,7 +1052,9 @@ export function ProjectPage<T>({
         />
         <StopReads entry={entry} />
       </div>
-      <div className="ov-page-aside">{aside}</div>
+      <ProjectPageSpend value={spend}>
+        <div className="ov-page-aside">{aside}</div>
+      </ProjectPageSpend>
     </div>
   );
 }

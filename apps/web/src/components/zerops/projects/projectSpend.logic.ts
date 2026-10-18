@@ -6,6 +6,7 @@
  */
 import type { ComputeSpendRead, SpendDay } from "@t3tools/client-runtime/data";
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
+import type { GroupFlow } from "@t3tools/client-runtime/zerops";
 import { USAGE_AUTOMATED_OWNER, type UsageReport, type UsageReportQuery } from "@t3tools/contracts";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
@@ -208,4 +209,16 @@ export function subscriptionLine(mates: ReadonlyArray<SubscriptionMate>): string
     ({ provider, list }) => `${names(list)} ${verb(list)} on a ${provider} subscription`,
   );
   return `${clauses.slice(0, -1).join(", ")} and ${clauses.at(-1)}; they are not in this figure.`;
+}
+
+/** The Zerops projects a project is made of: its Mates', its stages' and its production's. */
+export function spendProjectIds(
+  flow: Pick<GroupFlow, "mates" | "stages" | "production">,
+): ReadonlyArray<string> {
+  const production = "stop" in flow.production ? [flow.production.stop.projectId] : [];
+  return [
+    ...flow.mates.map((mate) => mate.projectId),
+    ...flow.stages.map((stage) => stage.projectId),
+    ...production,
+  ];
 }

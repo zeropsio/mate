@@ -102,7 +102,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ExternalLinkIcon } from "lucide-react";
-import { Fragment, useCallback, useContext, useId, useMemo, useState } from "react";
+import { Fragment, use, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
@@ -146,6 +146,7 @@ import { ProjectPageCard } from "./projects/ProjectPageCard";
 import { useProjectChangesCard } from "./projects/useProjectChangesCard";
 import { ProjectPageStandIn } from "./projects/OverviewStandIn";
 import { RoadEnvironmentRows, devstagesOf } from "./projects/RoadEnvironments";
+import { ProjectPageSpend } from "./projects/ProjectSpend";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -604,6 +605,7 @@ function KnownGroupAside({
 }) {
   // The merged changes come with the application's detail: held while the page is drawn.
   useHqAppDetailHold(useMemo(() => [groupId], [groupId]));
+  const spend = use(ProjectPageSpend);
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
   const repo = groupRepository(environments);
@@ -663,6 +665,7 @@ function KnownGroupAside({
         }
         access={<ProjectAccessCard groupId={groupId} places={places} />}
         people={<ProjectPeople card groupId={groupId} />}
+        spend={spend}
         onMirror={() => {
           setMirroring(true);
         }}
@@ -708,6 +711,7 @@ export function ZeropsGroupPane({
   automation,
   access,
   people,
+  spend,
   onMirror,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
@@ -732,6 +736,8 @@ export function ZeropsGroupPane({
   readonly access?: React.ReactNode;
   /** Its People card (`ProjectPeople`). */
   readonly people?: React.ReactNode;
+  /** Its Spend card, from the project page (`ProjectPageSpend`). */
+  readonly spend?: React.ReactNode;
   /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
   readonly onMirror?: (() => void) | undefined;
 }) {
@@ -773,7 +779,7 @@ export function ZeropsGroupPane({
           {automation}
         </div>
         <div>
-          {/* spend: Part C's ProjectSpendCard goes here */}
+          {spend}
           {access}
           {people}
           {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
