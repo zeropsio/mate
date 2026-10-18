@@ -92,6 +92,8 @@ export const githubFake = Effect.gen(function* () {
       clientSecret: NodeCrypto.randomBytes(16).toString("hex"),
       converted: 0,
     },
+    /** The id of the app's bot user (`<slug>[bot]`): what its commits' noreply address carries. */
+    botUserId: 4242,
     /** The app's installations by id. */
     installations: new Map<number, FakeInstallation>(),
     /** How long an installation token GitHub mints lives. */
@@ -289,7 +291,7 @@ export const githubFake = Effect.gen(function* () {
               if (request.method === "GET" && botUser !== null) {
                 const login = decodeURIComponent(botUser[1]!);
                 return login === `${state.app.slug}[bot]`
-                  ? reply(200, { login, id: 4242, type: "Bot" })
+                  ? reply(200, { login, id: state.botUserId, type: "Bot" })
                   : reply(404, { message: "Not Found" });
               }
               const answer = (status: number, body: unknown) => {
