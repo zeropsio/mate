@@ -118,18 +118,8 @@ export function acquireWorktree(
   const worktrees = parseWorktrees(git(cwd, ["worktree", "list", "--porcelain", "-z"]));
   const paths = worktrees.map((worktree) => worktree.path);
   const idle = (candidate: (typeof worktrees)[number], cwds: ReadonlyArray<string>) => {
-    const state = inspectWorktree(cwd, candidate);
-    return (
-      idleDecision(state.worktree, {
-        main,
-        pool,
-        landed: state.landed,
-        unpushed: state.unpushed,
-        clean: state.clean,
-        cwds,
-        worktrees: paths,
-      }) === undefined
-    );
+    const { worktree, ...facts } = inspectWorktree(cwd, candidate);
+    return idleDecision(worktree, { main, pool, ...facts, cwds, worktrees: paths }) === undefined;
   };
   const cwds = liveCwds([pool]);
   for (const candidate of worktrees) {

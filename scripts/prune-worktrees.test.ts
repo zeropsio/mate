@@ -25,6 +25,7 @@ const evidence = {
   landed: true,
   unpushed: false,
   clean: true,
+  checkout: true,
   cwds: [] as string[],
   worktrees: ["/repo/z3", "/repo/z3-wt/done"],
 };
@@ -86,6 +87,12 @@ it.each([
     prune: undefined,
   },
   { name: "locked worktree", worktree: { ...candidate, locked: true }, evidence, prune: "locked" },
+  {
+    name: "directory whose .git link leads elsewhere",
+    worktree: candidate,
+    evidence: { ...evidence, checkout: false },
+    prune: "not a checkout of this repository",
+  },
   {
     name: "worktree holding another worktree",
     worktree: candidate,
@@ -279,6 +286,25 @@ it("prune never removes a locked, live, dirty, unpushed, unlanded or nesting wor
       live.stdin?.end();
       await exited;
     }
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("prune keeps a worktree whose .git link broke instead of judging the repository around it", () => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+  );
+  const { git, add, run } = fixture(root);
+  try {
+    // The lanes' parent is itself a repository, as ~/Documents/Zerops-MCP is.
+    git(root, "init", "-q");
+    const broken = add("z3-wt/broken", "--detach");
+    NodeFS.rmSync(NodePath.join(broken, ".git"));
+    const apply = run("--apply");
+    expect(apply.status, apply.stderr).toBe(0);
+    expect(apply.stdout).toContain(`keep ${broken}: not a checkout of this repository`);
+    expect(NodeFS.existsSync(NodePath.join(broken, "file"))).toBe(true);
+  } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });

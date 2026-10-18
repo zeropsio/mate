@@ -48,6 +48,8 @@ export interface Evidence {
   /** HEAD has commits that no remote-tracking ref holds. */
   readonly unpushed: boolean;
   readonly clean: boolean;
+  /** The directory's .git link leads to this repository; a broken link makes git read the repository around it. */
+  readonly checkout: boolean;
   readonly cwds: ReadonlyArray<string>;
   readonly worktrees: ReadonlyArray<string>;
 }
@@ -55,6 +57,7 @@ export interface Evidence {
 /** Why the worktree must stay as it is; undefined means its work is safe elsewhere and nothing uses it. */
 export function keepReason(worktree: Worktree, evidence: Evidence): string | undefined {
   if (worktree.path === evidence.main) return "main checkout";
+  if (!evidence.checkout) return "not a checkout of this repository";
   if (worktree.locked) return "locked";
   if (evidence.cwds.some((cwd) => inside(cwd, worktree.path))) return "live process cwd";
   if (!evidence.clean) return "dirty";
@@ -114,6 +117,12 @@ function landed(cwd: string, head: string): boolean {
 }
 
 export function inspectWorktree(cwd: string, worktree: Worktree) {
+  const common = (path: string) =>
+    NodeFS.realpathSync(
+      git(path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(),
+    );
+  if (common(worktree.path) !== common(cwd))
+    return { worktree, checkout: false, landed: false, unpushed: true, clean: false };
   const head = git(worktree.path, ["rev-parse", "HEAD"]).trim();
   const branch = exit(
     worktree.path,
@@ -122,6 +131,7 @@ export function inspectWorktree(cwd: string, worktree: Worktree) {
   );
   return {
     worktree: { ...worktree, head, branch: branch.status === 0 ? branch.stdout.trim() : undefined },
+    checkout: true,
     landed: landed(cwd, head),
     unpushed: git(cwd, ["rev-list", "--count", head, "--not", "--remotes"]).trim() !== "0",
     clean: git(worktree.path, ["status", "--porcelain=v1", "--untracked-files=all"]) === "",
@@ -206,13 +216,11 @@ if (import.meta.main) {
       continue;
     }
     const decision = (processCwds: ReadonlyArray<string>) => {
-      const state = inspectWorktree(cwd, worktree);
-      return pruneDecision(state.worktree, {
+      const { worktree: inspected, ...facts } = inspectWorktree(cwd, worktree);
+      return pruneDecision(inspected, {
         main,
         pool,
-        landed: state.landed,
-        unpushed: state.unpushed,
-        clean: state.clean,
+        ...facts,
         cwds: processCwds,
         worktrees: paths,
       });
