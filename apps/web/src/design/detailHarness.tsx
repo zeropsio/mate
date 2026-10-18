@@ -57,6 +57,11 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
+import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
+import type {
+  ProjectPeopleView,
+  ProjectPerson,
+} from "~/components/zerops/projects/projectPeople.logic";
 import { NewProjectCards, ReadingCards, TeaShopCards } from "./projectCardsFixtures";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
@@ -382,6 +387,50 @@ const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release) 
   })),
 }));
 
+/** Fifteen people who reach Acme's production, as its access reads them. */
+const ACME_PEOPLE: ProjectPeopleView = {
+  kind: "people",
+  invite: true,
+  candidates: [],
+  people: [
+    "Juno Park",
+    "Raya Stone",
+    "Ines Vale",
+    "Mira Holt",
+    "Theo Lind",
+    "Ada Brook",
+    "Noa Reed",
+    "Kai Moss",
+    "Lev Hart",
+    "Uma Frost",
+    "Ole Finch",
+    "Pia West",
+    "Rex Dale",
+    "Sia Lane",
+    "Tom Gale",
+  ].map((name, index) => ({
+    key: `cu-${String(index)}`,
+    name,
+    short: `${name.split(" ")[0] ?? name} ${name.split(" ")[1]?.[0] ?? ""}.`,
+    initials: name
+      .split(" ")
+      .map((part) => part[0])
+      .join(""),
+    avatarUrl: null,
+    email: null,
+    role: "Member",
+    you: index === 0,
+    creator: false,
+    pending: false,
+    access: "Full access",
+    line: "Full access",
+    level: "full",
+    across: [],
+    note: null,
+    change: null,
+  })) as unknown as ReadonlyArray<ProjectPerson>,
+};
+
 /** Acme's addresses: the storefront on two domains of its own, the shop on its subdomain. */
 const ACME_ROUTES = [
   {
@@ -560,6 +609,8 @@ interface StopFixture {
   readonly releasedAge?: string;
   /** Every service the platform lists there, with its use and its last day. */
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
+  /** Who reaches the place, as its page draws them. */
+  readonly access?: ReactNode;
 }
 
 /** The full commit each service runs, as the release rows and the stop's name read it. */
@@ -733,6 +784,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       waiting={{ commits: waiting, total: waiting.length, atLeast: false }}
       platformServices={fixture.platformServices}
       usageRead
+      access={fixture.access}
     />
   );
 }
@@ -1062,6 +1114,7 @@ function Harness() {
               routes: ACME_ROUTES,
               releases: ACME_RELEASES,
               platformServices: ACME_SERVICES,
+              access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
             }}
           />
         </div>
@@ -1081,6 +1134,7 @@ function Harness() {
               routes: ACME_ROUTES,
               releases: ACME_RELEASES,
               platformServices: ACME_SERVICES,
+              access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
             }}
           />
         </div>
