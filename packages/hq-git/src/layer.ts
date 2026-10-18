@@ -23,7 +23,8 @@ const attempt = <A>(operation: string, run: (signal: AbortSignal) => Promise<A>)
 const recover = async (root: string) => {
   for (const entry of await NodeFSP.readdir(root, { withFileTypes: true })) {
     const path = NodePath.join(root, entry.name);
-    if (entry.name.startsWith(".home-")) await NodeFSP.rm(path, { recursive: true, force: true });
+    if (entry.name.startsWith(".home-"))
+      await NodeFSP.rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     if (!entry.isDirectory() || !validId(entry.name)) continue;
     for (const name of await NodeFSP.readdir(path)) {
       const child = NodePath.join(path, name);
@@ -61,7 +62,8 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       ({ home, runner }) =>
         Effect.promise(async () => {
           await runner.close();
-          await NodeFSP.rm(home, { recursive: true, force: true });
+          // Git may still be writing in it as HQ stops (a mirror's push in flight): retried.
+          await NodeFSP.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
         }),
     );
     const { runner } = resource;
