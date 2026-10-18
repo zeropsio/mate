@@ -5,15 +5,10 @@
  * intake answer, held while the screen that set it is open — a secret to paste is shown once, so
  * closing that screen forgets it, and nothing else ever holds it.
  */
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Queue from "effect/Queue";
-import * as Result from "effect/Result";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
-import { HqError, type HqApi } from "../../zerops/hq/client.ts";
+import type { HqApi } from "../../zerops/hq/client.ts";
 import {
-  AI_KEYS_UNSUPPORTED,
   aiKeyRequestScope,
   aiKeysId,
   aiKeysLink,
@@ -23,33 +18,17 @@ import {
   type AiKeysKey,
   type IntakeKey,
 } from "../families/hqAutomation.ts";
-import type { LinkKey } from "../model.ts";
 import { makeOperations } from "../operations/coordinator.ts";
 import {
   makeAutomationExecutor,
   type AutomationWrites,
 } from "../operations/executors/hqAutomation.ts";
-import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
-import type { StreamEvent, StreamFault } from "../streamMachine.ts";
-import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
-import { credentialFailure } from "./hqGitCredentialReads.ts";
+import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 
 type AutomationApi = AutomationWrites & Pick<HqApi, "aiKeys">;
 
-const UNSUPPORTED = new HqError({
-  kind: "refused",
-  code: AI_KEYS_UNSUPPORTED,
-  message: "Update HQ to set up automated Mates.",
-});
-
-interface KeyReads {
-  count: number;
-  again: boolean;
-  wake?: () => void;
-  supervisor?: LinkSupervisor;
-  fiber?: Fiber.Fiber<never>;
-}
+const UPDATE_HQ = "Update HQ to set up automated Mates.";
 
 export function makeAutomationSettings(options: {
   readonly store: AccountStore;
@@ -58,151 +37,20 @@ export function makeAutomationSettings(options: {
 }) {
   const { store, api } = options;
   let closed = false;
-  const now = () => Effect.runSync(Clock.currentTimeMillis);
-  const signal = (key: LinkKey | ReturnType<typeof aiKeysScope>, event: StreamEvent) =>
-    Effect.map(Clock.currentTimeMillis, (at) =>
-      store.dispatch({ kind: "stream", key, now: at, event }),
-    );
-
   // ── the organization's keys, read on demand ────────────────────────────────────────────────
-  const reads = new Map<string, KeyReads>();
-  const demandKeys = (key: AiKeysKey): (() => void) => {
-    if (closed) return () => {};
-    const id = aiKeysId(key);
-    let entry = reads.get(id);
-    if (entry !== undefined) entry.count++;
-    else {
-      const made: KeyReads = { count: 1, again: true };
-      const scope = aiKeysScope(key);
-      const link = aiKeysLink(key);
-      const prior = store.state().facts.get(`hqAiKeys:${id}`)?.revision;
-      let sequence = prior?.kind === "mate-link" ? prior.sequence : 0;
-      made.fiber = Effect.runFork(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const changes = yield* Queue.unbounded<void>();
-            const supervisor = yield* superviseLink({
-              store,
-              key: link,
-              scopes: [scope],
-              repairSession: Effect.fail({
-                outcome: "definitive-refusal",
-                message: "Sign in to HQ again.",
-              } satisfies StreamFault),
-              attempt: () =>
-                Effect.gen(function* () {
-                  yield* Queue.clear(changes);
-                  yield* signal(link, { kind: "handshake" });
-                  while (true) {
-                    yield* signal(scope, { kind: "attempt" });
-                    yield* signal(scope, { kind: "handshake" });
-                    const generation = streamOf(store.state(), scope).generation;
-                    const held = store.state().facts.get(`hqAiKeys:${id}`);
-                    if (held?.content.kind !== "value" || made.again) {
-                      const answer = yield* Effect.result(
-                        Effect.tryPromise({
-                          try: () =>
-                            api.aiKeys === undefined ? Promise.reject(UNSUPPORTED) : api.aiKeys(),
-                          catch: (cause) =>
-                            // An HQ with no such address keeps no organization keys: it predates
-                            // automated Mates, which nothing then offers.
-                            cause === UNSUPPORTED ||
-                            (cause instanceof HqError && cause.status === 404)
-                              ? ({
-                                  outcome: "definitive-refusal",
-                                  message: UNSUPPORTED.message,
-                                  code: AI_KEYS_UNSUPPORTED,
-                                } satisfies StreamFault)
-                              : credentialFailure(cause),
-                        }),
-                      );
-                      if (closed || reads.get(id) !== made) return yield* Effect.never;
-                      if (streamOf(store.state(), scope).generation !== generation) {
-                        yield* Queue.take(changes);
-                        continue;
-                      }
-                      if (Result.isFailure(answer)) {
-                        if (answer.failure.outcome === "authoritative-denial")
-                          store.dispatch({
-                            kind: "access",
-                            family: "hqAiKeys",
-                            id,
-                            access: "denied",
-                          });
-                        return yield* Effect.fail(answer.failure);
-                      }
-                      made.again = false;
-                      store.dispatch({ kind: "baseline-begin", scope, generation });
-                      store.dispatch({
-                        kind: "baseline-commit",
-                        scope,
-                        generation,
-                        via: "hq-stream",
-                        members: [id],
-                        rows: [
-                          {
-                            family: "hqAiKeys",
-                            id,
-                            value: answer.success,
-                            revision: { kind: "mate-link", sequence: ++sequence },
-                          },
-                        ],
-                      });
-                    }
-                    yield* signal(scope, { kind: "baseline-committed" });
-                    yield* signal(link, { kind: "baseline-committed" });
-                    yield* Queue.take(changes);
-                  }
-                }),
-            });
-            made.supervisor = supervisor;
-            made.wake = () => {
-              const phase = streamOf(store.state(), link).phase;
-              if (["refused", "recovering", "paused"].includes(phase))
-                Effect.runFork(supervisor.signal("manual-retry"));
-              else {
-                Effect.runSync(signal(scope, { kind: "attempt" }));
-                Queue.offerUnsafe(changes, undefined);
-              }
-            };
-            return yield* supervisor.run;
-          }),
-        ),
-      );
-      entry = made;
-      reads.set(id, made);
-    }
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      const held = reads.get(id);
-      if (held === undefined || --held.count > 0) return;
-      reads.delete(id);
-      if (held.supervisor) Effect.runSync(held.supervisor.release);
-      if (held.fiber) Effect.runFork(Fiber.interrupt(held.fiber));
-    };
-  };
+  const reads = makeSettingsReads(store);
+  const keysRead = (key: AiKeysKey): SettingRead<"hqAiKeys"> => ({
+    family: "hqAiKeys",
+    id: aiKeysId(key),
+    scope: aiKeysScope(key),
+    link: aiKeysLink(key),
+    read: () => api.aiKeys?.(),
+    unsupported: UPDATE_HQ,
+  });
+  const demandKeys = (key: AiKeysKey): (() => void) =>
+    closed ? () => {} : reads.demand(keysRead(key));
   const againKeys = (key: AiKeysKey) => {
-    const entry = reads.get(aiKeysId(key));
-    if (entry === undefined || closed) return;
-    entry.again = true;
-    entry.wake?.();
-  };
-  /**
-   * Our own write's effect is read from HQ: the list is held and read again until it answers. The
-   * write's answer stands for the key meanwhile (`orgAiKeys`), so it never reads as before.
-   */
-  const readAfterWrite = (key: AiKeysKey) => {
-    const release = demandKeys(key);
-    againKeys(key);
-    const scope = aiKeysScope(key);
-    const stop = store.subscribe(() => {
-      const phase = streamOf(store.state(), scope).phase;
-      if (!["live", "refused", "recovering"].includes(phase)) return;
-      stop();
-      release();
-    });
+    if (!closed) reads.again(keysRead(key));
   };
 
   /** The keys' read a write is made after: its revision's sequence, `null` before any. */
@@ -215,34 +63,13 @@ export function makeAutomationSettings(options: {
   const views = new Map<string, number>();
   const epochs = new Map<string, number>();
   const revealedFor = new Map<string, { readonly key: IntakeKey; readonly epoch: number }>();
-  /** One value of this screen's own, committed whole under its own scope. */
   const commit = <F extends "hqIntakeReveal" | "hqAiKeyRequest">(
     family: F,
     scope: ReturnType<typeof intakeRevealScope>,
     id: string,
     value: import("../model.ts").FamilyValues[F],
   ) => {
-    if (closed) return;
-    const at = now();
-    for (const event of [
-      { kind: "demand", demanded: true },
-      { kind: "attempt" },
-      { kind: "handshake" },
-    ] as const)
-      store.dispatch({ kind: "stream", key: scope, now: at, event });
-    const generation = streamOf(store.state(), scope).generation;
-    const prior = store.state().facts.get(`${family}:${id}`)?.revision;
-    const sequence = prior?.kind === "mate-link" ? prior.sequence + 1 : 1;
-    store.dispatch({ kind: "baseline-begin", scope, generation });
-    store.dispatch({
-      kind: "baseline-commit",
-      scope,
-      generation,
-      via: "hq-stream",
-      members: [id],
-      rows: [{ family, id, value, revision: { kind: "mate-link", sequence } } as never],
-    });
-    store.dispatch({ kind: "stream", key: scope, now: at, event: { kind: "baseline-committed" } });
+    if (!closed) commitOwn(store, family, scope, id, value);
   };
   const publish = (key: IntakeKey, requestId: string, view: HqIntakeView | null) =>
     commit("hqIntakeReveal", intakeRevealScope(key), intakeId(key), { requestId, view });
@@ -290,7 +117,7 @@ export function makeAutomationSettings(options: {
         return await run({ kind: "set-ai-key", orgId: key.orgId, provider }, requestId);
       } finally {
         values.delete(requestId);
-        if (!closed) readAfterWrite(key);
+        if (!closed) reads.readAfterWrite(keysRead(key));
       }
     },
     removeKey: async (key: AiKeysKey, provider: string): Promise<string> => {
@@ -302,7 +129,7 @@ export function makeAutomationSettings(options: {
       try {
         return await run({ kind: "remove-ai-key", orgId: key.orgId, provider }, requestId);
       } finally {
-        if (!closed) readAfterWrite(key);
+        if (!closed) reads.readAfterWrite(keysRead(key));
       }
     },
     /** While a screen shows an application's intake: what HQ answered from it stays shown. */
@@ -321,13 +148,22 @@ export function makeAutomationSettings(options: {
         }
       };
     },
-    setIntake: async (key: IntakeKey, repo: string, label: string): Promise<string> => {
+    /** `takesPublic`: it takes a public repository's issues, which anyone can open. */
+    setIntake: async (
+      key: IntakeKey,
+      repo: string,
+      label: string,
+      takesPublic = false,
+    ): Promise<string> => {
       const requestId = options.makeId();
       const id = intakeId(key);
       revealedFor.set(requestId, { key, epoch: epochs.get(id) ?? 0 });
       publish(key, requestId, null);
       try {
-        return await run({ kind: "set-intake", ...key, repo, label }, requestId);
+        return await run(
+          { kind: "set-intake", ...key, repo, label, ...(takesPublic ? { public: true } : {}) },
+          requestId,
+        );
       } finally {
         revealedFor.delete(requestId);
       }
@@ -352,11 +188,7 @@ export function makeAutomationSettings(options: {
       revealedFor.clear();
       views.clear();
       epochs.clear();
-      for (const entry of reads.values()) {
-        if (entry.supervisor) Effect.runSync(entry.supervisor.release);
-        if (entry.fiber) Effect.runFork(Fiber.interrupt(entry.fiber));
-      }
-      reads.clear();
+      reads.close();
     },
   };
 }

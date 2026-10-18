@@ -40,6 +40,7 @@ import {
   MateAttention,
   MateHealth,
   MateTask,
+  MateTaskMessage,
   MateTaskReport,
   OrchestrationLatestTurn,
   OrchestrationSessionStatus,
@@ -391,6 +392,18 @@ export const MateLinkDown = Schema.Union([
   }),
   /** A task for an automated Mate to work: told again until the Mate says it took it. */
   Schema.Struct({ type: Schema.Literal("task"), task: MateTask }),
+  /** Something said about a task its Mate took (`MateTaskMessage`): heard in its conversation. */
+  Schema.Struct({
+    type: Schema.Literal("task-message"),
+    taskId: TrimmedNonEmptyString,
+    message: MateTaskMessage,
+  }),
+  /** People stopped a task its Mate took (issue closed, label removed): its run stops, it says so. */
+  Schema.Struct({
+    type: Schema.Literal("task-stop"),
+    taskId: TrimmedNonEmptyString,
+    reason: Schema.String,
+  }),
   /**
    * The organization's API keys an automated Mate's agents run on, by the variable its provider
    * reads (`NEBIUS_API_KEY`, `OPENCODE_KEY_PROVIDERS`); sent on each link to an automated Mate only,
