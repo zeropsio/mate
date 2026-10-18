@@ -1,4 +1,5 @@
 import {
+  MATE_TASKS_CONVERSATION_ID,
   RunId,
   importedCallFields,
   type ConversationRow,
@@ -69,17 +70,18 @@ function held(
     readonly header?: Parameters<typeof engineHeader>[1];
   },
   extra: ReadonlyArray<AccountInput> = [],
+  at: EngineConversationKey = key,
 ): AccountState {
-  const scopes = Object.values(engineConversationScopes(key));
+  const scopes = Object.values(engineConversationScopes(at));
   const active = records.runs?.findLast((run) => run.turnState === "running");
   const latest = active ?? records.runs?.findLast((run) => run.state === "ended");
   const rows: Row[] = [
     {
       family: "mateEngineConversation",
-      id: engineConversationId(key),
+      id: engineConversationId(at),
       value: {
         environmentId: ENV,
-        header: engineHeader("thread-ada", {
+        header: engineHeader(at.conversationId, {
           activeRunId: active?.id ?? null,
           latestRunId: latest?.id ?? null,
           runStatus:
@@ -123,8 +125,8 @@ function held(
   ]);
 }
 
-const thread = (state: AccountState) =>
-  Option.getOrNull(engineThread.derive(readsOfState(state), key).data);
+const thread = (state: AccountState, at: EngineConversationKey = key) =>
+  Option.getOrNull(engineThread.derive(readsOfState(state), at).data);
 
 describe("an engine conversation as the thread the view draws", () => {
   it("shows the person's words under their send's id and the agent's note as its answer", () => {
@@ -2006,6 +2008,26 @@ describe("the crew on an engine conversation's record", () => {
       ]);
     },
   );
+
+  it("draws no line where a task in an automated Mate's one conversation starts afresh: its card marks the start", () => {
+    const tasks = { environmentId: ENV, conversationId: MATE_TASKS_CONVERSATION_ID };
+    const state = held(
+      {
+        runs: [engineRun(MATE_TASKS_CONVERSATION_ID, 1)],
+        items: [
+          personItem(`${MATE_TASKS_CONVERSATION_ID}/r/1`, 1, "Add a footer"),
+          markerItem(`${MATE_TASKS_CONVERSATION_ID}/r/1`, 2, {
+            kind: "session-rotated",
+            reason: "task",
+          }),
+        ],
+      },
+      [],
+      tasks,
+    );
+    expect(thread(state, tasks)?.messages).toHaveLength(1);
+    expect(thread(state, tasks)?.activities).toEqual([]);
+  });
 });
 
 it.each([

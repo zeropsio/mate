@@ -12,6 +12,7 @@
  */
 import {
   CREW_SEAM_ACTIVITY_KIND,
+  MATE_TASKS_CONVERSATION_ID,
   MessageId,
   PROVIDER_DISPLAY_NAMES,
   queuedBehind,
@@ -974,6 +975,13 @@ export function engineThreadOf(
         activities.push(...workActivities(item, cardOf));
         break;
       case "marker": {
+        // Every task of an automated Mate's one conversation starts afresh: its card marks where.
+        if (
+          item.marker.kind === "session-rotated" &&
+          item.marker.reason === "task" &&
+          key.conversationId === MATE_TASKS_CONVERSATION_ID
+        )
+          break;
         const marked = markerActivity(item, cardOf);
         if (marked !== null) activities.push(marked);
         break;
