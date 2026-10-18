@@ -36,12 +36,14 @@ declare module "../model.ts" {
     readonly hqAppWebhooks: ReadonlyArray<HqWebhookView>;
     readonly hqAppSchedules: ReadonlyArray<HqScheduleView>;
     /**
-     * Its tasks: queued, at work, and the latest that ended. Read again as HQ's navigation says
-     * its automated Mates moved (`useAppTasks`): HQ streams no board of its own.
+     * Its tasks: queued, at work, and the latest that ended. Read again while shown as HQ's
+     * navigation says its automated Mates' tasks moved (`hqTaskBoardRefresh`): HQ streams no
+     * board of its own.
      */
     readonly hqAppTasks: ReadonlyArray<HqAppTask>;
     /**
-     * The latest write of this account's to one of them, by its request, and — once HQ answered
+     * The latest write of this account's to one of them (a task's stop: to that task,
+     * `taskStopRequestId`), by its request, and — once HQ answered
      * it — the last read started before that answer: the write shows done once a read started
      * after it lands. `null` until HQ answers.
      */
@@ -111,6 +113,14 @@ export const settingRequestScope = (
   family: TaskSourceSetting,
   key: OrgSettingKey | AppSettingKey,
 ): ScopeKey => `hq:${key.orgId}:task-source-request:${settingRequestId(family, key)}`;
+/**
+ * A stop of one of an application's tasks has a request record of its own, by the task: a second
+ * stop never hides where the first stands, and every surface showing the task reads the same one.
+ */
+export const taskStopRequestId = (key: AppSettingKey, taskId: string): string =>
+  JSON.stringify(["hqAppTasks", settingId(key), "stop", taskId]);
+export const taskStopRequestScope = (key: AppSettingKey, taskId: string): ScopeKey =>
+  `hq:${key.orgId}:task-source-request:${taskStopRequestId(key, taskId)}`;
 export const webhookRevealScope = (key: AppSettingKey): ScopeKey =>
   `hq:${key.orgId}:webhook-reveal:${settingId(key)}`;
 
