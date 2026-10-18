@@ -132,7 +132,10 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     ).rejects.toThrow();
     expect(storedSession(harness)).toBeNull();
 
-    const approved = { ...harness.rest.issueSession("user-1"), expiresAt: "2026-10-19T00:00:00Z" };
+    const approved = {
+      ...harness.rest.issueSession("user-1"),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
     await tab.run(() => tab.session().adoptDeviceLogin(approved));
     expect(tab.session().status).toBe("signed-in");
     expect(tab.accountId()).toBe("user-1");
