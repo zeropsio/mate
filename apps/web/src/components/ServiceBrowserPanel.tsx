@@ -2,7 +2,7 @@ import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowser
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import * as Schema from "effect/Schema";
 import { useState } from "react";
-import { CookieIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
+import { CookieIcon, ExternalLinkIcon, RotateCwIcon } from "lucide-react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
@@ -101,24 +101,24 @@ export function ServiceBrowserPanel({
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={`${service} preview`}
     >
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <GlobeIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <a
-          className="min-w-0 flex-1 truncate text-xs text-muted-foreground hover:text-foreground"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {url}
-        </a>
+      {/* The panel's one row above the page: reload, where it is, and the way out to a tab. */}
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b px-1.5">
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label={`Reload ${service}`}
           onClick={() => setRevision((value) => value + 1)}
         >
-          <RotateCwIcon className="size-4" />
+          <RotateCwIcon />
         </Button>
+        <a
+          className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-xs hover:text-foreground"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
+        </a>
         {/* The one control that survives a frame the site refused to draw, so
             it says what it is rather than making a person hover an icon over a
             blank page to find out. */}
@@ -133,8 +133,7 @@ export function ServiceBrowserPanel({
         </Button>
       </div>
       {cookieNoteRead ? null : (
-        <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
-          {/* The icon takes the globe's column, so the words start where the address does. */}
+        <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
           <CookieIcon className="size-4 shrink-0" aria-hidden="true" />
           <p className="min-w-0 flex-1">
             Browsers block most cookies here, so sign-ins and carts need a new tab.

@@ -169,3 +169,79 @@ export function allowlistAfter(
     return { error: "A Discord user ID is a number of up to 20 digits." };
   return { userIds: held.includes(id) ? held : [...held, id] };
 }
+
+/** Slack's page that makes an app, from a manifest when one is given. */
+export const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
+
+/**
+ * What HQ's manifest makes in one press: Slack's new-app page with the manifest whole, and what
+ * the person sees of it before pressing — the addresses Slack sends its requests to (HQ's own) and
+ * the scopes the bot asks for. `null` where the text is no manifest.
+ */
+export function slackManifestApp(text: string): {
+  readonly createUrl: string;
+  readonly requestUrls: ReadonlyArray<string>;
+  readonly scopes: ReadonlyArray<string>;
+} | null {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) return null;
+  const read = manifest as {
+    readonly oauth_config?: { readonly scopes?: { readonly bot?: unknown } };
+    readonly settings?: {
+      readonly event_subscriptions?: { readonly request_url?: unknown };
+      readonly interactivity?: { readonly request_url?: unknown };
+    };
+  };
+  const strings = (values: ReadonlyArray<unknown>) =>
+    values.filter((value): value is string => typeof value === "string" && value !== "");
+  const bot = read.oauth_config?.scopes?.bot;
+  return {
+    createUrl: `${SLACK_NEW_APP}&manifest_json=${encodeURIComponent(JSON.stringify(manifest))}`,
+    requestUrls: strings([
+      read.settings?.event_subscriptions?.request_url,
+      read.settings?.interactivity?.request_url,
+    ]),
+    scopes: Array.isArray(bot) ? strings(bot) : [],
+  };
+}
+
+/** A key a connection's form takes, checked as HQ checks it (`apps/hq/src/slack.ts`, `discord.ts`). */
+export type ConnectKey =
+  | "slack-bot-token"
+  | "slack-signing-secret"
+  | "discord-application-id"
+  | "discord-public-key"
+  | "discord-bot-token";
+
+const CONNECT_KEYS: Record<ConnectKey, { readonly holds: RegExp; readonly words: string }> = {
+  "slack-bot-token": { holds: /^xoxb-[\x21-\x7e]+$/u, words: "A bot token starts with xoxb-." },
+  "slack-signing-secret": { holds: /^[\x21-\x7e]+$/u, words: "A signing secret has no spaces." },
+  "discord-application-id": {
+    holds: /^\d{1,20}$/u,
+    words: "An application ID is a number of up to 20 digits.",
+  },
+  "discord-public-key": {
+    holds: /^[0-9a-f]{64}$/iu,
+    words: "A public key is 64 characters, 0–9 and a–f.",
+  },
+  "discord-bot-token": { holds: /^[\x21-\x7e]+$/u, words: "A bot token has no spaces." },
+};
+
+/** What is wrong with a key as typed; nothing while it is empty or holds. */
+export function connectKeyProblem(key: ConnectKey, typed: string): string | null {
+  const text = typed.trim();
+  if (text === "") return null;
+  return CONNECT_KEYS[key].holds.test(text) ? null : CONNECT_KEYS[key].words;
+}
+
+/** Whether every key is typed and holds: Connect is pressable. */
+export function connectKeysReady(keys: ReadonlyArray<readonly [ConnectKey, string]>): boolean {
+  return keys.every(
+    ([key, typed]) => typed.trim() !== "" && connectKeyProblem(key, typed) === null,
+  );
+}

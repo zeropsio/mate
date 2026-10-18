@@ -9,16 +9,15 @@
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import { GithubIcon } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { appBasePath } from "~/basePath";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button, InlineButton } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import { OutLink } from "./automationParts";
+import { ConnectCard, ConnectStep, KeyField } from "./ConnectFlow";
 import {
   appNameProblem,
   appOwner,
@@ -135,7 +134,7 @@ export function GithubAppView({
     <IntegrationRow
       action={
         section.kind === "none" && section.connect ? (
-          <IntegrationAction onToggle={toggle} open={open} primary>
+          <IntegrationAction closeWords={null} onToggle={toggle} open={open} primary>
             Connect
           </IntegrationAction>
         ) : section.kind === "connected" ? (
@@ -167,6 +166,9 @@ export function GithubAppView({
       {section.kind === "none" ? (
         <CreateApp
           busy={working}
+          onCancel={() => {
+            setOpen(false);
+          }}
           onCreate={async (request) => {
             const view = await controls.manifest(request);
             if (view !== null) onPost(view);
@@ -249,11 +251,13 @@ function CreateApp({
   organization,
   returnTo,
   busy,
+  onCancel,
   onCreate,
 }: {
   readonly organization: string | null;
   readonly returnTo: string;
   readonly busy: boolean;
+  readonly onCancel: () => void;
   /** Whether GitHub's page takes over: false where HQ refused. */
   readonly onCreate: (request: HqGithubManifestRequest) => Promise<boolean>;
 }) {
@@ -278,64 +282,50 @@ function CreateApp({
       document.removeEventListener("visibilitychange", seen);
     };
   }, []);
-  const ownerId = useId();
-  const nameId = useId();
   return (
-    <form
-      className="grid gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
+    <ConnectCard
+      busy={busy || leaving}
+      note="GitHub brings you back here once the app is made."
+      onCancel={onCancel}
+      onSubmit={() => {
         const problem = appNameProblem(name);
         setRefusal(problem);
-        if (problem !== null || leaving) return;
+        if (problem !== null) return;
         setLeaving(true);
         void onCreate({ owner: appOwner(owner), name: name.trim(), returnTo }).then((left) => {
           if (!left) setLeaving(false);
         });
       }}
+      ready
+      submit={leaving ? "Opening GitHub…" : "Create GitHub app"}
     >
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="grid min-w-48 flex-1 gap-1.5">
-          <Label htmlFor={ownerId}>GitHub organization</Label>
-          <Input
-            aria-describedby={`${ownerId}-hint`}
-            autoComplete="off"
-            id={ownerId}
-            onChange={(event) => {
-              setOwner(event.target.value);
-            }}
-            placeholder="Your own account"
-            size="sm"
-            spellCheck={false}
-            value={owner}
-          />
-        </div>
-        <div className="grid min-w-48 flex-1 gap-1.5">
-          <Label htmlFor={nameId}>App name</Label>
-          <Input
-            autoComplete="off"
-            id={nameId}
-            maxLength={34}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-            size="sm"
-            spellCheck={false}
-            value={name}
-          />
-        </div>
-        <Button disabled={busy || leaving} size="sm" type="submit">
-          {leaving ? "Opening GitHub…" : "Create GitHub app"}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground" id={`${ownerId}-hint`}>
-        GitHub asks you to confirm the app, then which repositories it may reach.
-      </p>
-      {refusal === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
-          {refusal}
-        </p>
-      )}
-    </form>
+      <ConnectStep
+        help="People see its name on everything Mate writes on GitHub."
+        n={1}
+        title="Name the app"
+      >
+        <KeyField
+          autoFocus
+          hint="The GitHub organization the app belongs to. Leave it empty for your own account."
+          label="GitHub organization"
+          onChange={setOwner}
+          placeholder="Your own account"
+          value={owner}
+        />
+        <KeyField
+          hint="Up to 34 characters."
+          label="App name"
+          maxLength={34}
+          onChange={setName}
+          problem={refusal}
+          value={name}
+        />
+      </ConnectStep>
+      <ConnectStep
+        help="GitHub asks you to confirm the app, then which repositories it may reach."
+        n={2}
+        title="Confirm it on GitHub"
+      />
+    </ConnectCard>
   );
 }

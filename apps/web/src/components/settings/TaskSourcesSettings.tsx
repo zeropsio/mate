@@ -10,7 +10,8 @@
  * the person is about to press.
  */
 import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
-import type { HqDiscordView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import { TimerIcon, WalletIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -19,16 +20,7 @@ import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourc
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import {
-  CopyLine,
-  HeldRoom,
-  IntakeRoom,
-  OutLink,
-  pressWords,
-  TextField,
-  WITHHELD,
-  working,
-} from "./automationParts";
+import { HeldRoom, IntakeRoom, pressWords, TextField, WITHHELD, working } from "./automationParts";
 import {
   AppChannelView,
   AppSchedulesView,
@@ -38,9 +30,20 @@ import {
 // A project's sources' forms live on its page (`projectAutomation/sourceForms`); importable from here.
 export { AppChannelView, AppSchedulesView, AppWebhooksView };
 import {
+  AddressField,
+  ConnectCard,
+  FlowSurface,
+  ConnectStep,
+  KeyField,
+  OutButton,
+  PendingAddress,
+} from "./ConnectFlow";
+import {
   DiscordMark,
   IntegrationAction,
   IntegrationRow,
+  IntegrationSetting,
+  LimitsList,
   SlackMark,
   type IntegrationState,
 } from "./IntegrationRow";
@@ -49,15 +52,18 @@ import { searchableSetting } from "./settingsSearch";
 import {
   allowlistAfter,
   budgetLine,
+  connectKeyProblem,
+  connectKeysReady,
   limitsLine,
   readBudget,
   readLimits,
+  SLACK_NEW_APP,
   slackLine,
+  slackManifestApp,
   taskSourceProblem,
   taskSourcesUnsupported,
 } from "./taskSourcesSettings.logic";
 
-const SLACK_NEW_APP = "https://api.slack.com/apps?new_app=1";
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
 
 type Controls<F extends OrgSetting | AppSetting> = TaskSourceControls<F>;
@@ -94,10 +100,10 @@ export function TaskLimitsSettings() {
   const limits = useOrgTaskSource("hqTaskLimits");
   if (limits.read.setting.state === "unsupported") return null;
   return (
-    <>
+    <LimitsList>
       <TaskLimitsView controls={limits} />
       <MonthlyBudgetView controls={limits} />
-    </>
+    </LimitsList>
   );
 }
 
@@ -135,15 +141,16 @@ function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): stri
 }
 
 /**
- * A connection's row opened by its press, folded again once it connects or disconnects: what the
- * press opened was for the state that just ended.
+ * A connection's row opened by its press, folded again once it disconnects — and once it connects,
+ * unless what it opens next is the next step (`stayOnConnect`): what the press opened was for the
+ * state that just ended.
  */
-function useOpenUntil(connected: boolean | null, defaultOpen: boolean) {
+function useOpenUntil(connected: boolean | null, defaultOpen: boolean, stayOnConnect: boolean) {
   const [open, setOpen] = useState(defaultOpen);
   const [seen, setSeen] = useState(connected);
   if (seen !== connected) {
     setSeen(connected);
-    if (seen !== null) setOpen(false);
+    if (seen !== null && !(stayOnConnect && connected === true)) setOpen(false);
   }
   return [open, setOpen] as const;
 }
@@ -191,8 +198,9 @@ function sourceLine<T>(
 }
 
 /**
- * A connection's one press: *Connect* while it is not, *Manage* once it is, *Read again* where HQ
- * failed — and while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
+ * A connection's one press: *Connect* while it is not — a quiet one, as these sources are optional,
+ * its steps carrying their own Cancel — *Manage* once it is, *Read again* where HQ failed; and
+ * while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
  */
 function SourceAction({
   setting,
@@ -217,7 +225,7 @@ function SourceAction({
     return setting.state === "unread" || setting.state === "reading" ? (
       <HeldRoom
         template={
-          <Button size="sm" tabIndex={-1}>
+          <Button size="sm" tabIndex={-1} variant="secondary">
             Connect
           </Button>
         }
@@ -227,50 +235,13 @@ function SourceAction({
     ) : null;
   return (
     <IntegrationAction
-      closeWords={connected ? "Close" : "Cancel"}
+      closeWords={connected ? "Close" : null}
       onToggle={onToggle}
       open={open}
-      primary={!connected}
+      primary={false}
     >
       {connected ? "Manage" : "Connect"}
     </IntegrationAction>
-  );
-}
-
-function Step({ n, children }: { readonly n: number; readonly children: ReactNode }) {
-  return (
-    <li className="flex gap-2 text-xs text-foreground">
-      <span className="w-4 shrink-0 text-muted-foreground tabular-nums">{n}.</span>
-      <div className="grid min-w-0 flex-1 gap-1.5">{children}</div>
-    </li>
-  );
-}
-
-function SecretField({
-  label,
-  value,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="grid min-w-56 flex-1 gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        autoComplete="off"
-        id={id}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        size="sm"
-        spellCheck={false}
-        type="password"
-        value={value}
-      />
-    </div>
   );
 }
 
@@ -317,7 +288,9 @@ export function SlackSettingsView({
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
-  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
+  // Connected, nothing is left to do here: each project's channel is set on its page.
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen, false);
+  const close = () => setOpen(false);
   return (
     <IntegrationRow
       action={
@@ -343,102 +316,149 @@ export function SlackSettingsView({
       surface="settings-slack"
     >
       {view === null ? null : view.connected ? (
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-muted-foreground">
-            Disconnecting stops every project taking tasks from Slack.
-          </span>
-          <InlineButton
-            disabled={working(read.action)}
-            onClick={() => {
-              write({ kind: "slack-disconnect" });
-            }}
-            tone="destructive"
-          >
-            {pressWords(read.action, ["slack-disconnect"], "Disconnect")}
-          </InlineButton>
-        </div>
+        <ManagePanel
+          disconnect={
+            <InlineButton
+              disabled={working(read.action)}
+              onClick={() => {
+                write({ kind: "slack-disconnect" });
+              }}
+              tone="destructive"
+            >
+              {pressWords(read.action, ["slack-disconnect"], "Disconnect")}
+            </InlineButton>
+          }
+          warning="Disconnecting stops every project taking tasks from Slack."
+        >
+          <AddressField
+            hint="Where Slack sends what happens in the workspace: Event Subscriptions › Request URL."
+            label="Request URL"
+            value={view.eventsUrl}
+          />
+        </ManagePanel>
       ) : manifest === undefined ? (
-        <SlackStepsWithManifest controls={controls} />
+        <SlackStepsWithManifest controls={controls} onCancel={close} view={view} />
       ) : (
-        <SlackSteps controls={controls} manifest={manifest} />
+        <SlackSteps controls={controls} manifest={manifest} onCancel={close} view={view} />
       )}
     </IntegrationRow>
   );
 }
 
-function SlackStepsWithManifest({ controls }: { readonly controls: Controls<"hqSlack"> }) {
+function SlackStepsWithManifest(props: {
+  readonly controls: Controls<"hqSlack">;
+  readonly view: HqSlackView;
+  readonly onCancel: () => void;
+}) {
   const manifest = useOrgTaskSource("hqSlackManifest");
-  return <SlackSteps controls={controls} manifest={manifest} />;
+  return <SlackSteps {...props} manifest={manifest} />;
 }
 
 function SlackSteps({
   controls,
   manifest,
+  view,
+  onCancel,
 }: {
   readonly controls: Controls<"hqSlack">;
   readonly manifest: Controls<"hqSlackManifest">;
+  readonly view: HqSlackView;
+  readonly onCancel: () => void;
 }) {
   const [botToken, setBotToken] = useState("");
   const [signingSecret, setSigningSecret] = useState("");
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "Slack manifest" });
-  const text = manifest.read.setting.state === "known" ? manifest.read.setting.held : null;
-  const ready = botToken.trim().length > 0 && signingSecret.trim().length > 0;
+  const read = manifest.read.setting;
+  const text = read.state === "known" ? read.held : null;
+  const app = text === null ? null : slackManifestApp(text);
+  const ready = connectKeysReady([
+    ["slack-bot-token", botToken],
+    ["slack-signing-secret", signingSecret],
+  ]);
   return (
-    <ol className="grid gap-3">
-      <Step n={1}>
-        <p>Create a Slack app from this manifest.</p>
+    <ConnectCard
+      busy={working(controls.read.action)}
+      note="HQ keeps both keys sealed and never shows them again."
+      onCancel={onCancel}
+      onSubmit={() => {
+        controls.write(
+          { kind: "slack-connect" },
+          { botToken: botToken.trim(), signingSecret: signingSecret.trim() },
+        );
+        setBotToken("");
+        setSigningSecret("");
+      }}
+      ready={ready}
+      submit={pressWords(controls.read.action, ["slack-connect"], "Connect")}
+    >
+      <ConnectStep
+        help={
+          read.state === "failed"
+            ? "HQ's manifest is not at hand, so make the app by hand on Slack's page."
+            : "Slack fills in its name, permissions and the address below from HQ's manifest."
+        }
+        n={1}
+        title="Create the Slack app"
+      >
         <div className="flex flex-wrap items-center gap-2">
+          {app === null ? (
+            <OutButton href={SLACK_NEW_APP}>Open Slack apps</OutButton>
+          ) : (
+            <OutButton href={app.createUrl}>Create the Slack app</OutButton>
+          )}
           <Button
             disabled={text === null}
             onClick={() => {
               if (text !== null) copyToClipboard(text, undefined);
             }}
             size="sm"
-            variant="secondary"
+            variant="ghost"
           >
             {isCopied ? "Copied" : "Copy manifest"}
           </Button>
-          <OutLink href={SLACK_NEW_APP}>Open Slack apps</OutLink>
-          {manifest.read.setting.state === "failed" ? (
-            <span className="text-xs text-muted-foreground" role="alert">
-              {manifest.read.setting.words}
+          {read.state === "failed" ? (
+            <span className="text-xs text-destructive-foreground" role="alert">
+              {read.words}
             </span>
           ) : null}
         </div>
-      </Step>
-      <Step n={2}>
-        <p>Install it to your workspace.</p>
-      </Step>
-      <Step n={3}>
-        <p>
-          Paste its bot token (OAuth & Permissions) and its signing secret (Basic Information). HQ
-          keeps both sealed and never shows them again.
-        </p>
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!ready) return;
-            controls.write(
-              { kind: "slack-connect" },
-              { botToken: botToken.trim(), signingSecret: signingSecret.trim() },
-            );
-            setBotToken("");
-            setSigningSecret("");
-          }}
-        >
-          <SecretField label="Bot token" onChange={setBotToken} value={botToken} />
-          <SecretField label="Signing secret" onChange={setSigningSecret} value={signingSecret} />
-          <Button disabled={!ready || working(controls.read.action)} size="sm" type="submit">
-            {pressWords(controls.read.action, ["slack-connect"], "Connect")}
-          </Button>
-        </form>
-      </Step>
-    </ol>
+        <AddressField
+          hint="Event Subscriptions › Request URL. The manifest sets it; paste it there only if you make the app by hand."
+          label="Request URL"
+          value={view.eventsUrl}
+        />
+      </ConnectStep>
+      <ConnectStep
+        help="On the app's Install App page, press Install to Workspace and allow it."
+        n={2}
+        title="Install it to your workspace"
+      />
+      <ConnectStep n={3} title="Paste its keys">
+        <KeyField
+          autoFocus
+          hint="OAuth & Permissions › Bot User OAuth Token. It starts with xoxb-."
+          label="Bot token"
+          onChange={setBotToken}
+          problem={connectKeyProblem("slack-bot-token", botToken)}
+          secret
+          value={botToken}
+        />
+        <KeyField
+          hint="Basic Information › App Credentials › Signing Secret."
+          label="Signing secret"
+          onChange={setSigningSecret}
+          problem={connectKeyProblem("slack-signing-secret", signingSecret)}
+          secret
+          value={signingSecret}
+        />
+      </ConnectStep>
+    </ConnectCard>
   );
 }
 
 // ── Discord ─────────────────────────────────────────────────────────────────────────────────
+
+const DISCORD_ENDPOINT = "Interactions Endpoint URL";
 
 export function DiscordSettingsView({
   controls,
@@ -451,7 +471,8 @@ export function DiscordSettingsView({
   const { read, write, again } = controls;
   const setting = read.setting;
   const view = setting.state === "known" ? setting.held : null;
-  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen);
+  // Connected from its steps, it stays open: the address and the invite are the next steps.
+  const [open, setOpen] = useOpenUntil(view?.connected ?? null, defaultOpen, true);
   return (
     <IntegrationRow
       action={
@@ -482,9 +503,8 @@ export function DiscordSettingsView({
       surface="settings-discord"
     >
       {view === null ? null : view.connected ? (
-        <>
-          <DiscordConnected controls={controls} view={view} />
-          <div className="text-xs">
+        <ManagePanel
+          disconnect={
             <InlineButton
               disabled={working(read.action)}
               onClick={() => {
@@ -494,10 +514,19 @@ export function DiscordSettingsView({
             >
               {pressWords(read.action, ["discord-disconnect"], "Disconnect")}
             </InlineButton>
-          </div>
-        </>
+          }
+          warning="Disconnecting stops every project taking tasks from Discord."
+        >
+          <DiscordConnected controls={controls} view={view} />
+        </ManagePanel>
       ) : (
-        <DiscordSteps controls={controls} view={view} />
+        <DiscordSteps
+          controls={controls}
+          onCancel={() => {
+            setOpen(false);
+          }}
+          view={view}
+        />
       )}
     </IntegrationRow>
   );
@@ -506,64 +535,94 @@ export function DiscordSettingsView({
 function DiscordSteps({
   controls,
   view,
+  onCancel,
 }: {
   readonly controls: Controls<"hqDiscord">;
   readonly view: HqDiscordView;
+  readonly onCancel: () => void;
 }) {
   const [applicationId, setApplicationId] = useState("");
   const [publicKey, setPublicKey] = useState("");
   const [botToken, setBotToken] = useState("");
-  const ready =
-    applicationId.trim().length > 0 && publicKey.trim().length > 0 && botToken.trim().length > 0;
+  const ready = connectKeysReady([
+    ["discord-application-id", applicationId],
+    ["discord-public-key", publicKey],
+    ["discord-bot-token", botToken],
+  ]);
   return (
-    <ol className="grid gap-3">
-      <Step n={1}>
-        <p>
-          Make an application in the Discord Developer Portal.{" "}
-          <OutLink href={DISCORD_PORTAL}>Open the portal</OutLink>
-        </p>
-      </Step>
-      <Step n={2}>
-        <p>Paste its application ID, public key and bot token. HQ keeps the token sealed.</p>
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!ready) return;
-            controls.write(
-              {
-                kind: "discord-connect",
-                applicationId: applicationId.trim(),
-                publicKey: publicKey.trim(),
-              },
-              { botToken: botToken.trim() },
-            );
-            setBotToken("");
-          }}
-        >
-          <TextField label="Application ID" onChange={setApplicationId} value={applicationId} />
-          <TextField label="Public key" onChange={setPublicKey} value={publicKey} />
-          <SecretField label="Bot token" onChange={setBotToken} value={botToken} />
-          <Button disabled={!ready || working(controls.read.action)} size="sm" type="submit">
-            {pressWords(controls.read.action, ["discord-connect"], "Connect")}
-          </Button>
-        </form>
-      </Step>
-      <Step n={3}>
-        {/* HQ names the address only once the application is connected. */}
+    <ConnectCard
+      busy={working(controls.read.action)}
+      note="HQ keeps the bot token sealed and never shows it again."
+      onCancel={onCancel}
+      onSubmit={() => {
+        controls.write(
+          {
+            kind: "discord-connect",
+            applicationId: applicationId.trim(),
+            publicKey: publicKey.trim(),
+          },
+          { botToken: botToken.trim() },
+        );
+        setBotToken("");
+      }}
+      ready={ready}
+      submit={pressWords(controls.read.action, ["discord-connect"], "Connect")}
+    >
+      <ConnectStep
+        help="In the Developer Portal, press New Application and name it Mate."
+        n={1}
+        title="Create a Discord application"
+      >
+        <div className="flex">
+          <OutButton href={DISCORD_PORTAL}>Open the Developer Portal</OutButton>
+        </div>
+      </ConnectStep>
+      <ConnectStep n={2} title="Paste its keys">
+        <KeyField
+          autoFocus
+          hint="General Information › Application ID."
+          label="Application ID"
+          onChange={setApplicationId}
+          problem={connectKeyProblem("discord-application-id", applicationId)}
+          value={applicationId}
+        />
+        <KeyField
+          hint="General Information › Public Key."
+          label="Public key"
+          onChange={setPublicKey}
+          problem={connectKeyProblem("discord-public-key", publicKey)}
+          value={publicKey}
+        />
+        <KeyField
+          hint="Bot › Reset Token, then copy it."
+          label="Bot token"
+          onChange={setBotToken}
+          problem={connectKeyProblem("discord-bot-token", botToken)}
+          secret
+          value={botToken}
+        />
+      </ConnectStep>
+      {/* Discord checks the address against the application's key, which HQ holds only once
+          connected: HQ names it then, and an earlier one would fail Discord's check. */}
+      <ConnectStep
+        help={
+          view.interactionsUrl === ""
+            ? "After Connect, paste HQ's address into General Information, then invite the bot."
+            : "After Connect, paste this into General Information, then invite the bot."
+        }
+        n={3}
+        title="Point Discord at HQ"
+      >
         {view.interactionsUrl === "" ? (
-          <p>
-            Then set its Interactions Endpoint URL to the address that appears here once it is
-            connected, and add the bot to your server.
-          </p>
+          <PendingAddress
+            label={DISCORD_ENDPOINT}
+            words="The address appears here once connected."
+          />
         ) : (
-          <>
-            <p>Then set its Interactions Endpoint URL to this, and add the bot to your server.</p>
-            <CopyLine copy="Copy URL" label="Endpoint URL" value={view.interactionsUrl} />
-          </>
+          <AddressField label={DISCORD_ENDPOINT} value={view.interactionsUrl} />
         )}
-      </Step>
-    </ol>
+      </ConnectStep>
+    </ConnectCard>
   );
 }
 
@@ -589,23 +648,31 @@ function DiscordConnected({
     return true;
   };
   return (
-    <div className="grid gap-3">
-      <CopyLine copy="Copy URL" label="Endpoint URL" value={view.interactionsUrl} />
+    <>
+      <AddressField
+        hint="General Information › Interactions Endpoint URL: Discord sends /mate here."
+        label={DISCORD_ENDPOINT}
+        value={view.interactionsUrl}
+      />
       {view.inviteUrl === null ? null : (
-        <p className="text-xs text-foreground">
-          <OutLink href={view.inviteUrl}>Add the bot to a server</OutLink>
-        </p>
+        <div className="grid gap-1.5">
+          <p className="text-sm font-medium text-foreground">Servers</p>
+          <div className="flex">
+            <OutButton href={view.inviteUrl}>Add the bot to a server</OutButton>
+          </div>
+        </div>
       )}
-      <div className="grid gap-2" data-zerops-surface="settings-discord-allowed">
-        <p className="text-xs text-muted-foreground">
-          {view.allowed.length === 0
-            ? "Nobody may start a task yet: add the Discord user IDs of who may."
-            : "Who may start and steer tasks, by Discord user ID:"}
-        </p>
+      <div className="grid gap-1.5" data-zerops-surface="settings-discord-allowed">
+        <p className="text-sm font-medium text-foreground">Who may start and steer tasks</p>
+        {view.allowed.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nobody may start a task yet: add the Discord user IDs of who may.
+          </p>
+        ) : null}
         {view.allowed.length === 0 ? null : (
-          <ul className="grid gap-1">
+          <ul className="grid divide-y divide-border rounded-md border border-border bg-background">
             {view.allowed.map((id) => (
-              <li className="flex items-center justify-between gap-2" key={id}>
+              <li className="flex items-center justify-between gap-2 py-1 ps-2.5 pe-1" key={id}>
                 <code className="min-w-0 truncate font-mono text-xs text-foreground">{id}</code>
                 <Button
                   disabled={busy}
@@ -622,7 +689,7 @@ function DiscordConnected({
           </ul>
         )}
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             if (change({ add: adding })) setAdding("");
@@ -633,7 +700,6 @@ function DiscordConnected({
             label="Discord user ID"
             onChange={setAdding}
             value={adding}
-            width="w-56"
           />
           <Button disabled={busy || adding.trim().length === 0} size="sm" type="submit">
             {pressWords(controls.read.action, ["discord-allow"], "Add")}
@@ -648,7 +714,30 @@ function DiscordConnected({
           </p>
         )}
       </div>
-    </div>
+    </>
+  );
+}
+
+/** What a connected row's Manage opens: what it holds, then Disconnect beside what that stops. */
+function ManagePanel({
+  warning,
+  disconnect,
+  children,
+}: {
+  readonly warning: string;
+  readonly disconnect: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <FlowSurface>
+      <div className="grid gap-4">
+        {children}
+        <div className="flex items-center gap-4 border-t border-border/70 pt-3 text-xs">
+          <span className="min-w-0 flex-1 text-muted-foreground">{warning}</span>
+          {disconnect}
+        </div>
+      </div>
+    </FlowSurface>
   );
 }
 
@@ -727,7 +816,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
   const shownMinutes = minutes ?? (held === null ? "" : String(held.minutes));
   const shownCost = cost ?? (held?.costUsd == null ? "" : String(held.costUsd));
   return (
-    <SettingsRow
+    <IntegrationSetting
       control={
         held === null ? (
           setting.state === "failed" ? (
@@ -763,6 +852,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
                 disabled={sent || working(read.action) || (minutes === null && cost === null)}
                 size="sm"
                 type="submit"
+                variant="secondary"
               >
                 <SaveWords sent={sent} />
               </Button>
@@ -770,20 +860,18 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
           </form>
         )
       }
-      data-zerops-surface="settings-task-limits"
-      description="A task that reaches either stops, and says where it got to."
       id={searchableSetting("automation-limits").id}
-      status={statusOf(setting, limitsLine)}
-      title="Limits per task"
+      line={statusOf(setting, limitsLine)}
+      mark={<TimerIcon className="size-5" />}
+      name="Limits per task"
+      surface="settings-task-limits"
     >
-      <div className="grid gap-2 px-3 pb-3 empty:hidden">
-        {refusal === null ? null : (
-          <p className="text-xs text-destructive-foreground" role="alert">
-            {refusal}
-          </p>
-        )}
-      </div>
-    </SettingsRow>
+      {refusal === null ? null : (
+        <p className="text-xs text-destructive-foreground" role="alert">
+          {refusal}
+        </p>
+      )}
+    </IntegrationSetting>
   );
 }
 
@@ -809,7 +897,7 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
   if (held !== null && held.spentThisMonthUsd === undefined) return null;
   const shown = typed ?? (held?.monthlyBudgetUsd == null ? "" : String(held.monthlyBudgetUsd));
   return (
-    <SettingsRow
+    <IntegrationSetting
       control={
         <form
           className="flex items-center gap-2"
@@ -851,22 +939,23 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
             disabled={held === null || sent || working(read.action) || typed === null}
             size="sm"
             type="submit"
+            variant="secondary"
           >
             <SaveWords sent={sent} />
           </Button>
         </form>
       }
-      data-zerops-surface="settings-monthly-budget"
-      description="All automated Mates together. Once it is spent, no task starts and those at work stop, until next month or a higher budget."
-      status={held === null ? null : budgetLine(held)}
-      title="Monthly budget"
+      line={held === null ? "Reading…" : budgetLine(held)}
+      mark={<WalletIcon className="size-5" />}
+      name="Monthly budget"
+      surface="settings-monthly-budget"
     >
       {refusal === null ? null : (
-        <p className="px-3 pb-3 text-xs text-destructive-foreground" role="alert">
+        <p className="text-xs text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
-    </SettingsRow>
+    </IntegrationSetting>
   );
 }
 
@@ -951,7 +1040,11 @@ function LimitsFields({
           value={cost}
         />
       </div>
-      {children ?? <Button size="sm">Save</Button>}
+      {children ?? (
+        <Button size="sm" variant="secondary">
+          Save
+        </Button>
+      )}
     </div>
   );
 }

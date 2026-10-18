@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { TaskSession } from "~/zerops/taskSession.logic";
 
-import { MateTaskMessageRow, MateTaskSessionBar } from "./MateTaskCard";
+import { MateTaskCardView, MateTaskMessageRow, MateTaskStatusView } from "./MateTaskCard";
 
 const issue = {
   kind: "github-issue",
@@ -29,7 +29,7 @@ describe("a task's issue card", () => {
       "acme/tea-shop#12",
     ],
   ] as const)("%s, with a way out to it on GitHub", (_case, task, source) => {
-    const html = renderToStaticMarkup(<MateTaskSessionBar task={task} />);
+    const html = renderToStaticMarkup(<MateTaskCardView task={task} />);
     expect(html).toContain(source);
     expect(html).toContain('href="https://github.com/acme/tea-shop/issues/12"');
     expect(html).toContain("Open on GitHub");
@@ -97,7 +97,13 @@ describe("a task's issue card, as its chain", () => {
       ["PR #14"],
     ],
   ] as const)("%s", (_case, given, status, facts) => {
-    const html = renderToStaticMarkup(<MateTaskSessionBar session={given} task={issue} />);
+    // Where it stands beside its Mate in the header; its facts on its card.
+    const html = renderToStaticMarkup(
+      <>
+        <MateTaskStatusView session={given} />
+        <MateTaskCardView onOpenChange={() => undefined} session={given} task={issue} />
+      </>,
+    );
     expect(statusOf(html)).toBe(status);
     for (const fact of facts) expect(factsOf(html)).toContain(fact);
     if (given.pullRequest !== null)
@@ -106,16 +112,17 @@ describe("a task's issue card, as its chain", () => {
 
   it("says what it cost and how long it worked, and offers Stop only while it can be stopped", () => {
     const working = session({ status: "working", spentUsd: 0.42, workedMs: 12 * 60_000 });
-    const html = renderToStaticMarkup(
-      <MateTaskSessionBar onStop={() => undefined} session={working} task={issue} />,
-    );
+    const stopButton = />Stop<\/button>/u;
+    const html = renderToStaticMarkup(<MateTaskCardView session={working} task={issue} />);
     expect(factsOf(html)).toContain("$0.42");
     expect(factsOf(html)).toContain("12m");
-    expect(factsOf(html)).toContain("Stop");
+    expect(
+      renderToStaticMarkup(<MateTaskStatusView onStop={() => undefined} session={working} />),
+    ).toMatch(stopButton);
     const ended = renderToStaticMarkup(
-      <MateTaskSessionBar session={{ ...working, status: "stopped" }} task={issue} />,
+      <MateTaskStatusView session={{ ...working, status: "stopped" }} />,
     );
-    expect(factsOf(ended)).not.toContain("Stop");
+    expect(ended).not.toMatch(stopButton);
   });
 });
 
@@ -139,7 +146,7 @@ describe("a task's Stop on its session", () => {
     const onStop = vi.fn();
     let tree: ReturnType<typeof create> | undefined;
     act(() => {
-      tree = create(<MateTaskSessionBar onStop={onStop} session={working} task={issue} />);
+      tree = create(<MateTaskStatusView onStop={onStop} session={working} />);
     });
     const root = tree!.root;
     act(() => {
@@ -164,10 +171,7 @@ describe("a task's Stop on its session", () => {
     let tree: ReturnType<typeof create> | undefined;
     act(() => {
       tree = create(
-        <MateTaskSessionBar
-          session={{ ...working, status: "stopping", stoppable: false }}
-          task={issue}
-        />,
+        <MateTaskStatusView session={{ ...working, status: "stopping", stoppable: false }} />,
       );
     });
     const root = tree!.root;

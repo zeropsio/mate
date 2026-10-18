@@ -10,6 +10,8 @@
  */
 import type { CrewStatus } from "@t3tools/contracts";
 
+import type { RightPanelSurface } from "./rightPanelStore";
+
 /**
  * In the order a person reaches for them after a reply (the onboarding run, 2026-10-16): the app,
  * what changed and where it runs come before the developer's tools. The launcher lists them so.
@@ -252,6 +254,16 @@ export function rightPanelPageHead(
 ): { readonly title: string; readonly line: string } | null {
   const page = RIGHT_PANEL_KIND_META[kind].page;
   return page === null ? null : { title: page.title, line: page.line(mate ?? "this Mate") };
+}
+
+/**
+ * A site's tab is the site itself, edge to edge under its own address row (`ServiceBrowserPanels`):
+ * no page and no head over it. The Browser's title and line stay on its list.
+ */
+export function isRightPanelSite(
+  surface: RightPanelSurface,
+): surface is Extract<RightPanelSurface, { readonly url: string }> {
+  return surface.kind === "browser" && "url" in surface;
 }
 
 export const DROPPED_RIGHT_PANEL_KINDS = ["plan", "pull-request", "preview"] as const;

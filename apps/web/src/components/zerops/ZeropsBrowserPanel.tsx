@@ -159,9 +159,32 @@ export function ZeropsBrowserPanel({
       ? { text: "You're driving", afterMs: 0 }
       : driving.agentUnknown;
 
+  // Nothing to see yet is one quiet line under the sites, never a second list with a heading.
+  if (
+    read === undefined ||
+    read === "unavailable" ||
+    (read.status === "no-browser" && last === undefined && driving.agentDriving !== true)
+  ) {
+    return (
+      <section aria-label={title} data-zerops-browser-panel>
+        {read === undefined ? null : read === "unavailable" ? (
+          <p className="text-muted-foreground text-xs" data-zerops-browser-unavailable>
+            Live browser view isn't available on this server yet.
+          </p>
+        ) : (
+          // Only a browser opened to show the person reaches this panel; the
+          // Mate's own headless test browsers never do.
+          <p className="text-muted-foreground text-xs" data-zerops-browser-none>
+            {`When ${mateName ?? "the agent"} opens a browser to show you something, it appears here.`}
+          </p>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section aria-label={title} className="flex flex-col gap-1.5" data-zerops-browser-panel>
-      <div className="flex min-h-6 items-center justify-between gap-2 px-1">
+      <div className="flex min-h-6 items-center justify-between gap-2">
         <MicroLabel>{mateName === undefined ? "Agent's browser" : title}</MicroLabel>
         {driving.agentDriving ? (
           <button
@@ -178,7 +201,7 @@ export function ZeropsBrowserPanel({
       {drivingLine !== null ? (
         <p
           className={cn(
-            "px-1 text-muted-foreground text-xs",
+            "text-muted-foreground text-xs",
             // A placeholder waits a beat before it says anything, so a quick
             // answer never flickers "Checking…".
             drivingLine.afterMs > 0 && "animate-zerops-appear",
@@ -192,13 +215,9 @@ export function ZeropsBrowserPanel({
         </p>
       ) : null}
 
-      {read === undefined ? null : read === "unavailable" ? (
-        <p className="px-1 text-muted-foreground text-xs" data-zerops-browser-unavailable>
-          Live browser view isn't available on this server yet.
-        </p>
-      ) : frame === undefined && last !== undefined ? (
+      {frame === undefined && last !== undefined ? (
         <div className="flex flex-col gap-1" data-zerops-browser-last>
-          <div className="flex min-w-0 items-center gap-2 px-1 text-muted-foreground text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
             {read.status === "no-browser" ? (
               <Badge dot tone="neutral">
                 Not live
@@ -220,14 +239,8 @@ export function ZeropsBrowserPanel({
             />
           </div>
         </div>
-      ) : read.status === "no-browser" ? (
-        // Only a browser opened to show the person reaches this panel; the
-        // Mate's own headless test browsers never do.
-        <p className="px-1 text-muted-foreground text-xs" data-zerops-browser-none>
-          {`When ${mateName ?? "the agent"} opens a browser to show you something, it appears here.`}
-        </p>
       ) : frame === undefined ? (
-        <span className="px-1">
+        <span>
           <Badge dot pulse tone="info">
             Connecting
           </Badge>
