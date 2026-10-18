@@ -73,9 +73,14 @@ export interface TaskOnSource {
   readonly statusRef?: string;
 }
 
+/** What a waiting task's status line says while this month's budget is spent. */
+export const BUDGET_WAIT = "Waiting: this month's budget for automated Mates is spent.";
+
 /** The one status line a source keeps for a task, edited as the task moves. */
 export type TaskStatus =
   | { readonly kind: "queued"; readonly position: number }
+  /** It waits because this month's budget for automated Mates is spent (`taskLimits.ts`). */
+  | { readonly kind: "budget" }
   /** `link`: where its conversation is followed in Mate. */
   | { readonly kind: "picked"; readonly mate: string; readonly link?: string }
   | { readonly kind: "waiting"; readonly mate: string; readonly question: string }
@@ -188,6 +193,10 @@ export const navigationTaskOf = (task: {
   readonly pullRequest?: HqNavigationMateTask["pullRequest"] | undefined;
   /** How it ended, for a Mate's most recent task while none is live. */
   readonly ended?: HqNavigationMateTask["ended"] | undefined;
+  /** When its Mate took it, what it cost and how long it worked so far, where known. */
+  readonly startedAt?: string | undefined;
+  readonly spentUsd?: number | undefined;
+  readonly workedMs?: number | undefined;
 }): HqNavigationMateTask => ({
   id: task.id,
   ...(task.source.kind === "github-issue"
@@ -199,6 +208,9 @@ export const navigationTaskOf = (task: {
   ...(task.waiting ? { waiting: true as const } : {}),
   ...(task.pullRequest === undefined ? {} : { pullRequest: task.pullRequest }),
   ...(task.ended === undefined ? {} : { ended: task.ended }),
+  ...(task.startedAt === undefined ? {} : { startedAt: task.startedAt }),
+  ...(task.spentUsd === undefined ? {} : { spentUsd: task.spentUsd }),
+  ...(task.workedMs === undefined ? {} : { workedMs: Number(task.workedMs) }),
 });
 
 /** A task's source as its row keeps it: JSON, for `::jsonb`. */

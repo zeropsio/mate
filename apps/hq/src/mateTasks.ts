@@ -10,7 +10,11 @@
  *   again on each link it opens until it takes it. HQ looks again when a task waits, a Mate's link
  *   or attention moves, and a task ends.
  * - Nothing is handed out while the organization keeps no key for the provider automated Mates run
- *   on (`orgAiKeys.ts`): tasks wait, counted as waiting.
+ *   on (`orgAiKeys.ts`): tasks wait, counted as waiting. Nor once this month's spend reached the
+ *   organization's monthly budget (`taskLimits.ts`): the waiting tasks' status lines say so, and the
+ *   tasks at work are stopped; a higher budget, or the next month, lets them go.
+ * - Each word of a Mate on its task carries what it cost and how long it worked so far: kept on
+ *   the task, which also keeps when it was taken and when it ended (`0069_task_costs.sql`).
  * - A Mate that does not take its task within `acceptWithin` (60 s), its link down or not, gives it
  *   back (`queued`, one try more); the third try that runs out fails it, saying why. Its word, late
  *   on its next link, is still taken while the task waits for no other Mate.
@@ -58,7 +62,7 @@ import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
-import { DEFAULT_TASK_LIMITS, readTaskLimits } from "./taskLimits.ts";
+import { DEFAULT_TASK_LIMITS, budgetSpent, readTaskLimits } from "./taskLimits.ts";
 import {
   type TaskOnSource,
   type TaskPullRequest,
@@ -91,6 +95,8 @@ export const DECLINED_FOR = Duration.minutes(30);
 export const TASK_MESSAGES_MAX = 200;
 /** Why a task stopped that waited three days for an answer that never came. */
 export const NO_ANSWER = "nobody answered its question for three days.";
+/** Why a task at work stopped once this month's spend reached the organization's budget. */
+export const BUDGET_SPENT = "it reached the organization's monthly budget.";
 /** Why a Mate is told to stop a task HQ holds as stopped, where no reason was kept. */
 const STOPPED_ALREADY = "This task was stopped.";
 /** How long a Mate handed a task people stopped is told to stop it on each link, unheard. */
@@ -269,6 +275,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const leading = Effect.map(leader.status, (status) => status.state === "active");
       /** What each task may spend, as the organization says now (`taskLimits.ts`). */
       const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
+      const overBudget = Effect.provideService(budgetSpent, SqlClient.SqlClient, sql);
 
       /**
        * Whether the Mate's last task's change still waits for review: its copy of the code holds
@@ -493,6 +500,23 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         });
 
       /**
+       * This month's budget is spent: each task at work is stopped (once), and each waiting task's
+       * status line says why it waits (`told_position` 0: no place said, so the next move of its
+       * queue says its place again).
+       */
+      const budgetReached = Effect.gen(function* () {
+        const working = yield* sql<{ readonly id: string }>`
+          SELECT id::text AS id FROM hq_task
+          WHERE state IN ('working', 'waiting') AND stop_requested_at IS NULL`;
+        for (const { id } of working) yield* stopTask(id, BUDGET_SPENT);
+        const waiting = yield* leader.write(sql<{ readonly id: string }>`
+          UPDATE hq_task SET told_position = 0
+          WHERE state = 'queued' AND told_position IS DISTINCT FROM 0
+          RETURNING id::text AS id`);
+        for (const { id } of waiting) yield* say(id, () => ({ kind: "budget" }));
+      });
+
+      /**
        * Each application's oldest waiting tasks, to its free Mates, one each — none while the
        * organization keeps no key for their provider: they would only turn them down.
        */
@@ -501,6 +525,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         const keyed = yield* sql`
           SELECT 1 FROM hq_org_ai_key WHERE provider = ${AUTOMATED_PROVIDER.id}`;
         if (keyed.length === 0) return;
+        if (yield* overBudget) return yield* budgetReached;
+        // The budget no longer spent: the tasks whose lines said it was say their places again.
+        const told = yield* sql<{ readonly app_id: string }>`
+          SELECT DISTINCT app_id::text AS app_id FROM hq_task
+          WHERE state = 'queued' AND told_position = 0`;
+        for (const { app_id: appId } of told) yield* queueMoved(appId);
         const apps = yield* sql<{ readonly app_id: string }>`
           SELECT DISTINCT app_id::text AS app_id FROM hq_task WHERE state = 'queued'`;
         for (const { app_id: appId } of apps) {
@@ -966,6 +996,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       const report = (projectId: string, word: MateTaskReport) =>
         Effect.gen(function* () {
+          // What it cost and how long it worked, as its Mate counts them: kept from any word of the
+          // Mate that had it, even one past its end (its word that it stopped).
+          if (word.spentUsd !== undefined || word.workedMs !== undefined) {
+            yield* leader.write(sql`
+              UPDATE hq_task SET spent_usd = COALESCE(${word.spentUsd ?? null}, spent_usd),
+                worked_ms = COALESCE(${word.workedMs === undefined ? null : Math.round(word.workedMs)}, worked_ms)
+              WHERE id::text = ${word.taskId}
+                AND (mate_project_id = ${projectId} OR last_mate_project_id = ${projectId})`);
+            // At work, spending: the month's budget may be reached by it.
+            if (word.spentUsd !== undefined && (yield* overBudget)) yield* wake;
+          }
           const task = yield* ownTask(projectId, word.taskId);
           if (task === undefined) return yield* strayWord(projectId, word);
           if (word.state === "declined") {
