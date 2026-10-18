@@ -21,6 +21,8 @@
  * - `POST /api/apps/:appId/schedules` `HqScheduleRequest` → `201 HqScheduleView`, `GET` →
  *   `{ schedules }`, `DELETE …/:id` → `204`: the application's schedules (`schedules.ts`), by a
  *   structure writer.
+ * - `POST /api/apps/:appId/tasks/:taskId/stop` → `204`: a person stops the application's task from
+ *   Mate (`taskStops.ts`), by a structure writer; one that ended already `409`.
  * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
  *   or admin of the organization.
  * - `POST /api/mate/ai-key` `{ provider? }` with `Authorization: Mate <credential>` → `HqMateAiKey`:
@@ -50,6 +52,7 @@ import { INTAKE_WEBHOOK_PATH, Intake } from "./intake.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
 import { Schedules } from "./schedules.ts";
 import { TaskLimits } from "./taskLimits.ts";
+import { TaskStops } from "./taskStops.ts";
 import type { TaskEnqueued } from "./taskSources.ts";
 import { WEBHOOK_PATH, Webhooks } from "./webhooks.ts";
 import { Writes } from "./writes.ts";
@@ -209,9 +212,26 @@ const scheduleRoutes = Layer.mergeAll(
   ),
 );
 
+const taskParam = Effect.map(HttpRouter.params, (params) => params["taskId"] ?? "");
+
 export const automationRoutes = Layer.mergeAll(
   webhookRoutes,
   scheduleRoutes,
+  HttpRouter.add(
+    "POST",
+    "/api/apps/:appId/tasks/:taskId/stop",
+    handle(
+      Effect.gen(function* () {
+        return yield* (yield* Writes).outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            yield* (yield* TaskStops).stop(userId, yield* appParam, yield* taskParam);
+            return HttpServerResponse.empty({ status: 204 });
+          }),
+        );
+      }),
+    ),
+  ),
   HttpRouter.add(
     "GET",
     "/api/org/task-limits",
