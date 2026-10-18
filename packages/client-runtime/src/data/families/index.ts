@@ -78,6 +78,7 @@ import { hqMateFamily } from "./hqMate.ts";
 import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationBalanceFamily } from "./organizationBalance.ts";
+import { projectSpendFamily } from "./projectSpend.ts";
 import { organizationCreditFamily } from "./organizationCredit.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationUserFamily } from "./organizationUser.ts";
@@ -197,6 +198,7 @@ export const FAMILIES = defineFamilies([
   organizationLocationsFamily,
   organizationCreditFamily,
   organizationBalanceFamily,
+  projectSpendFamily,
   locationLatencyFamily,
   serviceAgentsFamily,
   publicRoutingFamily,

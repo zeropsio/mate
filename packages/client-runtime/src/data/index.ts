@@ -133,6 +133,17 @@ export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts"
 export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
 export { balanceScope } from "./families/organizationBalance.ts";
+export {
+  projectSpendScope,
+  SPEND_DAYS,
+  type ProjectSpendValue,
+  type SpendDay,
+} from "./families/projectSpend.ts";
+export {
+  computeSpend,
+  type ComputeSpendKey,
+  type ComputeSpendRead,
+} from "./projections/projectSpend.ts";
 export type { PortRoutingWrite } from "./operations/addressWrites.ts";
 export type { Invitee, InviteeCheck, ResentInvitation } from "./operations/appAccess.ts";
 export { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
