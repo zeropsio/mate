@@ -317,7 +317,11 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
-import { composerAdmits, useComposerSendRequests } from "../hooks/useComposerSendRequests";
+import {
+  composerAdmits,
+  useComposerSendRequests,
+  type ComposerSendResult,
+} from "../hooks/useComposerSendRequests";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -6276,19 +6280,29 @@ function ConversationView(props: ChatViewProps) {
       scrollToEnd(false, true);
     }
   }, [conversationNotices, noticesOverComposer, scrollToEnd]);
-  const onSendRef = useRef<((ids?: ComposerSendIds) => Promise<void>) | null>(null);
+  const onSendRef = useRef<((ids?: ComposerSendIds) => Promise<ComposerSendResult>) | null>(null);
+  // Whether the mounted composer's own send would go (`ChatComposer`'s `onSendableChange`).
+  const [composerSendable, setComposerSendable] = useState(false);
+  // What `onSend` would refuse unsaid, as the render reads it: a requested send waits it out.
+  const requestedSendReady =
+    composerSendable &&
+    !isSendBusy &&
+    !isConnecting &&
+    !isRevertingCheckpoint &&
+    !threadDetailLoading &&
+    !activeEnvironmentUnavailable &&
+    !activePendingProgress;
   // What a surface asked this composer to send goes out through its own send.
   useComposerSendRequests({
     target: activeThread === undefined ? null : composerDraftTarget,
     targetKey: activeThread === undefined ? null : routeThreadKey,
     admits: composerAdmits(admission, colleagueReadOnly?.notice ?? null),
+    ready: requestedSendReady,
     write: (prompt) => {
       promptRef.current = prompt;
       setComposerDraftPrompt(composerDraftTarget, prompt);
     },
-    send: (ids) => {
-      void onSendRef.current?.(ids);
-    },
+    send: async (ids) => (await onSendRef.current?.(ids)) ?? "not-ready",
   });
 
   // Puts queued messages back into the composer, e.g. after Stop or a Cancel.
@@ -6369,8 +6383,21 @@ function ConversationView(props: ChatViewProps) {
 
   // Bound on every render, as `restoreQueuedMessagesRef` is: the effect above
   // is declared before this and would otherwise hold a stale closure.
+  // A requested send's answer: not ready yet where `onSend` would refuse it unsaid (the render's
+  // readiness, and what it reads from refs), otherwise whether its turn went.
   onSendRef.current = async (ids) => {
-    await onSend(undefined, "foreground", undefined, ids);
+    if (
+      !activeThread ||
+      !requestedSendReady ||
+      !admission.canSend ||
+      sendInFlightRef.current ||
+      feedbackUploadsInFlightRef.current.has(routeThreadKey) ||
+      composerRef.current?.getSendContext().providerAvailable !== true
+    )
+      return "not-ready";
+    return (await onSend(undefined, "foreground", undefined, ids))
+      ? { sent: true }
+      : { sent: false, why: "It did not go out." };
   };
   const onSend = async (
     e?: { preventDefault: () => void },
@@ -6381,7 +6408,7 @@ function ConversationView(props: ChatViewProps) {
     sendIds?: ComposerSendIds,
     /** The person's own send, or a queued message leaving by itself at a boundary. */
     sentBy: "person" | "queue" = "person",
-  ) => {
+  ): Promise<boolean> => {
     e?.preventDefault();
     // Typed out in full rather than picked from the menu. Attachments or contexts
     // mean the user is sending a prompt, so those go through as usual.
@@ -6397,7 +6424,7 @@ function ConversationView(props: ChatViewProps) {
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
       }
-      return;
+      return false;
     }
     // /mcp alone is Mate's own: it opens the MCP tab, and the agent never sees it.
     if (
@@ -6409,7 +6436,7 @@ function ConversationView(props: ChatViewProps) {
       promptRef.current = "";
       setComposerDraftPrompt(composerDraftTarget, "");
       composerRef.current?.resetCursorState();
-      return;
+      return false;
     }
     if (
       !activeThread ||
@@ -6420,12 +6447,12 @@ function ConversationView(props: ChatViewProps) {
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
     ) {
-      return;
+      return false;
     }
     if (activeEnvironmentUnavailable) {
       // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
       // banner has no words yet, the refused send says so itself.
-      if (mateVoiceSpeaks(mateLinkVoice)) return;
+      if (mateVoiceSpeaks(mateLinkVoice)) return false;
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -6433,18 +6460,18 @@ function ConversationView(props: ChatViewProps) {
           description: "Reconnecting to the environment. Try again once it is connected.",
         }),
       );
-      return;
+      return false;
     }
     if (activePendingProgress) {
       // A queued message waits until the question is answered; it must not
       // be submitted as the answer.
-      if (queuedMessage) return;
+      if (queuedMessage) return false;
       onAdvanceActivePendingUserInput();
-      return;
+      return false;
     }
     const sendCtx = composerRef.current?.getSendContext();
     if (!admission.canSend || !sendCtx?.providerAvailable) {
-      return;
+      return false;
     }
     const {
       images: composerImages,
@@ -6492,7 +6519,7 @@ function ConversationView(props: ChatViewProps) {
             description: "Send a message before you submit feedback.",
           }),
         );
-        return;
+        return false;
       }
       feedbackUploadsInFlightRef.current.add(routeThreadKey);
       await submitCodexFeedback({
@@ -6530,7 +6557,7 @@ function ConversationView(props: ChatViewProps) {
         feedbackUploadsInFlightRef.current.delete(routeThreadKey);
       });
 
-      return;
+      return false;
     }
     if (!queuedMessage && showPlanFollowUpPrompt && activeProposedPlan) {
       const followUp = resolvePlanFollowUpSubmission({
@@ -6545,16 +6572,15 @@ function ConversationView(props: ChatViewProps) {
         text: followUp.text.trim(),
       });
       if (composerRef.current?.validateProviderInput(outgoingFollowUpText) === false) {
-        return;
+        return false;
       }
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      await onSubmitPlanFollowUp({
+      return onSubmitPlanFollowUp({
         text: followUp.text,
         interactionMode: followUp.interactionMode,
       });
-      return;
     }
     // Providers without the legacy toggle receive their native commands unchanged.
     const standaloneSlashCommand =
@@ -6570,7 +6596,7 @@ function ConversationView(props: ChatViewProps) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      return;
+      return false;
     }
     if (!hasSendableContent) {
       if (expiredTerminalContextCount > 0) {
@@ -6592,7 +6618,7 @@ function ConversationView(props: ChatViewProps) {
       if (queuedMessage && activeThreadKey) {
         useQueuedMessageStore.getState().remove(activeThreadKey, queuedMessage.id);
       }
-      return;
+      return false;
     }
     if (!activeProject) {
       toastManager.add(
@@ -6602,7 +6628,7 @@ function ConversationView(props: ChatViewProps) {
           description: "This draft no longer points to an available project.",
         }),
       );
-      return;
+      return false;
     }
     // With the queue follow-up behavior, a send during a running turn waits in
     // the queue. It leaves on the next tool boundary, when the turn ends, or
@@ -6615,7 +6641,7 @@ function ConversationView(props: ChatViewProps) {
       settings.followUpBehavior === "queue"
     ) {
       if (composerRef.current?.validateProviderInput(promptForSend) === false) {
-        return;
+        return false;
       }
       useQueuedMessageStore.getState().enqueue(activeThreadKey, {
         prompt: promptForSend,
@@ -6662,7 +6688,8 @@ function ConversationView(props: ChatViewProps) {
       ) {
         scrollToEnd(false, true);
       }
-      return;
+      // Queued, it leaves by itself at the turn's next boundary.
+      return true;
     }
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
@@ -6677,7 +6704,7 @@ function ConversationView(props: ChatViewProps) {
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThreadBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
-      return;
+      return false;
     }
 
     const composerImagesSnapshot = [...composerImages];
@@ -6720,7 +6747,7 @@ function ConversationView(props: ChatViewProps) {
             outcome.action === "hold" ? outcome.reason : undefined,
           );
       }
-      return;
+      return false;
     }
 
     sendInFlightRef.current = true;
@@ -6737,7 +6764,7 @@ function ConversationView(props: ChatViewProps) {
         : null;
       if (!taken) {
         sendInFlightRef.current = false;
-        return;
+        return false;
       }
     }
     // Stop drains the queue. A queued send whose upload was still running at
@@ -6830,7 +6857,7 @@ function ConversationView(props: ChatViewProps) {
         sendInFlightRef.current = false;
         if (step.action === "abort-queued") abortQueuedReplay(step.failure);
         else setThreadError(threadIdForSend, step.message);
-        return;
+        return false;
       }
     }
     if (
@@ -6841,7 +6868,7 @@ function ConversationView(props: ChatViewProps) {
       sendInFlightRef.current = false;
       settleQueuedSend(activeThreadKey, null);
       restoreQueuedMessagesToComposer([queuedMessage]);
-      return;
+      return false;
     }
 
     // A crewmate's chat never starts a turn of its own (`crewComposerSend.ts`):
@@ -6867,7 +6894,7 @@ function ConversationView(props: ChatViewProps) {
         sendInFlightRef.current = false;
         if (step.action === "abort-queued") abortQueuedReplay(step.failure);
         else setThreadError(threadIdForSend, step.message);
-        return;
+        return false;
       }
       setThreadError(threadIdForSend, null);
       if (!queuedMessage) {
@@ -6898,7 +6925,7 @@ function ConversationView(props: ChatViewProps) {
         }
       }
       sendInFlightRef.current = false;
-      return;
+      return crewResult._tag === "Success";
     }
 
     const resolvedSubmissionIntent =
@@ -7309,6 +7336,7 @@ function ConversationView(props: ChatViewProps) {
       );
       resetLocalDispatch();
     }
+    return turnStartSucceeded;
   };
   // Sends the oldest queued message once it is due: a tool call finished
   // after it was queued, or the turn ended. Only one leaves per boundary; the
@@ -7643,7 +7671,7 @@ function ConversationView(props: ChatViewProps) {
     }: {
       text: string;
       interactionMode: "default" | "plan";
-    }) => {
+    }): Promise<boolean> => {
       if (
         !activeThread ||
         !isServerThread ||
@@ -7651,17 +7679,17 @@ function ConversationView(props: ChatViewProps) {
         isConnecting ||
         sendInFlightRef.current
       ) {
-        return;
+        return false;
       }
 
       const trimmed = text.trim();
       if (!trimmed) {
-        return;
+        return false;
       }
 
       const sendCtx = composerRef.current?.getSendContext();
       if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
-        return;
+        return false;
       }
       const {
         selectedProvider: ctxSelectedProvider,
@@ -7753,7 +7781,7 @@ function ConversationView(props: ChatViewProps) {
       if (failure === null) {
         clearUsageLimitsFor(routeThreadKey);
         sendInFlightRef.current = false;
-        return;
+        return true;
       }
 
       setOptimisticUserMessages((existing) =>
@@ -7768,6 +7796,7 @@ function ConversationView(props: ChatViewProps) {
       }
       sendInFlightRef.current = false;
       resetLocalDispatch();
+      return false;
     },
     [
       activeThread,
@@ -8818,6 +8847,7 @@ function ConversationView(props: ChatViewProps) {
                                       (mateAwayWords ?? cloneSendBlockReason(cloneShown))
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
+                              onSendableChange={setComposerSendable}
                               isPreparingWorktree={isPreparingWorktree}
                               // With attachments or contexts aboard the pick just inserts the
                               // text, so it sends as a prompt like the typed path would.
