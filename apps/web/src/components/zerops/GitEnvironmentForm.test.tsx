@@ -490,6 +490,14 @@ describe("Git environment setup's real form", () => {
     await act(async () => finish());
     expect(props.setup.add).toHaveBeenCalledOnce();
   });
+  it("a Git stage added by hand starts on the branch an origin's stage follows", async () => {
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await draw({ tier: "stage", defaultName: "Shop - stage" });
+    await chooseRepository();
+    expect(field("Branch").value).toBe("mate-stage");
+    expect(props.setup.preview).toHaveBeenLastCalledWith("mate-stage");
+  });
   it("a Git stage never pushes the pre-attachment adoption automatically", async () => {
     await draw({ tier: "stage" });
     await chooseRepository();

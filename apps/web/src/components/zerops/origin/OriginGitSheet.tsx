@@ -1,13 +1,13 @@
 /**
  * The Git sheet an origin ask opens: production on `main` first, prefilled with the asked address
  * and the HQ repository the Mate will wire — production adopts the origin's files and history —
- * then, in the same sheet, stage on `ORIGIN_STAGE_BRANCH`, read again for its own review.
+ * then, in the same sheet, stage on its default branch, read again for its own review.
  */
 import { useState } from "react";
 
 import { GitEnvironmentForm } from "../GitEnvironmentForm";
 import type { GitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
-import { ORIGIN_STAGE_BRANCH, originAddress } from "./originAsk.logic";
+import { originAddress } from "./originAsk.logic";
 
 export interface OriginGitSheetProps {
   readonly url: string;
@@ -51,7 +51,7 @@ export function OriginGitSheet({
       key="stage"
       onAdded={onClose}
       onCancel={onClose}
-      prefill={{ address, repo, branch: ORIGIN_STAGE_BRANCH, atBranch: true }}
+      prefill={{ address, repo, atBranch: true }}
       tier="stage"
     />
   );
