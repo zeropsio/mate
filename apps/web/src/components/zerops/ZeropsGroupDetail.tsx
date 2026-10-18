@@ -135,7 +135,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFrame";
 import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ProjectAccessCard, type AccessPlace } from "./projects/ProjectAccessCard";
 import { ProjectChangesCard } from "./projects/ProjectChangesCard";
@@ -1382,6 +1382,8 @@ export function ZeropsStopPane({
         readonly orgId: string;
         readonly open: boolean;
         readonly onToggle: () => void;
+        /** What the vault column holds; the project's vault unless given (a harness's fixture). */
+        readonly body?: React.ReactNode;
       }
     | undefined;
   readonly readFailures?: React.ReactNode;
@@ -1518,9 +1520,17 @@ export function ZeropsStopPane({
       }
       crumbs={[...crumbs, { label: head.title }]}
       side={
-        vault?.open === true && stop.target.kind === "zerops" ? (
-          <StopVaultSide name={head.title} orgId={vault.orgId} projectId={projectId!} />
-        ) : undefined
+        vault?.open === true && stop.target.kind === "zerops"
+          ? (placement) => (
+              <StopVaultSide
+                body={vault.body}
+                name={head.title}
+                orgId={vault.orgId}
+                placement={placement}
+                projectId={projectId!}
+              />
+            )
+          : undefined
       }
       subtitle={
         <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
@@ -1942,8 +1952,8 @@ function DetailShell({
    * and coming in again.
    */
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** A column beside the page: an environment's vault. */
-  readonly side?: React.ReactNode;
+  /** A column beside the page, or under it where the frame is narrow: an environment's vault. */
+  readonly side?: ((placement: SidePlacement) => React.ReactNode) | undefined;
   readonly children: React.ReactNode;
 }) {
   return (
