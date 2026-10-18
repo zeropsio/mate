@@ -14,7 +14,7 @@ import {
 import { CommandPaletteMetaDot } from "~/components/ThreadCommandSubtitle";
 import { MateDot } from "~/components/zerops/MateDot";
 import { MateFace } from "~/components/zerops/primitives";
-import { PlaceDot } from "~/components/zerops/projects/ProjectCards";
+import { PlaceDot } from "~/components/zerops/projects/ProjectRoad";
 import { EnvDot } from "~/components/zerops/SidebarProductionChip";
 import { UrlChip } from "~/components/zerops/ZeropsOperationCard";
 

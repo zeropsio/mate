@@ -254,30 +254,47 @@ function MatePill({
       {mate.name}
     </span>
   );
+  // What the chat is about stands after everything else on the line, outside the press: the face,
+  // the name, the chats' ⌄ and what waits on the person keep their width, and only the subject gives
+  // way to the line's end, down to nothing (the owner, 2026-10-18: "on smaller screens the 'desc' is
+  // what should get cut off, not the button").
   const subjectLine =
     subject === null ? null : (
-      // Arriving after the line stands, it fades in where it stays: the
-      // name before it never moves.
-      <span
-        className="conversation-subject flex min-w-0 items-center gap-2.5"
-        data-arrived={arrived ? "" : undefined}
-        data-conversation-subject=""
-      >
-        <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-        <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
-          {subject}
-        </span>
-      </span>
+      <Tooltip disabled={hover === null}>
+        <TooltipTrigger
+          render={
+            // Arriving after the line stands, it fades in where it stays: the
+            // name before it never moves.
+            <span
+              className="conversation-subject flex min-w-0 flex-1 items-center gap-2.5"
+              data-arrived={arrived ? "" : undefined}
+              data-conversation-subject=""
+              onDoubleClick={(event: ReactMouseEvent) => {
+                if (!mate.open || onRename === null) return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                onRename();
+              }}
+            />
+          }
+        >
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+          <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
+            {subject}
+          </span>
+        </TooltipTrigger>
+        {hover === null ? null : (
+          <TooltipPopup align="start" side="bottom">
+            {hover}
+          </TooltipPopup>
+        )}
+      </Tooltip>
     );
-  // What waits on the person stands between the name and the subject, outside the press.
-  const hasTrailing = trailing !== null && trailing !== undefined;
-  const inPress = !hasTrailing;
   const press = (
     <button
       aria-current={mate.open ? "page" : undefined}
       aria-label={mate.open ? mate.name : (mate.tooltip ?? mate.name)}
       className={cn(
-        "conversation-mate-press flex h-8 min-w-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
         chats === null ? "pe-3" : "pe-1",
         opens ? "cursor-pointer" : "cursor-default",
       )}
@@ -294,34 +311,35 @@ function MatePill({
     >
       <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
       {name}
-      {inPress ? subjectLine : null}
     </button>
   );
+  // The name's hover is the subject only where no subject stands on the line.
+  const nameHover = subject === null ? hover : null;
   return (
     <div
       className={cn(
         "conversation-mate flex h-8 min-w-0 items-center",
         // Only a subject gives way to the line's end; the name never does.
-        subject === null && "shrink-0",
+        subject === null ? "shrink-0" : "flex-1",
       )}
       data-conversation-mate
       data-on={band ? "" : undefined}
       data-opens={opens ? "" : undefined}
     >
       {/* One tree with or without a hover, so the press never remounts as one comes or goes. */}
-      <Tooltip disabled={hover === null}>
+      <Tooltip disabled={nameHover === null}>
         <TooltipTrigger render={press} />
-        {hover === null ? null : (
+        {nameHover === null ? null : (
           <TooltipPopup align="start" side="bottom">
-            {hover}
+            {nameHover}
           </TooltipPopup>
         )}
       </Tooltip>
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
-      {hasTrailing ? trailing : null}
-      {hasTrailing ? subjectLine : null}
+      {trailing}
+      {subjectLine}
     </div>
   );
 }

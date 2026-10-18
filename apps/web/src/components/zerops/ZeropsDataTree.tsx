@@ -12,7 +12,7 @@
  *
  * The recursive levels below (`renderNodeList` etc.) are plain functions,
  * not their own JSX components: calling `ZeropsDataTree` as a bare function
- * (this repo's component-test style, see `ZeropsBrowserPanel.test.tsx`)
+ * (this repo's component-test style, see `ZeropsMacPanel.test.tsx`)
  * only evaluates JSX actually constructed inside the function body it calls
  * — a nested `<SomeComponent/>` tag stays an unevaluated descriptor until
  * something renders it. Plain function calls evaluate immediately instead,

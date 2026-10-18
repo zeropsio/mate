@@ -97,7 +97,7 @@ describe("VaultRequestCard — asking for a value", () => {
     expect(container.textContent).toContain("Fen needs OPENAI_API_KEY");
     expect(container.querySelector("[data-vault-request-where]")?.textContent).toBe("Shared");
     expect(container.textContent).toContain("platform.openai.com › API keys.");
-    expect(field(container)?.type).toBe("password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
     expect(button(container, "Put in vault")?.disabled).toBe(true);
     expect(button(container, "Not now")).toBeDefined();
   });
@@ -107,12 +107,12 @@ describe("VaultRequestCard — asking for a value", () => {
       ask({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" }, sensitive: false }),
     );
     expect(container.querySelector("[data-vault-request-where]")?.textContent).toBe("appdev");
-    expect(field(container)?.type).toBe("password");
-    expect(field(container)?.getAttribute("autocomplete")).toBe("new-password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
+    expect(field(container)?.getAttribute("autocomplete")).toBe("off");
     await click(button(container, "Show"));
-    expect(field(container)?.type).toBe("text");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(false);
     await click(button(container, "Hide"));
-    expect(field(container)?.type).toBe("password");
+    expect(field(container)?.hasAttribute("data-secret")).toBe(true);
   });
 
   it.each([

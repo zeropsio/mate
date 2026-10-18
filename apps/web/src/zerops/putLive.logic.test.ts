@@ -14,10 +14,8 @@ import {
   putLiveHoldsRelease,
   putLiveLines,
   putLiveSheetUnderWay,
-  putLiveMergeGate,
   putLiveDeadline,
   putLiveNext,
-  putLiveOffered,
   putLiveProgress,
   putLiveLandedAt,
   putLiveReleased,
@@ -29,7 +27,6 @@ import {
   type PutLiveChange,
   type PutLiveFacts,
   type PutLiveFlowFacts,
-  type PutLiveMergePull,
   type PutLiveRun,
 } from "./putLive.logic";
 
@@ -192,17 +189,6 @@ describe("putting an app live", () => {
   });
 });
 
-describe("Put it live is offered", () => {
-  it.each([
-    ["no production and the person may add one", false, { production: true }, true],
-    ["a production held in any state", true, { production: true }, false],
-    ["the person may not add production", false, { production: false }, false],
-    ["HQ has not said what the person may add", false, undefined, false],
-  ])("with %s: %s", (_case, productionHeld, addable, offered) => {
-    expect(putLiveOffered({ productionHeld, addable })).toBe(offered);
-  });
-});
-
 describe("the Put it live sheet", () => {
   it("says what goes live in the change's title and at most three plain lines, and where", () => {
     const sheet = putLiveSheet({
@@ -332,70 +318,6 @@ describe("the one wait row and the live card", () => {
     });
     expect(putLiveAddress([])).toBeUndefined();
   });
-});
-
-describe("Put it live merges what the review would merge", () => {
-  const HEAD = "a".repeat(40);
-  const pull = (over: Partial<PutLiveMergePull> = {}): PutLiveMergePull => ({
-    number: 1,
-    headSha: HEAD,
-    kind: "code",
-    baseBranch: "main",
-    mergeability: "mergeable",
-    merged: false,
-    mergedAt: undefined,
-    behind: false,
-    ...over,
-  });
-  const checks = (state: "running" | "failed" | "unknown" | "passed") => ({
-    pipeline: {
-      head: HEAD,
-      requirements: "known" as const,
-      checks: [{ id: "c1", name: "tests", requirement: "required" as const, state }],
-    },
-  });
-
-  it.each([
-    ["ready to merge", pull(), { kind: "open" }],
-    ["merged already", pull({ merged: true, mergeability: "checking" }), { kind: "open" }],
-    ["behind main, still merging cleanly", pull({ behind: true }), { kind: "open" }],
-    ["its required checks passed", pull(checks("passed")), { kind: "open" }],
-    [
-      "its required checks failed",
-      pull(checks("failed")),
-      { kind: "held", words: "Required checks failed" },
-    ],
-    [
-      "its required checks still run",
-      pull(checks("running")),
-      { kind: "held", words: "Required checks running" },
-    ],
-    [
-      "its required checks unknown",
-      pull(checks("unknown")),
-      { kind: "held", words: "Required checks unknown" },
-    ],
-    [
-      "HQ still works out whether it merges",
-      pull({ mergeability: "checking" }),
-      { kind: "held", words: "Checking whether it merges cleanly" },
-    ],
-    [
-      "main already has all of it",
-      pull({ mergeability: "empty" }),
-      { kind: "held", words: "Nothing to merge" },
-    ],
-    [
-      "it no longer merges cleanly",
-      pull({ mergeability: "conflicting" }),
-      { kind: "held", words: "Behind main" },
-    ],
-  ] as const)(
-    "Put it live is one press only where the review would merge the change: %s",
-    (_case, read, gate) => {
-      expect(putLiveMergeGate({ pull: read })).toEqual(gate);
-    },
-  );
 });
 
 describe("a write that never answers", () => {

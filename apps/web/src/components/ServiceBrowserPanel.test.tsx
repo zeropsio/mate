@@ -1,14 +1,11 @@
-import * as Schema from "effect/Schema";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import {
   deployedVersionKey,
   nextHeldVersion,
-  PREVIEW_COOKIE_NOTE_KEY,
   previewKey,
   ServiceBrowserPanels,
 } from "./ServiceBrowserPanel";
-import { removeLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 
 const origin = "https://web-2ff4-3000.prg1.zerops.app";
@@ -79,25 +76,21 @@ describe("restored service previews", () => {
     expect(html.match(/Open in new tab/gu)).toHaveLength(1);
   });
 });
-describe("the cookie note", () => {
-  afterEach(() => removeLocalStorageItem(PREVIEW_COOKIE_NOTE_KEY));
-  it("says once that sign-ins and carts need a tab of their own, until it is read", () => {
+describe("an open site", () => {
+  it("is its address row and the site, with nothing between them", () => {
+    const html = render(origin, services);
+    const row = html.indexOf("data-site-address-row");
+    expect(row).toBeGreaterThan(-1);
+    expect(html.slice(row, html.indexOf("<iframe"))).not.toMatch(/<p[\s>]/u);
+  });
+  it("says on its way out to a tab that sign-ins and carts need one", () => {
     // Measured 2026-09-29: a framed *.zerops.app page is cross-site in every
     // client, and Chrome refused a Medusa storefront's unattributed cookie
     // there (SchemefulSameSiteUnspecifiedTreatedAsLax) while storing it
-    // top-level. Unlike the removed footer, this is true of every preview.
-    const unread = render(origin, services);
-    expect(unread.match(/sign-ins and carts need a new tab/gu)).toHaveLength(1);
-    expect(unread).toContain(">Got it</button>");
-    expect(unread.match(/Open in new tab/gu)).toHaveLength(1);
-
-    setLocalStorageItem(PREVIEW_COOKIE_NOTE_KEY, true, Schema.Boolean);
-    const read = render(origin, services);
-    expect(read).not.toContain("sign-ins and carts");
-    expect(read).toContain("<iframe");
-  });
-  it("is not shown where there is no preview", () => {
-    expect(render("https://gitea.example/pulls/4", services)).not.toContain("sign-ins and carts");
+    // top-level.
+    expect(render(origin, services)).toContain(
+      'title="Browsers block most cookies here, so sign-ins and carts need a new tab."',
+    );
   });
 });
 describe("deployedVersionKey", () => {

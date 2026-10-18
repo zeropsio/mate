@@ -20,7 +20,6 @@ import {
  *   account signed in afterwards through `agentLoginStart` with its id, or a
  *   Claude API key, which crosses the wire only here — or signs one out and
  *   forgets it.
- * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `macInput` — server scope: `AuthOrchestrationOperateScope`; a click or text for the app
  *   in the paired Mac's live view.
  * - `macForget` — server scope: `AuthOrchestrationOperateScope`; the Mate forgets the paired
@@ -33,11 +32,7 @@ import {
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
  */
-import {
-  makeMateBrowserInputCommand,
-  makeMateMacForgetCommand,
-  makeMateMacInputCommand,
-} from "@t3tools/client-runtime/data";
+import { makeMateMacForgetCommand, makeMateMacInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { Atom } from "effect/reactivity";
 
@@ -58,8 +53,6 @@ export function createZeropsCommandAtoms<R, E>(
 
   const loginRemove = mateActionCommand(runtime, "loginRemove");
 
-  const browserInput = makeMateBrowserInputCommand(runtime);
-
   const macInput = makeMateMacInputCommand(runtime);
   const macForget = makeMateMacForgetCommand(runtime);
 
@@ -72,7 +65,6 @@ export function createZeropsCommandAtoms<R, E>(
     agentSignOut,
     loginAdd,
     loginRemove,
-    browserInput,
     macInput,
     macForget,
   };
