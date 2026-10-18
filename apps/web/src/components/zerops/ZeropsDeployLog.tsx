@@ -17,11 +17,7 @@ export function ZeropsDeployLog({
   readonly service: string;
 }) {
   const [open, setOpen] = useState(false);
-  const history = useProjectActivityRead(projectId);
-  const unavailable =
-    history.processHistory === "read" &&
-    history.processes !== undefined &&
-    deployLogProcess(target, projectId, history.processes)?.appVersion === undefined;
+  const unavailable = useDeployLogUnavailable(projectId, target);
   return (
     <div className="pb-2" data-zerops-deploy-job={target.jobId}>
       {!open && unavailable ? (
@@ -44,7 +40,18 @@ export function ZeropsDeployLog({
   );
 }
 
-function DeployLogDetails({
+/** Whether Zerops' recent processes no longer hold the deploy: its history is checked instead. */
+export function useDeployLogUnavailable(projectId: string, target: DeployLogTarget): boolean {
+  const history = useProjectActivityRead(projectId);
+  return (
+    history.processHistory === "read" &&
+    history.processes !== undefined &&
+    deployLogProcess(target, projectId, history.processes)?.appVersion === undefined
+  );
+}
+
+/** What *View deploy* opens: the deploy's steps and its build log, read while it is open. */
+export function DeployLogDetails({
   projectId,
   target,
   service,
