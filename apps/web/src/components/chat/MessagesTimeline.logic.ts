@@ -693,7 +693,15 @@ type MessagesTimelineRowBody =
   /** Something said about the task after its Mate took it: its author's, never the viewer's. */
   | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
   /** What a task's asker wrote where they asked, opening its conversation: theirs, never the brief. */
-  | { kind: "task-ask"; id: string; createdAt: string; source: MateTaskSource; text: string }
+  | {
+      kind: "task-ask";
+      id: string;
+      createdAt: string;
+      source: MateTaskSource;
+      text: string;
+      /** HQ's id of the task the card is of; `null`: the conversation's own (an older server's). */
+      taskId: string | null;
+    }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
   | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
   | {
@@ -2640,22 +2648,29 @@ export function deriveMessagesTimelineRows(input: {
       newSinceDrawn = true;
     }
   };
-  // A task's first message is its brief, never drawn: the conversation opens with the task's card
-  // instead — where it came from, its title, and what its asker wrote (none where the ask had no
-  // more text, or its Mate came before asks were kept).
-  // Only the conversation's first brief opens it: one sent again (a task put back in line and
-  // taken again) draws nothing.
-  const firstBriefId = entries.find(
-    (entry) => entry.kind === "message" && entry.message.task !== undefined,
-  )?.id;
+  // A task's first message is its brief, never drawn: its turn opens with the task's card instead
+  // — where it came from, its title, and what its asker wrote (none where the ask had no more
+  // text, or its Mate came before asks were kept). An automated Mate works every task in its one
+  // conversation, so a card stands at each task's start; a brief sent again for a task already
+  // drawn (a task put back in line and taken again) draws nothing. A brief with no task's id is
+  // of the conversation's own task, an older server's.
+  const briefIds = new Set<string>();
+  const briefTasks = new Set<string | null>();
+  for (const entry of entries) {
+    if (entry.kind !== "message" || entry.message.task === undefined) continue;
+    const taskId = entry.message.taskId ?? null;
+    if (briefTasks.has(taskId)) continue;
+    briefTasks.add(taskId);
+    briefIds.add(entry.id);
+  }
   const personRow = (
     entry: MessageEntry,
     index: number,
     aside: boolean,
   ): MessagesTimelineRow | null => {
-    const { task: source, taskAsk } = entry.message;
+    const { task: source, taskAsk, taskId } = entry.message;
     if (source !== undefined) {
-      return entry.id !== firstBriefId
+      return !briefIds.has(entry.id)
         ? null
         : {
             kind: "task-ask",
@@ -2663,6 +2678,7 @@ export function deriveMessagesTimelineRows(input: {
             createdAt: entry.createdAt,
             source,
             text: taskAsk ?? "",
+            taskId: taskId ?? null,
           };
     }
     const heard = entry.message.taskMessage;

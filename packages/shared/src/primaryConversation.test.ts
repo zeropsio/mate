@@ -1,4 +1,8 @@
-import { EnvironmentId, OrchestrationThreadShell } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MATE_TASKS_CONVERSATION_ID,
+  OrchestrationThreadShell,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -171,6 +175,42 @@ describe("resolvePrimaryConversation", () => {
       thread("c"),
     ]);
     expect(result.hidden).toHaveLength(2);
+  });
+
+  it("opening an automated Mate opens its one conversation", () => {
+    // Its tasks before the one conversation, each in its own: one pinned, one spoken in later.
+    const result = resolvePrimaryConversation([
+      thread("task-task-9", { pinnedAt: "2026-09-02T00:00:00Z" }),
+      thread("task-task-12", { latestUserMessageAt: "2026-09-04T00:00:00Z" }),
+      thread(MATE_TASKS_CONVERSATION_ID, {
+        createdAt: "2026-09-05T00:00:00Z",
+        latestUserMessageAt: "2026-09-05T00:00:00Z",
+      }),
+    ]);
+    expect(result.primary?.id).toBe(MATE_TASKS_CONVERSATION_ID);
+    expect(result.reason).toBe("tasks");
+    // Its old per-task conversations stay, as its history.
+    expect(result.hidden.map((entry) => entry.id).toSorted()).toEqual([
+      "task-task-12",
+      "task-task-9",
+    ]);
+  });
+
+  it("opens an older automated Mate's newest task, never an old one while a newer one exists", () => {
+    const result = resolvePrimaryConversation([
+      thread("task-task-9", {
+        createdAt: "2026-09-01T00:00:00Z",
+        pinnedAt: "2026-09-02T00:00:00Z",
+        latestUserMessageAt: "2026-09-06T00:00:00Z",
+      }),
+      thread("task-task-12", {
+        createdAt: "2026-09-03T00:00:00Z",
+        latestUserMessageAt: "2026-09-03T00:00:00Z",
+      }),
+      thread("draft", { createdAt: "2026-09-04T00:00:00Z" }),
+    ]);
+    expect(result.primary?.id).toBe("task-task-12");
+    expect(result.reason).toBe("tasks");
   });
 
   it("never opens a crewmate's thread, nor counts it among the hidden ones", () => {

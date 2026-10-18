@@ -1,8 +1,8 @@
 /**
  * An automated Mate in its own conversation: it runs on the organization's API key alone, so the
  * coding agents a person signs in with a subscription (Claude, ChatGPT) are never offered there —
- * no picker panel, no sign-in. Its conversations are tasks: a task's first message is the issue
- * it brings (`ChatMessage.task`), and the conversation is named by it.
+ * no picker panel, no sign-in. It works every task in its one conversation, a turn each: a task's
+ * first message is the issue it brings (`ChatMessage.task`), and the header names the latest.
  */
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import { agentIdForDriverKind, type MateTaskSource } from "@t3tools/contracts";
@@ -53,12 +53,28 @@ export function taskTitle(task: {
   return task.number === undefined ? task.title : `#${String(task.number)} ${task.title}`;
 }
 
-/** The task a conversation works: the issue its first message brought; null for any other. */
+/** A task a conversation works: the source its brief brought, and HQ's id of it where it says one. */
+export interface ConversationTask {
+  readonly source: MateTaskSource;
+  readonly taskId: string | null;
+}
+
+/**
+ * The task a conversation works now: the one its latest brief brought, with HQ's id of it where the
+ * brief carries one (an automated Mate's one conversation, a turn per task; an older server's
+ * conversation was one task's, named by its id); null for any other conversation.
+ */
 export function conversationTask(
-  messages: ReadonlyArray<{ readonly role: string; readonly task?: MateTaskSource | undefined }>,
-): MateTaskSource | null {
-  const first = messages.find((message) => message.role === "user");
-  return first?.task ?? null;
+  messages: ReadonlyArray<{
+    readonly role: string;
+    readonly task?: MateTaskSource | undefined;
+    readonly taskId?: string | undefined;
+  }>,
+): ConversationTask | null {
+  const brief = messages.findLast(
+    (message) => message.role === "user" && message.task !== undefined,
+  );
+  return brief?.task === undefined ? null : { source: brief.task, taskId: brief.taskId ?? null };
 }
 
 /**

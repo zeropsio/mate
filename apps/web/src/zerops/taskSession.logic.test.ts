@@ -2,7 +2,15 @@ import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
 
-import { recordOf, spentWords, taskSession, type TaskSessionInput } from "./taskSession.logic";
+import { MATE_TASKS_CONVERSATION_ID } from "@t3tools/contracts";
+
+import {
+  recordOf,
+  sessionTaskId,
+  spentWords,
+  taskSession,
+  type TaskSessionInput,
+} from "./taskSession.logic";
 import { workedWords } from "./taskStatus";
 
 const issue = {
@@ -227,6 +235,56 @@ describe("a task's session: how its conversation's task stands, in one word", ()
       }),
     );
     expect(session).toMatchObject({ taskId: "task-9", status: "working", stoppable: true });
+  });
+});
+
+describe("the task a conversation's session is of", () => {
+  it("the header's status and Stop follow the conversation's current task", () => {
+    const next: HqNavigationMateTask = {
+      id: "task-13",
+      title: "The receipt email shows the wrong address",
+      url: "https://tea-shop.slack.com/archives/C1/p2",
+    };
+    // Its latest task's brief names it; HQ's record of the one before stays that one's.
+    const taskId = sessionTaskId({
+      brief: "task-13",
+      conversationId: MATE_TASKS_CONVERSATION_ID,
+      current: next,
+    });
+    expect(taskId).toBe("task-13");
+    const session = taskSession(
+      input({
+        source: {
+          kind: "slack-thread",
+          workspace: "Tea Shop",
+          channel: "support",
+          url: next.url!,
+          title: next.title,
+          author: "Ines",
+        },
+        taskId,
+        current: next,
+        working: true,
+        record: undefined,
+      }),
+    );
+    expect(session).toMatchObject({ taskId: "task-13", status: "working", stoppable: true });
+    // Before its brief is read, the one conversation is on the task its Mate is on now.
+    expect(
+      sessionTaskId({ brief: null, conversationId: MATE_TASKS_CONVERSATION_ID, current: next }),
+    ).toBe("task-13");
+    expect(
+      sessionTaskId({ brief: null, conversationId: MATE_TASKS_CONVERSATION_ID, current: null }),
+    ).toBeNull();
+  });
+
+  it("an old per-task conversation still shows its task", () => {
+    // Its brief carries no task's id: its own id names the task, never the one its Mate is on now.
+    expect(sessionTaskId({ brief: null, conversationId: "task-task-9", current: onIt })).toBe(
+      "task-9",
+    );
+    // A personal Mate's conversation is of no task.
+    expect(sessionTaskId({ brief: null, conversationId: "thread-1", current: onIt })).toBeNull();
   });
 });
 

@@ -2808,8 +2808,16 @@ function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
   );
 }
 
-/** The task its conversation is for, read for the Mate living in its environment. */
-function TaskCardTimelineRow({ source, text }: { source: MateTaskSource; text: string }) {
+/** A task at its turn's start, read by its own id for the Mate living in its environment. */
+function TaskCardTimelineRow({
+  source,
+  text,
+  taskId,
+}: {
+  source: MateTaskSource;
+  text: string;
+  taskId: string | null;
+}) {
   const { threadRef } = use(TimelineRowCtx);
   if (threadRef === null) return null;
   return (
@@ -2824,6 +2832,7 @@ function TaskCardTimelineRow({ source, text }: { source: MateTaskSource; text: s
         })
       }
       task={source}
+      taskId={taskId}
       text={text}
     />
   );
@@ -2863,7 +2872,9 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
       {/* A task opens its conversation as its card; what is said of it after its Mate took it
           follows as its authors'. Its brief draws no row. */}
-      {row.kind === "task-ask" ? <TaskCardTimelineRow source={row.source} text={row.text} /> : null}
+      {row.kind === "task-ask" ? (
+        <TaskCardTimelineRow source={row.source} taskId={row.taskId} text={row.text} />
+      ) : null}
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}

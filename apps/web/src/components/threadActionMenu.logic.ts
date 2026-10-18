@@ -25,6 +25,8 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   readonly isRegeneratingTitle: boolean;
+  /** The thread is an automated Mate's: tasks start its turns, so no new thread is offered. */
+  readonly automatedMate?: boolean | undefined;
   /** Archive rejects a thread with an active turn, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
   readonly supports: {
@@ -41,7 +43,7 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [
-    ...(state.branch
+    ...(state.branch && state.automatedMate !== true
       ? [
           {
             id: "new-thread-on-branch" as const,
