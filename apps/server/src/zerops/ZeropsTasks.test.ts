@@ -123,6 +123,9 @@ interface Delivered {
   readonly principal: Principal;
 }
 
+/** How a report says the task stands, apart from what it spent. */
+const standing = ({ spentUsd: _spentUsd, workedMs: _workedMs, ...rest }: MateTaskReport) => rest;
+
 /** A Mate's engine as the tasks read it: views by id, and what was given and told to it. */
 const rig = (
   options: {
@@ -247,8 +250,15 @@ const rig = (
       ),
     );
     const tasks = Context.get(built, ZeropsTasks);
+    // How each report stands, apart from what it spent (`reports` holds them whole).
     const sent: Array<MateTaskReport> = [];
-    const link = yield* tasks.open((report) => Effect.sync(() => void sent.push(report)));
+    const reports: Array<MateTaskReport> = [];
+    const link = yield* tasks.open((report) =>
+      Effect.sync(() => {
+        reports.push(report);
+        sent.push(standing(report));
+      }),
+    );
     /** Moves the conversation's record and tells whoever follows the engine's changes. */
     const move = (conversationId: ConversationId, next: ConversationView) =>
       Effect.sync(() => views.set(conversationId, next)).pipe(
@@ -279,6 +289,7 @@ const rig = (
       delivered,
       link,
       sent,
+      reports,
       move,
       tasks,
       ownEnds,
@@ -719,7 +730,9 @@ describe("an automated Mate says how its task stands", () => {
       // A conversation of a person's is no task's.
       views.set(ConversationId.make("main"), view(ConversationId.make("main"), {}, 3));
       const sent: Array<MateTaskReport> = [];
-      const link = yield* tasks.open((report) => Effect.sync(() => void sent.push(report)));
+      const link = yield* tasks.open((report) =>
+        Effect.sync(() => void sent.push(standing(report))),
+      );
       yield* Effect.forkScoped(link.run);
       yield* settle;
       assert.deepStrictEqual(sent, [
@@ -909,7 +922,9 @@ describe("people steer a task its Mate works", () => {
         ...said("QUESTION: Should the old cart keep its teas?"),
       });
       const sent: Array<MateTaskReport> = [];
-      const link = yield* tasks.open((report) => Effect.sync(() => void sent.push(report)));
+      const link = yield* tasks.open((report) =>
+        Effect.sync(() => void sent.push(standing(report))),
+      );
       yield* Effect.forkScoped(link.run);
       yield* settle;
       assert.deepStrictEqual(sent, [
@@ -1178,6 +1193,74 @@ describe("a task stops at its limits", () => {
         conversationId: id,
         detail: "It reached its $2.50 limit.",
       });
+    }),
+  );
+});
+
+describe("a task's report says what it cost and how long it worked", () => {
+  it.effect("every report of a task carries what it cost and how long its runs worked", () =>
+    Effect.gen(function* () {
+      const { id, move, reports, spent } = yield* working("task-1");
+      assert.deepStrictEqual(
+        reports.map(({ state, spentUsd, workedMs }) => ({ state, spentUsd, workedMs })),
+        [
+          { state: "accepted", spentUsd: 0, workedMs: 0 },
+          { state: "working", spentUsd: 0, workedMs: 0 },
+        ],
+      );
+      yield* minutes(3);
+      yield* spent(id, "turn-1", 0.42);
+      const first = run(id, principalOf("task-1"), "ended", { kind: "completed" });
+      yield* move(id, view(id, { lastEnded: { ...first, startedAt: 0, endedAt: 200_000 } }));
+      yield* settle;
+      assert.deepStrictEqual(reports.at(-1), {
+        taskId: "task-1",
+        state: "done",
+        conversationId: id,
+        spentUsd: 0.42,
+        workedMs: 200_000,
+      });
+    }),
+  );
+
+  it.effect("a task at work says working again with fresh numbers once a minute, no more", () =>
+    Effect.gen(function* () {
+      const { id, move, reports } = yield* working("task-1");
+      const before = reports.length;
+      // A streaming answer moves the conversation many times a minute: its numbers hold.
+      for (const _move of [1, 2, 3]) {
+        yield* TestClock.adjust("10 seconds");
+        yield* move(
+          id,
+          view(id, { activeRun: { ...run(id, principalOf("task-1"), "running"), startedAt: 0 } }),
+        );
+        yield* settle;
+      }
+      assert.strictEqual(reports.length, before);
+      // Quiet a minute after its last move: read again, and said with what it worked till now.
+      yield* minutes(1);
+      assert.deepStrictEqual(
+        reports.slice(before).map(({ state, workedMs }) => ({ state, workedMs })),
+        [{ state: "working", workedMs: 90_000 }],
+      );
+      yield* minutes(1);
+      assert.deepStrictEqual(reports.at(-1)?.workedMs, 150_000);
+    }),
+  );
+
+  it.effect("a task stopped before its Mate took it says it spent nothing", () =>
+    Effect.gen(function* () {
+      const { link, reports } = yield* rig();
+      yield* link.stop("task-1", "people stopped it.");
+      assert.deepStrictEqual(reports, [
+        {
+          taskId: "task-1",
+          state: "stopped",
+          detail: "people stopped it.",
+          spentUsd: 0,
+          workedMs: 0,
+        },
+      ]);
     }),
   );
 });

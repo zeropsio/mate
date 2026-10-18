@@ -27,6 +27,8 @@
  *   the time it waited between them, and the cost its turns reported at each turn's end; reaching
  *   either stops its runs and the task says `failed` with the limit, and a follow-up past one
  *   starts nothing. They hold whether or not HQ is linked: the Mate follows its own record.
+ * - **Spent:** each report but a refusal carries what the task cost and how long it worked
+ *   (`taskSpendOf`); while it works, those move, and are said, once a minute.
  * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
  *   `failed` (with why) once it ended, as the engine's record shows; a conversation whose brief was
  *   never recorded says nothing, so HQ tells the task again. A task's end is its own last run's,
@@ -200,6 +202,32 @@ const reachedLimit = (
     limits.costUsd !== null &&
     BigInt(entry?.costNano ?? "0") >= BigInt(Math.round(limits.costUsd * 1e9));
   return { reached: overCost ? "cost" : undefined, leftMs };
+};
+
+/**
+ * What a task spent, as each of its reports carries it: its turns' cost in US dollars, and how
+ * long its runs worked — its ended runs as the ledger counted them, and its run on until it was
+ * last seen live — never the time it waited between them. The run on is seen live at most once a
+ * minute (`enforce`), so while the task works its numbers move, and it says so, once a minute.
+ */
+export const taskSpendOf = (
+  taskId: string,
+  entry: TaskEntry | undefined,
+  view: ConversationView | undefined,
+): { readonly spentUsd: number; readonly workedMs: number } => {
+  const live = isTasks(view?.activeRun, taskId) ? view?.activeRun : undefined;
+  const ended = Object.entries(entry?.runMs ?? {}).reduce(
+    (sum, [runId, ms]) => (runId === live?.id ? sum : sum + ms),
+    0,
+  );
+  const startedAt = live?.startedAt ?? null;
+  const liveMs =
+    live === undefined || startedAt === null
+      ? 0
+      : Math.max(0, (entry?.liveAt?.[live.id] ?? startedAt) - startedAt);
+  // Billionths to dollars, kept to a millionth: a float never prints as $0.30000000000000004.
+  const spentUsd = Math.round(Number(BigInt(entry?.costNano ?? "0") / 1000n)) / 1e6;
+  return { spentUsd, workedMs: ended + liveMs };
 };
 
 /** A usage record's cost in billionths of its currency. */
@@ -387,7 +415,8 @@ export const make = Effect.gen(function* () {
       const own = afterTheTask(taskId, view)
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
-      return taskReportOf(taskId, view, own?.end, entry);
+      const report = taskReportOf(taskId, view, own?.end, entry);
+      return report === undefined ? undefined : { ...report, ...taskSpendOf(taskId, entry, view) };
     });
 
   const principalOf = (taskId: string): Principal => ({ kind: "task", taskId });
@@ -552,9 +581,14 @@ export const make = Effect.gen(function* () {
       const told = held === undefined ? undefined : yield* reportFor(task.id, held);
       if (told !== undefined) return Option.some(told);
       // Stopped before it was taken: it stays stopped.
-      const stopped = (yield* ledger.entry(task.id))?.stopped;
-      if (stopped !== undefined) {
-        return Option.some<MateTaskReport>({ taskId: task.id, state: "stopped", detail: stopped });
+      const kept = yield* ledger.entry(task.id);
+      if (kept?.stopped !== undefined) {
+        return Option.some<MateTaskReport>({
+          taskId: task.id,
+          state: "stopped",
+          detail: kept.stopped,
+          ...taskSpendOf(task.id, kept, undefined),
+        });
       }
       const refused = (detail: string) =>
         Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
@@ -594,7 +628,12 @@ export const make = Effect.gen(function* () {
       // Refused now (an update draining it, say): another Mate, or this one later, takes it.
       if (result._tag === "Rejected") return refused(REFUSALS.notNow);
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
-      return Option.some<MateTaskReport>({ taskId: task.id, state: "accepted", conversationId });
+      return Option.some<MateTaskReport>({
+        taskId: task.id,
+        state: "accepted",
+        conversationId,
+        ...taskSpendOf(task.id, yield* ledger.entry(task.id), undefined),
+      });
     }).pipe(
       taking.withPermit,
       Effect.catchTags({
@@ -646,12 +685,17 @@ export const make = Effect.gen(function* () {
   /** People stopped the task: kept, so it takes no more messages; its runs stopped. */
   const stopTask = (taskId: string, reason: string) =>
     Effect.gen(function* () {
-      yield* ledger.update(taskId, (kept) =>
+      const entry = yield* ledger.update(taskId, (kept) =>
         kept.stopped === undefined ? { ...kept, stopped: reason } : kept,
       );
       const held = yield* engine.conversation(taskConversationId(taskId));
       if (held === undefined) {
-        return Option.some<MateTaskReport>({ taskId, state: "stopped", detail: reason });
+        return Option.some<MateTaskReport>({
+          taskId,
+          state: "stopped",
+          detail: reason,
+          ...taskSpendOf(taskId, entry, undefined),
+        });
       }
       yield* enforce(taskId, held);
       return Option.fromUndefinedOr(yield* reportFor(taskId, held));
