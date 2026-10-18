@@ -49,19 +49,28 @@ import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
-import { automatedKeyState } from "~/zerops/automatedMate.logic";
+import { useAppIntake, useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { automatedKeyState, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
+import { useAppTaskSource, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
-import { ProjectAccessDraft } from "./projects/ProjectPeople";
+import { Dialog, DialogPopup } from "../ui/dialog";
+import { AddAutomatedMatesForm, type AddAutomatedMatesFormProps } from "./AddAutomatedMatesForm";
+import { automatedSourcesWords } from "./addAutomatedMates.logic";
+import { ProjectAccessDraft, useDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
-import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
+import {
+  ZeropsEnvironmentCreationDialog,
+  type EnvironmentCreationChoice,
+} from "./ZeropsEnvironmentCreationDialog";
 import {
   creationRecipe,
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
   recipeChangeView,
+  type NewMateDoorAction,
+  type NewMateDoorClosed,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { useAddMateOffer, useHqOffers } from "../../zerops/useHqOffers";
 import { emptyApplications } from "./projects/emptyApps.logic";
@@ -176,13 +185,10 @@ function NewMateDialog({
 
   const addOffer = useAddMateOffer()(groupId);
   const { words } = useHqOffers();
-  // Whether the organization holds the API key an automated Mate runs on: said beside the choice.
-  // An HQ that keeps no organization keys can't do automated Mates: the choice is not offered.
-  // Read from the app's root once signed in, it is known before the dialog's first frame.
-  const automation = {
-    key: automatedKeyState(useOrgAiKeys(true).read.keys),
-    admin: roleAtLeast(activeOrganization?.roleCode, "ADMIN"),
-  };
+  // Whether the organization holds the API key automated Mates run on: said in their dialog. An
+  // HQ that keeps no organization keys can't make them. Read from the app's root once signed in,
+  // it is known before the dialog's first frame.
+  const automatedKey = automatedKeyState(useOrgAiKeys(again?.automated === true).read.keys);
   if (entry === undefined) return null;
   const { group, environments } = entry;
   const door = newMateDoor({
@@ -196,6 +202,124 @@ function NewMateDialog({
     }),
     rereading: recipe.rereading,
   });
+  const closed: NewMateDoorClosed | undefined =
+    addOffer.kind !== "allowed"
+      ? { kind: "closed", reason: words(addOffer) ?? "Checking your access…", action: undefined }
+      : door.kind === "closed"
+        ? door
+        : undefined;
+  const forecast =
+    activeOrganization === null ? undefined : (
+      <ZeropsCreditForecast organizationId={activeOrganization.id} />
+    );
+
+  /**
+   * Starts one Mate's Add, held from the press: its steps run on in the account's operations, so
+   * the dialog gives way at once. A stop once the platform took its project is its press's to say
+   * (`matePress.ts`). Its creation's id, or `null` where nothing started.
+   */
+  const begin = (choice: EnvironmentCreationChoice): string | null => {
+    if (activeOrganization === null || addOffer.kind !== "allowed") return null;
+    const { name } = choice;
+    const face = choice.face ?? { tint: "slate", shape: "squircle" };
+    const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
+    // Its own id, its view's: a random one, as a New project's group's.
+    const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+    const organizationId = activeOrganization.id;
+    beginCreation({
+      ask: {
+        organizationId,
+        birthId: id,
+        name: group.name,
+        botName: name,
+        face,
+        locationId: null,
+        agents: [],
+        adds: {
+          appId: group.groupId,
+          // As the press decides it: an owner or an admin writes a Mate's registration.
+          registers: true,
+          // Named from the press, so its copy's and its workspace's lines stand before the
+          // plan is heard.
+          managed: tier === undefined ? undefined : recipeManaged(tier),
+          runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
+          ...(choice.automated === true ? { automated: true as const } : {}),
+        },
+      },
+      hq: officialHq(accountHq),
+      now: Date.now(),
+      run: (held) =>
+        void runOnce(id, () =>
+          runAdd(
+            held,
+            (creationId) => operations.readCreation(organizationId, creationId),
+            (creationId) =>
+              create({
+                group,
+                environments,
+                role: "dev",
+                choice,
+                creationId,
+                pressedAt: held.startedAt,
+              }),
+            (reason) => refuseAddHere(id, reason),
+          ),
+        ),
+    });
+    return id;
+  };
+  const onDoorAction = (action: NewMateDoorAction) => {
+    if (action.kind === "retry") {
+      recipe.reread();
+      return;
+    }
+    // The dialog gives way to where the recipe is: its change, or the Mate writing it.
+    dismiss();
+    if (action.kind === "change") void navigate(recipeChangeView(group.groupId, action.number));
+    else openMate({ projectId: action.projectId });
+  };
+
+  // Automated Mates have their own dialog: how many, no people list, what they do. A project
+  // that takes no Mate now says why as New Mate does.
+  if (again?.automated === true && closed === undefined)
+    return (
+      <AutomatedMatesDialog
+        again={again}
+        forecast={forecast}
+        groupId={group.groupId}
+        groupName={group.name}
+        keyState={automatedKey}
+        onCancel={dismiss}
+        onCreate={(choice) => {
+          // Each comes up in the menu and the project's pool; the person stays where they are.
+          for (const mate of choice.mates)
+            begin({
+              name: mate.name,
+              face: mate.face,
+              withAgent: true,
+              recipe: choice.recipe,
+              userRoles: choice.userRoles,
+              automated: true,
+            });
+          dismiss();
+        }}
+        onOpenKeySettings={() => {
+          // The dialog gives way to where the key is set.
+          dismiss();
+          void navigate({ to: "/settings/automation" });
+        }}
+        propose={(names) =>
+          generateBotName([...taken.names, ...names], (bytes) => crypto.getRandomValues(bytes))
+        }
+        recipe={recipe}
+        takenBotNames={taken}
+        tintFor={(name) =>
+          again.botName !== undefined && name === again.botName
+            ? again.tint
+            : newMateTint(candidates, name)
+        }
+      />
+    );
   return (
     <ZeropsEnvironmentCreationDialog
       access={(onChange) => (
@@ -206,20 +330,8 @@ function NewMateDialog({
           onChange={onChange}
         />
       )}
-      {...(activeOrganization === null
-        ? {}
-        : { forecast: <ZeropsCreditForecast organizationId={activeOrganization.id} /> })}
-      closed={
-        addOffer.kind !== "allowed"
-          ? {
-              kind: "closed",
-              reason: words(addOffer) ?? "Checking your access…",
-              action: undefined,
-            }
-          : door.kind === "closed"
-            ? door
-            : undefined
-      }
+      {...(forecast === undefined ? {} : { forecast })}
+      closed={closed}
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
@@ -231,81 +343,17 @@ function NewMateDialog({
         again?.botName !== undefined && name === again.botName ? again.shape : undefined
       }
       defaultWithAgent
-      automation={automation}
-      defaultAutomated={again?.automated === true}
-      onOpenKeySettings={() => {
-        // The dialog gives way to where the key is set.
-        dismiss();
-        void navigate({ to: "/settings/automation" });
-      }}
       groupName={group.name}
       // Add lands on the new Mate's page, which takes the focus.
       landsElsewhere
       onCancel={dismiss}
       onCreate={(choice) => {
-        if (activeOrganization === null || addOffer.kind !== "allowed") return;
-        const { name } = choice;
-        const face = choice.face ?? { tint: "slate", shape: "squircle" };
-        const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
-        // Its own id, its view's: a random one, as a New project's group's.
-        const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
-        // Held from the press, its steps run on in the account's operations: the dialog gives way
-        // to the Mate's view at once. A stop once the platform took its project is its press's to
-        // say (`matePress.ts`).
-        const organizationId = activeOrganization.id;
-        beginCreation({
-          ask: {
-            organizationId,
-            birthId: id,
-            name: group.name,
-            botName: name,
-            face,
-            locationId: null,
-            agents: [],
-            adds: {
-              appId: group.groupId,
-              // As the press decides it: an owner or an admin writes a Mate's registration.
-              registers: true,
-              // Named from the press, so its copy's and its workspace's lines stand before the
-              // plan is heard.
-              managed: tier === undefined ? undefined : recipeManaged(tier),
-              runtimes: tier === undefined ? undefined : recipeRuntimes(tier),
-              ...(choice.automated === true ? { automated: true as const } : {}),
-            },
-          },
-          hq: officialHq(accountHq),
-          now: Date.now(),
-          run: (held) =>
-            void runOnce(id, () =>
-              runAdd(
-                held,
-                (creationId) => operations.readCreation(organizationId, creationId),
-                (creationId) =>
-                  create({
-                    group,
-                    environments,
-                    role: "dev",
-                    choice,
-                    creationId,
-                    pressedAt: held.startedAt,
-                  }),
-                (reason) => refuseAddHere(id, reason),
-              ),
-            ),
-        });
+        const id = begin(choice);
+        if (id === null) return;
         dismiss();
         void navigate(newProjectView(id));
       }}
-      onDoorAction={(action) => {
-        if (action.kind === "retry") {
-          recipe.reread();
-          return;
-        }
-        // The dialog gives way to where the recipe is: its change, or the Mate writing it.
-        dismiss();
-        if (action.kind === "change") void navigate(recipeChangeView(group.groupId, action.number));
-        else openMate({ projectId: action.projectId });
-      }}
+      onDoorAction={onDoorAction}
       onOpenChange={(open) => {
         if (!open) dismiss();
       }}
@@ -319,5 +367,59 @@ function NewMateDialog({
       recipe={creationRecipe(recipe)}
       tierServices={recipe.services}
     />
+  );
+}
+
+/**
+ * *Add automated Mates*, over whatever the person looks at: the project's sources, the limits on a
+ * task and the project's people are read while it is open (`AddAutomatedMatesForm`).
+ */
+function AutomatedMatesDialog({
+  groupId,
+  again,
+  recipe,
+  keyState,
+  ...form
+}: Omit<
+  AddAutomatedMatesFormProps,
+  "firstName" | "tier" | "tierLoading" | "sources" | "keyState" | "admin" | "limits" | "people"
+> & {
+  readonly groupId: string;
+  readonly again: NewMateAgain;
+  readonly recipe: ReturnType<typeof useZeropsGroupRecipe>;
+  readonly keyState: AutomatedKeyState;
+}) {
+  const { activeOrganization } = useZeropsSession();
+  const people = useDraftPeople(groupId, "mate");
+  const intake = useAppIntake(groupId).read.intake;
+  const slack = useAppTaskSource("hqAppSlack", groupId).read.setting;
+  const discord = useAppTaskSource("hqAppDiscord", groupId).read.setting;
+  const webhooks = useAppTaskSource("hqAppWebhooks", groupId).read.setting;
+  const schedules = useAppTaskSource("hqAppSchedules", groupId).read.setting;
+  const limits = useOrgTaskSource("hqTaskLimits").read.setting;
+  const known = <T,>(setting: { readonly state: string; readonly held?: T }) =>
+    setting.state === "known" ? setting.held : undefined;
+  const sources = automatedSourcesWords({ intake, slack, discord, webhooks, schedules });
+  return (
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) form.onCancel();
+      }}
+      open
+    >
+      <DialogPopup className="max-w-lg">
+        <AddAutomatedMatesForm
+          {...form}
+          admin={roleAtLeast(activeOrganization?.roleCode, "ADMIN")}
+          firstName={again.botName}
+          keyState={keyState}
+          limits={known(limits)}
+          people={people}
+          sources={sources}
+          tier={recipe.tier}
+          tierLoading={creationRecipe(recipe) === "reading"}
+        />
+      </DialogPopup>
+    </Dialog>
   );
 }

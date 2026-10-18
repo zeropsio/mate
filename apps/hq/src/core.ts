@@ -40,6 +40,7 @@ import { slackRoutes } from "./slackRoutes.ts";
 import { orgAiKeysLayer } from "./orgAiKeys.ts";
 import { intakeLayer } from "./intake.ts";
 import { type MateTasksOptions, mateTasksLayer } from "./mateTasks.ts";
+import { appTasksLayer } from "./appTasks.ts";
 import { githubIssuesLayer } from "./githubIssues.ts";
 import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
@@ -201,6 +202,7 @@ const services = (options: CoreOptions) => {
     githubMirrorLayer().pipe(Layer.provide(githubApp), Layer.provide(tasks));
   const sources = Layer.mergeAll(
     door,
+    appTasksLayer.pipe(Layer.provide(door)),
     intakeLayer({ hqProjectId: options.hqProjectId }).pipe(
       Layer.provide(door),
       Layer.provide(githubGateLayer),

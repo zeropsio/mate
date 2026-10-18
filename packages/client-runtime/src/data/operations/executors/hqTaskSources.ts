@@ -24,6 +24,7 @@ export type TaskSourceWrites = Pick<
   | "makeSchedule"
   | "deleteSchedule"
   | "setTaskLimits"
+  | "stopAppTask"
   | "githubManifest"
   | "githubDisconnect"
 >;
@@ -33,6 +34,20 @@ export type TypedSecrets = Readonly<Record<string, string>>;
 
 const UPDATE_HQ = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
+/** What an HQ that predates a task's stop from Mate is asked. */
+export const UPDATE_HQ_TASK_STOP = "Update HQ to stop tasks from Mate.";
+
+/**
+ * HQ's refusal of a task's stop in words: an HQ without the route (a bare `404`) needs updating,
+ * a person who is no Owner or Admin may not, and a task that ended meanwhile has nothing to stop.
+ * `undefined`: HQ's own words stand.
+ */
+export function taskStopRefusal(cause: HqError): string | undefined {
+  if (cause.status === 404 && cause.reason === undefined) return UPDATE_HQ_TASK_STOP;
+  if (cause.status === 403) return "Only an Owner or Admin can stop a task.";
+  if (cause.reason === "task_not_found") return "That task has ended already.";
+  return undefined;
+}
 
 export function makeTaskSourceExecutor(options: {
   readonly api: TaskSourceWrites;
@@ -107,6 +122,8 @@ export function makeTaskSourceExecutor(options: {
               return api.deleteSchedule?.(appId, write.scheduleId) ?? null;
             case "task-limits":
               return api.setTaskLimits?.(write.limits) ?? null;
+            case "task-stop":
+              return api.stopAppTask?.(appId, write.taskId) ?? null;
             case "github-manifest":
               return (
                 api
@@ -129,7 +146,9 @@ export function makeTaskSourceExecutor(options: {
             refused(
               write.kind === "github-manifest" || write.kind === "github-disconnect"
                 ? UPDATE_HQ_GITHUB
-                : UPDATE_HQ,
+                : write.kind === "task-stop"
+                  ? UPDATE_HQ_TASK_STOP
+                  : UPDATE_HQ,
             ),
           );
         const typed = Object.values(secrets ?? {}).filter((value) => value.length > 0);
@@ -141,9 +160,10 @@ export function makeTaskSourceExecutor(options: {
               : cause instanceof HqError && cause.kind === "refused"
                 ? // HQ's refusal is said, never words that may echo what was typed.
                   refused(
-                    typed.some((value) => cause.message.includes(value))
-                      ? "HQ did not take what was entered."
-                      : cause.message,
+                    (write.kind === "task-stop" ? taskStopRefusal(cause) : undefined) ??
+                      (typed.some((value) => cause.message.includes(value))
+                        ? "HQ did not take what was entered."
+                        : cause.message),
                   )
                 : {
                     outcome: "uncertain-acceptance" as const,

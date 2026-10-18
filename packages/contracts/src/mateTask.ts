@@ -99,6 +99,13 @@ export const MateTaskLimits = Schema.Struct({
 });
 export type MateTaskLimits = typeof MateTaskLimits.Type;
 
+/**
+ * The most one task's report may say it spent or worked: past any limit a person can set, so a
+ * broken or hostile report cannot fill the organization's month or fail HQ's write.
+ */
+export const TASK_SPENT_MAX = 100_000;
+export const TASK_WORKED_MAX = 100 * 24 * 60 * 60_000;
+
 /** A task as HQ hands it to a Mate. */
 export const MateTask = Schema.Struct({
   /** HQ's id of the task: the same task handed twice is one task. */
@@ -139,6 +146,14 @@ export const MateTaskReport = Schema.Struct({
   detail: Schema.optionalKey(Schema.String),
   /** What it asks a person, while `waiting`: posted where the task came from. */
   question: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
+  /** What its model use cost so far, in US dollars, as the Mate's ledger counts it. */
+  spentUsd: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: TASK_SPENT_MAX })),
+  ),
+  /** How long its runs worked so far (never the wait between them), in milliseconds. */
+  workedMs: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: TASK_WORKED_MAX })),
+  ),
 });
 export type MateTaskReport = typeof MateTaskReport.Type;
 
@@ -196,4 +211,19 @@ export function mateTaskSourceLink(
 /** Who asked, where the source knows: an issue's author, a message's sender. */
 export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
   return source.kind === "schedule" ? null : source.author;
+}
+
+/** What starts the id of every conversation a task is worked in (the server's `taskConversationId`). */
+export const MATE_TASK_CONVERSATION_PREFIX = "task-";
+
+/**
+ * HQ's id of the task a conversation is worked for, read back from the conversation's id: the
+ * server names it by the task, every character a conversation id does not carry spelled out as
+ * `.<hex>.`. `undefined` for any other conversation.
+ */
+export function mateTaskIdOfConversation(conversationId: string): string | undefined {
+  if (!conversationId.startsWith(MATE_TASK_CONVERSATION_PREFIX)) return undefined;
+  return conversationId
+    .slice(MATE_TASK_CONVERSATION_PREFIX.length)
+    .replace(/\.([0-9a-f]+)\./gu, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
 }

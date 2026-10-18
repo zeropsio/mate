@@ -18,6 +18,7 @@ import {
   followAfter,
   type RunFold,
   type RunScrollFollow,
+  thinkingLine,
   footTop,
   forgetRunFolds,
   laidOutPosition,
@@ -1781,5 +1782,40 @@ describe("what a Mate whose turn is over says it waits on, in its menu row", () 
     },
   ])("names $name", ({ work, words }) => {
     expect(backgroundWorkWords(work)).toBe(words);
+  });
+});
+
+describe("an agent's thinking stands as one quiet line", () => {
+  const thought = (createdAt: string, updatedAt: string, streaming = false) => ({
+    createdAt,
+    updatedAt,
+    streaming,
+  });
+  it.each([
+    [
+      "says how long it thought once it is done",
+      [thought("2026-10-18T10:00:00.000Z", "2026-10-18T10:00:12.400Z")],
+      "Thinking · 12 s",
+    ],
+    [
+      "counts every part of one thought, first to last",
+      [
+        thought("2026-10-18T10:00:00.000Z", "2026-10-18T10:00:30.000Z"),
+        thought("2026-10-18T10:00:30.000Z", "2026-10-18T10:01:15.000Z"),
+      ],
+      "Thinking · 1 m 15 s",
+    ],
+    [
+      "says no time while it still thinks",
+      [thought("2026-10-18T10:00:00.000Z", "2026-10-18T10:00:05.000Z", true)],
+      "Thinking",
+    ],
+    [
+      "says no time under a second",
+      [thought("2026-10-18T10:00:00.000Z", "2026-10-18T10:00:00.400Z")],
+      "Thinking",
+    ],
+  ] as const)("%s", (_title, messages, line) => {
+    expect(thinkingLine(messages)).toBe(line);
   });
 });

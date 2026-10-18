@@ -2,9 +2,10 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentTotals } from "@t3tools/shared/usageMerge";
 import { describe, expect, it } from "vite-plus/test";
 
-import type {
-  UsageEnvironmentIdentity,
-  UsageEnvironmentOwner,
+import {
+  AUTOMATED_MATES_OWNER,
+  type UsageEnvironmentIdentity,
+  type UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { usageDimensions, usageScopeIncludes } from "./usageDimensions";
 
@@ -314,4 +315,41 @@ it("keeps equal project names separate and follows IDs through a rename", () => 
   renamed.set(env("a"), { ...named.get(env("a"))!, projectName: "Renamed" });
   expect(usageScopeIncludes({ project: "id-a" }, renamed, env("a"))).toBe(true);
   expect(usageScopeIncludes({ project: "id-a" }, renamed, env("b"))).toBe(false);
+});
+
+describe("automated work in the who-dimensions", () => {
+  it("automated Mates' spend is one Automated Mates owner row, and stays under its project", () => {
+    const dimensions = usageDimensions({
+      byEnvironment: [totals("raya", 6.44, 4_500_000), totals("lena", 0.02, 100)],
+      identities: identities({
+        raya: {
+          mateName: "Raya",
+          projectId: "tea",
+          ownerState: "known",
+          projectName: "Tea Shop",
+          owner: AUTOMATED_MATES_OWNER,
+          mateProjectId: "tea-raya",
+        },
+        lena: {
+          mateName: "Lena",
+          projectId: "tea",
+          ownerState: "known",
+          projectName: "Tea Shop",
+          owner: owner("u1"),
+        },
+      }),
+      labels: labels(["raya", "lena"]),
+      metric: "cost",
+    });
+    expect(
+      dimensions.people.map((person) => [person.owner?.name, person.costUsd, person.mates.length]),
+    ).toEqual([
+      ["Automated Mates", 6.44, 1],
+      ["Person u1", 0.02, 1],
+    ]);
+    expect(
+      dimensions.projects.map((project) => project.mates.map((mate) => mate.mateName)),
+    ).toEqual([["Raya", "Lena"]]);
+    expect(dimensions.mates[0]).toMatchObject({ mateName: "Raya", mateProjectId: "tea-raya" });
+  });
 });

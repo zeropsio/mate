@@ -19,6 +19,8 @@ import {
   settingRequestId,
   settingRequestScope,
   settingScope,
+  taskStopRequestId,
+  taskStopRequestScope,
   webhookRevealScope,
   type AppSetting,
   type AppSettingKey,
@@ -35,7 +37,9 @@ import {
 } from "../operations/executors/hqTaskSources.ts";
 import { taskSourceWriteSetting, type TaskSourceWrite } from "../operations/hqTaskSources.ts";
 import type { AccountStore } from "../store.ts";
+import { streamOf } from "../reducer.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
+import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
 
 export type TaskSourceApi = TaskSourceWrites &
   Pick<
@@ -47,6 +51,7 @@ export type TaskSourceApi = TaskSourceWrites &
     | "appChannel"
     | "webhooks"
     | "schedules"
+    | "appTasks"
     | "github"
   >;
 
@@ -94,6 +99,8 @@ export function makeTaskSourceSettings(options: {
           return api.webhooks?.(appId).then((list) => list.map(withoutSecret));
         case "hqAppSchedules":
           return api.schedules?.(appId);
+        case "hqAppTasks":
+          return api.appTasks?.(appId);
       }
     };
     return {
@@ -105,6 +112,51 @@ export function makeTaskSourceSettings(options: {
       unsupported: family === "hqGithub" ? GITHUB_UNSUPPORTED : TASK_SOURCES_UNSUPPORTED,
     };
   }
+
+  // ── the task board and the month's spend, read again as navigation says tasks moved ─────────
+  const following = new Map<string, { count: number; readonly stop: () => void }>();
+  /** While `spec` is demanded, reads it again each time `signature` moves (`hqTaskBoardRefresh`). */
+  const follow = (spec: SettingRead<TaskSourceSetting>, signature: () => string) => {
+    const id = `${spec.family}:${spec.id}`;
+    const held = following.get(id);
+    if (held !== undefined) held.count++;
+    else {
+      let seen = signature();
+      const stop = store.subscribe(() => {
+        const next = signature();
+        if (next === seen) return;
+        seen = next;
+        // A refused read (an HQ that predates it) waits for the person, never for navigation.
+        if (streamOf(store.state(), spec.link).phase === "refused") return;
+        reads.again(spec);
+      });
+      following.set(id, { count: 1, stop });
+    }
+    return () => {
+      const entry = following.get(id);
+      if (entry === undefined || --entry.count > 0) return;
+      following.delete(id);
+      entry.stop();
+    };
+  };
+  const demandFollowed = (
+    spec: SettingRead<TaskSourceSetting>,
+    key: OrgSettingKey | AppSettingKey,
+  ) => {
+    const release = reads.demand(spec);
+    const signature =
+      spec.family === "hqAppTasks" && "appId" in key
+        ? () => appTasksSignature(store.state(), key.orgId, key.appId)
+        : spec.family === "hqTaskLimits"
+          ? () => orgTasksSignature(store.state(), key.orgId)
+          : null;
+    if (signature === null) return release;
+    const unfollow = follow(spec, signature);
+    return () => {
+      unfollow();
+      release();
+    };
+  };
 
   // ── a webhook's answer, held while its screen is open ─────────────────────────────────────
   const views = new Map<string, number>();
@@ -164,8 +216,16 @@ export function makeTaskSourceSettings(options: {
   ): Promise<string> => {
     const requestId = options.makeId();
     const family = taskSourceWriteSetting(change);
-    const scope = settingRequestScope(family, key);
-    const id = settingRequestId(family, key);
+    // A task's stop is recorded by its task; every other write by the setting it changes.
+    const stopOf = change.kind === "task-stop" && "appId" in key ? change.taskId : null;
+    const scope =
+      stopOf === null
+        ? settingRequestScope(family, key)
+        : taskStopRequestScope(key as AppSettingKey, stopOf);
+    const id =
+      stopOf === null
+        ? settingRequestId(family, key)
+        : taskStopRequestId(key as AppSettingKey, stopOf);
     const spec = specOf(family, key as never);
     if (typed !== undefined) secrets.set(requestId, typed);
     commitOwn(store, "hqTaskSourceRequest", scope, id, { requestId, after: null });
@@ -230,9 +290,9 @@ export function makeTaskSourceSettings(options: {
   return {
     githubManifest,
     /** Reads an organization's setting while a screen shows it. */
-    demandOrg: (family: OrgSetting, key: OrgSettingKey) => reads.demand(specOf(family, key)),
+    demandOrg: (family: OrgSetting, key: OrgSettingKey) => demandFollowed(specOf(family, key), key),
     /** Reads an application's setting while a screen shows it. */
-    demandApp: (family: AppSetting, key: AppSettingKey) => reads.demand(specOf(family, key)),
+    demandApp: (family: AppSetting, key: AppSettingKey) => demandFollowed(specOf(family, key), key),
     again: (family: TaskSourceSetting, key: OrgSettingKey | AppSettingKey) =>
       reads.again(specOf(family, key as never)),
     write,
@@ -255,6 +315,8 @@ export function makeTaskSourceSettings(options: {
         forget({ orgId, appId });
       }
       closed = true;
+      for (const entry of following.values()) entry.stop();
+      following.clear();
       secrets.clear();
       manifests.clear();
       revealedFor.clear();

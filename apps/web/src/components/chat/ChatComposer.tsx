@@ -29,7 +29,7 @@ import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentSignIn.logic";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
-import { automatedMateEntries } from "../../zerops/automatedMate.logic";
+import { automatedMateEntries, automatedRunsOnLine } from "../../zerops/automatedMate.logic";
 import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";
 import { crewmateMenuItems } from "../zerops/crew/CrewTellComposer.logic";
 import {
@@ -4035,6 +4035,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           ? "Open provider settings"
                           : "No provider available"}
                       </Button>
+                    ) : automatedMate ? (
+                      // An automated Mate runs on the organization's key: nothing to pick.
+                      <span
+                        className="min-w-0 truncate text-line text-muted-foreground"
+                        data-chat-composer-runs-on="true"
+                      >
+                        {automatedRunsOnLine(
+                          activeThreadModelSelection?.model ??
+                            selectedModelForPickerWithCustomFallback,
+                        )}
+                      </span>
                     ) : (
                       <ProviderModelPicker
                         composer={{

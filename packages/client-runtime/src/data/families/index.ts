@@ -20,6 +20,7 @@ import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hq
 import {
   hqAppDiscordFamily,
   hqAppSchedulesFamily,
+  hqAppTasksFamily,
   hqAppSlackFamily,
   hqAppWebhooksFamily,
   hqDiscordFamily,
@@ -153,6 +154,7 @@ export const FAMILIES = defineFamilies([
   hqAppDiscordFamily,
   hqAppWebhooksFamily,
   hqAppSchedulesFamily,
+  hqAppTasksFamily,
   hqTaskSourceRequestFamily,
   hqWebhookRevealFamily,
   mateAssetUrlFamily,

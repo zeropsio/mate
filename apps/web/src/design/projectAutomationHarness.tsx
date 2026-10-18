@@ -16,13 +16,16 @@ import type { MateTaskSource } from "@t3tools/contracts";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { MateTaskCard } from "~/components/zerops/MateTaskCard";
+import { MateTaskSessionBar } from "~/components/zerops/MateTaskCard";
 import {
   ProjectAutomationView,
   SourceDialog,
   type AutomationControls,
+  type BoardView,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import { boardOf, predictedBoard } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import {
   connectionMissing,
   sourceRows,
@@ -35,7 +38,7 @@ import {
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import type { TaskChain } from "~/zerops/automatedMate.logic";
+import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -98,8 +101,169 @@ const POOL: ReadonlyArray<PoolMate> = [
     automation: { task: { number: 4, title: "Show prices in euros" } },
   },
   { projectId: "p-ines", name: "Ines", tint: "sky", shape: undefined, automation: { task: null } },
+  {
+    projectId: "p-raya",
+    name: "Raya",
+    tint: "slate",
+    shape: undefined,
+    automation: { task: null },
+  },
 ];
 const WORKING = new Set(["p-juno"]);
+
+const NOW = Date.now();
+const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+const TASK: HqAppTask = {
+  id: "t4",
+  title: "Show prices in euros",
+  label: "acme/tea-shop#4",
+  url: "https://github.com/acme/tea-shop/issues/4",
+  state: "working",
+  mate: { projectId: "p-juno", name: "Juno" },
+  requestedBy: "nova-dev",
+  createdAt: ago(16),
+  startedAt: ago(12),
+  endedAt: null,
+  spentUsd: 0.42,
+  workedMs: 600_000,
+  detail: null,
+  change: null,
+  pullRequest: null,
+  link: "https://mate.zerops.io/env-1/conversation-4",
+};
+const TASKS: ReadonlyArray<HqAppTask> = [
+  {
+    ...TASK,
+    id: "t5",
+    title: "Add a dark mode to the tea list",
+    label: "acme/tea-shop#5",
+    state: "queued",
+    position: 1,
+    mate: null,
+    createdAt: ago(4),
+    startedAt: null,
+    spentUsd: null,
+    link: null,
+  },
+  {
+    ...TASK,
+    id: "t6",
+    title: "Weekly upkeep",
+    label: "Schedule · Weekly upkeep",
+    url: null,
+    state: "queued",
+    position: 2,
+    mate: null,
+    createdAt: ago(1),
+    startedAt: null,
+    spentUsd: null,
+    link: null,
+  },
+  TASK,
+  {
+    ...TASK,
+    id: "t7",
+    title: "Fix the checkout total rounding",
+    label: "#support on Slack",
+    state: "waiting",
+    mate: { projectId: "p-nova", name: "Nova" },
+    startedAt: ago(48),
+    spentUsd: 1.08,
+  },
+  {
+    ...TASK,
+    id: "t1",
+    title: "Add a search box to the tea list",
+    state: "merged",
+    mate: { projectId: "p-nova", name: "Nova" },
+    endedAt: ago(240),
+    spentUsd: 0.31,
+    change: { repo: "web", number: 2 },
+    pullRequest: { number: 2, url: "https://github.com/acme/tea-shop/pull/2" },
+  },
+  {
+    ...TASK,
+    id: "t2",
+    title: "Show each tea's price per 100 g",
+    state: "done",
+    mate: { projectId: "p-raya", name: "Raya" },
+    endedAt: ago(300),
+    spentUsd: 0.27,
+    change: { repo: "web", number: 3 },
+  },
+  {
+    ...TASK,
+    id: "t8",
+    title: "Translate the menu",
+    state: "closed",
+    endedAt: ago(700),
+    spentUsd: 0.66,
+    change: { repo: "web", number: 1 },
+  },
+  {
+    ...TASK,
+    id: "t3",
+    title: "Import the spring catalogue",
+    state: "failed",
+    endedAt: ago(1500),
+    spentUsd: 2.02,
+    detail: "the catalogue file was not in the repository.",
+  },
+  {
+    ...TASK,
+    id: "t0",
+    title: "Rename the shop",
+    state: "stopped",
+    endedAt: ago(2900),
+    spentUsd: 0.04,
+    detail: "Ales stopped it in Mate.",
+  },
+];
+/** What navigation says of the tasks the pool is on: Raya's change waits for review. */
+const LIVE = new Map([
+  ["t4", { id: "t4", title: TASK.title, url: null, spentUsd: 0.42, workedMs: 754_000 }],
+  ["t7", { id: "t7", title: "Fix the checkout total rounding", url: null, waiting: true as const }],
+  ["t2", { id: "t2", title: "Show each tea's price per 100 g", url: null }],
+]);
+const BOARD: BoardView = {
+  read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop", LIVE) },
+  spend: "$6.44 of $50 this month",
+  onReadAgain: nothing,
+  onOpen: nothing,
+  stop: {
+    pressOf: (id) => (id === "t7" ? { kind: "asking" } : { kind: "idle" }),
+    onAsk: nothing,
+    onKeep: nothing,
+    onStop: nothing,
+  },
+};
+const READING: BoardView = {
+  ...BOARD,
+  read: {
+    state: "reading",
+    predicted: { ...predictedBoard([...LIVE.values(), null, null], 2), recent: 5 },
+  },
+};
+/** Nova's task stopping, Juno's Stop refused. */
+const STOPPING: BoardView = {
+  ...BOARD,
+  read: {
+    state: "known",
+    board: boardOf(
+      TASKS.map((task) => (task.id === "t7" ? { ...task, state: "stopping" as const } : task)),
+      NOW,
+      "tea-shop",
+      LIVE,
+    ),
+  },
+  stop: {
+    ...BOARD.stop!,
+    pressOf: (id) =>
+      id === "t4"
+        ? { kind: "refused", words: "Only an Owner or Admin can stop a task." }
+        : { kind: "idle" },
+  },
+};
 
 const SCHEDULE = {
   id: "s1",
@@ -136,26 +300,79 @@ const ISSUE: MateTaskSource = {
   author: "nova-dev",
 };
 const PR = { number: 2, url: "https://github.com/acme/tea-shop/pull/2" };
-const CHAINS: ReadonlyArray<readonly [string, TaskChain]> = [
-  ["Not read yet", { kind: "unknown" }],
-  ["Working", { kind: "working", pullRequest: undefined }],
-  ["Waiting for you", { kind: "waiting" }],
-  ["Waiting for review (no GitHub app)", { kind: "review" }],
+const AT: TaskSession = {
+  status: null,
+  taskId: "task-1",
+  stoppable: false,
+  workedMs: null,
+  spentUsd: null,
+  change: null,
+  pullRequest: null,
+};
+const SESSIONS: ReadonlyArray<readonly [string, TaskSession]> = [
+  ["Not read yet", AT],
+  ["Queued", { ...AT, status: "queued", stoppable: true, workedMs: 0, spentUsd: 0 }],
+  ["Starting", { ...AT, status: "starting", stoppable: true, workedMs: 0, spentUsd: 0 }],
+  ["Working", { ...AT, status: "working", stoppable: true, workedMs: 754_000, spentUsd: 0.42 }],
   [
-    "PR open, checks passing",
-    { kind: "pull-request", pullRequest: { ...PR, state: "open", checks: "passing" } },
+    "Waiting for you",
+    { ...AT, status: "waiting", stoppable: true, workedMs: 1_200_000, spentUsd: 1.37 },
+  ],
+  ["Stopping", { ...AT, status: "stopping", workedMs: 1_200_000, spentUsd: 1.37 }],
+  [
+    "Up for review, change in Mate",
+    {
+      ...AT,
+      status: "review",
+      workedMs: 1_200_000,
+      spentUsd: 1.37,
+      change: { repo: "web", number: 3 },
+    },
+  ],
+  [
+    "Up for review, PR open, checks passing",
+    {
+      ...AT,
+      status: "review",
+      workedMs: 1_200_000,
+      spentUsd: 1.37,
+      change: { repo: "web", number: 3 },
+      pullRequest: { ...PR, state: "open", checks: "passing" },
+    },
   ],
   [
     "Working on review comments",
-    { kind: "working", pullRequest: { ...PR, state: "open", checks: "failing" } },
+    {
+      ...AT,
+      status: "working",
+      stoppable: true,
+      workedMs: 1_500_000,
+      spentUsd: 2.05,
+      pullRequest: { ...PR, state: "open", checks: "failing" },
+    },
   ],
-  ["PR closed", { kind: "pull-request", pullRequest: { ...PR, state: "closed" } }],
   [
-    "Merged on GitHub (ended)",
-    { kind: "ended", ended: "merged", pullRequest: { ...PR, state: "merged" } },
+    "Merged",
+    {
+      ...AT,
+      status: "merged",
+      workedMs: 3_840_000,
+      spentUsd: 6.44,
+      pullRequest: { ...PR, state: "merged" },
+    },
   ],
-  ["Stopped (ended)", { kind: "ended", ended: "stopped", pullRequest: undefined }],
-  ["A task before its Mate's most recent", { kind: "earlier" }],
+  [
+    "Closed",
+    {
+      ...AT,
+      status: "closed",
+      workedMs: 900_000,
+      spentUsd: 0.66,
+      change: { repo: "web", number: 1 },
+    },
+  ],
+  ["Failed", { ...AT, status: "failed", workedMs: 3_600_000, spentUsd: 0.004 }],
+  ["Stopped", { ...AT, status: "stopped", workedMs: 420_000, spentUsd: 0.18 }],
 ];
 
 const INTAKE: AppIntakeRead = {
@@ -221,6 +438,27 @@ function Harness() {
         <Panel title="An Owner's or Admin's project page — pool and sources">
           <ProjectAutomationView
             admin={ADMIN}
+            board={BOARD}
+            onOpenMate={nothing}
+            pool={POOL}
+            sources={SOURCES}
+            workingOf={(id) => WORKING.has(id)}
+          />
+        </Panel>
+        <Panel title="The board while it reads">
+          <ProjectAutomationView
+            admin={ADMIN}
+            board={READING}
+            onOpenMate={nothing}
+            pool={POOL}
+            sources={SOURCES}
+            workingOf={(id) => WORKING.has(id)}
+          />
+        </Panel>
+        <Panel title="A task stopping, a task's Stop refused">
+          <ProjectAutomationView
+            admin={ADMIN}
+            board={STOPPING}
             onOpenMate={nothing}
             pool={POOL}
             sources={SOURCES}
@@ -264,6 +502,7 @@ function Harness() {
         </Panel>
         <Panel title="A member reads it">
           <ProjectAutomationView
+            board={{ ...BOARD, stop: undefined }}
             onOpenMate={nothing}
             pool={POOL}
             sources={{ rows: SOURCES.rows.slice(0, 1), reading: false, withheld: true }}
@@ -271,12 +510,17 @@ function Harness() {
           />
         </Panel>
       </div>
-      <Panel title="A task's card, as its chain">
+      <Panel title="A task's session, in each state">
         <div className="grid max-w-3xl gap-3">
-          {CHAINS.map(([label, chain]) => (
+          {SESSIONS.map(([label, session]) => (
             <div className="grid gap-1" key={label}>
               <p className="text-xs text-muted-foreground">{label}</p>
-              <MateTaskCard chain={chain} task={ISSUE} />
+              <MateTaskSessionBar
+                onOpenChange={nothing}
+                onStop={session.stoppable ? nothing : undefined}
+                session={session}
+                task={ISSUE}
+              />
             </div>
           ))}
         </div>

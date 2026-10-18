@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { automaticUsageRates } from "./usagePrices.ts";
+import { automaticUsageRates, USAGE_CACHE_RATES_URL } from "./usagePrices.ts";
 describe("automatic HQ usage price coverage", () => {
   it("does not invent rates for missing cache bands or unknown models", () => {
     const rates = automaticUsageRates({
@@ -98,4 +98,32 @@ it("a Nebius model without a published cache rate takes models.dev's rate for th
     cachedInput: null,
     cacheCreation: null,
   });
+});
+it("a model an automated Mate runs on that LiteLLM does not list is priced from models.dev alone", () => {
+  const modelsDev = {
+    nebius: {
+      models: {
+        "acme/nova-coder": { cost: { input: 1.25, output: 4.25, cache_read: 0.125 } },
+        "acme/listed": { cost: { input: 9, output: 9 } },
+      },
+    },
+    elsewhere: { models: { "acme/juno": { cost: { input: 1, output: 2 } } } },
+  };
+  const rates = automaticUsageRates(
+    { "nebius/acme/listed": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 } },
+    modelsDev,
+  );
+  const baseline = (model: string) =>
+    rates.find((rate) => rate.model === model && rate.pricingBand === "api-equivalent-baseline");
+  assert.deepStrictEqual(baseline("nebius/acme/nova-coder")?.rates, {
+    uncachedInput: "1250",
+    output: "4250",
+    cachedInput: "125",
+    cacheCreation: null,
+  });
+  assert.strictEqual(baseline("nebius/acme/nova-coder")?.provenance, USAGE_CACHE_RATES_URL);
+  // LiteLLM's published price wins over models.dev's for a model both list.
+  assert.strictEqual(baseline("nebius/acme/listed")?.rates.uncachedInput, "1000");
+  // Only the providers automated Mates run on: no other models.dev provider is copied in.
+  assert.isUndefined(baseline("elsewhere/acme/juno"));
 });

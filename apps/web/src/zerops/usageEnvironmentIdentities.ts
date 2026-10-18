@@ -3,7 +3,7 @@ import type { HqMateOwner, HqProjectPeople, HqNavigationRead } from "@t3tools/cl
 import { hasMate, projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { USAGE_AUTOMATED_OWNER, type EnvironmentId } from "@t3tools/contracts";
 
 import { rowEnvironment } from "./environmentOrigins";
 import { zeropsMateOwnerOf } from "./useZeropsMateOwners";
@@ -28,7 +28,24 @@ export interface UsageEnvironmentIdentity {
   readonly projectName: string | null;
   readonly ownerState: "known" | "unassigned" | "unknown";
   readonly owner: UsageEnvironmentOwner | null;
+  /** An automated Mate's Zerops project: the Mate its application's tasks name. */
+  readonly mateProjectId?: string;
 }
+
+/**
+ * Who an automated Mate's usage belongs to: the organization's key pays for it, so it is never
+ * its maker's (`USAGE_AUTOMATED_OWNER`).
+ */
+export const AUTOMATED_MATES_OWNER: UsageEnvironmentOwner = {
+  id: USAGE_AUTOMATED_OWNER,
+  name: "Automated Mates",
+  initials: "",
+  avatarUrl: null,
+  isViewer: false,
+};
+
+export const isAutomatedMatesOwner = (owner: UsageEnvironmentOwner | null | undefined) =>
+  owner?.id === USAGE_AUTOMATED_OWNER;
 
 export type UsageEnvironmentIdentities = ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>;
 
@@ -54,6 +71,17 @@ export function usageEnvironmentIdentities(input: {
     const environmentId = rowEnvironment(candidate, input.registeredOrigins);
     if (environmentId === undefined || identities.has(environmentId) || !hasMate(candidate))
       continue;
+    if (candidate.project.hq?.mate?.automated === true) {
+      identities.set(environmentId, {
+        mateName: projectNameInApp(candidate.project),
+        projectId: candidate.project.hq.appId,
+        ownerState: "known",
+        projectName: candidate.project.hq.appName?.trim() || null,
+        owner: AUTOMATED_MATES_OWNER,
+        mateProjectId: candidate.project.id,
+      });
+      continue;
+    }
     identities.set(environmentId, {
       mateName: projectNameInApp(candidate.project),
       projectId: candidate.project.hq?.appId ?? null,

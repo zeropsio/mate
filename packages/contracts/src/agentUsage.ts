@@ -8,6 +8,11 @@ export const AGENT_USAGE_REPORT_PROTOCOL = 2;
 export const AGENT_USAGE_EXACT_DAYS = 30;
 export const AGENT_USAGE_BATCH_MAX = 100;
 export const AGENT_USAGE_BATCH_BYTES = 48 * 1024;
+/**
+ * The owner a report names for an automated Mate's usage (`ownerUserId`, a group's `key`, a
+ * query's `ownerUserId`): the organization's key pays for it, never the person who made the Mate.
+ */
+export const USAGE_AUTOMATED_OWNER = "automated";
 export const UsageIdentity = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
 /** Decimal integer on the wire, checked without a lossy Number conversion. */
 export const UsageQuantity = Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]{0,37})$/u));
@@ -219,6 +224,7 @@ export const UsageReport = Schema.Struct({
       projectId: Schema.optionalKey(UsageIdentity),
       mateId: Schema.optionalKey(UsageIdentity),
       appId: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
+      /** A Zerops user id, or `USAGE_AUTOMATED_OWNER` for an automated Mate. */
       ownerUserId: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
       label: Schema.optionalKey(UsageIdentity),
       placement: Schema.optionalKey(Schema.Literals(["current", "last-known"])),

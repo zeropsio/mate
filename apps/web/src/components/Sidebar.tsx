@@ -179,7 +179,8 @@ import {
   SidebarCreateButton,
   sidebarAccountDestinationIcon,
 } from "./sidebar/SidebarChrome";
-import { newMateView, useAddMate } from "../zerops/newMate";
+import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate";
+import { useAutomatedKey } from "../zerops/useAutomationSettings";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
 import { putLiveHoldsRelease } from "../zerops/putLive.logic";
@@ -1818,6 +1819,16 @@ export default function Sidebar() {
     },
     [addMate, isMobile, setOpenMobile],
   );
+  const addAutomatedMates = useAddAutomatedMates();
+  // An HQ older than automated Mates makes none: Add offers none there.
+  const automatedOffered = useAutomatedKey() !== "unsupported";
+  const onZeropsNewAutomatedMates = useCallback(
+    (groupId: string) => {
+      if (isMobile) setOpenMobile(false);
+      addAutomatedMates(groupId);
+    },
+    [addAutomatedMates, isMobile, setOpenMobile],
+  );
   // The Overview row: lit while the overview is open, its line the organization in one sentence.
   const zeropsOverviewOpen = useLocation({ select: (location) => location.pathname === "/zerops" });
   // While the menu is still reading, the line says nothing rather than "No projects yet".
@@ -2766,6 +2777,7 @@ export default function Sidebar() {
     zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
       <SidebarCreateButton
         onNewMate={onZeropsNewMate}
+        onNewAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
         onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
         projects={zeropsMateProjects}
       />

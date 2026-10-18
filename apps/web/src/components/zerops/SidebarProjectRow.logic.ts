@@ -62,6 +62,8 @@ export interface LeadReading {
   readonly working: boolean;
   /** When the run it is on started (`runSince`), while it works. */
   readonly runSince: string | undefined;
+  /** An automated Mate at rest with no task: it has no news, whatever its last words' time. */
+  readonly waitsForTask?: boolean | undefined;
 }
 
 export interface GroupLead {
@@ -79,7 +81,8 @@ function timeOf(at: string | undefined): number {
 /**
  * Who leads a group, in `readings`' order (the group's own): the oldest ask the viewer can answer;
  * else the Mate whose run started last — not whose step came last, so two Mates at work never
- * trade places on every step; else the newest words; else the first.
+ * trade places on every step; else the newest words — an automated Mate waiting for a task has
+ * none to tell, so it leads only where no other Mate has words; else the first.
  */
 export function groupLead(readings: ReadonlyArray<LeadReading>): GroupLead {
   const asks = readings
@@ -97,7 +100,11 @@ export function groupLead(readings: ReadonlyArray<LeadReading>): GroupLead {
       undefined,
     );
   const working = newest((reading) => (reading.working ? timeOf(reading.runSince) : -Infinity));
-  const lead = working ?? newest((reading) => timeOf(reading.at)) ?? readings[0];
+  const lead =
+    working ??
+    newest((reading) => (reading.waitsForTask === true ? -Infinity : timeOf(reading.at))) ??
+    newest((reading) => timeOf(reading.at)) ??
+    readings[0];
   return { lead: lead?.projectId, asks };
 }
 

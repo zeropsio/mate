@@ -5,6 +5,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  AUTOMATED_MATES_OWNER,
   usageEnvironmentIdentities,
   usageBaselineStatus,
   usageOwnersStatus,
@@ -316,6 +317,32 @@ describe("usageEnvironmentIdentities", () => {
             ownerState: "known",
             projectName: "Acme Docs",
             owner: { ...EVA_OWNER, isViewer: false },
+          },
+        ],
+      ],
+    },
+    {
+      name: "an automated Mate's usage is the Automated Mates' own, never the person who made it",
+      candidates: [
+        candidate({
+          id: "titan-raya",
+          tags: ["mate"],
+          name: "Raya",
+          hq: { ...titan(), mate: { face: "", automated: true } },
+          environmentId: LENA,
+        }),
+      ],
+      owners: { "titan-raya": JAN },
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "Raya",
+            projectId: "titan",
+            ownerState: "known",
+            projectName: "Imperial Titan",
+            owner: AUTOMATED_MATES_OWNER,
+            mateProjectId: "titan-raya",
           },
         ],
       ],

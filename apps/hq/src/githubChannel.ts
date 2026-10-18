@@ -25,7 +25,12 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { GithubIssues } from "./githubIssues.ts";
 import { remoteIdentity } from "./gitTransport.ts";
 import { Remotes } from "./repoRemotes.ts";
-import { type TaskOnSource, TaskSourceChannels, type TaskStatus } from "./taskSources.ts";
+import {
+  BUDGET_WAIT,
+  type TaskOnSource,
+  TaskSourceChannels,
+  type TaskStatus,
+} from "./taskSources.ts";
 
 /** The label an issue carries while its task waits for a person's answer. */
 export const BLOCKED_LABEL = "mate:blocked";
@@ -49,6 +54,8 @@ export const statusWords = (status: TaskStatus): string => {
   switch (status.kind) {
     case "queued":
       return `Queued for an automated Mate: #${String(status.position)} in line.`;
+    case "budget":
+      return BUDGET_WAIT;
     case "picked":
       return status.link === undefined
         ? `**${status.mate}** is on it.`

@@ -947,7 +947,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
         url: "https://github.com/acme/tea-shop/issues/12",
       },
       // At rest on it: HQ keeps it on its task while the task's change waits for review.
-      says: "#12 Fix the checkout total · waiting for review",
+      says: "#12 Fix the checkout total · up for review",
     },
   ])(
     "an automated Mate wears its mark, names its task and never asks for a sign-in: $case",
@@ -957,7 +957,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
         [mate({ standupRequestedBy: "u-petra", automated: true, task }, { group: "connected" })],
         { getOwner: () => undefined },
       );
-      expect(html).toContain('aria-label="Automated: takes tasks from GitHub issues"');
+      expect(html).toContain('aria-label="Automated — runs on the organization&#x27;s key"');
       expect(
         /<span[^>]*data-zerops-surface="sidebar-mate-task"[^>]*>([^<]*)<\/span>/u.exec(html)?.[1],
       ).toBe(says);
@@ -2611,6 +2611,32 @@ describe("a group of Mates folded to its row", () => {
     expect(text(surface(mounted, "sidebar-project-lead"))).toMatch(/^Bo(: | · )$/u);
     expect(lineOf(mounted)).not.toContain("more");
     expect(clusterOf(mounted)[0]?.key).toBe("crm-bo");
+  });
+
+  it("never leads with an automated Mate waiting for a task over a person's Mate's words", () => {
+    const MATES = [
+      named("crm-a", "Ada", { tags: ["mate"], hq: AAA("mate", true) }),
+      named("crm-r", "Raya", {
+        tags: ["mate"],
+        hq: recorded(AAA("mate", true), { automated: true, task: null }),
+      }),
+    ].map((item) => mine({ ...item, group: "connected" }) as ZeropsCandidate);
+    session.viewer = "u-ada";
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={MATES}
+        complete
+        getActivity={(item: ZeropsCandidate) =>
+          item.project.id === "crm-r"
+            ? said("crm-r", "idle", "idle", 1, "Ready for tasks")
+            : said("crm-a", "idle", "idle", 60, "Your preview is up")
+        }
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(text(surface(mounted, "sidebar-project-lead"))).toMatch(/^Ada(: | · )$/u);
+    expect(clusterOf(mounted, ["crm-a", "crm-r"])[0]?.key).toBe("crm-a");
   });
 
   // A Mate whose own change waits for the person's review needs them, as the composer's top says

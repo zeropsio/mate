@@ -6,6 +6,7 @@
  * app is read and made the same way (`useGithubApp`).
  */
 import {
+  appTaskStops,
   makeTaskSourceSettings,
   taskSourceSetting,
   type AccountStore,
@@ -14,6 +15,7 @@ import {
   type TaskSourceSettingRead,
   type TaskSourceSettingValue,
   type TaskSourceWrite,
+  type TaskStopAction,
 } from "@t3tools/client-runtime/data";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
@@ -92,13 +94,16 @@ export function useOrgTaskSource<F extends OrgSetting>(
   };
 }
 
-/** One of an application's settings, read while its row is drawn. */
+/** One of an application's settings, read while its row is drawn; none while `appId` is not known. */
 export function useAppTaskSource<F extends AppSetting>(
   family: F,
-  appId: string,
+  appId: string | null,
 ): TaskSourceControls<F> {
   const { host, store, orgId } = useHost();
-  const key = useMemo(() => (orgId === null ? null : { orgId, appId }), [orgId, appId]);
+  const key = useMemo(
+    () => (orgId === null || appId === null ? null : { orgId, appId }),
+    [orgId, appId],
+  );
   const read = useAtomValue(
     store === null || key === null
       ? UNREAD
@@ -121,6 +126,41 @@ export function useAppTaskSource<F extends AppSetting>(
     },
     again: () => {
       if (host !== null && key !== null) host.again(family, key);
+    },
+  };
+}
+
+const NO_STOPS = Atom.make<Readonly<Record<string, TaskStopAction>>>({});
+
+export interface TaskStops {
+  /** Where this account's stop of each task stands, by the task; a task with none is absent. */
+  readonly stops: Readonly<Record<string, TaskStopAction>>;
+  /** Asks HQ to stop the task; its answer is `stops[taskId]`. */
+  readonly stop: (taskId: string) => void;
+}
+
+/**
+ * The stops of an application's tasks a surface shows, one record per task (`appTaskStops`): the
+ * session band and the board read the same one, and a second stop never hides the first.
+ */
+export function useAppTaskStops(appId: string | null, taskIds: ReadonlyArray<string>): TaskStops {
+  const { host, store, orgId } = useHost();
+  const ids = taskIds.join("\n");
+  const key = useMemo(
+    () =>
+      orgId === null || appId === null
+        ? null
+        : { orgId, appId, taskIds: ids === "" ? [] : ids.split("\n") },
+    [orgId, appId, ids],
+  );
+  const stops = useAtomValue(
+    store === null || key === null ? NO_STOPS : store.data.project(appTaskStops, key),
+  );
+  return {
+    stops,
+    stop: (taskId) => {
+      if (host !== null && key !== null)
+        void host.write({ orgId: key.orgId, appId: key.appId }, { kind: "task-stop", taskId });
     },
   };
 }
