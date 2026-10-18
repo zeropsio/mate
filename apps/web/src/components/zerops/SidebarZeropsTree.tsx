@@ -490,6 +490,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * (`useAddMate`). Absent — a harness — the heading's + does nothing.
    */
   readonly onAddMate?: ((groupId: string) => void) | undefined;
+  /** Asks for automated Mates in a project (`useAddAutomatedMates`); absent where HQ makes none. */
+  readonly onAddAutomatedMates?: ((groupId: string) => void) | undefined;
   /** Opens the invitation with this project picked; absent for someone who may not invite. */
   readonly onInvite?: ((groupId: string) => void) | undefined;
   /** Opens the form that sets a stage or a production up; absent, its item opens the projects page. */
@@ -696,6 +698,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   candidates,
   onSelect,
   onAddMate,
+  onAddAutomatedMates,
   onInvite,
   onSetUp,
   getComing,
@@ -2061,6 +2064,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         addMateOffer(group.groupId).kind === "allowed"
           ? () => {
               onAddMate?.(group.groupId);
+            }
+          : undefined,
+      onAddAutomatedMates:
+        onAddAutomatedMates !== undefined && addMateOffer(group.groupId).kind === "allowed"
+          ? () => {
+              onAddAutomatedMates(group.groupId);
             }
           : undefined,
       addMateWhy: addMateGate({

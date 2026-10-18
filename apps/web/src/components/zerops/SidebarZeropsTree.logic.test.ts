@@ -202,6 +202,30 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       items: ["Fold", "Add a project Mate", "Open project", "Invite people", "—", "All projects"],
     },
     {
+      case: "where HQ makes automated Mates, they are added right after a project Mate",
+      over: { onAddAutomatedMates: () => {} },
+      items: [
+        "Fold",
+        "Add a project Mate",
+        "Add automated Mates…",
+        "Open project",
+        "—",
+        "All projects",
+      ],
+    },
+    {
+      case: "a project that takes no Mate now takes no automated Mates either, saying why",
+      over: { onAddAutomatedMates: () => {}, addMateWhy: "Its development is still being set up." },
+      items: [
+        "Fold",
+        "Add a project Mate (off)",
+        "Add automated Mates… (off)",
+        "Open project",
+        "—",
+        "All projects",
+      ],
+    },
+    {
       case: "a missing stage or production to add",
       over: { setUp: [{ label: "Add stage", act: () => {} }] },
       items: ["Fold", "Add a project Mate", "Open project", "—", "Add stage", "All projects"],

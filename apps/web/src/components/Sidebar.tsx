@@ -3097,6 +3097,7 @@ export default function Sidebar() {
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
+              onAddAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
               onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
               getComing={zeropsComing}

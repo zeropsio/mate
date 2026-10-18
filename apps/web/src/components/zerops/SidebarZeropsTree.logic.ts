@@ -102,6 +102,8 @@ export function projectHeadingMenu(input: {
   /** Absent where the heading does not fold. */
   readonly onToggle: (() => void) | undefined;
   readonly onAddMate: (() => void) | undefined;
+  /** Opens *Add automated Mates* for the project; absent where HQ makes none or none may be added. */
+  readonly onAddAutomatedMates?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press (`newMateGate`); Add stands off. */
   readonly addMateWhy?: string | null | undefined;
   readonly onOpen: () => void;
@@ -143,6 +145,19 @@ export function projectHeadingMenu(input: {
               disabled: true,
               why: input.addMateWhy,
               act: input.onAddMate,
+            },
+          ]),
+    ...(input.onAddAutomatedMates === undefined
+      ? []
+      : input.addMateWhy == null
+        ? [item("Add automated Mates…", input.onAddAutomatedMates)]
+        : [
+            {
+              kind: "item" as const,
+              label: "Add automated Mates…",
+              disabled: true,
+              why: input.addMateWhy,
+              act: input.onAddAutomatedMates,
             },
           ]),
     item("Open project", input.onOpen),
