@@ -8,6 +8,7 @@
  * (connected or not, never its key) is read the same way, beside them in Settings › Automation.
  */
 import type {
+  HqAppTask,
   HqChannelView,
   HqDiscordView,
   HqScheduleView,
@@ -33,6 +34,8 @@ declare module "../model.ts" {
     /** Never with a secret: HQ shows one only as the webhook is made. */
     readonly hqAppWebhooks: ReadonlyArray<HqWebhookView>;
     readonly hqAppSchedules: ReadonlyArray<HqScheduleView>;
+    /** What is queued, at work, and the latest that ended (`GET /api/apps/:appId/tasks`). */
+    readonly hqAppTasks: ReadonlyArray<HqAppTask>;
     /**
      * The latest write of this account's to one of them, by its request, and — once HQ answered
      * it — the last read started before that answer: the write shows done once a read started
@@ -65,6 +68,7 @@ export const APP_SETTINGS = [
   "hqAppDiscord",
   "hqAppWebhooks",
   "hqAppSchedules",
+  "hqAppTasks",
 ] as const;
 export type OrgSetting = (typeof ORG_SETTINGS)[number];
 export type AppSetting = (typeof APP_SETTINGS)[number];
@@ -83,6 +87,7 @@ const SUFFIX: Readonly<Record<TaskSourceSetting, string>> = {
   hqAppDiscord: "app-discord",
   hqAppWebhooks: "app-webhooks",
   hqAppSchedules: "app-schedules",
+  hqAppTasks: "app-tasks",
 };
 
 export const settingId = (key: OrgSettingKey | AppSettingKey): string =>
@@ -123,5 +128,6 @@ export const hqAppSlackFamily = detail("hqAppSlack", SUFFIX.hqAppSlack);
 export const hqAppDiscordFamily = detail("hqAppDiscord", SUFFIX.hqAppDiscord);
 export const hqAppWebhooksFamily = detail("hqAppWebhooks", SUFFIX.hqAppWebhooks);
 export const hqAppSchedulesFamily = detail("hqAppSchedules", SUFFIX.hqAppSchedules);
+export const hqAppTasksFamily = detail("hqAppTasks", SUFFIX.hqAppTasks);
 export const hqTaskSourceRequestFamily = detail("hqTaskSourceRequest", "task-source-request");
 export const hqWebhookRevealFamily = detail("hqWebhookReveal", "webhook-reveal");

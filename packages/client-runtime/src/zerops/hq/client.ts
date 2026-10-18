@@ -57,6 +57,7 @@ import {
   HqDiscordView,
   HqIntakeView,
   HqScheduleView,
+  HqAppTasksView,
   HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
@@ -464,6 +465,8 @@ export interface HqApi {
   /** An application's schedules (`GET /api/apps/:appId/schedules`). */
   readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
   readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
+  /** An application's tasks: queued, at work, the latest that ended (`GET /api/apps/:appId/tasks`). */
+  readonly appTasks?: (appId: string) => Promise<HqAppTasksView>;
   readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits?: () => Promise<HqTaskLimitsView>;
@@ -726,6 +729,7 @@ const readWebhook = decoded(HqWebhookView);
 const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
 const readSchedule = decoded(HqScheduleView);
 const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
+const readAppTasks = decoded(HqAppTasksView);
 const readTaskLimits = decoded(HqTaskLimitsView);
 const readGithub = decoded(HqGithubView);
 const readGithubManifest = decoded(HqGithubManifestView);
@@ -1461,6 +1465,8 @@ export function makeHqApi(input: {
     schedules: async (appId) =>
       (await readSchedules(await authorized(`/api/apps/${encodeURIComponent(appId)}/schedules`)))
         .schedules,
+    appTasks: async (appId) =>
+      readAppTasks(await authorized(`/api/apps/${encodeURIComponent(appId)}/tasks`)),
     makeSchedule: async (appId, request) =>
       readSchedule(
         await authorized(
