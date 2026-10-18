@@ -1,6 +1,7 @@
 /** Git standing has one owner: accepted destinations, frozen entries and confirmed hand-overs. */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { HqPushCiFailure, HqPushReceipt } from "@t3tools/shared/hqDeploys";
+import { type HqPushCiFailure, type HqPushReceipt, RELEASE_CHECK } from "@t3tools/shared/hqDeploys";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { HqGitReleasePreflight, Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
@@ -74,32 +75,58 @@ export interface GitCiLine {
   readonly notes: ReadonlyArray<string>;
 }
 
-/** HQ's CI record on the confirmed hand-over is the only source; no record, no line. */
+/**
+ * HQ's CI record on the confirmed hand-over is the only source; before one, the stage check a
+ * release read before pushing. No record, no line.
+ */
 export function gitCiLine(repo: GitRepositoryDelivery): GitCiLine | undefined {
-  const ci = repo.confirmed === undefined ? undefined : repo.job?.evidence?.ci;
+  const stage = repo.confirmed === undefined;
+  const ci = stage ? repo.job?.evidence?.gate : repo.job?.evidence?.ci;
   if (ci === undefined) return undefined;
+  const what = stage ? `Stage CI "${RELEASE_CHECK}"` : "CI";
   const count = ci.done < ci.total ? [`${ci.done} of ${ci.total} done`] : [];
   const stopped = ci.watch === "stopped" && ci.reason !== null ? [ci.reason] : [];
   switch (ci.verdict) {
     case "unreadable":
       return {
-        words: `CI unreadable: ${ci.reason ?? "HQ couldn't read it"}`,
+        words: `${what} unreadable: ${ci.reason ?? "HQ couldn't read it"}`,
         failed: [],
         notes: [],
       };
     case "none":
       return {
-        words: ci.watch === "watching" ? "CI not reported yet" : "No CI reported",
+        words:
+          ci.watch === "watching"
+            ? `${what} not reported yet`
+            : stage
+              ? `${what} never ran`
+              : "No CI reported",
         failed: [],
         notes: stopped,
       };
     case "running":
-      return { words: "CI running", failed: [], notes: [...count, ...stopped] };
+      return { words: `${what} running`, failed: [], notes: [...count, ...stopped] };
     case "failed":
-      return { words: "CI failed", failed: ci.failed, notes: [...count, ...stopped] };
+      return { words: `${what} failed`, failed: ci.failed, notes: [...count, ...stopped] };
     case "passed":
-      return { words: "CI passed", failed: [], notes: [] };
+      return { words: `${what} passed`, failed: [], notes: [] };
   }
+}
+
+/**
+ * How to make GitHub hold main to what stage tested — HQ never sets it: one sentence and the
+ * repository's ruleset settings; none off GitHub.
+ */
+export function gitRulesetGuide(
+  remoteUrl: string,
+  branch: string,
+): { readonly words: string; readonly url: string } | undefined {
+  const guide = gitTokenGuide(remoteUrl, "");
+  if (guide.kind !== "guide" || guide.host !== "github") return undefined;
+  return {
+    words: `Protect ${branch} on GitHub so only a commit stage tested lands there: add a ruleset on ${branch} that requires the status check "${RELEASE_CHECK}" from GitHub Actions, blocks force pushes and restricts deletions.`,
+    url: `https://github.com/${guide.repository}/settings/rules`,
+  };
 }
 
 /** No remote/service/version reads and no receiver inference: a push never proves `live`. */

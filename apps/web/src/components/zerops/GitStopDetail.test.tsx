@@ -50,6 +50,27 @@ describe("Git environment detail", () => {
     expect(html).not.toContain("Remove environment");
     expect(remove).not.toHaveBeenCalled();
   });
+  it("a production with a stage says how to protect main on GitHub and links its rulesets", () => {
+    const guide = (staged: boolean, tier: "production" | "stage" = "production") => {
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <GitStopDetail environment={{ ...environment, tier }} repos={repos} staged={staged} />,
+      );
+      return [...host.querySelectorAll("[data-git-ruleset]")].map((line) => ({
+        words: line.textContent,
+        links: [...line.querySelectorAll("a")].map((link) => link.href),
+      }));
+    };
+    expect(guide(true)).toEqual([
+      {
+        words:
+          'Protect main on GitHub so only a commit stage tested lands there: add a ruleset on main that requires the status check "check" from GitHub Actions, blocks force pushes and restricts deletions. Open web\'s rulesets',
+        links: ["https://github.com/acme/shop/settings/rules"],
+      },
+    ]);
+    expect(guide(false)).toEqual([]);
+    expect(guide(true, "stage")).toEqual([]);
+  });
   it("PR-only steer is informational until pull-request delivery exists", () => {
     const html = renderToStaticMarkup(
       <GitStopDetail

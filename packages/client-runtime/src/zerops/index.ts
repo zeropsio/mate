@@ -612,6 +612,7 @@ export {
 
 export {
   gitCiLine,
+  gitRulesetGuide,
   gitDeliveryOf,
   type GitCiLine,
   type GitDelivery,
