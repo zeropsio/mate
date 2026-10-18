@@ -26,7 +26,7 @@ import { rowStateOf } from "../engine/read/conversationRow.ts";
 import { chatsSource, engineAttentionReads, engineShellOf } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
-import { taskConversationId } from "./ZeropsTasks.ts";
+import { TASKS_CONVERSATION_ID, taskConversationId } from "./ZeropsTasks.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
 const c = ConversationId.make("thread-main");
@@ -328,6 +328,55 @@ describe("HQ's overview of a Mate on the engine", () => {
       }),
     );
     assert.strictEqual(shell.latestMessagePreview?.text, preview);
+  });
+
+  it("previews the tasks' one conversation by its latest task's run, the question read as a task's", () => {
+    const lastAgent = {
+      text: "Two carts hold teas.\n\nQUESTION: Which one stays?",
+      at: T("2026-10-07T10:04:00.000Z"),
+    };
+    // A person's run there is theirs: its words are read as they are.
+    const ofPerson = engineShellOf(
+      view({
+        conversationId: TASKS_CONVERSATION_ID,
+        lastEnded: ended(1, { kind: "completed" }),
+        lastAgent,
+      }),
+    );
+    assert.include(ofPerson.latestMessagePreview?.text ?? "", "QUESTION:");
+    const task = { kind: "task", taskId: "task-1" } as const;
+    const tasks = engineShellOf(
+      view({
+        conversationId: TASKS_CONVERSATION_ID,
+        lastEnded: { ...ended(1, { kind: "completed" }), principal: task },
+        lastAgent,
+      }),
+    );
+    assert.strictEqual(tasks.latestMessagePreview?.text, "Two carts hold teas.");
+  });
+
+  it("titles the tasks' one conversation by the task at work, and Tasks while none is", () => {
+    const task = { kind: "task", taskId: "task-2" } as const;
+    const lastAsked = {
+      text: "#43 The teapot is missing\n\nYou have a task",
+      at: T("2026-10-07T10:00:00.000Z"),
+    };
+    const working = engineShellOf(
+      view({
+        conversationId: TASKS_CONVERSATION_ID,
+        activeRun: run(2, { principal: task }),
+        lastAsked,
+      }),
+    );
+    assert.strictEqual(working.title, "#43 The teapot is missing");
+    const idle = engineShellOf(
+      view({
+        conversationId: TASKS_CONVERSATION_ID,
+        lastEnded: { ...ended(2, { kind: "completed" }), principal: task },
+        lastAsked,
+      }),
+    );
+    assert.strictEqual(idle.title, "Tasks");
   });
 
   it("a crewmate's conversation is the crew's: never one of the person's chats, its line reads its run", () => {

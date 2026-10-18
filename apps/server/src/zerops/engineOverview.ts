@@ -41,7 +41,7 @@ import {
   type MateEngineService,
   type ViewRun,
 } from "../engine/MateEngine.ts";
-import { taskIdOfConversation, taskQuestionOf } from "./ZeropsTasks.ts";
+import { TASKS_CONVERSATION_ID, taskIdOfConversation, taskQuestionOf } from "./ZeropsTasks.ts";
 
 /** The project an engine conversation's shell names: the engine keeps no V1 project. */
 export const ENGINE_PROJECT_ID = ProjectId.make("mate-engine");
@@ -136,12 +136,19 @@ const waitsOnCard = (view: ConversationView): boolean => {
   return state.kind === "waiting" && isCardAsk(state.on);
 };
 
+/** Whether the run is a task's: in the tasks' one conversation, its runs' principal says so. */
+const isTaskRun = (run: ViewRun | null): boolean => run?.principal.kind === "task";
+
 /**
  * The agent's words as a summary: a task's agent asking a person ends on a `QUESTION:` line the
  * task's source shows; a summary drops it, or reads the question alone when nothing came before.
+ * In the tasks' one conversation the words are a task's when its latest run is.
  */
 const summaryOf = (view: ConversationView, text: string): string => {
-  if (taskIdOfConversation(view.conversationId) === undefined) return text;
+  const ofTask =
+    taskIdOfConversation(view.conversationId) !== undefined ||
+    (view.conversationId === TASKS_CONVERSATION_ID && isTaskRun(latestRunOf(view)));
+  if (!ofTask) return text;
   const { question, rest } = taskQuestionOf(text);
   return question === undefined || rest !== "" ? rest : question;
 };
@@ -157,8 +164,14 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
       : undefined;
   const person = view.lastPerson;
   const agent = view.lastAgent;
-  // Its title, from what the person typed: a page's request for them never names it.
-  const personLine = titleOf(view.lastAsked?.text);
+  // Its title, from what the person typed: a page's request for them never names it. The tasks'
+  // one conversation is named by the task at work (its brief's first line), and Tasks between.
+  const personLine =
+    view.conversationId === TASKS_CONVERSATION_ID
+      ? view.activeRun !== null || view.queued.length > 0
+        ? (titleOf(view.lastAsked?.text) ?? "Tasks")
+        : "Tasks"
+      : titleOf(view.lastAsked?.text);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
   const agentText = agent === null ? null : messagePreviewText(summaryOf(view, agent.text));
   const personText = person === null ? null : userAskPreviewText(person);
