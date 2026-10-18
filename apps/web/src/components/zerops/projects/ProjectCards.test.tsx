@@ -42,7 +42,7 @@ vi.mock("@tanstack/react-router", async () => {
 import { CardMate, ProjectCards } from "./ProjectCards";
 import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
-import { entry, FLOW_PROPS, item, placed } from "./flowTestFixtures";
+import { entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
 
 // The browser owns viewport intersection; this render case holds both already-visible cards.
 class VisibleCard {
@@ -235,5 +235,102 @@ it.each([
     container.remove();
     width.mockRestore();
     total.mockRestore();
+  }
+});
+
+/** One card, drawn whole, outside an account. */
+async function drawCard(group: ReturnType<typeof entry>) {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(<ProjectCards focusGroup={undefined} groups={[group]} props={{ ...FLOW_PROPS }} />),
+  );
+  return {
+    container,
+    done: async () => {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+it("a card's title opens its project's page", async () => {
+  const card = await drawCard(entry([item("Ada", placed("shop", "Shop"))]));
+  try {
+    const title = [...card.container.querySelectorAll("h2 a")].find(
+      (link) => link.textContent === "Shop",
+    );
+    expect(title?.getAttribute("href")).toBe("/group/shop/flow");
+    // The project's ··· keeps its own press, outside the link.
+    expect(title?.querySelector("[data-test-menu]")).toBeNull();
+  } finally {
+    await card.done();
+  }
+});
+
+it("a project with three stage environments lists each with its state and address", async () => {
+  const stageOf = (projectId: string, name: string, host: string) => ({
+    ...STAGE_STOP,
+    projectId,
+    name,
+    addresses: [{ service: "app", url: `https://${host}` }],
+  });
+  const card = await drawCard(
+    entry([WREN], {
+      stops: [
+        stageOf("acme-stage", "stage", "stage.acme.example"),
+        stageOf("acme-checkout", "stage-checkout", "checkout.acme.example"),
+        stageOf("acme-perf", "stage-perf", "perf.acme.example"),
+      ],
+    }),
+  );
+  try {
+    const stages = [...card.container.querySelectorAll('[data-zerops-place="stage"]')];
+    expect(
+      stages.map((stage) => [
+        stage.querySelector("b")?.textContent,
+        stage.querySelector("a")?.getAttribute("href"),
+        stage.querySelector("p")?.textContent?.includes("follows"),
+      ]),
+    ).toEqual([
+      ["stage", "https://stage.acme.example", true],
+      ["stage-checkout", "https://checkout.acme.example", true],
+      ["stage-perf", "https://perf.acme.example", true],
+    ]);
+  } finally {
+    await card.done();
+  }
+});
+
+it("a project with no stage offers to add one where HQ offers it, and assumes none", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  const added: string[] = [];
+  const group = entry([WREN]);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <ProjectCards
+        focusGroup={undefined}
+        groups={[group]}
+        props={{ ...FLOW_PROPS, setUpStage: () => () => added.push("stage") }}
+      />,
+    ),
+  );
+  try {
+    expect(container.querySelector('[data-zerops-place="stage"]')).toBeNull();
+    const add = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Add stage"),
+    );
+    await act(async () => add?.click());
+    expect(added).toEqual(["stage"]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
   }
 });

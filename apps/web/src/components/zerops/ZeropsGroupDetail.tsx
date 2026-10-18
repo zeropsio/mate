@@ -422,10 +422,10 @@ export function ZeropsRuntimeStops({
 }
 
 /**
- * A project's own page: its header and its road at the page's width — the overview card's slots,
- * so a Mate's row, a place's panel and the release's door are one thing on both — and under them,
- * at full width, the page's own cards: the people on it, its environments, its repositories and
- * its history.
+ * A project's own page: its head, Production, Stages and Mates in the wide column — the overview
+ * card's slots, so a Mate's row, a place's panel and the release's door are one thing on both —
+ * and the page's own cards beside them: its changes, spend, automation, access, people and
+ * repositories.
  */
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const groupName = useGroupName(groupId);
@@ -436,9 +436,10 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
-      roadEnvironments: (tier: GroupEnvironmentTier) => (
-        <RoadEnvironmentsLive groupId={groupId} tier={tier} />
-      ),
+      roadEnvironments: (
+        tier: GroupEnvironmentTier,
+        detail: (projectId: string) => React.ReactNode,
+      ) => <RoadEnvironmentsLive detail={detail} groupId={groupId} tier={tier} />,
       onAddMate: () => {
         addMate(groupId);
       },
@@ -456,15 +457,17 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 const NO_SEARCH = {};
 
 /**
- * One tier's environments under its stop on the project page's road, from the page's reads: the
- * same `environmentSlots` every door to adding an environment asks.
+ * One tier's environments in its section of the project page, from the page's reads — the same
+ * `environmentSlots` every door to adding an environment asks — each with its place's block.
  */
 function RoadEnvironmentsLive({
   groupId,
   tier,
+  detail,
 }: {
   readonly groupId: string;
   readonly tier: GroupEnvironmentTier;
+  readonly detail: (projectId: string) => React.ReactNode;
 }) {
   const { flows } = useProjectFlows(
     useMemo(() => [groupId], [groupId]),
@@ -472,17 +475,19 @@ function RoadEnvironmentsLive({
   );
   const flow = flows.get(groupId);
   if (flow === undefined) return null;
-  return <KnownRoadEnvironments flow={flow} groupId={groupId} tier={tier} />;
+  return <KnownRoadEnvironments detail={detail} flow={flow} groupId={groupId} tier={tier} />;
 }
 
 function KnownRoadEnvironments({
   groupId,
   flow,
   tier,
+  detail,
 }: {
   readonly groupId: string;
   readonly flow: ZeropsProjectFlow;
   readonly tier: GroupEnvironmentTier;
+  readonly detail: (projectId: string) => React.ReactNode;
 }) {
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
@@ -542,6 +547,7 @@ function KnownRoadEnvironments({
         withheldNotice,
         firstDeployOf,
         release,
+        detail,
         onAdd: (added) => {
           if (added === "production") openPutLive(groupId);
           else addEnvironment(groupId, added);
@@ -693,9 +699,9 @@ function KnownGroupAside({
 const NO_HALF_MADE: ReadonlyArray<never> = [];
 
 /**
- * A project page's cards under its road, drawn — every read already done and handed in: on the
- * left what moves (its changes, its automation), on the right what it is (who reaches it, where,
- * and where its code mirrors); a failed read or an unfinished environment above both.
+ * A project page's cards beside its places, drawn — every read already done and handed in: what
+ * moves first (its changes, its spend, its automation), then what it is (who reaches it, where,
+ * and where its code mirrors); a failed read or an unfinished environment above them.
  *
  * Split from the page above for the same reason the change's pane is: a
  * harness and a test can then look at a project with nothing set up without an account behind it.
@@ -774,29 +780,25 @@ export function ZeropsGroupPane({
             ))}
           </div>
         )}
-        <div>
-          {changes}
-          {automation}
-        </div>
-        <div>
-          {spend}
-          {access}
-          {people}
-          {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
-          {(codeRepos ?? repos ?? []).length === 0 ||
-          (onMirror === undefined && mirrored.length === 0) ? null : (
-            <ProjectPageCard surface="project-repositories" title="Repositories">
-              {mirrored.length === 0 ? null : <GitRemoteLines repos={codeRepos ?? repos} />}
-              {onMirror === undefined || mirrored.length > 0 ? null : (
-                <div>
-                  <Button onClick={onMirror} size="sm" variant="secondary">
-                    Mirror code to GitHub or GitLab…
-                  </Button>
-                </div>
-              )}
-            </ProjectPageCard>
-          )}
-        </div>
+        {changes}
+        {spend}
+        {automation}
+        {access}
+        {people}
+        {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
+        {(codeRepos ?? repos ?? []).length === 0 ||
+        (onMirror === undefined && mirrored.length === 0) ? null : (
+          <ProjectPageCard surface="project-repositories" title="Repositories">
+            {mirrored.length === 0 ? null : <GitRemoteLines repos={codeRepos ?? repos} />}
+            {onMirror === undefined || mirrored.length > 0 ? null : (
+              <div>
+                <Button onClick={onMirror} size="sm" variant="secondary">
+                  Mirror code to GitHub or GitLab…
+                </Button>
+              </div>
+            )}
+          </ProjectPageCard>
+        )}
       </div>
     </div>
   );

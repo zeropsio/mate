@@ -775,8 +775,8 @@ export function cardPeople<P extends { readonly userId: string }>(
   return people.length > 1 ? people : [];
 }
 
-/** How many of its latest changes a card shows. */
-export const CARD_CHANGES = 5;
+/** How many of its latest changes a card shows: the rest are its page's ("Show all"). */
+export const CARD_CHANGES = 3;
 
 /** One of a card's latest changes: open, with what stops it; or merged, with where it went. */
 export interface CardChange {

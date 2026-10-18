@@ -56,6 +56,31 @@ describe("a place's panel", () => {
   });
 });
 
+it("a card names what its production runs, its address and its services", () => {
+  const html = renderToStaticMarkup(
+    <PlacePanel
+      actions={null}
+      groupId="shop"
+      model={{
+        ...modelOf([{ service: "app", url: "https://shop.acme.com" }]),
+        line: {
+          ...modelOf([{ service: "app", url: "https://shop.acme.com" }]).line,
+          words: ["Running", "v0.1.59", "up 19d"],
+        },
+        services: [
+          { hostname: "app", state: "up" },
+          { hostname: "db", state: "up" },
+          { hostname: "worker", state: "down" },
+        ],
+      }}
+    />,
+  );
+  const text = html.replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ");
+  expect(text).toContain("Running · v0.1.59 · up 19d");
+  expect(html).toContain('href="https://shop.acme.com"');
+  expect(text).toContain("app db worker failed");
+});
+
 describe("a place's addresses on its panel", () => {
   const unmounts: Array<() => void> = [];
   afterEach(() => {
