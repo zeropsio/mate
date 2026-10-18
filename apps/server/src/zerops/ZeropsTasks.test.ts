@@ -282,6 +282,22 @@ const rig = (
           parentId: null,
         },
       });
+    /** A turn of the conversation's agent still at work told what it has cost so far. */
+    const running = (conversationId: ConversationId, turn: string, usd: number) =>
+      PubSub.publish(runtime, {
+        type: "turn.usage.updated",
+        threadId: `${conversationId}/s/1`,
+        payload: {
+          nativeThreadId: "ses_1",
+          nativeTurnId: turn,
+          nativeCost: {
+            amount: String(Math.round(usd * 1e9)),
+            scale: 9,
+            currency: "USD",
+            basis: "provider-reported-estimate",
+          },
+        },
+      });
     return {
       views,
       unreadable,
@@ -296,6 +312,7 @@ const rig = (
       reads,
       changes,
       spent,
+      running,
     };
   });
 
@@ -1217,6 +1234,29 @@ describe("a task stops at its limits", () => {
       }),
   );
 
+  it.effect("a task that runs past its dollar limit mid-turn is stopped then", () =>
+    Effect.gen(function* () {
+      const { delivered, id, reports, running, sent } = yield* working(
+        "task-1",
+        {},
+        { minutes: 60, costUsd: 5 },
+      );
+      yield* running(id, "turn-1", 3);
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), []);
+      yield* running(id, "turn-1", 5.2);
+      yield* settle;
+      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
+      assert.deepStrictEqual(sent.at(-1), {
+        taskId: "task-1",
+        state: "failed",
+        conversationId: id,
+        detail: "It reached its $5 limit.",
+      });
+      assert.strictEqual(reports.at(-1)?.spentUsd, 5.2);
+    }),
+  );
+
   it.effect("a follow-up on a task past its cost limit starts nothing and says failed", () =>
     Effect.gen(function* () {
       const { delivered, id, link, move, sent, spent } = yield* working(
@@ -1314,6 +1354,40 @@ describe("a task's report says what it cost and how long it worked", () => {
       );
       yield* minutes(1);
       assert.deepStrictEqual(reports.at(-1)?.workedMs, 150_000);
+    }),
+  );
+
+  it.effect("a working task's report carries the cost its turn has run up so far", () =>
+    Effect.gen(function* () {
+      const { id, reports, running } = yield* working("task-1");
+      const before = reports.length;
+      // Told at each of the turn's steps: said with the next minute's report, never one each.
+      yield* running(id, "turn-1", 0.4);
+      yield* running(id, "turn-1", 0.65);
+      yield* settle;
+      assert.strictEqual(reports.length, before);
+      yield* minutes(1);
+      assert.deepStrictEqual(
+        reports.slice(before).map(({ state, spentUsd }) => ({ state, spentUsd })),
+        [{ state: "working", spentUsd: 0.65 }],
+      );
+    }),
+  );
+
+  it.effect("the turn's final usage replaces its running cost, never adding to it", () =>
+    Effect.gen(function* () {
+      const { id, reports, running, spent } = yield* working("task-1");
+      yield* running(id, "turn-1", 0.3);
+      yield* minutes(1);
+      assert.strictEqual(reports.at(-1)?.spentUsd, 0.3);
+      yield* spent(id, "turn-1", 0.35);
+      yield* settle;
+      assert.strictEqual(reports.at(-1)?.spentUsd, 0.35);
+      // A late word of the counted turn changes nothing; the next turn's runs on top.
+      yield* running(id, "turn-1", 0.3);
+      yield* running(id, "turn-2", 0.1);
+      yield* minutes(1);
+      assert.strictEqual(reports.at(-1)?.spentUsd, 0.45);
     }),
   );
 
