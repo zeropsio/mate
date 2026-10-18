@@ -54,7 +54,7 @@ export interface StopDeployAgain {
  * 42rem a row stacks: name and verbs on its first line, the rest under them.
  */
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 @2xl/place:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_auto]";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 @2xl/place:grid-cols-[minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,1.35fr)_7.5rem]";
 /** A cell after the name: a line of its own when stacked, its column when wide. */
 const CELL = "col-span-2 min-w-0 @2xl/place:col-span-1 @2xl/place:row-start-1";
 
@@ -150,6 +150,15 @@ function PlaceServiceLine({
           ? code.deployLog
           : answer.deployLog;
   const again = code?.drift?.redeploy;
+  const state =
+    code === undefined ? (
+      row.platform === undefined || !row.platform.statusNeedsWord ? undefined : (
+        <span className="text-body text-muted-foreground">{row.platform.statusLabel}</span>
+      )
+    ) : code.status === undefined ||
+      (answer !== undefined && (code.runs === undefined || code.job !== undefined)) ? undefined : (
+      <PlaceState status={code.status} tone={code.tone} />
+    );
   return (
     <li
       className="flex flex-col gap-1.5 border-t border-border/60 py-2.5"
@@ -162,32 +171,30 @@ function PlaceServiceLine({
             <span className="truncate text-caption text-muted-foreground">{row.under}</span>
           )}
         </span>
-        <span className={`${CELL} text-body text-muted-foreground @2xl/place:col-start-2`}>
-          {row.type ?? null}
-        </span>
-        <span className={`${CELL} flex flex-col @2xl/place:col-start-3`}>
-          {code === undefined ? null : <PlaceRuns row={code} />}
-        </span>
-        <span className={`${CELL} flex @2xl/place:col-start-4`}>
-          {code === undefined ? (
-            row.platform === undefined || !row.platform.statusNeedsWord ? null : (
-              <span className="text-body text-muted-foreground">{row.platform.statusLabel}</span>
-            )
-          ) : code.status === undefined ||
-            (answer !== undefined && (code.runs === undefined || code.job !== undefined)) ? null : (
-            <PlaceState status={code.status} tone={code.tone} />
-          )}
-        </span>
-        <span className={`${CELL} flex flex-col gap-1 @2xl/place:col-start-5`}>
-          {code === undefined ? null : (
+        {/* Only cells with something to say: a stacked row keeps no gap for an empty one. */}
+        {row.type === undefined ? null : (
+          <span className={`${CELL} text-body text-muted-foreground @2xl/place:col-start-2`}>
+            {row.type}
+          </span>
+        )}
+        {code === undefined ? null : (
+          <span className={`${CELL} flex flex-col @2xl/place:col-start-3`}>
+            <PlaceRuns row={code} />
+          </span>
+        )}
+        {state === undefined ? null : (
+          <span className={`${CELL} flex @2xl/place:col-start-4`}>{state}</span>
+        )}
+        {code === undefined ? null : (
+          <span className={`${CELL} flex flex-col gap-1 @2xl/place:col-start-5`}>
             <PlaceAddresses
               enablingServiceId={enablingServiceId}
               onEnableRoute={onEnableRoute}
               projectId={projectId}
               row={code}
             />
-          )}
-        </span>
+          </span>
+        )}
         <span className="col-start-2 row-start-1 flex items-center justify-end gap-1 @2xl/place:col-start-6">
           {deployLog === undefined ? null : (
             <ViewDeploy
@@ -313,12 +320,22 @@ function PlaceRuns({ row }: { readonly row: NonNullable<PlaceServiceRow["code"]>
 
 function PlaceState({ status, tone }: { readonly status: string; readonly tone: GroupRowTone }) {
   const dot = PLACE_DOT_TONE[tone];
-  return dot === undefined ? (
-    <span className="min-w-0 text-body break-words text-muted-foreground">{status}</span>
-  ) : (
-    <Badge dot tone={STATUS_BADGE_TONE[dot]}>
-      {status}
-    </Badge>
+  // `Deployed · 2h ago`: the word beside its dot, its age under it, as the name sits over its repository.
+  const [word = status, ...rest] = status.split(" · ");
+  const age = rest.join(" · ");
+  return (
+    <span className="flex min-w-0 flex-col items-start">
+      {dot === undefined ? (
+        <span className="min-w-0 text-body break-words text-muted-foreground">{word}</span>
+      ) : (
+        <span className="text-body text-foreground">
+          <Badge dot tone={STATUS_BADGE_TONE[dot]}>
+            {word}
+          </Badge>
+        </span>
+      )}
+      {age === "" ? null : <span className="text-caption text-muted-foreground">{age}</span>}
+    </span>
   );
 }
 
@@ -466,7 +483,7 @@ function PlaceMeters({
 }) {
   return (
     <span
-      className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1"
+      className="grid grid-cols-[repeat(auto-fill,10.5rem)] items-center gap-x-4 gap-y-1"
       data-zerops-place-meters=""
     >
       {METERS.map((meter) => (
