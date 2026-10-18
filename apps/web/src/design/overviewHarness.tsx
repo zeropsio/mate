@@ -156,6 +156,8 @@ interface Project {
   readonly since?: string;
   readonly stageSince?: string;
   readonly failedTag?: string;
+  /** This tab's run began releasing then (wall ms). */
+  readonly releaseSince?: number;
   readonly waitsOnYou: boolean;
   readonly canPutLive: boolean;
   readonly merged?: { readonly by: Mate; readonly title: string; readonly at: string };
@@ -176,6 +178,7 @@ function project(input: {
   readonly since?: string;
   readonly stageSince?: string;
   readonly failedTag?: string;
+  readonly releaseSince?: number;
   readonly waitsOnYou?: boolean;
   readonly canPutLive?: boolean;
   readonly merged?: Project["merged"];
@@ -235,6 +238,7 @@ function project(input: {
     ...(input.since === undefined ? {} : { since: input.since }),
     ...(input.stageSince === undefined ? {} : { stageSince: input.stageSince }),
     ...(input.failedTag === undefined ? {} : { failedTag: input.failedTag }),
+    ...(input.releaseSince === undefined ? {} : { releaseSince: input.releaseSince }),
     ...(input.merged === undefined ? {} : { merged: input.merged }),
     waitsOnYou: input.waitsOnYou ?? false,
     canPutLive: input.canPutLive ?? false,
@@ -506,6 +510,27 @@ const PROJECTS: ReadonlyArray<Project> = [
     },
     actions: { production: ["Roll back to v0.1.58"] },
   }),
+  // (g) A release on its way, sent by this tab's run: production's line says it once, with its
+  // clock; the run draws no second line.
+  project({
+    id: "ines-bakery",
+    name: "Ines Bakery",
+    mates: [mate("ines-b", "Ines", "olive", { time: "5m" })],
+    production: {
+      kind: "releasing",
+      stop: stop("bakery-prod", "production", { version: version("v0.1.1") }),
+      line: "",
+      tag: "v0.1.2",
+    },
+    stages: [stop("bakery-stage", "stage")],
+    chip: { label: "prod", state: "releasing", version: "v0.1.1", next: "v0.1.2" },
+    since: ago(60),
+    stageSince: ago(12),
+    releaseSince: NOW - 42_000,
+    panels: {
+      production: panel({ version: "v0.1.1", services: [{ hostname: "app", state: "up" }] }),
+    },
+  }),
   // (f) Nothing released yet, no stage: one Mate at work.
   project({
     id: "juno-notes",
@@ -603,6 +628,7 @@ function HarnessPage() {
                 chip: found?.chip,
                 since: found?.since,
                 failedTag: found?.failedTag,
+                releaseSince: found?.releaseSince,
                 stageSince:
                   at === undefined
                     ? undefined

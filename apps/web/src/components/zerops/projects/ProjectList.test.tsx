@@ -490,7 +490,7 @@ describe("a card's stage", () => {
 // The onboarding run: an Admin who joined looked 11 s for a way to add their own Mate.
 describe("a card's Mates", () => {
   it("closes with Add a Mate where the person may add one, and says why where it stands off", () => {
-    // On the project's page: Add Mate in its header, and Add a Mate at the foot of its Mates.
+    // On the project's page, where Add Mate stands in its header (and the card's ··· holds it).
     const added: string[] = [];
     const open = mount(
       <ZeropsProjectsFlow<Item>
@@ -507,11 +507,11 @@ describe("a card's Mates", () => {
     const button = open.root.findAll(
       (node) => node.type === "button" && node.props["data-zerops-surface"] === "add-mate",
     );
-    expect(button).toHaveLength(2);
+    expect(button).toHaveLength(1);
     act(() => {
-      for (const each of button) each.props.onClick();
+      button[0]!.props.onClick();
     });
-    expect(added).toEqual(["aaa", "aaa"]);
+    expect(added).toEqual(["aaa"]);
     const held = section(
       render({
         groups: [entry([WREN])],

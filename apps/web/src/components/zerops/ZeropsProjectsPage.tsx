@@ -2689,7 +2689,14 @@ export function ZeropsProjectsContent({
             />
           );
         }}
-        cardPlaces={overview.cardPlaces}
+        cardPlaces={(entry) => {
+          // This tab's run, releasing: production's line says it once, counting from its step.
+          const run = putLiveRuns.get(entry.group.groupId);
+          return {
+            ...overview.cardPlaces(entry),
+            releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
+          };
+        }}
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         setUpProduction={({ group, flow }) =>

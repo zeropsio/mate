@@ -61,8 +61,14 @@ export function withheldProjectNotice(
   inventory: Inventory,
   projectId: string,
   name = "This project",
+  /**
+   * `removal: false` where the project stands as a row of something else (the project page's
+   * environments): a rename's realtime remove can prove a project deleted for a moment, and only
+   * its own route names a removal.
+   */
+  options: { readonly removal: boolean } = { removal: true },
 ): string | null {
-  if (inventory.deleted.includes(projectId)) return `${name} was removed.`;
+  if (inventory.deleted.includes(projectId)) return options.removal ? `${name} was removed.` : null;
   const authority = projectAuthority(inventory, projectId);
   if (authority.kind !== "withheld") return null;
   return (

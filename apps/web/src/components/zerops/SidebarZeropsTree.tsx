@@ -4294,7 +4294,7 @@ function ProjectNameMarks() {
   return (
     <>
       <ProjectTasksWaiting appId={review.groupId} />
-      <ProjectReviewMarks {...review} items={items} />
+      <ProjectReviewMarks {...review} items={items} withRun />
     </>
   );
 }

@@ -20,6 +20,7 @@ import { useCompactProjectFlows, type ZeropsProjectFlow } from "~/zerops/project
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
 import {
   putLiveAddress,
+  putLiveOwnLine,
   putLiveProgress,
   putLiveReleased,
   putLiveResumed,
@@ -213,7 +214,7 @@ function usePutLiveResumed(groupId: string, current: PutLiveRun | undefined) {
     if (resumed.kind === "follow") restore(resumed.run);
     else if (resumed.kind === "forget") forget(groupId);
   }, [forget, groupId, restore, resumed]);
-  return resumed;
+  return { resumed, inFlight: flow?.release.inFlight };
 }
 
 /**
@@ -227,7 +228,7 @@ export function ProductionRun({ groupId }: { readonly groupId: string }) {
 
 function ProductionRunRead({ groupId }: { readonly groupId: string }) {
   const stored = usePutLiveRun(groupId);
-  const resumed = usePutLiveResumed(groupId, stored);
+  const { resumed, inFlight } = usePutLiveResumed(groupId, stored);
   // Drawn in the frame the flow says it, before the store holds it.
   const run = resumed.kind === "follow" || resumed.kind === "stopped" ? resumed.run : stored;
   const restore = usePutLive((state) => state.restore);
@@ -238,6 +239,8 @@ function ProductionRunRead({ groupId }: { readonly groupId: string }) {
   const addresses = useProductionAddresses(run?.phase === "live" ? run.productionId : undefined);
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   if (resumed.kind === "reading" || run === undefined) return null;
+  // Once the flow says the release on its way, production's own line carries it, with this clock.
+  if (!putLiveOwnLine(run, inFlight)) return null;
   return (
     <PutLiveRow
       address={putLiveAddress(addresses)}

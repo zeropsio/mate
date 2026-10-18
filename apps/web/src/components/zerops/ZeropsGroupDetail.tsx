@@ -216,7 +216,9 @@ function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefine
 } {
   const inventory = useZeropsInventory();
   const withheldNotice = useCallback(
-    (projectId: string) => withheldProjectNotice(inventory, projectId),
+    // A row of the project's page: a removal is its own route's to say (a rename proves one).
+    (projectId: string) =>
+      withheldProjectNotice(inventory, projectId, undefined, { removal: false }),
     [inventory],
   );
   const shown = useMemo(
@@ -1621,7 +1623,8 @@ export function ZeropsStopPane({
           >
             {readServices === undefined ? (
               <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
-            ) : services.length === 0 ? (
+            ) : table.length === 0 ? (
+              // Its code services and the platform's both: a place with a database alone has one.
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : stop.target.kind !== "zerops" ? null : (
               <PlaceServiceTable

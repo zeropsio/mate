@@ -196,6 +196,27 @@ describe("a project's Changes card", () => {
     expect(nowhere).toBeUndefined();
   });
 
+  it("the Changes card's Release holds off while a release is on its way", async () => {
+    const onRelease = vi.fn();
+    const host = await mount(
+      <ProjectChangesCard
+        groups={GROUPS}
+        mateOf={MATES}
+        onOpen={vi.fn()}
+        onRelease={onRelease}
+        read={{ state: "known" }}
+        releasing
+      />,
+    );
+    const ready = host.querySelector('[data-zerops-changes="ready"]');
+    const buttons = [...(ready?.querySelectorAll("button") ?? [])].filter((button) =>
+      button.textContent?.startsWith("Releas"),
+    );
+    expect(buttons.map((button) => [button.textContent, button.disabled])).toEqual([
+      ["Releasing…", true],
+    ]);
+  });
+
   it("a change shows its GitHub pull request where it has one, opened on GitHub", async () => {
     const host = await mount(
       <ProjectChangesCard

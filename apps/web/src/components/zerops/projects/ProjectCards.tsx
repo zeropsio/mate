@@ -694,9 +694,14 @@ function readPlaces<T>(
       ? undefined
       : flow.production.stop.version?.label);
   const told = lines.find((line) => line.kind === "production") ?? lines.at(-1)!;
+  const releaseSince = facts?.releaseSince;
   const production: PlaceLine = {
     ...told,
     words: productionWords(told, { version, up: ageOf(facts?.since, nowMs) }),
+    // A release on its way is said once, here: with the clock of the run that sent it.
+    ...(told.dot === "releasing" && releaseSince !== undefined
+      ? { clock: { since: releaseSince } }
+      : {}),
   };
   // Each stage in its own words: what it follows and when it was deployed, or how far its adding
   // has got.
@@ -729,6 +734,7 @@ function readPlaces<T>(
     mates: flow.mates,
     review: inReview(flow),
     ready: releaseShown ? ready : undefined,
+    asking: flow.mates.filter((mate) => mate.waiting).map((mate) => mate.name),
   });
   // No stage yet: the way to add it — or that one is being set up.
   const stageSetUp =
@@ -742,6 +748,8 @@ function readPlaces<T>(
     production,
     productionAbsent,
     stages,
+    /** What the person called the stage being added, while it is. */
+    creatingName: flow.creatingStages[0]?.name,
     state,
     settingUp,
     stageSetUp,
@@ -845,33 +853,38 @@ function CardProduction<T>({
 }) {
   const { production, putLive, releaseDoor } = read;
   return (
-    <section aria-label="Production" className="ov-sec" data-zerops-place="production">
-      {read.productionAbsent ? (
-        <div className="ov-panel">
-          <div className="ov-panel-head">
-            <b className="ov-panel-name">Production</b>
-          </div>
-          <p className="ov-panel-state">
-            <PlaceDot dot="none" />
-            <PlaceWords line={production} />
-          </p>
-          {putLive === undefined ? null : (
-            <div className="ov-panel-acts">
-              <PutLive onPut={putLive} />
+    <>
+      <section aria-label="Production" className="ov-sec" data-zerops-place="production">
+        {read.productionAbsent ? (
+          <div className="ov-panel">
+            <div className="ov-panel-head">
+              <b className="ov-panel-name">Production</b>
             </div>
-          )}
-          <PutLiveWaits onPut={putLive} />
-        </div>
-      ) : (
-        (props.renderPlacePanel?.(entry, production, "card") ?? <PlainPanel line={production} />)
-      )}
-      {props.renderProductionRun?.(entry)}
+            <p className="ov-panel-state">
+              <PlaceDot dot="none" />
+              <PlaceWords line={production} />
+            </p>
+            {putLive === undefined ? null : (
+              <div className="ov-panel-acts">
+                <PutLive onPut={putLive} />
+              </div>
+            )}
+            <PutLiveWaits onPut={putLive} />
+          </div>
+        ) : (
+          (props.renderPlacePanel?.(entry, production, "card") ?? <PlainPanel line={production} />)
+        )}
+        {props.renderProductionRun?.(entry)}
+      </section>
+      {/* Under production, outside its words: the door saying "Releasing…" is no production
+          line. It takes the room production's held History takes once the release is on its
+          way, so the card holds still from the press. */}
       {releaseDoor === null ? null : (
-        <div className="ov-acts" data-zerops-card-ready="true">
+        <div className="ov-ready" data-zerops-card-ready="true">
           {releaseDoor}
         </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -904,7 +917,11 @@ function CardStages({ read }: { readonly read: PlacesReading }) {
         </div>
       ))}
       {stages.length > 0 ? null : stageSetUp === "creating" ? (
+        // The stage it becomes, in the room it will take: its name's line, then how far it got.
         <div className="ov-stage" data-zerops-place="stage" data-zerops-setting-up="true">
+          <span className="ov-stage-head">
+            <b className="ov-stage-name">{read.creatingName ?? NEW_STAGE.name}</b>
+          </span>
           <p className="ov-stage-state">
             <PlaceDot dot="unknown" />
             <PlaceWords line={settingUpLine(NEW_STAGE, settingUp)} />
@@ -1029,24 +1046,27 @@ function ProjectCard<T>({
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
         <ProjectChips entry={entry} props={props} />
       </header>
-      <CardProduction entry={entry} props={props} read={read} />
-      <CardStages read={read} />
-      <CardMates
-        addMate={addMate}
-        entry={entry}
-        liftTaken={read.production.trouble}
-        props={props}
-      />
-      {/* Its changes say why they are unknown where the card draws them. */}
-      {unknown.kind === "unread" && props.renderChanges === undefined ? (
-        <p className="ov-card-note" data-zerops-row-line="unread">
-          {unknown.text}
-        </p>
-      ) : null}
-      {props.renderChanges?.(entry)}
-      <ProjectSpendLine appId={group.groupId} projectIds={spendIds} />
-      {props.renderActivity?.(entry)}
-      <StopReads entry={entry} />
+      {/* Past the window's height the card scrolls inside itself, its head standing still. */}
+      <div className="ov-card-body" data-zerops-card-body="">
+        <CardProduction entry={entry} props={props} read={read} />
+        <CardStages read={read} />
+        <CardMates
+          addMate={addMate}
+          entry={entry}
+          liftTaken={read.production.trouble}
+          props={props}
+        />
+        {/* Its changes say why they are unknown where the card draws them. */}
+        {unknown.kind === "unread" && props.renderChanges === undefined ? (
+          <p className="ov-card-note" data-zerops-row-line="unread">
+            {unknown.text}
+          </p>
+        ) : null}
+        {props.renderChanges?.(entry)}
+        <ProjectSpendLine appId={group.groupId} projectIds={spendIds} />
+        {props.renderActivity?.(entry)}
+        <StopReads entry={entry} />
+      </div>
     </article>
   );
 }
@@ -1217,12 +1237,8 @@ export function ProjectPage<T>({
           <div className="pp-sec-head">
             <h2 className="pp-sec-name">Mates</h2>
           </div>
-          <CardMates
-            addMate={onAddMate === undefined ? undefined : { onAdd: onAddMate, why: addMateWhy }}
-            all
-            entry={entry}
-            props={props}
-          />
+          {/* Add Mate is the head's: one door, one reason (they shared its id). */}
+          <CardMates all entry={entry} props={props} />
         </section>
         <StopReads entry={entry} />
       </div>
