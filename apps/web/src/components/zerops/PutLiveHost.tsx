@@ -1,8 +1,7 @@
 /**
  * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and
  * each project's run, driven from here so it outlives the sheet and the view the person moves to.
- * A run merges the change when it still waits, makes production with what the project already
- * says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
+ * A run makes production with what the project already says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
  * the conversation draws where it got (`PutLiveTop`).
  */
 import { buildZeropsGroupTree, productionProjectOf } from "@t3tools/client-runtime/zerops";
@@ -23,7 +22,6 @@ import {
   putLiveCreation,
   putLiveDeadline,
   putLiveLandedAt,
-  putLiveMergeGate,
   putLiveNext,
   putLiveSettle,
   putLiveSheet,
@@ -146,41 +144,18 @@ function PutLiveSheetContainer({
   );
   const model = putLiveSheet({
     project,
-    changes: ask.change === undefined ? merged : [ask.change],
+    changes: merged,
     recipe: recipe.state,
   });
-  const seeCode = ask.change ?? (merged?.length === 1 ? merged[0] : undefined);
-  // A change still waiting is merged only where its review would merge it: else the sheet says
-  // the review's verdict, and See the code is the way on.
-  const gate = putLiveMergeGate({
-    pull:
-      ask.change === undefined || ask.change.merged
-        ? undefined
-        : flow?.pullRequests.find(
-            (pull) =>
-              pull.repository === ask.change?.repository && pull.number === ask.change.number,
-          ),
-  });
-  const change =
-    ask.change === undefined
-      ? undefined
-      : {
-          repository: ask.change.repository,
-          number: ask.change.number,
-          title: ask.change.title,
-          head: ask.change.head,
-          merged: ask.change.merged,
-        };
+  const seeCode = merged?.length === 1 ? merged[0] : undefined;
   return (
     <PutLiveSheet
       model={
         running !== undefined && running.phase !== "failed"
           ? putLiveSheetUnderWay(model, { pressedHere: pressed })
-          : gate.kind === "held"
-            ? { ...model, hold: gate.words }
-            : offers?.zerops?.production === false
-              ? { ...model, hold: "Production can be added here only as a Git branch." }
-              : model
+          : offers?.zerops?.production === false
+            ? { ...model, hold: "Production can be added here only as a Git branch." }
+            : model
       }
       onSetUpYourself={
         offers?.production === true
@@ -195,7 +170,7 @@ function PutLiveSheetContainer({
       onPutLive={() => {
         if (orgId === undefined) return;
         setPressed(true);
-        start({ orgId, groupId: ask.groupId, project, change });
+        start({ orgId, groupId: ask.groupId, project });
       }}
       onSeeCode={
         seeCode === undefined

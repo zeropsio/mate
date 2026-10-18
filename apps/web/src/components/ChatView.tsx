@@ -8256,14 +8256,7 @@ function ConversationView(props: ChatViewProps) {
                 />
               );
             case "browser":
-              return (
-                <ZeropsBrowserSurface
-                  mateName={admissionMate.kind === "mate" ? admissionMate.mate.name : undefined}
-                  onOpenImage={onExpandTimelineImage}
-                  threadRef={zeropsChrome.threadRef}
-                  zeropsEntries={zeropsThreadModel.entries}
-                />
-              );
+              return <ZeropsBrowserSurface threadRef={zeropsChrome.threadRef} />;
             case "mac":
               return <ZeropsMacSurface threadRef={zeropsChrome.threadRef} />;
             case "data":

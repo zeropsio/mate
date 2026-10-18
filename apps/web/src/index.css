@@ -273,6 +273,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
   --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
+     palette check): Zerops compute, and model tokens on the organization's key. */
+  --color-spend-compute: var(--primary);
+  --color-spend-tokens: var(--zerops-mate-tint-coral);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -3482,6 +3486,14 @@ code {
 
   .mac-wait-step-field {
     grid-column: 2;
+  }
+
+  /* The box the Mac's frame sits in: a flat card's edge. */
+  .mac-frame {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--zerops-flat-card-border);
+    border-radius: var(--zerops-card-radius);
   }
 
   .mac-command {
@@ -8137,20 +8149,12 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
 }
 
-/* A project's own page: its card — the overview's, at the page's width — and the page's column
-   beside it, each part on the card's own ground. Side by side once both have room, stacked under
-   that. */
+/* A project's own page: its header, its road, then the page's own cards — each at full width. */
 .ov-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 16px;
-}
-
-@container flow (min-width: 980px) {
-  .ov-page {
-    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-  }
 }
 
 .ov-card[data-page] {
@@ -8206,6 +8210,662 @@ label.tm-advanced-row:not([data-disabled]) {
   font-weight: 600;
   line-height: 20px;
 }
+
+/* ── pp-road: a project's state line and its road — on the overview card, and as the project
+   page's header and road (`ProjectRoad.tsx`). Stops are dots on one hairline; what waits between
+   them rides the line as a quiet chip; one quiet line under each stop. ───────────────────────── */
+.pp-road-top {
+  display: flex;
+  height: 20px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-road-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.pp-road-state .ov-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.pp-road-state .ov-dot[data-dot="attention"] {
+  background: var(--zerops-status-attention);
+}
+
+.pp-road-state .ov-dot[data-dot="unknown"] {
+  background: var(--zerops-status-busy);
+}
+
+.pp-road-state[data-state="release-failed"],
+.pp-road-state[data-state="down"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-state[data-state="needs-you"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.pp-road-state[data-state="setting-up"],
+.pp-road-state[data-state="releasing"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.pp-road-state[data-state="running"] {
+  color: var(--zerops-status-ok-text);
+}
+
+.pp-road-chips {
+  display: flex;
+  min-height: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pp-road-chips .ov-card-people {
+  margin-left: 0;
+}
+
+.pp-road-tag {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--zerops-status-busy) 12%, transparent);
+  color: var(--zerops-status-busy-text);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* The card's road: names, the line, the unders — three columns that never change shape. */
+.pp-road {
+  display: grid;
+  gap: 6px;
+  margin: 16px 6px 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-road-names,
+.pp-road-unders {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+
+.pp-road-names {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.pp-road-names > :nth-child(3),
+.pp-road-unders > :nth-child(3) {
+  justify-self: end;
+}
+
+.pp-road-unders {
+  min-height: 28px;
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+.pp-road-under-stage {
+  justify-self: center;
+}
+
+.pp-road-under-prod {
+  justify-self: end;
+}
+
+.pp-road-under {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-road-under[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-under[data-tone="info"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.pp-road-line {
+  display: grid;
+  height: 28px;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.pp-road-stop {
+  display: grid;
+  width: 10px;
+  height: 10px;
+  place-items: center;
+}
+
+.pp-road-stop[data-ghost] {
+  border: 1px dashed color-mix(in oklab, var(--foreground) 30%, transparent);
+  border-radius: 999px;
+}
+
+.pp-road-stop .ov-dot[data-dev] {
+  background: color-mix(in oklab, var(--foreground) 55%, transparent);
+  box-shadow: none;
+}
+
+/* A stretch of line between two stops: a dotted hairline, its chip riding it in the middle. */
+.pp-road-seg {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 4px;
+}
+
+.pp-road-seg::before {
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px dotted color-mix(in oklab, var(--foreground) 28%, transparent);
+  content: "";
+}
+
+.pp-road-seg > * {
+  position: relative;
+}
+
+.pp-road-chip {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  background: var(--popover);
+  color: var(--foreground);
+  font-size: var(--text-line);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pp-road-chip[data-tone="failed"] {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--zerops-status-failed) 12%, var(--ov-ground, var(--card)));
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-note {
+  margin: 0 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+/* What went wrong on production, lifted: the card's one white sub-card. */
+.pp-road-lift {
+  margin: 10px 0 2px;
+  padding: 12px 12px 12px;
+  border-radius: var(--radius-card);
+  background: var(--ov-lift);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
+    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+}
+
+.pp-road-lift .ov-panel-note {
+  margin: 0;
+}
+
+/* The newest event, the card's last line: a face, the words, how long ago. */
+.pp-road-activity {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  margin: 8px 0 0;
+  padding: 10px 6px 2px;
+  border-top: 1px solid var(--ov-rule);
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-align: left;
+  transition: color 150ms var(--ease-out-strong);
+}
+
+.pp-road-activity:hover {
+  color: var(--foreground);
+}
+
+.pp-road-activity-face {
+  display: flex;
+  justify-content: center;
+}
+
+.pp-road-activity-face > * {
+  width: 16px;
+  height: 16px;
+}
+
+.pp-road-activity-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-activity-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The project page: its header and its road, each a card at the page's width. */
+.pp-road-card {
+  --ov-ground: var(--card);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
+  min-width: 0;
+  padding: 20px 24px;
+  border-radius: var(--radius-sheet);
+  background: var(--ov-ground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+}
+
+.dark .pp-road-card {
+  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+.pp-road-header {
+  display: flex;
+  min-height: 124px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pp-road-header-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.pp-road-title {
+  margin-top: 4px;
+  font-size: var(--text-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 34px;
+}
+
+.pp-road-header-acts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 50%;
+}
+
+.pp-road-why {
+  flex-basis: 100%;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  text-align: right;
+}
+
+.pp-road-page {
+  display: grid;
+  min-height: 220px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 28px;
+}
+
+.pp-road-col {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+}
+
+.pp-road-head {
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pp-road-head > .pp-road-seg {
+  flex: 1 1 auto;
+  margin: 0 -28px 0 6px;
+}
+
+.pp-road-name {
+  flex: none;
+  font-size: var(--text-emphasis);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pp-road-mates {
+  display: grid;
+  gap: 8px;
+}
+
+.pp-road-mate,
+.pp-road-tile {
+  min-width: 0;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+.pp-road-tile {
+  padding: 14px 16px;
+}
+
+.pp-road-tile[data-ghost] {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  box-shadow: none;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+}
+
+.pp-road-ghost-words {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+}
+
+/* A tier's environments under its stop: its name, what runs, its state — or its quiet slot. */
+.pp-road-envs {
+  display: grid;
+  gap: 2px;
+}
+
+.pp-road-env {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-line);
+  text-align: left;
+}
+
+button.pp-road-env {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-road-env:hover {
+  background: var(--ov-hover);
+}
+
+.pp-road-env-name {
+  flex: none;
+  font-weight: 500;
+}
+
+.pp-road-env[data-quiet] .pp-road-env-name {
+  color: var(--muted-foreground);
+}
+
+.pp-road-env-line {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-env-version {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-zerops-road-environments="production"] .pp-road-env-version {
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+}
+
+.pp-road-env-go {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+
+/* A place's column: what runs, since when, one health line, its address, its tiles, its row. */
+.pp-road-place {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: 8px;
+}
+
+.pp-road-place-version {
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-road-place-quiet {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+.pp-road-place-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-road-place-link {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-line);
+  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+  text-overflow: ellipsis;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.pp-road-place-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.pp-road-place-lift {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-card);
+  background: var(--ov-lift);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+  font-size: var(--text-line);
+}
+
+.pp-road-place-lift > p[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.pp-road-place-lift > p[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-road-place-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pp-road-place-acts:empty {
+  display: none;
+}
+
+/* A service as a compact tile: name:port and what it is; CPU, RAM and disk against their limits;
+   its last day. */
+.pp-road-svcs {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+}
+
+.pp-road-svc {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+.pp-road-svc-head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pp-road-svc-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-prose);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-svc-port,
+.pp-road-svc-type {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 400;
+}
+
+.pp-road-svc-type {
+  flex: none;
+}
+
+.pp-road-svc-meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pp-road-meter {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pp-road-meter-figure {
+  overflow: hidden;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-road-meter-unit {
+  margin-left: 3px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.pp-road-meter-track {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.pp-road-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--info);
+}
+
+.pp-road-svc-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@container flow (max-width: 900px) {
+  .pp-road-page {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 20px;
+  }
+
+  .pp-road-head > .pp-road-seg {
+    margin-right: 0;
+  }
+}
+/* ── end pp-road ── */
 
 /* A release ready to go, lifted; then production's line, at every card's foot. */
 
@@ -14463,4 +15123,332 @@ button.rv-relrow:hover .rv-relrow-go {
     opacity: 0;
     transform: translateY(3px) scale(0.96);
   }
+}
+
+/* pp-cards: the project page's card grid under the road — one idea per card on the overview card's
+   ground, groups named in small caps, rows on hairline rhythm, what waits on you lifted. Two
+   columns while the page has room for them, what moves wide on the left; stacked only below. */
+.pp-cards {
+  min-width: 0;
+  container: pp-cards / inline-size;
+}
+
+.pp-cards-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.pp-cards-grid > * {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.pp-cards-wide {
+  grid-column: 1 / -1;
+}
+
+@container pp-cards (min-width: 720px) {
+  .pp-cards-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+@container pp-cards (min-width: 1100px) {
+  .pp-cards-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+.pp-cards-card {
+  gap: 16px;
+  padding: 20px 24px 20px;
+}
+
+.pp-cards-group-name {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.pp-cards-row {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.pp-cards-press {
+  margin-inline: -6px;
+  width: calc(100% + 12px);
+  padding-inline: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.pp-cards-press:hover {
+  background-color: var(--ov-hover);
+}
+
+.pp-cards-press:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-held {
+  height: 12px;
+  flex: 1;
+  border-radius: var(--radius-control);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.pp-cards-face {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.pp-cards-lift {
+  display: grid;
+  border-radius: var(--radius-card);
+  background: var(--background);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+}
+
+.dark .pp-cards-lift {
+  background: var(--ov-lift);
+}
+
+.pp-cards-waiting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+}
+
+.pp-cards-waiting + .pp-cards-waiting {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-cards-waiting-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+}
+
+.pp-cards-waiting-text:hover > :first-child {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pp-cards-waiting-text:focus-visible {
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-control);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pp-cards-rule {
+  height: 1px;
+  min-width: 16px;
+  flex: 1;
+  background: var(--ov-rule);
+}
+
+.pp-cards-empty {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-cards-dashed {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  border-radius: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.pp-cards-dashed:hover {
+  background-color: var(--ov-hover);
+}
+
+.pp-cards-dashed:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  column-gap: 16px;
+}
+
+.pp-cards-person {
+  display: flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  gap: 4px;
+}
+
+.pp-cards-person > :first-child {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-cards-person[data-pending] > :first-child {
+  opacity: 0.6;
+}
+
+.pp-cards-person-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-cards-person-text > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A person's ⋮ waits for the row's hover or focus: the list reads as names, not buttons. */
+.pp-cards-person[data-menu] > :last-child {
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.pp-cards-person[data-menu]:hover > :last-child,
+.pp-cards-person[data-menu]:focus-within > :last-child,
+.pp-cards-person[data-menu] > [data-popup-open] {
+  opacity: 1;
+}
+
+a.pp-cards-person-who:hover {
+  text-decoration: underline;
+}
+
+.pp-cards-gauge {
+  position: relative;
+  height: 2px;
+  margin-top: -6px;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--ov-rule);
+}
+
+.pp-cards-gauge > span {
+  display: block;
+  height: 100%;
+  border-radius: 0;
+  background: var(--color-status-busy);
+}
+
+.pp-cards-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  outline: none;
+}
+
+button.pp-cards-chip {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-cards-chip:hover {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+button.pp-cards-chip:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.pp-cards-chip[data-tone="attention"] {
+  background: var(--color-status-attention-surface);
+  color: var(--color-status-attention-text);
+}
+
+.pp-cards-board {
+  display: grid;
+  gap: 16px;
+  container-type: inline-size;
+}
+
+.pp-cards-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@container (min-width: 600px) {
+  .pp-cards-pair {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+  }
+}
+
+.pp-cards-glyph {
+  display: inline-flex;
+  min-width: 20px;
+  height: 18px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: var(--radius-control);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
 }

@@ -7,7 +7,10 @@ import {
   costWords,
   poolLine,
   predictedBoard,
+  sourceGlyph,
+  spendGauge,
   spendLine,
+  takesLine,
   taskRoute,
 } from "./taskBoard.logic";
 
@@ -231,5 +234,40 @@ describe("the pool's line", () => {
     ],
   ] as const)("says the month's spend from %j as %s", (limits, words) => {
     expect(spendLine(limits as HqTaskLimitsView)).toBe(words);
+  });
+});
+
+describe("the Automation card's head and pool line", () => {
+  it.each([
+    [{ minutes: 60, costUsd: null }, null],
+    [{ minutes: 60, costUsd: null, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 }, null],
+    [
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 40, spentThisMonthUsd: 20 },
+      { words: "$20.00 of $40 · October", share: 0.5 },
+    ],
+    [
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 40, spentThisMonthUsd: 52 },
+      { words: "$52.00 of $40 · October", share: 1 },
+    ],
+  ] as const)("measures the month's spend from %j against its budget as %j", (limits, gauge) => {
+    expect(spendGauge(limits as HqTaskLimitsView, NOW)).toEqual(gauge);
+  });
+
+  it.each([
+    [[], "Tasks come from"],
+    [["Juno"], "Juno takes tasks from"],
+    [["Odo", "Tess"], "Odo and Tess take tasks from"],
+    [["Odo", "Tess", "Ines"], "Odo, Tess and Ines take tasks from"],
+  ] as const)("says who takes tasks of %j as %s", (names, words) => {
+    expect(takesLine(names)).toBe(words);
+  });
+
+  it.each([
+    ["https://github.com/acme/tea-shop/issues/45", "GH"],
+    ["https://acme.slack.com/archives/C1/p2", "#"],
+    ["https://discord.com/channels/1/2", "#"],
+    [null, null],
+  ] as const)("marks a queued task from %s with %s", (url, glyph) => {
+    expect(sourceGlyph(url)).toBe(glyph);
   });
 });

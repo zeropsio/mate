@@ -124,7 +124,7 @@ it("guides direct GitHub delivery from the code repository URL without connectin
     expect(host.textContent).toContain("Resource owner: acme");
     expect(host.textContent).toContain("Direct push to a branch only");
     expect(host.textContent).toContain("This guide does not connect a repository or check access.");
-    expect(host.querySelector('input[type="password"]')).toBeNull();
+    expect(host.querySelector("input[data-secret]")).toBeNull();
     expect(host.textContent).toContain("Contents, Issues and Webhooks: Read and write");
     expect(host.textContent).toContain("Workflows: Read and write is optional");
     expect(host.textContent).not.toContain("Pull requests:");

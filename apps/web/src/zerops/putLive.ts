@@ -15,13 +15,7 @@ import { useCallback } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
-import {
-  putLiveStep,
-  startPutLive,
-  type PutLiveChange,
-  type PutLiveEvent,
-  type PutLiveRun,
-} from "./putLive.logic";
+import { putLiveStep, startPutLive, type PutLiveEvent, type PutLiveRun } from "./putLive.logic";
 import {
   forgetPutLiveProduction,
   keepPutLiveProduction,
@@ -29,12 +23,11 @@ import {
 } from "./putLiveMemory";
 
 /**
- * The sheet, asked for a project: from a change, the change it carries live, read when it was
- * asked; from the project itself, none — what is merged goes live.
+ * The sheet, asked for a project from its own doors: what is merged goes live. A change never asks
+ * for it: its door is its review's Merge (the owner, 2026-10-18).
  */
 export interface PutLiveAsk {
   readonly groupId: string;
-  readonly change?: (PutLiveChange & { readonly description?: string | undefined }) | undefined;
 }
 
 interface PutLiveState {
@@ -49,7 +42,6 @@ interface PutLiveState {
     readonly orgId: string;
     readonly groupId: string;
     readonly project: string;
-    readonly change: PutLiveChange | undefined;
   }) => void;
   readonly step: (groupId: string, event: PutLiveEvent) => void;
   /** A run said from the project's flow (`putLiveResumed`), kept from here; never one under way. */
@@ -82,7 +74,10 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     if (current !== undefined && current.phase !== "live" && current.phase !== "failed") return;
     set({
       asked: null,
-      runs: new Map(get().runs).set(input.groupId, startPutLive({ ...input, at: Date.now() })),
+      runs: new Map(get().runs).set(
+        input.groupId,
+        startPutLive({ ...input, change: undefined, at: Date.now() }),
+      ),
     });
   },
   step: (groupId, event) => {

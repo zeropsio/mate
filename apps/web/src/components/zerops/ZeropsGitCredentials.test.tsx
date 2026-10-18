@@ -54,7 +54,7 @@ describe("personal HTTPS Git access", () => {
         freshness: { kind: "settled" },
       },
     });
-    expect(html).toContain('type="password"');
+    expect(html).toContain('data-secret=""');
     expect(html).toContain("Copy password");
     expect(html).toContain("2026-10-04T22:00:00Z");
     expect(html).toContain("Revoke");
@@ -226,7 +226,7 @@ it("Denied password access never looks like loading or enables creation", async 
       expect.soft(create.disabled).toBe(true);
       await act(() => create.click());
       expect.soft(issue).not.toHaveBeenCalled();
-      expect(r.host.querySelector('input[type="password"]')).toBeNull();
+      expect(r.host.querySelector("input[data-secret]")).toBeNull();
     } finally {
       await r.close();
     }

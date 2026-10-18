@@ -17,9 +17,7 @@
 import { creationHandoff } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
-  changeMergeVerdict,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  type ChangeReviewInput,
   type EnvironmentCreationOutcome,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
@@ -92,37 +90,6 @@ export interface PutLiveRun {
 // ---------------------------------------------------------------------------
 // The offer
 // ---------------------------------------------------------------------------
-
-/**
- * Whether *Put it live* is offered: only while the project has no production in any state (held,
- * half-made, being made) and the person may add one — production first; with a production, a
- * change goes live by its release.
- */
-export function putLiveOffered(input: {
-  readonly productionHeld: boolean;
-  readonly addable: { readonly production: boolean } | undefined;
-}): boolean {
-  return !input.productionHeld && input.addable?.production === true;
-}
-
-/** A change as the flow reads it, as far as its merge verdict goes. */
-export type PutLiveMergePull = ChangeReviewInput["pull"];
-
-/**
- * Whether *Put it live* may merge the change in its one press: only where the review's own Merge
- * would (`changeMergeVerdict`) — never past required checks that failed, still run or are unknown,
- * nor a change HQ still judges or that holds nothing. Held, it says the review's verdict, and the
- * review is where it moves on. A change merged already, or none, holds nothing.
- */
-export function putLiveMergeGate(input: {
-  readonly pull: PutLiveMergePull | undefined;
-}): { readonly kind: "open" } | { readonly kind: "held"; readonly words: string } {
-  const { pull } = input;
-  if (pull === undefined || pull.merged) return { kind: "open" };
-  // The verdict's title is all it says here: its Mate and its age are the review's to word.
-  const { enabled, verdict } = changeMergeVerdict({ pull, mateName: "", now: 0 });
-  return enabled ? { kind: "open" } : { kind: "held", words: verdict.title };
-}
 
 /** Why *Put it live* waits while another environment of the page is being set up. */
 export const PUT_LIVE_AFTER_CREATION = "Another environment is being set up first.";

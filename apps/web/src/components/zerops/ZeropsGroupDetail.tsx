@@ -2,7 +2,6 @@ import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
 import { Card } from "../ui/card";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
-import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
@@ -46,14 +45,13 @@ import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
   heldGroupLabel,
-  deployWord,
   flowVerbKey,
   flowVerbLabel,
   projectNameInApp,
   readZeropsMembership,
   environmentSlots,
   productionRunsOf,
-  type EnvironmentSlotRow,
+  ENVIRONMENT_UNFINISHED,
   releaseContentsCommits,
   releaseContentsSummary,
   carriedReads,
@@ -73,8 +71,6 @@ import {
   type ZeropsGroup,
   type ZeropsProject,
   sameCommit,
-  firstDeployLine,
-  firstDeployTone,
   stageFirstDeploy,
   type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
@@ -91,7 +87,6 @@ import {
   stopKeyGap,
   stopMetaLine,
   stopTierStops,
-  stopTone,
   stopVerdict,
   stopView,
   type Deployment,
@@ -106,8 +101,8 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRightIcon, ExternalLinkIcon } from "lucide-react";
-import { Fragment, useCallback, useContext, useId, useMemo, useState } from "react";
+import { ExternalLinkIcon } from "lucide-react";
+import { Fragment, use, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
@@ -126,14 +121,13 @@ import {
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
-import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
+import { useHqAppDetailHold, useHqRecipeFailure } from "~/zerops/useHqAppDetail";
 import {
   useAddEnvironment,
   useGroupPendingEnvironments,
   useEnvironmentOffers,
 } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
-import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -146,7 +140,13 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
-import { ProjectCardStandIn } from "./projects/OverviewStandIn";
+import { ProjectAccessCard, type AccessPlace } from "./projects/ProjectAccessCard";
+import { ProjectChangesCard } from "./projects/ProjectChangesCard";
+import { ProjectPageCard } from "./projects/ProjectPageCard";
+import { useProjectChangesCard } from "./projects/useProjectChangesCard";
+import { ProjectPageStandIn } from "./projects/OverviewStandIn";
+import { RoadEnvironmentRows, devstagesOf } from "./projects/RoadEnvironments";
+import { ProjectPageSpend } from "./projects/ProjectSpend";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -167,7 +167,6 @@ import {
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
-import { EmptyState } from "../ui/empty";
 import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 
@@ -347,22 +346,6 @@ export function runtimeStopsOf(
   return [...stops.values()];
 }
 
-/**
- * The Mates of a group that are also its stage (`devstage`): HQ deploys nothing to them, their
- * agent does, and they stand for the stage in the *Environments* section.
- */
-export function devstagesOf(
-  groupId: string,
-  projects: ReadonlyArray<ZeropsProject>,
-): ReadonlyArray<{ readonly id: string; readonly name: string }> {
-  return projects.flatMap((project) => {
-    const membership = readZeropsMembership(project);
-    return membership.groupId === groupId && membership.role === "devstage"
-      ? [{ id: project.id, name: projectNameInApp(project) }]
-      : [];
-  });
-}
-
 function useDevstages(
   groupId: string,
 ): ReadonlyArray<{ readonly id: string; readonly name: string }> {
@@ -439,10 +422,10 @@ export function ZeropsRuntimeStops({
 }
 
 /**
- * A project's own page: its card from the overview at the page's width — the same slots, so a
- * Mate's row, a place's panel and the release's door are one thing on both — and the column
- * beside it with what a card has no room for: the people on it, its environments, its
- * repositories and its history.
+ * A project's own page: its header and its road at the page's width — the overview card's slots,
+ * so a Mate's row, a place's panel and the release's door are one thing on both — and under them,
+ * at full width, the page's own cards: the people on it, its environments, its repositories and
+ * its history.
  */
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const groupName = useGroupName(groupId);
@@ -453,7 +436,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
-      people: <ProjectPeople groupId={groupId} />,
+      roadEnvironments: (tier: GroupEnvironmentTier) => (
+        <RoadEnvironmentsLive groupId={groupId} tier={tier} />
+      ),
       onAddMate: () => {
         addMate(groupId);
       },
@@ -469,6 +454,103 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 }
 
 const NO_SEARCH = {};
+
+/**
+ * One tier's environments under its stop on the project page's road, from the page's reads: the
+ * same `environmentSlots` every door to adding an environment asks.
+ */
+function RoadEnvironmentsLive({
+  groupId,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  if (flow === undefined) return null;
+  return <KnownRoadEnvironments flow={flow} groupId={groupId} tier={tier} />;
+}
+
+function KnownRoadEnvironments({
+  groupId,
+  flow,
+  tier,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly tier: GroupEnvironmentTier;
+}) {
+  const deployments = useStopDeploymentsShown();
+  const environments = flow.environments;
+  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
+  const release = useReleaseOffer(groupId, flow);
+  const { withheldNotice } = useWithheldStops(environments);
+  const firstDeployOf = useStageFirstDeploys(flow);
+  const offered = useEnvironmentOffers()(groupId);
+  const addEnvironment = useAddEnvironment();
+  const openPutLive = useOpenPutLive();
+  const devstages = useDevstages(groupId);
+  const pendingEnvironments = useGroupPendingEnvironments(groupId);
+  const { listing } = useZeropsCandidates();
+  const { halfMade } = useEnvironmentSetup(
+    useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
+  );
+  const production = environments.find((entry) => entry.tier === "production");
+  // Drawn once HQ has told the environments: before that, or where HQ refuses them to the reader,
+  // nothing is known to be absent.
+  const slots = !flow.declarationsRead
+    ? []
+    : environmentSlots({
+        environments: environments.map((entry) => ({
+          id: entry.id,
+          target: entry.target,
+          tier: entry.tier,
+        })),
+        devstages,
+        pending: pendingEnvironments,
+        halfMade: halfMade
+          .filter((entry) => entry.groupId === groupId)
+          .map((entry) => ({ id: entry.projectId, tier: entry.tier, finish: entry.finish })),
+        recipeTiers: flow.recipeTiers,
+        recipeRead: flow.recipeRead,
+        offered: offered ?? { stage: false, production: false },
+        productionRuns:
+          production?.target.kind !== "zerops"
+            ? "unknown"
+            : productionRunsOf(deployments.get(production.target.projectId)),
+        waiting: { count: waiting.total, atLeast: waiting.atLeast },
+        mainHasCode:
+          flow.release.entries.length > 0
+            ? true
+            : flow.repos === undefined || !flow.recipeRead
+              ? undefined
+              : false,
+        releaseOffered: release.offered,
+        releasing: flow.release.inFlight,
+      });
+  return (
+    <RoadEnvironmentRows
+      facts={{
+        groupId,
+        slots,
+        environments,
+        repos: flow.repos,
+        withheldNotice,
+        firstDeployOf,
+        release,
+        onAdd: (added) => {
+          if (added === "production") openPutLive(groupId);
+          else addEnvironment(groupId, added);
+        },
+      }}
+      tier={tier}
+    />
+  );
+}
 
 /** The page's column: what the project's card has no room for, once its flow is read. */
 function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
@@ -487,15 +569,15 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
-  // The project's page in its own boxes: its card's place, and its column, where the environments
-  // already read stand as the page's own Environments will.
+  // The project's page in its own boxes: its header and its road at their final size, and under
+  // them the environments already read, as the page's own Environments will stand.
   return (
     <div className="ov-page">
       <UnreadDetail
         groupId={groupId}
         standIn={
           <Loading label="This project">
-            <ProjectCardStandIn page />
+            <ProjectPageStandIn />
           </Loading>
         }
       />
@@ -521,99 +603,69 @@ function KnownGroupAside({
   readonly flow: ZeropsProjectFlow;
   readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
 }) {
+  // The merged changes come with the application's detail: held while the page is drawn.
+  useHqAppDetailHold(useMemo(() => [groupId], [groupId]));
+  const spend = use(ProjectPageSpend);
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
   const repo = groupRepository(environments);
-  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow.repos });
-  const tags = useReleaseTags(flow.releases);
-  const openChange = useOpenChange(groupId, repo);
-  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
-  const release = useReleaseOffer(groupId, flow);
-  const names = useHistoryNames();
-  const { withheldNotice } = useWithheldStops(environments);
-  const firstDeployOf = useStageFirstDeploys(flow);
+  const changes = useProjectChangesCard(groupId, flow);
   // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
   const [mirroring, setMirroring] = useState(false);
-  const offered = useEnvironmentOffers()(groupId);
-  const addEnvironment = useAddEnvironment();
-  const openPutLive = useOpenPutLive();
-  const devstages = useDevstages(groupId);
-  const pendingEnvironments = useGroupPendingEnvironments(groupId);
   const { listing } = useZeropsCandidates();
   const { halfMade, finishing } = useEnvironmentSetup(
     useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
   );
-
-  const production = environments.find((entry) => entry.tier === "production");
   const halfMadeHere = halfMade.filter((entry) => entry.groupId === groupId);
-  // Drawn once HQ has told the environments: before that, or where HQ refuses them to the reader,
-  // nothing is known to be absent.
-  const slots = !flow.declarationsRead
-    ? []
-    : environmentSlots({
-        environments: environments.map((entry) => ({
-          id: entry.id,
-          target: entry.target,
-          tier: entry.tier,
-        })),
-        devstages,
-        pending: pendingEnvironments,
-        halfMade: halfMadeHere.map((entry) => ({
-          id: entry.projectId,
-          tier: entry.tier,
-          finish: entry.finish,
-        })),
-        recipeTiers: flow.recipeTiers,
-        recipeRead: flow.recipeRead,
-        offered: offered ?? { stage: false, production: false },
-        productionRuns:
-          production?.target.kind !== "zerops"
-            ? "unknown"
-            : productionRunsOf(deployments.get(production.target.projectId)),
-        waiting: { count: waiting.total, atLeast: waiting.atLeast },
-        // Entries are what `main` would put in a release: none says it holds no code, once the
-        // repositories and the recipe that names their services are both read.
-        mainHasCode:
-          flow.release.entries.length > 0
-            ? true
-            : flow.repos === undefined || !flow.recipeRead
-              ? undefined
-              : false,
-        releaseOffered: release.offered,
-        releasing: flow.release.inFlight,
-      });
+  // Its places' public addresses: production and each stage on Zerops, and whether each runs.
+  const places = environments.flatMap((environment): ReadonlyArray<AccessPlace> => {
+    if (environment.target.kind !== "zerops") return [];
+    const projectId = environment.target.projectId;
+    return [
+      {
+        tier: environment.tier,
+        projectId,
+        runs: productionRunsOf(deployments.get(projectId)) !== "empty",
+      },
+    ];
+  });
   return (
     <>
       <ZeropsGroupPane
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
         }
-        environments={environments}
         repos={flow.repos}
         codeRepos={flow.codeRepos}
-        slots={slots}
-        onAdd={(tier) => {
-          if (tier === "production") openPutLive(groupId);
-          else addEnvironment(groupId, tier);
-        }}
+        halfMade={halfMadeHere.map((entry) => ({
+          id: entry.projectId,
+          tier: entry.tier,
+          finish: entry.finish,
+        }))}
         onFinish={(projectId) => {
           const entry = halfMadeHere.find((candidate) => candidate.projectId === projectId);
           if (entry !== undefined) finishing.finish(entry);
         }}
         finishing={finishing.finishing.has(groupId)}
-        history={history}
-        groupId={groupId}
-        name={groupName}
-        names={names}
-        onSetUp={openProjects}
-        release={release}
-        onOpenChange={openChange}
-        repo={repo}
-        tags={tags}
-        withheldNotice={withheldNotice}
-        firstDeployOf={firstDeployOf}
+        changes={
+          <ProjectChangesCard
+            {...changes}
+            emptyAction={
+              repo === undefined
+                ? {
+                    words: "No repository is declared for this project’s services yet.",
+                    label: "Set up an environment",
+                    onPress: openProjects,
+                  }
+                : undefined
+            }
+          />
+        }
+        access={<ProjectAccessCard groupId={groupId} places={places} />}
+        people={<ProjectPeople card groupId={groupId} />}
+        spend={spend}
         onMirror={() => {
           setMirroring(true);
         }}
@@ -638,9 +690,12 @@ function KnownGroupAside({
   );
 }
 
+const NO_HALF_MADE: ReadonlyArray<never> = [];
+
 /**
- * A project's page column, drawn — every read already done and handed in: its environments, its
- * repositories and its history, each on the card's ground.
+ * A project page's cards under its road, drawn — every read already done and handed in: on the
+ * left what moves (its changes, its automation), on the right what it is (who reaches it, where,
+ * and where its code mirrors); a failed read or an unfinished environment above both.
  *
  * Split from the page above for the same reason the change's pane is: a
  * harness and a test can then look at a project with nothing set up without an account behind it.
@@ -649,237 +704,101 @@ export function ZeropsGroupPane({
   repos,
   codeRepos,
   readFailures,
-  environments,
-  slots,
-  onAdd,
+  halfMade = NO_HALF_MADE,
   onFinish,
   finishing,
-  history,
-  groupId,
-  name,
-  names,
-  onSetUp,
-  onOpenChange,
-  release,
-  repo,
-  tags,
-  withheldNotice,
-  firstDeployOf,
-  onMirror,
+  changes,
   automation,
+  access,
+  people,
+  spend,
+  onMirror,
 }: {
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
-  /** The repositories a Mate ships code to: the ones its Repositories section may name. */
+  /** The repositories a Mate ships code to: the ones its Repositories card may name. */
   readonly codeRepos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly readFailures?: React.ReactNode;
-  /** What has landed on the repository, as HQ compares it. */
-  readonly history: ZeropsHistoryState;
-  /** `full sha → the release that shipped it`. */
-  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
-  /** Opens the review of the change that landed a commit. */
-  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
-  readonly environments: ReadonlyArray<EnvironmentRow>;
-  /** The *Environments* section's rows: what exists, and a slot for each tier that does not. */
-  readonly slots: ReadonlyArray<EnvironmentSlotRow>;
+  /** Its environments whose setup did not finish, each by its project. */
+  readonly halfMade?: ReadonlyArray<{
+    readonly id: string;
+    readonly tier: GroupEnvironmentTier;
+    readonly finish: boolean;
+  }>;
   /** *Finish setup*, pressed on a half-made environment, by its project. */
   readonly onFinish: (id: string) => void;
   /** An environment of this application is being finished now. */
   readonly finishing: boolean;
-  /** *Add stage* or *Put it live*, pressed on a slot. */
-  readonly onAdd: (tier: EnvironmentRow["tier"]) => void;
-  readonly groupId: string;
-  /** The project's name; undefined while the listing has not named it — never its id. */
-  readonly name: string | undefined;
-  /** Where a project with nothing set up goes to get something set up. */
-  readonly onSetUp: () => void;
-  readonly release: ReleaseOffer;
-  /** The repository its history is read from; absent where none is declared. */
-  readonly repo: string | undefined;
-  readonly names: HistoryNames;
-  /**
-   * What a stop says in place of its content while the grant withholds its
-   * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
-   */
-  readonly withheldNotice?: (projectId: string) => string | null;
-  /** Where a stage that runs nothing stands on its first deploy (`useStageFirstDeploys`). */
-  readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
+  /** Its Changes card (`ProjectChangesCard`). */
+  readonly changes?: React.ReactNode;
+  /** Its Automation card (`ProjectAutomation`), under its changes. */
+  readonly automation?: React.ReactNode;
+  /** Its Access card (`ProjectAccessCard`). */
+  readonly access?: React.ReactNode;
+  /** Its People card (`ProjectPeople`). */
+  readonly people?: React.ReactNode;
+  /** Its Spend card, from the project page (`ProjectPageSpend`). */
+  readonly spend?: React.ReactNode;
   /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
   readonly onMirror?: (() => void) | undefined;
-  /** Its Automation section (`ProjectAutomation`), above its repositories. */
-  readonly automation?: React.ReactNode;
 }) {
-  const deployed = useMemo(
-    () =>
-      deployedShas(
-        environments.filter(
-          (environment) =>
-            environment.target.kind !== "zerops" ||
-            (withheldNotice?.(environment.target.projectId) ?? null) === null,
-        ),
-      ),
-    [environments, withheldNotice],
-  );
+  const mirrored = connectedRepos(codeRepos ?? repos);
+  const unfinished = halfMade.length > 0;
   return (
-    <>
-      {readFailures}
-      {slots.length === 0 ? null : (
-        <SideSection title="Environments">
-          <ul className="flex flex-col">
-            {slots.map((slot) => {
-              if (slot.kind === "devstage")
-                return (
-                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
-                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      Stage
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.line}
-                    </span>
-                  </li>
-                );
-              if (slot.kind === "creating")
-                return (
-                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
-                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      {slot.tier === "stage" ? "Stage" : "Production"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.line}
-                    </span>
-                  </li>
-                );
-              if (slot.kind === "half-made")
-                return (
-                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
-                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      {slot.tier === "stage" ? "Stage" : "Production"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.line}
-                    </span>
-                    {slot.finish ? (
-                      <Button
-                        disabled={finishing}
-                        onClick={() => {
-                          onFinish(slot.id);
-                        }}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        Finish setup
-                      </Button>
-                    ) : null}
-                  </li>
-                );
-              if (slot.kind === "slot")
-                return (
-                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.tier}>
-                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      {slot.name}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.line}
-                    </span>
-                    {slot.add ? (
-                      <Button
-                        onClick={() => {
-                          onAdd(slot.tier);
-                        }}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        {environmentDoorLabel(slot.tier, slot.name)}
-                      </Button>
-                    ) : null}
-                  </li>
-                );
-              const environment = environments.find((entry) => entry.id === slot.id);
-              if (environment === undefined) return null;
-              if (environment.target.kind === "git")
-                return (
-                  <li key={slot.id}>
-                    <StopLine environment={environment} groupId={groupId} notice={null} />
-                    <GitDeliveryStatus
-                      environment={{ target: environment.target, tier: environment.tier }}
-                      delivery={environment.git}
-                      repos={repos}
-                      showExpiry={false}
-                    />
-                  </li>
-                );
-              return (
-                <Fragment key={slot.id}>
-                  <StopLine
-                    environment={environment}
-                    groupId={groupId}
-                    notice={
-                      environment.target.kind === "zerops"
-                        ? (withheldNotice?.(environment.target.projectId) ?? null)
-                        : null
-                    }
-                    firstDeploy={
-                      environment.target.kind === "zerops"
-                        ? firstDeployOf?.(environment.target.projectId)
-                        : undefined
-                    }
-                  />
-                  {slot.note === undefined ? null : (
-                    <li className="flex min-w-0 items-center gap-3 px-2 pb-2">
-                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {slot.note.text}
-                      </span>
-                      {slot.note.review ? (
-                        <ReleaseAction release={release} variant="secondary" />
-                      ) : null}
-                    </li>
-                  )}
-                </Fragment>
-              );
-            })}
-          </ul>
-        </SideSection>
-      )}
-
-      {automation}
-      {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
-      {(codeRepos ?? repos ?? []).length === 0 ||
-      (onMirror === undefined && connectedRepos(codeRepos ?? repos).length === 0) ? null : (
-        <SideSection title="Repositories">
-          {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
-            <GitRemoteLines repos={codeRepos ?? repos} />
-          )}
-          {onMirror === undefined ? null : (
-            <div className="px-2 py-1">
-              <Button onClick={onMirror} size="sm" variant="secondary">
-                Mirror code to GitHub or GitLab…
-              </Button>
-            </div>
-          )}
-        </SideSection>
-      )}
-      <SideSection title="History">
-        {repo === undefined ? (
-          <EmptyState
-            action={
-              <Button onClick={onSetUp} size="sm" variant="secondary">
-                Set up an environment
-              </Button>
-            }
-            size="row"
-          >
-            No repository is declared for this project’s services yet.
-          </EmptyState>
-        ) : (
-          <ZeropsHistoryView
-            history={history}
-            names={names}
-            onOpenChange={onOpenChange}
-            request={{ repo, deployed }}
-            tags={tags}
-          />
+    <div className="pp-cards" data-zerops-surface="project-cards">
+      <div className="pp-cards-grid">
+        {readFailures === undefined && !unfinished ? null : (
+          <div className="pp-cards-wide">
+            {readFailures}
+            {halfMade.map((entry) => (
+              <ProjectPageCard
+                end={
+                  entry.finish ? (
+                    <Button
+                      disabled={finishing}
+                      onClick={() => {
+                        onFinish(entry.id);
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Finish setup
+                    </Button>
+                  ) : undefined
+                }
+                key={entry.id}
+                surface="project-half-made"
+                title={entry.tier === "stage" ? "Stage" : "Production"}
+              >
+                <p className="pp-cards-empty">{ENVIRONMENT_UNFINISHED}.</p>
+              </ProjectPageCard>
+            ))}
+          </div>
         )}
-      </SideSection>
-    </>
+        <div>
+          {changes}
+          {automation}
+        </div>
+        <div>
+          {spend}
+          {access}
+          {people}
+          {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
+          {(codeRepos ?? repos ?? []).length === 0 ||
+          (onMirror === undefined && mirrored.length === 0) ? null : (
+            <ProjectPageCard surface="project-repositories" title="Repositories">
+              {mirrored.length === 0 ? null : <GitRemoteLines repos={codeRepos ?? repos} />}
+              {onMirror === undefined || mirrored.length > 0 ? null : (
+                <div>
+                  <Button onClick={onMirror} size="sm" variant="secondary">
+                    Mirror code to GitHub or GitLab…
+                  </Button>
+                </div>
+              )}
+            </ProjectPageCard>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2108,129 +2027,6 @@ export function detailTrail(
 }
 
 /** A section with nothing in it yet, and the way to put something there. */
-/** A stop's version column shares its page's runtime answer, including a failure or wait. */
-function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
-  return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;
-}
-
-function StopLine(props: {
-  readonly environment: EnvironmentRow;
-  readonly groupId: string;
-  readonly notice: string | null;
-  readonly firstDeploy?: FirstDeploy | undefined;
-}) {
-  if (props.environment.target.kind === "git")
-    return <GitStopLine environment={props.environment} groupId={props.groupId} />;
-  return <ZeropsStopLine {...props} />;
-}
-function GitStopLine({
-  environment,
-  groupId,
-}: {
-  readonly environment: EnvironmentRow;
-  readonly groupId: string;
-}) {
-  const navigate = useNavigate();
-  return (
-    <button
-      className="py-2 text-sm font-medium"
-      data-zerops-environment-id={environment.id}
-      type="button"
-      onClick={() => {
-        void navigate({
-          to: "/group/$groupId/$projectId",
-          params: { groupId, projectId: environment.id },
-        });
-      }}
-    >
-      {environment.name}
-    </button>
-  );
-}
-function ZeropsStopLine({
-  environment,
-  firstDeploy,
-  groupId,
-  notice,
-}: {
-  readonly environment: EnvironmentRow;
-  readonly groupId: string;
-  /**
-   * Said in place of the stop while the grant withholds its project: its
-   * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
-   */
-  readonly notice: string | null;
-  /** A stage that runs nothing: where its first deploy stands, said as its cell says it. */
-  readonly firstDeploy?: FirstDeploy | undefined;
-}) {
-  const navigate = useNavigate();
-  const projectId = environment.target.kind === "zerops" ? environment.target.projectId : undefined;
-  const deployments = useStopDeploymentsShown(
-    useMemo(() => (projectId === undefined ? [] : [projectId]), [projectId]),
-  );
-  // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
-  const deployment = projectId === undefined ? undefined : deployments.get(projectId);
-  const tone = stopTone(deployment, environment);
-  // No word for what runs and a first deploy asked for: the line its cell and its page say.
-  const said = deployWord(tone);
-  const firstWord = said === undefined ? firstDeployLine(firstDeploy) : undefined;
-  const word = said ?? firstWord;
-  const dotTone = firstWord === undefined ? STOP_DOT_TONE[tone] : firstDeployTone(firstDeploy);
-  const open = useCallback(() => {
-    void navigate({
-      to: "/group/$groupId/$projectId",
-      params: { groupId, projectId: environment.id },
-    });
-  }, [environment.id, groupId, navigate]);
-  if (notice !== null) {
-    return (
-      <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
-        <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
-        <span className="truncate text-xs text-muted-foreground">{notice}</span>
-        {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
-      </li>
-    );
-  }
-  return (
-    <li>
-      <button
-        // Fixed tracks, not a right-ragged flex: a version and a state that
-        // start at a different x on every row cannot be read down the column.
-        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
-        data-zerops-environment-id={environment.id}
-        onClick={open}
-        type="button"
-      >
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {environment.name}
-        </span>
-        <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
-          {stopLineVersion(deployment, environment)}
-        </span>
-        {/* Never a wordless dot on its own: a colour that has to be learnt is
-            a colour nobody reads, and a screen reader gets nothing from it. */}
-        {/* The dot carries the state; the word supports it. Unsized, it
-            inherited 16px and came out larger than the name it annotates. */}
-        {word === undefined || dotTone === undefined ? null : (
-          <span className="shrink-0 text-xs text-muted-foreground">
-            <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
-              {word}
-            </Badge>
-          </span>
-        )}
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
-      </button>
-      {/* An application of several parts: how many, and each that differs from the version. */}
-      {environment.parts === undefined ? null : (
-        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
-          {environment.parts}
-        </span>
-      )}
-      {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
-    </li>
-  );
-}
-
 /** One step of the trail above a page's name. */
 export interface Crumb {
   readonly label: string;
@@ -2348,22 +2144,6 @@ function Crumbs({ crumbs }: { readonly crumbs: ReadonlyArray<Crumb> }) {
         </Fragment>
       ))}
     </WorkspaceBreadcrumb>
-  );
-}
-
-/** One part of a project page's column, on the card's ground: its name, then what it holds. */
-function SideSection({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <section aria-label={title} className="ov-side">
-      <h2 className="ov-side-name">{title}</h2>
-      {children}
-    </section>
   );
 }
 

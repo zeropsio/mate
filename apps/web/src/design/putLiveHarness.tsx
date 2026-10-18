@@ -113,7 +113,6 @@ function Harness() {
           name="The change waiting, no production yet"
           top={
             <ZeropsNextStepStrip
-              onPutLive={noop}
               onReview={noop}
               strip={{
                 title: "Alba is waiting for your review of #1",
