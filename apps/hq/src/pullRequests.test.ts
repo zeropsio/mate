@@ -326,8 +326,7 @@ describe("a change's pull request", () => {
           assert.isTrue(
             core.github.state.seen
               .slice(core.since)
-              // Minting the app's tokens for the repository is the app's too, with its JWT.
-              .filter((request) => request.method !== "GET" && !request.path.startsWith("/app/"))
+              .filter((request) => request.method !== "GET")
               .every((request) => core.asTheApp(request.authorization)),
           );
           const change = yield* changeOf(core);
@@ -511,13 +510,6 @@ describe("a change's pull request", () => {
           assert.strictEqual(merged.status, 200);
           assert.deepInclude(merged.body as HqChange, { state: "merged", mergedSha: squash });
           const [merge] = yield* asked(core, "PUT", `${PULL}/merge`);
-          // GitHub's merge writes the repository's contents: the bot's token for it may.
-          assert.deepStrictEqual(
-            core.github.state.minted.find(
-              (token) => `Bearer ${token.token}` === merge!.authorization,
-            )?.permissions,
-            { contents: "write", pull_requests: "write" },
-          );
           const asks = merge!.body as Record<string, string>;
           assert.strictEqual(asks["merge_method"], "squash");
           assert.strictEqual(asks["sha"], HEAD);

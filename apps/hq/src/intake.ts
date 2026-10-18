@@ -281,7 +281,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
 
       /** Whether the organization's GitHub app reaches `repository`, so its webhook delivers. */
       const appDelivers = (repository: string) =>
-        auth.tokenFor(repository, "reach").pipe(
+        auth.tokenFor(repository).pipe(
           Effect.map((token) => token !== undefined),
           Effect.orElseSucceed(() => false),
         );
@@ -342,7 +342,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
         secret: Redacted.Redacted,
       ) =>
         Effect.gen(function* () {
-          const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "reach", "kept");
+          const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
           const reply = yield* github.makeHook(remote, token, { url, secret });
           if (reply.status === 201 && reply.id !== undefined) return { id: reply.id } as const;
           yield* Effect.logInfo("intake webhook not made", { appId, status: reply.status });
@@ -358,11 +358,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
       /** The webhook HQ made on `hqRepo`, removed; one it cannot remove now is left, logged. */
       const removeHook = (appId: string, hqRepo: string, hookId: number) =>
         Effect.gen(function* () {
-          const { token, remote } = yield* remotes.tokenOf(
-            { appId, repo: hqRepo },
-            "reach",
-            "kept",
-          );
+          const { token, remote } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
           const identity = remoteIdentity(remote.url);
           if (identity === undefined) return;
           const status = yield* github.removeHook(identity, token, hookId);
@@ -415,10 +411,10 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
       /** The intake's repository as GitHub names it, with its token; none where it holds none. */
       const repositoryOf = (target: { readonly appId: string; readonly hqRepo: string }) =>
         Effect.gen(function* () {
-          const { token, remote } = yield* remotes.tokenOf(
-            { appId: target.appId, repo: target.hqRepo },
-            "issues",
-          );
+          const { token, remote } = yield* remotes.tokenOf({
+            appId: target.appId,
+            repo: target.hqRepo,
+          });
           const identity = remoteIdentity(remote.url);
           return identity === undefined ? undefined : { remote: identity, token };
         }).pipe(Effect.orElseSucceed(() => undefined));
@@ -673,7 +669,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               if (sealed === undefined) return yield* refuse("conflict", "no_key_secret");
               const url = yield* webhookUrl(publicId);
               // The app's own webhook delivers where it reaches the repository: no hook of HQ's.
-              const viaApp = yield* remotes.tokenOf({ appId, repo: hqRepo }, "reach").pipe(
+              const viaApp = yield* remotes.tokenOf({ appId, repo: hqRepo }).pipe(
                 Effect.map((use) => use.as === "app"),
                 // The repository connected through the app is gone from GitHub: no intake on it.
                 Effect.catchTags({
@@ -723,11 +719,7 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
               if (heldHook !== null) {
                 // A webhook HQ made before it heard issues' comments hears them from now on.
                 yield* Effect.gen(function* () {
-                  const { token } = yield* remotes.tokenOf(
-                    { appId, repo: hqRepo },
-                    "reach",
-                    "kept",
-                  );
+                  const { token } = yield* remotes.tokenOf({ appId, repo: hqRepo }, "kept");
                   const status = yield* github.refreshHook(remote, token, Number(heldHook));
                   if (status !== 200)
                     yield* Effect.logInfo("intake webhook not refreshed", { appId, status });

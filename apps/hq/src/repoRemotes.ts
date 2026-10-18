@@ -23,7 +23,7 @@ import { Changes, type ChangeRefused } from "./changes.ts";
 import type { GitError } from "@t3tools/hq-git";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { DeployKeys } from "./deployKeys.ts";
-import { GithubAuth, type GithubTokenUse } from "./githubAuth.ts";
+import { GithubAuth } from "./githubAuth.ts";
 import { GithubProbes, type ProbeRefused, type VerifiedRemote } from "./githubProbes.ts";
 import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -117,14 +117,10 @@ export class Remotes extends Context.Service<
       input: ConnectRemote,
     ) => Effect.Effect<RemoteRecord, RemoteConnectError>;
     readonly disconnect: (userId: string, ref: RemoteRef) => Effect.Effect<void, RemoteError>;
-    /**
-     * Worker-only credential handoff; the caller captures keptAt before using it. Through the
-     * app, a token for `purpose` alone: the branch's git, or that and its CI's reads.
-     */
+    /** Worker-only credential handoff; the caller captures keptAt before using it. */
     readonly forUse: (
       ref: RemoteRef,
       branch: string,
-      purpose: "git" | "ci",
     ) => Effect.Effect<
       {
         readonly remote: RemoteRecord;
@@ -148,12 +144,10 @@ export class Remotes extends Context.Service<
      * webhook (`intake.ts`). To `act` (the default), the organization's GitHub app's wherever it
      * reaches the repository, so what HQ writes there is the app's; else, and for `kept`, the
      * person's kept token: its custodian still a member, the token not known invalid. A remote
-     * reached through the app has only the app's, for `purpose` alone. `as` names whose it is.
-     * No probe.
+     * reached through the app has only the app's. `as` names whose it is. No probe.
      */
     readonly tokenOf: (
       ref: RemoteRef,
-      purpose: GithubTokenUse,
       use?: "act" | "kept",
     ) => Effect.Effect<
       {
@@ -252,7 +246,7 @@ export const repoRemotesLayer = Layer.effect(
      * The app's token for a remote reached through it: only for the repository it connected, by
      * its id on GitHub, never another made under its name.
      */
-    const appTokenOf = Effect.fnUntraced(function* (row: RemoteRow, purpose: GithubTokenUse) {
+    const appTokenOf = Effect.fnUntraced(function* (row: RemoteRow) {
       // Its app forgotten (`githubApp.ts`): connected through an app again before it works again.
       if (row.invalid_since !== null)
         return yield* new RemoteRefused({ reason: "app_not_installed" });
@@ -260,7 +254,7 @@ export const repoRemotesLayer = Layer.effect(
       const token =
         identity?.kind === "github"
           ? yield* githubAuth
-              .tokenFor(identity.path, purpose, row.host_repo_id ?? undefined)
+              .tokenFor(identity.path, row.host_repo_id ?? undefined)
               .pipe(Effect.mapError(appUnavailable))
           : undefined;
       if (token === undefined) return yield* new RemoteRefused({ reason: "app_not_installed" });
@@ -621,7 +615,7 @@ export const repoRemotesLayer = Layer.effect(
         yield* validateRepo(ref.repo);
         // A token GitHub gives the app for it: installed there, and not suspended.
         const token = yield* githubAuth
-          .tokenFor(reached.fullName, "reach")
+          .tokenFor(reached.fullName)
           .pipe(Effect.mapError(appUnavailable));
         if (token === undefined) return yield* new RemoteRefused({ reason: "app_not_installed" });
         const remote = remoteIdentity(`https://github.com/${reached.fullName}.git`);
@@ -688,21 +682,16 @@ export const repoRemotesLayer = Layer.effect(
       }),
       tokenOf: Effect.fn("Remotes.tokenOf")(function* (
         ref: RemoteRef,
-        purpose: GithubTokenUse,
         use: "act" | "kept" = "act",
       ) {
         const row = yield* lookup(ref);
         if (!row) return yield* new RemoteRefused({ reason: "no_remote" });
         if (row.via === "app")
-          return {
-            remote: record(row),
-            token: yield* appTokenOf(row, purpose),
-            as: "app" as const,
-          };
+          return { remote: record(row), token: yield* appTokenOf(row), as: "app" as const };
         const identity = remoteIdentity(row.url);
         if (use === "act" && identity?.kind === "github" && identity.host === "github.com") {
           const app = yield* githubAuth
-            .tokenFor(identity.path, purpose)
+            .tokenFor(identity.path)
             .pipe(Effect.mapError(appUnavailable));
           if (app !== undefined) return { remote: record(row), token: app, as: "app" as const };
         }
@@ -716,17 +705,13 @@ export const repoRemotesLayer = Layer.effect(
         if (!token) return yield* new RemoteRefused({ reason: "key_unavailable" });
         return { remote: record(row), token, as: "token" as const };
       }),
-      forUse: Effect.fn("Remotes.forUse")(function* (
-        ref: RemoteRef,
-        branch: string,
-        purpose: "git" | "ci",
-      ) {
+      forUse: Effect.fn("Remotes.forUse")(function* (ref: RemoteRef, branch: string) {
         if (!branchValid(branch)) return yield* new RemoteRefused({ reason: "bad_branch" });
         const row = yield* lookup(ref);
         if (!row) return yield* new RemoteRefused({ reason: "no_remote" });
         if (row.via === "app") {
           // The app's token: nobody's custody, and GitHub's hour-long expiry is none of the remote's.
-          const appToken = yield* appTokenOf(row, purpose);
+          const appToken = yield* appTokenOf(row);
           const identity = remoteIdentity(row.url);
           if (!identity) return yield* new RemoteRefused({ reason: "bad_address" });
           const verified = yield* probes.verify(identity, appToken, branch);

@@ -258,7 +258,7 @@ describe("repository credential custody", () => {
             const { remotes, state } = yield* fixture;
             yield* remotes.connect("custodian", input);
             state.mode = "plan";
-            const checked = yield* remotes.forUse(REF, "new-production", "git");
+            const checked = yield* remotes.forUse(REF, "new-production");
             assert.strictEqual(checked.branchRules, "none_on_plan");
           }),
         ),
@@ -293,7 +293,7 @@ describe("repository credential custody", () => {
             if (kind !== "probe-git-remote") {
               assert.isDefined(saved);
               assert.strictEqual(
-                (yield* remotes.forUse(REF, "release", "git").pipe(Effect.flip)).reason,
+                (yield* remotes.forUse(REF, "release").pipe(Effect.flip)).reason,
                 "pull_requests_only",
               );
             }
@@ -590,9 +590,7 @@ describe("repository credential custody", () => {
             const arrived = new Promise<NodeHttp.ServerResponse>((resolve) => {
               state.nextMetadata = resolve;
             });
-            const attempt = yield* Effect.forkChild(
-              remotes.forUse(REF, "main", "git").pipe(Effect.flip),
-            );
+            const attempt = yield* Effect.forkChild(remotes.forUse(REF, "main").pipe(Effect.flip));
             const pending = yield* Effect.promise(() => arrived);
             const replacement = yield* remotes.connect("other", {
               ...input,
@@ -606,7 +604,7 @@ describe("repository credential custody", () => {
               { invalid_since: null },
             ]);
             assert.strictEqual(
-              Redacted.value((yield* remotes.forUse(REF, "main", "git")).token),
+              Redacted.value((yield* remotes.forUse(REF, "main")).token),
               "replacement-secret",
             );
           }),
@@ -625,9 +623,7 @@ describe("repository credential custody", () => {
               Deferred.succeed(arrived, undefined),
               Deferred.await(release),
             );
-            const attempt = yield* Effect.forkChild(
-              remotes.forUse(REF, "main", "git").pipe(Effect.flip),
-            );
+            const attempt = yield* Effect.forkChild(remotes.forUse(REF, "main").pipe(Effect.flip));
             yield* Deferred.await(arrived);
             state.members = [member("other")];
             const replacement = yield* remotes.connect("other", {
@@ -638,7 +634,7 @@ describe("repository credential custody", () => {
             assert.strictEqual((yield* Fiber.join(attempt)).reason, "custodian_removed");
             assert.strictEqual((yield* remotes.get(REF))!.keptAt, replacement.keptAt);
             assert.strictEqual(
-              Redacted.value((yield* remotes.forUse(REF, "main", "git")).token),
+              Redacted.value((yield* remotes.forUse(REF, "main")).token),
               "replacement-secret",
             );
           }),
@@ -664,7 +660,7 @@ describe("repository credential custody", () => {
             });
             assert.notStrictEqual(current.keptAt, old.keptAt);
             yield* remotes.invalidate(REF, old.keptAt!);
-            const use = yield* remotes.forUse(REF, "main", "git");
+            const use = yield* remotes.forUse(REF, "main");
             assert.strictEqual(Redacted.value(use.token), "replacement-secret");
             assert.strictEqual(use.remote.invalidSince, null);
             assert.notInclude(JSON.stringify(use), "replacement-secret");
@@ -690,8 +686,7 @@ describe("repository credential custody", () => {
             );
             yield* sql`UPDATE hq_repo_remote SET repo='worker'`;
             assert.strictEqual(
-              (yield* remotes.forUse({ ...REF, repo: "worker" }, "main", "git").pipe(Effect.flip))
-                .reason,
+              (yield* remotes.forUse({ ...REF, repo: "worker" }, "main").pipe(Effect.flip)).reason,
               "key_unavailable",
             );
           }),
@@ -710,7 +705,7 @@ describe("repository credential custody", () => {
               state.members = situation === "empty" ? [] : [member("custodian"), member("other")];
               state.freshness = situation === "cached" ? "recent" : "fresh";
               assert.strictEqual(
-                (yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip)).reason,
+                (yield* remotes.forUse(REF, "main").pipe(Effect.flip)).reason,
                 "membership_unknown",
               );
               assert.deepStrictEqual(yield* sql`SELECT * FROM hq_repo_remote`, before);
@@ -719,7 +714,7 @@ describe("repository credential custody", () => {
             state.members = [member("other")];
             const seen = state.seen.length;
             assert.strictEqual(
-              (yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip)).reason,
+              (yield* remotes.forUse(REF, "main").pipe(Effect.flip)).reason,
               "custodian_removed",
             );
             assert.strictEqual(state.seen.length, seen);
@@ -741,7 +736,7 @@ describe("repository credential custody", () => {
               state.members = [member("other")];
             };
             assert.strictEqual(
-              (yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip)).reason,
+              (yield* remotes.forUse(REF, "main").pipe(Effect.flip)).reason,
               "custodian_removed",
             );
             assert.deepStrictEqual(
@@ -778,7 +773,7 @@ describe("repository credential custody", () => {
             state.path = "krls2020/renamed";
             const before = yield* sql`SELECT * FROM hq_repo_remote`;
             assert.strictEqual(
-              (yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip)).reason,
+              (yield* remotes.forUse(REF, "main").pipe(Effect.flip)).reason,
               "address_review",
             );
             assert.deepStrictEqual(yield* sql`SELECT * FROM hq_repo_remote`, before);
@@ -797,7 +792,7 @@ describe("repository credential custody", () => {
             state.id = 999;
             const stable = yield* sql`SELECT * FROM hq_repo_remote`;
             assert.strictEqual(
-              (yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip)).reason,
+              (yield* remotes.forUse(REF, "main").pipe(Effect.flip)).reason,
               "repository_changed",
             );
             assert.strictEqual(
@@ -885,7 +880,7 @@ describe("repository credential custody", () => {
             yield* remotes.connect("custodian", input);
             const before = yield* sql`SELECT * FROM hq_repo_remote`;
             state.mode = "rate";
-            const error = yield* remotes.forUse(REF, "main", "git").pipe(Effect.flip);
+            const error = yield* remotes.forUse(REF, "main").pipe(Effect.flip);
             assert.strictEqual(error.reason, "rate_limited");
             assert.strictEqual(error._tag, "ProbeRefused");
             if (error._tag === "ProbeRefused") assert.strictEqual(error.retryAfterMs, 30_000);
