@@ -9,6 +9,7 @@ import {
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
   EnvironmentId,
+  MATE_TASKS_CONVERSATION_ID,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -103,6 +104,34 @@ describe("mateChats", () => {
       "migration",
       "logs",
     ]);
+  });
+
+  it("lists an automated Mate's one conversation first, its old tasks' under it as history", () => {
+    const tasks = shell(MATE_TASKS_CONVERSATION_ID, {
+      title: "#14 Show the tea's origin",
+      createdAt: "2026-09-05T12:00:00.000Z",
+      latestUserMessageAt: "2026-09-05T12:00:00.000Z",
+    });
+    const nine = shell("task-task-9", {
+      createdAt: "2026-09-04T10:00:00.000Z",
+      pinnedAt: "2026-09-04T11:00:00.000Z",
+      latestUserMessageAt: "2026-09-04T10:00:00.000Z",
+    });
+    const twelve = shell("task-task-12", {
+      createdAt: "2026-09-04T12:00:00.000Z",
+      latestUserMessageAt: "2026-09-05T13:00:00.000Z",
+    });
+    const chats = mateChats([twelve, nine, tasks]);
+    expect(chats.map((chat) => chat.id)).toEqual([
+      MATE_TASKS_CONVERSATION_ID,
+      "task-task-9",
+      "task-task-12",
+    ]);
+    expect(lineChats(chats, tasks.id)?.chats[0]).toMatchObject({
+      title: "#14 Show the tea's origin",
+      main: true,
+      open: true,
+    });
   });
 });
 

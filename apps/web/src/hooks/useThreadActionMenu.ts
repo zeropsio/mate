@@ -43,8 +43,10 @@ export function useThreadActionMenu(input: {
   /** Fallback for "Copy path" when the thread has no worktree. */
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
+  /** The thread is an automated Mate's: no new thread is offered from it. */
+  readonly automatedMate?: boolean;
 }) {
-  const { threadRef, projectCwd, onStartRename } = input;
+  const { threadRef, projectCwd, onStartRename, automatedMate = false } = input;
   const { archiveThread } = useThreadActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -92,6 +94,7 @@ export function useThreadActionMenu(input: {
           // menu, so the "Filter by project" affordance is sidebar-only.
           projectFilter: null,
           isRegeneratingTitle,
+          automatedMate,
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           supports,
         });
@@ -190,6 +193,7 @@ export function useThreadActionMenu(input: {
     },
     [
       archiveThread,
+      automatedMate,
       confirmThreadArchive,
       copyBranchToClipboard,
       copyPathToClipboard,

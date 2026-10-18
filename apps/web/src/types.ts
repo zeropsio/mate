@@ -59,6 +59,11 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   /** With `task`: what its asker wrote where they asked, drawn as theirs; never the brief. */
   readonly taskAsk?: string | undefined;
   /**
+   * HQ's id of the task this message is of: its brief, or something said about it after. Absent on
+   * a task's own conversation from an older server, which its id names (`mateTaskIdOfConversation`).
+   */
+  readonly taskId?: string | undefined;
+  /**
    * Something said about the task after its Mate took it (a comment, a reply, a review comment,
    * an edit), told to it: drawn as its author's, never as the viewer's words.
    */

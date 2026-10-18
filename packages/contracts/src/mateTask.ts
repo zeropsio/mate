@@ -229,12 +229,29 @@ export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
   return source.kind === "schedule" ? null : source.author;
 }
 
-/** What starts the id of every conversation a task is worked in (the server's `taskConversationId`). */
-export const MATE_TASK_CONVERSATION_PREFIX = "task-";
+/**
+ * The one conversation an automated Mate works every task in, each its own turn on a fresh agent
+ * session: its person messages name their task (`taskId`), never the conversation.
+ */
+export const MATE_TASKS_CONVERSATION_ID = "tasks";
 
 /**
- * HQ's id of the task a conversation is worked for, read back from the conversation's id: the
- * server names it by the task, every character a conversation id does not carry spelled out as
+ * What started the id of the conversation each task was worked in before a Mate worked them all in
+ * one (the server's `taskConversationId`): those stay a task's own, as history.
+ */
+export const MATE_TASK_CONVERSATION_PREFIX = "task-";
+
+/** Whether tasks are worked in the conversation: the Mate's one for them, or an older task's own. */
+export function isMateTaskConversation(conversationId: string): boolean {
+  return (
+    conversationId === MATE_TASKS_CONVERSATION_ID ||
+    conversationId.startsWith(MATE_TASK_CONVERSATION_PREFIX)
+  );
+}
+
+/**
+ * HQ's id of the task an older task's own conversation (`task-…`) is worked for, read back from
+ * its id: the server named it by the task, every character a conversation id does not carry spelled out as
  * `.<hex>.`. `undefined` for any other conversation.
  */
 export function mateTaskIdOfConversation(conversationId: string): string | undefined {

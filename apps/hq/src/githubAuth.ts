@@ -42,8 +42,11 @@ export const GITHUB_TOKEN_USES = {
   git: { contents: "write", workflows: "write" },
   /** Its branches, probed for push, and what its CI says of them: check runs, statuses, runs. */
   ci: { contents: "write", checks: "read", statuses: "read", actions: "read" },
-  /** Its pull requests the bot opens, follows and answers on, their closing and check runs. */
-  pullRequests: { pull_requests: "write", issues: "read", checks: "read" },
+  /**
+   * Its pull requests the bot opens, follows and answers on, their closing and check runs; the
+   * branches an opened one names, which GitHub reads as the repository's contents.
+   */
+  pullRequests: { contents: "read", pull_requests: "write", issues: "read", checks: "read" },
   /** Merging its pull request: GitHub's merge writes the repository's contents. */
   merge: { contents: "write", pull_requests: "write" },
   /** Its issues the bot answers on: reactions, comments, labels, closing. */

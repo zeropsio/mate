@@ -66,6 +66,44 @@ const decodePulls = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Arra
 const decodeMessage = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ message: Schema.optionalKey(Schema.String) })),
 );
+const decodeRefusal = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      message: Schema.optionalKey(Schema.String),
+      errors: Schema.optionalKey(
+        Schema.Array(
+          Schema.Struct({
+            message: Schema.optionalKey(Schema.String),
+            field: Schema.optionalKey(Schema.String),
+            code: Schema.optionalKey(Schema.String),
+          }),
+        ),
+      ),
+    }),
+  ),
+);
+
+/**
+ * GitHub's reason for refusing a write, as it said it: its message and each error's own words, or
+ * the field and code where an error has none ("Validation Failed: head invalid").
+ */
+export const refusalOf = (body: string): string | undefined =>
+  Option.getOrUndefined(
+    Option.map(decodeRefusal(body), (read) => {
+      const details = (read.errors ?? []).flatMap((error) =>
+        error.message !== undefined
+          ? [error.message]
+          : error.field !== undefined || error.code !== undefined
+            ? [[error.field, error.code].filter((part) => part !== undefined).join(" ")]
+            : [],
+      );
+      const said = [read.message, details.join("; ")].filter(
+        (part): part is string => part !== undefined && part !== "",
+      );
+      return said.length === 0 ? undefined : said.join(": ");
+    }),
+  );
+
 const decodeMerged = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ sha: Schema.optionalKey(Schema.String) })),
 );
@@ -234,7 +272,7 @@ export class GithubIssues extends Context.Service<
       { readonly status: number; readonly branch: string | undefined },
       HostUnreachable
     >;
-    /** A pull request of `head` into `base`, ready for review (not a draft). */
+    /** A pull request of `head` into `base`, ready for review (not a draft); GitHub's reason if not. */
     readonly openPull: (
       remote: RemoteIdentity,
       token: Redacted.Redacted,
@@ -245,7 +283,11 @@ export class GithubIssues extends Context.Service<
         readonly body: string;
       },
     ) => Effect.Effect<
-      { readonly status: number; readonly pull: GithubPull | undefined },
+      {
+        readonly status: number;
+        readonly pull: GithubPull | undefined;
+        readonly refusal?: string | undefined;
+      },
       HostUnreachable
     >;
     /** The repository's pull requests from its own branch `branch`, open or not. */
@@ -467,6 +509,7 @@ export const githubIssuesLayer = (api?: string) =>
               return {
                 status: reply.status,
                 pull: Option.getOrUndefined(Option.map(read, pullOf)),
+                ...(reply.status === 201 ? {} : { refusal: refusalOf(reply.body) }),
               };
             },
           ),

@@ -34,6 +34,8 @@ const TaskEntry = Schema.Struct({
    */
   requeued: Schema.optionalKey(Schema.Number),
   retaken: Schema.optionalKey(Schema.Number),
+  /** The brief it was taken with: told again with a follow-up the agent's session no longer holds. */
+  brief: Schema.optionalKey(Schema.String),
   /** The limit that stopped it, or turned a follow-up away. */
   limitHit: Schema.optionalKey(Schema.Literals(["minutes", "cost"])),
   /** Each ended run of the task's, by its id: how long it ran. */

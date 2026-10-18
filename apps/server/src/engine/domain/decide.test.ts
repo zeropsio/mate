@@ -1142,10 +1142,25 @@ describe("decide: a task from outside opens its conversation", () => {
     });
   });
 
+  it("a task's messages name their task, so one conversation holds many tasks", () => {
+    const scene = play([
+      {
+        command: send("Work issue #42", { task: source, taskId: "task-1" }),
+        by: task,
+      },
+    ]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.body).toMatchObject({
+      kind: "person",
+      taskId: "task-1",
+    });
+  });
+
   it("a person's message carries no task", () => {
     const scene = play([send("hello")]);
     const item = scene.events.find((event) => event._tag === "ItemOpened");
     expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("task");
+    expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("taskId");
   });
 });
 

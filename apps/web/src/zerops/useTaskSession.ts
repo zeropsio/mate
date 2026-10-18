@@ -1,12 +1,12 @@
 /**
- * A task conversation's session (`taskSession`), read for the Mate living in the conversation's
- * environment and the task the conversation's id names (HQ's id): HQ's navigation for its Mate's
+ * A task's session (`taskSession`), read for the Mate living in the conversation's environment and
+ * the task it is of (`sessionTaskId`: its brief's, else the one an older conversation's id names,
+ * else the one its Mate is on): HQ's navigation for its Mate's
  * latest task, its activity for whether it works now, its application's board (`hqAppTasks`,
  * read again as navigation says its tasks moved) for the task's own record — and the person's
  * stop of it, the same write and the same record the board's Stop has (`appTaskStops`).
  */
 import type { EnvironmentId, MateTaskSource } from "@t3tools/contracts";
-import { mateTaskIdOfConversation } from "@t3tools/contracts";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useRef } from "react";
@@ -14,7 +14,7 @@ import { useEffect, useRef } from "react";
 import { toastManager } from "~/components/ui/toast";
 
 import { hqPlacementsAtom } from "../state/zerops";
-import { recordOf, taskSession, type TaskSession } from "./taskSession.logic";
+import { recordOf, sessionTaskId, taskSession, type TaskSession } from "./taskSession.logic";
 import { useAppTaskSource, useAppTaskStops } from "./useTaskSourceSettings";
 import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
@@ -32,8 +32,9 @@ export function useTaskSession(
   task: MateTaskSource,
   environmentId: EnvironmentId,
   conversationId: string,
+  /** HQ's id of the task its brief carries; `null` where it carries none (an older server's). */
+  brief: string | null,
 ): TaskSessionView {
-  const taskId = mateTaskIdOfConversation(conversationId) ?? null;
   const projectId = useKnownMate(environmentId)?.projectId;
   const placements = useAtomValue(hqPlacementsAtom);
   const { activeOrganization } = useZeropsSession();
@@ -44,6 +45,7 @@ export function useTaskSession(
   // Not known while the Mate, HQ's placements or its record's task (an older HQ) are not read.
   const current =
     projectId === undefined || placements === null ? undefined : placement?.mate?.task;
+  const taskId = sessionTaskId({ brief, conversationId, current });
   const appId = placement?.appId ?? null;
   const board = useAppTaskSource("hqAppTasks", appId);
   const setting = board.read.setting;

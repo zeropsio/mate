@@ -35,6 +35,7 @@ import {
   type ProviderOptionSelection,
   type ProviderUserInputAnswers,
   type RejectionReason,
+  type RotateSessionReason,
   type RequestId,
   type RunEnd,
   type RunEndDetail,
@@ -753,6 +754,11 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     (effect) => effect.kind === "session.open" && effect.runId === run.id,
   );
   if (opening) return;
+  // Every task of an automated Mate's one conversation is worked there: a task's run never goes on
+  // with another task's work in mind (a review of an earlier change, say), so it starts afresh.
+  const task = run.principal.kind === "task" ? run.principal.taskId : null;
+  const held = b.state.sessionTask ?? null;
+  if (task !== null && held !== null && held !== task) rotate(b, "task", true, null);
   const session = b.state.session;
   const lacks = session === null || justOpened ? null : misfit(b.state, session);
   if (lacks === "settings" && workLives(b.state)) return;
@@ -799,14 +805,18 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
  */
 const rotateSession = (b: StepBuilder, command: Extract<Command, { _tag: "RotateSession" }>) => {
   if (b.state.archived) throw new Rejected("archived");
-  b.emit({
-    _tag: "SessionRotated",
-    reason: command.reason,
-    fresh: command.fresh,
-    seed: command.seed,
-  });
-  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason: command.reason } });
-  if (command.seed !== null) recordLoose(b, { kind: "context", notes: [command.seed] });
+  rotate(b, command.reason, command.fresh, command.seed);
+};
+
+const rotate = (
+  b: StepBuilder,
+  reason: RotateSessionReason,
+  fresh: boolean,
+  seed: string | null,
+): void => {
+  b.emit({ _tag: "SessionRotated", reason, fresh, seed });
+  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason } });
+  if (seed !== null) recordLoose(b, { kind: "context", notes: [seed] });
 };
 
 /** An item of the conversation's own, under no run, closed as it opens. */
@@ -1122,6 +1132,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             ...(command.task === undefined ? {} : { task: command.task }),
             ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
+            ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
             delivery: { state: "queued", at: null },
           }
         : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },

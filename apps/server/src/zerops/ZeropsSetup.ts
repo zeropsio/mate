@@ -71,7 +71,7 @@ import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
-import { taskIdOfConversation } from "./ZeropsTasks.ts";
+import { isTaskConversation } from "./ZeropsTasks.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -506,11 +506,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      */
     const engineConversation = (id?: ConversationId) =>
       Effect.map(engine.conversations, (list) => {
-        // A task's conversation is the task's, never the Mate's own.
+        // The tasks' conversation, or an older task's own, is the tasks', never the Mate's own.
         const found = list.views.find((view) =>
           id === undefined
-            ? view.agent?.profile.kind === "mate" &&
-              taskIdOfConversation(view.conversationId) === undefined
+            ? view.agent?.profile.kind === "mate" && !isTaskConversation(view.conversationId)
             : view.conversationId === id,
         );
         return found !== undefined || list.complete ? found : ("unknown" as const);
