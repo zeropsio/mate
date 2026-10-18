@@ -58,6 +58,7 @@ import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
+import { ProjectPageCard } from "../projects/ProjectPageCard";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -647,22 +648,33 @@ export function ProjectAutomationView({
   readonly onOpenMate: (projectId: string) => void;
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
+  // The month's spend against its budget heads the card, beside its name.
+  const spend = update || pool.length === 0 ? null : (board?.spend ?? null);
   return (
-    <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
-      <h2 className="ov-side-name">Automation</h2>
+    <ProjectPageCard
+      end={
+        spend === null ? undefined : (
+          <span className="text-caption text-muted-foreground tabular-nums">{spend}</span>
+        )
+      }
+      surface="project-automation"
+      title="Automation"
+    >
       {update ? (
-        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+        <p className="pp-cards-empty">Update HQ to set up automated Mates.</p>
       ) : (
-        <AutomationBody
-          admin={admin}
-          board={board}
-          onOpenMate={onOpenMate}
-          pool={pool}
-          sources={sources}
-          workingOf={workingOf}
-        />
+        <div className="-mx-2 grid gap-3 text-line">
+          <AutomationBody
+            admin={admin}
+            board={board}
+            onOpenMate={onOpenMate}
+            pool={pool}
+            sources={sources}
+            workingOf={workingOf}
+          />
+        </div>
       )}
-    </section>
+    </ProjectPageCard>
   );
 }
 
@@ -678,7 +690,7 @@ function AutomationBody({
     <>
       {pool.length === 0 ? (
         <>
-          <p className="px-2 text-sm text-muted-foreground">
+          <p className="px-2 text-line text-muted-foreground">
             No automated Mates yet. They take tasks from the sources below and open a change for
             each.
           </p>
@@ -710,12 +722,12 @@ function AutomationBody({
               ),
             )}
           </span>
-          <span className="min-w-0 truncate text-sm text-foreground">
+          <span className="min-w-0 truncate text-line text-foreground">
             {poolLine(pool.map((mate) => mate.name))}
           </span>
           {admin?.onAddMate === undefined ? null : (
             <>
-              <span aria-hidden="true" className="text-sm text-muted-foreground">
+              <span aria-hidden="true" className="text-line text-muted-foreground">
                 ·
               </span>
               <Button
@@ -727,11 +739,6 @@ function AutomationBody({
                 Add
               </Button>
             </>
-          )}
-          {board?.spend == null ? null : (
-            <span className="ms-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-              {board.spend}
-            </span>
           )}
         </div>
       )}
@@ -746,9 +753,9 @@ function AutomationBody({
           ))}
         </ul>
       ) : sources.reading ? (
-        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+        <p className="px-2 text-line text-muted-foreground">Reading…</p>
       ) : sources.withheld ? null : (
-        <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
+        <p className="px-2 text-line text-muted-foreground">Nowhere yet.</p>
       )}
       {sources.withheld ? (
         <p className="px-2 text-xs text-muted-foreground">Owners and admins see every source.</p>
@@ -848,7 +855,7 @@ function BoardBlock({
   );
 }
 
-const ROW = "flex h-8 min-w-0 items-center gap-3 px-2 text-sm";
+const ROW = "flex h-8 min-w-0 items-center gap-3 px-2 text-line";
 const NUMBER = "shrink-0 text-end text-muted-foreground tabular-nums";
 
 function Placeholders({ count }: { readonly count: number }) {
@@ -937,7 +944,7 @@ function BlockedLine({
   const label = blocked.change.label.replace(/^Change/u, "change");
   return (
     <p
-      className="flex h-8 min-w-0 items-center gap-1 px-2 text-sm text-muted-foreground"
+      className="flex h-8 min-w-0 items-center gap-1 px-2 text-line text-muted-foreground"
       data-zerops-board-line="blocked"
     >
       <span className="truncate">
@@ -989,7 +996,7 @@ export function TaskBoardView({
   if (read.state === "failed")
     return (
       <div className="flex min-h-8 items-center gap-2 px-2">
-        <span className="min-w-0 flex-1 text-sm text-destructive-foreground" role="alert">
+        <span className="min-w-0 flex-1 text-line text-destructive-foreground" role="alert">
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
@@ -1069,12 +1076,12 @@ export function TaskBoardView({
           />
         ))}
         {idle === null ? null : (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">{idle}</p>
+          <p className="flex h-8 items-center px-2 text-line text-muted-foreground">{idle}</p>
         )}
       </BoardBlock>
       <BoardBlock count={queued.length} name="Queued">
         {queued.length === 0 ? (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
+          <p className="flex h-8 items-center px-2 text-line text-muted-foreground">
             Nothing waiting.
           </p>
         ) : (
@@ -1112,7 +1119,7 @@ export function TaskBoardView({
       </BoardBlock>
       <BoardBlock name="Recent">
         {recent.length === 0 ? (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
+          <p className="flex h-8 items-center px-2 text-line text-muted-foreground">
             Nothing finished yet.
           </p>
         ) : (
@@ -1191,8 +1198,8 @@ function SourceRowView({
         <span
           className={
             row.kind === "failed"
-              ? "truncate text-sm text-destructive-foreground"
-              : "truncate text-sm text-foreground"
+              ? "truncate text-line text-destructive-foreground"
+              : "truncate text-line text-foreground"
           }
           role={row.kind === "failed" ? "alert" : undefined}
         >
