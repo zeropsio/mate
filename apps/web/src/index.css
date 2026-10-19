@@ -8231,8 +8231,8 @@ label.tm-advanced-row:not([data-disabled]) {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  padding: 16px 18px 16px;
+  gap: 4px;
+  padding: 16px 12px 10px;
   border-radius: 20px;
   background: var(--ov-ground);
   box-shadow:
@@ -8247,7 +8247,10 @@ label.tm-advanced-row:not([data-disabled]) {
   --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
+/* Its name on its rows' own inset: a row's hover runs to the section's padding, its words 8 px in. */
 .ov-side-name {
+  margin-bottom: -2px;
+  padding-inline: 8px;
   color: var(--muted-foreground);
   font-size: 13px;
   font-weight: 600;
@@ -8423,7 +8426,7 @@ label.tm-advanced-row:not([data-disabled]) {
    each service, what went wrong, what the running release brought, and what to do. */
 .ov-panel {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -8490,6 +8493,7 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* A line that opens what it says (production's "Releasing v0.1.0"): its words and its place. */
@@ -8602,7 +8606,7 @@ button.ov-panel-state:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .ov-panel-acts:empty {
@@ -8612,9 +8616,9 @@ button.ov-panel-state:focus-visible {
 /* A card's sections: on the card itself, a hairline over each. */
 .ov-sec {
   display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 12px 6px 2px;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 16px 6px 0;
   border-top: 1px solid var(--ov-rule);
 }
 
@@ -8624,14 +8628,21 @@ button.ov-panel-state:focus-visible {
   padding: 12px 0 0;
 }
 
+/* Its name hugs the first row: the row's own padding is its hover's, not air under the name. */
 .ov-sec.ov-mates .ov-sec-name {
-  padding: 0 6px 4px;
+  margin-bottom: -4px;
+  padding: 0 6px;
+}
+
+/* A lifted first row is a box of its own: it keeps its own air under the name. */
+.ov-sec.ov-mates .ov-sec-name + .ov-mate[data-lift] {
+  margin-top: 6px;
 }
 
 /* A project's latest changes: open ones with what stops them, merged ones with where they went. */
 .ov-changes {
   display: grid;
-  margin: 0 -8px;
+  margin: -6px -8px 0;
   padding: 0;
   list-style: none;
 }
@@ -8781,47 +8792,6 @@ button.ov-panel-state:focus-visible {
 }
 
 /* A filter that leaves nothing: a calm face, what it would show, and the way back. */
-/* A place not set up yet: its way to be, where the person may set it up. */
-.ov-setup {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  justify-self: start;
-  gap: 6px;
-  padding: 0 12px 0 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--primary) 9%, transparent);
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ov-setup:hover {
-    background: color-mix(in oklab, var(--primary) 15%, transparent);
-  }
-}
-
-.ov-setup:active {
-  scale: 0.96;
-}
-
-.ov-setup:focus-visible {
-  box-shadow:
-    0 0 0 2px var(--background),
-    0 0 0 4px var(--ring);
-}
-
-.ov-setup:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 /* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
 .ov-change-face {
   display: flex;

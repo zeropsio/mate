@@ -870,7 +870,9 @@ export function ZeropsGroupPane({
       (onMirror === undefined && connectedRepos(codeRepos ?? repos).length === 0) ? null : (
         <SideSection title="Repositories">
           {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
-            <GitRemoteLines repos={codeRepos ?? repos} />
+            <div className="px-2">
+              <GitRemoteLines repos={codeRepos ?? repos} />
+            </div>
           )}
           {onMirror === undefined ? null : (
             <div className="px-2 py-1">

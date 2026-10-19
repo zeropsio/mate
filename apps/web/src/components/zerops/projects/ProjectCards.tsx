@@ -68,6 +68,7 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -154,6 +155,46 @@ function CardRow({
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
+}
+
+/** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
+const CUT_TEXT_DELAY_MS = 500;
+
+/**
+ * A line of text cut at its box's end, as a card's rows are: the whole of it in a tooltip while it
+ * is pointed at, only where it was cut — the menu's change rows read theirs the same way. The
+ * tooltip is made only then: a card's rows hold no tooltip of their own.
+ */
+function CutText({ className, text }: { readonly className: string; readonly text: string }) {
+  const [shown, setShown] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const line = (
+    <span
+      className={className}
+      onPointerEnter={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollWidth <= element.clientWidth) return;
+        timer.current = setTimeout(() => setShown(true), CUT_TEXT_DELAY_MS);
+      }}
+      onPointerLeave={() => {
+        clearTimeout(timer.current);
+        setShown(false);
+      }}
+    />
+  );
+  if (!shown) return <span {...line.props}>{text}</span>;
+  return (
+    <Tooltip
+      onOpenChange={(open) => {
+        if (!open) setShown(false);
+      }}
+      open
+    >
+      <TooltipTrigger render={line}>{text}</TooltipTrigger>
+      <TooltipPopup side="top">{text}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 /** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
@@ -338,17 +379,20 @@ function SetUpPanel({
       <div className="ov-panel-head">
         <b className="ov-panel-name">{placeLabel(line)}</b>
       </div>
-      <button
-        className="ov-setup"
-        disabled={onSetUp === "busy"}
-        onClick={onSetUp === "busy" ? undefined : onSetUp}
-        type="button"
-      >
-        <PlusIcon aria-hidden="true" className="size-3.5" />
-        {environmentDoorLabel(line.kind, placeLabel(line))}
-      </button>
+      {/* A place's door, as its others are: Roll back, Put it on your domain. */}
+      <div className="flex">
+        <Button
+          disabled={onSetUp === "busy"}
+          onClick={onSetUp === "busy" ? undefined : onSetUp}
+          size="sm"
+          variant="secondary"
+        >
+          <PlusIcon aria-hidden="true" />
+          {environmentDoorLabel(line.kind, placeLabel(line))}
+        </Button>
+      </div>
       {onSetUp === "busy" && line.kind === "production" ? (
-        <p className="text-muted-foreground text-xs" role="status">
+        <p className="ov-panel-note" data-tone="muted" role="status">
           {PUT_LIVE_AFTER_CREATION}
         </p>
       ) : null}
@@ -450,7 +494,7 @@ export function CardChanges({
                     </span>
                   )}
                   <span className="ov-change-text">
-                    <span className="ov-change-title">{change.pull.title}</span>
+                    <CutText className="ov-change-title" text={change.pull.title} />
                     <span className="ov-change-line" data-tone={change.tone}>
                       {by === undefined ? change.words : `${by} · ${change.words}`}
                     </span>
@@ -969,6 +1013,7 @@ export function CardMate({
           ))}
           <span className="ov-mate-time">{time}</span>
         </span>
+        {/* Cut at the card's edge, its whole is the row's press away: its conversation. */}
         <span
           className="ov-mate-l2"
           data-tone={reading.tone}

@@ -221,7 +221,7 @@ function LegendRow({
   readonly usd: number;
 }) {
   return (
-    <div className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2">
+    <div className="grid max-w-80 grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2">
       <span aria-hidden="true" className={cn("size-2.5 rounded-xs", fill)} />
       <span className="truncate text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums text-foreground">{formatUsd(usd)}</span>
@@ -247,7 +247,7 @@ function SpendSection({
       data-zerops-surface="project-spend"
     >
       <h2 className="ov-side-name">Spend</h2>
-      {children}
+      <div className="px-2 pb-1.5">{children}</div>
     </section>
   );
 }
