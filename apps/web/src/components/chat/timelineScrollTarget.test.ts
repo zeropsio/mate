@@ -8,6 +8,7 @@ import {
   timelineScrollKeyDirection,
   timelineScrollKeyInput,
   WHEEL_GESTURE_IDLE_MS,
+  wheelHandedToList,
 } from "./timelineScrollTarget";
 
 // What the element is, for `closest`: a control, editable text, or neither.
@@ -357,5 +358,57 @@ describe("a wheel's axis", () => {
     { deltaX: 0, deltaY: 0, vertical: false },
   ])("reads $deltaX, $deltaY as vertical: $vertical", ({ deltaX, deltaY, vertical }) => {
     expect(isVerticalWheel(deltaX, deltaY)).toBe(vertical);
+  });
+});
+
+describe("wheelHandedToList", () => {
+  const card = { at: 1_000, direction: "up", targetsList: false } as const;
+  const list = { at: 1_000, direction: "up", targetsList: true } as const;
+  // Decision: reader's scroll always wins — what the browser hands on past the card's top is theirs.
+  it.each([
+    {
+      title: "the browser carrying a card's gesture on past its top hands the gesture to the list",
+      latch: card,
+      move: { at: 1_016, byPerson: true, direction: "away" },
+      handed: { at: 1_016, direction: "up", targetsList: true },
+    },
+    {
+      title: "past its foot, a gesture down is the list's too",
+      latch: { ...card, direction: "down" },
+      move: { at: 1_016, byPerson: true, direction: "toward-end" },
+      handed: { at: 1_016, direction: "down", targetsList: true },
+    },
+    {
+      title: "the list moving the other way than the wheel is not the gesture's",
+      latch: card,
+      move: { at: 1_016, byPerson: true, direction: "toward-end" },
+      handed: null,
+    },
+    {
+      title: "a move the content's own change explains is not the gesture's",
+      latch: card,
+      move: { at: 1_016, byPerson: false, direction: "away" },
+      handed: null,
+    },
+    {
+      title: "the list moving after the wheel rested is not the gesture's",
+      latch: card,
+      move: { at: 1_000 + WHEEL_GESTURE_IDLE_MS + 1, byPerson: true, direction: "away" },
+      handed: null,
+    },
+    {
+      title: "a gesture already the list's is handed nothing",
+      latch: list,
+      move: { at: 1_016, byPerson: true, direction: "away" },
+      handed: null,
+    },
+    {
+      title: "with no wheel, nothing is handed",
+      latch: null,
+      move: { at: 1_016, byPerson: true, direction: "away" },
+      handed: null,
+    },
+  ] as const)("$title", ({ latch, move, handed }) => {
+    expect(wheelHandedToList(latch, move)).toEqual(handed);
   });
 });

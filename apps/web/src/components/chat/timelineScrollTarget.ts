@@ -120,10 +120,10 @@ export interface WheelGestureLatch {
 }
 
 /**
- * The browser latches a wheel gesture to the scroller it started in: a card
- * that reaches its edge mid-gesture does not hand the rest to the list. So
- * the target is decided once, on a gesture's first event — and again when the
- * wheel turns the other way, which starts a new gesture.
+ * A wheel gesture's target is decided once, on its first event — and again
+ * when the wheel turns the other way, which starts a new gesture: a card that
+ * reaches its edge mid-gesture keeps the wheel's events. Whether the browser
+ * hands the rest on to the list is told by the list moving (`wheelHandedToList`).
  */
 export function latchWheelGesture(
   latch: WheelGestureLatch | null,
@@ -134,4 +134,26 @@ export function latchWheelGesture(
     return { at, direction, targetsList: latch.targetsList };
   }
   return { at, direction, targetsList: targetsList() };
+}
+
+/**
+ * The list moved the wheel's way while a gesture latched to a nested scroller
+ * ran: the browser carried it on past that scroller's edge (a trackpad's
+ * momentum past the live card's top). From then the gesture is the list's —
+ * the reader took the list, and the end gives them it. Null when nothing is
+ * handed: no gesture, one the list already has, a rested wheel, a move the
+ * other way or one the content's own change explains.
+ */
+export function wheelHandedToList(
+  latch: WheelGestureLatch | null,
+  move: {
+    readonly at: number;
+    readonly byPerson: boolean;
+    readonly direction: "away" | "toward-end" | null;
+  },
+): WheelGestureLatch | null {
+  if (latch === null || latch.targetsList || !move.byPerson || move.direction === null) return null;
+  if (move.at - latch.at > WHEEL_GESTURE_IDLE_MS) return null;
+  if ((move.direction === "away" ? "up" : "down") !== latch.direction) return null;
+  return { at: move.at, direction: latch.direction, targetsList: true };
 }
