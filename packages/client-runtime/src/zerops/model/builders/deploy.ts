@@ -228,7 +228,11 @@ function deployExplanation(
   if (fromResult.explanation !== undefined || errorInfo === undefined) {
     return fromResult;
   }
-  return explanationField(failedCallReason(decoded, errorInfo));
+  const field = explanationField(failedCallReason(decoded, errorInfo));
+  const category = readFailureClassification(decoded.document?.failureClassification)?.category;
+  return field.explanation !== undefined && category === "credential"
+    ? { explanation: { ...field.explanation, forPerson: true } }
+    : field;
 }
 
 /** A deploy result's own reason and the log of its failing phase — `{}` when it neither failed nor timed out. */

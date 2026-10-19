@@ -236,7 +236,8 @@ describe("buildDeployFields — why a deploy failed or timed out", () => {
           failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
         },
       },
-      expected: { reason: "A sign-in was refused, so the deploy never ran." },
+      // A refused sign-in is the person's to fix, not its Mate's.
+      expected: { reason: "A sign-in was refused, so the deploy never ran.", forPerson: true },
     },
     {
       name: "the result's own evidence when a failed call carries a deploy result",

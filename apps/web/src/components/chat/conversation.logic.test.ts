@@ -48,6 +48,7 @@ import {
   turn,
   user,
 } from "./conversationFixtures";
+import { resultRows } from "./runResult.logic";
 
 function structure(
   entries: TimelineEntry[],
@@ -4088,17 +4089,100 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
     },
   );
 
-  // A wait still running, or one that found its process failed, settles nothing.
-  it("a wait whose process did not finish leaves the deploy unconfirmed", () => {
+  // What the work card draws for each service: its words, the line under them, and whether it
+  // asks the Mate to fix it.
+  const rows = (entries: TimelineEntry[]) => {
+    const [only] = structure([user("m0", 0), ...entries, assistant("a1", "t1", 9)], settled).turns;
+    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
+    return resultRows(outcome!)
+      .filter((row) => row.key.startsWith("service:"))
+      .map((row) => ({
+        title: row.title,
+        words: row.words,
+        detail: row.sub?.kind === "text" ? row.sub.text : null,
+        fix: row.action?.kind === "fix",
+      }));
+  };
+
+  // A wait still running settles nothing.
+  it("a wait whose process is still running leaves the deploy unconfirmed", () => {
     expect(
       live([
         user("m0", 0),
         timedOut("d1", 1, "MCP error -32001: Request timed out"),
-        waited("w1", 3, "FAILED"),
+        waited("w1", 3, "RUNNING"),
         assistant("a1", "t1", 9),
       ]),
     ).toEqual([
       { hostname: "appstage", tone: "attention", word: "Deploy unconfirmed", fix: false },
     ]);
+  });
+
+  it("a wait that finds the deploy's process failed turns an unconfirmed deploy into a failure, in the process's words", () => {
+    const failedWait = call(
+      "w1",
+      3,
+      "zerops_process",
+      { action: "wait", service: "appstage" },
+      "completed",
+      {
+        processes: [
+          {
+            processId: "p1",
+            actionName: "stack.build",
+            status: "FAILED",
+            failReason: "npm run build exited 1",
+          },
+        ],
+        settled: true,
+        timedOut: false,
+      },
+    );
+    expect(rows([timedOut("d1", 1, "MCP error -32001: Request timed out"), failedWait])).toEqual([
+      {
+        title: "appstage",
+        words: "Deploy failed",
+        detail: "npm run build exited 1",
+        fix: true,
+      },
+    ]);
+  });
+
+  // "Build" only where the build failed; a deploy that never reached its build failed as a
+  // deploy, in the tool's own words, and asks its Mate only where the Mate can fix it.
+  it.each([
+    {
+      name: "a service the call named that is not there",
+      entry: call("d1", 1, "zerops_deploy", deploy, "failed", "service not found"),
+      expected: { words: "Deploy failed", detail: "service not found", fix: true },
+    },
+    {
+      name: "a refused SSH connection",
+      entry: call("d1", 1, "zerops_deploy", deploy, "failed", {
+        code: "SSH_DEPLOY_FAILED",
+        error: "ssh: connection refused\nmore",
+      }),
+      expected: { words: "Deploy failed", detail: "ssh: connection refused", fix: true },
+    },
+    {
+      name: "a refused sign-in, which only the person can fix",
+      entry: call("d1", 1, "zerops_deploy", deploy, "failed", {
+        code: "DEPLOY_FAILED",
+        error: "zcli push failed",
+        failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
+      }),
+      expected: {
+        words: "Deploy failed",
+        detail: "A sign-in was refused, so the deploy never ran",
+        fix: false,
+      },
+    },
+    {
+      name: "a build that failed",
+      entry: buildFailed("d1", 1),
+      expected: { words: "Build failing", detail: "npm run build exited 1", fix: true },
+    },
+  ])("a failed deploy says what failed in plain words: $name", ({ entry, expected }) => {
+    expect(rows([entry])).toEqual([{ title: "appstage", ...expected }]);
   });
 });

@@ -2372,6 +2372,8 @@ export interface OutcomeFailure {
   readonly at: string;
   /** The last lines of the log it left, oldest first. */
   readonly logLines: ReadonlyArray<string>;
+  /** Only the person can fix it (a refused sign-in): its Mate is not asked. */
+  readonly forPerson?: true;
 }
 
 /** Something the run set out to do and did not: a push, a service it could not create. */
@@ -2577,12 +2579,18 @@ function saysNothingAgainstDevServer(operation: ZeropsOperation): boolean {
   return failed.length > 0 && failed.every((step) => unanswered(step) || hostTurnedAway(step));
 }
 
-/** A service a failure left broken, in a few words: where it broke, not the call's status word. */
+/**
+ * A service a failure left broken, in a few words: where it broke, not the call's status word.
+ * "Build" only where the build was the step that failed: a failed call that named no phase marks
+ * every step failed, and it never reached the build.
+ */
 function brokenWord(operation: ZeropsOperation): string {
   if (operation.kind === "verify") return "Not healthy";
   if (operation.kind === "devServer") return "Dev server not running";
-  const failed = operation.steps.find((step) => step.state === "failed");
-  return failed !== undefined && BUILD_STEP_IDS.has(failed.id) ? "Build failing" : "Deploy failed";
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  return failed.length === 1 && BUILD_STEP_IDS.has(failed[0]!.id)
+    ? "Build failing"
+    : "Deploy failed";
 }
 
 /**
@@ -2592,16 +2600,12 @@ function brokenWord(operation: ZeropsOperation): string {
 const DEPLOY_UNCONFIRMED = "Deploy unconfirmed";
 
 /**
- * A wait on a service (`zerops_process service=…`) that saw its work through:
- * every process it followed finished. It settles a deploy nothing confirmed.
+ * A wait on a service (`zerops_process service=…`) that returned the processes it followed: every
+ * one finished settles a deploy nothing confirmed as deployed, one that failed as failed, in the
+ * platform's reason. A wait still running settles nothing.
  */
-function settlesDeploy(operation: ZeropsOperation): boolean {
-  return (
-    operation.target !== undefined &&
-    operation.phase === "done" &&
-    operation.steps.length > 0 &&
-    operation.steps.every((step) => step.state === "done")
-  );
+function waitedOn(operation: ZeropsOperation): boolean {
+  return operation.target !== undefined && operation.phase === "done" && operation.steps.length > 0;
 }
 
 function failureOf(operation: ZeropsOperation): OutcomeFailure {
@@ -2609,6 +2613,7 @@ function failureOf(operation: ZeropsOperation): OutcomeFailure {
     reason: failureWords(operation),
     at: operation.settledAt ?? operation.anchorAt,
     logLines: operation.explanation?.logTail ?? [],
+    ...(operation.explanation?.forPerson === true ? { forPerson: true as const } : {}),
   };
 }
 
@@ -2910,13 +2915,23 @@ export function deriveOutcome(input: {
     const host = operationTargetKey(operation);
     const known = services.get(host);
     if (operation.kind === "process") {
-      if (known?.word === DEPLOY_UNCONFIRMED && settlesDeploy(operation)) {
+      if (known?.word !== DEPLOY_UNCONFIRMED || !waitedOn(operation)) continue;
+      const at = operation.settledAt ?? operation.anchorAt;
+      const failed = operation.steps.find((step) => step.state === "failed");
+      if (failed !== undefined) {
         services.set(host, {
           ...known,
-          tone: "ok",
-          word: "Deployed",
-          at: operation.settledAt ?? operation.anchorAt,
+          tone: "failed",
+          word: "Deploy failed",
+          at,
+          failure: {
+            reason: (failed.note ?? `${failed.label} failed`).replace(/\.$/u, ""),
+            at,
+            logLines: [],
+          },
         });
+      } else if (operation.steps.every((step) => step.state === "done")) {
+        services.set(host, { ...known, tone: "ok", word: "Deployed", at });
       }
       continue;
     }
