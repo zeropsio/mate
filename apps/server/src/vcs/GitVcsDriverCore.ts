@@ -92,6 +92,12 @@ const STATUS_UPSTREAM_REFRESH_ENV = Object.freeze({
   SSH_ASKPASS_REQUIRE: "never",
 } satisfies NodeJS.ProcessEnv);
 const DEFAULT_BASE_BRANCH_CANDIDATES = ["main", "master"] as const;
+/** Whether a branch is the repository's default: the remote's, else `main` or `master`. */
+const isDefaultBranchName = (branch: string | null, defaultBranch: string | null): boolean =>
+  branch !== null &&
+  (branch === defaultBranch ||
+    (defaultBranch === null &&
+      DEFAULT_BASE_BRANCH_CANDIDATES.some((candidate) => candidate === branch)));
 const GIT_LIST_BRANCHES_DEFAULT_LIMIT = 100;
 const NON_REPOSITORY_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitStatusDetails>({
   isRepo: false,
@@ -1755,10 +1761,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
 
     const defaultBranch = yield* resolveDefaultBranchName(cwd, "origin");
-    const isDefaultBranch =
-      branch !== null &&
-      (branch === defaultBranch ||
-        (defaultBranch === null && (branch === "main" || branch === "master")));
+    const isDefaultBranch = isDefaultBranchName(branch, defaultBranch);
     const aheadOfDefaultCount =
       branch && !isDefaultBranch
         ? upstreamRef === null
@@ -1968,10 +1971,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       behindCount = 0;
     }
 
-    const isDefaultBranch =
-      refName !== null &&
-      (refName === defaultBranch ||
-        (defaultBranch === null && (refName === "main" || refName === "master")));
+    const isDefaultBranch = isDefaultBranchName(refName, defaultBranch);
     if (refName && !isDefaultBranch) {
       aheadOfDefaultCount =
         fallbackAheadCount !== null
@@ -2700,16 +2700,22 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const cwd = repository.worktreeRoot;
     const branch = repository.currentBranch;
-    // On the base branch itself, what is not on it yet is what its remote does not have.
+    // On the default branch itself, what is not on it yet is what its remote does not have, as
+    // the status counts it (`aheadCount`); another branch is compared with the default only.
+    const onDefaultBranch = Effect.map(
+      resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null)),
+      (defaultBranch) => isDefaultBranchName(branch, defaultBranch),
+    );
     const baseRef =
       input.baseRef ??
       (branch
         ? ((yield* resolveBaseBranchForNoUpstream(cwd, branch).pipe(
             Effect.orElseSucceed(() => null),
           )) ??
-          (yield* resolveCurrentUpstream(cwd).pipe(Effect.orElseSucceed(() => null)))
-            ?.upstreamRef ??
-          null)
+          ((yield* onDefaultBranch)
+            ? ((yield* resolveCurrentUpstream(cwd).pipe(Effect.orElseSucceed(() => null)))
+                ?.upstreamRef ?? null)
+            : null))
         : null);
 
     const diffArgs = [
