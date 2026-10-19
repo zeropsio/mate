@@ -5,7 +5,7 @@
  * first message is the issue it brings (`ChatMessage.task`), and the header names the latest.
  */
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
-import { agentIdForDriverKind, type MateTaskSource } from "@t3tools/contracts";
+import { agentIdForDriverKind, MATE_TASK_TITLE_MAX, type MateTaskSource } from "@t3tools/contracts";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import {
@@ -51,6 +51,22 @@ export function taskTitle(task: {
   readonly number?: number | undefined;
 }): string {
   return task.number === undefined ? task.title : `#${String(task.number)} ${task.title}`;
+}
+
+/**
+ * What a task's ask says beyond its title, where both are shown. A chat ask's title is its first
+ * line, cut to a title's length (Discord, Slack), so an ask that is its title adds nothing and one
+ * opening with it adds only the rest; an ask opening otherwise, as an issue's body does, is whole.
+ */
+export function taskAskBeyondTitle(title: string, ask: string): string {
+  const said = ask.trim();
+  const named = title.trim();
+  if (named === "" || !said.startsWith(named)) return said;
+  const rest = said.slice(named.length);
+  // Opening with the title's words is not opening with the title: "Fix" begins "Fixes the total".
+  return rest === "" || /^\s/u.test(rest) || named.length >= MATE_TASK_TITLE_MAX
+    ? rest.trim()
+    : said;
 }
 
 /** A task a conversation works: the source its brief brought, and HQ's id of it where it says one. */

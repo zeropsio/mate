@@ -67,6 +67,15 @@ const TEA_ISSUE = {
   author: "nova-dev",
 } as const;
 
+const DISCORD_ASK = {
+  kind: "discord-thread",
+  server: "Acme",
+  channel: "tasks",
+  url: "https://discord.com/channels/1/2/3",
+  title: "redeisgn footer",
+  author: "erza",
+} as const;
+
 /** An automated Mate's one conversation: each task's card at its turn's start, its run after. */
 const ONE_CONVERSATION: ReadonlyArray<{
   readonly task: MateTaskSource;
@@ -419,6 +428,12 @@ function Harness() {
                 author: "Raya",
               }}
               text="Can the shop show prices with tax on the product page?"
+            />
+            {/* A chat ask's title is its first line: the card says the ask once. */}
+            <MateTaskCardView task={DISCORD_ASK} text="redeisgn footer" />
+            <MateTaskCardView
+              task={{ ...DISCORD_ASK, title: "redesign footer" }}
+              text={"redesign footer\nkeep the logo on the left\nmatch the header's spacing"}
             />
             <MateTaskMessageRow
               message={{
