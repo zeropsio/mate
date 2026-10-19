@@ -17,10 +17,13 @@ const LONG_ANSWER = Array.from(
   { length: 40 },
   () => "A long line of the Mate's words that fills the conversation.",
 ).join(" ");
+/** How tall a page is: in pixels, or in its viewport's height (`600vh`), as slides are. */
+export type PageTall = number | `${number}vh`;
+
 /** A page as an agent writes one: it reaches for the network, and it is taller or shorter. */
-const pageOf = (height: number, script = 'fetch("https://example.com/beacon").catch(()=>{});') =>
+const pageOf = (height: PageTall, script = 'fetch("https://example.com/beacon").catch(()=>{});') =>
   `<!doctype html><html><head><title>${TITLE}</title>` +
-  `<style>.plan{box-sizing:border-box;height:${height}px;padding:16px;color:var(--foreground)}</style></head>` +
+  `<style>.plan{box-sizing:border-box;height:${typeof height === "number" ? `${height}px` : height};padding:16px;color:var(--foreground)}</style></head>` +
   `<body><div class="plan"><h1>Plan</h1><img src="https://example.com/chart.png" alt=""></div>` +
   `<script>${script}</script></body></html>`;
 
@@ -105,7 +108,7 @@ const mcpCall = (
 const isPageHeight = (tag: string) => tag === WS_METHODS.engineRecordPageHeight;
 
 export const journey = (
-  height: number,
+  height: PageTall,
   options: {
     readonly script?: string;
     /** An earlier run published a page of its own, and a long exchange followed it. */

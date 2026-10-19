@@ -12,11 +12,15 @@ import { keepFrameOnMove } from "./keepFrameOnMove";
 import {
   knownPageHeights,
   pageHeightToRecord,
+  PAGE_FIT_START,
+  PAGE_PROBE,
   PAGE_THEME_VARS,
   linkToOpen,
   pageDocument,
   pageFirstDrawHeight,
-  pageStandHeight,
+  pageFitHeard,
+  pageFitStand,
+  pageScreenHeight,
   readPageMessage,
   themeMessage,
   type PageTheme,
@@ -118,7 +122,8 @@ export interface PublishedPageFrameProps {
 /**
  * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
  * it leaves (`@t3tools/client-runtime/zerops/publishedPage`). The page stands at its full height,
- * like the answer it is — at most 4000 px, past which it scrolls inside. From its first paint the
+ * like the answer it is, however tall, following it up and down — but a page its viewport sizes
+ * stands a screen tall and scrolls inside (`pageFitHeard`). From its first paint the
  * frame stands at the height recorded at the nearest width, so a page measured once never moves;
  * only its very first landing starts from a modest box and glides, once, to the page's height. The
  * page settled, the frame reports its height at its width (`onMeasured`) for later views. When the
@@ -137,13 +142,20 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const near = useNearView(boxRef);
   useEffect(() => (boxRef.current === null ? undefined : keepFrameOnMove(boxRef.current)), []);
-  const [content, setContent] = useState<number | null>(null);
-  // The frame's width, read before its first paint: which recorded height it stands at.
+  const [fit, setFit] = useState(PAGE_FIT_START);
+  // The frame's width, read before its first paint: which recorded height it stands at; and a
+  // screen of the conversation it stands in, for a page its viewport sizes.
   const [width, setWidth] = useState<number | null>(null);
+  const [screen, setScreen] = useState(() =>
+    pageScreenHeight(typeof window === "undefined" ? 0 : window.innerHeight),
+  );
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (box === null) return;
-    const read = () => setWidth(Math.round(box.getBoundingClientRect().width));
+    const read = () => {
+      setWidth(Math.round(box.getBoundingClientRect().width));
+      setScreen(pageScreenHeight(scrollParentOf(box)?.clientHeight ?? window.innerHeight));
+    };
     read();
     const observer = new ResizeObserver(read);
     observer.observe(box);
@@ -157,11 +169,12 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     reportedAt.current = at;
     onMeasured?.(at, tall);
   });
+  const settled = fit.asking !== null ? null : fit.sizedBy === "viewport" ? screen : fit.content;
   useEffect(() => {
-    if (full || content === null || width === null) return;
-    const settled = setTimeout(() => measured(width, content), PAGE_SETTLE_MS);
-    return () => clearTimeout(settled);
-  }, [full, content, width]);
+    if (full || settled === null || width === null) return;
+    const holds = setTimeout(() => measured(width, settled), PAGE_SETTLE_MS);
+    return () => clearTimeout(holds);
+  }, [full, settled, width]);
   const [left, setLeft] = useState(false);
   /** Each showing of the page is a frame of its own. */
   const [showing, setShowing] = useState(0);
@@ -171,6 +184,15 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     () => (html === null ? null : pageDocument(html, opened)),
     [html, opened],
   );
+
+  const height = full
+    ? null
+    : width === null
+      ? pageFirstDrawHeight(heights)
+      : pageFitStand({ fit, heights, width, screen });
+  const heard = useEffectEvent((said: { height: number; viewport: number | null }) => {
+    if (height !== null) setFit((held) => pageFitHeard(held, said, height));
+  });
 
   useEffect(() => {
     const listen = (event: MessageEvent) => {
@@ -183,7 +205,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
         return;
       }
       if (message.kind === "height") {
-        setContent(message.height);
+        heard(message);
         return;
       }
       const url = linkToOpen(message, {
@@ -202,11 +224,6 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
 
-  const height = full
-    ? null
-    : width === null
-      ? pageFirstDrawHeight(heights)
-      : pageStandHeight({ content, heights, width });
   // It glides only once it stood: its first height is placed, never eased into from a default.
   const [glides, setGlides] = useState(false);
   useEffect(() => {
@@ -233,6 +250,10 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           allow=""
           referrerPolicy="no-referrer"
           srcDoc={document_}
+          // Asked whether it grows with its viewport, the page is laid out past the frame's edge.
+          style={
+            fit.asking === null || height === null ? undefined : { height: height + PAGE_PROBE }
+          }
         />
       ) : left ? (
         <div className="published-page-left">
