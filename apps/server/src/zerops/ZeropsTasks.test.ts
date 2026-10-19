@@ -179,6 +179,8 @@ const rig = (
     const authored: Array<{ author: MateTaskCommitAuthor; sentBefore: number }> = [];
     /** Each time the working copies were put on a task's base, and how many messages were sent by then. */
     const copies: Array<{ taskId: string; base: WorkingCopyBase; sentBefore: number }> = [];
+    /** The dev services whose working copy holds work never delivered, moved by the test. */
+    const undelivered: Array<string> = [];
     /** The engine's receipts: a command id told again is answered by its first result. */
     const receipts = new Map<string, CommandResult>();
     const changes = yield* PubSub.unbounded<ConversationId>();
@@ -260,17 +262,20 @@ const rig = (
           }
           const told = receipts.get(commandId);
           if (told !== undefined) return Effect.succeed(told);
-          const result: CommandResult = { _tag: "Accepted", seq: 1 };
-          receipts.set(commandId, result);
+          const accepted: CommandResult = { _tag: "Accepted", seq: 1 };
           if (command._tag === "RotateSession") {
+            receipts.set(commandId, accepted);
             const sentBefore = delivered.filter((each) => each.command._tag === "Send").length;
             rotations.push({ conversationId, command, commandId, principal, sentBefore });
-            return Effect.succeed(result);
+            return Effect.succeed(accepted);
           }
           delivered.push({ conversationId, command, commandId, principal });
           // A Stop's end is the test's to move; a sent message's run is queued at once, behind
           // the run on when there is one, as the engine queues it.
-          if (command._tag !== "Send") return Effect.succeed(result);
+          if (command._tag !== "Send") {
+            receipts.set(commandId, accepted);
+            return Effect.succeed(accepted);
+          }
           const before = views.get(conversationId);
           const ordinal = before === undefined ? 1 : runsIn(before) + 1;
           const queued = run(conversationId, principal, "queued", null, ordinal);
@@ -280,6 +285,8 @@ const rig = (
               ? { ...(before ?? view(conversationId, {})), activeRun: queued }
               : { ...before, queued: [...before.queued, queued] },
           );
+          const result: CommandResult = { ...accepted, runId: queued.id };
+          receipts.set(commandId, result);
           return Effect.succeed(result);
         }),
     });
@@ -311,6 +318,7 @@ const rig = (
           copies.push({ taskId, base, sentBefore: delivered.length });
           return { missed: options.workingCopyMissed ?? [], unlisted: false };
         }),
+      undelivered: () => Effect.sync(() => [...undelivered]),
     });
     const bus = ProviderRuntimeEventBusTest.make(
       Stream.fromPubSub(runtime) as Stream.Stream<SpiEvent>,
@@ -401,6 +409,7 @@ const rig = (
       rotations,
       authored,
       copies,
+      undelivered,
       link,
       sent,
       reports,
@@ -896,6 +905,168 @@ describe("an automated Mate says how its task stands", () => {
       }),
   );
 
+  describe("a task's work is delivered before it is done", () => {
+    /** The task's run `ordinal` at work, then ended as its agent finished it. */
+    const worked = (
+      move: (id: ConversationId, next: ConversationView) => Effect.Effect<unknown>,
+      ordinal: number,
+    ) =>
+      Effect.gen(function* () {
+        const id = TASKS;
+        yield* move(
+          id,
+          view(id, { activeRun: run(id, principalOf("task-1"), "running", null, ordinal) }),
+        );
+        yield* settle;
+        yield* move(
+          id,
+          view(id, {
+            lastEnded: run(id, principalOf("task-1"), "ended", { kind: "completed" }, ordinal),
+          }),
+        );
+        yield* settle;
+      });
+    /** The words the Mate told the task's agent of itself, past the brief. */
+    const nudges = (delivered: ReadonlyArray<Delivered>) =>
+      delivered.flatMap((each) =>
+        each.command._tag === "Send" && each.command.taskMessage === undefined && !each.command.task
+          ? [each]
+          : [],
+      );
+
+    it.effect(
+      "a task's run that ends with its work undelivered is told once to deliver it, not reported done",
+      () =>
+        Effect.gen(function* () {
+          const { delivered, link, move, sent, undelivered } = yield* rig();
+          yield* Effect.forkScoped(link.run);
+          yield* settle;
+          yield* link.receive(task("task-1"));
+          undelivered.push("appdev");
+          yield* worked(move, 1);
+          const told = nudges(delivered);
+          assert.strictEqual(told.length, 1);
+          assert.deepInclude(told[0], {
+            conversationId: TASKS,
+            principal: principalOf("task-1"),
+          });
+          const command = told[0]!.command as Extract<Command, { _tag: "Send" }>;
+          assert.strictEqual(command.taskId, "task-1");
+          assert.include(command.text, "appdev");
+          assert.include(command.text, "deliver");
+          assert.isFalse(sent.some((report) => report.state === "done"));
+          assert.strictEqual(sent.at(-1)?.state, "working");
+        }),
+    );
+
+    it.effect("a task left undelivered twice says so where it came from", () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, sent, undelivered } = yield* rig();
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        undelivered.push("appdev");
+        yield* worked(move, 1);
+        // The agent took the word and ended its turn again, nothing delivered.
+        yield* worked(move, 2);
+        assert.strictEqual(nudges(delivered).length, 1);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+          detail: "The work on appdev was left undelivered.",
+        });
+      }),
+    );
+
+    it.effect("a task's agent is told to deliver at most once", () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, sent, undelivered } = yield* rig();
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        undelivered.push("appdev");
+        yield* worked(move, 1);
+        yield* worked(move, 2);
+        // A run after it (a continuation, a review's follow-up) ends with the same work left.
+        yield* worked(move, 3);
+        assert.strictEqual(nudges(delivered).length, 1);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+          detail: "The work on appdev was left undelivered.",
+        });
+      }),
+    );
+
+    it.effect(
+      "a word to deliver answered at once, never seen at work, still ends the task saying where its work was left",
+      () =>
+        Effect.gen(function* () {
+          const { link, move, sent, undelivered } = yield* rig();
+          yield* Effect.forkScoped(link.run);
+          yield* settle;
+          yield* link.receive(task("task-1"));
+          undelivered.push("appdev");
+          yield* worked(move, 1);
+          // The agent's one-line reply ended its run between two reads.
+          yield* move(
+            TASKS,
+            view(TASKS, {
+              lastEnded: run(TASKS, principalOf("task-1"), "ended", { kind: "completed" }, 2),
+            }),
+          );
+          yield* settle;
+          assert.deepStrictEqual(sent.at(-1), {
+            taskId: "task-1",
+            state: "done",
+            conversationId: TASKS,
+            detail: "The work on appdev was left undelivered.",
+          });
+        }),
+    );
+
+    it.effect(
+      "a task's agent is never told to deliver while another conversation of its Mate is at work",
+      () =>
+        Effect.gen(function* () {
+          const other = ConversationId.make("c-person");
+          const { delivered, link, move, sent, undelivered, views } = yield* rig();
+          yield* Effect.forkScoped(link.run);
+          yield* settle;
+          yield* link.receive(task("task-1"));
+          undelivered.push("appdev");
+          // A person's run elsewhere may be what changed the working copy.
+          views.set(
+            other,
+            view(other, {
+              activeRun: run(other, { kind: "person", subject: "zerops-user:nova" }, "running"),
+            }),
+          );
+          yield* worked(move, 1);
+          assert.deepStrictEqual(nudges(delivered), []);
+          assert.strictEqual(sent.at(-1)?.state, "done");
+        }),
+    );
+
+    it.effect("a task that changed nothing ends as before", () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, sent } = yield* rig();
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        yield* worked(move, 1);
+        assert.deepStrictEqual(nudges(delivered), []);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+        });
+      }),
+    );
+  });
+
   it.effect("re-sends the latest task's report when the link opens again", () =>
     Effect.gen(function* () {
       const { tasks, views } = yield* rig();
@@ -995,6 +1166,104 @@ const said = (text: string, at = 4) => ({ lastAgent: { text, at } });
 
 const stopsOf = (delivered: ReadonlyArray<Delivered>) =>
   delivered.flatMap((each) => (each.command._tag === "Stop" ? [each.command.runId] : []));
+
+describe("a person's message in the tasks' conversation", () => {
+  const nova: Principal = { kind: "person", subject: "zerops-user:nova" };
+  /** Task 1 taken, worked and ended as `end` says. */
+  const ended = (end: RunEnd) =>
+    Effect.gen(function* () {
+      const tasks = yield* rig();
+      yield* Effect.forkScoped(tasks.link.run);
+      yield* settle;
+      yield* tasks.link.receive(task("task-1"));
+      yield* tasks.move(
+        TASKS,
+        view(TASKS, { activeRun: run(TASKS, principalOf("task-1"), "running") }),
+      );
+      yield* settle;
+      tasks.ownEnds.set("task-1", end);
+      yield* tasks.move(
+        TASKS,
+        view(TASKS, { lastEnded: run(TASKS, principalOf("task-1"), "ended", end) }),
+      );
+      yield* settle;
+      return tasks;
+    });
+  /** The person's run after the task's: on, then ended as `end` says. */
+  const personRun = (
+    move: (id: ConversationId, next: ConversationView) => Effect.Effect<unknown>,
+    end: RunEnd | null,
+    taskEnd: RunEnd = { kind: "completed" },
+  ) =>
+    Effect.gen(function* () {
+      const before = run(TASKS, principalOf("task-1"), "ended", taskEnd);
+      yield* move(
+        TASKS,
+        view(TASKS, { lastEnded: before, activeRun: run(TASKS, nova, "running", null, 2) }),
+      );
+      yield* settle;
+      if (end === null) return;
+      yield* move(TASKS, view(TASKS, { lastEnded: run(TASKS, nova, "ended", end, 2) }));
+      yield* settle;
+    });
+
+  it.effect(
+    "a person's message after a task's run is more work on that task, still in the person's name",
+    () =>
+      Effect.gen(function* () {
+        const { move, sent } = yield* ended({ kind: "completed" });
+        yield* personRun(move, null);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "working",
+          conversationId: TASKS,
+        });
+        yield* personRun(move, { kind: "completed" });
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+        });
+      }),
+  );
+
+  it.effect("a person's message after a task's run that failed is the person's own", () =>
+    Effect.gen(function* () {
+      const failed: RunEnd = { kind: "failed", reason: "upstream 500", next: null };
+      const { move, sent } = yield* ended(failed);
+      const before = sent.length;
+      yield* personRun(move, null, failed);
+      assert.isFalse(sent.slice(before).some((report) => report.state === "working"));
+      assert.strictEqual(sent.at(-1)?.state, "failed");
+    }),
+  );
+
+  it.effect(
+    "a person's stopped message on a done task leaves it done and says nothing where it came from",
+    () =>
+      Effect.gen(function* () {
+        const { move, sent } = yield* ended({ kind: "completed" });
+        yield* personRun(move, { kind: "stopped", by: nova });
+        assert.isFalse(sent.some((report) => report.state === "failed"));
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+        });
+      }),
+  );
+
+  it.effect("a person's message after its task's change was closed runs as their own", () =>
+    Effect.gen(function* () {
+      const { delivered, link, move, sent } = yield* ended({ kind: "completed" });
+      // HQ stopped the task once its change was closed.
+      yield* link.stop("task-1", "Its change was closed.");
+      yield* personRun(move, null);
+      assert.isFalse(delivered.some((each) => each.command._tag === "Stop"));
+      assert.deepInclude(sent.at(-1), { taskId: "task-1", state: "stopped" });
+    }),
+  );
+});
 
 describe("people steer a task its Mate works", () => {
   it.effect(

@@ -264,7 +264,10 @@ export const HqAppTask = Schema.Struct({
   endedAt: Schema.NullOr(Schema.String),
   spentUsd: Schema.NullOr(Schema.Number),
   workedMs: Schema.NullOr(Schema.Number),
-  /** Why it failed, stopped or was declined; the question while waiting. */
+  /**
+   * Why it failed, stopped or was declined; the question while waiting; done, where its Mate left
+   * its work undelivered.
+   */
   detail: Schema.NullOr(Schema.String),
   /** Its change in Mate and its pull request on GitHub, once it has them. */
   change: Schema.NullOr(Schema.Struct({ repo: Schema.String, number: Schema.Int })),

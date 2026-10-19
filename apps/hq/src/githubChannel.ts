@@ -67,12 +67,17 @@ export const statusWords = (status: TaskStatus): string => {
       return status.pullRequest === undefined
         ? `${status.mate} opened a change for review: ${status.link}`
         : `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`;
-    case "done":
-      return status.pullRequest !== undefined
-        ? `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`
-        : status.link === null
-          ? `${status.mate} is done.`
-          : `${status.mate} is done; its change: ${status.link}`;
+    case "done": {
+      const said =
+        status.pullRequest !== undefined
+          ? `**${status.mate}** opened #${String(status.pullRequest.number)} for review.`
+          : status.link !== null
+            ? `${status.mate} is done; its change: ${status.link}`
+            : status.left === undefined
+              ? `${status.mate} is done.`
+              : `${status.mate} is done, without a change.`;
+      return status.left === undefined ? said : `${said} ${quieted(status.left)}`;
+    }
     case "merged":
       return status.pullRequest !== undefined
         ? `Merged in #${String(status.pullRequest.number)}.`

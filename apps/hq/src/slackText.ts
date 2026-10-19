@@ -66,10 +66,15 @@ export const statusText = (status: TaskStatus): string => {
       return `${escaped(status.mate)} is waiting for an answer. Reply in this thread.`;
     case "change":
       return `${escaped(status.mate)} opened a change for review: ${link(status.link)}`;
-    case "done":
-      return status.link === null
-        ? `${escaped(status.mate)} finished this.`
-        : `${escaped(status.mate)} finished this: ${link(status.link)}`;
+    case "done": {
+      const said =
+        status.link !== null
+          ? `${escaped(status.mate)} finished this: ${link(status.link)}`
+          : status.left === undefined
+            ? `${escaped(status.mate)} finished this.`
+            : `${escaped(status.mate)} finished this, without a change.`;
+      return status.left === undefined ? said : `${said} ${escaped(status.left)}`;
+    }
     case "failed":
       return status.mate === null
         ? `This couldn't be finished: ${escaped(status.why)}`
