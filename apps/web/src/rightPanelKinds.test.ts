@@ -56,7 +56,7 @@ describe("right panel kinds", () => {
       {
         kind: "diff",
         label: "Diff",
-        description: "Review what this Mate changed.",
+        description: "See what is not committed or not on main.",
         shortcut: "D",
         unavailableHint: "Available for Git repositories.",
       },
