@@ -592,6 +592,38 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "a person's word after its task's change was merged leaves the task done, its issue saying merged",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core, true);
+          const word = (state: string) =>
+            core.robot.link.send({
+              type: "task-state",
+              report: { taskId: task.id, state, conversationId: "conversation-1" },
+            });
+          yield* word("done");
+          yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          yield* squashOnMain(core);
+          yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          yield* statusSays(core, "Merged in #2.");
+          // "Thanks" in its conversation: the Mate is at it again, then done.
+          yield* word("working");
+          yield* word("done");
+          yield* Effect.sleep(Duration.millis(300));
+          const [row] = yield* core.tasks((rows) => rows.length === 1);
+          assert.strictEqual(row!["state"], "done");
+          const lines = core.github.state.seen.filter(
+            (request) => request.method === "PATCH" && request.path === STATUS,
+          );
+          assert.isTrue((lines.at(-1)!.body as { body: string }).body.startsWith("Merged in #2."));
+        }),
+    );
+
+    it.effect(
       "a pull request someone else opened on the change's branch is never taken for the change's own",
       () =>
         Effect.gen(function* () {

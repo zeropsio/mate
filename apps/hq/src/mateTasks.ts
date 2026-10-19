@@ -1285,12 +1285,18 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       /**
        * The task is the Mate's: handed to it or taken by it — or, given back while its link was
-       * down, waiting for no other Mate yet, as the Mate it was last handed to — or done by it: a
-       * review comment on its change, or a person's message in its conversation, wakes it there.
+       * down, waiting for no other Mate yet, as the Mate it was last handed to — or done by it
+       * while its work is unsettled, with no change yet or its change still open: a review
+       * comment on its change, or a person's message in its conversation, wakes it there. Once
+       * its change was merged or closed, a word of it is passed by.
        */
       const owns = (projectId: string) => sql`(
-        (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting', 'done'))
-        OR (state = 'queued' AND last_mate_project_id = ${projectId}))`;
+        (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting'))
+        OR (state = 'queued' AND last_mate_project_id = ${projectId})
+        OR (mate_project_id = ${projectId} AND state = 'done' AND (change_number IS NULL
+          OR EXISTS (SELECT 1 FROM hq_change c
+            WHERE c.app_id = hq_task.app_id AND c.repo = hq_task.change_repo
+              AND c.number = hq_task.change_number AND c.state = 'open'))))`;
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
@@ -1299,9 +1305,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly state: string;
             readonly app_id: string;
             readonly question: string | null;
-            readonly change_number: number | null;
           }>`
-            SELECT state, app_id::text AS app_id, question, change_number FROM hq_task
+            SELECT state, app_id::text AS app_id, question FROM hq_task
             WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
@@ -1416,6 +1421,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           }
           const task = yield* ownTask(projectId, word.taskId);
           if (task === undefined) return yield* strayWord(projectId, word);
+          // Done, it is not woken past the month's budget: the work it would do is stopped there.
+          if (
+            task.state === "done" &&
+            (word.state === "working" || word.state === "waiting") &&
+            (yield* overBudget)
+          )
+            return;
           if (word.state === "declined") {
             // Not taken: back to wait for a free Mate, no try against it, this one left alone a
             // while — failed once its Mates have turned it down for `DECLINED_FOR`.
@@ -1487,13 +1499,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 mate: mate ?? "Mate",
                 question: asked ?? "an answer.",
               }));
-            // Back on it after it was done: a review woke it, and the line keeps saying its
-            // change; with no change yet (a person's message woke it), it says the Mate is on it.
+            // Back on it after it was done (a review, a person's message woke it): the line keeps
+            // saying how it ended until it ends again.
             else if (
               taken.length > 0 &&
               !waiting &&
               task.state !== "working" &&
-              (task.state !== "done" || task.change_number === null)
+              task.state !== "done"
             )
               yield* pickedUp(word.taskId);
             if (taken.length > 0 && task.state === "queued") {
@@ -1521,13 +1533,23 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
             if (ended.length > 0 && word.state === "done" && task.state !== "done")
-              yield* say(word.taskId, ({ mate, change, pullRequest, detail }) => ({
-                kind: "done",
-                mate: mate ?? "Mate",
-                link: change,
-                ...(pullRequest === null ? {} : { pullRequest }),
-                ...(detail === null ? {} : { left: detail }),
-              }));
+              yield* say(word.taskId, ({ mate, change, changeMerged, pullRequest, detail }) =>
+                // Its change merged already: the line keeps saying so.
+                changeMerged
+                  ? {
+                      kind: "merged",
+                      mate: mate ?? "Mate",
+                      change,
+                      ...(pullRequest === null ? {} : { pullRequest }),
+                    }
+                  : {
+                      kind: "done",
+                      mate: mate ?? "Mate",
+                      link: change,
+                      ...(pullRequest === null ? {} : { pullRequest }),
+                      ...(detail === null ? {} : { left: detail }),
+                    },
+              );
             if (ended.length > 0 && task.state === "queued") {
               yield* structure.touched;
               yield* queueMoved(task.app_id);

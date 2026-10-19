@@ -29,9 +29,11 @@
  *   task the working copies no longer hold, told with the task's change while nothing is at work,
  *   first puts them on that change's branch, so the follow-up lands in its own change. HQ tells a
  *   follow-up only while the Mate is on no other task; one told under another task's run still
- *   joins that run, on its session and its working copy. A person writing in the conversation
- *   under a task's run that is on or completed steers that task too: the engine runs the message
- *   as the task's, so the task says `working` again and HQ links what it delivers.
+ *   joins that run, on its session and its working copy. A person writing in the tasks'
+ *   conversation after the task taken last ended done (or asking) is more work on it: the task
+ *   says `working` while their run is on, so HQ, where its work is unsettled, links what it
+ *   delivers; their run stays their own (never stopped for the task, never failing it), and once
+ *   it ends the task says its own end again.
  * - **Asking:** an agent that cannot go on without a person's answer ends its turn on a
  *   `QUESTION: …` line (the brief says how); the task then says `waiting` with the question, and
  *   the answer, a follow-up, resumes it.
@@ -378,6 +380,10 @@ const droppedIn = (entry: TaskEntry | undefined): boolean =>
 const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRun =>
   run?.principal.kind === "task" && run.principal.taskId === taskId;
 
+/** Whether a person's run is on or queued in the conversation. */
+const personOn = (view: ConversationView): boolean =>
+  [view.activeRun, ...view.queued].some((run) => run?.principal.kind === "person");
+
 /** The question the agent's last words in `ended` end on; none when they end on anything else. */
 const questionAfter = (view: ConversationView, ended: ViewRun): string | undefined => {
   const words = view.lastAgent;
@@ -390,8 +396,8 @@ const questionAfter = (view: ConversationView, ended: ViewRun): string | undefin
  * How a task stands in its conversation's record: `stopped` once people stopped it, `failed` once
  * a limit stopped it; else `working` from its run's start until nothing of it is on or due, then
  * how its last run ended — `waiting` when the agent's last words end on a question. A person's
- * later message in the conversation is more work on it (the engine runs it as the task's), unless
- * its run failed or was stopped: that end stands. Nothing while
+ * later run in the conversation changes nothing of the task's end; `steered`, while one is on or
+ * queued after the task's own run completed, it is more work on the task: `working`. Nothing while
  * no run holds its brief: the conversation was given its agent, and the brief never recorded.
  */
 export const taskReportOf = (
@@ -401,6 +407,8 @@ export const taskReportOf = (
   ownEnd?: RunEnd | null,
   /** What the Mate kept of the task: its stop, the limit it reached. */
   entry?: TaskEntry,
+  /** The task is the one a person's message in the tasks' conversation is more work on. */
+  steered = false,
 ): MateTaskReport | undefined => {
   const base = { taskId, conversationId: view.conversationId };
   if (entry?.stopped !== undefined) return { ...base, state: "stopped", detail: entry.stopped };
@@ -430,6 +438,7 @@ export const taskReportOf = (
     }
     const failure = ended.end === null ? undefined : failureOf(ended.end);
     if (failure !== undefined) return { ...base, state: "failed", detail: failure };
+    if (steered && personOn(view)) return { ...base, state: "working" };
     const question = questionAfter(view, ended);
     if (question !== undefined) return { ...base, state: "waiting", question };
     // Ended, and what it worked on never delivered, after the word to deliver it.
@@ -440,8 +449,9 @@ export const taskReportOf = (
   }
   if (!hasRuns(view)) return undefined;
   // A person spoke in it after the task's own runs: the task ended before they did, as its own
-  // last run did.
+  // last run did — and, done, works on while their run does.
   const failure = ownEnd == null ? undefined : failureOf(ownEnd);
+  if (steered && failure === undefined && personOn(view)) return { ...base, state: "working" };
   return failure === undefined
     ? { ...base, state: "done" }
     : { ...base, state: "failed", detail: failure };
@@ -652,7 +662,7 @@ export const make = Effect.gen(function* () {
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
       if (shared && elsewhere && own === undefined) return undefined;
-      const report = taskReportOf(taskId, view, own?.end, entry);
+      const report = taskReportOf(taskId, view, own?.end, entry, shared && taskId === current);
       return report === undefined
         ? undefined
         : { ...report, ...taskSpendOf(taskId, entry, view, inFlightOf(taskId, entry, "seen")) };

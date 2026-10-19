@@ -1096,6 +1096,104 @@ const said = (text: string, at = 4) => ({ lastAgent: { text, at } });
 const stopsOf = (delivered: ReadonlyArray<Delivered>) =>
   delivered.flatMap((each) => (each.command._tag === "Stop" ? [each.command.runId] : []));
 
+describe("a person's message in the tasks' conversation", () => {
+  const nova: Principal = { kind: "person", subject: "zerops-user:nova" };
+  /** Task 1 taken, worked and ended as `end` says. */
+  const ended = (end: RunEnd) =>
+    Effect.gen(function* () {
+      const tasks = yield* rig();
+      yield* Effect.forkScoped(tasks.link.run);
+      yield* settle;
+      yield* tasks.link.receive(task("task-1"));
+      yield* tasks.move(
+        TASKS,
+        view(TASKS, { activeRun: run(TASKS, principalOf("task-1"), "running") }),
+      );
+      yield* settle;
+      tasks.ownEnds.set("task-1", end);
+      yield* tasks.move(
+        TASKS,
+        view(TASKS, { lastEnded: run(TASKS, principalOf("task-1"), "ended", end) }),
+      );
+      yield* settle;
+      return tasks;
+    });
+  /** The person's run after the task's: on, then ended as `end` says. */
+  const personRun = (
+    move: (id: ConversationId, next: ConversationView) => Effect.Effect<unknown>,
+    end: RunEnd | null,
+    taskEnd: RunEnd = { kind: "completed" },
+  ) =>
+    Effect.gen(function* () {
+      const before = run(TASKS, principalOf("task-1"), "ended", taskEnd);
+      yield* move(
+        TASKS,
+        view(TASKS, { lastEnded: before, activeRun: run(TASKS, nova, "running", null, 2) }),
+      );
+      yield* settle;
+      if (end === null) return;
+      yield* move(TASKS, view(TASKS, { lastEnded: run(TASKS, nova, "ended", end, 2) }));
+      yield* settle;
+    });
+
+  it.effect(
+    "a person's message after a task's run is more work on that task, still in the person's name",
+    () =>
+      Effect.gen(function* () {
+        const { move, sent } = yield* ended({ kind: "completed" });
+        yield* personRun(move, null);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "working",
+          conversationId: TASKS,
+        });
+        yield* personRun(move, { kind: "completed" });
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+        });
+      }),
+  );
+
+  it.effect("a person's message after a task's run that failed is the person's own", () =>
+    Effect.gen(function* () {
+      const failed: RunEnd = { kind: "failed", reason: "upstream 500", next: null };
+      const { move, sent } = yield* ended(failed);
+      const before = sent.length;
+      yield* personRun(move, null, failed);
+      assert.isFalse(sent.slice(before).some((report) => report.state === "working"));
+      assert.strictEqual(sent.at(-1)?.state, "failed");
+    }),
+  );
+
+  it.effect(
+    "a person's stopped message on a done task leaves it done and says nothing where it came from",
+    () =>
+      Effect.gen(function* () {
+        const { move, sent } = yield* ended({ kind: "completed" });
+        yield* personRun(move, { kind: "stopped", by: nova });
+        assert.isFalse(sent.some((report) => report.state === "failed"));
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+        });
+      }),
+  );
+
+  it.effect("a person's message after its task's change was closed runs as their own", () =>
+    Effect.gen(function* () {
+      const { delivered, link, move, sent } = yield* ended({ kind: "completed" });
+      // HQ stopped the task once its change was closed.
+      yield* link.stop("task-1", "Its change was closed.");
+      yield* personRun(move, null);
+      assert.isFalse(delivered.some((each) => each.command._tag === "Stop"));
+      assert.deepInclude(sent.at(-1), { taskId: "task-1", state: "stopped" });
+    }),
+  );
+});
+
 describe("people steer a task its Mate works", () => {
   it.effect(
     "a follow-up on a task is heard once in its own conversation, as its author's request",
