@@ -1,6 +1,7 @@
-import type { VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
+import type { Crewmate, VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
+import { checkoutPathFor } from "../zerops/useZeropsGitRemoteProbe";
 
 import type { DiffPanelSelection } from "../diffPanelStore";
 
@@ -8,6 +9,33 @@ import type { DiffPanelSelection } from "../diffPanelStore";
 export interface DiffRepository {
   readonly name: string;
   readonly cwd: string;
+}
+
+/**
+ * The repositories a conversation's Diff reads, as its agent works in them; `null` while that is
+ * still read. A crewmate who writes works in its own copy of its service's checkout
+ * (`.crew/<handle>`, on `crew/<handle>`), as its crew places it (`CrewWorkspaceDirectory` on the
+ * server); every other conversation in the Mate's checkouts (`checkouts`), else its own folder.
+ */
+export function diffRepositories(input: {
+  readonly checkouts: ReadonlyArray<string> | null;
+  readonly cwd: string | null;
+  /** A crewmate's conversation's crewmate; `undefined` while its crew is read, else `null`. */
+  readonly crewmate: Pick<Crewmate, "handle" | "kind" | "host"> | null | undefined;
+}): ReadonlyArray<DiffRepository> | null {
+  const { checkouts, cwd, crewmate } = input;
+  if (crewmate === undefined) return null;
+  if (crewmate?.kind === "writer" && crewmate.host !== null) {
+    const copy = `${crewmate.host}/.crew/${crewmate.handle}`;
+    return [{ name: copy, cwd: checkoutPathFor(copy) }];
+  }
+  if (checkouts === null) return null;
+  if (checkouts.length > 0) {
+    return checkouts.map((hostname) => ({ name: hostname, cwd: checkoutPathFor(hostname) }));
+  }
+  return cwd === null
+    ? []
+    : [{ name: cwd.split("/").findLast((part) => part.length > 0) ?? cwd, cwd }];
 }
 
 /** What git says of a repository now: its status, the record the Git page reads too. */

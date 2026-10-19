@@ -152,6 +152,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   const { reads, gitPage } = useDiffRepositories(
     activeThread?.environmentId ?? null,
     activeCwd ?? null,
+    activeThread?.crew ?? null,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),

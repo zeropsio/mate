@@ -1,9 +1,7 @@
 /**
  * A Mate's checkouts that are Git repositories on disk now, in the Git tab's order: the runtime
  * services its topology lists (`gitCheckoutHostnames`), each read as the Git tab reads it (the
- * server's status of `/var/www/{hostname}`). `null` while the topology or a checkout's status is
- * still read, for at most `UNREAD_WAIT_MS`: a terminal waits for it rather than open outside the
- * code, and never waits longer. Empty off Zerops, after a failed read, or not asked
+ * server's status of `/var/www/{hostname}`). Empty off Zerops, after a failed read, or not asked
  * (`environmentId` null: a hidden terminal reads nothing).
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -23,7 +21,8 @@ const UNREAD_ATOM = Atom.make<ReadonlyArray<string> | null>(null);
 /** How long a terminal waits for the checkouts before it opens in the workspace. */
 const UNREAD_WAIT_MS = 3000;
 
-export function useMateRepositories(
+/** The checkouts; `null` while the topology or a checkout's status is still read, however long. */
+export function useMateCheckouts(
   environmentId: EnvironmentId | null,
 ): ReadonlyArray<string> | null {
   const { view, error } = useProjectTopology(environmentId);
@@ -40,7 +39,17 @@ export function useMateRepositories(
       }),
     );
   }, [environmentId, error, key]);
-  const repositories = useAtomValue(atom);
+  return useAtomValue(atom);
+}
+
+/**
+ * The checkouts as a terminal waits for them: `null` while still read for at most
+ * `UNREAD_WAIT_MS`, so it never opens outside the code, and never waits longer.
+ */
+export function useMateRepositories(
+  environmentId: EnvironmentId | null,
+): ReadonlyArray<string> | null {
+  const repositories = useMateCheckouts(environmentId);
   const unread = repositories === null;
   const [waited, setWaited] = useState(false);
   useEffect(() => {
