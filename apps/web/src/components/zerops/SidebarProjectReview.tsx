@@ -132,6 +132,31 @@ export function ProjectReviewTags({
 }
 
 /**
+ * A Mate's conversation's app-bar Review, a normal Mate's and an automated Mate's task
+ * conversation alike — the door that stays while the composer's strip can be put away: its
+ * changes to review, then what waits for production, together (the owner, 2026-10-12: "it's
+ * pretty important after all … maybe placed on the left"). Held in place, unseen, while a review
+ * stands open over it, so a merge pressed there never slides the line under the sheet.
+ */
+export function HeaderReviewDoor({
+  review,
+  held,
+}: {
+  readonly review: Parameters<typeof ProjectReviewTags>[0];
+  readonly held: boolean;
+}): ReactNode {
+  return (
+    <span
+      aria-hidden={held || undefined}
+      className={held ? "chat-header-review invisible" : "chat-header-review"}
+      inert={held}
+    >
+      <ProjectReviewTags {...review} />
+    </span>
+  );
+}
+
+/**
  * The menu's word on what waits in a project (the owner, 2026-10-12: "in the left menu, just add
  * some clear indication without the ability to merge … after the name, one for merge one for
  * release … with small number when there are more"): a mark for the changes waiting on a review
