@@ -1708,7 +1708,7 @@ describe("browser checks", () => {
         error: "Timeout 10000ms exceeded",
         errorKind: "timeout",
       },
-      words: "timed out, the page never loaded",
+      words: "couldn't wait --text Cart: Timeout 10000ms exceeded",
     },
     {
       name: "a kind this build does not know",
@@ -1723,6 +1723,83 @@ describe("browser checks", () => {
     "A browser step that failed on the page still counts as a failed check, in the browser's own words: $name",
     ({ step, words }) => {
       const check = checkWithStep(step);
+      expect(browserCheckFailure(check)).toBe(words);
+      expect(checksStrip([check], false).failures).toBe(1);
+    },
+  );
+
+  // Snap – Kai's check loaded the page, clicked, then waited 25 s for an
+  // error that never came, and the card said the page never loaded
+  // (browser-timeout-words, 2026-10-19).
+  it.each([
+    {
+      name: "a wait after the page loaded",
+      steps: [
+        {
+          command: ["open", "https://shop.example.com/"],
+          success: true,
+          result: { title: "Snap" },
+        },
+        {
+          command: [
+            "wait",
+            "--fn",
+            "performance.getEntriesByName('first-contentful-paint').length > 0",
+          ],
+          success: true,
+        },
+        { command: ["wait", ".login-box"], success: true },
+        { command: ["find", "role", "button", "click", "--name", "Sign in"], success: true },
+        {
+          command: ["wait", ".error"],
+          success: false,
+          error: "Wait timed out after 25000ms",
+          errorKind: "timeout",
+        },
+      ],
+      words: "couldn't wait .error: Wait timed out after 25000ms",
+    },
+    {
+      name: "the page's own load",
+      steps: [
+        {
+          command: ["open", "https://shop.example.com/"],
+          success: false,
+          error: "Navigation timeout of 30000 ms exceeded",
+          errorKind: "timeout",
+        },
+      ],
+      words: "timed out, the page never loaded",
+    },
+  ])(
+    "A browser check that timed out says the page never loaded only when its load timed out, else names the step that waited: $name",
+    ({ steps, words }) => {
+      const check = reduceZeropsOperations(
+        [
+          {
+            id: "b1",
+            turnId: "t1",
+            toolName: "zerops_browser",
+            input: { url: "https://shop.example.com/" },
+            status: "completed",
+            resultText: JSON.stringify({
+              url: "https://shop.example.com/",
+              steps: [
+                ...steps,
+                { command: ["errors"], success: true },
+                { command: ["close"], success: true },
+              ],
+            }),
+            truncated: false,
+            startedAt: at(1),
+            anchorActivityId: "activity-b1",
+            settledAt: at(1, 30),
+            rowIds: new Set(["activity-b1"]),
+            agentInternal: false,
+          },
+        ],
+        { projectId: undefined, builds: () => "finished" },
+      ).operations[0]!;
       expect(browserCheckFailure(check)).toBe(words);
       expect(checksStrip([check], false).failures).toBe(1);
     },
