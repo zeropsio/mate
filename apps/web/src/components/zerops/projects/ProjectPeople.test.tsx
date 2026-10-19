@@ -228,7 +228,6 @@ describe("changing who can work on a project", () => {
       ["Anna B.", "Full"],
       ["Petr N.", "Saving…"],
       ["iva@example.com", "More than Read"],
-      [],
     ]);
     expect(section?.querySelector('[role="alert"]')?.textContent).toBe(
       "iva@example.com: Only an organization owner or admin can change who has access.",
@@ -276,7 +275,6 @@ describe("a new project's access in a creation dialog", () => {
     expect(chipsOf(section).map(({ text }) => text)).toEqual([
       ["You", "Full"],
       ["Anna B.", "Full"],
-      [],
     ]);
     expect(
       section?.querySelector("ul > li")?.querySelector('[aria-label$="\'s access"]') ?? null,
@@ -284,6 +282,7 @@ describe("a new project's access in a creation dialog", () => {
     expect(section?.querySelector('[data-zerops-surface="add-access"]')?.textContent).toBe(
       "Add access",
     );
+    expect(section?.querySelector('ul [data-zerops-surface="add-access"]')).toBeNull();
   });
 });
 

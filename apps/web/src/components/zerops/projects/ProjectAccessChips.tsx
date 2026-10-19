@@ -1,7 +1,7 @@
 /**
  * Who reaches a Zerops project — or every project of an app — as people chips: a face, a short
  * name and the level they have there, a hover card with who they are, and a ··· for whoever may
- * change it; then *Add access*, which picks people already in the organization who reach none of
+ * change it; then *Add access* under them, which picks people already in the organization who reach none of
  * it yet, each at Read or Full. Inviting someone new by e-mail lives on the Team page.
  *
  * A pure view: what is known of the people (`projectPeople.logic.ts`) and what is being changed of
@@ -20,7 +20,7 @@ import {
   SplitIcon,
 } from "lucide-react";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import {
   AlertDialog,
@@ -35,6 +35,7 @@ import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
 import {
   Menu,
   MenuItem,
@@ -144,6 +145,10 @@ export function ProjectAccessChips({
     const person = people.find((one) => one.key === key);
     return person === undefined ? [] : [{ key, line: `${person.name}: ${line}` }];
   });
+  const addable =
+    view.kind === "people" && view.invite && onAdd !== undefined && view.candidates.length > 0
+      ? { candidates: view.candidates, onAdd }
+      : null;
   if (fold && !unfolded && view.kind === "people" && said.length === 0) {
     const folded = foldedFaces(view.people, FOLDED_FACES);
     return (
@@ -190,11 +195,6 @@ export function ProjectAccessChips({
               person={person}
             />
           ))}
-          {view.invite && onAdd !== undefined && view.candidates.length > 0 ? (
-            <li className="ov-chip-slot">
-              <AddAccess adding={adding} candidates={view.candidates} onAdd={onAdd} />
-            </li>
-          ) : null}
         </ul>
       )}
       {said.map(({ key, line }) => (
@@ -202,11 +202,18 @@ export function ProjectAccessChips({
           {line}
         </p>
       ))}
-      {fold && unfolded ? (
-        <span>
-          <Button onClick={() => setUnfolded(false)} size="sm" variant="ghost">
-            Done
-          </Button>
+      {/* Adding people is a quiet tool under the people, never a tile as big as one of them. */}
+      {addable !== null || (fold && unfolded) ? (
+        // The quiet buttons' words share the chips' start edge.
+        <span className="-ms-2.5 flex items-center gap-1">
+          {addable === null ? null : (
+            <AddAccess adding={adding} candidates={addable.candidates} onAdd={addable.onAdd} />
+          )}
+          {fold && unfolded ? (
+            <Button onClick={() => setUnfolded(false)} size="sm" variant="ghost">
+              Done
+            </Button>
+          ) : null}
         </span>
       ) : null}
     </section>
@@ -419,7 +426,7 @@ const matches = (candidate: AccessCandidate, query: string) => {
   );
 };
 
-/** *Add access*: a dashed chip opening the organization's people who reach none of it yet. */
+/** *Add access*: a quiet button opening the organization's people who reach none of it yet. */
 function AddAccess({
   candidates,
   adding,
@@ -439,10 +446,10 @@ function AddAccess({
     >
       <PopoverTrigger
         disabled={adding}
-        render={<button className="ov-chip-add" data-zerops-surface="add-access" type="button" />}
+        render={<Button data-zerops-surface="add-access" size="sm" variant="ghost" />}
       >
-        <PlusIcon aria-hidden="true" className="size-4" />
-        <span>{adding ? "Adding…" : "Add access"}</span>
+        <PlusIcon aria-hidden="true" />
+        {adding ? "Adding…" : "Add access"}
       </PopoverTrigger>
       <PopoverPopup align="start" padding="none" width="md">
         {open ? (
@@ -544,5 +551,52 @@ export function AddAccessPicker({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * A creation dialog's *Project access* in one line: who can open the project, in words
+ * (`draftSummary`), and *Change who can open it*, which opens the people chips in place for edits;
+ * *Done* folds them again. Changes made in the chips are counted on the line.
+ */
+export function AccessDraftFold({
+  label,
+  summary,
+  children,
+}: {
+  readonly label: string;
+  readonly summary: { readonly line: string; readonly changes: string | null };
+  /** The people chips, drawn while the list is open. */
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  return (
+    <section aria-label={label} className="flex flex-col gap-1" data-zerops-surface="access-fold">
+      {/* The quiet button's words end on the section's end edge. */}
+      <div className="-me-2.5 flex min-h-7 items-center justify-between gap-3">
+        <Label render={<h3 />}>{label}</Label>
+        <Button
+          aria-controls={open ? listId : undefined}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          size="sm"
+          variant="ghost"
+        >
+          {open ? "Done" : "Change who can open it"}
+        </Button>
+      </div>
+      <p className="text-body text-muted-foreground text-pretty" data-zerops-access="line">
+        {summary.line}
+        {summary.changes === null ? null : (
+          <span className="text-foreground"> · {summary.changes}</span>
+        )}
+      </p>
+      {open ? (
+        <div className="pt-2" id={listId}>
+          {children}
+        </div>
+      ) : null}
+    </section>
   );
 }

@@ -3,8 +3,10 @@
  * 2026-09-30), hosted over whatever the person is looking at (`ZeropsNewProjectHost`).
  *
  * It asks the project's name — and where it lives, only where the account has more than one
- * place — then who its first Mate is: a name, a colour and a shape, beside the face they make,
- * with the picker and the rules New Mate uses. Until its person picks, the face follows the name
+ * place — then who its first Mate is: a name beside the face it makes, the colour and the shape
+ * behind *Change look*, with the picker and the rules New Mate uses. Who can open the project is
+ * one line, the people opened only to change it. The dialog stands in the window's middle, sized
+ * to what it asks; only its body scrolls where the window is too short. Until its person picks, the face follows the name
  * as it is typed or rolled (the tint the account would give it, and that tint's shape); a pick
  * sticks. A name that will not do is said beside the button once it is pressed; while the
  * account's Mates' names are still being read, the button waits and says so.
@@ -209,8 +211,8 @@ export function ZeropsNewProjectForm({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={MATE_FIELD}>Its first Mate</Label>
               <MateFacePicker
-                compact
                 face={face}
+                folded
                 onPickShape={(shape) => {
                   if (!creating) setPicked((current) => ({ ...current, shape }));
                 }}
@@ -343,6 +345,7 @@ export function ZeropsNewProjectDialog({
         className="max-w-lg"
         finalFocus={() => !created.current}
         initialFocus={nameField}
+        placement="center"
       >
         <ZeropsNewProjectForm
           {...form}

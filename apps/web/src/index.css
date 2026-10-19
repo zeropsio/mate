@@ -7405,7 +7405,7 @@ a.ov-card-site:hover {
 }
 
 /* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
-   have there, a ⋮ for whoever may change it; *Add access* the last, dashed, chip. */
+   have there, a ⋮ for whoever may change it; *Add access* a quiet button under them. */
 .ov-access {
   display: grid;
   gap: 6px;
@@ -7464,37 +7464,6 @@ a.ov-card-site:hover {
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* The level: full access green, a developer's blue, read only and mixed grey. */
-.ov-chip-slot {
-  display: grid;
-}
-
-.ov-chip-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 48px;
-  border: 1px dashed color-mix(in oklab, var(--foreground) 22%, transparent);
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.ov-chip-add:hover,
-.ov-chip-add[data-popup-open] {
-  background: var(--ov-hover);
-  color: var(--foreground);
-}
-
-.ov-chip-add:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 /* A chip's hover card: who they are, then each project's level where they differ. */

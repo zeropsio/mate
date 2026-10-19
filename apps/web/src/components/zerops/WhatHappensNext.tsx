@@ -30,7 +30,7 @@ export function WhatHappensNext({
   return (
     <section
       aria-labelledby={id}
-      className="flex flex-col gap-1.5 rounded-xl bg-muted/60 px-3.5 pt-2.5 pb-3"
+      className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 py-2.5"
       data-zerops-surface="what-happens-next"
     >
       <h3 className="text-xs leading-4 font-medium text-muted-foreground" id={id}>
@@ -41,14 +41,14 @@ export function WhatHappensNext({
           <div
             aria-hidden={shown ? undefined : true}
             className={cn(
-              "col-start-1 row-start-1 flex flex-col gap-1.5 transition-[opacity,visibility] ease-out",
+              "col-start-1 row-start-1 flex flex-col gap-1 transition-[opacity,visibility] ease-out",
               // The one leaving is gone before the one arriving shows: never both at once.
               shown ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
             )}
             data-zerops-next={shown ? "shown" : "held"}
             key={key}
           >
-            <ol className="flex flex-col gap-1.5">
+            <ol className="flex flex-col gap-1">
               {next.steps.map((step, index) => (
                 <li
                   className="grid grid-cols-[1.125rem_minmax(0,1fr)_auto] items-start gap-x-2.5 text-line leading-5"

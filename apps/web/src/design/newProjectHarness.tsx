@@ -11,7 +11,8 @@
  * `pressing` — Create pressed: the dialog gives way to the first Mate's page at once, the steps
  * this tab runs advancing under the project's row (`pressPage.tsx`, `&fail=` stops one);
  * `&locations=2` offers two locations, at the footer's start; `&git=none` is the account's first
- * project, Git hosting coming along, its step first in what happens next). The die at the name's
+ * project, Git hosting coming along, its step first in what happens next). Its *Project access*
+ * holds eighteen people of nineteen, one line until *Change who can open it*. The die at the name's
  * end rolls another name. The dialog stands over the page beside the left menu at the owner's
  * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
  * holds what Create handed over.
@@ -27,7 +28,8 @@ import {
 } from "@tanstack/react-router";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { StrictMode, useEffect, useState } from "react";
+import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -35,6 +37,16 @@ import {
   type NewProjectChoice,
 } from "~/components/zerops/ZeropsNewProjectForm";
 import { SidebarProvider } from "~/components/ui/sidebar";
+import {
+  draftChoose,
+  draftSummary,
+  draftView,
+  type DraftInput,
+} from "~/components/zerops/projects/accessDraft.logic";
+import {
+  AccessDraftFold,
+  ProjectAccessChips,
+} from "~/components/zerops/projects/ProjectAccessChips";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { AppRouter } from "~/router";
@@ -72,6 +84,85 @@ const LOCATIONS =
     : [{ id: "prg1", name: "Prague" }];
 /** What the die rolls, in turn: never the name it was rolled from. */
 const ROLLS = ["Vera", "Wren", "Milo"];
+
+/** Eighteen people, as the owner's organization has: you, sixteen admins, one developer. */
+const PEOPLE = [
+  ["me", "Mia Moss", "ADMIN"],
+  ["ada", "Ada Lind", "ADMIN"],
+  ["bo", "Bo Hale", "ADMIN"],
+  ["cy", "Cyril Nord", "ADMIN"],
+  ["di", "Dita Park", "ADMIN"],
+  ["ed", "Edo Moon", "ADMIN"],
+  ["fay", "Fay Linn", "ADMIN"],
+  ["gus", "Gus Orr", "ADMIN"],
+  ["hal", "Hal Pike", "ADMIN"],
+  ["ivy", "Ivy Rowe", "ADMIN"],
+  ["jo", "Jo Sand", "ADMIN"],
+  ["kit", "Kit Tate", "ADMIN"],
+  ["lu", "Lu Vale", "ADMIN"],
+  ["mo", "Mo West", "ADMIN"],
+  ["ned", "Ned Yoke", "ADMIN"],
+  ["ola", "Ola Zorn", "ADMIN"],
+  ["pia", "Pia Ames", "ADMIN"],
+  ["rex", "Rex", "BASIC_USER"],
+  ["sal", "Sal Quill", "NO_ACCESS"],
+] as const;
+const MEMBERS = PEOPLE.map(([id, fullName, roleCode]) => ({
+  id: `cu-${id}`,
+  status: "ACTIVE",
+  roleCode,
+  user: { id: `u-${id}`, fullName },
+}));
+const DRAFT: Omit<DraftInput, "list"> = {
+  members: { known: true, status: "ready", refused: false, list: MEMBERS },
+  kind: "mate",
+  app: { projects: [], grants: {}, owners: {} },
+  pictures: {},
+  creator: { membershipId: "cu-me", userId: "u-me" },
+};
+
+/** *Project access* as the host draws it, from the fixtures: one line, the chips to change it. */
+function HarnessAccess({
+  onChange,
+}: {
+  readonly onChange: (list: ReadonlyArray<ProjectGrant>) => void;
+}) {
+  const [list, setList] = useState<ReadonlyArray<ProjectGrant>>([]);
+  const view = useMemo(() => draftView({ ...DRAFT, list }), [list]);
+  useEffect(() => onChange(list), [list, onChange]);
+  const summary = draftSummary({ view, organization: "Mate s.r.o.", prefill: [], list });
+  if (summary === null) return null;
+  return (
+    <AccessDraftFold label="Project access" summary={summary}>
+      <ProjectAccessChips
+        heading={false}
+        label="Project access"
+        onAdd={(picks) =>
+          setList((held) =>
+            picks.reduce(
+              (next, { candidate, level }) =>
+                draftChoose(next, MEMBERS, candidate.clientUserId, level),
+              held,
+            ),
+          )
+        }
+        onChoose={(person, choice) => {
+          const change = person.change;
+          if (change === null) return;
+          setList((held) =>
+            draftChoose(
+              held,
+              MEMBERS,
+              change.clientUserId,
+              choice === "withdraw" ? "remove" : choice,
+            ),
+          );
+        }}
+        view={view}
+      />
+    </AccessDraftFold>
+  );
+}
 
 declare global {
   interface Window {
@@ -136,6 +227,7 @@ function Harness() {
       </SidebarProvider>
       {landed !== null || !open ? null : (
         <ZeropsNewProjectDialog
+          access={(onChange) => <HarnessAccess onChange={onChange} />}
           closed={
             STATE === "closed"
               ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
