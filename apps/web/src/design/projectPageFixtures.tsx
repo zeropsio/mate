@@ -185,6 +185,16 @@ const SPEND = {
   ),
 };
 
+/** A project set up today: nothing billed before it. */
+const SPEND_TODAY = {
+  kind: "loaded" as const,
+  series: joinSpend(
+    { days: DAYS, usd: DAYS.map((_, at) => (at === 29 ? 0.21 : 0)) },
+    new Map(DAYS.map((day, at) => [day, at === 29 ? 0.63 : 0])),
+    DAYS.at(-1)!,
+  ),
+};
+
 /** A failed deploy's log reads the account's projects: stand-ins that hold none. */
 function Standins({ children }: { readonly children: ReactNode }) {
   const inventory: Inventory = {
@@ -339,7 +349,7 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
                 },
               ]
         }
-        spend={<ProjectSpendSectionView state={SPEND} />}
+        spend={<ProjectSpendSectionView state={running ? SPEND : SPEND_TODAY} />}
         tags={new Map([[sha("3f9c1b2e"), ["v0.1.59"]]])}
       />
     </Standins>

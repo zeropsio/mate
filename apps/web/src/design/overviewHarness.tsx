@@ -420,6 +420,22 @@ const PROJECTS: ReadonlyArray<Project> = [
       { ...JUNO_ASKS, id: "juno-s", view: { ...JUNO_ASKS.view, ask: "Checkout" } },
       mate("mira-s", "Mira", "amber", { time: "2h" }),
       mate("ines-s", "Ines", "olive", { owner: INES, time: "1d" }),
+      {
+        ...working("odo-s", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
+        automated: true,
+      },
+      {
+        ...mate("tess-s", "Tess", "rose", {
+          time: "5h",
+          view: {
+            state: "idle",
+            ask: undefined,
+            reply: words("#39 Prices no longer round down in the cart · merged"),
+            dot: undefined,
+          },
+        }),
+        automated: true,
+      },
     ],
     pullRequests: [inReview(71, "One-page checkout", "juno-s")],
     production: {
