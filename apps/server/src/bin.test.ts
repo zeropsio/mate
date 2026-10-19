@@ -148,7 +148,14 @@ it.layer(NodeServices.layer)("mate server command safety", (it) => {
         [newDirectory],
         ["start", newDirectory],
       ]) {
-        const error = yield* runCliWithRuntime([...args, "--base-dir", baseDir]).pipe(Effect.flip);
+        // An explicit port: the refusal is the record's, never the default port's probe.
+        const error = yield* runCliWithRuntime([
+          ...args,
+          "--base-dir",
+          baseDir,
+          "--port",
+          "3773",
+        ]).pipe(Effect.flip);
         assert.include(String(error), "A Zerops Mate server is already running");
         assert.equal(NodeFS.readFileSync(statePath, "utf8"), record);
         assert.isFalse(yield* pathExists(newDirectory));
