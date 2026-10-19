@@ -371,6 +371,32 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
       }),
     );
 
+    it.effect(
+      "a workspace whose committed files outgrow the capture budget is still captured: only content new to Git spends it",
+      () =>
+        Effect.gen(function* () {
+          const tmp = yield* makeTmpDir();
+          yield* initRepoWithCommit(tmp);
+          yield* writeTextFile(
+            NodePath.join(tmp, "photo.webp"),
+            "committed image bytes ".repeat(4),
+          );
+          yield* git(tmp, ["add", "photo.webp"]);
+          yield* git(tmp, ["commit", "-m", "add photo"]);
+          yield* writeTextFile(NodePath.join(tmp, "notes.md"), "new");
+          const store = yield* CheckpointStore.CheckpointStore;
+          const snapshot = yield* store.captureSnapshot({
+            cwd: tmp,
+            checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/committed/before"),
+            policy: { maxTotalBytes: 16 },
+          });
+          expect(yield* git(tmp, ["ls-tree", "--name-only", snapshot.oid])).toBe(
+            "README.md\nnotes.md\nphoto.webp",
+          );
+          expect(yield* git(tmp, ["show", `${snapshot.oid}:notes.md`])).toBe("new");
+        }),
+    );
+
     it.effect("refuses configured clean filters without invoking them", () =>
       Effect.gen(function* () {
         const tmp = yield* makeTmpDir();
