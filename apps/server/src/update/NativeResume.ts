@@ -14,6 +14,19 @@ const claudeCursor = Schema.Struct({
   turnStartMessageIds: Schema.optionalKey(Schema.Array(Schema.NullOr(Schema.String))),
 });
 const codexCursor = Schema.Struct({ threadId: Schema.NonEmptyString });
+/** OpenCode, Cursor, Grok and Antigravity re-adopt the session their own store keeps under this id. */
+const sessionIdCursor = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  sessionId: Schema.NonEmptyString,
+});
+const cursorSchemas: Record<string, Schema.Codec<unknown>> = {
+  claudeAgent: claudeCursor,
+  codex: codexCursor,
+  opencode: sessionIdCursor,
+  cursor: sessionIdCursor,
+  grok: sessionIdCursor,
+  antigravity: sessionIdCursor,
+};
 
 const cursorMatches = <A>(schema: Schema.Codec<A>, persisted: string, live: unknown | null) =>
   Effect.gen(function* () {
@@ -25,7 +38,7 @@ const cursorMatches = <A>(schema: Schema.Codec<A>, persisted: string, live: unkn
 
 /**
  * Whether a native session would resume after a restart, read from its binding. `driver` is the
- * provider's own name, as the binding and the engine's agent spell it (`claudeAgent`, `codex`).
+ * provider's own name, as the binding and the engine's agent spell it (`claudeAgent`, `opencode`).
  */
 export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
   readonly driver: string | undefined;
@@ -36,7 +49,8 @@ export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
   readonly binding: ResumeBinding | undefined;
 }) {
   const { driver, nativeRef, instanceId, binding } = input;
-  if (driver !== "claudeAgent" && driver !== "codex") return "native resume is unsupported";
+  const schema = driver === undefined ? undefined : cursorSchemas[driver];
+  if (schema === undefined) return "native resume is unsupported";
   if (
     binding === undefined ||
     binding.resume_cursor_json === null ||
@@ -48,8 +62,6 @@ export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
   if (nativeRef === null || (input.thread !== undefined && nativeRef !== input.thread))
     return "native resume binding belongs to another generation";
   const live = Object.hasOwn(input, "liveCursor") ? input.liveCursor : null;
-  const valid = yield* driver === "claudeAgent"
-    ? cursorMatches(claudeCursor, binding.resume_cursor_json, live)
-    : cursorMatches(codexCursor, binding.resume_cursor_json, live);
+  const valid = yield* cursorMatches(schema, binding.resume_cursor_json, live);
   return valid ? undefined : "native resume cursor is missing or disagrees";
 });

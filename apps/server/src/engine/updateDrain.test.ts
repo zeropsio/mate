@@ -77,11 +77,27 @@ describe("native session safety during updates", () => {
       json: '{"threadId":"native"}',
       safe: false,
     },
+    ...(["opencode", "cursor", "grok", "antigravity"] as const).flatMap((driver) => [
+      {
+        name: `${driver}'s own session id`,
+        driver,
+        provider: driver,
+        json: '{"schemaVersion":1,"sessionId":"ses_native"}',
+        safe: true,
+      },
+      {
+        name: `${driver}'s cursor without a session id`,
+        driver,
+        provider: driver,
+        json: '{"schemaVersion":1,"sessionId":""}',
+        safe: false,
+      },
+    ]),
     {
       name: "a provider without native resume proof",
-      driver: "cursor",
-      provider: "cursor",
-      json: '{"threadId":"native"}',
+      driver: "ollama",
+      provider: "ollama",
+      json: '{"schemaVersion":1,"sessionId":"ses_native"}',
       safe: false,
     },
   ])("$name decides whether switching is safe", ({ driver, provider, json, safe }) =>
@@ -237,7 +253,9 @@ const drains = (w: EngineWorld) =>
   });
 
 describe("an idle engine Mate", () => {
-  it.effect.each(["claudeAgent", "codex"] as const)(
+  // Erza, 2026-10-19: an idle OpenCode conversation read "native resume is unsupported" and every
+  // update waited out its deadline.
+  it.effect.each(["claudeAgent", "codex", "opencode", "cursor", "grok", "antigravity"] as const)(
     "an idle %s conversation proves idle and its update goes ahead, after a restart too",
     (driver) =>
       Effect.scoped(
@@ -291,6 +309,38 @@ describe("an idle engine Mate", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect("an OpenCode conversation's working turn still holds its update back", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "opencode" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "opencode",
+            driver: "opencode",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "hello" });
+        yield* w.settle;
+        yield* bindLiveSessions(w, "opencode");
+        const drain = (yield* w.engine).updateDrain!;
+        expect(
+          (yield* w.within(drain.facts)).blockers.map((reason) =>
+            reason.slice(reason.indexOf(": ") + 2),
+          ),
+        ).toContain("active run");
+        expect(yield* drains(w)).toBe(false);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* bindLiveSessions(w, "opencode");
+        expect(yield* drains(w)).toBe(true);
+        yield* w.shutdown;
+      }),
+    ),
   );
 });
 

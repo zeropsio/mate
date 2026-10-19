@@ -181,7 +181,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           }
         : driver === "codex"
           ? { threadId: `native-${session.thread}` }
-          : { thread: session.thread };
+          : { schemaVersion: 1, sessionId: `ses-${session.thread}` };
 
     const providerSession = (session: Session): ProviderSession =>
       ({
