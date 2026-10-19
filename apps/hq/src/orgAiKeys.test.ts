@@ -203,6 +203,20 @@ describe("the organization's API keys", () => {
           );
           const after = yield* core.call("GET", "/api/org/task-limits", { session: owner });
           assert.strictEqual((after.body as { model?: string }).model, flash);
+          // The model that reads images is offered too.
+          const sees = "nebius/deepseek-ai/DeepSeek-V4.1-Flash";
+          const seeing = yield* core.call("PUT", "/api/org/task-limits", {
+            session: owner,
+            body: { minutes: 30, costUsd: 5, model: sees },
+          });
+          assert.deepStrictEqual(
+            [seeing.status, (seeing.body as { model?: string }).model],
+            [200, sees],
+          );
+          yield* robot.link.takeWhere(
+            "the model that reads images on the open link",
+            (frame) => modelOf(frame)?.model === sees,
+          );
         }),
     );
 

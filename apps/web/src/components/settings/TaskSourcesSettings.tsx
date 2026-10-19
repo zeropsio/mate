@@ -1227,6 +1227,7 @@ export function AutomatedModelView({
               <span className="grid min-w-0 gap-0.5">
                 <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                   {offer.name}
+                  <Badge>{offer.readsImages ? "Reads images" : "Text only"}</Badge>
                   {slug === current ? <Badge>Current</Badge> : null}
                 </span>
                 <span className="text-xs tabular-nums text-foreground">

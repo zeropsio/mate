@@ -144,6 +144,9 @@ it("HQ prices every model an organization may pick for its automated Mates at th
         "Qwen/Qwen3.5-397B-A17B": {
           cost: { input: 0.6, output: 3.6, cache_read: 0.06, cache_write: 0.75 },
         },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          cost: { input: 0.3, output: 1.2, cache_read: 0.3 },
+        },
       },
     },
   };

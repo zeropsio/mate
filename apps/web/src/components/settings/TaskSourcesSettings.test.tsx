@@ -779,6 +779,34 @@ describe("the automated Mates' model in Settings", () => {
     view.unmount();
   });
 
+  it("each offered model says whether it reads images", () => {
+    const view = rendered(<AutomatedModelView controls={controls(known(held))} />);
+    act(() => {
+      view.root
+        .findAllByType(Button)
+        .find((button) => words(button) === "Change")!
+        .props.onClick();
+    });
+    const marks = view.root
+      .findAll((node) => node.props["data-automated-model"] !== undefined)
+      .map((node) => ({
+        model: node.props["data-automated-model"],
+        readsImages: words(node).includes("Reads images"),
+        textOnly: words(node).includes("Text only"),
+      }));
+    expect(marks).toContainEqual({
+      model: "nebius/deepseek-ai/DeepSeek-V4.1-Flash",
+      readsImages: true,
+      textOnly: false,
+    });
+    expect(marks).toContainEqual({
+      model: "nebius/zai-org/GLM-5.3-Flash",
+      readsImages: false,
+      textOnly: true,
+    });
+    view.unmount();
+  });
+
   it("a model picked saves with the limits as HQ holds them", () => {
     const limits = controls(known(held));
     const view = rendered(<AutomatedModelView controls={limits} />);
