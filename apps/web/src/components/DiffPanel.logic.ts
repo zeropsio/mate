@@ -28,6 +28,12 @@ export interface DiffChoice {
   readonly count: number | null;
   /** What the body says when there is nothing to show. */
   readonly nothing: string;
+  /**
+   * What git compares the commits with unless the person chose: on main, its upstream, so every
+   * Mate's server shows the commits not pushed that `count` counts (an older one compares main
+   * with nothing); elsewhere `null`, the server's main.
+   */
+  readonly baseRef: string | null;
 }
 
 /** How many there are, as the menu says it. */
@@ -55,6 +61,7 @@ export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyA
         label: "Not committed",
         count: read === null ? null : read.workingTree.files.length,
         nothing: `Everything in ${repository.name} is committed.`,
+        baseRef: null,
       },
       {
         repository,
@@ -71,6 +78,7 @@ export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyA
           : onMain
             ? `Everything in ${repository.name} is pushed.`
             : `Nothing in ${repository.name} is outside main.`,
+        baseRef: onMain && !neverPushed ? "@{upstream}" : null,
       },
     ];
   });
