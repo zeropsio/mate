@@ -1,4 +1,5 @@
 import { ApprovalRequestId, MessageId, TurnId } from "@t3tools/contracts";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
@@ -961,6 +962,69 @@ describe("followAfter", () => {
   ])("$name: $after", ({ follows, stood, position, after }) => {
     expect(followAfter(at(follows, stood), { kind: "scrolled", position }).follows).toBe(after);
   });
+
+  // Decision: follow-bottom only at bottom; reader's scroll always wins — one rule for both scrolls.
+  it.each([
+    {
+      name: "the reader's scroll up leaves the foot",
+      follows: true,
+      stood: 560,
+      position: up,
+      direction: "away",
+      atEnd: false,
+      after: false,
+    },
+    {
+      name: "the browser's clamp onto the foot keeps it",
+      follows: true,
+      stood: 560,
+      position: clamped,
+      direction: "away",
+      atEnd: true,
+      after: true,
+    },
+    {
+      name: "the reader's scroll back onto the foot follows again",
+      follows: false,
+      stood: 300,
+      position: foot,
+      direction: "toward-end",
+      atEnd: true,
+      after: true,
+    },
+    {
+      name: "the reader's scroll down still above it stays off",
+      follows: false,
+      stood: 120,
+      position: up,
+      direction: "toward-end",
+      atEnd: false,
+      after: false,
+    },
+    {
+      name: "the reader's scroll down while following keeps it",
+      follows: true,
+      stood: 120,
+      position: up,
+      direction: "toward-end",
+      atEnd: false,
+      after: true,
+    },
+  ] as const)(
+    "the Working card follows by the conversation's rule: $name",
+    ({ follows, stood, position, direction, atEnd, after }) => {
+      const conversation = nextTimelineFollow(follows, {
+        type: "position",
+        atEnd,
+        byPerson: true,
+        direction,
+      });
+      expect(followAfter(at(follows, stood), { kind: "scrolled", position }).follows).toBe(
+        conversation,
+      );
+      expect(conversation).toBe(after);
+    },
+  );
 
   it.each([
     { name: "a move it heard", stood: 560, position: up, top: 300 },

@@ -8,6 +8,7 @@
  * draws a long run's earlier lines as the person scrolls up to them.
  */
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { quoteWords } from "@t3tools/shared/messagePreview";
 
@@ -246,17 +247,33 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
       const { position } = event;
       const top = position.scrollTop;
       const foot = footTop(position);
+      // Whether it follows is the conversation's one rule (`nextTimelineFollow`): a move of the
+      // person's up leaves its foot, one down onto it follows again. Its foot is its own: up,
+      // landed on it exactly (the browser clamping it there); down, within its slack.
       if (top < state.stood - MOVED_PX) {
-        // Onto its foot exactly: the browser clamped it there.
-        if (fromFoot(position) <= MOVED_PX) return { ...state, stood: top, reach: null, foot };
-        return { ...state, follows: false, stood: top, resumes: false, reach: null, foot };
+        const atFoot = fromFoot(position) <= MOVED_PX;
+        const follows = nextTimelineFollow(state.follows, {
+          type: "position",
+          atEnd: atFoot,
+          byPerson: true,
+          direction: "away",
+        });
+        if (atFoot) return { ...state, follows, stood: top, reach: null, foot };
+        return { ...state, follows, stood: top, resumes: false, reach: null, foot };
       }
       if (top > state.stood + MOVED_PX) {
         // A line that landed since the move began is read with its first step.
         const reach = state.reach ?? state.foot ?? foot;
-        if (standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX) {
+        const atFoot = standsAtFoot(position) || top >= reach - FOLLOW_SLACK_PX;
+        const follows = nextTimelineFollow(state.follows, {
+          type: "position",
+          atEnd: atFoot,
+          byPerson: true,
+          direction: "toward-end",
+        });
+        if (atFoot) {
           return {
-            follows: true,
+            follows,
             stood: top,
             opened: NOTHING_OPENED,
             resumes: false,
@@ -264,7 +281,7 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
             foot,
           };
         }
-        return { ...state, stood: top, reach, foot };
+        return { ...state, follows, stood: top, reach, foot };
       }
       // Less than a move: kept from where it stood, so a slow drag adds up.
       return state.foot === foot ? state : { ...state, foot };

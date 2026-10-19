@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { LiveSlot, SlotEntry } from "./liveSlot.logic";
-import { landingHosts, orderedGlides, rowShifts, slotMoves } from "./slotMoves.logic";
+import { landingHosts, landsInView, orderedGlides, rowShifts, slotMoves } from "./slotMoves.logic";
 
 describe("history landing geometry", () => {
   it.each([
@@ -11,6 +11,17 @@ describe("history landing geometry", () => {
     { travel: [20, 0, -12], expected: [-12, -12, -12] },
   ])("earlier rows never travel below the following row: $travel", ({ travel, expected }) => {
     expect(orderedGlides(travel)).toEqual(expected);
+  });
+
+  // Decision: no animated jump while scrolled up — a line lands where the reader sees, or is simply there.
+  it.each([
+    { name: "at the history's foot, in view", place: { top: 400, bottom: 440 }, expected: true },
+    { name: "partly under the view's foot", place: { top: 490, bottom: 530 }, expected: true },
+    { name: "under a history scrolled up", place: { top: 700, bottom: 740 }, expected: false },
+    { name: "right at the view's foot", place: { top: 500, bottom: 540 }, expected: false },
+    { name: "above the view", place: { top: 40, bottom: 99 }, expected: false },
+  ])("a landed line plops only to a place in the scroll's view: $name", ({ place, expected }) => {
+    expect(landsInView(place, { top: 100, bottom: 500 })).toBe(expected);
   });
 });
 

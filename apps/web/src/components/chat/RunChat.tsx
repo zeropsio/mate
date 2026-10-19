@@ -153,6 +153,7 @@ import { KeptTimelineContext } from "./keptTimelineContext";
 import {
   type DrawnRow,
   landingHosts,
+  landsInView,
   orderedGlides,
   rowShifts,
   slotMoves,
@@ -5477,6 +5478,7 @@ function glideLines(
       (line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey));
     if (stood === undefined) return 0;
     const box = line.getBoundingClientRect();
+    if (landed.has(line) && !landsInView(box, shown)) return 0;
     const moved = stood - box.top;
     if (box.bottom + moved < view.top || box.top + moved > view.bottom) return 0;
     return visibleTravel(line, moved);
@@ -5486,7 +5488,8 @@ function glideLines(
   // A call joining an existing card travels inside that card; the card's
   // sibling travel was already accounted for by the plan above.
   for (const [line, stood] of landed) {
-    if (!rows.includes(line)) glideFrom(line, stood);
+    if (!rows.includes(line) && landsInView(line.getBoundingClientRect(), shown))
+      glideFrom(line, stood);
   }
 }
 

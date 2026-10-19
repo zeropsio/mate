@@ -131,6 +131,7 @@ import {
   isTimelineScrollTarget,
   isVerticalWheel,
   latchWheelGesture,
+  wheelHandedToList,
   timelineScrollKeyInput,
   type WheelGestureLatch,
 } from "./timelineScrollTarget";
@@ -156,7 +157,7 @@ import {
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
-  streamedRecordGrowth,
+  carriedRowGrowth,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
@@ -1279,16 +1280,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   >(
     (info) => {
       const previous = measuredRowsRef.current.get(info.itemKey);
-      const record = info.itemData?.kind === "record" ? info.itemData : undefined;
       if (info.itemData !== undefined) measuredRowsRef.current.set(info.itemKey, info.itemData);
-      const grew = insertedHistory.has(info.itemKey)
-        ? previous === undefined
-          ? info.size
-          : Math.max(0, info.size - info.previous)
-        : record?.live &&
-            streamedRecordGrowth(previous?.kind === "record" ? previous : undefined, record)
-          ? Math.max(0, info.size - info.previous)
-          : 0;
+      const grew = carriedRowGrowth({
+        inserted: insertedHistory.has(info.itemKey),
+        previous,
+        next: info.itemData,
+        size: info.size,
+        previousSize: info.previous,
+      });
       remeasurePositionRef.current?.();
       placeFolds();
       if (!followingEndRef.current) return;
@@ -1357,6 +1356,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
     personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
   }, []);
+  // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
+  const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
   const onPersonInputRef = useRef(onPersonInput);
   useLayoutEffect(() => {
     onPersonInputRef.current = onPersonInput;
@@ -1371,7 +1372,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       notePersonSession({ type: "input", at: performance.now() });
       onPersonInputRef.current(personInput);
     };
-    let wheelLatch: WheelGestureLatch | null = null;
     const onWheel = (event: WheelEvent) => {
       const node = scrollNode();
       if (!node || event.ctrlKey || !isVerticalWheel(event.deltaX, event.deltaY)) return;
@@ -1379,12 +1379,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // hand the rest of a gesture to the list, the list's move is theirs.
       notePersonSession({ type: "input", at: performance.now() });
       // A wheel that started in a nested scroller (a run's own scroll, a code
-      // block) does not leave the end, for the whole gesture it started.
+      // block) does not leave the end while it scrolls that scroller; carried
+      // on past its edge into the list, it is the list's (`wheelHandedToList`).
       const direction = event.deltaY < 0 ? "up" : "down";
-      wheelLatch = latchWheelGesture(wheelLatch, { at: performance.now(), direction }, () =>
-        isTimelineScrollTarget(event.target, node, event.deltaY),
+      const latch = latchWheelGesture(
+        wheelLatchRef.current,
+        { at: performance.now(), direction },
+        () => isTimelineScrollTarget(event.target, node, event.deltaY),
       );
-      if (wheelLatch.targetsList) onPersonInputRef.current({ kind: "wheel", direction });
+      wheelLatchRef.current = latch;
+      if (latch.targetsList) onPersonInputRef.current({ kind: "wheel", direction });
     };
     const onTouchStart = () =>
       notePersonSession({ type: "hold", by: "touch", at: performance.now() });
@@ -1591,12 +1595,31 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const own = node ? takeOwnScroll(node) : undefined;
       placeFolds();
       const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
+      // The browser carried a wheel gesture of a nested scroller on into the list: the reader
+      // took the list, and the wheel's leave or return is told as theirs.
+      const now = performance.now();
+      const handed =
+        own === undefined && reading
+          ? wheelHandedToList(wheelLatchRef.current, {
+              at: now,
+              ...classifyTimelineScroll({
+                previous: lastReadingRef.current,
+                current: reading,
+                personScrolling: true,
+              }),
+            })
+          : null;
+      if (handed !== null) {
+        wheelLatchRef.current = handed;
+        notePersonSession({ type: "input", at: now });
+        onPersonInputRef.current({ kind: "wheel", direction: handed.direction });
+      }
       const scroll = reading
         ? {
             ...classifyTimelineScroll({
               previous: lastReadingRef.current,
               current: reading,
-              personScrolling: own === undefined && personScrolling,
+              personScrolling: own === undefined && (personScrolling || handed !== null),
             }),
             // A jump far up that no change of the content explains — find in
             // page, a fragment link, focus moving — leaves the end, whoever
@@ -2013,6 +2036,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       cancelled = true;
       if (frame !== null) cancelAnimationFrame(frame);
       if (position !== undefined) setPositionRestored(true);
+      // Placed at its end, the end is the follower's, and the list's initial scroll ends before
+      // `initialScrollAtEnd` turns off: LegendList (3.3.5) keeps its bootstrap target and, as the
+      // prop turns off, hands it to the scroll as its content offset — where the end stood
+      // before a late picture grew it — and puts the view there, unheard; the follower then
+      // glided the gap. An imperative scroll to the end it stands at drops that target.
+      if (followingEndRef.current)
+        void list.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
       setListPlaced(true);
     };
     // A reading position being put back hands the page to the person's
