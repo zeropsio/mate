@@ -10,14 +10,7 @@
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import {
-  ArrowUpRightIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  GitMergeIcon,
-  GitPullRequestIcon,
-  PlusIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import {
   Fragment,
   useCallback,
@@ -31,14 +24,11 @@ import {
 
 import { REVIEW_LABEL, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { pullRequestLinkWords, pullRequestName } from "~/zerops/automatedMate.logic";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { formatElapsed } from "~/components/ui/progress.logic";
-import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
@@ -61,6 +51,8 @@ import {
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import { ProjectPageSpend, ProjectSpendSection } from "./ProjectSpend";
+import { ChangeRow } from "./ChangeRow";
+import { ProjectPageHistory } from "./ProjectHistory";
 import { spendProjectIds } from "./projectSpend.logic";
 import type {
   ProjectsFlowGroup,
@@ -68,7 +60,6 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -155,46 +146,6 @@ function CardRow({
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
-}
-
-/** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
-const CUT_TEXT_DELAY_MS = 500;
-
-/**
- * A line of text cut at its box's end, as a card's rows are: the whole of it in a tooltip while it
- * is pointed at, only where it was cut — the menu's change rows read theirs the same way. The
- * tooltip is made only then: a card's rows hold no tooltip of their own.
- */
-function CutText({ className, text }: { readonly className: string; readonly text: string }) {
-  const [shown, setShown] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const line = (
-    <span
-      className={className}
-      onPointerEnter={(event) => {
-        const element = event.currentTarget;
-        if (element.scrollWidth <= element.clientWidth) return;
-        timer.current = setTimeout(() => setShown(true), CUT_TEXT_DELAY_MS);
-      }}
-      onPointerLeave={() => {
-        clearTimeout(timer.current);
-        setShown(false);
-      }}
-    />
-  );
-  if (!shown) return <span {...line.props}>{text}</span>;
-  return (
-    <Tooltip
-      onOpenChange={(open) => {
-        if (!open) setShown(false);
-      }}
-      open
-    >
-      <TooltipTrigger render={line}>{text}</TooltipTrigger>
-      <TooltipPopup side="top">{text}</TooltipPopup>
-    </Tooltip>
-  );
 }
 
 /** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
@@ -401,12 +352,6 @@ function SetUpPanel({
 }
 
 /** How long ago a change last moved, as a menu row says its time: "3h", "2d". */
-function ChangeAge({ at }: { readonly at: string | undefined }) {
-  const nowMs = useNowMs();
-  const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at, nowMs));
-  return when.length === 0 ? null : <span className="ov-change-time">{when}</span>;
-}
-
 /**
  * A card's latest changes: each with its Mate's face, what it is, whose, and where it stands — a
  * click opens it — with the releases cut among them and production's marked (`cardChangeRows`).
@@ -470,60 +415,19 @@ export function CardChanges({
               );
             const { change } = row;
             const by = mateName(change.pull.mateProjectId);
-            const Icon = change.open ? GitPullRequestIcon : GitMergeIcon;
-            const own = face?.(change.pull.mateProjectId);
-            const github = change.pull.pullRequest;
             return (
-              <li
-                className="ov-change-row"
+              <ChangeRow
+                at={change.at}
+                face={face?.(change.pull.mateProjectId)}
                 key={`${change.pull.repository}#${String(change.pull.number)}`}
-              >
-                <button
-                  className="ov-change"
-                  data-open={change.open ? "true" : undefined}
-                  onClick={(event) => {
-                    onOpen(change, event.currentTarget);
-                  }}
-                  type="button"
-                >
-                  {own === undefined || own === null ? (
-                    <Icon aria-hidden="true" className="ov-change-icon" />
-                  ) : (
-                    <span aria-hidden="true" className="ov-change-face">
-                      {own}
-                    </span>
-                  )}
-                  <span className="ov-change-text">
-                    <CutText className="ov-change-title" text={change.pull.title} />
-                    <span className="ov-change-line" data-tone={change.tone}>
-                      {by === undefined ? change.words : `${by} · ${change.words}`}
-                    </span>
-                  </span>
-                  {/* Review on a change still open, as the menu has it (the owner, 2026-10-12: "more
-                      limited in functionality than the left menu"); the row opens it too. */}
-                  <span className="ov-change-end">
-                    <ChangeAge at={change.at} />
-                    {change.open ? (
-                      <span className="ov-review" data-zerops-surface="card-change-review">
-                        Review
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-                {/* Its pull request on GitHub, where the change is mirrored to one. */}
-                {github === undefined ? null : (
-                  <a
-                    aria-label={pullRequestLinkWords(github)}
-                    className="ov-change-pr"
-                    href={github.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {pullRequestName(github)}
-                    <ArrowUpRightIcon aria-hidden="true" className="size-3" />
-                  </a>
-                )}
-              </li>
+                line={by === undefined ? change.words : `${by} · ${change.words}`}
+                onOpen={(from) => {
+                  onOpen(change, from);
+                }}
+                open={change.open}
+                pull={change.pull}
+                tone={change.tone}
+              />
             );
           })}
         </ul>
@@ -871,9 +775,12 @@ export function ProjectPage<T>({
         page={{ onAddMate, addMateWhy, people }}
         props={props}
       />
-      {/* Its spend is a section of the column, which the page's flow alone can name the parts of. */}
+      {/* Its spend and its History are sections of the column, which the page's flow alone can
+          name the parts of. */}
       <ProjectPageSpend value={<ProjectSpendSection appId={group.groupId} projectIds={spendIds} />}>
-        <div className="ov-page-aside">{aside}</div>
+        <ProjectPageHistory value={props.renderHistory?.(entry) ?? null}>
+          <div className="ov-page-aside">{aside}</div>
+        </ProjectPageHistory>
       </ProjectPageSpend>
     </div>
   );

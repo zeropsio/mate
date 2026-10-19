@@ -7,6 +7,8 @@
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
+import type { FlowPullRequest, FlowReleaseRow } from "@t3tools/client-runtime/zerops";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ReactNode } from "react";
 
@@ -18,6 +20,9 @@ import {
 import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
 import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
+import { ProjectHistoryView } from "~/components/zerops/projects/ProjectHistory";
+import { historyReleases } from "~/components/zerops/projects/projectHistory.logic";
+import { MateFace } from "~/components/zerops/primitives";
 import { ProjectSpendSectionView } from "~/components/zerops/projects/ProjectSpend";
 import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.logic";
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
@@ -57,14 +62,136 @@ function environment(
   } as EnvironmentRow;
 }
 
-function commit(subject: string, seed: string, hoursAgo: number, mate?: string): CompareCommit {
+/** Every Mate a page's History names, as the harness's cards draw them. */
+const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
+  "raya-t": { name: "Raya", tint: "olive" },
+  "vera-t": { name: "Vera", tint: "amber" },
+  odo: { name: "Odo", tint: "slate" },
+  tess: { name: "Tess", tint: "rose" },
+  "juno-s": { name: "Juno", tint: "sky" },
+  "mira-s": { name: "Mira", tint: "amber" },
+  "ines-s": { name: "Ines", tint: "olive" },
+  "odo-s": { name: "Odo", tint: "slate" },
+  "tess-s": { name: "Tess", tint: "rose" },
+};
+
+/** A change a Mate landed `minutes` ago, mirrored to GitHub's pull request `github`. */
+function landed(
+  number: number,
+  title: string,
+  mateProjectId: string,
+  minutes: number,
+  github = number,
+): FlowPullRequest {
   return {
-    sha: sha(seed),
-    subject,
-    authorName: mate === undefined ? "Nova" : "Mate HQ",
-    at: new Date(NOW - hoursAgo * 3_600_000).toISOString(),
-    change: mate === undefined ? null : { number: 4, title: subject, mateProjectId: mate },
+    repository: "appdev",
+    number,
+    title,
+    kind: "code",
+    mateProjectId,
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged: true,
+    mergedAt: ago(minutes),
+    headSha: sha(String(number)),
+    baseBranch: "main",
+    line: `appdev #${String(number)}`,
+    updatedAt: ago(minutes),
+    pullRequest: {
+      number: github,
+      url: `https://github.com/acme/store/pull/${String(github)}`,
+      state: "merged",
+    },
   };
+}
+
+/** A commit on `main` no change of a Mate's landed: a person's push, GitHub's merge, a Mate's bot. */
+function pushed(subject: string, minutes: number, authorName = "Nova Dev"): CompareCommit {
+  return {
+    sha: sha(subject.length.toString(16) + String(minutes)),
+    subject,
+    authorName,
+    at: ago(minutes),
+    change: null,
+  };
+}
+
+function shipped(
+  tag: string,
+  minutes: number,
+  over: Partial<FlowReleaseRow> = {},
+): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing"> {
+  return { tag, taggedAt: ago(minutes), verdict: "approved", standing: undefined, ...over };
+}
+
+/**
+ * Tea Shop's history as the owner's live page read it (2026-10-19): squashes with GitHub's `(#n)`,
+ * a GitHub merge commit and the bot commit it brought, and a person's push straight to `main`.
+ */
+const DAY = 24 * 60;
+const TEA_HISTORY = historyReleases({
+  releases: [
+    shipped("v0.1.3", 6 * DAY, { standing: "live" }),
+    shipped("v0.1.2", 6.5 * DAY),
+    shipped("v0.1.1", 7 * DAY),
+    shipped("v0.1.0", 8 * DAY),
+  ],
+  merged: [
+    landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
+    landed(16, "Hide sold out switch remembered across visits", "vera-t", 6 * DAY + 18),
+    landed(13, "Price per 100 g leads on tea cards", "vera-t", 6 * DAY + 40),
+    landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
+    landed(10, "Back to top link in the footer, reading “↑ Top”", "vera-t", 6.6 * DAY),
+    landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
+    landed(5, "In stock and Sold out labels with a Hide sold out switch", "vera-t", 7.2 * DAY),
+    landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
+    landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
+  ],
+  commits: [
+    pushed("Merge pull request #16 from acme/mate/13-hide-sold-out-switch", 6 * DAY + 18),
+    pushed("Hide sold out switch remembered across visits (#14)", 6 * DAY + 26, "acme-mate[bot]"),
+    pushed("Fix the footer year (#12)", 6.55 * DAY),
+  ],
+});
+
+/** Acme Store: seven releases, the newest five shown, one rolled back from. */
+const ACME_HISTORY = historyReleases({
+  releases: [
+    shipped("v0.1.59", 60, { standing: "live", rollbackOf: "v0.1.57" }),
+    shipped("v0.1.58", 3 * 60),
+    shipped("v0.1.57", 20 * 60),
+    shipped("v0.1.56", 2 * 24 * 60),
+    shipped("v0.1.55", 3 * 24 * 60),
+    shipped("v0.1.54", 5 * 24 * 60),
+    shipped("v0.1.53", 8 * 24 * 60),
+  ],
+  merged: [
+    landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
+    landed(12, "Fix the VAT rate table for Ireland", "mira-s", 21 * 60),
+    landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
+    landed(10, "Gift cards at checkout", "mira-s", 30 * 60),
+    landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
+  ],
+  commits: [pushed("Bump Node to 22 (#8)", 2.5 * 24 * 60)],
+});
+
+/** A Mate's face, as the harness's cards draw it. */
+function mateFace(projectId: string): ReactNode {
+  const mate = MATES[projectId];
+  return mate === undefined ? undefined : <MateFace size={20} state="idle" tint={mate.tint} />;
+}
+
+/** A project page's History, drawn from its fixtures. */
+function PageHistory({ groupId }: { readonly groupId: string }) {
+  return (
+    <ProjectHistoryView
+      face={mateFace}
+      mateName={(projectId) => MATES[projectId]?.name}
+      onOpen={nothing}
+      releases={groupId === "acme-store" ? ACME_HISTORY : TEA_HISTORY}
+    />
+  );
 }
 
 const RELEASE_WAITING: ReleaseOffer = {
@@ -296,28 +423,8 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
         environments={environments}
         finishing={false}
         groupId={groupId}
-        history={
-          running
-            ? {
-                kind: "read",
-                total: 4,
-                commits: [
-                  commit("One-page checkout", "b21d904c", 1, "juno-s"),
-                  commit("Prices no longer round down in the cart", "5c3ea18b", 5, "tess-s"),
-                  commit("Fix the VAT rate table for Ireland", "3f9c1b2e", 20),
-                  commit("Gift cards at checkout", "9a7d2f10", 30, "mira-s"),
-                ],
-              }
-            : { kind: "read", commits: [], total: 0 }
-        }
+        history={running ? <PageHistory groupId={groupId} /> : null}
         name={groupId}
-        names={{
-          mateNames: new Map([
-            ["juno-s", "Juno"],
-            ["tess-s", "Tess"],
-            ["mira-s", "Mira"],
-          ]),
-        }}
         onAdd={nothing}
         onFinish={nothing}
         onMirror={nothing}
@@ -350,7 +457,6 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
               ]
         }
         spend={<ProjectSpendSectionView state={running ? SPEND : SPEND_TODAY} />}
-        tags={new Map([[sha("3f9c1b2e"), ["v0.1.59"]]])}
       />
     </Standins>
   );

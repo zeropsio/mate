@@ -8850,6 +8850,111 @@ button.ov-panel-state:focus-visible {
   content: "";
 }
 
+/* A project page's History: a row per release — its version, its state, how many changes, when —
+   opening to the changes it put live, each the card's change row, set in under its version. */
+.ov-history {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+div.ov-change:hover {
+  background: none;
+}
+
+.ov-history-chevron {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.ov-history-chevron > svg {
+  width: 14px;
+  height: 14px;
+  transition: rotate 150ms var(--ease-out-strong);
+}
+
+.ov-history-chevron > svg[data-open] {
+  rotate: 90deg;
+}
+
+.ov-history-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-history-tag {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live in production's green, as the card's places say it; Rolled back quiet; a failed deploy red. */
+.ov-history-state {
+  display: inline-flex;
+  height: 18px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ov-history-state::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.ov-history-state[data-state="live"] {
+  background: color-mix(in oklab, var(--zerops-status-ok) 14%, transparent);
+  color: var(--foreground);
+}
+
+.ov-history-state[data-state="live"]::before {
+  background: var(--zerops-status-ok);
+}
+
+.ov-history-state[data-state="deploy-failed"] {
+  background: var(--zerops-status-failed-surface);
+  color: var(--zerops-status-failed-text);
+}
+
+/* An open release's changes hug its row; the next release stands clear of them. */
+.ov-history-changes {
+  margin: 0 0 10px;
+  padding-left: 30px;
+}
+
+.ov-history-subjects {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 8px 6px 38px;
+  list-style: none;
+}
+
+.ov-history-note {
+  padding: 2px 8px 6px;
+}
+
+.ov-history-more {
+  display: flex;
+  padding-top: 2px;
+}
+
 /* Where nothing is said yet: one quiet line where the list would be. */
 .ov-sec-empty {
   color: var(--muted-foreground);

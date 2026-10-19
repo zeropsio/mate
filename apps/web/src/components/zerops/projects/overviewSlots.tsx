@@ -15,6 +15,7 @@ import {
   formatRunClock,
   stageMarks,
   stageStandings,
+  type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -52,6 +53,7 @@ import {
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
 import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { ProjectHistory } from "./ProjectHistory";
 import {
   broughtBy,
   historyOffered,
@@ -429,11 +431,13 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           : (stageOf(entry)?.stage ?? { runs: [], deploying: [], mainHeads: new Map() }),
       production: entry.flow.production.kind !== "absent",
       limit: CARD_CHANGES,
+      // On the project's page its History says what each release put live.
+      unreleased: input.onPage === true,
     });
     const mateName = (projectId: string) =>
       entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
     const releases =
-      read?.releasesKnown === true
+      read?.releasesKnown === true && input.onPage !== true
         ? read.releases.map((release) => ({
             tag: release.tag,
             taggedAt: release.taggedAt,
@@ -457,19 +461,34 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             : CHANGES_UNKNOWN_LINE[entry.changesUnknown]
         }
         onOpen={(change, from) => {
-          openReview(
-            {
-              kind: "change",
-              groupId: entry.group.groupId,
-              repository: change.pull.repository,
-              number: change.pull.number,
-            },
-            { from },
-          );
+          openChange(entry.group.groupId, change.pull, from);
         }}
       />
     );
   };
+
+  const openChange = (groupId: string, change: FlowPullRequest, from: HTMLElement) => {
+    openReview(
+      { kind: "change", groupId, repository: change.repository, number: change.number },
+      { from },
+    );
+  };
+
+  /** A project page's History: its releases, each opening to the changes it put live. */
+  const renderHistory = (entry: ProjectsFlowGroup<T>): ReactNode => (
+    <ProjectHistory
+      face={(projectId) => {
+        const item = entry.mates.get(projectId);
+        return item === undefined ? undefined : input.mateFace(item);
+      }}
+      flow={flows.get(entry.group.groupId)}
+      groupId={entry.group.groupId}
+      mateName={(projectId) => entry.flow.mates.find((mate) => mate.projectId === projectId)?.name}
+      onOpen={(change, from) => {
+        openChange(entry.group.groupId, change, from);
+      }}
+    />
+  );
 
   /** The people on a project — its Mates' owners — beside its name, where more than one. */
   const renderCardPeople = (entry: ProjectsFlowGroup<T>): ReactNode => {
@@ -491,7 +510,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
   };
 
-  return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople };
+  return { cardPlaces, renderPlacePanel, renderChanges, renderHistory, renderCardPeople };
 }
 
 /** A working Mate's clock, a step a second (R6). */
