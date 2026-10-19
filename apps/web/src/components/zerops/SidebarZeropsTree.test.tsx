@@ -936,7 +936,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   });
 
   it.each([
-    { case: "waiting for a task", task: null, says: "Waiting for a task" },
+    { case: "no task yet", task: null, says: "No tasks yet" },
     {
       case: "on a task",
       task: {

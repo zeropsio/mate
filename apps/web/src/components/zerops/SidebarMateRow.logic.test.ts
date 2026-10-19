@@ -20,6 +20,7 @@ import {
   mateRowPropsEqual,
   mateRowSecond,
   mateAutomation,
+  mateRowTime,
   changeLineWords,
   tasksWaitingWords,
   type MateRowView,
@@ -1194,6 +1195,13 @@ describe("mateRowReading — the pose a Mate's row wears", () => {
     task: "Speed up the photo gallery",
     ...overrides,
   });
+  it("an automated Mate free for a task rests on its row, its last task's end on its line alone", () => {
+    const done = activity({ kind: "done", face: "done", snippet: "Opened a change." });
+    expect(mateRowReading({ connected: true, activity: done, mine: true, free: true }).face).toBe(
+      "idle",
+    );
+    expect(mateRowReading({ connected: true, activity: done, mine: true }).face).toBe("done");
+  });
   it.each([
     {
       case: "arriving, up, its sign-in to come",
@@ -2078,10 +2086,36 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
           title: "Add a search box",
           url: "u",
           ended: "merged" as const,
+          endedAt: "2026-10-17T09:00:00.000Z",
           pullRequest: { number: 2, url: "p", state: "merged" as const },
         },
       },
-      expected: { task: null },
+      expected: {
+        task: null,
+        last: {
+          number: 1,
+          title: "Add a search box",
+          ended: "merged",
+          endedAt: "2026-10-17T09:00:00.000Z",
+        },
+      },
+    },
+    {
+      case: "automated, its most recent task stopped by HQ for the spent budget",
+      mate: {
+        automated: true,
+        task: {
+          id: "t5",
+          title: "Prices per 100 g",
+          url: null,
+          ended: "stopped" as const,
+          why: "budget" as const,
+        },
+      },
+      expected: {
+        task: null,
+        last: { title: "Prices per 100 g", ended: "stopped", why: "budget" },
+      },
     },
   ])("$case", ({ mate, expected }) => {
     expect(mateAutomation(mate)).toEqual(expected);
@@ -2095,6 +2129,48 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
   it("carries how many of an automated Mate's changes wait for review, where several do", () => {
     expect(mateAutomation({ automated: true }, undefined, 3)).toEqual({ task: null, inReview: 3 });
     expect(mateAutomation({ automated: true }, undefined, 1)).toEqual({ task: null });
+  });
+});
+
+describe("mateRowTime — when a row dates its Mate", () => {
+  const ended = "2026-10-17T09:00:00.000Z";
+  const last = { title: "Prices per 100 g", ended: "merged" as const, endedAt: ended };
+  it.each([
+    {
+      case: "a free automated Mate's row dates its last task's end in its time slot",
+      input: {
+        slot: { kind: "age" },
+        at: "2026-10-17T11:00:00.000Z",
+        automated: { task: null, last },
+      },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+    {
+      case: "a free automated Mate with no conversation read yet still dates its last task's end",
+      input: { slot: { kind: "none" }, at: undefined, automated: { task: null, last } },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+    {
+      case: "an automated Mate that never had a task shows no time",
+      input: { slot: { kind: "age" }, at: "2026-10-17T11:00:00.000Z", automated: { task: null } },
+      expected: { slot: { kind: "none" }, at: undefined },
+    },
+    {
+      case: "an automated Mate at work keeps its run's clock",
+      input: {
+        slot: { kind: "clock", since: ended },
+        at: ended,
+        automated: { task: { title: "Prices per 100 g" } },
+      },
+      expected: { slot: { kind: "clock", since: ended }, at: ended },
+    },
+    {
+      case: "any other Mate's row dates its own last word",
+      input: { slot: { kind: "age" }, at: ended, automated: undefined },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+  ] as const)("$case", ({ input, expected }) => {
+    expect(mateRowTime(input)).toEqual(expected);
   });
 });
 
@@ -2121,14 +2197,60 @@ describe("mateRowSecond — an automated Mate's line", () => {
 
   it.each([
     {
-      case: "an automated Mate with no task says it waits for one",
+      case: "an automated Mate that never had a task says so",
       over: {},
-      line: { kind: "task", text: "Waiting for a task", on: false },
+      line: { kind: "task", text: "No tasks yet", on: false },
     },
     {
-      case: "an automated Mate never asked anything yet says it waits for a task",
+      case: "an automated Mate never asked anything yet says it has had no task",
       over: { view: view("idle", null), askLine: undefined },
-      line: { kind: "task", text: "Waiting for a task", on: false },
+      line: { kind: "task", text: "No tasks yet", on: false },
+    },
+    {
+      case: "an idle automated Mate's row names its last task and how it ended",
+      over: {
+        automated: {
+          task: null,
+          last: { title: "Prices per 100 g", ended: "merged", endedAt: "2026-10-17T09:00:00Z" },
+        },
+      },
+      line: { kind: "task", text: "Prices per 100 g · merged", on: false },
+    },
+    {
+      case: "an idle automated Mate's last task from GitHub is named by its issue",
+      over: {
+        automated: {
+          task: null,
+          last: { number: 12, title: "Fix the checkout total", ended: "failed" },
+        },
+      },
+      line: { kind: "task", text: "#12 Fix the checkout total · failed", on: false },
+    },
+    {
+      case: "an idle automated Mate whose last task HQ stopped for the spent budget says so",
+      over: {
+        automated: {
+          task: null,
+          last: {
+            title: "Prices per 100 g",
+            ended: "stopped",
+            why: "budget",
+            endedAt: "2026-10-17T11:58:00Z",
+          },
+        },
+      },
+      line: { kind: "task", text: "Prices per 100 g · stopped: budget spent", on: false },
+    },
+    {
+      case: "an automated Mate holding changes in review says how many, not its last task",
+      over: {
+        automated: {
+          task: null,
+          inReview: 2,
+          last: { title: "Prices per 100 g", ended: "merged" },
+        },
+      },
+      line: { kind: "task", text: "2 changes in review", on: false },
     },
     {
       case: "an automated Mate at work says its step, as any Mate",
@@ -2323,14 +2445,14 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "task", text: "#12 Fix the checkout total · working", on: true },
     },
     {
-      case: "an automated Mate whose key is not read yet says it waits for a task",
+      case: "an automated Mate whose key is not read yet never says it waits for the key",
       over: { automated: { task: null, key: "unknown" } },
-      line: { kind: "task", text: "Waiting for a task", on: false },
+      line: { kind: "task", text: "No tasks yet", on: false },
     },
     {
       case: "an automated Mate never offers a sign-in on its line",
       over: { askLine: { kind: "sign-in" } },
-      line: { kind: "task", text: "Waiting for a task", on: false },
+      line: { kind: "task", text: "No tasks yet", on: false },
     },
     {
       case: "an automated Mate that stopped on an error says the error",

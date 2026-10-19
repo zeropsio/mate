@@ -296,6 +296,10 @@ const automated = (
     readonly title: string;
     readonly waiting?: true;
     readonly stopping?: true;
+    /** It ended, hours ago: the Mate is free, its row says its last task. */
+    readonly ended?: "merged" | "closed" | "done" | "failed" | "stopped";
+    readonly endedHours?: number;
+    readonly why?: "budget" | "unanswered";
   } | null,
 ): HqPlacement => ({
   appId,
@@ -322,6 +326,13 @@ const automated = (
               title: task.title,
               url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
               ...(task.stopping === true ? { stopping: true as const } : {}),
+              ...(task.ended === undefined ? {} : { ended: task.ended }),
+              ...(task.endedHours === undefined
+                ? {}
+                : {
+                    endedAt: new Date(Date.now() - task.endedHours * 3_600_000).toISOString(),
+                  }),
+              ...(task.why === undefined ? {} : { why: task.why }),
             },
   },
 });
@@ -396,7 +407,8 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
   // An application's automated Mates: one at work on a task from GitHub, one whose tasks' changes
-  // wait for review (two, `FLOWS`), one waiting for its next.
+  // wait for review (two, `FLOWS`), one free after its last task merged, one HQ stopped for the
+  // spent budget, one that never had a task.
   candidate(
     "tea-nova",
     "Nova",
@@ -407,7 +419,28 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
     "Rio",
     automated("tea-shop", "Tea Shop", { number: 7, title: "Show the tea's origin" }),
   ),
-  candidate("tea-sol", "Sol", automated("tea-shop", "Tea Shop", null)),
+  candidate(
+    "tea-sol",
+    "Sol",
+    automated("tea-shop", "Tea Shop", {
+      number: 4,
+      title: "Prices per 100 g",
+      ended: "merged",
+      endedHours: 3,
+    }),
+  ),
+  candidate(
+    "tea-kai",
+    "Kai",
+    automated("tea-shop", "Tea Shop", {
+      number: 5,
+      title: "Translate the menu",
+      ended: "stopped",
+      why: "budget",
+      endedHours: 26,
+    }),
+  ),
+  candidate("tea-ivo", "Ivo", automated("tea-shop", "Tea Shop", null)),
   // One whose task a person stopped, its Mate not stopped yet.
   candidate(
     "tea-raya",
@@ -460,9 +493,9 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       id: "tea-sol",
       task: "Work issue #9 in the project, check it, then open a change for review.",
       subject: "Work issue #9 in the project, check it, then open a change for review.",
-      snippet: "Opened a change for review: Show the tea's origin on its page.",
+      snippet: "Opened a change for review: Prices per 100 g.",
       hours: 3,
-      face: "idle",
+      face: "done",
     }),
   ],
   [

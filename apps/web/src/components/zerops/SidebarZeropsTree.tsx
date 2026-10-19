@@ -294,6 +294,7 @@ import {
   mateRowHeldLines,
   mateAsker,
   mateRowSecond,
+  mateRowTime,
   mateAutomation,
   changeLineWords,
   tasksWaitingWords,
@@ -1912,6 +1913,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         reviewWaits: reviewWaits(item),
         mine: waitsOnViewer(item.project.id),
         pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+        free: mateAutomation(item.project.hq?.mate)?.task === null,
       });
       const comingNow = getComing?.(item);
       const view = comingNow === undefined ? read : mateComingRowView(read, comingNow);
@@ -2630,8 +2632,8 @@ function GroupRowWords<T extends RosterCandidate>({
         >
           <span className="flex items-center" data-menu-time="">
             <MateSlot
-              at={lead.activity?.at}
-              slot={state.view.slot}
+              at={state.time.at}
+              slot={state.time.slot}
               unseen={state.view.unseen}
               timestampFormat={timestampFormat}
               tint={lead.tint}
@@ -3360,6 +3362,7 @@ function useMateRowState<T extends RosterCandidate>({
     mine: hqPeople?.waitsOnViewer === true,
     pose,
     updating: watch.updating,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -3436,6 +3439,7 @@ function useMateRowState<T extends RosterCandidate>({
     pose,
     restarting: watch.restarting,
     watched: watch.watched,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const { known } = face;
   // What the person is about to send it, waiting in its composer: the row's second line says it,
@@ -3482,6 +3486,7 @@ function useMateRowState<T extends RosterCandidate>({
       : undefined;
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
+  const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
     view,
@@ -3494,8 +3499,10 @@ function useMateRowState<T extends RosterCandidate>({
     asks,
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
-    automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
+    automated,
   });
+  // Its time slot: a free automated Mate's, when its last task ended (`mateRowTime`).
+  const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
   const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
@@ -3515,6 +3522,7 @@ function useMateRowState<T extends RosterCandidate>({
     known,
     askLine,
     second,
+    time,
     heldLines,
     askChanged,
     /**
@@ -3742,6 +3750,7 @@ function MateRowView<T extends RosterCandidate>({
     known,
     askLine,
     second,
+    time,
     heldLines,
     askChanged,
     asksViewer,
@@ -4077,8 +4086,8 @@ function MateRowView<T extends RosterCandidate>({
               data-menu-time=""
             >
               <MateSlot
-                at={activity?.at}
-                slot={view.slot}
+                at={time.at}
+                slot={time.slot}
                 unseen={view.unseen}
                 timestampFormat={timestampFormat}
                 tint={tint}
