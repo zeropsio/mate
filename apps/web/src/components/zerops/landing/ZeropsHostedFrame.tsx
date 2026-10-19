@@ -15,7 +15,7 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../../branding";
 import { isElectron } from "../../../env";
@@ -56,8 +56,12 @@ export function ZeropsHostedFrame({
   /** One quiet line at the foot of a centred page — the byline. */
   readonly footer?: ReactNode;
   readonly width?: WorkspacePageWidth;
-  /** A column beside the page, below the bar (an environment's vault), full height. */
-  readonly side?: ReactNode;
+  /**
+   * A column beside the page, below the bar (an environment's vault), full height — where the
+   * frame is wide enough for the page beside it ({@link SIDE_BESIDE_MIN_PX}); under the page,
+   * full width, where it is not. Drawn for the place it is given.
+   */
+  readonly side?: ((placement: SidePlacement) => ReactNode) | undefined;
   readonly children: ReactNode;
 }) {
   const standalone = useOptionalSidebar() === null;
@@ -116,14 +120,59 @@ export function ZeropsHostedFrame({
             <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
           </ScrollArea>
         ) : (
-          <div className="flex min-h-0 flex-1">
-            <ScrollArea className="min-h-0 min-w-0 flex-1">
-              <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
-            </ScrollArea>
-            {side}
-          </div>
+          <FrameWithSide side={side} width={width}>
+            {children}
+          </FrameWithSide>
         )}
       </div>
     </SidebarInset>
+  );
+}
+
+/** Where a frame's side column stands: beside the page, or under it. */
+export type SidePlacement = "beside" | "under";
+
+/**
+ * The frame's width from which a side column stands beside the page: below it the page would be
+ * squeezed until a table of services stacks into towers, so the column goes under the page.
+ */
+export const SIDE_BESIDE_MIN_PX = 1100;
+
+/** The page and its side column, beside or under it by the frame's own width. */
+function FrameWithSide({
+  side,
+  width,
+  children,
+}: {
+  readonly side: (placement: SidePlacement) => ReactNode;
+  readonly width: WorkspacePageWidth;
+  readonly children: ReactNode;
+}) {
+  const host = useRef<HTMLDivElement | null>(null);
+  const [placement, setPlacement] = useState<SidePlacement>("beside");
+  // Measured before paint, so the page never draws in one arrangement and moves to the other.
+  useLayoutEffect(() => {
+    const element = host.current;
+    if (element === null) return;
+    const place = (widthPx: number) =>
+      setPlacement(widthPx >= SIDE_BESIDE_MIN_PX ? "beside" : "under");
+    place(element.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) place(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div className="flex min-h-0 flex-1" data-zerops-side={placement} ref={host}>
+      <ScrollArea className="min-h-0 min-w-0 flex-1">
+        <WorkspacePageContainer width={width}>
+          {children}
+          {placement === "under" ? side("under") : null}
+        </WorkspacePageContainer>
+      </ScrollArea>
+      {placement === "beside" ? side("beside") : null}
+    </div>
   );
 }

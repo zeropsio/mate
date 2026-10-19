@@ -61,8 +61,14 @@ export function withheldProjectNotice(
   inventory: Inventory,
   projectId: string,
   name = "This project",
+  /**
+   * `removal: false` where the project stands as a row of something else (the project page's
+   * environments): a rename's realtime remove can prove a project deleted for a moment, and only
+   * its own route names a removal.
+   */
+  options: { readonly removal: boolean } = { removal: true },
 ): string | null {
-  if (inventory.deleted.includes(projectId)) return `${name} was removed.`;
+  if (inventory.deleted.includes(projectId)) return options.removal ? `${name} was removed.` : null;
   const authority = projectAuthority(inventory, projectId);
   if (authority.kind !== "withheld") return null;
   return (
@@ -76,10 +82,14 @@ export function withheldProjectNotice(
 
 /**
  * Why withheld projects are not shown: each source reason once, however many projects it affects.
+ * A project proven deleted is not named: a rename's realtime remove can prove one deleted for a
+ * moment (the owner's renamed project read "This project was removed."), and nothing ever clears a
+ * proof, so a real removal's notice would hang there for good. Its own route still says it.
  */
 export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<string> {
   const notices = new Set<string>();
   for (const { projectId } of inventory.projectRefs.values()) {
+    if (inventory.deleted.includes(projectId)) continue;
     const notice = withheldProjectNotice(inventory, projectId);
     if (notice !== null) notices.add(notice);
   }

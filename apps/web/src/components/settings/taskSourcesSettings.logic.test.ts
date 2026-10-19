@@ -10,9 +10,13 @@ import {
   scheduleLine,
   scheduleNextLine,
   connectKeyProblem,
+  replaceKeysReady,
   sectionState,
+  slackChannelChoices,
+  slackChannelsLine,
   slackLine,
   slackManifestApp,
+  slackSignatureRefused,
   taskSourceProblem,
   taskSourcesUnsupported,
   workingWords,
@@ -238,5 +242,88 @@ describe("what a connection's fields take before Connect", () => {
     { key: "discord-bot-token", typed: "a b", problem: "A bot token has no spaces." },
   ] as const)("$key typed as '$typed' says $problem", ({ key, typed, problem }) => {
     expect(connectKeyProblem(key, typed)).toBe(problem);
+  });
+});
+
+describe("Slack's refused signatures", () => {
+  const at = (minute: number) => `2026-10-18T22:${String(minute).padStart(2, "0")}:00.000Z`;
+  it.each([
+    { case: "never refused", refused: null, accepted: at(1), says: false },
+    { case: "refused, never accepted", refused: at(1), accepted: null, says: true },
+    { case: "refused after the last accepted", refused: at(5), accepted: at(1), says: true },
+    { case: "accepted after the last refused", refused: at(1), accepted: at(5), says: false },
+    { case: "an HQ that does not say", refused: undefined, accepted: undefined, says: false },
+  ])("the Slack card says the signing secret does not match: $case → $says", (row) => {
+    const view = {
+      connected: true,
+      ...(row.refused === undefined ? {} : { eventsRefusedAt: row.refused }),
+      ...(row.accepted === undefined ? {} : { eventsAcceptedAt: row.accepted }),
+    };
+    expect(slackSignatureRefused(view)).toBe(row.says);
+  });
+
+  it("says nothing of signatures while Slack is not connected", () => {
+    expect(slackSignatureRefused({ connected: false, eventsRefusedAt: at(1) })).toBe(false);
+  });
+});
+
+describe("the channels Slack's bot is in", () => {
+  it.each([
+    {
+      case: "in channels",
+      held: { bot: "mate", channels: [{ id: "C042", name: "support" }] },
+      says: { kind: "channels", channels: [{ id: "C042", name: "support" }] },
+    },
+    {
+      case: "in none",
+      held: { bot: "mate", channels: [] },
+      says: { kind: "none", words: "Invite @mate to a channel first." },
+    },
+    {
+      case: "in none, its name not known",
+      held: { bot: null, channels: [] },
+      says: { kind: "none", words: "Invite @Mate to a channel first." },
+    },
+  ])("$case", ({ held, says }) => {
+    expect(slackChannelChoices(held)).toEqual(says);
+  });
+
+  it.each([
+    [{ bot: "mate", channels: [] }, "Invite @mate to a channel first."],
+    [
+      {
+        bot: "mate",
+        channels: [
+          { id: "C1", name: "support" },
+          { id: "C2", name: "orders" },
+        ],
+      },
+      "In #support and #orders.",
+    ],
+    [
+      {
+        bot: "mate",
+        channels: [
+          { id: "C1", name: "a" },
+          { id: "C2", name: "b" },
+          { id: "C3", name: "c" },
+        ],
+      },
+      "In #a, #b and #c.",
+    ],
+  ] as const)("Settings says where the bot is: %o reads “%s”", (held, line) => {
+    expect(slackChannelsLine(held)).toBe(line);
+  });
+});
+
+describe("replacing a connected Slack's keys", () => {
+  it.each([
+    { case: "nothing typed", token: "", secret: "", ready: false },
+    { case: "a new signing secret alone", token: "", secret: "s3cret", ready: true },
+    { case: "a new bot token alone", token: "xoxb-1-2", secret: "", ready: true },
+    { case: "a bot token that is none", token: "xoxp-1-2", secret: "", ready: false },
+    { case: "a secret with a space", token: "", secret: "s3 cret", ready: false },
+  ])("Replace is pressable with $case: $ready", ({ token, secret, ready }) => {
+    expect(replaceKeysReady(token, secret)).toBe(ready);
   });
 });

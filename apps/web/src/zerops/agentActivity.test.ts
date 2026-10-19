@@ -26,6 +26,7 @@ import {
   listedMateFace,
   mateFaceFor,
   mateFaceOf,
+  mateReviewCount,
   mateReviewWaits,
   overviewAgentActivity,
   restingActivity,
@@ -112,6 +113,27 @@ describe("mateReviewWaits — a Mate's own change waits for the person's review"
     },
   ])("$case", ({ flow, waits }) => {
     expect(mateReviewWaits(flow, "nova")).toBe(waits);
+  });
+
+  it.each([
+    { case: "none", pulls: [], count: 0 },
+    { case: "one", pulls: [pull()], count: 1 },
+    {
+      case: "one per task, several at once",
+      pulls: [pull(), pull({ number: 3 }), pull({ number: 4, repository: "apidev" })],
+      count: 3,
+    },
+    {
+      case: "only its own that merge",
+      pulls: [
+        pull(),
+        pull({ number: 3, mateProjectId: "kai" }),
+        pull({ number: 4, mergeability: "checking" }),
+      ],
+      count: 1,
+    },
+  ])("counts a Mate's own changes waiting for the person's review: $case", ({ pulls, count }) => {
+    expect(mateReviewCount({ pullRequests: pulls }, "nova")).toBe(count);
   });
 });
 

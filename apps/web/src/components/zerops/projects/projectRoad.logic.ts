@@ -1,9 +1,6 @@
 /**
- * A project's state line and its road: the one most urgent fact about it, and the three stops its
- * code travels — Development, Stage, Production — with what waits between them.
- *
- * The road's shape never changes: a stop that does not exist yet is a ghost, so cards side by side
- * line up. What a stop says under it is one quiet line, from its place's reading (`PlaceLine`).
+ * A project's state line — the one most urgent fact about it, and why it needs you — and the words
+ * its places say on its card and its page: production's status line, each stage's row.
  *
  * Pure: no React, no clock of its own.
  */
@@ -25,6 +22,8 @@ export interface ProjectState {
   readonly kind: ProjectStateKind;
   /** Said in small caps above the project's name. */
   readonly words: string;
+  /** Why it needs you, after its words: "1 change in review", "2 ready to release". */
+  readonly reason?: string;
   /** Its dot, as a place's dot reads (`PlaceDot`). */
   readonly dot: "failed" | "down" | "attention" | "unknown" | "releasing" | "running" | "none";
 }
@@ -41,8 +40,9 @@ const STATES: Record<ProjectStateKind, Omit<ProjectState, "kind">> = {
 
 /**
  * The project's one state: production's trouble first — a failed release, services down — then
- * what waits on the viewer, then a first Mate still setting up while nothing runs, then what
- * production does; a project that runs nowhere yet is in development.
+ * what waits on the viewer — a Mate, a change, a release ready to go, its reason beside it — then
+ * a first Mate still setting up while nothing runs, then what production does; a project that runs
+ * nowhere yet is in development.
  */
 export function projectState(input: {
   /** Production's line (`placeLines`). */
@@ -50,14 +50,21 @@ export function projectState(input: {
   /** A Mate's lift or a change waits on the viewer. */
   readonly waitsOnYou: boolean;
   readonly mates: ReadonlyArray<Pick<GroupFlowMate, "coming">>;
+  /** Its code changes in review (`inReview`). */
+  readonly review?: number | undefined;
+  /** A release production waits for (`cardReady`). */
+  readonly ready?: { readonly count: number; readonly atLeast: boolean } | undefined;
+  /** The Mates that wait on the viewer's answer, by name. */
+  readonly asking?: ReadonlyArray<string> | undefined;
 }): ProjectState {
   const { production } = input;
+  const review = input.review ?? 0;
   const kind: ProjectStateKind =
     production.trouble && production.dot === "down"
       ? "down"
       : production.trouble
         ? "release-failed"
-        : input.waitsOnYou
+        : input.waitsOnYou || input.ready !== undefined
           ? "needs-you"
           : production.dot !== "running" &&
               input.mates.length > 0 &&
@@ -68,108 +75,85 @@ export function projectState(input: {
               : production.dot === "running"
                 ? "running"
                 : "in-development";
-  return { kind, ...STATES[kind] };
+  // Why it needs you, said beside it: a change in review first, then a release ready to go.
+  // Why it needs you, by what made it: a Mate asking, then a change waiting on the viewer — both
+  // only where something waits on them — then a release ready to go.
+  const asking = input.asking ?? [];
+  const reason =
+    kind !== "needs-you"
+      ? undefined
+      : input.waitsOnYou && asking.length > 0
+        ? `${joined(asking)} ${asking.length === 1 ? "asks" : "ask"}`
+        : input.waitsOnYou && review > 0
+          ? inReviewWords(review)
+          : input.ready === undefined
+            ? undefined
+            : readyWords(input.ready.count, input.ready.atLeast);
+  return { kind, ...STATES[kind], ...(reason === undefined ? {} : { reason }) };
 }
 
-/** How many of a project's open code changes wait in review between Development and Stage. */
+/** How many of a project's open code changes wait in review. */
 export function inReview(flow: Pick<GroupFlow, "pullRequests">): number {
   return flow.pullRequests.filter((entry) => entry.pull.kind === "code").length;
 }
 
-/** "2 in review"; on the page, "2 changes in review". */
-export function inReviewWords(count: number, long: boolean): string {
-  return long
-    ? `${String(count)} change${count === 1 ? "" : "s"} in review`
-    : `${String(count)} in review`;
+/** "1 change in review", "2 changes in review". */
+export function inReviewWords(count: number): string {
+  return `${String(count)} change${count === 1 ? "" : "s"} in review`;
 }
 
-/** "3 ready"; on the page, "3 ready to release". */
-export function readyWords(count: number, atLeast: boolean, long: boolean): string {
-  return `${atLeast ? "At least " : ""}${String(count)} ready${long ? " to release" : ""}`;
+/** "2 ready to release"; "At least 20 ready to release" where the count is a floor. */
+export function readyWords(count: number, atLeast: boolean): string {
+  return `${atLeast ? "At least " : ""}${String(count)} ready to release`;
 }
 
-/** A stop's one quiet line under it: its words, and whether they say trouble. */
-export interface StopUnder {
+/** "Release 2": the door to the release production waits for, with its count. */
+export function releaseWords(count: number, atLeast: boolean): string {
+  return `Release ${String(count)}${atLeast ? "+" : ""}`;
+}
+
+/** A place's one status line: its words, and whether they say trouble. */
+export interface PlaceWordsReading {
   readonly words: ReadonlyArray<string>;
   readonly tone: "muted" | "failed" | "info";
 }
 
 /**
- * What a stage says under its stop: running, the branch it follows and how long ago it was
- * deployed ("main · 25m"); otherwise its line's first word ("Deploying…", "Deploy failed").
+ * What a stage says on its row: "Deployed 19m ago · follows main" while it runs; otherwise its
+ * line's first words ("Deploying…", "Deploy failed") and the source it follows, each stage of
+ * several said for itself.
  */
-export function stageUnder(
+export function stageWords(
   line: Pick<PlaceLine, "dot" | "words" | "trouble">,
   facts: { readonly source: string | undefined; readonly age: string | undefined },
-): StopUnder {
+): PlaceWordsReading {
+  const follows = `follows ${facts.source ?? "main"}`;
   if (line.dot === "running")
     return {
-      words: [facts.source ?? "main", facts.age].filter((word) => word !== undefined),
+      words: [facts.age === undefined ? "Deployed" : `Deployed ${facts.age} ago`, follows],
       tone: "muted",
     };
   return {
-    words: line.words.slice(0, 1),
+    words: [...line.words.slice(0, 1), follows],
     tone: line.trouble ? "failed" : line.dot === "releasing" ? "info" : "muted",
   };
 }
 
 /**
- * What production says under its stop: what it runs and how long it has run it ("v0.1.3 · up 6d"),
- * still after a failed release; "not live" where nothing runs; otherwise its line's first word.
+ * What production's status line says: "Running · v0.1.3 · up 6d" while it runs; still what it
+ * runs after a failed release; "Not released yet" where nothing runs; otherwise its line's words.
  */
-export function productionUnder(
+export function productionWords(
   line: Pick<PlaceLine, "dot" | "words" | "trouble">,
   facts: { readonly version: string | undefined; readonly up: string | undefined },
-): StopUnder {
-  const runs = [facts.version, facts.up === undefined ? undefined : `up ${facts.up}`].filter(
-    (word) => word !== undefined,
-  );
-  if (line.dot === "running" && facts.version !== undefined) return { words: runs, tone: "muted" };
+): ReadonlyArray<string> {
+  const up = facts.up === undefined ? undefined : `up ${facts.up}`;
+  if (line.dot === "running" && facts.version !== undefined)
+    return ["Running", facts.version, ...(up === undefined ? [] : [up])];
   if (line.trouble && line.dot !== "down" && facts.version !== undefined)
-    return { words: runs, tone: "muted" };
-  if (line.dot === "none") return { words: ["not live"], tone: "muted" };
-  return {
-    words: line.words.slice(0, 1),
-    tone: line.trouble ? "failed" : line.dot === "releasing" ? "info" : "muted",
-  };
-}
-
-/** What the line between Stage and Production carries: one chip at most. */
-export type ReleaseSegment =
-  | { readonly kind: "ready"; readonly count: number; readonly atLeast: boolean }
-  /** A release ready beside it still mends it (D28): `ready` where one is offered. */
-  | {
-      readonly kind: "failed";
-      readonly tag: string | undefined;
-      readonly ready?: { readonly count: number; readonly atLeast: boolean } | undefined;
-    }
-  | { readonly kind: "merged"; readonly count: number }
-  | { readonly kind: "none" };
-
-/**
- * The chip between Stage and Production: production's failed release on the line it failed on —
- * beside a release ready to go where one is, which is how it is mended (D28) — else a release ready (opened by the page's door), else what is merged with no production
- * to go to.
- */
-export function releaseSegment(input: {
-  readonly production: Pick<PlaceLine, "dot" | "trouble">;
-  readonly failedTag: string | undefined;
-  /** A release offered here: `cardReady`, where the page's door draws it. */
-  readonly ready: { readonly count: number; readonly atLeast: boolean } | undefined;
-  readonly productionAbsent: boolean;
-  readonly notLive: number;
-}): ReleaseSegment {
-  if (input.production.trouble && input.production.dot === "failed")
-    return { kind: "failed", tag: input.failedTag, ready: input.ready };
-  if (input.ready !== undefined)
-    return { kind: "ready", count: input.ready.count, atLeast: input.ready.atLeast };
-  if (input.productionAbsent && input.notLive > 0) return { kind: "merged", count: input.notLive };
-  return { kind: "none" };
-}
-
-/** "v0.1.3 failed", or "Release failed" where its tag is not known. */
-export function failedWords(tag: string | undefined): string {
-  return tag === undefined ? "Release failed" : `${tag} failed`;
+    return [line.words[0] ?? "Release failed", `still runs ${facts.version}`];
+  if (line.dot === "none") return ["Not released yet"];
+  return line.words;
 }
 
 /** "Kai is free", "Kai and Ida are free", "Kai, Ida and Uma are free". */
@@ -179,8 +163,8 @@ export function freeWords(names: ReadonlyArray<string>): string {
 
 /**
  * The automated Mates in one line: "Odo works on a task", "Odo and Tess work on tasks" while any
- * works; else "Odo waits for your review" while a change of theirs waits for it (HQ hands such a
- * Mate no task); else "2 automated Mates wait for a task".
+ * works; else "Odo waits for your review" while a change of theirs waits for it (HQ hands it a task
+ * only once no Mate without one is free); else "2 automated Mates wait for a task".
  */
 export function automatedWords(
   mates: ReadonlyArray<{

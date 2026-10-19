@@ -23,10 +23,18 @@ import type { AddressDomain, PlaceAddresses } from "@t3tools/client-runtime/data
 import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { StrictMode } from "react";
+import type { AppRouter } from "~/router";
 import { createRoot } from "react-dom/client";
 
 import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
+import { PutLiveRow } from "~/components/zerops/ProductionRun";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
@@ -35,11 +43,14 @@ import { RoadPlace, ServiceTiles } from "~/components/zerops/projects/RoadPlace"
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
   CardActivity,
+  CardChanges,
   CardMate,
   CardMateLiftActions,
   CardMateTime,
 } from "~/components/zerops/projects/ProjectCards";
 import {
+  CARD_CHANGES,
+  cardChanges,
   cardMateReading,
   cardPeople,
   releaseLineOpens,
@@ -52,6 +63,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
+import { TeaShopCards } from "./projectCardsFixtures";
 import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
@@ -144,6 +156,8 @@ interface Project {
   readonly since?: string;
   readonly stageSince?: string;
   readonly failedTag?: string;
+  /** This tab's run began releasing then (wall ms). */
+  readonly releaseSince?: number;
   readonly waitsOnYou: boolean;
   readonly canPutLive: boolean;
   readonly merged?: { readonly by: Mate; readonly title: string; readonly at: string };
@@ -164,6 +178,7 @@ function project(input: {
   readonly since?: string;
   readonly stageSince?: string;
   readonly failedTag?: string;
+  readonly releaseSince?: number;
   readonly waitsOnYou?: boolean;
   readonly canPutLive?: boolean;
   readonly merged?: Project["merged"];
@@ -223,6 +238,7 @@ function project(input: {
     ...(input.since === undefined ? {} : { since: input.since }),
     ...(input.stageSince === undefined ? {} : { stageSince: input.stageSince }),
     ...(input.failedTag === undefined ? {} : { failedTag: input.failedTag }),
+    ...(input.releaseSince === undefined ? {} : { releaseSince: input.releaseSince }),
     ...(input.merged === undefined ? {} : { merged: input.merged }),
     waitsOnYou: input.waitsOnYou ?? false,
     canPutLive: input.canPutLive ?? false,
@@ -289,7 +305,7 @@ const readPlace = (
 const inAccount = withPlaceAddresses({ "tea-prod": readPlace([], ["app"]) });
 
 /** A service as the service map reads it, its use and its last day made up. */
-const tileRow = (hostname: string, typeShort: string): ZeropsServiceRow => {
+const tileRow = (hostname: string, typeShort: string, type = "nodejs@22"): ZeropsServiceRow => {
   const trend = Array.from({ length: 24 }, (_, hour) => ({
     at: ago((24 - hour) * 60),
     used: 0.2 + 0.15 * Math.sin(hour / 2.5) + (hour % 7 === 0 ? 0.2 : 0),
@@ -297,14 +313,14 @@ const tileRow = (hostname: string, typeShort: string): ZeropsServiceRow => {
   }));
   return {
     isControlPlane: false,
-    service: { serviceId: hostname, hostname } as ZeropsServiceRow["service"],
+    service: { serviceId: hostname, hostname, type } as ZeropsServiceRow["service"],
     tone: "ok",
     statusLabel: "Running",
     statusNeedsWord: false,
     typeLabel: typeShort,
     typeShort,
     title: hostname,
-    portLabel: hostname === "db" ? ":5432" : ":3000",
+    portLabel: type === "objectstorage" ? undefined : hostname === "db" ? ":5432" : ":3000",
     meta: [],
     dashboardUrl: "",
     metrics: [
@@ -328,6 +344,17 @@ const JUNO_ASKS = mate("juno", "Juno", "sky", {
     dot: "attention",
   },
 });
+
+/** Acme Store's production: six services, one of them storage. */
+const STORE_SERVICES: ReadonlyArray<readonly [string, string, string]> = [
+  ["app", "Node.js 22", "nodejs@22"],
+  ["api", "Node.js 22", "nodejs@22"],
+  ["worker", "Node.js 22", "nodejs@22"],
+  ["db", "PostgreSQL 16", "postgresql@16"],
+  ["cache", "Valkey 7", "valkey@7.2"],
+  ["files", "Object storage", "objectstorage"],
+];
+const SERVICE_TYPES = new Map(STORE_SERVICES.map(([name, short, type]) => [name, { short, type }]));
 
 const PROJECTS: ReadonlyArray<Project> = [
   // (a) Setting up: its first Mate on its way, nothing runs.
@@ -428,6 +455,91 @@ const PROJECTS: ReadonlyArray<Project> = [
     },
     actions: { production: ["Roll back to v0.1.2"] },
   }),
+  // (e) Many places: production runs six services, three stages each follow their own source.
+  project({
+    id: "acme-store",
+    name: "Acme Store",
+    mates: [
+      { ...JUNO_ASKS, id: "juno-s", view: { ...JUNO_ASKS.view, ask: "Checkout" } },
+      mate("mira-s", "Mira", "amber", { time: "2h" }),
+      mate("ines-s", "Ines", "olive", { owner: INES, time: "1d" }),
+    ],
+    pullRequests: [inReview(71, "One-page checkout", "juno-s")],
+    production: {
+      kind: "ready-to-release",
+      stop: stop("store-prod", "production", {
+        version: version("v0.1.59"),
+        addresses: [
+          { service: "app", url: "https://shop.acme.example" },
+          { service: "api", url: "https://api-acme-e5f6.prg1.zerops.app" },
+        ],
+      }),
+      line: "",
+      candidate: { tag: "v0.1.60", waiting: 2 },
+    },
+    stages: [
+      stop("store-stage", "stage", {
+        addresses: [{ service: "app", url: "https://app-acme-stage.prg1.zerops.app" }],
+      }),
+      stop("store-checkout", "stage-checkout", {
+        source: "checkout-redesign",
+        addresses: [{ service: "app", url: "https://app-acme-checkout.prg1.zerops.app" }],
+      }),
+      stop("store-perf", "stage-perf", { state: "failed", source: "perf-budget" }),
+    ],
+    notLive: 2,
+    waitsOnYou: true,
+    since: ago(60 * 24 * 19),
+    stageSince: ago(19),
+    merged: {
+      by: mate("mira-s", "Mira", "amber"),
+      title: "Gift cards at checkout",
+      at: ago(60 * 5),
+    },
+    panels: {
+      stage: panel({
+        services: [
+          { hostname: "app", state: "up" },
+          { hostname: "db", state: "up" },
+        ],
+      }),
+      production: panel({
+        version: "v0.1.59",
+        services: STORE_SERVICES.map(([hostname]) => ({ hostname, state: "up" as const })),
+      }),
+    },
+    actions: { production: ["Roll back to v0.1.58"] },
+  }),
+  // (g) A release on its way, sent by this tab's run: production's line says it once, with its
+  // clock; the run draws no second line.
+  project({
+    id: "ines-bakery",
+    name: "Ines Bakery",
+    mates: [mate("ines-b", "Ines", "olive", { time: "5m" })],
+    production: {
+      kind: "releasing",
+      stop: stop("bakery-prod", "production", { version: version("v0.1.1") }),
+      line: "",
+      tag: "v0.1.2",
+    },
+    stages: [stop("bakery-stage", "stage")],
+    chip: { label: "prod", state: "releasing", version: "v0.1.1", next: "v0.1.2" },
+    since: ago(60),
+    stageSince: ago(12),
+    releaseSince: NOW - 42_000,
+    panels: {
+      production: panel({ version: "v0.1.1", services: [{ hostname: "app", state: "up" }] }),
+    },
+  }),
+  // (f) Nothing released yet, no stage: one Mate at work.
+  project({
+    id: "juno-notes",
+    name: "Juno Notes",
+    mates: [working("juno-n", "Juno", "sky", "Sorting notes by tag", "4m")],
+    production: { kind: "absent" },
+    notLive: 1,
+    canPutLive: true,
+  }),
   // (d) Release failed: v0.1.3 did not go live, production still runs v0.1.2.
   project({
     id: "watchlist",
@@ -511,15 +623,16 @@ function HarnessPage() {
           <ZeropsProjectsFlow<Mate>
             cardPlaces={(entry) => {
               const found = byId.get(entry.group.groupId);
-              const stageId = entry.flow.stages[0]?.projectId;
+              const at = found?.stageSince;
               return {
                 chip: found?.chip,
                 since: found?.since,
                 failedTag: found?.failedTag,
+                releaseSince: found?.releaseSince,
                 stageSince:
-                  stageId === undefined || found?.stageSince === undefined
+                  at === undefined
                     ? undefined
-                    : new Map([[stageId, found.stageSince]]),
+                    : new Map(entry.flow.stages.map((stage) => [stage.projectId, at])),
               };
             }}
             getKey={(entry) => entry.id}
@@ -534,7 +647,7 @@ function HarnessPage() {
                 ? undefined
                 : {
                     groupId: PAGE,
-                    aside: null,
+                    aside: <TeaShopCards />,
                     onAddMate: () => acted.push(`add-mate:${PAGE}`),
                     unread: null,
                   }
@@ -551,6 +664,70 @@ function HarnessPage() {
                 />
               );
             }}
+            renderChanges={(entry) => {
+              const found = byId.get(entry.group.groupId);
+              const live =
+                entry.flow.production.kind === "absent" || entry.flow.production.kind === "creating"
+                  ? undefined
+                  : entry.flow.production.stop.version?.label;
+              const merged =
+                found?.merged === undefined
+                  ? []
+                  : [
+                      {
+                        ...change(40, found.merged.title, found.merged.by.id),
+                        merged: true,
+                        mergedAt: found.merged.at,
+                      },
+                    ];
+              return (
+                <CardChanges
+                  changes={cardChanges({
+                    open: entry.flow.pullRequests.map((pull) => pull.pull),
+                    merged,
+                    releases: [],
+                    stage: undefined,
+                    production: live !== undefined,
+                    limit: CARD_CHANGES,
+                  })}
+                  face={(projectId) => {
+                    const owner = entry.mates.get(projectId);
+                    return owner === undefined ? undefined : (
+                      <MateFace size={16} state="idle" tint={owner.tint} />
+                    );
+                  }}
+                  mateName={(projectId) => entry.mates.get(projectId)?.name}
+                  onOpen={(opened) => acted.push(`change:${String(opened.pull.number)}`)}
+                  onShowAll={() => acted.push(`show-all:${entry.group.groupId}`)}
+                  releases={
+                    live === undefined
+                      ? []
+                      : [{ tag: live, taggedAt: ago(60 * 24 * 6), live: true }]
+                  }
+                />
+              );
+            }}
+            renderProductionRun={(entry) =>
+              entry.group.groupId === "tea" ? (
+                <PutLiveRow
+                  address={undefined}
+                  copied={false}
+                  nowMs={NOW}
+                  onAgain={() => acted.push("run-again")}
+                  onCopy={() => {}}
+                  onDismiss={() => acted.push("run-dismiss")}
+                  onOpenProject={() => {}}
+                  run={{
+                    orgId: "harness",
+                    groupId: "tea",
+                    project: "Tea Shop",
+                    phase: "releasing",
+                    tag: "v0.1.4",
+                    stepAt: NOW - 42_000,
+                  }}
+                />
+              ) : null
+            }
             renderCardPeople={(entry) => {
               const people = cardPeople([...entry.mates.values()].map((value) => value.owner));
               return people.length === 0 ? null : (
@@ -609,7 +786,7 @@ function HarnessPage() {
               const found = byId.get(entry.group.groupId);
               const model = found?.panels[line.kind];
               if (found === undefined || model === undefined) return null;
-              if (look === "column" || look === "detail")
+              if (look === "detail")
                 return (
                   <RoadPlace
                     actions={(found.actions[line.kind] ?? []).map((label, index) => (
@@ -621,26 +798,33 @@ function HarnessPage() {
                         {label}
                       </Button>
                     ))}
+                    menu={
+                      line.kind === "production" && !line.trouble ? (
+                        <Button aria-label="More for production" size="icon-sm" variant="ghost">
+                          <EllipsisIcon />
+                        </Button>
+                      ) : null
+                    }
                     model={{
                       line,
-                      version: line.kind === "production" ? model.version : undefined,
-                      released:
-                        line.kind === "production" ? "Released 6d ago by Nova Dev" : undefined,
-                      up: line.kind === "production" ? "6d" : undefined,
-                      services: model.services.length,
-                      address:
-                        line.kind === "production" && line.addresses[0] !== undefined
-                          ? { host: "teashop-a1b2.prg1.zerops.app", url: line.addresses[0].url }
-                          : undefined,
-                      follows:
-                        line.kind === "stage" ? "follows main · deployed 25m ago" : undefined,
+                      addresses: line.addresses.map((address) => ({
+                        host: new URL(address.url).host,
+                        url: address.url,
+                      })),
                       note: line.trouble ? model.note : undefined,
                     }}
                     tiles={
                       <ServiceTiles
-                        rows={model.services.map((service, index) =>
-                          tileRow(service.hostname, index === 0 ? "Node.js 22" : "PostgreSQL 16"),
-                        )}
+                        rows={model.services.map((service, index) => {
+                          const known = SERVICE_TYPES.get(service.hostname);
+                          return known === undefined
+                            ? tileRow(
+                                service.hostname,
+                                index === 0 ? "Node.js 22" : "PostgreSQL 16",
+                                index === 0 ? "nodejs@22" : "postgresql@16",
+                              )
+                            : tileRow(service.hostname, known.short, known.type);
+                        })}
                         usageRead
                       />
                     }
@@ -696,8 +880,13 @@ function HarnessPage() {
 
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
+// A router of its own, so a card's name opens its project's page as it does in the app.
+const router = createRouter({
+  routeTree: createRootRoute({ component: HarnessPage }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+}) as unknown as AppRouter;
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
-    <HarnessPage />
+    <RouterProvider router={router} />
   </StrictMode>,
 );

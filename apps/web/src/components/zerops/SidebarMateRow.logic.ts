@@ -978,7 +978,13 @@ export type MateRowSecond =
     }
   | { readonly kind: "waits-on"; readonly text: string }
   | { readonly kind: "paused"; readonly until: string }
-  | { readonly kind: "change"; readonly title: string; readonly mine: boolean }
+  /** Its open change by its title; `count` where several wait (`changeLineWords`). */
+  | {
+      readonly kind: "change";
+      readonly title: string;
+      readonly mine: boolean;
+      readonly count?: number;
+    }
   /**
    * An automated Mate's line where it says nothing of its own (`mateAutomatedLine`): the task it is
    * on, its change waiting for review, or what it waits for; in ink where `on`.
@@ -1068,16 +1074,41 @@ export interface MateAutomationLine {
    * while it holds none. Absent, or not read: nothing is said of it.
    */
   readonly key?: AutomatedKeyState | undefined;
+  /**
+   * How many of its changes wait for review (`mateReviewCount`), where two or more do: each task
+   * delivers to a change of its own. Absent: one at most.
+   */
+  readonly inReview?: number | undefined;
+}
+
+/**
+ * "2 changes in review": a Mate's open changes waiting at once — an automated Mate's, one per task
+ * — where one says its title.
+ */
+export function changesInReview(count: number): string {
+  return `${String(count)} changes in review`;
+}
+
+/**
+ * The line of a Mate's open change: its title — after it "· in review" where the review is not
+ * the viewer's — or, where several wait, how many.
+ */
+export function changeLineWords(
+  change: Extract<MateRowSecond, { readonly kind: "change" }>,
+): string {
+  if ((change.count ?? 1) > 1) return changesInReview(change.count ?? 1);
+  return change.mine ? change.title : `${change.title} · in review`;
 }
 
 /**
  * An automated Mate's line where it says nothing of its own: at work, the task it is on; at rest
  * on a task it asked a person about, that it waits for them — in ink, the question is theirs to
- * answer where the task came from; at rest on a task — HQ keeps it on its task while the task's
- * change is open, and hands it no other — that task waiting for review; at rest with none, that
- * it waits for one — or for the organization's API key, where it holds none. A task whose change
- * is a pull request on GitHub names the pull request (`pullRequestWords`): failing checks in ink,
- * since they are its Mate's to fix.
+ * answer where the task came from; at rest on a task whose change is open (HQ's row reads it until
+ * the change is merged or closed, while the Mate takes other tasks), that task waiting for review —
+ * or, where several of its changes wait, how many; at rest with none, that it waits for one — or
+ * for the organization's API key, where it holds none. A task whose change is a pull request on
+ * GitHub names the pull request (`pullRequestWords`): failing checks in ink, since they are its
+ * Mate's to fix.
  */
 export function mateAutomatedLine(
   automated: MateAutomationLine,
@@ -1103,6 +1134,10 @@ export function mateAutomatedLine(
   if (task.stopping === true)
     return { kind: "task", text: line(statusWords("stopping")), on: false };
   const review = state === "needs" || state === "unread";
+  // Several of its changes wait for review, one per task: how many, at rest.
+  const inReview = automated.inReview ?? 0;
+  if (inReview > 1 && task.waiting !== true && !(working && task.done !== true))
+    return { kind: "task", text: changesInReview(inReview), on: review };
   // HQ says its Mate finished it: its change waits for review, whatever the Mate does meanwhile.
   if (task.done === true && task.pullRequest === undefined)
     return { kind: "task", text: line(statusWords("review")), on: review };
@@ -1153,6 +1188,8 @@ export function mateAutomation(
     | undefined,
   /** What is read of the organization's key (`useAutomatedKey`). */
   key?: AutomatedKeyState,
+  /** How many of its changes wait for review (`mateReviewCount`). */
+  inReview?: number,
 ): MateAutomationLine | undefined {
   if (mate?.automated !== true) return undefined;
   // A task that ended is HQ's record of the Mate's last one: the Mate is free for the next.
@@ -1180,6 +1217,7 @@ export function mateAutomation(
                 }),
           },
     ...(key === undefined ? {} : { key }),
+    ...(inReview === undefined || inReview < 2 ? {} : { inReview }),
   };
 }
 
@@ -1195,8 +1233,13 @@ export function mateRowSecond(input: {
   readonly waitsOn: string | undefined;
   /** It asks something — a question, an approval, a plan — not only that its change waits. */
   readonly asks?: boolean;
-  /** Its open change: `mine` where it waits on the viewer's review (`mateReviewWaits`). */
-  readonly change: { readonly title: string; readonly mine: boolean } | undefined;
+  /**
+   * Its open change: `mine` where it waits on the viewer's review (`mateReviewWaits`); `count`
+   * where several of its changes wait.
+   */
+  readonly change:
+    | { readonly title: string; readonly mine: boolean; readonly count?: number }
+    | undefined;
   /**
    * An automated Mate, and the task HQ says it is on: at work, asking, stopped or at its limit it
    * reads as any Mate; where it says nothing of its own, and at rest, its line is the task's
@@ -1257,10 +1300,11 @@ export function mateRowSecond(input: {
     return { kind: "paused", until: view.slot.until };
   }
   if (automated !== undefined) return automatedRowLine(automated, view.state);
-  if (change?.mine === true) return { kind: "change", title: change.title, mine: true };
+  const counted = (change?.count ?? 1) > 1 ? { count: change?.count ?? 1 } : {};
+  if (change?.mine === true) return { kind: "change", title: change.title, mine: true, ...counted };
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
-  if (change !== undefined) return { kind: "change", title: change.title, mine: false };
+  if (change !== undefined) return { kind: "change", title: change.title, mine: false, ...counted };
   // A result the viewer has not seen is for them: in ink, beside the unread dot.
   return said(view.state === "unread" ? "ink" : "muted");
 }

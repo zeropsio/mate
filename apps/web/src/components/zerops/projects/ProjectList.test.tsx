@@ -320,7 +320,7 @@ describe("a card's production", () => {
       'data-zerops-group="aaa"',
     );
     expect(withheld).not.toContain("Put it live");
-    expect(withheld).toContain("not live");
+    expect(withheld).toContain("Not released yet");
   });
 
   // The onboarding run: while a stage was being set up the button gave way to "Not released yet",
@@ -342,7 +342,7 @@ describe("a card's production", () => {
         render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
         'data-zerops-group="aaa"',
       ),
-    ).not.toContain("Not released yet");
+    ).toContain("Put it live");
   });
 });
 
@@ -564,7 +564,7 @@ describe("production's version", () => {
 
   it("is nowhere without production", () => {
     const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("not live");
+    expect(row).toContain("Not released yet");
     expect(row).not.toContain(">Running<");
   });
 });

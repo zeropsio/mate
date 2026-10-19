@@ -5,14 +5,13 @@ import type { PutLiveRun } from "~/zerops/putLive.logic";
 
 import { visitElements } from "../../test/reactElementTree";
 import { Button } from "../ui/button";
-import { PutLiveRow, type PutLiveRowProps } from "./PutLiveTop";
+import { PutLiveRow, type PutLiveRowProps } from "./ProductionRun";
 import { ZeropsNextStepStrip, type ZeropsNextStepStripModel } from "./ZeropsNextStepBanner";
 
 const RUN: PutLiveRun = {
   orgId: "o-1",
   groupId: "g-1",
   project: "Tea Shop",
-  change: { repository: "app", number: 1, title: "Shop front", head: "abc", merged: true },
   phase: "creating",
 };
 
@@ -21,23 +20,21 @@ const row = (run: Partial<PutLiveRun>, over: Partial<PutLiveRowProps> = {}) =>
     <PutLiveRow
       address={undefined}
       copied={false}
-      face={{ tint: "coral" }}
       nowMs={0}
       onAgain={() => {}}
       onCopy={() => {}}
       onDismiss={() => {}}
       onOpenProject={() => {}}
-      onSeeCode={() => {}}
       run={{ ...RUN, ...run }}
       {...over}
     />,
   );
 
-describe("Put it live in the conversation", () => {
+describe("a release on its way, on its project's production", () => {
   it("says a step that never answered in plain words, with its source's words under Details", () => {
     const markup = row({
       phase: "failed",
-      failedAt: "merging",
+      failedAt: "creating",
       failure: { words: "No answer came back.", action: "again", detail: "socket hang up" },
     });
     expect(markup).toContain("No answer came back.");
@@ -47,7 +44,7 @@ describe("Put it live in the conversation", () => {
 
   it("shows the run as one wait row whose step words replace each other in place", () => {
     const making = row({ phase: "creating" });
-    expect(making).toContain('data-composer-top="live-progress"');
+    expect(making).toContain('data-zerops-production-run="progress"');
     expect(making).toContain("Putting Tea Shop live");
     expect(making).toContain("Making production");
 
@@ -66,7 +63,7 @@ describe("Put it live in the conversation", () => {
         },
       },
     );
-    expect(markup).toContain('data-composer-top="live"');
+    expect(markup).toContain('data-zerops-production-run="live"');
     expect(markup).toContain('href="https://app-abcd-3000.prg1.zerops.app"');
     expect(markup).toContain(">app-abcd-3000.prg1.zerops.app<");
     expect(markup).toContain("Copy link");
@@ -89,13 +86,11 @@ describe("Put it live in the conversation", () => {
     const props: PutLiveRowProps = {
       address: undefined,
       copied: false,
-      face: { tint: "coral" },
       nowMs: 0,
       onAgain: vi.fn(),
       onCopy: () => {},
       onDismiss: () => {},
       onOpenProject: vi.fn(),
-      onSeeCode: () => {},
       run: {
         ...RUN,
         phase: "failed",
@@ -130,16 +125,13 @@ describe("Put it live in the conversation", () => {
     const props: PutLiveRowProps = {
       address: undefined,
       copied: false,
-      face: { tint: "coral" },
       nowMs: 0,
       onAgain,
       onCopy: () => {},
       onDismiss: () => {},
       onOpenProject: () => {},
-      onSeeCode: () => {},
       run: {
         ...RUN,
-        change: undefined,
         phase: "failed",
         failedAt: "creating",
         productionId: "p-prod",
@@ -161,7 +153,6 @@ describe("Put it live in the conversation", () => {
 
   it.each([
     ["again", "Try again"],
-    ["see-code", "See the code"],
     ["project", "Open the project"],
     ["release", "Release"],
   ] as const)("says why it stopped, with the one action that fixes it (%s)", (action, label) => {

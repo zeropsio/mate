@@ -117,6 +117,19 @@ describe("Slack in Settings", () => {
       { kind: "slack-connect" },
       { botToken: BOT_TOKEN, signingSecret: SIGNING },
     );
+    // Cleared once HQ took them.
+    for (const action of [
+      { kind: "working", verb: "slack-connect" },
+      { kind: "done", verb: "slack-connect" },
+    ]) {
+      view.update(
+        <SlackSettingsView
+          controls={{ ...slack, read: { ...slack.read, action } as TaskSourceSettingValue<never> }}
+          defaultOpen
+          manifest={controls(known("{}"))}
+        />,
+      );
+    }
     const after = view.root.findAllByType(Input).filter((node) => node.props.type === "password");
     expect(after.map((node) => node.props.value)).toEqual(["", ""]);
     view.unmount();
@@ -201,6 +214,183 @@ describe("Slack in Settings", () => {
     expect(shown(html)).toContain("Connected to Acme");
     expect(shown(html)).not.toContain("Takes tasks from");
     expect(shown(html)).not.toContain("Channel ID");
+  });
+
+  it("names the channels a connected Slack's bot is in, or asks to invite it to one", () => {
+    const connected = controls(known({ ...slackOff, connected: true, workspace: "Acme" }));
+    const inSome = renderToStaticMarkup(
+      <SlackSettingsView
+        channels={controls(
+          known({
+            bot: "mate",
+            channels: [
+              { id: "C042", name: "support" },
+              { id: "C043", name: "orders" },
+            ],
+          }),
+        )}
+        controls={connected}
+        defaultOpen
+      />,
+    );
+    expect(shown(inSome)).toContain("In #support and #orders.");
+    const inNone = renderToStaticMarkup(
+      <SlackSettingsView
+        channels={controls(known({ bot: "mate", channels: [] }))}
+        controls={connected}
+        defaultOpen
+      />,
+    );
+    expect(shown(inNone)).toContain("Invite @mate to a channel first.");
+  });
+
+  it("says Slack's messages are refused while the last refused signature is later than the last held, and Replace sends the new signing secret alone", () => {
+    const slack = controls(
+      known({
+        ...slackOff,
+        connected: true,
+        workspace: "Acme",
+        eventsRefusedAt: "2026-10-18T22:05:00.000Z",
+        eventsAcceptedAt: "2026-10-18T22:01:00.000Z",
+      }),
+    );
+    const view = rendered(
+      <SlackSettingsView
+        channels={controls(known({ bot: "mate", channels: [] }))}
+        controls={slack}
+        defaultOpen
+      />,
+    );
+    const words = view.root.findAll(
+      (node) => node.props.role === "alert" && typeof node.props.children === "string",
+    );
+    expect(words.map((node) => node.props.children)).toContain(
+      "Slack's messages are refused: the signing secret does not match. Replace it.",
+    );
+    // The signing secret's field comes first while it is what needs replacing.
+    const secret = view.root.findAllByType(Input).find((node) => node.props.type === "password");
+    view.type(secret!, SIGNING);
+    view.submit();
+    expect(slack.write).toHaveBeenCalledWith({ kind: "slack-connect" }, { signingSecret: SIGNING });
+    view.unmount();
+  });
+
+  it("Replace keeps a typed key until HQ accepts it, so a refused one is never pasted again", () => {
+    const setting = known({ ...slackOff, connected: true, workspace: "Acme" });
+    const slack = controls(setting);
+    const withAction = (action: unknown) => ({
+      ...slack,
+      read: { ...slack.read, action } as TaskSourceSettingValue<never>,
+    });
+    const view = rendered(
+      <SlackSettingsView
+        channels={controls(known({ bot: "mate", channels: [] }))}
+        controls={slack}
+        defaultOpen
+      />,
+    );
+    const typed = () =>
+      view.root
+        .findAllByType(Input)
+        .filter((node) => node.props.type === "password")
+        .map((node) => node.props.value);
+    const token = view.root.findAllByType(Input).find((node) => node.props.type === "password");
+    view.type(token!, BOT_TOKEN);
+    view.submit();
+    const show = (action: unknown) =>
+      view.update(
+        <SlackSettingsView
+          channels={controls(known({ bot: "mate", channels: [] }))}
+          controls={withAction(action)}
+          defaultOpen
+        />,
+      );
+    show({ kind: "working", verb: "slack-connect" });
+    show({ kind: "failed", words: "Slack refused the bot token." });
+    expect(typed()).toContain(BOT_TOKEN);
+    view.submit();
+    show({ kind: "working", verb: "slack-connect" });
+    show({ kind: "done", verb: "slack-connect" });
+    expect(typed()).not.toContain(BOT_TOKEN);
+    view.unmount();
+  });
+
+  it("a Slack whose messages are refused never reads as plainly connected", () => {
+    const html = renderToStaticMarkup(
+      <SlackSettingsView
+        controls={controls(
+          known({
+            ...slackOff,
+            connected: true,
+            workspace: "Acme",
+            eventsRefusedAt: "2026-10-18T22:05:00.000Z",
+            eventsAcceptedAt: "2026-10-18T22:01:00.000Z",
+          }),
+        )}
+      />,
+    );
+    expect(html).toContain("Messages refused");
+    expect(html).not.toContain(">Connected<");
+  });
+
+  it("says nothing is refused once an event's signature held after the last refusal", () => {
+    const html = renderToStaticMarkup(
+      <SlackSettingsView
+        controls={controls(
+          known({
+            ...slackOff,
+            connected: true,
+            workspace: "Acme",
+            eventsRefusedAt: "2026-10-18T22:01:00.000Z",
+            eventsAcceptedAt: "2026-10-18T22:05:00.000Z",
+          }),
+        )}
+      />,
+    );
+    expect(shown(html)).toContain("Connected to Acme");
+    expect(shown(html)).not.toContain("refused");
+  });
+
+  it("a project picks its Slack channel from the ones the bot is in, and takes tasks from it by its ID", () => {
+    const channel = controls(known({ channel: null }));
+    const view = rendered(
+      <AppChannelView
+        choices={controls(
+          known({
+            bot: "mate",
+            channels: [
+              { id: "C042", name: "support" },
+              { id: "C043", name: "orders" },
+            ],
+          }),
+        )}
+        controls={channel}
+        source="slack"
+      />,
+    );
+    const picker = view.root.find((node) => typeof node.props.onValueChange === "function");
+    act(() => {
+      picker.props.onValueChange("C043");
+    });
+    view.submit();
+    expect(channel.write).toHaveBeenCalledWith({
+      kind: "channel",
+      source: "slack",
+      channelId: "C043",
+    });
+    view.unmount();
+  });
+
+  it("a project whose Slack bot is in no channel is asked to invite it first, and may type an ID", () => {
+    const html = renderToStaticMarkup(
+      <AppChannelView
+        choices={controls(known({ bot: "mate", channels: [] }))}
+        controls={controls(known({ channel: null }))}
+        source="slack"
+      />,
+    );
+    expect(shown(html)).toContain("Invite @mate to a channel first.");
+    expect(shown(html)).toContain("Channel ID, from the channel&#x27;s details");
   });
 
   it("asks an application with no channel for one by its ID", () => {

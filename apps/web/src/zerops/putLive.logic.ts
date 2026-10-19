@@ -1,7 +1,7 @@
 /**
  * *Put it live*: the one step from a Mate's first result to an app people can open (the golden
- * path's G6 → G7 → G8). One sheet says what goes live and where; one press merges the change when
- * it still waits, makes the project's production and releases to it; one row in the conversation
+ * path's G6 → G7 → G8). One sheet says what goes live and where — what is merged — one press makes
+ * the project's production and releases to it; one row in the conversation
  * says how far it got, its words replacing each other in place; and it ends on the live app — its
  * address, Copy link, the release it runs.
  *
@@ -22,28 +22,18 @@ import {
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 
-/** The change a run carries live: merged first when it still waits. */
-export interface PutLiveChange {
-  readonly repository: string;
-  readonly number: number;
-  readonly title: string;
-  /** The head the sheet showed: one pushed since is never merged from here. */
-  readonly head: string | undefined;
-  readonly merged: boolean;
-}
-
 /** Where a run stands: one step at a time, never two at once. */
-export type PutLivePhase = "merging" | "creating" | "releasing" | "live" | "failed";
+export type PutLivePhase = "creating" | "releasing" | "live" | "failed";
 
 export interface PutLiveFailure {
   /** The cause, in the person's words (HQ's or the platform's where they said it). */
   readonly words: string;
   /**
-   * The one thing that fixes it: try the step again, read the change it could not merge, open
-   * the project, where a production half made is finished — or, production made and not released
-   * (a reload stopped the run), release to it.
+   * The one thing that fixes it: try the step again, open the project, where a production half
+   * made is finished — or, production made and not released (a reload stopped the run), release
+   * to it.
    */
-  readonly action: "again" | "see-code" | "project" | "release";
+  readonly action: "again" | "project" | "release";
   /**
    * The project, offered beside *Try again*: production is made, and its services can be looked
    * at there while the run goes on from it.
@@ -59,7 +49,6 @@ export interface PutLiveRun {
   readonly groupId: string;
   /** The project's name: "Putting Shop Front live". */
   readonly project: string;
-  readonly change: PutLiveChange | undefined;
   readonly phase: PutLivePhase;
   /** The step a failure stopped at: what *Try again* runs. */
   readonly failedAt?: Exclude<PutLivePhase, "live" | "failed"> | undefined;
@@ -249,12 +238,11 @@ export function putLiveSheetUnderWay(
 // The run
 // ---------------------------------------------------------------------------
 
-/** A run, pressed: the change merged first when it still waits, else production made at once. */
+/** A run, pressed: production made at once, what is merged released to it. */
 export function startPutLive(input: {
   readonly orgId: string;
   readonly groupId: string;
   readonly project: string;
-  readonly change: PutLiveChange | undefined;
   /** When it was pressed. */
   readonly at?: number | undefined;
 }): PutLiveRun {
@@ -262,15 +250,13 @@ export function startPutLive(input: {
     orgId: input.orgId,
     groupId: input.groupId,
     project: input.project,
-    change: input.change,
-    phase: input.change !== undefined && !input.change.merged ? "merging" : "creating",
+    phase: "creating",
     ...(input.at === undefined ? {} : { stepAt: input.at }),
   };
 }
 
 /** What a run's step came to; each moves it on, or stops it with the cause. */
 export type PutLiveEvent =
-  | { readonly kind: "merged" }
   /** The platform took production's project: the run knows it from here, while its creation goes on. */
   | { readonly kind: "accepted"; readonly productionId: string }
   /** Production's creation ended, its services settled: its patience for the release counts from `at`. */
@@ -306,14 +292,6 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent, now?: number):
 
 function moved(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
   switch (event.kind) {
-    case "merged":
-      return run.phase === "merging"
-        ? {
-            ...run,
-            phase: "creating",
-            change: run.change === undefined ? undefined : { ...run.change, merged: true },
-          }
-        : run;
     case "accepted":
       return run.phase === "creating" && run.productionId === undefined
         ? { ...run, productionId: event.productionId, making: true }
@@ -343,14 +321,7 @@ function moved(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
             making: undefined,
             failure: {
               words: event.words,
-              // A change HQ would not merge is read, not merged again blindly.
-              action:
-                event.action ??
-                (run.phase === "merging"
-                  ? "see-code"
-                  : event.halfMade === true
-                    ? "project"
-                    : "again"),
+              action: event.action ?? (event.halfMade === true ? "project" : "again"),
               ...(event.alsoProject === true ? { alsoProject: true } : {}),
               ...(event.detail === undefined ? {} : { detail: event.detail }),
             },
@@ -537,7 +508,7 @@ export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts, now?: number):
  * once it can take a release, so no door asks the person to release it meanwhile.
  */
 export function putLiveHoldsRelease(run: Pick<PutLiveRun, "phase"> | undefined): boolean {
-  return run?.phase === "merging" || run?.phase === "creating";
+  return run?.phase === "creating";
 }
 
 // ---------------------------------------------------------------------------
@@ -559,8 +530,6 @@ export function putLiveProgress(run: PutLiveRun): {
       : `Rolling back to ${run.rollsBackTo}`;
   const since = run.stepAt === undefined ? {} : { since: run.stepAt };
   switch (run.phase) {
-    case "merging":
-      return { title, step: "Merging the change", ...since };
     case "creating":
       return { title, step: "Making production", ...since };
     case "releasing":
@@ -587,6 +556,35 @@ export function putLiveProgress(run: PutLiveRun): {
 function releasedLine(run: Pick<PutLiveRun, "tag" | "rollsBackTo">): string {
   if (run.rollsBackTo !== undefined) return `Rolled back to ${run.rollsBackTo}`;
   return run.tag === undefined ? "Released" : `Released ${run.tag}`;
+}
+
+/**
+ * Whether the run needs a line of its own on production: not while it releases and the project's
+ * flow already says that release on its way (`inFlight`) — production's line carries it then,
+ * with the run's clock, once (the reviewer read "Releasing v0.1.2" twice, one under the other).
+ */
+export function putLiveOwnLine(
+  run: Pick<PutLiveRun, "phase">,
+  inFlight: string | undefined,
+): boolean {
+  return !(run.phase === "releasing" && inFlight !== undefined);
+}
+
+/**
+ * A run on its project's row in the menu, wherever the person is: under way, its step's words on
+ * hover; stopped, why. Nothing once live (production says it) or with no run.
+ */
+export function putLiveMark(
+  run: PutLiveRun | undefined,
+):
+  | { readonly kind: "releasing"; readonly tip: string }
+  | { readonly kind: "failed"; readonly tip: string }
+  | undefined {
+  if (run === undefined || run.phase === "live") return undefined;
+  const progress = putLiveProgress(run);
+  return run.phase === "failed"
+    ? { kind: "failed", tip: `${progress.title}: ${progress.step}` }
+    : { kind: "releasing", tip: progress.step };
 }
 
 /** The live card's second line: "Released v0.1.0 · just now", "Rolled back to v0.1.0 · 3 min ago". */
@@ -664,7 +662,6 @@ export function putLiveResumed(input: {
     orgId: input.orgId,
     groupId: input.groupId,
     project: input.project,
-    change: undefined,
     productionId: facts.production,
   } as const;
   const { inFlight } = facts;

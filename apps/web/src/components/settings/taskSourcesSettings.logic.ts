@@ -4,7 +4,12 @@
  * webhooks and schedules, the limits on each task — and what its forms take.
  */
 import type { AutomationAction, SettingValue, TaskSourceWrite } from "@t3tools/client-runtime/data";
-import type { HqScheduleRule, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import type {
+  HqScheduleRule,
+  HqSlackChannels,
+  HqSlackView,
+  HqTaskLimitsView,
+} from "@t3tools/shared/hqIntake";
 
 /**
  * What a section shows of its setting: `reading` in its final shape, `hidden` where this HQ
@@ -37,6 +42,55 @@ export function taskSourcesUnsupported(settings: ReadonlyArray<SettingValue<unkn
 export function slackLine(view: Pick<HqSlackView, "connected" | "workspace">): string {
   if (!view.connected) return "Not connected";
   return view.workspace === null ? "Connected" : `Connected to ${view.workspace}`;
+}
+
+/** What the Slack card says while Slack's events are refused for their signature. */
+export const SLACK_SIGNATURE_REFUSED =
+  "Slack's messages are refused: the signing secret does not match. Replace it.";
+
+/**
+ * Whether Slack's events are refused for their signature now: the last refusal is later than the
+ * last event HQ took. ISO instants of one shape compare as text.
+ */
+export function slackSignatureRefused(
+  view: Pick<HqSlackView, "connected" | "eventsRefusedAt" | "eventsAcceptedAt">,
+): boolean {
+  const refused = view.eventsRefusedAt ?? null;
+  if (!view.connected || refused === null) return false;
+  const accepted = view.eventsAcceptedAt ?? null;
+  return accepted === null || refused > accepted;
+}
+
+const inviteWords = (bot: string | null) => `Invite @${bot ?? "Mate"} to a channel first.`;
+
+/** What an application's Slack channel is picked from: the bot's channels, or where to start. */
+export function slackChannelChoices(
+  held: HqSlackChannels,
+):
+  | { readonly kind: "channels"; readonly channels: HqSlackChannels["channels"] }
+  | { readonly kind: "none"; readonly words: string } {
+  return held.channels.length === 0
+    ? { kind: "none", words: inviteWords(held.bot) }
+    : { kind: "channels", channels: held.channels };
+}
+
+/** Where the bot is, in Settings: its channels, or that it is in none yet. */
+export function slackChannelsLine(held: HqSlackChannels): string {
+  const names = held.channels.map((channel) => `#${channel.name}`);
+  if (names.length === 0) return inviteWords(held.bot);
+  if (names.length === 1) return `In ${names[0]}.`;
+  return `In ${names.slice(0, -1).join(", ")} and ${names.at(-1)}.`;
+}
+
+/** Whether a connected Slack's Replace is pressable: a key typed, and every one typed holds. */
+export function replaceKeysReady(botToken: string, signingSecret: string): boolean {
+  const typed = (
+    [
+      ["slack-bot-token", botToken],
+      ["slack-signing-secret", signingSecret],
+    ] as const
+  ).filter(([, value]) => value.trim() !== "");
+  return typed.length > 0 && connectKeysReady(typed);
 }
 
 /** The channel an application takes tasks from, by its name. */

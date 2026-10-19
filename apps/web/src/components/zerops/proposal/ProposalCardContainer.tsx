@@ -58,7 +58,7 @@ import {
   domainProposalRecords,
   domainProposalState,
   envProposalWrite,
-  heldMessageWords,
+  handOverWords,
   proposalMessage,
   proposalRecipient,
   proposalStage,
@@ -308,10 +308,8 @@ function Proposal({
     const ids = { commandId: newCommandId(), messageId: newMessageId() };
     const went = sendOutcomeOf(ids.messageId);
     askMate(projectId, words, { send: true, ids });
-    const outcome = await went;
-    return outcome.sent
-      ? { ok: true }
-      : { ok: false, code: null, message: heldMessageWords(recipient, outcome.why) };
+    const notSent = handOverWords(recipient, await went);
+    return notSent === null ? { ok: true } : { ok: false, code: null, message: notSent };
   };
 
   /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */

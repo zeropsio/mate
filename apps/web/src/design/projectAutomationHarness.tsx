@@ -409,7 +409,19 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
           />
         </ul>
       ) : kind === "slack" ? (
-        <AppChannelView controls={controls(known({ channel: null }))} source="slack" />
+        <AppChannelView
+          choices={controls(
+            known({
+              bot: "mate",
+              channels: [
+                { id: "C0SUPPORT", name: "support" },
+                { id: "C0ORDERS", name: "orders" },
+              ],
+            }),
+          )}
+          controls={controls(known({ channel: null }))}
+          source="slack"
+        />
       ) : kind === "webhook" ? (
         <AppWebhooksView
           controls={controls(

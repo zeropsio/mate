@@ -27,6 +27,8 @@ import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
+import type { ComposerSendOutcome } from "~/hooks/useComposerSendRequests";
+
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
 
@@ -219,6 +221,21 @@ export function chiefMessageTarget(
  */
 export function heldMessageWords(recipient: string, why: string): string {
   return `${why} Your message waits in ${recipient}'s composer.`;
+}
+
+/**
+ * What an approved message to a Mate says once its composer answered: nothing beyond "Sent" when
+ * it went out; otherwise why not, and where its words are.
+ */
+export function handOverWords(recipient: string, outcome: ComposerSendOutcome): string | null {
+  switch (outcome.kind) {
+    case "sent":
+      return null;
+    case "waits":
+      return heldMessageWords(recipient, outcome.why);
+    case "taken-over":
+      return `You sent or changed the message yourself in ${recipient}'s composer.`;
+  }
 }
 
 /** What a card says of a decided proposal; a failed one says the platform's own words instead. */

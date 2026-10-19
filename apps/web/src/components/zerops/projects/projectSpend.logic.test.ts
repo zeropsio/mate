@@ -7,6 +7,7 @@ import {
   formatUsd,
   joinSpend,
   moneyParts,
+  spendBarPx,
   spendState,
   subscriptionLine,
   tokenSpendByDay,
@@ -152,4 +153,19 @@ describe("spend's words", () => {
   ])("names the Mates on a subscription: $line", ({ mates, line }) => {
     expect(subscriptionLine(mates)).toBe(line);
   });
+});
+
+describe("the spend chart's bars", () => {
+  it.each([
+    { usd: 0, px: 0 },
+    { usd: 0.01, px: 2 },
+    { usd: 0.2, px: 2 },
+    { usd: 5, px: 45 },
+    { usd: 10, px: 90 },
+  ])(
+    "a day with spend draws a visible bar, at least 2 px: $usd against a top day of 10 → $px px",
+    ({ usd, px }) => {
+      expect(spendBarPx(usd, 90 / 10)).toBe(px);
+    },
+  );
 });

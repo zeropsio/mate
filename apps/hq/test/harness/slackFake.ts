@@ -39,10 +39,16 @@ export const slackFake = Effect.gen(function* () {
     calls: [] as Array<SlackCall>,
     team: { id: "T0TEA", name: "Tea Shop" },
     botUserId: "U0MATE",
+    botName: "mate",
     /** The token `auth.test` takes; any other is `invalid_auth`. */
     token: SLACK_BOT_TOKEN,
     users: new Map<string, FakeSlackUser>(),
-    channels: new Map<string, { readonly name: string; readonly member: boolean }>(),
+    channels: new Map<
+      string,
+      { readonly name: string; readonly member: boolean; readonly archived?: boolean }
+    >(),
+    /** How many channels a page of `users.conversations` holds. */
+    pageSize: 2,
     /** The messages HQ posted, by ts, as last edited. */
     messages: new Map<
       string,
@@ -60,6 +66,7 @@ export const slackFake = Effect.gen(function* () {
           team: state.team.name,
           team_id: state.team.id,
           user_id: state.botUserId,
+          user: state.botName,
           bot_id: "B0MATE",
         };
       case "conversations.info": {
@@ -68,8 +75,25 @@ export const slackFake = Effect.gen(function* () {
           ? { ok: false, error: "channel_not_found" }
           : {
               ok: true,
-              channel: { id: params["channel"], name: channel.name, is_member: channel.member },
+              channel: {
+                id: params["channel"],
+                name: channel.name,
+                is_member: channel.member,
+                is_archived: channel.archived === true,
+              },
             };
+      }
+      case "users.conversations": {
+        const theirs = [...state.channels]
+          .filter(([, channel]) => channel.member && channel.archived !== true)
+          .map(([id, channel]) => ({ id, name: channel.name, is_private: false }));
+        const from = Number(params["cursor"] ?? "0");
+        const next = from + state.pageSize;
+        return {
+          ok: true,
+          channels: theirs.slice(from, next),
+          response_metadata: { next_cursor: next < theirs.length ? String(next) : "" },
+        };
       }
       case "users.info": {
         const user = state.users.get(params["user"] ?? "");

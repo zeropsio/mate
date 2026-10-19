@@ -58,6 +58,7 @@ import {
   HqIntakeView,
   HqScheduleView,
   HqAppTasksView,
+  HqSlackChannels,
   HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
@@ -434,8 +435,13 @@ export interface HqApi {
   readonly slack?: () => Promise<HqSlackView>;
   /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
   readonly slackManifest?: () => Promise<unknown>;
-  /** Connects the organization's Slack app by its bot token and signing secret, both sealed. */
+  /**
+   * Connects the organization's Slack app by its bot token and signing secret, both sealed; once
+   * connected, either alone replaces the one HQ holds.
+   */
   readonly connectSlack?: (request: HqSlackConnectRequest) => Promise<HqSlackView>;
+  /** The channels the organization's Slack bot is in (`GET /api/org/slack/channels`). */
+  readonly slackChannels?: () => Promise<HqSlackChannels>;
   readonly disconnectSlack?: () => Promise<void>;
   /** The organization's Discord application, its interactions URL and allowlist (`GET /api/org/discord`). */
   readonly discord?: () => Promise<HqDiscordView>;
@@ -727,6 +733,7 @@ const readIntakeView = decoded(HqIntakeView);
 const readAiKeys = decoded(Schema.Array(HqAiKeyView));
 const readAiKey = decoded(HqAiKeyView);
 const readSlack = decoded(HqSlackView);
+const readSlackChannels = decoded(HqSlackChannels);
 const readDiscord = decoded(HqDiscordView);
 const readChannel = decoded(HqChannelView);
 const readAppChannel = decoded(Schema.NullOr(HqChannelView));
@@ -1413,6 +1420,7 @@ export function makeHqApi(input: {
     disconnectSlack: async () => {
       await authorized("/api/org/slack", { method: "DELETE" }, true);
     },
+    slackChannels: async () => readSlackChannels(await authorized("/api/org/slack/channels")),
     discord: async () => readDiscord(await authorized("/api/org/discord")),
     connectDiscord: async (request) =>
       readDiscord(

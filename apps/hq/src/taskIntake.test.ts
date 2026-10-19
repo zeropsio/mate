@@ -145,6 +145,53 @@ describe("HQ's one door for tasks from every source", () => {
     );
 
     it.effect(
+      "a reply after a task ended is answered once per end, only for one who may steer it; a task live, or done with its change waiting for review, is answered by its Mate instead",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool({ busy: true });
+          const key = "webhook:w1/alert-7";
+          const taskId = queuedId(yield* ask(core, key, "d-1"));
+          const answer = (allowed = true) =>
+            core.taskIntake.answerEnded(key, Effect.succeed(allowed));
+          const moved = (state: string, detail: string | null = null) =>
+            core.sql`UPDATE hq_task SET state = ${state}, detail = ${detail},
+              mate_project_id = ${state === "working" ? "P_ROBOT" : null},
+              assigned_at = ${state === "working" ? core.sql`now()` : null}
+              WHERE id::text = ${taskId}`;
+          // Live: its Mate hears it.
+          assert.isUndefined(yield* answer());
+          yield* moved("done");
+          // One who may not steer it is answered nothing, and the end stays to answer.
+          assert.isUndefined(yield* answer(false));
+          assert.deepStrictEqual(yield* answer(), { kind: "finished" });
+          assert.isUndefined(yield* answer());
+          // A follow-up woke it, and it ended anew: that end is answered too.
+          yield* moved("working");
+          assert.isUndefined(yield* answer());
+          yield* moved("failed", "It reached its $5 limit.");
+          assert.deepStrictEqual(yield* answer(), {
+            kind: "stopped",
+            why: "It reached its $5 limit.",
+          });
+          assert.isUndefined(yield* answer());
+          // Done while its change waits for review: a reply reaches its Mate there, never this.
+          yield* moved("working");
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea" },
+          });
+          yield* core.sql`UPDATE hq_task SET change_repo = 'web', change_number = 1
+            WHERE id::text = ${taskId}`;
+          yield* moved("done");
+          assert.isUndefined(yield* answer());
+        }),
+    );
+
+    it.effect(
       "what is said of a task before its Mate takes it waits for it and reaches it once taken; after that it reaches it at once, once",
       () =>
         Effect.gen(function* () {

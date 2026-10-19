@@ -230,8 +230,13 @@ const rig = (
               Effect.sync(() => void taken.push(task.id)).pipe(
                 Effect.andThen(send({ taskId: task.id, state: "accepted" })),
               ),
-            message: (taskId, message) =>
-              Effect.sync(() => void taken.push(`${taskId}:${message.id}`)),
+            message: (taskId, message, change) =>
+              Effect.sync(
+                () =>
+                  void taken.push(
+                    `${taskId}:${message.id}${change === undefined ? "" : `@${change.branch}`}`,
+                  ),
+              ),
             stop: (taskId, reason) => Effect.sync(() => void taken.push(`${taskId}:${reason}`)),
             run: send({ taskId: "task-0", state: "done" }).pipe(Effect.andThen(Effect.never)),
           }),
@@ -468,6 +473,8 @@ describe("ZeropsHqLink", () => {
           type: "task-message",
           taskId: "task-1",
           message: { id: "m-1", from: "comment", author: "nova", text: "Also the teapot." },
+          // The task's change: where its follow-up's work starts.
+          change: { repo: "appdev", number: 3, branch: "mate/P_ROBOT/3" },
         });
         socket.hear({ type: "ping" });
         yield* until(() => socket.sent.find((message) => message.type === "pong"));
@@ -476,7 +483,10 @@ describe("ZeropsHqLink", () => {
         yield* until(() => (taken.length > 0 ? taken : undefined));
         socket.hear({ type: "task-stop", taskId: "task-1", reason: "The issue was closed." });
         yield* until(() => (taken.length > 1 ? taken : undefined));
-        assert.deepStrictEqual(taken, ["task-1:m-1", "task-1:The issue was closed."]);
+        assert.deepStrictEqual(taken, [
+          "task-1:m-1@mate/P_ROBOT/3",
+          "task-1:The issue was closed.",
+        ]);
       }),
     ),
   );

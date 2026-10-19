@@ -18,26 +18,19 @@ import {
   putLiveNext,
   putLiveProgress,
   putLiveLandedAt,
+  putLiveMark,
+  putLiveOwnLine,
   putLiveReleased,
   putLiveResumed,
   putLiveSettle,
   putLiveSheet,
   putLiveStep,
   startPutLive,
-  type PutLiveChange,
+  type PutLiveEvent,
   type PutLiveFacts,
   type PutLiveFlowFacts,
   type PutLiveRun,
 } from "./putLive.logic";
-
-const change = (over: Partial<PutLiveChange> = {}): PutLiveChange => ({
-  repository: "app",
-  number: 1,
-  title: "Shop front: list, filter and order products",
-  head: "a".repeat(40),
-  merged: false,
-  ...over,
-});
 
 const facts = (over: Partial<PutLiveFacts> = {}): PutLiveFacts => ({
   production: undefined,
@@ -46,13 +39,12 @@ const facts = (over: Partial<PutLiveFacts> = {}): PutLiveFacts => ({
   ...over,
 });
 
-const start = (over: Partial<PutLiveChange> = {}): PutLiveRun =>
-  startPutLive({ orgId: "o1", groupId: "g1", project: "Tea Shop", change: change(over) });
+const start = (): PutLiveRun => startPutLive({ orgId: "o1", groupId: "g1", project: "Tea Shop" });
 
 describe("putting an app live", () => {
   it("Putting an app live for the first time creates production and releases it in one step", () => {
-    // Pressed once on a merged change: production is made, then released, then it runs.
-    let run = start({ merged: true });
+    // Pressed once: production is made, then what is merged released to it, then it runs.
+    let run = start();
     expect(run.phase).toBe("creating");
     expect(putLiveNext(run, facts())).toEqual({ kind: "wait" });
 
@@ -82,16 +74,8 @@ describe("putting an app live", () => {
     expect(putLiveProgress(run)).toEqual({ title: "Tea Shop is live", step: "Released v0.1.0" });
   });
 
-  it("merges a change still waiting first, then makes production", () => {
-    const run = start();
-    expect(run.phase).toBe("merging");
-    const merged = putLiveStep(run, { kind: "merged" });
-    expect(merged.phase).toBe("creating");
-    expect(merged.change?.merged).toBe(true);
-  });
-
   it("releases only to the production it made, once HQ holds it", () => {
-    const run = putLiveStep(start({ merged: true }), { kind: "created", productionId: "p-prod" });
+    const run = putLiveStep(start(), { kind: "created", productionId: "p-prod" });
     // Another production that came up meanwhile is not this run's.
     expect(putLiveNext(run, facts({ production: "p-other", gate: { allowed: true } }))).toEqual({
       kind: "wait",
@@ -124,10 +108,10 @@ describe("putting an app live", () => {
       "Production is locked.",
     ],
   ])("says a release that did not go out when %s, with the cause", (_case, row, words) => {
-    const run = putLiveStep(
-      putLiveStep(start({ merged: true }), { kind: "created", productionId: "p-prod" }),
-      { kind: "released", tag: "v0.1.0" },
-    );
+    const run = putLiveStep(putLiveStep(start(), { kind: "created", productionId: "p-prod" }), {
+      kind: "released",
+      tag: "v0.1.0",
+    });
     expect(putLiveNext(run, facts({ releases: [{ tag: "v0.1.0", ...row }] }))).toEqual({
       kind: "failed",
       words,
@@ -135,11 +119,7 @@ describe("putting an app live", () => {
   });
 
   it("stops at the step that failed, with the one action that fixes it, and tries that step again", () => {
-    const refusedMerge = putLiveStep(start(), { kind: "failed", words: "main moved on" });
-    expect(refusedMerge.phase).toBe("failed");
-    expect(refusedMerge.failure).toEqual({ words: "main moved on", action: "see-code" });
-
-    const failedCreate = putLiveStep(start({ merged: true }), {
+    const failedCreate = putLiveStep(start(), {
       kind: "failed",
       words: "Zerops needs more credit.",
     });
@@ -154,13 +134,12 @@ describe("putting an app live", () => {
 
     // A production half made is finished from its project: never a second one from here.
     expect(
-      putLiveStep(start({ merged: true }), { kind: "failed", words: "x", halfMade: true }).failure
-        ?.action,
+      putLiveStep(start(), { kind: "failed", words: "x", halfMade: true }).failure?.action,
     ).toBe("project");
 
     // A release that did not go out is made again once production takes one.
     const released = putLiveStep(
-      putLiveStep(start({ merged: true }), { kind: "created", productionId: "p-prod" }),
+      putLiveStep(start(), { kind: "created", productionId: "p-prod" }),
       { kind: "released", tag: "v0.1.0" },
     );
     const retried = putLiveStep(putLiveStep(released, { kind: "failed", words: "x" }), {
@@ -170,7 +149,6 @@ describe("putting an app live", () => {
   });
 
   it.each([
-    ["merging", true],
     ["creating", true],
     ["releasing", false],
     ["live", false],
@@ -183,9 +161,9 @@ describe("putting an app live", () => {
   );
 
   it("never moves a finished run back", () => {
-    const live: PutLiveRun = { ...start({ merged: true }), phase: "live", tag: "v0.1.0" };
+    const live: PutLiveRun = { ...start(), phase: "live", tag: "v0.1.0" };
     expect(putLiveStep(live, { kind: "failed", words: "late" })).toBe(live);
-    expect(putLiveStep(live, { kind: "merged" })).toBe(live);
+    expect(putLiveStep(live, { kind: "again" })).toBe(live);
   });
 });
 
@@ -295,12 +273,37 @@ describe("the one wait row and the live card", () => {
     const run = start();
     expect(putLiveProgress(run)).toEqual({
       title: "Putting Tea Shop live",
-      step: "Merging the change",
+      step: "Making production",
     });
-    expect(putLiveProgress({ ...run, phase: "creating" }).step).toBe("Making production");
     expect(putLiveProgress({ ...run, phase: "releasing", tag: "v0.1.0" }).step).toBe(
       "Releasing v0.1.0",
     );
+  });
+
+  it("a release on its way is said once: production's line carries it once the flow says it", () => {
+    const releasing: PutLiveRun = { ...start(), phase: "releasing", tag: "v0.1.2", stepAt: 1_000 };
+    expect(putLiveOwnLine(releasing, "v0.1.2")).toBe(false);
+    expect(putLiveOwnLine(releasing, undefined)).toBe(true);
+    expect(putLiveOwnLine(start(), "v0.1.2")).toBe(true);
+    expect(putLiveOwnLine({ ...releasing, phase: "failed" }, "v0.1.2")).toBe(true);
+  });
+
+  it("a run started away from its project shows on the menu's project row: releasing with its step, stopped with its cause", () => {
+    expect(putLiveMark(undefined)).toBeUndefined();
+    expect(putLiveMark({ ...start(), phase: "releasing", tag: "v0.1.2" })).toEqual({
+      kind: "releasing",
+      tip: "Releasing v0.1.2",
+    });
+    expect(putLiveMark(start())).toEqual({ kind: "releasing", tip: "Making production" });
+    expect(
+      putLiveMark({
+        ...start(),
+        phase: "failed",
+        failure: { words: "Zerops needs more credit.", action: "again" },
+      }),
+    ).toEqual({ kind: "failed", tip: "Tea Shop isn't live yet: Zerops needs more credit." });
+    // Live, it is production's to say: the mark goes.
+    expect(putLiveMark({ ...start(), phase: "live", tag: "v0.1.2" })).toBeUndefined();
   });
 
   it("says when it was released: just now, then its age", () => {
@@ -321,15 +324,12 @@ describe("the one wait row and the live card", () => {
 });
 
 describe("a write that never answers", () => {
-  it.each([
-    ["merging", start(), "again"],
-    ["creating", start({ merged: true }), "project"],
-  ] as const)(
+  it.each([["creating", start(), "project"]] as const)(
     "a write that rejects while %s ends the run in its failed state, with the way on",
     async (_phase, run, action) => {
       const event = await putLiveSettle(
         () => Promise.reject(new Error("socket hang up")),
-        () => ({ kind: "merged" }),
+        (): PutLiveEvent => ({ kind: "created", productionId: "p-prod" }),
         action,
       );
       const failed = putLiveStep(run, event);
@@ -340,31 +340,31 @@ describe("a write that never answers", () => {
     },
   );
 
-  it("tries a merge that rejected again from the same step", async () => {
+  it("tries a write that rejected again from the same step", async () => {
     const failed = putLiveStep(
       start(),
       await putLiveSettle(
         () => Promise.reject(new Error("socket hang up")),
-        () => ({ kind: "merged" }),
+        (): PutLiveEvent => ({ kind: "created", productionId: "p-prod" }),
         "again",
       ),
     );
-    expect(putLiveStep(failed, { kind: "again" }).phase).toBe("merging");
+    expect(putLiveStep(failed, { kind: "again" }).phase).toBe("creating");
   });
 
   it("hands on what an answered write came to", async () => {
     expect(
       await putLiveSettle(
         () => Promise.resolve({ ok: true }),
-        () => ({ kind: "merged" }),
+        (): PutLiveEvent => ({ kind: "created", productionId: "p-prod" }),
         "again",
       ),
-    ).toEqual({ kind: "merged" });
+    ).toEqual({ kind: "created", productionId: "p-prod" });
   });
 });
 
 describe("after production is made, the release it waits for", () => {
-  const made = putLiveStep(start({ merged: true }), {
+  const made = putLiveStep(start(), {
     kind: "created",
     productionId: "p-prod",
     at: 0,
@@ -452,7 +452,7 @@ describe("after production is made, the release it waits for", () => {
 
 describe("while Put it live makes production", () => {
   const SLOW = "Zerops hasn't shown the new services ready after 10 minutes.";
-  const accepted = putLiveStep(start({ merged: true }), {
+  const accepted = putLiveStep(start(), {
     kind: "accepted",
     productionId: "p-prod",
   });
@@ -578,19 +578,16 @@ describe("while Put it live makes production", () => {
       orgId: "o1",
       groupId: "g1",
       project: "Tea Shop",
-      change: change(),
       at: 1_000,
     });
     expect(putLiveProgress(pressed)).toEqual({
       title: "Putting Tea Shop live",
-      step: "Merging the change",
+      step: "Making production",
       since: 1_000,
     });
-    const making = putLiveStep(pressed, { kind: "merged" }, 4_000);
-    expect(putLiveProgress(making)).toMatchObject({ step: "Making production", since: 4_000 });
     // Production's project taken is the same step going on: its clock keeps counting.
-    const known = putLiveStep(making, { kind: "accepted", productionId: "p-prod" }, 6_000);
-    expect(putLiveProgress(known).since).toBe(4_000);
+    const known = putLiveStep(pressed, { kind: "accepted", productionId: "p-prod" }, 6_000);
+    expect(putLiveProgress(known).since).toBe(1_000);
     const live = putLiveStep(
       putLiveStep(
         putLiveStep(known, { kind: "created", productionId: "p-prod" }, 7_000),

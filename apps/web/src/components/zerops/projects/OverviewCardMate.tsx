@@ -27,7 +27,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
-import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateReviewCount, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { mateFace } from "~/zerops/mateFace.logic";
@@ -124,6 +124,8 @@ export function OverviewCardMate({
   const deleting = mateDeleting(candidate.project, useDeletingMates());
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   const reviewWaits = mateReviewWaits(flow, projectId);
+  // How many of its changes wait so: an automated Mate holds one per task, several at once.
+  const inReview = mateReviewCount(flow, projectId);
   const watch = useMateFaceWatch({
     environmentId: candidate.environmentId ?? null,
     projectId,
@@ -240,8 +242,12 @@ export function OverviewCardMate({
     change:
       change === undefined
         ? undefined
-        : { title: change.title, mine: people?.waitsOnViewer !== false },
-    automated: mateAutomation(candidate.project.hq?.mate, automatedKey),
+        : {
+            title: change.title,
+            mine: people?.waitsOnViewer !== false,
+            ...(inReview > 1 ? { count: inReview } : {}),
+          },
+    automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
   });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const said: CardMateReading =
@@ -252,6 +258,7 @@ export function OverviewCardMate({
           status: activity?.kind,
           mine,
           review: mine ? change : undefined,
+          reviews: inReview,
           read: conversationsRead,
           line: cardSecondWords({
             second,

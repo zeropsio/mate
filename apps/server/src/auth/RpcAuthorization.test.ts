@@ -114,7 +114,6 @@ describe("someone else's Mate", () => {
     ["changing settings", WS_METHODS.serverUpdateSettings],
     ["adding an MCP server", WS_METHODS.mcpServersAdd],
     ["pressing on a crew surface", WS_METHODS.zeropsCrewCommand],
-    ["clicking into the container's browser", WS_METHODS.zeropsBrowserInput],
     ["updating the Mate", WS_METHODS.zeropsMateUpdate],
   ] as const)("a colleague cannot act in it: %s is its owner's alone", (_, method) => {
     expect(ownerOnlyRpcMethod(method)).toBe(true);

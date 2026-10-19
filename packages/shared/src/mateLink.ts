@@ -402,6 +402,18 @@ export const MateLinkDown = Schema.Union([
     type: Schema.Literal("task-message"),
     taskId: TrimmedNonEmptyString,
     message: MateTaskMessage,
+    /**
+     * The task's change, where it opened one: its repository, number and branch on HQ's git, the
+     * branch a follow-up's working copy starts from. An older HQ names none; an older Mate reads
+     * past it.
+     */
+    change: Schema.optionalKey(
+      Schema.Struct({
+        repo: TrimmedNonEmptyString,
+        number: Schema.Int,
+        branch: TrimmedNonEmptyString,
+      }),
+    ),
   }),
   /** People stopped a task its Mate took (issue closed, label removed): its run stops, it says so. */
   Schema.Struct({

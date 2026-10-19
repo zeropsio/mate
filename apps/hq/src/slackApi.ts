@@ -1,6 +1,7 @@
 /**
  * What HQ asks of Slack's Web API with the organization's bot token (`slack.ts`): who the token is
- * (`auth.test`), a channel (`conversations.info`), a user and their email (`users.info`), a
+ * (`auth.test`), a channel (`conversations.info`), the channels the bot is in
+ * (`users.conversations`), a user and their email (`users.info`), a
  * message's link (`chat.getPermalink`), a message in a thread posted and edited
  * (`chat.postMessage`, `chat.update`), a reaction (`reactions.add`).
  *
@@ -40,8 +41,15 @@ export interface SlackIdentity {
   /** The workspace's name and id. */
   readonly team: string;
   readonly teamId: string;
-  /** The bot's own user. */
+  /** The bot's own user, and its name there (`null` where Slack does not say). */
   readonly userId: string;
+  readonly name: string | null;
+}
+
+/** A page of the channels the bot is in, and where the next starts (`null`: none). */
+export interface SlackChannelPage {
+  readonly channels: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly next: string | null;
 }
 
 export interface SlackUser {
@@ -67,7 +75,12 @@ export class SlackApi extends Context.Service<
     readonly channel: (
       token: Redacted.Redacted,
       channel: string,
-    ) => Call<{ readonly name: string; readonly member: boolean }>;
+    ) => Call<{ readonly name: string; readonly member: boolean; readonly archived: boolean }>;
+    /** The public and private channels the bot is in, unarchived: one page, from `cursor`. */
+    readonly memberChannels: (
+      token: Redacted.Redacted,
+      cursor: string | null,
+    ) => Call<SlackChannelPage>;
     readonly user: (token: Redacted.Redacted, user: string) => Call<SlackUser>;
     readonly permalink: (token: Redacted.Redacted, channel: string, ts: string) => Call<string>;
     /** A message in the thread of `threadTs`; its own ts. */
@@ -90,9 +103,24 @@ const Refusal = Schema.Struct({ ok: Schema.Literal(false), error: Schema.String 
 const decodeRefusal = Schema.decodeUnknownOption(Refusal);
 
 const answers = {
-  identity: Schema.Struct({ team: Schema.String, team_id: Schema.String, user_id: Schema.String }),
+  identity: Schema.Struct({
+    team: Schema.String,
+    team_id: Schema.String,
+    user_id: Schema.String,
+    user: Schema.optionalKey(Schema.String),
+  }),
   channel: Schema.Struct({
-    channel: Schema.Struct({ name: Schema.String, is_member: Schema.optionalKey(Schema.Boolean) }),
+    channel: Schema.Struct({
+      name: Schema.String,
+      is_member: Schema.optionalKey(Schema.Boolean),
+      is_archived: Schema.optionalKey(Schema.Boolean),
+    }),
+  }),
+  channels: Schema.Struct({
+    channels: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+    response_metadata: Schema.optionalKey(
+      Schema.Struct({ next_cursor: Schema.optionalKey(Schema.String) }),
+    ),
   }),
   user: Schema.Struct({
     user: Schema.Struct({
@@ -173,12 +201,30 @@ export const slackApiLayer = (api: string = SLACK_API) =>
             team: answer.team,
             teamId: answer.team_id,
             userId: answer.user_id,
+            name: firstNamed(answer.user),
           })),
         channel: (token, channel) =>
           call("conversations.info", token, { channel }, answers.channel, (answer) => ({
             name: answer.channel.name,
             member: answer.channel.is_member === true,
+            archived: answer.channel.is_archived === true,
           })),
+        memberChannels: (token, cursor) =>
+          call(
+            "users.conversations",
+            token,
+            {
+              types: "public_channel,private_channel",
+              exclude_archived: "true",
+              limit: "200",
+              ...(cursor === null ? {} : { cursor }),
+            },
+            answers.channels,
+            (answer) => ({
+              channels: answer.channels.map(({ id, name }) => ({ id, name })),
+              next: firstNamed(answer.response_metadata?.next_cursor),
+            }),
+          ),
         user: (token, user) =>
           call("users.info", token, { user }, answers.user, ({ user: found }) => ({
             email: found.is_email_confirmed === true ? firstNamed(found.profile?.email) : null,
