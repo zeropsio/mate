@@ -64,6 +64,8 @@ import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
 import { TeaShopCards } from "./projectCardsFixtures";
+import { PAGE_CARDS, S2_OPEN, S3_OPEN, S4_OPEN, S5_OPEN } from "./projectPageStates";
+import { ZeropsGroupPane } from "~/components/zerops/ZeropsGroupDetail";
 import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
@@ -174,6 +176,8 @@ function project(input: {
   readonly stages?: ReadonlyArray<GroupFlowStop>;
   readonly pullRequests?: GroupFlow["pullRequests"];
   readonly notLive?: number;
+  /** Whether `main` holds code yet; it does unless said. */
+  readonly hasCode?: boolean;
   readonly chip?: ProductionChip;
   readonly since?: string;
   readonly stageSince?: string;
@@ -211,7 +215,7 @@ function project(input: {
     pullRequests: input.pullRequests ?? [],
     main: {
       head: undefined,
-      hasCode: true,
+      hasCode: input.hasCode ?? true,
       notLive: input.notLive ?? 0,
       notLiveAtLeast: false,
     },
@@ -576,7 +580,223 @@ const PROJECTS: ReadonlyArray<Project> = [
   }),
 ];
 
-const byId = new Map(PROJECTS.map((entry) => [entry.entry.group.groupId, entry]));
+/** An open change as the flow lists it: asking for review unless it is still being written. */
+const listed = (pull: FlowPullRequest) => ({
+  pull,
+  blocked: null,
+  state: undefined,
+  review: pull.ready !== false,
+});
+
+const NELL = mate("s5-nell", "Nell", "amber", { time: "1h" });
+
+/**
+ * The five states the project page is designed against (`?page=s1` … `?page=s5`), with their
+ * cards in `PAGE_CARDS`: brand new, in development with automated Mates, typical, heavy, trouble.
+ */
+const STATES: ReadonlyArray<Project> = [
+  // S1 brand new: one personal Mate, just made; nothing else.
+  project({
+    id: "s1",
+    name: "Lumen Notes",
+    mates: [
+      mate("s1-pia", "Pia", "sky", {
+        time: "2m",
+        view: {
+          state: "idle",
+          ask: undefined,
+          reply: words("Ready when you are. What should we build first?"),
+          dot: undefined,
+        },
+      }),
+    ],
+    production: { kind: "absent" },
+    hasCode: false,
+  }),
+  // S2 in development: two Mates and two automated ones; changes in review, nothing merged.
+  project({
+    id: "s2",
+    name: "Fernway",
+    mates: [
+      working("s2-oren", "Oren", "amber", "Reading list on the home page", "4m"),
+      mate("s2-lida", "Lida", "violet", { owner: INES, time: "25m" }),
+      {
+        ...working("s2-kip", "Kip", "olive", "#21 Export notes as Markdown", "9m"),
+        automated: true,
+      },
+      { ...mate("s2-tam", "Tam", "coral", { time: "1h" }), automated: true },
+    ],
+    pullRequests: S2_OPEN.map(listed),
+    production: { kind: "absent" },
+    hasCode: false,
+    waitsOnYou: true,
+  }),
+  // S3 typical: production on its own domain, one stage, two Mates, a release ready.
+  project({
+    id: "s3",
+    name: "Copperleaf",
+    mates: [
+      working("s3-ada", "Ada", "rose", "Seasonal box on the shop page", "6m"),
+      mate("s3-bo", "Bo", "sky", { time: "50m" }),
+    ],
+    pullRequests: S3_OPEN.map(listed),
+    production: {
+      kind: "ready-to-release",
+      stop: stop("s3-prod", "production", {
+        version: version("v0.4.1"),
+        addresses: [{ service: "app", url: "https://copperleaf.example" }],
+      }),
+      line: "",
+      candidate: { tag: "v0.4.2", waiting: 2 },
+    },
+    stages: [
+      stop("s3-stage", "stage", {
+        version: version("main"),
+        addresses: [{ service: "app", url: "https://app-copperleaf-stage.prg1.zerops.app" }],
+      }),
+    ],
+    notLive: 2,
+    waitsOnYou: true,
+    since: ago(4 * 24 * 60),
+    stageSince: ago(50),
+    panels: {
+      stage: panel({ services: [{ hostname: "app", state: "up" }] }),
+      production: panel({
+        version: "v0.4.1",
+        services: ["app", "cache", "db"].map((hostname) => ({ hostname, state: "up" as const })),
+      }),
+    },
+  }),
+  // S4 heavy: six services, three stages, four Mates and three automated, a long history.
+  project({
+    id: "s4",
+    name: "Harbor Market",
+    mates: [
+      working("s4-juno", "Juno", "sky", "One-page checkout, last fixes", "3m"),
+      mate("s4-mira", "Mira", "amber", { time: "2h" }),
+      mate("s4-ines", "Ines", "olive", { owner: INES, time: "1d" }),
+      working("s4-teo", "Teo", "violet", "Wishlist that follows you", "6m"),
+      {
+        ...working("s4-kip", "Kip", "coral", "#301 Gift wrap option at checkout", "14m"),
+        automated: true,
+      },
+      {
+        ...working("s4-tam", "Tam", "rose", "#302 Fix the price rounding in the cart", "6m"),
+        automated: true,
+      },
+      { ...mate("s4-rho", "Rho", "slate", { time: "1h" }), automated: true },
+    ],
+    pullRequests: S4_OPEN.map(listed),
+    production: {
+      kind: "ready-to-release",
+      stop: stop("s4-prod", "production", {
+        version: version("v2.4.0"),
+        addresses: [
+          { service: "app", url: "https://shop.harbor.example" },
+          { service: "api", url: "https://api.harbor.example" },
+        ],
+      }),
+      line: "",
+      candidate: { tag: "v2.5.0", waiting: 6 },
+    },
+    stages: [
+      stop("s4-stage", "stage", {
+        version: version("main"),
+        addresses: [{ service: "app", url: "https://app-harbor-stage.prg1.zerops.app" }],
+      }),
+      stop("s4-checkout", "stage-checkout", {
+        source: "checkout-redesign",
+        addresses: [{ service: "app", url: "https://app-harbor-checkout.prg1.zerops.app" }],
+      }),
+      stop("s4-perf", "stage-perf", { state: "failed", source: "perf-budget" }),
+    ],
+    notLive: 6,
+    waitsOnYou: true,
+    since: ago(2 * 24 * 60),
+    stageSince: ago(35),
+    panels: {
+      stage: panel({
+        note: {
+          text: "The last deploy stopped at npm run build. It runs nothing now.",
+          tone: "attention",
+        },
+        services: [
+          { hostname: "app", state: "up" },
+          { hostname: "db", state: "up" },
+        ],
+      }),
+      production: panel({
+        version: "v2.4.0",
+        services: STORE_SERVICES.map(([hostname]) => ({ hostname, state: "up" as const })),
+      }),
+    },
+    actions: { stage: ["Ask Juno to fix it", "Open logs"] },
+  }),
+  // S5 trouble: production's release failed, a stage deploy failed, the budget is spent, and a
+  // Mate asks.
+  project({
+    id: "s5",
+    name: "Quill Post",
+    mates: [
+      mate("s5-esme", "Esme", "coral", {
+        face: "needs",
+        status: "input",
+        time: "12m",
+        choices: ["Keep them", "Drop them"],
+        view: {
+          state: "needs",
+          ask: "Old drafts",
+          reply: words("Should drafts older than a year move to the archive, or stay?", "ink"),
+          dot: "attention",
+        },
+      }),
+      NELL,
+      { ...mate("s5-kip", "Kip", "olive", { time: "10h" }), automated: true },
+      { ...mate("s5-tam", "Tam", "slate", { time: "14h" }), automated: true },
+    ],
+    pullRequests: S5_OPEN.map(listed),
+    production: {
+      kind: "deploy-failed",
+      stop: stop("s5-prod", "production", { version: version("v1.2.9"), state: "failed" }),
+      line: "",
+      candidate: undefined,
+    },
+    stages: [
+      stop("s5-stage", "stage", {
+        state: "failed",
+        addresses: [{ service: "app", url: "https://app-quill-stage.prg1.zerops.app" }],
+      }),
+    ],
+    chip: { label: "prod", state: "failed", version: "v1.2.9" },
+    failedTag: "v1.3.0",
+    waitsOnYou: true,
+    since: ago(2 * 24 * 60),
+    stageSince: ago(70),
+    panels: {
+      stage: panel({
+        note: {
+          text: "The stage's deploy stopped: the build ran out of memory. It runs nothing now.",
+          tone: "attention",
+        },
+        services: [{ hostname: "app", state: "up" }],
+      }),
+      production: panel({
+        version: "v1.2.9",
+        note: {
+          text: "v1.3.0 did not go live: its migration failed. Production keeps running v1.2.9.",
+          tone: "attention",
+        },
+        services: ["app", "db", "files"].map((hostname) => ({ hostname, state: "up" as const })),
+      }),
+    },
+    actions: {
+      production: ["Ask Nell to fix it", "Open logs"],
+      stage: ["Ask Nell to fix it", "Open logs"],
+    },
+  }),
+];
+
+const byId = new Map([...PROJECTS, ...STATES].map((entry) => [entry.entry.group.groupId, entry]));
 const mineOf = (entry: Mate) => entry.owner === NOVA;
 
 /** Who has just arrived, by `?arrival=`: their membership as Zerops stores it. */
@@ -591,11 +811,34 @@ const ARRIVAL =
 /** `?page=tea` (or another project's id) draws that project's own page instead. */
 const PAGE = params.get("page");
 
+/** A page's own cards: a state's (`PAGE_CARDS`), else Tea Shop's. */
+function PageAside({ groupId }: { readonly groupId: string }) {
+  const cards = PAGE_CARDS.get(groupId);
+  if (cards === undefined) return <TeaShopCards />;
+  return (
+    <ZeropsGroupPane
+      access={cards.access}
+      automation={cards.automation}
+      changes={cards.changes}
+      finishing={false}
+      onFinish={() => {}}
+      people={cards.people}
+      spend={cards.spend}
+    />
+  );
+}
+
 function HarnessPage() {
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
       <main className="min-w-0 flex-1 overflow-y-auto">
+        {/* The page's frame as the app draws it: its bar holds the breadcrumb. */}
+        {PAGE === null ? null : (
+          <div className="flex h-[52px] items-center px-6 text-sm text-muted-foreground">
+            Projects
+          </div>
+        )}
         <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
           {PAGE === null ? (
             <div className="flex items-center justify-between">
@@ -636,7 +879,9 @@ function HarnessPage() {
               };
             }}
             getKey={(entry) => entry.id}
-            groups={PROJECTS.map((entry) => entry.entry)}
+            groups={(PAGE === null ? PROJECTS : [...PROJECTS, ...STATES]).map(
+              (entry) => entry.entry,
+            )}
             hqCard={null}
             isAutomated={(entry) => entry.automated === true}
             isMate={() => true}
@@ -647,7 +892,7 @@ function HarnessPage() {
                 ? undefined
                 : {
                     groupId: PAGE,
-                    aside: <TeaShopCards />,
+                    aside: <PageAside groupId={PAGE} />,
                     onAddMate: () => acted.push(`add-mate:${PAGE}`),
                     unread: null,
                   }
