@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
+import { pullRequestLinkWords, pullRequestName } from "~/zerops/automatedMate.logic";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
@@ -287,7 +287,7 @@ function ChangeRow({
           rel="noreferrer"
           target="_blank"
         >
-          #{github.number}
+          {pullRequestName(github)}
           <ArrowUpRightIcon aria-hidden="true" className="size-3" />
         </a>
       )}

@@ -228,7 +228,10 @@ describe("a project's Changes card", () => {
     );
     const row = host.querySelector('[data-zerops-change="app#8"]');
     const link = row?.querySelector<HTMLAnchorElement>("a");
-    expect(link?.textContent).toContain("#5");
+    // The GitHub object is "PR #n"; the change itself is named by its title, never HQ's number.
+    expect(link?.textContent).toBe("PR #5");
+    expect(row?.textContent).toContain("Prices per 100 g");
+    expect(row?.textContent).not.toContain("#8");
     expect(link?.getAttribute("href")).toBe("https://github.com/acme/tea-shop/pull/5");
     expect(host.querySelector('[data-zerops-change="app#7"] a')).toBeNull();
   });

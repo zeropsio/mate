@@ -327,7 +327,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         line.kind === "production" && !line.trouble && input.onPage === true
           ? broughtBy(read?.merged ?? [], releases).map((pull) => ({
               key: `${pull.repository}#${String(pull.number)}`,
-              title: `#${String(pull.number)} ${pull.title}`,
+              // A change by its title: HQ's own number never stands beside a pull request's.
+              title: pull.title,
             }))
           : [],
       services: (item?.services?.statuses ?? []).map((service) => ({
