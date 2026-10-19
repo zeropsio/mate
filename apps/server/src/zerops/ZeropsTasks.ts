@@ -404,24 +404,31 @@ const questionAfter = (view: ConversationView, ended: ViewRun): string | undefin
  * later run in the conversation changes nothing of the task's end; `steered`, while one is on or
  * queued after the task's own run completed, it is more work on the task: `working`. Nothing while
  * no run holds its brief: the conversation was given its agent, and the brief never recorded.
+ * However it ended, where its last run left its work undelivered, it says where.
  */
 export const taskReportOf = (
   taskId: string,
   view: ConversationView,
-  /** How the task's own latest run ended, read when a later run of a person's is the view's. */
-  ownEnd?: RunEnd | null,
+  /** The task's own latest run, read when a later run of a person's is the view's. */
+  own?: { readonly runId: ViewRun["id"]; readonly end: RunEnd | null },
   /** What the Mate kept of the task: its stop, the limit it reached. */
   entry?: TaskEntry,
   /** The task is the one a person's message in the tasks' conversation is more work on. */
   steered = false,
 ): MateTaskReport | undefined => {
   const base = { taskId, conversationId: view.conversationId };
-  if (entry?.stopped !== undefined) return { ...base, state: "stopped", detail: entry.stopped };
+  const lastRun = isTasks(view.lastEnded, taskId) ? view.lastEnded.id : own?.runId;
+  const left = entry?.undelivered?.run === lastRun ? entry?.undelivered?.where : undefined;
+  const leaving = (detail: string) =>
+    left === undefined ? detail : `${detail} ${undeliveredDetail(left)}`;
+  const leftWords = left === undefined ? {} : { detail: undeliveredDetail(left) };
+  if (entry?.stopped !== undefined)
+    return { ...base, state: "stopped", detail: leaving(entry.stopped) };
   if (entry?.limitHit !== undefined) {
     return {
       ...base,
       state: "failed",
-      detail: limitWords(entry.limitHit, entry.limits ?? DEFAULT_TASK_LIMITS),
+      detail: leaving(limitWords(entry.limitHit, entry.limits ?? DEFAULT_TASK_LIMITS)),
     };
   }
   const active = view.activeRun;
@@ -442,7 +449,7 @@ export const taskReportOf = (
       return { ...base, state: "working" };
     }
     const failure = ended.end === null ? undefined : failureOf(ended.end);
-    if (failure !== undefined) return { ...base, state: "failed", detail: failure };
+    if (failure !== undefined) return { ...base, state: "failed", detail: leaving(failure) };
     if (steered && personOn(view)) return { ...base, state: "working" };
     const question = questionAfter(view, ended);
     if (question !== undefined) return { ...base, state: "waiting", question };
@@ -454,13 +461,12 @@ export const taskReportOf = (
       ...(words === undefined ? {} : { answer: words.slice(0, MATE_TASK_BODY_MAX) }),
     };
     // Ended, and what it worked on never delivered, after the word to deliver it.
-    const left = entry?.undelivered;
-    return left?.run === ended.id ? { ...done, detail: undeliveredDetail(left.where) } : done;
+    return { ...done, ...leftWords };
   }
   if (!hasRuns(view)) return undefined;
   // A person spoke in it after the task's own runs: the task ended before they did, as its own
   // last run did — and, done, works on while their run does.
-  const failure = ownEnd == null ? undefined : failureOf(ownEnd);
+  const failure = own?.end == null ? undefined : failureOf(own.end);
   if (steered && failure === undefined && personOn(view)) return { ...base, state: "working" };
   return failure === undefined
     ? { ...base, state: "done" }
@@ -674,7 +680,7 @@ export const make = Effect.gen(function* () {
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
       if (shared && elsewhere && own === undefined) return undefined;
-      const report = taskReportOf(taskId, view, own?.end, entry, shared && taskId === current);
+      const report = taskReportOf(taskId, view, own, entry, shared && taskId === current);
       return report === undefined
         ? undefined
         : { ...report, ...taskSpendOf(taskId, entry, view, inFlightOf(taskId, entry, "seen")) };
@@ -765,8 +771,10 @@ export const make = Effect.gen(function* () {
    * started on them clean): its agent is told once per task, in the same session, to deliver it
    * or say why not, and the task works on. A task run ending so after that word ends the task
    * saying where its work was left. A run whose working copies hold nothing undelivered (a
-   * question answered) ends as it did. Each end read once; the view to report from, read again
-   * once the word went in.
+   * question answered) ends as it did. A run stopped — by people, its limit, or at a word in the
+   * Mate — is read so too, its agent told nothing: the task's end says where its work was left,
+   * and the next task's working copies keep it (`ZeropsWorkingCopy.hold`). Each end read once; the
+   * view to report from, read again once the word went in.
    */
   const deliveryOf = (taskId: string, seen: ConversationView) => {
     /** The run whose end is still to read, in `view`. */
@@ -774,7 +782,7 @@ export const make = Effect.gen(function* () {
       const ended = view.lastEnded;
       return view.conversationId === TASKS_CONVERSATION_ID &&
         isTasks(ended, taskId) &&
-        ended.end?.kind === "completed" &&
+        (ended.end?.kind === "completed" || ended.end?.kind === "stopped") &&
         (ended.endedAt ?? 0) >= bootAt &&
         !readEnds.has(ended.id) &&
         !atWork(view)
@@ -788,10 +796,13 @@ export const make = Effect.gen(function* () {
       const ended = toRead(view);
       if (ended === undefined) return view;
       readEnds.add(ended.id);
-      if (questionAfter(view, ended) !== undefined) return view;
       const entry = yield* ledger.entry(taskId);
-      if (entry?.stopped !== undefined || entry?.limitHit !== undefined || droppedIn(entry))
-        return view;
+      if (droppedIn(entry)) return view;
+      const stopped =
+        ended.end?.kind === "stopped" ||
+        entry?.stopped !== undefined ||
+        entry?.limitHit !== undefined;
+      if (!stopped && questionAfter(view, ended) !== undefined) return view;
       // Another conversation's work (a person's own) may be what the working copies hold.
       const desk = yield* engine.conversations;
       if (
@@ -803,7 +814,7 @@ export const make = Effect.gen(function* () {
       if (where.length === 0) return view;
       const left = () =>
         ledger.update(taskId, (kept) => ({ ...kept, undelivered: { run: ended.id, where } }));
-      if (entry?.nudgeRun !== undefined) {
+      if (stopped || entry?.nudgeRun !== undefined) {
         yield* left();
         yield* Effect.logInfo("zerops tasks: a task ended with its work undelivered", { where });
         return view;
