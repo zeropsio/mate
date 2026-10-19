@@ -19,7 +19,6 @@
 import {
   CallResultPage,
   PAGE_HEIGHTS_KEPT,
-  PAGE_MAX_HEIGHT,
   PAGE_WIDTH_MAX,
   PAGE_WIDTH_MIN,
   type PageHeight,
@@ -94,7 +93,9 @@ export function themeRule(theme: PageTheme): string {
 }
 
 /**
- * What runs in the page before the page does: it says the page's height whenever it changes and
+ * What runs in the page before the page does: it says the page's height, and the viewport it was
+ * laid out in, whenever either changes — even one alone, so a frame asking whether the page grows
+ * with its viewport always hears back (`pageFitHeard`) — and
  * hands a link the person clicked (http and https only) to the conversation, and takes the
  * conversation's colours when they change. Every function it needs is captured first, and its
  * messages are JSON strings of literals: a page's own script can neither replace what it calls nor
@@ -102,11 +103,11 @@ export function themeRule(theme: PageTheme): string {
  */
 const PAGE_BOOTSTRAP = `(function(){
 var host=window.parent,send=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
-var root=document.documentElement,last=-1;
-var measure=function(){var b=document.body;
+var root=document.documentElement,last=-1,lastView=-1;
+var measure=function(){var b=document.body,v=innerHeight;
 var h=Math.ceil(Math.max(root.getBoundingClientRect().height,b?b.scrollHeight:0));
-if(h!==last){last=h;send(stringify({mate:"page",kind:"height",height:h}),"*");}};
-var ro=new ResizeObserver(measure);ro.observe(root);
+if(h!==last||v!==lastView){last=h;lastView=v;send(stringify({mate:"page",kind:"height",height:h,viewport:v}),"*");}};
+var ro=new ResizeObserver(measure);ro.observe(root);addEventListener("resize",measure);
 document.addEventListener("DOMContentLoaded",function(){if(document.body)ro.observe(document.body);measure();});
 addEventListener("load",measure);
 document.addEventListener("click",function(e){if(!e.isTrusted||e.defaultPrevented)return;
@@ -194,7 +195,7 @@ if(fromHost(e)){if(d.mate==="page-theme"&&typeof d.rule==="string"&&!gone&&frame
 if(d.scheme==="light"||d.scheme==="dark")document.documentElement.style.colorScheme=d.scheme;
 frame.contentWindow.postMessage(stringify({mate:"page-theme",rule:d.rule}),"*");}return;}
 if(gone||e.source!==frame.contentWindow||d.mate!=="page")return;
-if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height});
+if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height,viewport:typeof d.viewport==="number"?d.viewport:null});
 else if(d.kind==="open"&&typeof d.url==="string")send({mate:"page",kind:"open",url:d.url});},true);
 })();`;
 }
@@ -227,9 +228,12 @@ export function innerDocumentOf(document: string): string | null {
   return match === null ? null : match[1]!.replaceAll("&quot;", '"').replaceAll("&amp;", "&");
 }
 
-/** What a page said to the conversation: its height, a link the person clicked, its leaving. */
+/**
+ * What a page said to the conversation: its height and the viewport it was laid out in (null from
+ * a page that says none), a link the person clicked, its leaving.
+ */
 export type PageMessage =
-  | { readonly kind: "height"; readonly height: number }
+  | { readonly kind: "height"; readonly height: number; readonly viewport: number | null }
   | { readonly kind: "open"; readonly url: string }
   | { readonly kind: "left" };
 
@@ -244,7 +248,14 @@ export function readPageMessage(
   token: string | null = null,
 ): PageMessage | null {
   if (origin !== "null" || typeof data !== "string") return null;
-  let message: { mate?: unknown; kind?: unknown; height?: unknown; url?: unknown; token?: unknown };
+  let message: {
+    mate?: unknown;
+    kind?: unknown;
+    height?: unknown;
+    viewport?: unknown;
+    url?: unknown;
+    token?: unknown;
+  };
   try {
     const parsed: unknown = JSON.parse(data);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -256,7 +267,14 @@ export function readPageMessage(
   if (message.kind === "left") return { kind: "left" };
   if (message.kind === "height")
     return typeof message.height === "number" && Number.isFinite(message.height)
-      ? { kind: "height", height: Math.max(0, Math.ceil(message.height)) }
+      ? {
+          kind: "height",
+          height: Math.max(0, Math.ceil(message.height)),
+          viewport:
+            typeof message.viewport === "number" && Number.isFinite(message.viewport)
+              ? Math.max(0, Math.round(message.viewport))
+              : null,
+        }
       : null;
   if (message.kind === "open" && typeof message.url === "string") {
     try {
@@ -298,11 +316,79 @@ const PAGE_MIN_HEIGHT = 48;
 export const PAGE_FIRST_HEIGHT = 240;
 
 /**
- * The frame's height for a height the page says: its own, at least a line, at most
- * `PAGE_MAX_HEIGHT` — a taller page scrolls inside, as an exception. Null while it says none.
+ * The frame's height for a height the page says: its own, however tall, at least a line. Null
+ * while it says none.
  */
 export function pageFrameHeight(content: number | null): number | null {
-  return content === null ? null : Math.min(PAGE_MAX_HEIGHT, Math.max(PAGE_MIN_HEIGHT, content));
+  return content === null ? null : Math.max(PAGE_MIN_HEIGHT, content);
+}
+
+/**
+ * How far past its frame a page is laid out while the frame asks whether the page grows with its
+ * viewport: the frame's own edge hides it, so the asking never shows.
+ */
+export const PAGE_PROBE = 64;
+
+/**
+ * What a frame knows of the page it holds. A page its content sizes stands at its own height,
+ * however tall, following it up and down. A page its viewport sizes — slides a viewport tall, an
+ * opening of `100vh` — has no height of its own: each time its frame grew it would grow again,
+ * without end, so it stands a screen tall (`pageScreenHeight`) and scrolls inside.
+ */
+export interface PageFit {
+  /** The height the page says it stands at; null until it says one. */
+  readonly content: number | null;
+  /** What sizes the page, once the frame asked; null until a page outgrew its frame. */
+  readonly sizedBy: "content" | "viewport" | null;
+  /** While the frame asks: the height the page said before its viewport reached past the frame. */
+  readonly asking: number | null;
+}
+
+export const PAGE_FIT_START: PageFit = { content: null, sizedBy: null, asking: null };
+
+/**
+ * The fit once the page says `said` while its frame stands at `standing`, the same fit when it
+ * changes nothing. A page that says it is taller than its frame, before anything sized it, is
+ * asked first: its viewport reaches `PAGE_PROBE` past the frame, which stands still, and the page
+ * that grows by half of that or more grows with its viewport. One that grows less settles where
+ * its frame meets it, as any page does.
+ */
+export function pageFitHeard(
+  fit: PageFit,
+  said: { readonly height: number; readonly viewport: number | null },
+  standing: number,
+): PageFit {
+  if (fit.sizedBy === "viewport") return fit;
+  if (fit.asking !== null) {
+    // A height said before the viewport reached past the frame answers nothing yet.
+    if (said.viewport === null || Math.abs(said.viewport - (standing + PAGE_PROBE)) > 1) return fit;
+    return said.height - fit.asking >= PAGE_PROBE / 2
+      ? { content: null, sizedBy: "viewport", asking: null }
+      : { content: said.height, sizedBy: "content", asking: null };
+  }
+  if (said.height > standing && fit.sizedBy === null && said.viewport !== null)
+    return { ...fit, asking: said.height };
+  return said.height === fit.content ? fit : { ...fit, content: said.height };
+}
+
+/** A screen, for a page its viewport sizes: four fifths of the conversation's view. */
+export function pageScreenHeight(visible: number): number {
+  return Math.max(PAGE_FIRST_HEIGHT, Math.round(visible * 0.8));
+}
+
+/**
+ * Where a fitted page's frame stands: a screen for a page its viewport sizes (`screen`), else as
+ * `pageStandHeight` places it — its own height once it says one, never moved while it is asked.
+ */
+export function pageFitStand(input: {
+  readonly fit: PageFit;
+  readonly heights: ReadonlyArray<PageHeight>;
+  readonly width: number;
+  readonly screen: number;
+}): number {
+  return input.fit.sizedBy === "viewport"
+    ? input.screen
+    : pageStandHeight({ content: input.fit.content, heights: input.heights, width: input.width });
 }
 
 /** The height recorded at the width nearest `width`; null when none is recorded. */
@@ -361,8 +447,8 @@ export function pageStandHeight(input: {
 }
 
 /**
- * The `[width, height]` to record for a page laid out at `width` saying `content`: its frame's
- * width and height, rounded and clamped; null when what is known at that width already says it.
+ * The `[width, height]` to record for a page laid out at `width` standing at `content`: its frame's
+ * width and height, rounded; null when what is known at that width already says it.
  * Remembered in memory as it is decided, so a frame mounted again paints at it.
  */
 export function pageHeightToRecord(input: {

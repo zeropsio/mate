@@ -1,12 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { mateEngineHostAtom } from "@t3tools/client-runtime/data";
-import {
-  PAGE_MAX_HEIGHT,
-  type CallResultPage,
-  type EnvironmentId,
-  type PageHeight,
-  type ThreadId,
-} from "@t3tools/contracts";
+import type { CallResultPage, EnvironmentId, PageHeight, ThreadId } from "@t3tools/contracts";
 import {
   knownPageHeights,
   linkToOpen,
@@ -91,6 +85,9 @@ function usePageTheme(): PageTheme {
   );
 }
 
+/** The tallest a page stands in a phone's conversation; a taller one scrolls inside its view. */
+const PAGE_MAX_HEIGHT = 4000;
+
 /**
  * The page in a web view: the same wrapper as the web's frame (`pageDocument`), talking to the app
  * through the web view's bridge with a token of its own. It stands at its full height, at most
@@ -132,7 +129,10 @@ function PublishedPageFrame(props: {
 
   // Before the view says its width, the window's: the phone's recorded height, from the first frame.
   const windowWidth = useWindowDimensions().width;
-  const target = pageStandHeight({ content, heights, width: width ?? windowWidth });
+  const target = Math.min(
+    PAGE_MAX_HEIGHT,
+    pageStandHeight({ content, heights, width: width ?? windowWidth }),
+  );
   const height = useSharedValue(target);
   // Its first height is placed, never eased into; every height after it glides.
   const placed = useRef(false);
