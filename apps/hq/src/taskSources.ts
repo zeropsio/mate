@@ -99,6 +99,10 @@ export interface TaskOnSource {
   readonly statusRef?: string;
 }
 
+/** Why a task stopped that waited three days for an answer that never came. */
+export const NO_ANSWER = "nobody answered its question for three days.";
+/** Why a task at work stopped once this month's spend reached the organization's budget. */
+export const BUDGET_SPENT = "it reached the organization's monthly budget.";
 /** What a waiting task's status line says while this month's budget is spent. */
 export const BUDGET_WAIT = "Waiting: this month's budget for automated Mates is spent.";
 
@@ -229,6 +233,9 @@ export const navigationTaskOf = (task: {
   readonly pullRequest?: HqNavigationMateTask["pullRequest"] | undefined;
   /** How it ended, for a Mate's most recent task while none is live. */
   readonly ended?: HqNavigationMateTask["ended"] | undefined;
+  /** When it ended, and why HQ stopped it, where it did. */
+  readonly endedAt?: string | undefined;
+  readonly why?: HqNavigationMateTask["why"] | undefined;
   /** When its Mate took it, what it cost and how long it worked so far, where known. */
   readonly startedAt?: string | undefined;
   readonly spentUsd?: number | undefined;
@@ -246,6 +253,8 @@ export const navigationTaskOf = (task: {
   ...(task.done === true ? { done: true as const } : {}),
   ...(task.pullRequest === undefined ? {} : { pullRequest: task.pullRequest }),
   ...(task.ended === undefined ? {} : { ended: task.ended }),
+  ...(task.ended === undefined || task.endedAt === undefined ? {} : { endedAt: task.endedAt }),
+  ...(task.ended === undefined || task.why === undefined ? {} : { why: task.why }),
   ...(task.startedAt === undefined ? {} : { startedAt: task.startedAt }),
   ...(task.spentUsd === undefined ? {} : { spentUsd: task.spentUsd }),
   ...(task.workedMs === undefined ? {} : { workedMs: Number(task.workedMs) }),

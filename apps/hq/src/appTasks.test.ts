@@ -9,10 +9,9 @@ import { ROBOT_TASK_LINK, automatedPool } from "../test/harness/automated.ts";
 import { rowsWhere } from "../test/harness/mates.ts";
 import type { SocketMessage } from "../test/harness/runningCore.ts";
 import { sessionFor, ticketFor } from "../test/harness/runningCore.ts";
-import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
+import { nextScopeValue, scopeReset, scopeValue } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { BUDGET_SPENT } from "./mateTasks.ts";
-import { BUDGET_WAIT } from "./taskSources.ts";
+import { BUDGET_SPENT, BUDGET_WAIT } from "./taskSources.ts";
 
 const NAV = { kind: "navigation" } as const;
 
@@ -469,6 +468,63 @@ describe("an application's tasks, what they cost, and the organization's monthly
             ["merged"],
           );
         }),
+    );
+
+    it.effect(
+      "a free Mate's row says when its last task ended, and that HQ stopped it once this month's budget was spent",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          yield* core.call("PUT", "/api/org/task-limits", {
+            session: core.owner,
+            body: { minutes: 60, costUsd: null, monthlyBudgetUsd: 1 },
+          });
+          const watching = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+          );
+          yield* scopeReset(watching, NAV);
+          yield* core.issue(1);
+          const task = yield* toldTask(core, 1);
+          yield* word(core, { taskId: task.id, state: "accepted", conversationId: "c-1" });
+          yield* word(core, { taskId: task.id, state: "working", spentUsd: 1.2 });
+          yield* core.robot.link.take("task-stop");
+          yield* word(core, { taskId: task.id, state: "stopped", spentUsd: 1.25 });
+          const row = yield* nextScopeValue<HqNavigationProject>(
+            watching,
+            NAV,
+            "project:P_ROBOT",
+            (project) => project.mate?.task?.ended === "stopped",
+          );
+          assert.strictEqual(row.mate?.task?.why, "budget");
+          assert.isString(row.mate?.task?.endedAt);
+          yield* watching.close;
+        }),
+    );
+
+    it.effect("a free Mate's row keeps its last task however long ago it ended", () =>
+      Effect.gen(function* () {
+        const core = yield* automatedPool();
+        yield* core.issue(1);
+        const task = yield* toldTask(core, 1);
+        yield* word(core, { taskId: task.id, state: "accepted", conversationId: "c-1" });
+        yield* word(core, { taskId: task.id, state: "failed", detail: "The build broke." });
+        yield* core.tasks((rows) => rows[0]?.["state"] === "failed");
+        yield* rowsWhere(
+          core.url,
+          "UPDATE hq_task SET ended_at = now() - interval '30 days', updated_at = now() - interval '30 days'",
+          () => true,
+        );
+        const watching = yield* core.socket(
+          `/api/structure/ws?ticket=${yield* ticketFor(core.call, core.owner)}`,
+        );
+        const row = scopeValue<HqNavigationProject>(
+          yield* scopeReset(watching, NAV),
+          "project:P_ROBOT",
+        );
+        assert.strictEqual(row.mate?.task?.ended, "failed");
+        assert.notProperty(row.mate?.task ?? {}, "why");
+        yield* watching.close;
+      }),
     );
   });
 });

@@ -78,7 +78,7 @@ import {
 } from "./offers.ts";
 import { type OrgView, Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
-import { navigationTaskOf, sourceOfRow } from "./taskSources.ts";
+import { BUDGET_SPENT, NO_ANSWER, navigationTaskOf, sourceOfRow } from "./taskSources.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 const encodeLifecycleIntent = Schema.encodeSync(Schema.fromJsonString(HqLifecycleIntent));
@@ -1076,7 +1076,9 @@ export const structureLayer = (options: {
                              'spentUsd', task.spent_usd, 'workedMs', task.worked_ms,
                              'stopping', CASE WHEN task.stopping THEN true END,
                              'done', CASE WHEN task.state = 'done' AND task.ended IS NULL THEN true END))
-                           || CASE WHEN task.ended IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('ended', task.ended) END
+                           || CASE WHEN task.ended IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('ended', task.ended)
+                             || jsonb_strip_nulls(jsonb_build_object('endedAt', to_char(task.ended_at
+                               AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'why', task.why)) END
                            || CASE WHEN task_pr.pr_number IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
                              'pullRequest', jsonb_strip_nulls(jsonb_build_object('number', task_pr.pr_number,
                                'url', task_pr.url, 'state', task_pr.state, 'checks', task_pr.checks))) END
@@ -1084,10 +1086,16 @@ export const structureLayer = (options: {
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
               -- Its live task — on it, else the newest done while its change waits for review — else
-              -- its most recent one of the last 7 days, saying how it ended (its change's fate first).
+              -- its most recent one, however long ago, saying how it ended (its change's fate first),
+              -- when, and why HQ stopped it where it did: a Mate with none never had a task.
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
                   t.source, t.state, t.app_id, t.change_repo, t.change_number, t.started_at,
                   t.spent_usd, t.worked_ms,
+                  CASE WHEN tc.state IN ('merged', 'closed') THEN GREATEST(tc.updated_at, t.ended_at)
+                    ELSE COALESCE(t.ended_at, t.updated_at) END AS ended_at,
+                  CASE WHEN t.state <> 'stopped' THEN NULL
+                    WHEN COALESCE(t.stop_reason, t.detail) = ${BUDGET_SPENT} THEN 'budget'
+                    WHEN COALESCE(t.stop_reason, t.detail) = ${NO_ANSWER} THEN 'unanswered' END AS why,
                   t.state IN ('assigned', 'working', 'waiting') AND t.stop_requested_at IS NOT NULL
                     AS stopping,
                   CASE WHEN t.state IN ('assigned', 'working', 'waiting') OR tc.state = 'open' THEN NULL
@@ -1099,8 +1107,7 @@ export const structureLayer = (options: {
                   AND tc.number = t.change_number
                 WHERE t.mate_project_id IS NOT NULL AND (t.state IN ('assigned', 'working', 'waiting')
                   OR tc.state = 'open'
-                  OR (t.state IN ('done', 'failed', 'stopped', 'dropped')
-                    AND t.updated_at > now() - interval '7 days'))
+                  OR t.state IN ('done', 'failed', 'stopped', 'dropped'))
                 ORDER BY t.mate_project_id,
                   t.state IN ('assigned', 'working', 'waiting') DESC, tc.state = 'open' DESC NULLS LAST,
                   t.seq DESC
@@ -1120,6 +1127,8 @@ export const structureLayer = (options: {
                       readonly waiting: boolean;
                       readonly pullRequest?: HqNavigationMateTask["pullRequest"];
                       readonly ended?: HqNavigationMateTask["ended"];
+                      readonly endedAt?: string;
+                      readonly why?: HqNavigationMateTask["why"];
                       readonly startedAt?: string;
                       readonly spentUsd?: number;
                       readonly workedMs?: number;
@@ -1141,6 +1150,8 @@ export const structureLayer = (options: {
                             waiting: task.waiting,
                             pullRequest: task.pullRequest,
                             ended: task.ended,
+                            endedAt: task.endedAt,
+                            why: task.why,
                             startedAt: task.startedAt,
                             spentUsd: task.spentUsd,
                             workedMs: task.workedMs,
