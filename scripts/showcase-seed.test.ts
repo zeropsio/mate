@@ -31,7 +31,6 @@ const PROJECTOR_NAMES = [
   "projection.thread-activities",
   "projection.thread-sessions",
   "projection.thread-turns",
-  "projection.checkpoints",
   "projection.pending-approvals",
 ] as const;
 
