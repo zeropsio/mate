@@ -47,6 +47,8 @@ export interface CrewThreadMember {
   /** Runs on (PRD §2.3): a catalog slug and an effort value, absent for the login's default. */
   readonly model?: string;
   readonly effort?: string;
+  /** A writer's: the Mate's tree, which its lane is a git repository below. */
+  readonly projectRoot?: string;
 }
 
 export class CrewThreadDirectory extends Context.Service<

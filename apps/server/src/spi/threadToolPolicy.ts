@@ -62,6 +62,13 @@ export interface ThreadToolProfile {
    * a decision only). Such a driver adds it after `sessionContext`.
    */
   readonly exactCallsContext?: string;
+  /**
+   * The project the thread works below in a git repository of its own (a
+   * crew writer's lane). The project's AGENTS.md applies there too: a driver
+   * whose own lookup stops at the git root (Codex) adds it when the session
+   * starts; Claude Code walks up to it and zcp lists it for OpenCode.
+   */
+  readonly projectRoot?: string;
   readonly decideTool: (call: {
     readonly toolName: string;
     readonly input: unknown;

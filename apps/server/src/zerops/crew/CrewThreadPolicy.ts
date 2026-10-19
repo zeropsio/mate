@@ -73,6 +73,7 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
     ...(member.effort === undefined ? {} : { effort: member.effort }),
     readOnly: member.kind !== "writer",
     ...exactCalls(member.gate),
+    ...(member.projectRoot === undefined ? {} : { projectRoot: member.projectRoot }),
     decideTool: (call) =>
       Effect.map(liveMember(threadId), (current) =>
         decideCrewTool(Option.isSome(current) ? current.value.gate : DENY_ALL, call),

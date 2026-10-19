@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - the driver's requirements stay as they are, so the project's AGENTS.md is read directly.
 /**
  * codexThreadProfile — the Codex extension of the thread tool policy SPI.
  *
@@ -10,6 +11,9 @@
  *
  * @module codexThreadProfile
  */
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+
 import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
@@ -227,17 +231,21 @@ export function codexProfileModelSelection(
  * that sends commands and file changes to the gate (the reviewer stated,
  * since an omitted one stays as the thread last had it), zcp's MCP server
  * off and the context window as the compaction limit for this thread
- * alone, the session context as the thread's developer instructions, and a
+ * alone, the session context as the thread's developer instructions, after
+ * the project's guidance when Codex would not read it itself, and a
  * read-only sandbox for a thread that only reads.
  * Codex has no spend cap, so `maxBudgetUsd` has nothing to become.
  */
-export function codexThreadSetup(profile: ThreadToolProfile): CodexThreadSetup {
+export function codexThreadSetup(
+  profile: ThreadToolProfile,
+  projectGuidance?: string,
+): CodexThreadSetup {
   return {
     thread: {
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandbox: profile.readOnly ? "read-only" : "workspace-write",
-      developerInstructions: [profile.sessionContext, profile.exactCallsContext]
+      developerInstructions: [projectGuidance, profile.sessionContext, profile.exactCallsContext]
         .filter(Boolean)
         .join("\n\n"),
       config: {
@@ -279,6 +287,24 @@ export const readCodexThreadPolicies: Effect.Effect<Option.Option<InstallSlot<Th
 
 type ThreadRef = Parameters<ThreadToolPolicy["profileFor"]>[0];
 
+/**
+ * The project's AGENTS.md as Codex itself words one it loads, for a thread in
+ * a git repository below the project: Codex reads AGENTS.md only from the git
+ * root down, so it never reaches the project's there. None without the file.
+ */
+const readProjectGuidance = (
+  profile: ThreadToolProfile | undefined,
+): Effect.Effect<string | undefined> => {
+  const root = profile?.projectRoot;
+  if (root === undefined) return Effect.succeed(undefined);
+  return Effect.promise(() =>
+    NodeFSP.readFile(NodePath.join(root, "AGENTS.md"), "utf8").then(
+      (text) => `# AGENTS.md instructions for ${root}\n\n<INSTRUCTIONS>\n${text}\n</INSTRUCTIONS>`,
+      () => undefined,
+    ),
+  );
+};
+
 /** What a session starts with: no setup and the thread's own model unless it has a profile. */
 export const codexThreadStart = (
   policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
@@ -288,10 +314,14 @@ export const codexThreadStart = (
   readonly setup: CodexThreadSetup | undefined;
   readonly modelSelection: ModelSelection | undefined;
 }> =>
-  Effect.map(threadProfileFor(policies, thread), (profile) => ({
-    setup: profile ? codexThreadSetup(profile) : undefined,
-    modelSelection: codexProfileModelSelection(profile, thread.instanceId, selection),
-  }));
+  Effect.gen(function* () {
+    const profile = yield* threadProfileFor(policies, thread);
+    const guidance = yield* readProjectGuidance(profile);
+    return {
+      setup: profile ? codexThreadSetup(profile, guidance) : undefined,
+      modelSelection: codexProfileModelSelection(profile, thread.instanceId, selection),
+    };
+  });
 
 /**
  * A turn's model selection: the profile is asked again at every turn, so a
