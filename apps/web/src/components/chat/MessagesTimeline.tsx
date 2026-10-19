@@ -995,7 +995,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A landing holds what it holds where it stood until the card has settled around it, then keeps
   // that as the end. Under a held head, what folds under it is taken up by room under the end —
   // never the list clamping its scroll, which moves everything above — and the rows the closing
-  // panel would carry down to the end stay where they are (`cardRowsCarried`).
+  // panel would carry down to the end stay where they are (`cardRowsCarried`). Under reduced motion
+  // nothing is held: the view stays at the end and the landing is one swap. Held, the card folding
+  // at once under its head took the answer 229 px up, and the hold's end brought it back down.
   const land = useCallback(
     (target: {
       readonly element: HTMLElement;
@@ -1004,7 +1006,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       readonly glides?: boolean;
     }) => {
       const scroller = listRef.current?.getScrollableNode();
-      if (!scroller || !followingEndRef.current) return;
+      if (!scroller || !followingEndRef.current || reducedMotion()) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
       held?.words?.travel.finish();
@@ -1082,7 +1084,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // stands still, from the commit that ends it.
   const onTurnLands = useCallback(
     (head: HTMLElement, top: number, answerApart: boolean) =>
-      land({ element: head, edge: "top", at: top, glides: answerApart && !reducedMotion() }),
+      land({ element: head, edge: "top", at: top, glides: answerApart }),
     [land],
   );
   // A message the person had queued leaves its row under the running run's card — steered into
@@ -1117,7 +1119,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // read at most — they travel there from where they stood, never cut (recheck on 0.15.44).
         // Read before the frame paints, once the slot they leave has gone in its own commit.
         const row = words.closest<HTMLElement>("[data-timeline-row-id]");
-        if (row === null || reducedMotion() || typeof row.animate !== "function") return;
+        if (row === null || typeof row.animate !== "function") return;
         requestAnimationFrame(() => {
           const off =
             words.getBoundingClientRect().bottom -
@@ -1150,7 +1152,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // recheck on 0.15.44: −1,138 px, the head out of the view at once).
       const row = words.closest<HTMLElement>("[data-timeline-row-id]");
       if (landingRef.current === null || row === null || stood.head === null) return;
-      if (reducedMotion() || typeof row.animate !== "function") return;
+      if (typeof row.animate !== "function") return;
       // Read within the row and its card as they lay out now, wherever the list has placed them
       // yet: the row's foot under the words, and its card's part still drawn above it — its head,
       // closed — which stands where it stood.
