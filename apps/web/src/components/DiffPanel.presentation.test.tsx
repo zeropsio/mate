@@ -48,6 +48,7 @@ const input = vi.hoisted(() => {
     retained: false,
     otherKnown: false,
     refreshes: { preview: vi.fn(), local: vi.fn(), remote: vi.fn() },
+    statusRefreshes: vi.fn(),
     repositories: {
       reads: [checkout("apidev", 0, 1)] as ReadonlyArray<unknown> | null,
       gitPage: true,
@@ -87,10 +88,14 @@ vi.mock("../diffPanelStore", async (importOriginal) => {
     selectThreadDiffPanelSelection: () => input.selection,
   };
 });
-vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => {} }));
+vi.mock("../state/use-atom-command", () => ({
+  useAtomCommand: (command: unknown) =>
+    command === "refresh-status" ? input.statusRefreshes : async () => {},
+}));
 vi.mock("../state/vcs", () => ({
   vcsEnvironment: {
     status: () => "status",
+    refreshStatus: "refresh-status",
     listRefs: ({ input }: { input: { refKind: string } }) => input.refKind,
   },
 }));
@@ -271,6 +276,24 @@ it.each(["toolbar", "failed read"])(
     }
   },
 );
+
+it("Refresh reads every repository's git status again, so what Diff offers follows a commit or a push", async () => {
+  const restore = withReads([input.checkout("apidev", 1, 0), input.checkout("appdev", 0, 2)]);
+  try {
+    await withDiff(async (container) => {
+      input.statusRefreshes.mockClear();
+      await act(() =>
+        container.querySelector<HTMLButtonElement>('button[aria-label="Refresh diff"]')!.click(),
+      );
+      expect(input.statusRefreshes.mock.calls.map(([call]) => call)).toEqual([
+        { environmentId: "mate", input: { cwd: "/var/www/apidev" } },
+        { environmentId: "mate", input: { cwd: "/var/www/appdev" } },
+      ]);
+    });
+  } finally {
+    restore();
+  }
+});
 
 /** Renders Diff for the conversation and hands its container to `look`. */
 async function withDiff(look: (container: HTMLElement) => Promise<void> | void) {

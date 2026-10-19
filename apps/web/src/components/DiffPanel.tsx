@@ -196,8 +196,20 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         })
       : null,
   );
-  const refreshBranchDiffPreview = branchDiffPreview.refresh;
-  const canRefreshGitDiff = activeThread != null && shownCwd !== null;
+  const refreshVcsStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
+  const refreshPreview = branchDiffPreview.refresh;
+  // Git's status picks what Diff offers, so reading git again starts there: a commit or a push
+  // shows at once rather than at the status's next cycle.
+  const refreshBranchDiffPreview = useCallback(() => {
+    if (activeThread)
+      for (const { repository } of reads ?? [])
+        void refreshVcsStatus({
+          environmentId: activeThread.environmentId,
+          input: { cwd: repository.cwd },
+        });
+    refreshPreview();
+  }, [activeThread, reads, refreshPreview, refreshVcsStatus]);
+  const canRefreshGitDiff = activeThread != null && reads !== null && reads.length > 0;
   const activeThreadRefreshKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
