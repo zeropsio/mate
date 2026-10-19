@@ -121,6 +121,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/vcs/GitVcsDriver.test.ts": [],
   "apps/server/src/vcs/GitVcsDriverCore.test.ts": [],
   "apps/server/src/workspace/WorkspaceFileSystem.test.ts": [],
+  "apps/server/src/zerops/ZeropsAgentAuthIo.test.ts": [],
   "apps/server/src/zerops/ZeropsAgentLogin.test.ts": [],
   "apps/server/src/zerops/ZeropsCrewProposals.test.ts": [],
   "apps/server/src/zerops/ZeropsLoginsIo.test.ts": [],

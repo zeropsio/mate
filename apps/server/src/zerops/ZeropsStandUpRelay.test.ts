@@ -14,11 +14,13 @@ import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
 import {
   layer as relayLayer,
+  STAND_UP_RELAY_INTERVAL,
   standUpProgressOf,
   type StandUpProgress,
   ZeropsStandUpRelay,
@@ -27,18 +29,25 @@ import { MateEngine } from "../engine/MateEngine.ts";
 import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
-/** Starts listening before the trigger; the next status pass must actually return. */
+/**
+ * Starts listening before the trigger; the next status pass must actually return. A followed
+ * call's next pass is one interval away on the test clock.
+ */
 const checked = <A, E, R>(trigger: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const relay = yield* ZeropsStandUpRelay;
     const pass = yield* relay.nextPass.pipe(Effect.forkChild({ startImmediately: true }));
     yield* trigger;
+    yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
     yield* Fiber.join(pass);
   }).pipe(Effect.timeout("5 seconds"), Effect.orDie);
-const finished = Effect.flatMap(ZeropsStandUpRelay, (relay) => relay.finished).pipe(
-  Effect.timeout("5 seconds"),
-  Effect.orDie,
-);
+/** The followed calls' ends: one more pass, an interval on, finds the stand-up gone. */
+const finished = Effect.gen(function* () {
+  const relay = yield* ZeropsStandUpRelay;
+  const ended = yield* relay.finished.pipe(Effect.forkChild({ startImmediately: true }));
+  yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
+  yield* Fiber.join(ended);
+}).pipe(Effect.timeout("5 seconds"), Effect.orDie);
 
 const CALL_AT = "2026-10-01T10:00:00.000Z";
 
@@ -132,7 +141,7 @@ const progressEngine = (shown: Ref.Ref<ReadonlyArray<StandUpProgress>>) =>
   });
 
 describe("ZeropsStandUpRelay", () => {
-  it.live("relays each change of the call's section into one progress row, then stops", () =>
+  it.effect("relays each change of the call's section into one progress row, then stops", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
       const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
@@ -190,7 +199,7 @@ describe("ZeropsStandUpRelay", () => {
 // An ACP agent (Cursor, Grok, Antigravity) sends no start: its call's first
 // update is where the stand-up began.
 describe("ZeropsStandUpRelay: a call first seen running", () => {
-  it.live("follows it from its first update, once, and never after its end", () =>
+  it.effect("follows it from its first update, once, and never after its end", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
@@ -238,7 +247,7 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
 const DEAD_AT = "2026-10-01T10:00:01Z";
 
 describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
-  it.live("stops following it once its process is gone, and leaves the card's last state", () =>
+  it.effect("stops following it once its process is gone, and leaves the card's last state", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
@@ -263,7 +272,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
     }),
   );
 
-  it.live("a stage call going on with its first call's section is followed, and judged", () =>
+  it.effect("a stage call going on with its first call's section is followed, and judged", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
       const carried = (state: string) =>
@@ -289,7 +298,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
     }),
   );
 
-  it.live("a retry is followed while the dead one's section is still in the file", () =>
+  it.effect("a retry is followed while the dead one's section is still in the file", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
       // The previous call's section, its process gone, until the retry's zcp call writes its own.
@@ -383,7 +392,7 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
   const running = (startedAt: string, state: string) =>
     section({ startedAt, services: [{ hostname: "api", step: "build", state }] });
 
-  it.live("a newer stand-up call ends the following of the one before", () =>
+  it.effect("a newer stand-up call ends the following of the one before", () =>
     Effect.gen(function* () {
       const { events, status, appended, layer } = yield* world;
       yield* Effect.gen(function* () {
@@ -401,7 +410,7 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
 });
 
 describe("ZeropsStandUpRelay on the Mate engine", () => {
-  it.live(
+  it.effect(
     "relays each change of the call's section live onto the call, sending V1 nothing, and clears it at the call's end",
     () =>
       Effect.gen(function* () {

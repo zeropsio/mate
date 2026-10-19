@@ -1,6 +1,7 @@
 /** A replay's consumer receipt: the predicate runs after the event has been collected. */
 import type { SpiEvent } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
@@ -17,7 +18,10 @@ export const collectReplay = Effect.fnUntraced(function* (
       for (const listener of listeners) listener();
     }),
   ).pipe(Effect.forkScoped({ startImmediately: true }));
-  const waitFor = (complete: (events: ReadonlyArray<SpiEvent>) => boolean) =>
+  const waitFor = (
+    complete: (events: ReadonlyArray<SpiEvent>) => boolean,
+    within: Duration.Input = "6 seconds",
+  ) =>
     Effect.gen(function* () {
       if (complete(events)) return;
       const done = yield* Deferred.make<void>();
@@ -27,7 +31,7 @@ export const collectReplay = Effect.fnUntraced(function* (
       listeners.add(check);
       check();
       yield* Deferred.await(done).pipe(
-        Effect.timeout("6 seconds"),
+        Effect.timeout(within),
         Effect.orDie,
         Effect.ensuring(Effect.sync(() => listeners.delete(check))),
       );

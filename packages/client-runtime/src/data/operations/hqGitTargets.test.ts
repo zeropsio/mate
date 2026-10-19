@@ -1,6 +1,7 @@
 import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
 import { gitRemote, gitAdoption, gitEnvironment } from "../__fixtures__/hqWire.ts";
 import { HqEnvironmentId } from "@t3tools/contracts";
+import * as data from "@t3tools/client-runtime/data";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import type { HqGitTargetIntent } from "./hqGitTargets.ts";
 import { describe, expect, it } from "@effect/vitest";
@@ -475,8 +476,7 @@ it.effect(
     }),
 );
 
-it("the public data entry exposes the single delivery answer and environment readers", async () => {
-  const data = await import("@t3tools/client-runtime/data");
+it("the public data entry exposes the single delivery answer and environment readers", () => {
   expect(typeof data.deliveryAnswerSaid).toBe("function");
   expect(typeof data.deliveryAnswerFollowing).toBe("function");
   expect(typeof data.deliveryEnvironmentsOf).toBe("function");

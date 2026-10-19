@@ -6,13 +6,12 @@
  *   `zcp` cannot be run.
  */
 import { describe, expect, it } from "@effect/vitest";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
 import { make } from "./ZeropsMateUpdate.ts";
@@ -221,13 +220,13 @@ describe("ZeropsMateUpdate's update line, followed", () => {
 describe("ZeropsMateUpdate hears zcp's own reads", () => {
   // zcp caches the release manifest it fetched (~/.zcp/mate/manifest.json, an
   // hour's TTL); a refresh by the Mate's agent, a shell or zcp's boot rewrites it.
-  it.live(
+  it.effect(
     "a release zcp has already read reaches the app without waiting for the hourly check",
     () =>
       Effect.gen(function* () {
-        const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-manifest-"));
-        const manifestFile = NodePath.join(dir, "manifest.json");
-        NodeFS.writeFileSync(manifestFile, JSON.stringify({ manifest: { version: "0.15.30" } }));
+        const manifestFile = "/home/zerops/.zcp/mate/manifest.json";
+        // The directory's watch, as the OS reports a write: the file's name, a moment later.
+        const listeners = new Map<string, (event: string, name: string | null) => void>();
         let cached = "0.15.30";
         const reads: Array<{ readonly refresh?: boolean; readonly local?: boolean } | undefined> =
           [];
@@ -239,21 +238,27 @@ describe("ZeropsMateUpdate hears zcp's own reads", () => {
           isZeropsEnvironment: true,
           refreshInterval: Duration.hours(1),
           manifestFile,
+          watch: (dir, listener) => {
+            listeners.set(dir, listener);
+            return { close: () => listeners.delete(dir) };
+          },
         });
         expect((yield* service.current)?.latest).toBe("0.15.30");
 
         cached = "0.15.31";
         reads.length = 0;
-        NodeFS.writeFileSync(manifestFile, JSON.stringify({ manifest: { version: "0.15.31" } }));
-        const heard = yield* service.changes.pipe(
+        const hearing = yield* service.changes.pipe(
           Stream.filter((line) => line?.latest === "0.15.31"),
           Stream.runHead,
           Effect.timeout(Duration.seconds(5)),
+          Effect.forkChild,
         );
+        listeners.get(NodePath.dirname(manifestFile))?.("rename", "manifest.json");
+        yield* TestClock.adjust(Duration.seconds(5));
+        const heard = yield* Fiber.join(hearing);
 
         expect(heard._tag).toBe("Some");
         expect(reads.every((options) => options?.local === true)).toBe(true);
-        NodeFS.rmSync(dir, { recursive: true, force: true });
       }).pipe(Effect.scoped),
   );
 });
