@@ -26,7 +26,8 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
 import { GITHUB_TOKEN } from "../test/harness/automated.ts";
 import { ISSUE_CLOSED } from "./intake.ts";
-import { DECLINED_FOR, MATE_AWAY, TASK_CHANGES_SINCE, UNTAKEN } from "./mateTasks.ts";
+import { TASK_CHANGES_SINCE } from "@t3tools/shared/hqIntake";
+import { DECLINED_FOR, MATE_AWAY, UNTAKEN } from "./mateTasks.ts";
 
 const NAV = { kind: "navigation" } as const;
 

@@ -1,5 +1,9 @@
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
-import { inventoryContents, readsOfState } from "@t3tools/client-runtime/data";
+import {
+  canonicalProjectFlow,
+  inventoryContents,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -9,6 +13,7 @@ import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
   deployedVersion,
+  environmentSlots,
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
@@ -53,6 +58,7 @@ import {
   ZeropsGroupPane,
   ZeropsStopPane,
   ZeropsRuntimeStops,
+  devstagesOf,
   runtimeStopsOf,
 } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -115,9 +121,86 @@ vi.mock("../ui/menu", async (actual) => ({
   MenuPopup: ({ children }: { children: ReactNode }) => children,
 }));
 
-function render(pane: Partial<React.ComponentProps<typeof ZeropsGroupPane>> = {}) {
-  return renderToStaticMarkup(<ZeropsGroupPane onFinish={() => {}} finishing={false} {...pane} />);
+const CHECKING = "Checking your access to this project…";
+
+const environment = (
+  projectId: string,
+  name: string,
+  tier: EnvironmentRow["tier"] = "stage",
+): EnvironmentRow =>
+  ({
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
+    name,
+    tier,
+    source: "main",
+    tone: "good",
+    version: {
+      name: undefined,
+      label: "3f9c1b2",
+      commit: "3f9c1b2e",
+      sha: "3f9c1b2e".padEnd(40, "0"),
+      taggedBy: undefined,
+    },
+    versionRepository: undefined,
+  }) as EnvironmentRow;
+
+/** The Environments section as it stands for these environments and nothing else. */
+const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
+  environmentSlots({
+    environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
+    devstages: [],
+    pending: [],
+    halfMade: [],
+    recipeTiers: [],
+    recipeRead: false,
+    offered: { stage: false, production: false },
+    productionRuns: "unknown",
+    waiting: { count: 0, atLeast: false },
+    mainHasCode: undefined,
+    releaseOffered: false,
+    releasing: undefined,
+  });
+
+function render(
+  stops: Pick<
+    React.ComponentProps<typeof ZeropsGroupPane>,
+    "environments" | "withheldNotice" | "firstDeployOf" | "repos" | "onMirror"
+  > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
+    environments: [environment("stage", "stage"), environment("prod", "production", "production")],
+  },
+  /** The page's flow; absent, it holds none. */
+  flow?: ReadonlyMap<string, Shown<Deployment>>,
+) {
+  const pane = (
+    <ZeropsGroupPane
+      history={{ kind: "reading" }}
+      groupId="shop"
+      name="Shop"
+      {...stops}
+      slots={stops.slots ?? slotsOf(stops.environments)}
+      onFinish={() => {}}
+      finishing={false}
+      onAdd={() => {}}
+      names={{ mateNames: new Map() }}
+      onSetUp={() => {}}
+      release={{
+        offered: false,
+        releasing: false,
+        tag: undefined,
+        reason: undefined,
+        onReview: () => {},
+      }}
+      repo={undefined}
+      tags={new Map()}
+    />
+  );
+  platform.deployments = flow ?? new Map();
+  return renderToStaticMarkup(pane);
 }
+
+/** What the platform answered of each stop, as the page reads it. */
+const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) => deployments;
 
 describe("runtime without HQ detail", () => {
   it("keeps the inventory's placed stop identities when HQ has no environment read", () => {
@@ -136,6 +219,22 @@ describe("runtime without HQ detail", () => {
       { projectId: "production", name: "production", tier: "production" },
       { projectId: "stage", name: "stage", tier: "stage" },
     ]);
+  });
+  it("names a Mate that is also the stage, and no other project, as the group's devstage", () => {
+    const project = (id: string, kind: "mate" | "devstage" | "stage", appId = "shop") => ({
+      id,
+      name: id,
+      status: "ACTIVE",
+      hq: { appId, appName: "Shop", kind, mate: null },
+    });
+    expect(
+      devstagesOf("shop", [
+        project("vera", "devstage"),
+        project("iris", "mate"),
+        project("shop-stage", "stage"),
+        project("other-dev", "devstage", "links"),
+      ]),
+    ).toEqual([{ id: "vera", name: "vera" }]);
   });
 
   it.each([
@@ -177,6 +276,7 @@ describe("runtime without HQ detail", () => {
 
 describe("ZeropsGroupPane", () => {
   it("says nothing of repositories until one mirrors somewhere, then names where", () => {
+    const environments = [environment("stage", "stage")];
     const repo = (name: string, url: string | null) => ({
       name,
       mainHead: null,
@@ -193,18 +293,18 @@ describe("ZeropsGroupPane", () => {
               invalidSince: null,
             },
     });
-    expect(render({ repos: [repo("mailpit", null)] })).not.toContain("Repositories");
+    expect(render({ environments, repos: [repo("mailpit", null)] })).not.toContain("Repositories");
     const markup = render({
+      environments,
       repos: [repo("mailpit", null), repo("medusadev", "https://github.com/acme/medusa.git")],
     });
-    const document = new Window().document;
-    document.body.innerHTML = markup;
     expect(markup).toContain("Repositories");
-    expect(document.body.textContent).toContain("medusadev → github.com/acme/medusa");
+    expect(markup).toContain("medusadev → github.com/acme/medusa");
     expect(markup).not.toContain("mailpit");
   });
 
   it("offers mirroring a project's code from its page once it has a repository", () => {
+    const environments = [environment("stage", "stage")];
     const mailpit = {
       name: "mailpit",
       mainHead: null,
@@ -212,18 +312,218 @@ describe("ZeropsGroupPane", () => {
       remote: null,
     };
     const onMirror = () => undefined;
-    expect(render({ repos: [], onMirror })).not.toContain("Mirror code");
-    const markup = render({ repos: [mailpit], onMirror });
+    expect(render({ environments, repos: [], onMirror })).not.toContain("Mirror code");
+    const markup = render({ environments, repos: [mailpit], onMirror });
     expect(markup).toContain("Repositories");
     expect(markup).toContain("Mirror code to GitHub or GitLab…");
   });
 
-  it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
-    const markup = render({ halfMade: [{ id: "p-half", tier: "production", finish: true }] });
-    expect(markup).toContain("Setup isn&#x27;t finished");
-    expect(markup).toContain("Finish setup");
-    expect(markup).not.toContain("Put it live");
-    expect(markup).not.toContain("Waiting for the Mate&#x27;s recipe");
+  it("draws every line's content", () => {
+    const markup = render();
+
+    expect(markup).toContain("stage");
+    expect(markup).toContain("production");
+    expect(markup).toContain("3f9c1b2");
+  });
+
+  // DESIGN §3.4, M7: a stop the grant withholds keeps its place in the list and nothing of its
+  // project — neither its name, what it runs, nor a way into it.
+  it("draws a stop the grant withholds as its tier and why", () => {
+    const markup = render({
+      environments: [
+        environment("stage", "Shop stage"),
+        {
+          ...environment("prod", "Harbor live", "production"),
+          version: {
+            name: undefined,
+            label: "9e8d7c6",
+            commit: "9e8d7c6",
+            sha: "9e8d7c6".padEnd(40, "0"),
+            taggedBy: undefined,
+          },
+        },
+      ],
+      withheldNotice: (projectId) => (projectId === "prod" ? CHECKING : null),
+    });
+
+    expect(markup).toContain("production");
+    expect(markup).toContain(CHECKING);
+    expect(markup).not.toContain("Harbor live");
+    expect(markup).not.toContain("9e8d7c6");
+    expect(markup).toContain("3f9c1b2");
+    expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
+  });
+
+  describe("the Environments section", () => {
+    const slots = (over: Partial<Parameters<typeof environmentSlots>[0]>) =>
+      environmentSlots({
+        environments: [],
+        devstages: [],
+        pending: [],
+        halfMade: [],
+        recipeTiers: ["stage", "production"],
+        recipeRead: true,
+        offered: { stage: true, production: true },
+        productionRuns: "unknown",
+        waiting: { count: 0, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: false,
+        releasing: undefined,
+        ...over,
+      });
+
+    it("is not drawn before HQ's environments are read: nothing is known to be absent", () => {
+      const markup = render({ environments: [], slots: [] });
+      expect(markup).not.toContain("Environments");
+      expect(markup).not.toContain("Not added");
+    });
+
+    it("is there with nothing added: two quiet slots, each with its Add", () => {
+      const markup = render({ environments: [], slots: slots({}) });
+      expect(markup).toContain("Environments");
+      expect(markup).toContain("Add stage");
+      expect(markup).toContain("Put it live");
+    });
+
+    // The project's card says production first, then each stage: its page's column the same.
+    it("lists production before its stages, as the project's card does", () => {
+      const markup = render({ environments: [], slots: slots({}) });
+      expect(markup.indexOf("Put it live")).toBeLessThan(markup.indexOf("Add stage"));
+    });
+
+    it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
+      const markup = render({
+        environments: [],
+        slots: slots({ offered: { stage: false, production: false }, recipeTiers: ["stage"] }),
+      });
+      expect(markup).not.toContain("Add stage");
+      expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
+    });
+
+    describe("B: authoritative placement", () => {
+      it("a Mate used as stage occupies the stage slot and explains who deploys it", () => {
+        const devstages = devstagesOf("shop", [
+          {
+            id: "Ada",
+            name: "Ada",
+            status: "ACTIVE",
+            hq: { appId: "shop", appName: "Shop", kind: "devstage", mate: { face: "" } },
+          },
+        ]);
+        const markup = render({ environments: [], slots: slots({ devstages }) });
+        expect(markup).toContain("Ada — deployed by its agent");
+        expect(markup).not.toContain("Add stage");
+        expect(markup).toContain("Put it live");
+      });
+    });
+
+    it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
+      const markup = render({
+        environments: [],
+        slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
+      });
+      expect(markup).toContain("Vera — deployed by its agent");
+      expect(markup).not.toContain("Add stage");
+      expect(markup).toContain("Put it live");
+    });
+
+    it("says a production being created is being set up, and offers no second Add for it", () => {
+      const markup = render({
+        environments: [],
+        slots: slots({ pending: [{ id: "p-new", tier: "production" }] }),
+      });
+      expect(markup).toContain("Setting up production…");
+      expect(markup).not.toContain("Put it live");
+    });
+
+    it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
+      const markup = render({
+        environments: [],
+        slots: slots({ halfMade: [{ id: "p-half", tier: "production", finish: true }] }),
+      });
+      expect(markup).toContain("Setup isn&#x27;t finished");
+      expect(markup).toContain("Finish setup");
+      expect(markup).not.toContain("Put it live");
+      expect(markup).not.toContain("Waiting for the Mate&#x27;s recipe");
+    });
+
+    it("says an empty production waits for its first release, with Review release where offered", () => {
+      const prod = environment("prod", "production", "production");
+      const markup = render({
+        environments: [prod],
+        slots: slots({
+          environments: [{ id: "prod", tier: "production" }],
+          recipeTiers: [],
+          productionRuns: "empty",
+          releaseOffered: true,
+        }),
+      });
+      expect(markup).toContain("No release yet");
+      expect(markup).not.toContain("Put it live");
+    });
+  });
+
+  it("says an empty stage's first deploy on its line, as its cell does", () => {
+    const empty = {
+      ...environment("stage", "stage"),
+      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
+    } as EnvironmentRow;
+    const markup = render({
+      environments: [empty],
+      firstDeployOf: (projectId) => (projectId === "stage" ? { kind: "on-its-way" } : undefined),
+    });
+    expect(markup).toContain("First deploy on its way");
+  });
+
+  // F13, 2026-10-03: a stage whose version was still being read wrote "none" in its version column,
+  // while its page said it was checking.
+  describe("names what a stop runs in its version column, as its page does", () => {
+    const unnamed = {
+      ...environment("stage", "stage"),
+      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
+      tone: "neutral",
+    } as EnvironmentRow;
+    const running = (name: string): Shown<Deployment> => ({
+      state: "known",
+      value: { kind: "running", activatedAt: null, version: deployedVersion(name) },
+      asOf: { ordinal: 1, atMs: NOW },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    });
+
+    it.each([
+      {
+        name: "checking while nothing has answered",
+        deployment: undefined,
+        expected: "Checking what runs here…",
+      },
+      {
+        name: "checking while what runs is read",
+        deployment: UNREAD,
+        expected: "Checking what runs here…",
+      },
+      {
+        name: "the version the platform names before the row does",
+        deployment: running("main 6aeae99"),
+        expected: "6aeae99",
+      },
+      {
+        name: "none once the platform says nothing runs",
+        deployment: NONE,
+        expected: "Nothing deployed yet",
+      },
+    ])("$name", ({ deployment, expected }) => {
+      const markup = render(
+        { environments: [unnamed] },
+        flowOf(new Map(deployment === undefined ? [] : [["stage", deployment]])),
+      );
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      const row = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.startsWith("stage"),
+      );
+      expect(row?.textContent).toContain(expected);
+    });
   });
 });
 
@@ -1575,6 +1875,109 @@ describe("environment route target dispatch", () => {
       registry.dispose();
     },
   );
+});
+
+it("Environment navigation keeps its identity when the target's project name changes.", () => {
+  const id = HqEnvironmentId.make("stable-environment");
+  const target = {
+    kind: "zerops" as const,
+    projectId: ProjectId.make("different-project-address"),
+  };
+  const open = (name: string) => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, "org", [
+      { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
+    ]);
+    mountHqNavigation(
+      registry,
+      "org",
+      {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [],
+              environments: [
+                {
+                  id,
+                  target,
+                  name: "Stage",
+                  tier: "stage",
+                  sources: ["main"],
+                  order: 1,
+                  keyHeld: false,
+                  keyInvalid: false,
+                  jobs: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      store,
+    );
+    const answer = registry.get(
+      store.data.project(canonicalProjectFlow, {
+        orgId: "org",
+        appId: "shop",
+        hqAddress: undefined,
+        viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+      }),
+    );
+    const row = answer!.environments[0]!;
+    expect(row.name).toBe(name);
+    expect(row.id).toBe("stable-environment");
+    let mounted!: ReactTestRenderer;
+    act(() => {
+      mounted = create(
+        <RegistryContext.Provider value={registry}>
+          <ZeropsGroupPane
+            groupId="shop"
+            name="Shop"
+            environments={[row]}
+            slots={slotsOf([row])}
+            history={{ kind: "reading" }}
+            tags={new Map()}
+            repo={undefined}
+            release={{
+              offered: false,
+              releasing: false,
+              tag: undefined,
+              reason: undefined,
+              onReview: () => {},
+            }}
+            names={{ mateNames: new Map() }}
+            onFinish={() => {}}
+            finishing={false}
+            onAdd={() => {}}
+            onSetUp={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+    });
+    const button = mounted.root
+      .findAllByType("button")
+      .find((node) => node.findAllByType("span").some((span) => span.children.includes(name)));
+    expect(button).toBeDefined();
+    act(() => button!.props.onClick());
+    act(() => mounted.unmount());
+    registry.dispose();
+  };
+  platform.navigation = [];
+  open("Original project name");
+  open("Renamed project name");
+  expect(platform.navigation).toEqual([
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+  ]);
 });
 
 it("An environment page explains HQ's refusal in words without opening project readers.", () => {

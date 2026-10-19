@@ -8,7 +8,12 @@
  */
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
-import type { HqAppTask, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import {
+  TASK_CHANGES_SINCE,
+  type HqAppTask,
+  type HqTaskLimitsView,
+} from "@t3tools/shared/hqIntake";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
@@ -72,10 +77,21 @@ export interface BlockedMate {
   readonly change: NonNullable<RecentRow["change"]>;
 }
 
+/** A free Mate whose finished tasks' changes wait for review: how many. */
+export interface ReviewingMate {
+  readonly projectId: string;
+  readonly count: number;
+}
+
 export interface Board {
   readonly atWork: ReadonlyArray<AtWorkRow>;
-  /** Its Mates whose last task's change is open: HQ gives them no task until it is merged or closed. */
+  /**
+   * Its Mates HQ holds on their last task's open change (`heldOnItsChange`): HQ gives them no task
+   * until it is merged or closed.
+   */
   readonly blocked: ReadonlyArray<BlockedMate>;
+  /** Its Mates HQ does not hold whose changes wait for review: free, each with how many. */
+  readonly reviewing: ReadonlyArray<ReviewingMate>;
   readonly queued: ReadonlyArray<QueuedRow>;
   readonly recent: ReadonlyArray<RecentRow>;
   /** How many more ended than `recent` shows. */
@@ -127,6 +143,15 @@ function changeLink(task: HqAppTask, appId: string): RecentRow["change"] {
   return null;
 }
 
+/**
+ * Whether HQ holds a Mate on its last task's open change: only a Mate older than HQ's change per
+ * task (`TASK_CHANGES_SINCE`) is, its one working copy holding that work; a newer one, or one
+ * whose version nothing says, takes tasks meanwhile.
+ */
+export function heldOnItsChange(version: string | undefined): boolean {
+  return version !== undefined && compareSemverVersions(version, TASK_CHANGES_SINCE) < 0;
+}
+
 /** Where a live task stands, with what HQ's navigation says of it (a stop taken, a question). */
 function liveStatus(task: HqAppTask, live: HqNavigationMateTask | undefined): TaskStatus {
   if (live?.stopping === true || task.state === "stopping") return "stopping";
@@ -144,9 +169,12 @@ export function boardOf(
   nowMs: number,
   appId = "",
   live: ReadonlyMap<string, HqNavigationMateTask> = new Map(),
+  /** Whether HQ holds a Mate, by its project, on its open change (`heldOnItsChange`). */
+  held: (projectId: string) => boolean = () => false,
 ): Board {
   const atWork: Array<AtWorkRow> = [];
   const blocked: Array<BlockedMate> = [];
+  const reviewing = new Map<string, number>();
   const queued: Array<QueuedRow> = [];
   const ended: Array<RecentRow> = [];
   for (const task of tasks) {
@@ -174,16 +202,14 @@ export function boardOf(
         route,
       });
     } else {
-      // Done with its change open while navigation still names it: its Mate waits for the change.
+      // Done with its change open: a Mate HQ holds waits for it while navigation still names it;
+      // any other is free, its change counted among those waiting for review.
       const change = changeLink(task, appId);
-      if (status === "review" && now !== undefined && task.mate !== null && change !== null)
-        blocked.push({
-          projectId: task.mate.projectId,
-          change: changeLink(
-            { ...task, pullRequest: task.change === null ? task.pullRequest : null },
-            appId,
-          )!,
-        });
+      if (status === "review" && task.mate !== null && change !== null) {
+        const { projectId } = task.mate;
+        if (!held(projectId)) reviewing.set(projectId, (reviewing.get(projectId) ?? 0) + 1);
+        else if (now !== undefined) blocked.push({ projectId, change });
+      }
       ended.push({
         id: task.id,
         outcome: status,
@@ -201,6 +227,7 @@ export function boardOf(
   return {
     atWork,
     blocked,
+    reviewing: [...reviewing].map(([projectId, count]) => ({ projectId, count })),
     queued,
     recent: ended.slice(0, RECENT_SHOWN),
     recentMore: Math.max(0, ended.length - RECENT_SHOWN),
@@ -248,38 +275,4 @@ export function spendLine(limits: HqTaskLimitsView): string | null {
   if (budget == null) return `${spent} this month`;
   const cap = Number.isInteger(budget) ? `$${String(budget)}` : costWords(budget);
   return `${spent} of ${cap} this month${limits.spentThisMonthUsd >= budget ? " · spent" : ""}`;
-}
-
-/** The month's spend against its budget, for the card's thin line: words and the share spent. */
-export interface SpendGauge {
-  /** "$21.40 of $40 · October". */
-  readonly words: string;
-  /** Spent over budget, 0–1. */
-  readonly share: number;
-}
-
-/** The month's spend as a share of its budget; `null` where HQ says no spend or sets no budget. */
-export function spendGauge(limits: HqTaskLimitsView, nowMs: number): SpendGauge | null {
-  const spent = limits.spentThisMonthUsd;
-  const budget = limits.monthlyBudgetUsd;
-  if (spent === undefined || budget == null || budget <= 0) return null;
-  const cap = Number.isInteger(budget) ? `$${String(budget)}` : costWords(budget);
-  const month = new Date(nowMs).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
-  return { words: `${costWords(spent)} of ${cap} · ${month}`, share: Math.min(1, spent / budget) };
-}
-
-/** Who takes tasks, as the pool line opens: "Odo and Tess take tasks from". */
-export function takesLine(names: ReadonlyArray<string>): string {
-  if (names.length === 0) return "Tasks come from";
-  if (names.length === 1) return `${names[0]!} takes tasks from`;
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)!} take tasks from`;
-}
-
-/** A queued task's source as a glyph: GitHub's "GH", a chat's "#"; `null` where unknown. */
-export function sourceGlyph(url: string | null): "GH" | "#" | null {
-  if (url === null) return null;
-  const host = URL.canParse(url) ? new URL(url).hostname : "";
-  if (host === "github.com" || host.endsWith(".github.com")) return "GH";
-  if (host.endsWith("slack.com") || host.endsWith("discord.com")) return "#";
-  return null;
 }

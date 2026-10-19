@@ -57,6 +57,7 @@ import type {
 } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
+import { TASK_CHANGES_SINCE } from "@t3tools/shared/hqIntake";
 import type { MateLinkDown } from "@t3tools/shared/mateLink";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -104,13 +105,6 @@ import {
  * older one passes such a `task` frame by, so it is never handed one.
  */
 export const TASK_SOURCES_SINCE = "0.15.159";
-
-/**
- * The first Mate that puts its working copies on each task's base (`ZeropsWorkingCopy`): HQ hands
- * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
- * holding that work, takes none until they are merged or closed.
- */
-export const TASK_CHANGES_SINCE = "0.15.178";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;

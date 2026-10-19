@@ -20,7 +20,7 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { AddressDomain, PlaceAddresses } from "@t3tools/client-runtime/data";
-import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import {
@@ -39,10 +39,8 @@ import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
-import { RoadPlace, ServiceTiles } from "~/components/zerops/projects/RoadPlace";
-import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
+import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
 import {
-  CardActivity,
   CardChanges,
   CardMate,
   CardMateLiftActions,
@@ -54,7 +52,6 @@ import {
   cardMateReading,
   cardPeople,
   releaseLineOpens,
-  unlifted,
 } from "~/components/zerops/projects/projectCard.logic";
 import {
   ZeropsProjectsFlow,
@@ -63,7 +60,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
-import { TeaShopCards } from "./projectCardsFixtures";
+import { ProjectPageAside, ProjectPagePeople } from "./projectPageFixtures";
 import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
@@ -154,11 +151,8 @@ interface Project {
   readonly entry: ProjectsFlowGroup<Mate>;
   readonly chip?: ProductionChip;
   readonly since?: string;
-  readonly stageSince?: string;
-  readonly failedTag?: string;
   /** This tab's run began releasing then (wall ms). */
   readonly releaseSince?: number;
-  readonly waitsOnYou: boolean;
   readonly canPutLive: boolean;
   readonly merged?: { readonly by: Mate; readonly title: string; readonly at: string };
   readonly panels: Partial<Record<"stage" | "production", Omit<PlacePanelModel, "line">>>;
@@ -176,10 +170,7 @@ function project(input: {
   readonly notLive?: number;
   readonly chip?: ProductionChip;
   readonly since?: string;
-  readonly stageSince?: string;
-  readonly failedTag?: string;
   readonly releaseSince?: number;
-  readonly waitsOnYou?: boolean;
   readonly canPutLive?: boolean;
   readonly merged?: Project["merged"];
   readonly panels?: Project["panels"];
@@ -236,11 +227,8 @@ function project(input: {
     },
     ...(input.chip === undefined ? {} : { chip: input.chip }),
     ...(input.since === undefined ? {} : { since: input.since }),
-    ...(input.stageSince === undefined ? {} : { stageSince: input.stageSince }),
-    ...(input.failedTag === undefined ? {} : { failedTag: input.failedTag }),
     ...(input.releaseSince === undefined ? {} : { releaseSince: input.releaseSince }),
     ...(input.merged === undefined ? {} : { merged: input.merged }),
-    waitsOnYou: input.waitsOnYou ?? false,
     canPutLive: input.canPutLive ?? false,
     panels: input.panels ?? {},
     actions: input.actions ?? {},
@@ -304,34 +292,6 @@ const readPlace = (
 /** Tea Shop's production has no domain of its own yet: Put it on your domain. */
 const inAccount = withPlaceAddresses({ "tea-prod": readPlace([], ["app"]) });
 
-/** A service as the service map reads it, its use and its last day made up. */
-const tileRow = (hostname: string, typeShort: string, type = "nodejs@22"): ZeropsServiceRow => {
-  const trend = Array.from({ length: 24 }, (_, hour) => ({
-    at: ago((24 - hour) * 60),
-    used: 0.2 + 0.15 * Math.sin(hour / 2.5) + (hour % 7 === 0 ? 0.2 : 0),
-    limit: 1,
-  }));
-  return {
-    isControlPlane: false,
-    service: { serviceId: hostname, hostname, type } as ZeropsServiceRow["service"],
-    tone: "ok",
-    statusLabel: "Running",
-    statusNeedsWord: false,
-    typeLabel: typeShort,
-    typeShort,
-    title: hostname,
-    portLabel: type === "objectstorage" ? undefined : hostname === "db" ? ":5432" : ":3000",
-    meta: [],
-    dashboardUrl: "",
-    metrics: [
-      { id: "cores", label: "CPU", value: "1", used: "0.2", unit: "core", fraction: 0.2 },
-      { id: "memory", label: "RAM", value: "1", used: "0.4", unit: "GB", fraction: 0.4 },
-      { id: "disk", label: "Disk", value: "5", used: "1.1", unit: "GB", fraction: 0.22 },
-    ],
-    trends: { cores: trend, memory: trend, disk: trend },
-  } as unknown as ZeropsServiceRow;
-};
-
 const JUNO_ASKS = mate("juno", "Juno", "sky", {
   face: "needs",
   status: "input",
@@ -354,7 +314,6 @@ const STORE_SERVICES: ReadonlyArray<readonly [string, string, string]> = [
   ["cache", "Valkey 7", "valkey@7.2"],
   ["files", "Object storage", "objectstorage"],
 ];
-const SERVICE_TYPES = new Map(STORE_SERVICES.map(([name, short, type]) => [name, { short, type }]));
 
 const PROJECTS: ReadonlyArray<Project> = [
   // (a) Setting up: its first Mate on its way, nothing runs.
@@ -396,7 +355,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     ],
     production: { kind: "absent" },
     notLive: 4,
-    waitsOnYou: true,
     canPutLive: true,
     merged: {
       by: mate("vera", "Vera", "violet"),
@@ -436,7 +394,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     stages: [stop("tea-stage", "stage", { version: version("main") })],
     notLive: 3,
     since: ago(60 * 24 * 6),
-    stageSince: ago(25),
     merged: { by: mate("vera-t", "Vera", "amber"), title: "Prices per 100 g", at: ago(25) },
     panels: {
       stage: panel({
@@ -463,6 +420,22 @@ const PROJECTS: ReadonlyArray<Project> = [
       { ...JUNO_ASKS, id: "juno-s", view: { ...JUNO_ASKS.view, ask: "Checkout" } },
       mate("mira-s", "Mira", "amber", { time: "2h" }),
       mate("ines-s", "Ines", "olive", { owner: INES, time: "1d" }),
+      {
+        ...working("odo-s", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
+        automated: true,
+      },
+      {
+        ...mate("tess-s", "Tess", "rose", {
+          time: "5h",
+          view: {
+            state: "idle",
+            ask: undefined,
+            reply: words("#39 Prices no longer round down in the cart · merged"),
+            dot: undefined,
+          },
+        }),
+        automated: true,
+      },
     ],
     pullRequests: [inReview(71, "One-page checkout", "juno-s")],
     production: {
@@ -488,9 +461,7 @@ const PROJECTS: ReadonlyArray<Project> = [
       stop("store-perf", "stage-perf", { state: "failed", source: "perf-budget" }),
     ],
     notLive: 2,
-    waitsOnYou: true,
     since: ago(60 * 24 * 19),
-    stageSince: ago(19),
     merged: {
       by: mate("mira-s", "Mira", "amber"),
       title: "Gift cards at checkout",
@@ -525,7 +496,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     stages: [stop("bakery-stage", "stage")],
     chip: { label: "prod", state: "releasing", version: "v0.1.1", next: "v0.1.2" },
     since: ago(60),
-    stageSince: ago(12),
     releaseSince: NOW - 42_000,
     panels: {
       production: panel({ version: "v0.1.1", services: [{ hostname: "app", state: "up" }] }),
@@ -554,8 +524,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     stages: [stop("watch-stage", "stage", { version: version("main") })],
     chip: { label: "prod", state: "failed", version: "v0.1.2" },
     since: ago(60 * 24 * 9),
-    stageSince: ago(60),
-    failedTag: "v0.1.3",
     merged: {
       by: mate("raya-w", "Raya", "coral"),
       title: "Remember where you stopped",
@@ -623,22 +591,15 @@ function HarnessPage() {
           <ZeropsProjectsFlow<Mate>
             cardPlaces={(entry) => {
               const found = byId.get(entry.group.groupId);
-              const at = found?.stageSince;
               return {
                 chip: found?.chip,
                 since: found?.since,
-                failedTag: found?.failedTag,
                 releaseSince: found?.releaseSince,
-                stageSince:
-                  at === undefined
-                    ? undefined
-                    : new Map(entry.flow.stages.map((stage) => [stage.projectId, at])),
               };
             }}
             getKey={(entry) => entry.id}
             groups={PROJECTS.map((entry) => entry.entry)}
             hqCard={null}
-            isAutomated={(entry) => entry.automated === true}
             isMate={() => true}
             onRetryContainers={() => {}}
             openMate={() => () => {}}
@@ -647,23 +608,12 @@ function HarnessPage() {
                 ? undefined
                 : {
                     groupId: PAGE,
-                    aside: <TeaShopCards />,
+                    aside: <ProjectPageAside groupId={PAGE} />,
+                    people: <ProjectPagePeople />,
                     onAddMate: () => acted.push(`add-mate:${PAGE}`),
                     unread: null,
                   }
             }
-            renderActivity={(entry) => {
-              const merged = byId.get(entry.group.groupId)?.merged;
-              return merged === undefined ? null : (
-                <CardActivity
-                  at={merged.at}
-                  face={<MateFace size={16} state="idle" tint={merged.by.tint} />}
-                  nowMs={NOW}
-                  onOpen={() => acted.push(`activity:${entry.group.groupId}`)}
-                  words={`${merged.by.name} merged “${merged.title}”`}
-                />
-              );
-            }}
             renderChanges={(entry) => {
               const found = byId.get(entry.group.groupId);
               const live =
@@ -698,7 +648,6 @@ function HarnessPage() {
                   }}
                   mateName={(projectId) => entry.mates.get(projectId)?.name}
                   onOpen={(opened) => acted.push(`change:${String(opened.pull.number)}`)}
-                  onShowAll={() => acted.push(`show-all:${entry.group.groupId}`)}
                   releases={
                     live === undefined
                       ? []
@@ -745,13 +694,12 @@ function HarnessPage() {
               </Button>
             )}
             renderMate={(entry, options) => {
-              const read = cardMateReading({
+              const reading = cardMateReading({
                 view: entry.view,
                 status: entry.status,
                 mine: mineOf(entry),
                 review: options.review,
               });
-              const reading = options.lift === false ? unlifted(read) : read;
               return (
                 <CardMate
                   actions={
@@ -773,6 +721,7 @@ function HarnessPage() {
                   }
                   face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
                   key={entry.id}
+                  mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
                   name={entry.name}
                   onOpen={() => acted.push(`open:${entry.id}`)}
                   previews={options.previews}
@@ -782,54 +731,13 @@ function HarnessPage() {
               );
             }}
             renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
-            renderPlacePanel={(entry, line, look) => {
+            renderPlacePanel={(entry, line) => {
               const found = byId.get(entry.group.groupId);
               const model = found?.panels[line.kind];
               if (found === undefined || model === undefined) return null;
-              if (look === "detail")
-                return (
-                  <RoadPlace
-                    actions={(found.actions[line.kind] ?? []).map((label, index) => (
-                      <Button
-                        key={label}
-                        size="sm"
-                        variant={index === 0 && line.trouble ? "primary" : "secondary"}
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                    menu={
-                      line.kind === "production" && !line.trouble ? (
-                        <Button aria-label="More for production" size="icon-sm" variant="ghost">
-                          <EllipsisIcon />
-                        </Button>
-                      ) : null
-                    }
-                    model={{
-                      line,
-                      note: line.trouble ? model.note : undefined,
-                    }}
-                    tiles={
-                      <ServiceTiles
-                        rows={model.services.map((service, index) => {
-                          const known = SERVICE_TYPES.get(service.hostname);
-                          return known === undefined
-                            ? tileRow(
-                                service.hostname,
-                                index === 0 ? "Node.js 22" : "PostgreSQL 16",
-                                index === 0 ? "nodejs@22" : "postgresql@16",
-                              )
-                            : tileRow(service.hostname, known.short, known.type);
-                        })}
-                        usageRead
-                      />
-                    }
-                  />
-                );
               return inAccount(
                 <PlacePanel
                   groupId={entry.group.groupId}
-                  look={look}
                   actions={(found.actions[line.kind] ?? []).map((label, index) => (
                     <Button
                       key={label}
@@ -849,19 +757,13 @@ function HarnessPage() {
                 />,
               );
             }}
-            renderReleaseVerb={(_entry, chip) => (
-              <Button size="sm" variant="secondary">
-                {chip.label}
-                <ChevronRightIcon aria-hidden="true" />
-              </Button>
-            )}
+            renderReleaseVerb={() => <Button>Review release</Button>}
             setUpProduction={(entry) =>
               byId.get(entry.group.groupId)?.canPutLive === true
                 ? () => acted.push(`put-live:${entry.group.groupId}`)
                 : undefined
             }
             setUpStage={() => () => acted.push("add-stage")}
-            waitsOnYou={(entry) => byId.get(entry.group.groupId)?.waitsOnYou === true}
             addMate={(entry) => ({
               onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
               why: null,

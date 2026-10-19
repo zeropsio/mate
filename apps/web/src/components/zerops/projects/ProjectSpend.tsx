@@ -1,9 +1,8 @@
 /**
- * A project's spend over the last 30 days: one line for its overview card (the figure, and a micro
- * bar a day) and a card for its page (the figure, a bar a day against the daily average, and what
- * the figure is made of). Each day stacks compute (Zerops) under model tokens (the organization's
- * key); a bar's tooltip says the day's split. Nothing shows, and no room is kept, when either half
- * cannot be read.
+ * A project's spend over the last 30 days, a section of its page's column: the figure, a bar a day
+ * against the daily average, and what the figure is made of. Each day stacks compute (Zerops) under
+ * model tokens (the organization's key); a bar's tooltip says the day's split. Nothing shows, and
+ * no room is kept, when either half cannot be read.
  */
 import {
   agentUsage,
@@ -16,7 +15,6 @@ import {
 import { Atom } from "effect/reactivity";
 import { createContext, useMemo, useState, type ReactNode } from "react";
 
-import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import {
   Tooltip,
@@ -85,24 +83,12 @@ export function useProjectSpend({ appId, projectIds }: ProjectSpendInput): Spend
 const NO_SPEND: SpendState = { kind: "unknown" };
 
 /** "$64" at the figure's size, ".30" smaller and quiet. */
-function Money({ usd, size }: { readonly usd: number; readonly size: "line" | "card" }) {
+function Money({ usd }: { readonly usd: number }) {
   const { whole, cents } = moneyParts(usd);
   return (
-    <span
-      className={cn(
-        "font-semibold tabular-nums tracking-tight text-foreground",
-        size === "card" ? "text-title" : "text-emphasis",
-      )}
-    >
+    <span className="text-title font-semibold tabular-nums tracking-tight text-foreground">
       {whole}
-      <span
-        className={cn(
-          "font-medium text-muted-foreground",
-          size === "card" ? "text-emphasis" : "text-caption",
-        )}
-      >
-        {cents}
-      </span>
+      <span className="text-emphasis font-medium text-muted-foreground">{cents}</span>
     </span>
   );
 }
@@ -120,7 +106,6 @@ interface BarsGeometry {
   readonly radius: string;
 }
 
-const LINE_BARS: BarsGeometry = { height: 26, bar: "w-[3px]", slot: 5, radius: "" };
 const CARD_BARS: BarsGeometry = {
   height: 92,
   bar: "w-[calc(100%-5px)]",
@@ -226,32 +211,6 @@ function SpendBars({
   );
 }
 
-/** The overview card's line: "$64.30 30-day cost" and a micro bar a day. */
-export function ProjectSpendLineView({ state }: { readonly state: SpendState }) {
-  if (state.kind === "unknown") return null;
-  if (state.kind === "loading")
-    return (
-      <div className="flex h-7 items-end justify-between gap-4" aria-busy="true">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-[26px] w-[148px]" />
-      </div>
-    );
-  const { series } = state;
-  return (
-    <div className="flex h-7 items-end justify-between gap-4">
-      <p className="flex min-w-0 items-baseline gap-2">
-        <Money usd={series.totalUsd} size="line" />
-        <span className="truncate text-caption text-muted-foreground">30-day cost</span>
-      </p>
-      <SpendBars series={series} geometry={LINE_BARS} />
-    </div>
-  );
-}
-
-export function ProjectSpendLine(input: ProjectSpendInput) {
-  return <ProjectSpendLineView state={useProjectSpend(input)} />;
-}
-
 function LegendRow({
   fill,
   label,
@@ -262,7 +221,7 @@ function LegendRow({
   readonly usd: number;
 }) {
   return (
-    <div className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2">
+    <div className="grid max-w-80 grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2">
       <span aria-hidden="true" className={cn("size-2.5 rounded-xs", fill)} />
       <span className="truncate text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums text-foreground">{formatUsd(usd)}</span>
@@ -272,8 +231,29 @@ function LegendRow({
 
 const NO_MATES: ReadonlyArray<SubscriptionMate> = [];
 
-/** The project page's card: the figure, a bar a day against the average, and its parts. */
-export function ProjectSpendCardView({
+/** A section of the page's column (`ov-side`): its name, then what it holds. */
+function SpendSection({
+  busy = false,
+  children,
+}: {
+  readonly busy?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section
+      aria-busy={busy ? "true" : undefined}
+      aria-label="Spend"
+      className="ov-side"
+      data-zerops-surface="project-spend"
+    >
+      <h2 className="ov-side-name">Spend</h2>
+      <div className="px-2 pb-1.5">{children}</div>
+    </section>
+  );
+}
+
+/** The project page's Spend: the figure, a bar a day against the average, and its parts. */
+export function ProjectSpendSectionView({
   state,
   subscriptionMates = NO_MATES,
 }: {
@@ -281,36 +261,32 @@ export function ProjectSpendCardView({
   readonly subscriptionMates?: ReadonlyArray<SubscriptionMate>;
 }) {
   if (state.kind === "unknown") return null;
-  const title = <h3 className="text-line font-medium text-foreground">Spend</h3>;
   if (state.kind === "loading")
     return (
-      <Card size="md" aria-busy="true">
-        {title}
+      <SpendSection busy>
         <div className="flex flex-col gap-3">
           <Skeleton className="h-7 w-32" />
           <Skeleton className="h-[116px] w-full" />
           <Skeleton className="h-[46px] w-full" />
         </div>
-      </Card>
+      </SpendSection>
     );
   const { series } = state;
   if (series.totalUsd === 0)
     return (
-      <Card size="md">
-        {title}
+      <SpendSection>
         <p className="text-line text-muted-foreground">No spend in the last 30 days</p>
-      </Card>
+      </SpendSection>
     );
   const first = series.days[0]?.day ?? "";
   const last = series.days.at(-1)?.day ?? "";
   const today = series.todayIndex >= 0 ? last : "";
   const fine = subscriptionLine(subscriptionMates);
   return (
-    <Card size="md">
-      {title}
+    <SpendSection>
       <div className="flex flex-col gap-3">
         <p className="flex h-7 items-baseline gap-2">
-          <Money usd={series.totalUsd} size="card" />
+          <Money usd={series.totalUsd} />
           <span className="text-caption text-muted-foreground">30-day cost</span>
         </p>
         <div className="flex flex-col gap-2">
@@ -333,16 +309,16 @@ export function ProjectSpendCardView({
           <p className="text-caption text-muted-foreground text-pretty">{fine}</p>
         )}
       </div>
-    </Card>
+    </SpendSection>
   );
 }
 
-export function ProjectSpendCard({
+export function ProjectSpendSection({
   subscriptionMates,
   ...input
 }: ProjectSpendInput & { readonly subscriptionMates?: ReadonlyArray<SubscriptionMate> }) {
   return (
-    <ProjectSpendCardView
+    <ProjectSpendSectionView
       state={useProjectSpend(input)}
       {...(subscriptionMates === undefined ? {} : { subscriptionMates })}
     />
@@ -350,7 +326,7 @@ export function ProjectSpendCard({
 }
 
 /**
- * The project page's Spend card, handed from the page, which knows the project's Mates, to its card
- * grid (`ZeropsGroupPane`); none outside a project page.
+ * The project page's Spend, handed from the page, which knows the project's Mates, to its column
+ * (`ZeropsGroupPane`); none outside a project page.
  */
 export const ProjectPageSpend = createContext<ReactNode>(null);

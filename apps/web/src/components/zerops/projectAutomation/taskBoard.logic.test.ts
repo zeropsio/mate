@@ -5,12 +5,10 @@ import {
   RECENT_SHOWN,
   boardOf,
   costWords,
+  heldOnItsChange,
   poolLine,
   predictedBoard,
-  sourceGlyph,
-  spendGauge,
   spendLine,
-  takesLine,
   taskRoute,
 } from "./taskBoard.logic";
 
@@ -130,14 +128,64 @@ describe("an application's task board", () => {
       change: { repo: "web", number: 3 },
     });
     const live = new Map([["1", { id: "1", title: "Task 1", url: null }]]);
-    expect(boardOf([done], NOW, "app-1", live).blocked).toEqual([
+    // A Mate older than HQ's change per task: HQ holds it on its change.
+    const held = () => true;
+    expect(boardOf([done], NOW, "app-1", live, held).blocked).toEqual([
       {
         projectId: "P_JUNO",
         change: { label: "Change #3", href: "/change/app-1/web/3", external: false },
       },
     ]);
-    expect(boardOf([done], NOW, "app-1").blocked).toEqual([]);
+    expect(boardOf([done], NOW, "app-1", new Map(), held).blocked).toEqual([]);
   });
+
+  // Live: "Raya waits for change #12 to be merged or closed" while Raya took #12 holding #8's change.
+  it("says a Mate HQ does not hold on its changes is free, with how many of them wait for review", () => {
+    const done = (id: string, number: number) =>
+      task({
+        id,
+        state: "done",
+        endedAt: "2026-10-18T11:00:00.000Z",
+        change: { repo: "web", number },
+      });
+    const live = new Map([["1", { id: "1", title: "Task 1", url: null }]]);
+    const board = boardOf([done("1", 3), done("2", 4)], NOW, "app-1", live);
+    expect(board.blocked).toEqual([]);
+    expect(board.reviewing).toEqual([{ projectId: "P_JUNO", count: 2 }]);
+  });
+
+  it("names a held Mate's change by its pull request on GitHub where it has one", () => {
+    const done = task({
+      id: "1",
+      state: "done",
+      endedAt: "2026-10-18T11:00:00.000Z",
+      change: { repo: "web", number: 12 },
+      pullRequest: { number: 13, url: "https://github.com/acme/tea-shop/pull/13" },
+    });
+    const live = new Map([["1", { id: "1", title: "Task 1", url: null }]]);
+    expect(boardOf([done], NOW, "app-1", live, () => true).blocked).toEqual([
+      {
+        projectId: "P_JUNO",
+        change: {
+          label: "PR #13",
+          href: "https://github.com/acme/tea-shop/pull/13",
+          external: true,
+        },
+      },
+    ]);
+  });
+
+  it.each([
+    { version: "0.15.177", held: true },
+    { version: "0.15.178", held: false },
+    { version: "0.16.0", held: false },
+    { version: undefined, held: false },
+  ])(
+    "holds a Mate on its change only below HQ's change per task: $version",
+    ({ version, held }) => {
+      expect(heldOnItsChange(version)).toBe(held);
+    },
+  );
 
   it("links an ended task's pull request on GitHub, else its change in Mate", () => {
     const board = boardOf(
@@ -234,40 +282,5 @@ describe("the pool's line", () => {
     ],
   ] as const)("says the month's spend from %j as %s", (limits, words) => {
     expect(spendLine(limits as HqTaskLimitsView)).toBe(words);
-  });
-});
-
-describe("the Automation card's head and pool line", () => {
-  it.each([
-    [{ minutes: 60, costUsd: null }, null],
-    [{ minutes: 60, costUsd: null, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 }, null],
-    [
-      { minutes: 60, costUsd: null, monthlyBudgetUsd: 40, spentThisMonthUsd: 20 },
-      { words: "$20.00 of $40 · October", share: 0.5 },
-    ],
-    [
-      { minutes: 60, costUsd: null, monthlyBudgetUsd: 40, spentThisMonthUsd: 52 },
-      { words: "$52.00 of $40 · October", share: 1 },
-    ],
-  ] as const)("measures the month's spend from %j against its budget as %j", (limits, gauge) => {
-    expect(spendGauge(limits as HqTaskLimitsView, NOW)).toEqual(gauge);
-  });
-
-  it.each([
-    [[], "Tasks come from"],
-    [["Juno"], "Juno takes tasks from"],
-    [["Odo", "Tess"], "Odo and Tess take tasks from"],
-    [["Odo", "Tess", "Ines"], "Odo, Tess and Ines take tasks from"],
-  ] as const)("says who takes tasks of %j as %s", (names, words) => {
-    expect(takesLine(names)).toBe(words);
-  });
-
-  it.each([
-    ["https://github.com/acme/tea-shop/issues/45", "GH"],
-    ["https://acme.slack.com/archives/C1/p2", "#"],
-    ["https://discord.com/channels/1/2", "#"],
-    [null, null],
-  ] as const)("marks a queued task from %s with %s", (url, glyph) => {
-    expect(sourceGlyph(url)).toBe(glyph);
   });
 });

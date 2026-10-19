@@ -127,9 +127,6 @@ import { PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
-/** The project `aaa`'s own page, with nothing beside its road. */
-const PAGE = { groupId: "aaa", aside: null, unread: null } as const;
-
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
 function quiet(groupId: string) {
   return entry([item(`${groupId}-dev`, placed(groupId, groupId))]);
@@ -342,7 +339,7 @@ describe("a card's production", () => {
         render({ groups: [entry([WREN])], setUpProduction: () => "busy" }),
         'data-zerops-group="aaa"',
       ),
-    ).toContain("Put it live");
+    ).not.toContain("Not released yet");
   });
 });
 
@@ -367,6 +364,7 @@ describe("a card's release", () => {
     const html = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');
     expect(html).toContain("Release failed");
     expect(html).toContain('data-test-release-verb="true"');
+    expect(html).toContain("Production&#x27;s last release failed");
   });
 });
 
@@ -424,13 +422,13 @@ describe("a card's release on its way", () => {
   // The onboarding run: "Release" asked of the person while Put it live was making production.
   it("offers no release where the page's door is withheld, as while Put it live makes production", () => {
     expect(section(render({ groups: [ready] }), 'data-zerops-group="aaa"')).toContain(
-      'data-zerops-card-ready="true"',
+      "1 change ready to release",
     );
     const html = section(
       render({ groups: [ready], renderReleaseVerb: () => null }),
       'data-zerops-group="aaa"',
     );
-    expect(html).not.toContain('data-zerops-card-ready="true"');
+    expect(html).not.toContain("ready to release");
   });
 });
 
@@ -438,13 +436,10 @@ describe("a card's release on its way", () => {
 describe("a card's stage", () => {
   it("offers adding a stage where the project has none, where the stage would stand", () => {
     const pressed: string[] = [];
-    // On the project's page, where its road's Stage column stands; the card's ghost stop says
-    // only that there is none.
     const offered = mount(
       <ZeropsProjectsFlow<Item>
         {...FLOW_PROPS}
         groups={[entry([WREN])]}
-        page={PAGE}
         setUpStage={({ group }) =>
           () => {
             pressed.push(group.groupId);
@@ -459,9 +454,9 @@ describe("a card's stage", () => {
       button[0]!.props.onClick();
     });
     expect(pressed).toEqual(["aaa"]);
-    expect(
-      section(render({ groups: [entry([WREN])], page: PAGE }), 'data-zerops-group="aaa"'),
-    ).not.toContain("Add stage");
+    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
+      "Add stage",
+    );
   });
 
   // The run's Add stage: its progress stood in a 1434 px card of its own at the page's foot, below
@@ -490,18 +485,17 @@ describe("a card's stage", () => {
 // The onboarding run: an Admin who joined looked 11 s for a way to add their own Mate.
 describe("a card's Mates", () => {
   it("closes with Add a Mate where the person may add one, and says why where it stands off", () => {
-    // On the project's page, where Add Mate stands in its header (and the card's ··· holds it).
     const added: string[] = [];
     const open = mount(
       <ZeropsProjectsFlow<Item>
         {...FLOW_PROPS}
         groups={[entry([WREN])]}
-        page={{
-          ...PAGE,
-          onAddMate: () => {
-            added.push("aaa");
+        addMate={({ group }) => ({
+          onAdd: () => {
+            added.push(group.groupId);
           },
-        }}
+          why: null,
+        })}
       />,
     );
     const button = open.root.findAll(
@@ -515,18 +509,14 @@ describe("a card's Mates", () => {
     const held = section(
       render({
         groups: [entry([WREN])],
-        page: {
-          ...PAGE,
-          onAddMate: () => {},
-          addMateWhy: "The project's setup files are not ready.",
-        },
+        addMate: () => ({ onAdd: () => {}, why: "The project's setup files are not ready." }),
       }),
       'data-zerops-group="aaa"',
     );
     expect(held).toContain("The project&#x27;s setup files are not ready.");
-    expect(
-      section(render({ groups: [entry([WREN])], page: PAGE }), 'data-zerops-group="aaa"'),
-    ).not.toContain('data-zerops-surface="add-mate"');
+    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
+      "Add a Mate",
+    );
   });
 });
 

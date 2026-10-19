@@ -23,8 +23,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
-import { PlaceWords, ServicesHeld } from "./ProjectCards";
-import { PlaceDot } from "./ProjectState";
+import { PlaceDot, PlaceWords, ServicesHeld } from "./ProjectCards";
 import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
 import { Button } from "~/components/ui/button";
 
@@ -44,10 +43,7 @@ const NOT_READ = Atom.make<PlaceAddresses>({
 });
 
 /** A place's addresses as read, held while its panel is drawn. */
-export function usePlaceAddresses(
-  orgId: string | null,
-  projectId: string | undefined,
-): PlaceAddresses {
+function usePlaceAddresses(orgId: string | null, projectId: string | undefined): PlaceAddresses {
   const place = useProjection(
     placeAddresses,
     orgId === null || projectId === undefined ? null : { orgId, projectId },
@@ -89,7 +85,6 @@ export function PlacePanel({
   actions,
   onOpenLine,
   roomy = false,
-  look = "card",
 }: {
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
@@ -111,8 +106,6 @@ export function PlacePanel({
    * for a stage with no address yet.
    */
   readonly roomy?: boolean;
-  /** `lift`: only what went wrong and its buttons, lifted on a card. */
-  readonly look?: "card" | "lift" | undefined;
 }) {
   const { line } = model;
   const label = placeLabel(line);
@@ -137,34 +130,8 @@ export function PlacePanel({
             .getState()
             .open({ orgId, projectId, groupId, ...(intent === undefined ? {} : { intent }) });
         };
-  const domainDoor =
-    manage === undefined || !said.offerDomain ? null : (
-      <Button
-        onClick={() => {
-          manage("add-domain");
-        }}
-        size="sm"
-        variant="secondary"
-      >
-        Put it on your domain
-      </Button>
-    );
-  if (look === "lift")
-    return (
-      <div
-        aria-label={label}
-        className="ov-panel"
-        data-look="lift"
-        data-zerops-surface="place-panel"
-      >
-        <p className="ov-panel-note" data-tone={model.note?.tone ?? "attention"}>
-          {model.note?.text ?? line.words.join(" · ")}
-        </p>
-        <div className="ov-panel-acts">{actions}</div>
-      </div>
-    );
   return (
-    <div aria-label={label} className="ov-panel" data-look={look} data-zerops-surface="place-panel">
+    <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
       <div className="ov-panel-head">
         <b className="ov-panel-name">{label}</b>
         {head === undefined ? null : (
@@ -259,7 +226,17 @@ export function PlacePanel({
       )}
       <div className="ov-panel-acts">
         {actions}
-        {domainDoor}
+        {manage === undefined || !said.offerDomain ? null : (
+          <Button
+            onClick={() => {
+              manage("add-domain");
+            }}
+            size="sm"
+            variant="secondary"
+          >
+            Put it on your domain
+          </Button>
+        )}
         {manage === undefined || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
           <Button
             onClick={() => {
