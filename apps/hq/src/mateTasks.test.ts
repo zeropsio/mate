@@ -312,6 +312,29 @@ describe("tasks for automated Mates", () => {
       }),
     );
 
+    it.effect(
+      "a task that ended with its work left undelivered says so on its issue, never a plain done",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          yield* core.issue(1);
+          const task = yield* onTask(core, core.robot.link, 1);
+          const left = "The work on appdev was left undelivered.";
+          yield* task.word({ state: "done", detail: left });
+          const [row] = yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+          assert.deepInclude(row, { detail: left });
+          yield* core.github.seenWhere("the end's word", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.includes("left undelivered"),
+            ),
+          );
+          const [, , words] = (yield* core.github.commentLog).at(-1)!;
+          assert.include(words, "without a change");
+          assert.include(words, left);
+          assert.notInclude(words, "is done.");
+        }),
+    );
+
     it.effect("a Mate whose link drops before it takes its task gives it back", () =>
       Effect.gen(function* () {
         const core = yield* withPool({ taskAcceptWithin: Duration.millis(300) });
