@@ -1697,6 +1697,48 @@ describe("a task stops at its limits", () => {
   );
 
   it.effect(
+    "a task stopped with its work uncommitted says where that work was left, its agent told nothing",
+    () =>
+      Effect.forEach(
+        [
+          {
+            stop: "its limit",
+            limits: { minutes: 60, costUsd: 5 },
+            detail: "It reached its $5 limit. The work on appdev was left undelivered.",
+          },
+          {
+            stop: "people",
+            limits: undefined,
+            detail: "Its change was closed. The work on appdev was left undelivered.",
+          },
+        ] as const,
+        ({ stop, limits, detail }) =>
+          Effect.gen(function* () {
+            const { delivered, id, link, move, running, sent, undelivered } = yield* working(
+              "task-1",
+              {},
+              limits,
+            );
+            // A reviewer's edit made and checked, never committed.
+            undelivered.push("appdev");
+            if (stop === "people") yield* link.stop("task-1", "Its change was closed.");
+            else yield* running(id, "turn-1", 5.2);
+            yield* settle;
+            assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)], stop);
+            const by = principalOf("task-1");
+            yield* move(id, view(id, { lastEnded: run(id, by, "ended", { kind: "stopped", by }) }));
+            yield* settle;
+            assert.deepInclude(sent.at(-1), { taskId: "task-1", detail }, stop);
+            assert.isFalse(
+              delivered.some((each) => each.commandId.startsWith("task-deliver:")),
+              stop,
+            );
+          }),
+        { discard: true },
+      ),
+  );
+
+  it.effect(
     "a task on the cheaper model is charged at that model's price and still stops at its limit",
     () =>
       Effect.gen(function* () {
