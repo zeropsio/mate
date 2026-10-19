@@ -11,15 +11,22 @@
  */
 import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
 import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
-import { TimerIcon, WalletIcon } from "lucide-react";
+import {
+  automatedModelOf,
+  automatedOpenCodeModel,
+  OPENCODE_KEY_PROVIDERS,
+} from "@t3tools/shared/openCodeKeyProviders";
+import { CpuIcon, TimerIcon, WalletIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Radio, RadioGroup } from "../ui/radio-group";
 import { HeldRoom, IntakeRoom, pressWords, TextField, WITHHELD, working } from "./automationParts";
 import {
   AppChannelView,
@@ -55,6 +62,7 @@ import {
   connectKeyProblem,
   connectKeysReady,
   limitsLine,
+  modelPriceWords,
   readBudget,
   readLimits,
   replaceKeysReady,
@@ -105,6 +113,7 @@ export function TaskLimitsSettings() {
   if (limits.read.setting.state === "unsupported") return null;
   return (
     <LimitsList>
+      <AutomatedModelView controls={limits} />
       <TaskLimitsView controls={limits} />
       <MonthlyBudgetView controls={limits} />
     </LimitsList>
@@ -1111,6 +1120,125 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
         </p>
       )}
     </IntegrationSetting>
+  );
+}
+
+const AUTOMATED_PROVIDER = OPENCODE_KEY_PROVIDERS[0]!;
+
+/**
+ * The model the organization's automated Mates run each new task on: the current one and its
+ * price in the row's line; *Change* opens the offered models, each with its price and why, the
+ * current one marked. A pick saves at once, with the limits as HQ holds them; a run under way
+ * keeps the model it started on.
+ */
+export function AutomatedModelView({
+  controls,
+  defaultOpen = false,
+}: {
+  readonly controls: Controls<"hqTaskLimits">;
+  readonly defaultOpen?: boolean;
+}) {
+  const { read, write } = controls;
+  const setting = read.setting;
+  const held: HqTaskLimitsView | null = setting.state === "known" ? setting.held : null;
+  const [open, setOpen] = useState(defaultOpen);
+  // The model picked here, shown checked until HQ's read after it lands or HQ refuses it.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const save = useOwnSave(read.action);
+  if (save.settled !== null) {
+    setRefusal(save.settled.refusal);
+    setPicked(null);
+  }
+  const groupId = useId();
+  // An HQ that predates the choice keeps none: nothing to pick.
+  if (held !== null && held.model === undefined) return null;
+  const current = held === null ? null : automatedModelOf(held.model);
+  const shown = picked ?? current;
+  const offerOf = (slug: string | null) =>
+    AUTOMATED_PROVIDER.automatedModels.find(
+      (offer) => automatedOpenCodeModel(AUTOMATED_PROVIDER, offer.id) === slug,
+    );
+  const currentOffer = offerOf(current);
+  const line =
+    refusal !== null ? (
+      <span className="text-destructive-foreground" role="alert">
+        {refusal}
+      </span>
+    ) : save.sent ? (
+      "Saving…"
+    ) : currentOffer === undefined ? (
+      statusOf(setting, () => "")
+    ) : (
+      `${currentOffer.name} · ${modelPriceWords(currentOffer)}`
+    );
+  return (
+    <IntegrationRow
+      action={
+        held === null ? undefined : (
+          <IntegrationAction
+            onToggle={() => {
+              setOpen(!open);
+            }}
+            open={open}
+            primary={false}
+          >
+            Change
+          </IntegrationAction>
+        )
+      }
+      id={searchableSetting("automation-model").id}
+      line={line}
+      mark={<CpuIcon className="size-5" />}
+      name="Model"
+      open={open && held !== null}
+      state={{ kind: "none" }}
+      surface="settings-automated-model"
+    >
+      <p className="text-xs text-muted-foreground" id={groupId}>
+        What automated Mates run each new task on. A task at work keeps its model.
+      </p>
+      <RadioGroup
+        aria-labelledby={groupId}
+        disabled={save.sent || working(read.action)}
+        onValueChange={(value) => {
+          if (held === null || typeof value !== "string" || value === shown) return;
+          setRefusal(null);
+          setPicked(value);
+          save.send();
+          write({
+            kind: "task-limits",
+            limits: { minutes: held.minutes, costUsd: held.costUsd, model: value },
+          });
+        }}
+        value={shown}
+      >
+        {AUTOMATED_PROVIDER.automatedModels.map((offer) => {
+          const slug = automatedOpenCodeModel(AUTOMATED_PROVIDER, offer.id);
+          return (
+            <label
+              className="flex cursor-pointer items-start gap-3"
+              data-automated-model={slug}
+              key={slug}
+            >
+              <span className="pt-0.5">
+                <Radio value={slug} />
+              </span>
+              <span className="grid min-w-0 gap-0.5">
+                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {offer.name}
+                  {slug === current ? <Badge>Current</Badge> : null}
+                </span>
+                <span className="text-xs tabular-nums text-foreground">
+                  {modelPriceWords(offer)}
+                </span>
+                <span className="text-xs text-muted-foreground">{offer.why}</span>
+              </span>
+            </label>
+          );
+        })}
+      </RadioGroup>
+    </IntegrationRow>
   );
 }
 

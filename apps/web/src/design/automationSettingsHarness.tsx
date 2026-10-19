@@ -3,7 +3,8 @@
  *
  * Served by the dev server at `/design-automation.html` (`?theme=dark`). Open it at the owner's
  * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect pressed), `checking` (every read under way), `connected`, `manage` (Discord connected, its Manage open), `slack-refused` (Slack's signatures refused, its Replace open), `older` (an HQ older
- * than the app), `member`, `dialog` (the mirror dialog's repositories, each state).
+ * than the app), `member`, `dialog` (the mirror dialog's repositories, each state), `model` (the
+ * automated Mates' model picker open).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
  * imports this module.
@@ -20,6 +21,7 @@ import { GithubAppView } from "~/components/settings/GithubAppSettings";
 import { IntegrationList, LimitsList } from "~/components/settings/IntegrationRow";
 import { SettingsSection } from "~/components/settings/settingsLayout";
 import {
+  AutomatedModelView,
   DiscordSettingsView,
   MonthlyBudgetView,
   SlackSettingsView,
@@ -112,6 +114,7 @@ function LimitsRows() {
     costUsd: 5,
     monthlyBudgetUsd: 50,
     spentThisMonthUsd: 6.44,
+    model: "nebius/zai-org/GLM-5.3",
   });
   const [action, setAction] = useState<unknown>({ kind: "idle" });
   const limits = {
@@ -136,6 +139,7 @@ function LimitsRows() {
   };
   return (
     <LimitsList>
+      <AutomatedModelView controls={limits} defaultOpen={view === "model"} />
       <TaskLimitsView controls={limits} />
       <MonthlyBudgetView controls={limits} />
     </LimitsList>

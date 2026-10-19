@@ -297,6 +297,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["automated mates tasks channel server"],
   },
   {
+    id: "automation-model",
+    title: "Model",
+    to: "/settings/automation",
+    searchTerms: ["automated mates model nebius glm deepseek qwen price cheap"],
+  },
+  {
     id: "automation-limits",
     title: "Limits per task",
     to: "/settings/automation",
