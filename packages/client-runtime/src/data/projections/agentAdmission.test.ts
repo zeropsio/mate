@@ -941,9 +941,9 @@ describe("a sent message never silently stays in the composer", () => {
       viewerSubject: "viewer",
       providers: input.automated === true ? [opencode] : [],
       mateName: "Lumo",
-      standUpHolds: input.standUpHolds,
-      empty: input.empty,
-      automated: input.automated,
+      standUpHolds: input.standUpHolds === true,
+      empty: input.empty === true,
+      automated: input.automated === true,
       read: {
         state: "known",
         asOf: { ordinal: 1, atMs: 0 },
