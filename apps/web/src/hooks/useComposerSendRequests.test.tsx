@@ -413,11 +413,19 @@ describe("useComposerSendRequests", () => {
 describe("composerAdmits", () => {
   const READ_ALONG = "Eddy is Petr's Mate — you can read along.";
   it.each([
-    { when: "its agent takes a turn", canSend: true, reason: null, readOnly: null, admits: SENDS },
+    {
+      when: "its agent takes a turn",
+      canSend: true,
+      reason: null,
+      waits: false,
+      readOnly: null,
+      admits: SENDS,
+    },
     {
       when: "it waits for a sign-in",
       canSend: false,
       reason: SIGN_IN,
+      waits: false,
       readOnly: null,
       admits: { kind: "holds", why: SIGN_IN },
     },
@@ -425,6 +433,7 @@ describe("composerAdmits", () => {
       when: "it is a colleague's Mate",
       canSend: false,
       reason: null,
+      waits: false,
       readOnly: READ_ALONG,
       admits: { kind: "holds", why: READ_ALONG },
     },
@@ -432,10 +441,22 @@ describe("composerAdmits", () => {
       when: "it still reads, or a stand-up holds it",
       canSend: false,
       reason: null,
+      waits: true,
       readOnly: null,
       admits: { kind: "reading" },
     },
-  ])("a request is $admits.kind where $when", ({ canSend, reason, readOnly, admits }) => {
-    expect(composerAdmits({ canSend, sendBlockReason: reason }, readOnly)).toEqual(admits);
+    // The composer it holds says why; a request still waits for it to go.
+    {
+      when: "its person's stand-up holds it, saying why",
+      canSend: false,
+      reason: "Eddy is standing up development. You can write once it has started.",
+      waits: true,
+      readOnly: null,
+      admits: { kind: "reading" },
+    },
+  ])("a request is $admits.kind where $when", ({ canSend, reason, waits, readOnly, admits }) => {
+    expect(
+      composerAdmits({ canSend, sendBlockReason: reason, sendWaits: waits }, readOnly),
+    ).toEqual(admits);
   });
 });

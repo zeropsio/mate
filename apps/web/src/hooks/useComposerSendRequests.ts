@@ -52,14 +52,20 @@ export type ComposerAdmits =
 
 /**
  * A conversation's admission as its composer's requests read it: sent where its agent takes a
- * turn; held where the conversation says why it does not (a sign-in it waits for, or a colleague's
- * Mate); otherwise still reading — or held a moment, as a stand-up holds it — so a request waits.
+ * turn; still reading — or held a moment, as a stand-up holds it — so a request waits
+ * (`sendWaits`); otherwise held where the conversation says why it does not (a sign-in it waits
+ * for, or a colleague's Mate).
  */
 export function composerAdmits(
-  admission: { readonly canSend: boolean; readonly sendBlockReason: string | null },
+  admission: {
+    readonly canSend: boolean;
+    readonly sendBlockReason: string | null;
+    readonly sendWaits: boolean;
+  },
   readOnly: string | null,
 ): ComposerAdmits {
   if (admission.canSend) return { kind: "sends" };
+  if (admission.sendWaits) return { kind: "reading" };
   const why = admission.sendBlockReason ?? readOnly;
   return why === null ? { kind: "reading" } : { kind: "holds", why };
 }

@@ -152,22 +152,38 @@ export function agentAdmission(input: {
               : zeropsLoginTitle(login),
           action: action === "none" || action === "registering" ? "sign-in" : action,
         });
-  const holdsComposer =
-    input.standUpHolds === true ||
-    (input.empty === true && admissionNeedsSignIn(input.read, input.providers));
+  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
+  const holdsComposer = input.standUpHolds === true || needsSignIn;
+  const refusal = input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null);
+  const held =
+    readOnly || cold
+      ? null
+      : input.standUpHolds === true
+        ? standUpHoldReason(input.mateName)
+        : needsSignIn
+          ? `Sign ${input.mateName} in to start.`
+          : null;
   return {
     attention,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
     explainsRefusal: admissionExplainsRefusal(attention, input.refusalSource),
     footer: readOnly ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
     canSend: !readOnly && !cold && !holdsComposer && attention === null,
-    sendBlockReason: input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null),
+    // A send that cannot go says why, Send and Enter alike: the composer refuses on it.
+    sendBlockReason: refusal ?? held,
+    // Held a moment — its agents' sign-in still read, or its person's stand-up on its way — a send
+    // goes by itself once that is over: a request waits for it (`composerAdmits`).
+    sendWaits: refusal === null && !readOnly && (cold || input.standUpHolds === true),
     // Signer records establish no client permission, including compact HQ records; HQ's recorded
     // owner does.
     readOnly,
     holdsComposer,
   };
 }
+
+/** Why a composer its person's stand-up holds takes no message yet. */
+const standUpHoldReason = (mateName: string) =>
+  `${mateName} is standing up development. You can write once it has started.`;
 
 /** An agent an automated Mate can run: one no person signs in to, on and ready. */
 export function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): boolean {
@@ -190,6 +206,12 @@ function automatedAdmission(input: Parameters<typeof agentAdmission>[0]) {
   const found = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const provider = agentIdForDriverKind(found?.driver) === undefined ? found : null;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
+  const refusal =
+    input.operate === false
+      ? MATE_READ_ACCESS_LINE
+      : usable
+        ? null
+        : `${input.mateName} waits for your organization's API key.`;
   return {
     attention: null,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
@@ -197,11 +219,8 @@ function automatedAdmission(input: Parameters<typeof agentAdmission>[0]) {
     footer: readOnly ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
     canSend: !readOnly && !cold && !holdsComposer && usable,
     sendBlockReason:
-      input.operate === false
-        ? MATE_READ_ACCESS_LINE
-        : usable
-          ? null
-          : `${input.mateName} waits for your organization's API key.`,
+      refusal ?? (holdsComposer && !readOnly && !cold ? standUpHoldReason(input.mateName) : null),
+    sendWaits: refusal === null && !readOnly && (cold || holdsComposer),
     readOnly,
     holdsComposer,
   };

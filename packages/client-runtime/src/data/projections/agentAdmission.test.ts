@@ -908,3 +908,71 @@ describe("an automated Mate's composer", () => {
     },
   );
 });
+
+describe("a sent message never silently stays in the composer", () => {
+  const agent = (signedIn: boolean) =>
+    ({
+      agentId: "codex",
+      credPresent: signedIn,
+      flagOAuth: signedIn,
+      flagToken: false,
+      providerAuth: signedIn ? "authenticated" : "unauthenticated",
+      state: signedIn ? "authorized" : "not-authorized",
+      authorizedBy: signedIn ? { subject: "viewer" } : undefined,
+    }) as const;
+  const opencode = {
+    instanceId: "opencode",
+    driver: "opencode",
+    enabled: true,
+    installed: true,
+    status: "ready",
+    auth: { status: "unknown" },
+  } as never;
+  const admit = (input: {
+    readonly signedIn: boolean;
+    readonly standUpHolds?: boolean;
+    readonly empty?: boolean;
+    readonly automated?: boolean;
+  }) =>
+    agentAdmission({
+      owner: { mine: true },
+      environmentId: "rig",
+      instanceId: input.automated === true ? "opencode" : "codex",
+      viewerSubject: "viewer",
+      providers: input.automated === true ? [opencode] : [],
+      mateName: "Lumo",
+      standUpHolds: input.standUpHolds,
+      empty: input.empty,
+      automated: input.automated,
+      read: {
+        state: "known",
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+        value: { available: true, agents: [agent(input.signedIn)] },
+      },
+    });
+
+  it.each([
+    {
+      name: "its person's stand-up holds it, the agent signed in",
+      input: { signedIn: true, standUpHolds: true, empty: true },
+      reason: "Lumo is standing up development. You can write once it has started.",
+    },
+    {
+      name: "an automated Mate's stand-up holds it",
+      input: { signedIn: false, standUpHolds: true, empty: true, automated: true },
+      reason: "Lumo is standing up development. You can write once it has started.",
+    },
+    {
+      name: "its agent is not signed in",
+      input: { signedIn: false, empty: true },
+      reason: "Lumo needs a Codex sign-in to continue.",
+    },
+  ])("a send it cannot take says why: $name", ({ input, reason }) => {
+    const admission = admit(input);
+    expect(admission.footer).toBe("composer");
+    expect(admission.canSend).toBe(false);
+    expect(admission.sendBlockReason).toBe(reason);
+  });
+});
