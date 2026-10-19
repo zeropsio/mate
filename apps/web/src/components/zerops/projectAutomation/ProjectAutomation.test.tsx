@@ -504,7 +504,10 @@ describe("a project's Automation section", () => {
     const live = new Map([["t1", { id: "t1", title: TASK.title, url: null }]]);
     const root = rendered(
       <ProjectAutomationView
-        board={boardView({ read: { state: "known", board: boardOf(done, NOW, "tea-shop", live) } })}
+        board={boardView({
+          // Nova runs a Mate older than HQ's change per task: HQ holds it on its change.
+          read: { state: "known", board: boardOf(done, NOW, "tea-shop", live, () => true) },
+        })}
         onOpenMate={vi.fn()}
         pool={[NOVA, JUNO]}
         sources={{ rows: [], reading: false, withheld: false }}
@@ -517,6 +520,39 @@ describe("a project's Automation section", () => {
     expect(atWork).not.toContain("Nova and Juno");
     const link = root.find((node) => node.type === "a" && words(node) === "change #3");
     expect(link.props.href).toBe("/change/tea-shop/web/3");
+  });
+
+  // Live: "Raya waits for change #12 to be merged or closed" while Raya took #12 holding #8's change.
+  it("says a Mate whose changes wait for review, and whom HQ does not hold, waits for a task", () => {
+    const done = [
+      {
+        ...TASK,
+        state: "done" as const,
+        endedAt: "2026-10-18T11:58:00.000Z",
+        change: { repo: "web", number: 3 },
+      },
+      {
+        ...TASK,
+        id: "t2",
+        state: "done" as const,
+        endedAt: "2026-10-18T11:40:00.000Z",
+        change: { repo: "web", number: 4 },
+      },
+    ];
+    const live = new Map([["t1", { id: "t1", title: TASK.title, url: null }]]);
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({ read: { state: "known", board: boardOf(done, NOW, "tea-shop", live) } })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA, JUNO]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const atWork = words(root.find((node) => node.props["data-zerops-board"] === "At work"));
+    expect(atWork).toContain("Nova waits for a task · 2 changes in review.");
+    expect(atWork).toContain("Juno waits for a task.");
+    expect(atWork).not.toContain("merged or closed");
   });
 
   it("offers no Stop of a task to anyone but an Owner or Admin", () => {
