@@ -1,12 +1,19 @@
+// @effect-diagnostics nodeBuiltinImport:off - the feed's reads, answered synchronously.
+import * as NodeFS from "node:fs";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import type {
   ServerProviderAuthStatus,
@@ -136,30 +143,59 @@ const credWatchTarget = (homeDir: string, agentId: ZeropsAgentId): string =>
   `${homeDir}/${CRED_FILE_SEGMENTS[agentId]}`;
 
 /**
- * Blocks the CURRENT fiber for the next published snapshot matching
- * `predicate` — deliberately NOT forked. Forking a second fiber to race
- * `Stream.runHead` against the watcher's own forked, debounce-driven
- * producer crashes this Effect build's scheduler (`self.addObserver is not
- * a function`, live-verified in isolation — two concurrently forked fibers,
- * one waking from a `Clock`-based `Stream.debounce` wait to perform a
- * `FileSystem`/registry op while the other awaits a `PubSub` read). Blocking
- * the test's own fiber directly sidesteps it entirely and is exactly as
- * deterministic: the watcher/provider-check fibers `make` starts internally
- * publish independently in the background regardless of whether this fiber
- * is racing them or waiting on them.
- *
- * The credential-presence flip and the provider-auth resolution are two
- * SEPARATE publishes (400ms watcher debounce, then a further ~1s coalesced
- * provider check) — most tests below wait for the second, later one.
+ * Node's services with the feed's two reads (`exists`, `readFileString`) answered at once:
+ * between the test clock's steps nothing in the feed waits on the OS, so a debounce never
+ * passes while a read is still out.
+ */
+const services = Layer.effect(
+  FileSystem.FileSystem,
+  Effect.map(FileSystem.FileSystem, (fs) => ({
+    ...fs,
+    exists: (path: string) => Effect.sync(() => NodeFS.existsSync(path)),
+    readFileString: (path: string) =>
+      Effect.try({
+        try: () => NodeFS.readFileSync(path, "utf8"),
+        catch: (cause) =>
+          PlatformError.systemError({
+            _tag: "NotFound",
+            module: "FileSystem",
+            method: "readFileString",
+            pathOrDescriptor: path,
+            cause,
+          }),
+      }),
+  })),
+).pipe(Layer.provideMerge(NodeServices.layer));
+
+/**
+ * Waits for `receipt` while the test clock moves on: the watcher's 400ms
+ * debounce and the provider check's 1s coalesce window pass in virtual time,
+ * the feed's reads between them at once. The bound is real.
+ */
+const advancing = <A>(receipt: Effect.Effect<A>): Effect.Effect<A> =>
+  Effect.gen(function* () {
+    const waiting = yield* Effect.forkChild(
+      receipt.pipe(Effect.timeout("5 seconds"), Effect.orDie, TestClock.withLive),
+      { startImmediately: true },
+    );
+    while (waiting.pollUnsafe() === undefined) yield* TestClock.adjust("100 millis");
+    return yield* Fiber.join(waiting);
+  });
+
+/**
+ * The next published snapshot matching `predicate`. The credential-presence
+ * flip and the provider-auth resolution are two SEPARATE publishes (400ms
+ * watcher debounce, then a further ~1s coalesced provider check) — most
+ * tests below wait for the second, later one.
  */
 const changeWhere = (
   subscription: { readonly changes: Stream.Stream<ZeropsAgentAuthSnapshot> },
   predicate: (snapshot: ZeropsAgentAuthSnapshot) => boolean,
 ): Effect.Effect<ZeropsAgentAuthSnapshot> =>
-  Stream.runHead(Stream.filter(subscription.changes, predicate)).pipe(
-    Effect.map(Option.getOrThrow),
-    Effect.timeout("5 seconds"),
-    Effect.orDie,
+  advancing(
+    Stream.runHead(Stream.filter(subscription.changes, predicate)).pipe(
+      Effect.map(Option.getOrThrow),
+    ),
   );
 
 const agentState = (
@@ -197,179 +233,109 @@ const checkedAgain = (
     });
     const generation = agentState(snapshot, agentId)?.verification?.generation;
     assert.isDefined(generation);
-    yield* feed.awaitCheck(agentId, generation!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+    yield* advancing(feed.awaitCheck(agentId, generation!));
   });
 
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — non-Zerops mode",
-  (it) => {
-    it.effect("reports available:false and starts no watchers", () =>
+it.layer(services)("ZeropsAgentAuth — non-Zerops mode", (it) => {
+  it.effect("reports available:false and starts no watchers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unknown");
+        const fakeWatch = makeFakeWatch();
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: false,
+          watch: fakeWatch.watch,
+        });
+        const snapshot = yield* feed.latest;
+        assert.isFalse(snapshot.available);
+        assert.deepEqual(snapshot.agents, []);
+        assert.deepEqual(yield* Ref.get(fake.calls), []);
+        assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
+      }),
+    ),
+  );
+});
+
+it.layer(services)("ZeropsAgentAuth — credential watcher", (it) => {
+  it.effect(
+    "writes the sign-in flag for claude-code once the targeted provider check confirms authenticated",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { homeDir, envStorePath } = yield* makeEnv();
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
           const fake = yield* makeFakeCli(() =>
-            Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
           );
-          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unknown");
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
           const fakeWatch = makeFakeWatch();
+
           const feed = yield* ZeropsAgentAuth.make({
             agentFlag: fake.cli,
             refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
             homeDir,
             envStorePath,
-            isZeropsEnvironment: false,
+            isZeropsEnvironment: true,
             watch: fakeWatch.watch,
           });
-          const snapshot = yield* feed.latest;
-          assert.isFalse(snapshot.available);
-          assert.deepEqual(snapshot.agents, []);
-          assert.deepEqual(yield* Ref.get(fake.calls), []);
-          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
+
+          const before = yield* feed.latest;
+          assert.equal(agentState(before, "claude-code")?.state, "not-authorized");
+          assert.equal(agentState(before, "claude-code")?.providerAuth, "unknown");
+
+          const subscription = yield* feed.subscribe;
+
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          const published = yield* changeWhere(subscription, claudeAuthResolved);
+
+          const claude = agentState(published, "claude-code");
+          assert.equal(claude?.credPresent, true);
+          assert.equal(claude?.providerAuth, "authenticated");
+          assert.equal(claude?.state, "local-only");
+
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
         }),
       ),
-    );
-  },
-);
+  );
 
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — credential watcher",
-  (it) => {
-    it.effect(
-      "writes the sign-in flag for claude-code once the targeted provider check confirms authenticated",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const before = yield* feed.latest;
-            assert.equal(agentState(before, "claude-code")?.state, "not-authorized");
-            assert.equal(agentState(before, "claude-code")?.providerAuth, "unknown");
-
-            const subscription = yield* feed.subscribe;
-
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            const published = yield* changeWhere(subscription, claudeAuthResolved);
-
-            const claude = agentState(published, "claude-code");
-            assert.equal(claude?.credPresent, true);
-            assert.equal(claude?.providerAuth, "authenticated");
-            assert.equal(claude?.state, "local-only");
-
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-            assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
-          }),
-        ),
-    );
-
-    it.effect(
-      "a credential removal (logout) requests its own targeted check and flips providerAuth to unauthenticated (S7 fix2 F1)",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            // The first check (credential present) reads authenticated; the
-            // SECOND check (after removal) must actually run — a fake that
-            // always answers the same way either way could not tell a real
-            // fix from the old bug (no second check at all).
-            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
-              "authenticated",
-              "unauthenticated",
-            ]);
-            const calls = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
-            const refreshProviderAuth = (agentId: ZeropsAgentId) =>
-              Effect.gen(function* () {
-                yield* Ref.update(calls, (all) => [...all, agentId]);
-                const [next, ...rest] = yield* Ref.get(answers);
-                yield* Ref.set(answers, rest);
-                return {
-                  status: next ?? "unauthenticated",
-                  checkedAt: 0,
-                  ...(next === "unknown"
-                    ? { reason: "The login check returned an unrecognized answer." }
-                    : {}),
-                };
-              });
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            const target = credWatchTarget(homeDir, "claude-code");
-            const credentialPath = path.join(homeDir, ".claude", ".credentials.json");
-
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(target);
-            const authenticated = yield* changeWhere(subscription, claudeAuthResolved);
-            assert.equal(agentState(authenticated, "claude-code")?.providerAuth, "authenticated");
-
-            yield* fs.remove(credentialPath);
-            fakeWatch.trigger(target);
-            const afterRemoval = yield* changeWhere(
-              subscription,
-              (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
-            );
-
-            const claude = agentState(afterRemoval, "claude-code");
-            assert.equal(claude?.credPresent, false);
-            assert.equal(claude?.providerAuth, "unauthenticated");
-            assert.deepEqual(yield* Ref.get(calls), ["claude-code", "claude-code"]);
-            // The removal's own check reads unauthenticated, so it is never
-            // eligible to write the flag — only the first (authenticated)
-            // check was.
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-          }),
-        ),
-    );
-
-    // Claude stages its credential and renames it over the old one: the reading after the rename
-    // finds it there, never the absence a removal reads (`ZeropsAgentLogin`'s credential watch).
-    it.effect("a credential replaced by a rename reads present", () =>
+  it.effect(
+    "a credential removal (logout) requests its own targeted check and flips providerAuth to unauthenticated (S7 fix2 F1)",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           const { fs, path, homeDir, envStorePath } = yield* makeEnv();
           const fake = yield* makeFakeCli(() =>
-            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
           );
-          // The rename's own check answers otherwise only so that its reading is published.
+          // The first check (credential present) reads authenticated; the
+          // SECOND check (after removal) must actually run — a fake that
+          // always answers the same way either way could not tell a real
+          // fix from the old bug (no second check at all).
           const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
             "authenticated",
             "unauthenticated",
           ]);
-          const refreshProviderAuth = () =>
+          const calls = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
+          const refreshProviderAuth = (agentId: ZeropsAgentId) =>
             Effect.gen(function* () {
+              yield* Ref.update(calls, (all) => [...all, agentId]);
               const [next, ...rest] = yield* Ref.get(answers);
               yield* Ref.set(answers, rest);
               return {
@@ -381,6 +347,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
               };
             });
           const fakeWatch = makeFakeWatch();
+
           const feed = yield* ZeropsAgentAuth.make({
             agentFlag: fake.cli,
             refreshProviderAuth,
@@ -389,168 +356,143 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             isZeropsEnvironment: true,
             watch: fakeWatch.watch,
           });
+
           const subscription = yield* feed.subscribe;
           const target = credWatchTarget(homeDir, "claude-code");
           const credentialPath = path.join(homeDir, ".claude", ".credentials.json");
+
           yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
           fakeWatch.trigger(target);
-          yield* changeWhere(subscription, claudeAuthResolved);
+          const authenticated = yield* changeWhere(subscription, claudeAuthResolved);
+          assert.equal(agentState(authenticated, "claude-code")?.providerAuth, "authenticated");
 
-          const staged = `${credentialPath}.staged`;
-          yield* fs.writeFileString(staged, '{"fresh":true}');
-          yield* fs.rename(staged, credentialPath);
+          yield* fs.remove(credentialPath);
           fakeWatch.trigger(target);
-          const afterRename = yield* changeWhere(
+          const afterRemoval = yield* changeWhere(
             subscription,
             (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
           );
 
-          assert.equal(agentState(afterRename, "claude-code")?.credPresent, true);
+          const claude = agentState(afterRemoval, "claude-code");
+          assert.equal(claude?.credPresent, false);
+          assert.equal(claude?.providerAuth, "unauthenticated");
+          assert.deepEqual(yield* Ref.get(calls), ["claude-code", "claude-code"]);
+          // The removal's own check reads unauthenticated, so it is never
+          // eligible to write the flag — only the first (authenticated)
+          // check was.
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
         }),
       ),
-    );
+  );
 
-    it.effect(
-      "does not write the sign-in flag when the credential appears but the provider is not authenticated",
-      () =>
-        Effect.scoped(
+  // Claude stages its credential and renames it over the old one: the reading after the rename
+  // finds it there, never the absence a removal reads (`ZeropsAgentLogin`'s credential watch).
+  it.effect("a credential replaced by a rename reads present", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
+        );
+        // The rename's own check answers otherwise only so that its reading is published.
+        const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+          "authenticated",
+          "unauthenticated",
+        ]);
+        const refreshProviderAuth = () =>
           Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unauthenticated");
-            const fakeWatch = makeFakeWatch();
+            const [next, ...rest] = yield* Ref.get(answers);
+            yield* Ref.set(answers, rest);
+            return {
+              status: next ?? "unauthenticated",
+              checkedAt: 0,
+              ...(next === "unknown"
+                ? { reason: "The login check returned an unrecognized answer." }
+                : {}),
+            };
+          });
+        const fakeWatch = makeFakeWatch();
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: fakeWatch.watch,
+        });
+        const subscription = yield* feed.subscribe;
+        const target = credWatchTarget(homeDir, "claude-code");
+        const credentialPath = path.join(homeDir, ".claude", ".credentials.json");
+        yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+        fakeWatch.trigger(target);
+        yield* changeWhere(subscription, claudeAuthResolved);
 
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
+        const staged = `${credentialPath}.staged`;
+        yield* fs.writeFileString(staged, '{"fresh":true}');
+        yield* fs.rename(staged, credentialPath);
+        fakeWatch.trigger(target);
+        const afterRename = yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
+        );
 
-            const subscription = yield* feed.subscribe;
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            const published = yield* changeWhere(subscription, claudeAuthResolved);
+        assert.equal(agentState(afterRename, "claude-code")?.credPresent, true);
+      }),
+    ),
+  );
 
-            const claude = agentState(published, "claude-code");
-            assert.equal(claude?.credPresent, true);
-            assert.equal(claude?.providerAuth, "unauthenticated");
-            // credPresent alone never gates the spawn — only an authenticated
-            // provider check does.
-            assert.deepEqual(yield* Ref.get(fake.calls), []);
-          }),
-        ),
-    );
-
-    it.effect(
-      "does not re-write the sign-in flag on a second confirmed-authenticated check for the same agent",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            yield* changeWhere(subscription, claudeAuthResolved);
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-
-            // A second, independent event for the same (still-present, still
-            // authenticated) credential — e.g. the token file got rewritten.
-            // It still triggers its own coalesced provider check (a
-            // SEPARATE call, past the first one's debounce window
-            // altogether), but `markedOAuth` keeps it from spawning again.
-            yield* checkedAgain(feed, subscription, "claude-code", () =>
-              fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
-            );
-
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-            assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), [
-              "claude-code",
-              "claude-code",
-            ]);
-          }),
-        ),
-    );
-
-    it.effect(
-      "coalesces a burst of fs events into one targeted provider refresh",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            const target = credWatchTarget(homeDir, "claude-code");
-            // A burst of 5 events, each one on its own past the credential
-            // watcher's own 400ms debounce so each independently requests a
-            // provider check — but all within the provider check's 1s
-            // coalesce window, so only ONE check should actually run.
-            for (let i = 0; i < 5; i += 1) {
-              fakeWatch.trigger(target);
-              yield* Effect.sleep("450 millis");
-            }
-
-            const published = yield* changeWhere(subscription, claudeAuthResolved);
-            assert.equal(agentState(published, "claude-code")?.providerAuth, "authenticated");
-            assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-          }),
-        ),
-      10_000,
-    );
-
-    it.effect("writes the sign-in flag for codex on the codex credential path", () =>
+  it.effect(
+    "does not write the sign-in flag when the credential appears but the provider is not authenticated",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           const { fs, path, homeDir, envStorePath } = yield* makeEnv();
           const fake = yield* makeFakeCli(() =>
-            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unauthenticated");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const subscription = yield* feed.subscribe;
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          const published = yield* changeWhere(subscription, claudeAuthResolved);
+
+          const claude = agentState(published, "claude-code");
+          assert.equal(claude?.credPresent, true);
+          assert.equal(claude?.providerAuth, "unauthenticated");
+          // credPresent alone never gates the spawn — only an authenticated
+          // provider check does.
+          assert.deepEqual(yield* Ref.get(fake.calls), []);
+        }),
+      ),
+  );
+
+  it.effect(
+    "does not re-write the sign-in flag on a second confirmed-authenticated check for the same agent",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
           );
           const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
           const fakeWatch = makeFakeWatch();
@@ -565,161 +507,197 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           });
 
           const subscription = yield* feed.subscribe;
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          yield* changeWhere(subscription, claudeAuthResolved);
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+
+          // A second, independent event for the same (still-present, still
+          // authenticated) credential — e.g. the token file got rewritten.
+          // It still triggers its own coalesced provider check (a
+          // SEPARATE call, past the first one's debounce window
+          // altogether), but `markedOAuth` keeps it from spawning again.
+          yield* checkedAgain(feed, subscription, "claude-code", () =>
+            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
+          );
+
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code", "claude-code"]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "coalesces a burst of fs events into one targeted provider refresh",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const subscription = yield* feed.subscribe;
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          const target = credWatchTarget(homeDir, "claude-code");
+          // A burst of 5 events, each one on its own past the credential
+          // watcher's own 400ms debounce so each independently requests a
+          // provider check — but all within the provider check's 1s
+          // coalesce window, so only ONE check should actually run.
+          for (let i = 0; i < 5; i += 1) {
+            fakeWatch.trigger(target);
+            yield* TestClock.adjust("450 millis");
+          }
+
+          const published = yield* changeWhere(subscription, claudeAuthResolved);
+          assert.equal(agentState(published, "claude-code")?.providerAuth, "authenticated");
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+        }),
+      ),
+    10_000,
+  );
+
+  it.effect("writes the sign-in flag for codex on the codex credential path", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+        const fakeWatch = makeFakeWatch();
+
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: fakeWatch.watch,
+        });
+
+        const subscription = yield* feed.subscribe;
+        yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+        fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
+        yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "codex")?.providerAuth !== "unknown",
+        );
+
+        assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "tolerates a missing ~/.codex directory at start (watchWithFallback attaches it once created — own test)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { homeDir, envStorePath } = yield* makeEnv();
+          // homeDir exists; .codex does not — neither does .claude. `make`
+          // must start cleanly and report credPresent:false for both, never
+          // touching a real watcher (the fallback/re-attach mechanism itself
+          // is ZeropsAgentAuthWatcher.test.ts's job).
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unknown");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const initial = yield* feed.latest;
+          assert.equal(agentState(initial, "codex")?.credPresent, false);
+          assert.equal(agentState(initial, "claude-code")?.credPresent, false);
+          // Nothing exists yet, so no provider check was requested either.
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
+        }),
+      ),
+  );
+
+  it.effect(
+    "ends each failing write after one attempt, independently for each agent",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.fail(new ZeropsAgentFlagError({ reason: "could not reach the Zerops API" })),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const subscription = yield* feed.subscribe;
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          yield* changeWhere(subscription, claudeAuthResolved);
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+          assert.equal(
+            agentState(yield* feed.latest, "claude-code")?.registration?.status,
+            "failed",
+          );
+
+          // codex appearing afterwards resolves providerAuth AND is itself
+          // eligible for its own attempt, independent of claude-code.
           yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
           fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
-          yield* changeWhere(
+          const published = yield* changeWhere(
             subscription,
             (snapshot) => agentState(snapshot, "codex")?.providerAuth !== "unknown",
           );
 
-          assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
+          assert.equal(agentState(published, "codex")?.credPresent, true);
+          assert.equal(agentState(published, "codex")?.providerAuth, "authenticated");
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code", "codex"]);
         }),
       ),
-    );
+    10_000,
+  );
 
-    it.effect(
-      "tolerates a missing ~/.codex directory at start (watchWithFallback attaches it once created — own test)",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { homeDir, envStorePath } = yield* makeEnv();
-            // homeDir exists; .codex does not — neither does .claude. `make`
-            // must start cleanly and report credPresent:false for both, never
-            // touching a real watcher (the fallback/re-attach mechanism itself
-            // is ZeropsAgentAuthWatcher.test.ts's job).
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "unknown");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const initial = yield* feed.latest;
-            assert.equal(agentState(initial, "codex")?.credPresent, false);
-            assert.equal(agentState(initial, "claude-code")?.credPresent, false);
-            // Nothing exists yet, so no provider check was requested either.
-            assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
-          }),
-        ),
-    );
-
-    it.effect(
-      "ends each failing write after one attempt, independently for each agent",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.fail(new ZeropsAgentFlagError({ reason: "could not reach the Zerops API" })),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            yield* changeWhere(subscription, claudeAuthResolved);
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-            assert.equal(
-              agentState(yield* feed.latest, "claude-code")?.registration?.status,
-              "failed",
-            );
-
-            // codex appearing afterwards resolves providerAuth AND is itself
-            // eligible for its own attempt, independent of claude-code.
-            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
-            const published = yield* changeWhere(
-              subscription,
-              (snapshot) => agentState(snapshot, "codex")?.providerAuth !== "unknown",
-            );
-
-            assert.equal(agentState(published, "codex")?.credPresent, true);
-            assert.equal(agentState(published, "codex")?.providerAuth, "authenticated");
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code", "codex"]);
-          }),
-        ),
-      10_000,
-    );
-
-    it.effect(
-      "a login's recheck forgets the status verified before it, until the check answers",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
-            );
-            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
-              "unauthenticated",
-              "authenticated",
-            ]);
-            const refreshProviderAuth = () =>
-              Effect.gen(function* () {
-                const [next, ...rest] = yield* Ref.get(answers);
-                yield* Ref.set(answers, rest);
-                return {
-                  status: next ?? "authenticated",
-                  checkedAt: 0,
-                  ...(next === "unknown"
-                    ? { reason: "The login check returned an unrecognized answer." }
-                    : {}),
-                };
-              });
-            const fakeWatch = makeFakeWatch();
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-            const subscription = yield* feed.subscribe;
-            const codexAuth =
-              (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
-                agentState(snapshot, "codex")?.verification?.status === status;
-
-            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
-            yield* changeWhere(subscription, codexAuth("unauthenticated"));
-
-            // The login just succeeded: the old "unauthenticated" is no answer.
-            yield* feed.recheckNow("codex");
-            assert.equal(agentState(yield* feed.latest, "codex")?.providerAuth, "unknown");
-            yield* changeWhere(subscription, codexAuth("authenticated"));
-          }),
-        ),
-    );
-
-    it.effect("an inconclusive check ends visibly; Check again makes one new attempt", () =>
+  it.effect(
+    "a login's recheck forgets the status verified before it, until the check answers",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           const { fs, path, homeDir, envStorePath } = yield* makeEnv();
           const fake = yield* makeFakeCli(() =>
             Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
           );
-          // The CLI timed out once, then answered.
           const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
-            "unknown",
+            "unauthenticated",
             "authenticated",
           ]);
           const refreshProviderAuth = () =>
@@ -735,6 +713,429 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
               };
             });
           const fakeWatch = makeFakeWatch();
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+          const subscription = yield* feed.subscribe;
+          const codexAuth =
+            (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
+              agentState(snapshot, "codex")?.verification?.status === status;
+
+          yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
+          yield* changeWhere(subscription, codexAuth("unauthenticated"));
+
+          // The login just succeeded: the old "unauthenticated" is no answer.
+          yield* feed.recheckNow("codex");
+          assert.equal(agentState(yield* feed.latest, "codex")?.providerAuth, "unknown");
+          yield* changeWhere(subscription, codexAuth("authenticated"));
+        }),
+      ),
+  );
+
+  it.effect("an inconclusive check ends visibly; Check again makes one new attempt", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+        );
+        // The CLI timed out once, then answered.
+        const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+          "unknown",
+          "authenticated",
+        ]);
+        const refreshProviderAuth = () =>
+          Effect.gen(function* () {
+            const [next, ...rest] = yield* Ref.get(answers);
+            yield* Ref.set(answers, rest);
+            return {
+              status: next ?? "authenticated",
+              checkedAt: 0,
+              ...(next === "unknown"
+                ? { reason: "The login check returned an unrecognized answer." }
+                : {}),
+            };
+          });
+        const fakeWatch = makeFakeWatch();
+
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: fakeWatch.watch,
+        });
+
+        const subscription = yield* feed.subscribe;
+        yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+        fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
+
+        const ended = yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "codex")?.verification?.status === "unknown",
+        );
+        assert.equal(
+          agentState(ended, "codex")?.verification?.reason,
+          "The login check returned an unrecognized answer.",
+        );
+        assert.deepEqual(yield* Ref.get(fake.calls), []);
+        yield* feed.recheckNow("codex");
+        const published = yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "codex")?.providerAuth === "authenticated",
+        );
+        assert.equal(agentState(published, "codex")?.providerAuth, "authenticated");
+        assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "hands every CHANGE of the verified status to the model picker's reconcile, and only a change",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+          );
+          // Signed out, then a sign-in, then the token file rewritten.
+          const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+            "unauthenticated",
+            "authenticated",
+            "authenticated",
+          ]);
+          const refreshProviderAuth = () =>
+            Effect.gen(function* () {
+              const [next, ...rest] = yield* Ref.get(answers);
+              yield* Ref.set(answers, rest);
+              return {
+                status: next ?? "authenticated",
+                checkedAt: 0,
+                ...(next === "unknown"
+                  ? { reason: "The login check returned an unrecognized answer." }
+                  : {}),
+              };
+            });
+          const reconciled = yield* Ref.make<
+            ReadonlyArray<readonly [ZeropsAgentId, ServerProviderAuthStatus]>
+          >([]);
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth,
+            reconcileProviderAuth: (agentId, verified) =>
+              Ref.update(reconciled, (all) => [...all, [agentId, verified] as const]),
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const subscription = yield* feed.subscribe;
+          const target = credWatchTarget(homeDir, "codex");
+          const codexAuth =
+            (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
+              agentState(snapshot, "codex")?.verification?.status === status;
+
+          yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+          fakeWatch.trigger(target);
+          yield* changeWhere(subscription, codexAuth("unauthenticated"));
+          fakeWatch.trigger(target);
+          yield* changeWhere(subscription, codexAuth("authenticated"));
+          // The rewrite's check reads the same status: nothing to reconcile.
+          yield* checkedAgain(feed, subscription, "codex", () => fakeWatch.trigger(target));
+
+          assert.deepEqual(yield* Ref.get(answers), []);
+          assert.deepEqual(yield* Ref.get(reconciled), [
+            ["codex", "unauthenticated"],
+            ["codex", "authenticated"],
+          ]);
+        }),
+      ),
+  );
+
+  // Milo, 2026-10-10: signed in to another subscription, the agent read "authenticated" before
+  // and after, so the provider never read the new account's usage and its limit stood.
+  it.effect("a credential replaced while signed in has the provider read its account again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+        const reread = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
+        const fakeWatch = makeFakeWatch();
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          refreshProviderSnapshot: (agentId) => Ref.update(reread, (all) => [...all, agentId]),
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: fakeWatch.watch,
+        });
+        const subscription = yield* feed.subscribe;
+        const target = credWatchTarget(homeDir, "claude-code");
+        yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+        yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
+        // Another account's credential over the first: the status reads the same.
+        yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
+        assert.deepEqual(yield* Ref.get(reread), ["claude-code", "claude-code"]);
+      }),
+    ),
+  );
+});
+
+it.layer(services)("ZeropsAgentAuth — env store watcher", (it) => {
+  it.effect(
+    "flips flagOAuth and refreshes providerAuth (never writes the sign-in flag) when an oauth flag appears in the zembed store",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, homeDir, envStorePath } = yield* makeEnv();
+          yield* fs.writeFileString(envStorePath, "{}");
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const before = yield* feed.latest;
+          assert.equal(agentState(before, "claude-code")?.state, "not-authorized");
+
+          const subscription = yield* feed.subscribe;
+          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
+          fakeWatch.trigger(envStorePath);
+          const published = yield* changeWhere(subscription, claudeAuthResolved);
+
+          const claude = agentState(published, "claude-code");
+          assert.equal(claude?.flagOAuth, true);
+          assert.equal(claude?.providerAuth, "authenticated");
+          // No credential file was ever written in this test: flagOAuth
+          // true + credPresent false is the matrix's "reconnect" row.
+          assert.equal(claude?.state, "reconnect");
+          // The env-store path requests a targeted provider check to keep
+          // providerAuth current, but never writes the sign-in flag itself —
+          // only a credential-driven check does that.
+          assert.deepEqual(yield* Ref.get(fake.calls), []);
+          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
+        }),
+      ),
+  );
+
+  // A Mate restarted on an environment token has no credential file to set a check off.
+  it.effect("an environment token already set when the Mate starts is verified", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, envStorePath } = yield* makeEnv();
+        yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_TOKEN_CLAUDE_CODE":"true"}');
+        const fake = yield* makeFakeCli(() =>
+          Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: makeFakeWatch().watch,
+        });
+        const subscription = yield* feed.subscribe;
+        const claude = agentState(
+          yield* changeWhere(subscription, claudeAuthResolved),
+          "claude-code",
+        );
+        assert.equal(claude?.state, "authorized-token");
+        assert.equal(claude?.providerAuth, "authenticated");
+        // Verifying a token never writes the sign-in flag.
+        assert.deepEqual(yield* Ref.get(fake.calls), []);
+        assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
+      }),
+    ),
+  );
+});
+
+it.layer(services)("ZeropsAgentAuth — markedOAuth latch reset (S7 follow-up F2)", (it) => {
+  it.effect(
+    "re-marks after the platform OAuth flag disappears and a later check reads authenticated again",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const fakeWatch = makeFakeWatch();
+
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+
+          const subscription = yield* feed.subscribe;
+
+          // First sign-in: credential appears, provider check reads
+          // authenticated, the sign-in flag write happens once.
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          yield* changeWhere(subscription, claudeAuthResolved);
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+
+          // The platform flag disappears (a GUI revoke) without this
+          // process restarting. The latch must reset so the NEXT verified
+          // credential re-marks.
+          yield* fs.writeFileString(envStorePath, "{}");
+          fakeWatch.trigger(envStorePath);
+          // The env-store transition alone (oauth flag true -> absent) is
+          // neither an "appeared" nor a "disappeared-then-reappeared"
+          // credential/token event, so it never requests its own provider
+          // check — wait on the credential file's still-fresh mtime
+          // instead by re-triggering it below, which does.
+
+          // The credential file is still present (never removed) and the
+          // provider still answers authenticated — mirrors a revoke
+          // followed by a fresh re-login while the local file itself
+          // never round-trips through absence.
+          yield* checkedAgain(feed, subscription, "claude-code", () =>
+            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
+          );
+
+          assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code", "claude-code"]);
+        }),
+      ),
+    10_000,
+  );
+});
+
+it.layer(services)("ZeropsAgentAuth — recheckNow (S7 follow-up F8)", (it) => {
+  it.effect("requests the same flag-write-eligible coalesced check a credential event would", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.succeed({
+            key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+            changed: true,
+            migrated: false,
+          }),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+        const fakeWatch = makeFakeWatch();
+
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: fakeWatch.watch,
+        });
+
+        const subscription = yield* feed.subscribe;
+        // No credential file was ever written and no watcher fired —
+        // recheckNow alone drives the whole coalesced-check ->
+        // flag-write pipeline.
+        yield* feed.recheckNow("claude-code");
+        const published = yield* changeWhere(subscription, claudeAuthResolved);
+
+        assert.equal(agentState(published, "claude-code")?.providerAuth, "authenticated");
+        assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
+      }),
+    ),
+  );
+
+  it.effect("is a no-op when the feed is off (not a Zerops environment)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { homeDir, envStorePath } = yield* makeEnv();
+        const fake = yield* makeFakeCli(() =>
+          Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
+        );
+        const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+        const fakeWatch = makeFakeWatch();
+
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: false,
+          watch: fakeWatch.watch,
+        });
+
+        yield* feed.recheckNow("claude-code");
+        assert.deepEqual(yield* Ref.get(fake.calls), []);
+        assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
+      }),
+    ),
+  );
+});
+
+// A stale auth check must not re-mark the flag a concurrent sign-out just
+// cleared: `checkProviderAuth` decides whether to call `markOAuthOnce` AFTER
+// `refreshProviderAuth` returns, so a sign-out (logout + clearSignedIn)
+// landing while that probe is still in flight must not have its cleared
+// flag undone by the stale "authenticated" answer arriving afterwards.
+it.layer(services)("ZeropsAgentAuth — invalidatePendingMark (stale mark during sign-out)", (it) => {
+  it.effect(
+    "does not mark the flag when invalidatePendingMark runs while the probe is in flight",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({
+              key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
+              changed: true,
+              migrated: false,
+            }),
+          );
+          // A `refreshProviderAuth` that blocks until this test releases
+          // it — the window during which a concurrent sign-out runs.
+          const gate = yield* Deferred.make<void>();
+          const probeCalls = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
+          const probeStarted = yield* Deferred.make<void>();
+          const refreshProviderAuth = (agentId: ZeropsAgentId) =>
+            Ref.update(probeCalls, (all) => [...all, agentId]).pipe(
+              Effect.andThen(Deferred.succeed(probeStarted, undefined)),
+              Effect.andThen(Deferred.await(gate)),
+              Effect.as({ status: "authenticated" as const, checkedAt: 0 }),
+            );
+          const fakeWatch = makeFakeWatch();
 
           const feed = yield* ZeropsAgentAuth.make({
             agentFlag: fake.cli,
@@ -745,470 +1146,79 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             watch: fakeWatch.watch,
           });
 
-          const subscription = yield* feed.subscribe;
-          yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
-          fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
-
-          const ended = yield* changeWhere(
-            subscription,
-            (snapshot) => agentState(snapshot, "codex")?.verification?.status === "unknown",
-          );
-          assert.equal(
-            agentState(ended, "codex")?.verification?.reason,
-            "The login check returned an unrecognized answer.",
-          );
-          assert.deepEqual(yield* Ref.get(fake.calls), []);
-          yield* feed.recheckNow("codex");
-          const published = yield* changeWhere(
-            subscription,
-            (snapshot) => agentState(snapshot, "codex")?.providerAuth === "authenticated",
-          );
-          assert.equal(agentState(published, "codex")?.providerAuth, "authenticated");
-          assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
-        }),
-      ),
-    );
-
-    it.effect(
-      "hands every CHANGE of the verified status to the model picker's reconcile, and only a change",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
-            );
-            // Signed out, then a sign-in, then the token file rewritten.
-            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
-              "unauthenticated",
-              "authenticated",
-              "authenticated",
-            ]);
-            const refreshProviderAuth = () =>
-              Effect.gen(function* () {
-                const [next, ...rest] = yield* Ref.get(answers);
-                yield* Ref.set(answers, rest);
-                return {
-                  status: next ?? "authenticated",
-                  checkedAt: 0,
-                  ...(next === "unknown"
-                    ? { reason: "The login check returned an unrecognized answer." }
-                    : {}),
-                };
-              });
-            const reconciled = yield* Ref.make<
-              ReadonlyArray<readonly [ZeropsAgentId, ServerProviderAuthStatus]>
-            >([]);
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth,
-              reconcileProviderAuth: (agentId, verified) =>
-                Ref.update(reconciled, (all) => [...all, [agentId, verified] as const]),
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            const target = credWatchTarget(homeDir, "codex");
-            const codexAuth =
-              (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
-                agentState(snapshot, "codex")?.verification?.status === status;
-
-            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
-            fakeWatch.trigger(target);
-            yield* changeWhere(subscription, codexAuth("unauthenticated"));
-            fakeWatch.trigger(target);
-            yield* changeWhere(subscription, codexAuth("authenticated"));
-            // The rewrite's check reads the same status: nothing to reconcile.
-            yield* checkedAgain(feed, subscription, "codex", () => fakeWatch.trigger(target));
-
-            assert.deepEqual(yield* Ref.get(answers), []);
-            assert.deepEqual(yield* Ref.get(reconciled), [
-              ["codex", "unauthenticated"],
-              ["codex", "authenticated"],
-            ]);
-          }),
-        ),
-    );
-
-    // Milo, 2026-10-10: signed in to another subscription, the agent read "authenticated" before
-    // and after, so the provider never read the new account's usage and its limit stood.
-    it.effect("a credential replaced while signed in has the provider read its account again", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-          const fake = yield* makeFakeCli(() =>
-            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
-          );
-          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-          const reread = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
-          const fakeWatch = makeFakeWatch();
-          const feed = yield* ZeropsAgentAuth.make({
-            agentFlag: fake.cli,
-            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-            refreshProviderSnapshot: (agentId) => Ref.update(reread, (all) => [...all, agentId]),
-            homeDir,
-            envStorePath,
-            isZeropsEnvironment: true,
-            watch: fakeWatch.watch,
-          });
-          const subscription = yield* feed.subscribe;
-          const target = credWatchTarget(homeDir, "claude-code");
           yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-          yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
-          // Another account's credential over the first: the status reads the same.
-          yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
-          assert.deepEqual(yield* Ref.get(reread), ["claude-code", "claude-code"]);
-        }),
-      ),
-    );
-  },
-);
+          fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
+          // Past the credential watcher's 400ms debounce and the provider
+          // check's own 1s coalesce window: the probe has started and is
+          // now blocked on `gate`.
+          yield* advancing(Deferred.await(probeStarted));
+          assert.deepEqual(yield* Ref.get(probeCalls), ["claude-code"]);
 
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — env store watcher",
-  (it) => {
-    it.effect(
-      "flips flagOAuth and refreshes providerAuth (never writes the sign-in flag) when an oauth flag appears in the zembed store",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, homeDir, envStorePath } = yield* makeEnv();
-            yield* fs.writeFileString(envStorePath, "{}");
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const before = yield* feed.latest;
-            assert.equal(agentState(before, "claude-code")?.state, "not-authorized");
-
-            const subscription = yield* feed.subscribe;
-            yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
-            fakeWatch.trigger(envStorePath);
-            const published = yield* changeWhere(subscription, claudeAuthResolved);
-
-            const claude = agentState(published, "claude-code");
-            assert.equal(claude?.flagOAuth, true);
-            assert.equal(claude?.providerAuth, "authenticated");
-            // No credential file was ever written in this test: flagOAuth
-            // true + credPresent false is the matrix's "reconnect" row.
-            assert.equal(claude?.state, "reconnect");
-            // The env-store path requests a targeted provider check to keep
-            // providerAuth current, but never writes the sign-in flag itself —
-            // only a credential-driven check does that.
-            assert.deepEqual(yield* Ref.get(fake.calls), []);
-            assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
-          }),
-        ),
-    );
-
-    // A Mate restarted on an environment token has no credential file to set a check off.
-    it.effect("an environment token already set when the Mate starts is verified", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { fs, homeDir, envStorePath } = yield* makeEnv();
-          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_TOKEN_CLAUDE_CODE":"true"}');
-          const fake = yield* makeFakeCli(() =>
-            Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
-          );
-          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-          const feed = yield* ZeropsAgentAuth.make({
-            agentFlag: fake.cli,
-            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-            homeDir,
-            envStorePath,
-            isZeropsEnvironment: true,
-            watch: makeFakeWatch().watch,
-          });
+          // A sign-out runs concurrently, invalidating the check already
+          // in flight, THEN the probe (started before the sign-out)
+          // finally answers "authenticated".
+          yield* feed.invalidatePendingMark("claude-code");
+          yield* Deferred.succeed(gate, undefined);
+          // A later env-store event may check auth, but must not spend the canceled credential event.
           const subscription = yield* feed.subscribe;
-          const claude = agentState(
-            yield* changeWhere(subscription, claudeAuthResolved),
-            "claude-code",
-          );
-          assert.equal(claude?.state, "authorized-token");
-          assert.equal(claude?.providerAuth, "authenticated");
-          // Verifying a token never writes the sign-in flag.
+          yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
+          fakeWatch.trigger(envStorePath);
+          yield* changeWhere(subscription, claudeAuthResolved);
           assert.deepEqual(yield* Ref.get(fake.calls), []);
-          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), ["claude-code"]);
         }),
       ),
-    );
-  },
-);
+    10_000,
+  );
+});
 
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — markedOAuth latch reset (S7 follow-up F2)",
-  (it) => {
-    it.effect(
-      "re-marks after the platform OAuth flag disappears and a later check reads authenticated again",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-
-            // First sign-in: credential appears, provider check reads
-            // authenticated, the sign-in flag write happens once.
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            yield* changeWhere(subscription, claudeAuthResolved);
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-
-            // The platform flag disappears (a GUI revoke) without this
-            // process restarting. The latch must reset so the NEXT verified
-            // credential re-marks.
-            yield* fs.writeFileString(envStorePath, "{}");
-            fakeWatch.trigger(envStorePath);
-            // The env-store transition alone (oauth flag true -> absent) is
-            // neither an "appeared" nor a "disappeared-then-reappeared"
-            // credential/token event, so it never requests its own provider
-            // check — wait on the credential file's still-fresh mtime
-            // instead by re-triggering it below, which does.
-
-            // The credential file is still present (never removed) and the
-            // provider still answers authenticated — mirrors a revoke
-            // followed by a fresh re-login while the local file itself
-            // never round-trips through absence.
-            yield* checkedAgain(feed, subscription, "claude-code", () =>
-              fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
-            );
-
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code", "claude-code"]);
-          }),
-        ),
-      10_000,
-    );
-  },
-);
-
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — recheckNow (S7 follow-up F8)",
-  (it) => {
-    it.effect(
-      "requests the same flag-write-eligible coalesced check a credential event would",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            const subscription = yield* feed.subscribe;
-            // No credential file was ever written and no watcher fired —
-            // recheckNow alone drives the whole coalesced-check ->
-            // flag-write pipeline.
-            yield* feed.recheckNow("claude-code");
-            const published = yield* changeWhere(subscription, claudeAuthResolved);
-
-            assert.equal(agentState(published, "claude-code")?.providerAuth, "authenticated");
-            assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
-          }),
-        ),
-    );
-
-    it.effect("is a no-op when the feed is off (not a Zerops environment)", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { homeDir, envStorePath } = yield* makeEnv();
-          const fake = yield* makeFakeCli(() =>
-            Effect.fail(new ZeropsAgentFlagError({ reason: "unavailable" })),
-          );
-          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
-          const fakeWatch = makeFakeWatch();
-
-          const feed = yield* ZeropsAgentAuth.make({
-            agentFlag: fake.cli,
-            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
-            homeDir,
-            envStorePath,
-            isZeropsEnvironment: false,
-            watch: fakeWatch.watch,
-          });
-
-          yield* feed.recheckNow("claude-code");
-          assert.deepEqual(yield* Ref.get(fake.calls), []);
-          assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
-        }),
-      ),
-    );
-  },
-);
-
-// A stale auth check must not re-mark the flag a concurrent sign-out just
-// cleared: `checkProviderAuth` decides whether to call `markOAuthOnce` AFTER
-// `refreshProviderAuth` returns, so a sign-out (logout + clearSignedIn)
-// landing while that probe is still in flight must not have its cleared
-// flag undone by the stale "authenticated" answer arriving afterwards.
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — invalidatePendingMark (stale mark during sign-out)",
-  (it) => {
-    it.effect(
-      "does not mark the flag when invalidatePendingMark runs while the probe is in flight",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-            const fake = yield* makeFakeCli(() =>
-              Effect.succeed({
-                key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
-                changed: true,
-                migrated: false,
-              }),
-            );
-            // A `refreshProviderAuth` that blocks until this test releases
-            // it — the window during which a concurrent sign-out runs.
-            const gate = yield* Deferred.make<void>();
-            const probeCalls = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
-            const probeStarted = yield* Deferred.make<void>();
-            const refreshProviderAuth = (agentId: ZeropsAgentId) =>
-              Ref.update(probeCalls, (all) => [...all, agentId]).pipe(
-                Effect.andThen(Deferred.succeed(probeStarted, undefined)),
-                Effect.andThen(Deferred.await(gate)),
-                Effect.as({ status: "authenticated" as const, checkedAt: 0 }),
-              );
-            const fakeWatch = makeFakeWatch();
-
-            const feed = yield* ZeropsAgentAuth.make({
-              agentFlag: fake.cli,
-              refreshProviderAuth,
-              homeDir,
-              envStorePath,
-              isZeropsEnvironment: true,
-              watch: fakeWatch.watch,
-            });
-
-            yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            // Past the credential watcher's 400ms debounce and the provider
-            // check's own 1s coalesce window: the probe has started and is
-            // now blocked on `gate`.
-            yield* Deferred.await(probeStarted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
-            assert.deepEqual(yield* Ref.get(probeCalls), ["claude-code"]);
-
-            // A sign-out runs concurrently, invalidating the check already
-            // in flight, THEN the probe (started before the sign-out)
-            // finally answers "authenticated".
-            yield* feed.invalidatePendingMark("claude-code");
-            yield* Deferred.succeed(gate, undefined);
-            // A later env-store event may check auth, but must not spend the canceled credential event.
-            const subscription = yield* feed.subscribe;
-            yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');
-            fakeWatch.trigger(envStorePath);
-            yield* changeWhere(subscription, claudeAuthResolved);
-            assert.deepEqual(yield* Ref.get(fake.calls), []);
-          }),
-        ),
-      10_000,
-    );
-  },
-);
-
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentAuth — manual registration",
-  (it) => {
-    it.effect("Register again makes exactly one new write and retains its handle", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
-          const attempts = yield* Ref.make(0);
-          const fake = yield* makeFakeCli(() =>
-            Ref.updateAndGet(attempts, (n) => n + 1).pipe(
-              Effect.flatMap((n) =>
-                n === 1
-                  ? Effect.fail(new ZeropsAgentFlagError({ reason: "down" }))
-                  : Effect.succeed({
-                      key: "ZCP_AGENT_OAUTH_CODEX",
-                      changed: true,
-                      migrated: false,
-                      process: { id: "p1" },
-                    }),
-              ),
+it.layer(services)("ZeropsAgentAuth — manual registration", (it) => {
+  it.effect("Register again makes exactly one new write and retains its handle", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+        const attempts = yield* Ref.make(0);
+        const fake = yield* makeFakeCli(() =>
+          Ref.updateAndGet(attempts, (n) => n + 1).pipe(
+            Effect.flatMap((n) =>
+              n === 1
+                ? Effect.fail(new ZeropsAgentFlagError({ reason: "down" }))
+                : Effect.succeed({
+                    key: "ZCP_AGENT_OAUTH_CODEX",
+                    changed: true,
+                    migrated: false,
+                    process: { id: "p1" },
+                  }),
             ),
-          );
-          const auth = yield* makeFakeProviderAuth(() => "authenticated");
-          const watcher = makeFakeWatch();
-          const feed = yield* ZeropsAgentAuth.make({
-            agentFlag: fake.cli,
-            refreshProviderAuth: auth.refreshProviderAuth,
-            homeDir,
-            envStorePath,
-            isZeropsEnvironment: true,
-            watch: watcher.watch,
-          });
-          const subscription = yield* feed.subscribe;
-          yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
-          watcher.trigger(credWatchTarget(homeDir, "codex"));
-          const failed = yield* changeWhere(
-            subscription,
-            (snapshot) => agentState(snapshot, "codex")?.registration?.status === "failed",
-          );
-          assert.equal(agentState(failed, "codex")?.providerAuth, "authenticated");
-          assert.equal(agentState(failed, "codex")?.registration?.reason, "down");
-          assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
-          yield* feed.recheckNow("codex");
-          const accepted = yield* changeWhere(
-            subscription,
-            (snapshot) => agentState(snapshot, "codex")?.registration?.status === "accepted",
-          );
-          assert.equal(agentState(accepted, "codex")?.registration?.process?.id, "p1");
-          assert.deepEqual(yield* Ref.get(fake.calls), ["codex", "codex"]);
-        }),
-      ),
-    );
-  },
-);
+          ),
+        );
+        const auth = yield* makeFakeProviderAuth(() => "authenticated");
+        const watcher = makeFakeWatch();
+        const feed = yield* ZeropsAgentAuth.make({
+          agentFlag: fake.cli,
+          refreshProviderAuth: auth.refreshProviderAuth,
+          homeDir,
+          envStorePath,
+          isZeropsEnvironment: true,
+          watch: watcher.watch,
+        });
+        const subscription = yield* feed.subscribe;
+        yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+        watcher.trigger(credWatchTarget(homeDir, "codex"));
+        const failed = yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "codex")?.registration?.status === "failed",
+        );
+        assert.equal(agentState(failed, "codex")?.providerAuth, "authenticated");
+        assert.equal(agentState(failed, "codex")?.registration?.reason, "down");
+        assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
+        yield* feed.recheckNow("codex");
+        const accepted = yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "codex")?.registration?.status === "accepted",
+        );
+        assert.equal(agentState(accepted, "codex")?.registration?.process?.id, "p1");
+        assert.deepEqual(yield* Ref.get(fake.calls), ["codex", "codex"]);
+      }),
+    ),
+  );
+});
