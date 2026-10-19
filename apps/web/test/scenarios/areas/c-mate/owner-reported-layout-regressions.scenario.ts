@@ -4820,5 +4820,147 @@ describe("owner-reported layout regressions", () => {
         });
       });
     });
+
+    // The owner (2026-10-19), on the vertical project page: "I can already tell this is going to
+    // be absolute shit, especially when there is no prod and or stage, you didn't take in
+    // consideration the empty state, the states with a lot of content (changes, automation)".
+    describe("Decision: a project page is designed for every state: empty reads as in development, long lists are capped.", () => {
+      describe("B: the project page", () => {
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          it.effect(
+            "a project with no production and no stage reads as in development with one next step",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* s.given.project("Ada", { mate: true, app: "Shop" });
+                yield* s.given.signedIn;
+                const appId = s.drivers.appIds.get("Shop")!;
+                const reading = yield* Effect.promise(async () => {
+                  await s.page.goto(`${s.web.origin}/group/${appId}/flow`);
+                  await s.page.waitForSelector('main [data-zerops-surface="project-development"]', {
+                    timeout: 30_000,
+                  });
+                  await waitForStillFrames(s.page);
+                  return s.page.evaluate(() => {
+                    const page = document.querySelector<HTMLElement>(
+                      'main [data-zerops-surface="project-page"]',
+                    )!;
+                    const head = page.querySelector(".pp-road-header")!.getBoundingClientRect();
+                    const panel = page
+                      .querySelector('[data-zerops-surface="project-development"]')!
+                      .getBoundingClientRect();
+                    const main = page.querySelector(".pp-main")!.getBoundingClientRect();
+                    const first = page.querySelector(".pp-main")!.firstElementChild;
+                    const buttons = [
+                      ...page.querySelectorAll<HTMLButtonElement>(
+                        '[data-zerops-surface="project-development"] button',
+                      ),
+                    ].map((button) => button.textContent?.trim());
+                    return {
+                      gap: panel.top - head.bottom,
+                      leads: first?.getAttribute("data-zerops-surface"),
+                      within: panel.left >= main.left - 0.5 && panel.right <= main.right + 0.5,
+                      buttons,
+                      places: page.querySelector('[data-zerops-surface="project-places"]') !== null,
+                      ghosts: page.querySelectorAll(".pp-road-ghost-words").length,
+                    };
+                  });
+                });
+                const seen = quoted(reading);
+                expect(
+                  reading.leads,
+                  `ASSERTION: the wide column opens with the project's next step: ${seen}`,
+                ).toBe("project-development");
+                expect(
+                  reading.gap,
+                  `ASSERTION: the next step stands right under the head, no empty band between: ${seen}`,
+                ).toBeLessThanOrEqual(64);
+                expect(reading.within, `ASSERTION: it fills the wide column: ${seen}`).toBe(true);
+                expect(reading.buttons, `ASSERTION: it offers one step: ${seen}`).toHaveLength(1);
+                expect(
+                  reading.places || reading.ghosts > 0,
+                  `ASSERTION: no empty Production or Stages floats beside it: ${seen}`,
+                ).toBe(false);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+
+          it.effect(
+            "a project page's side lists never outgrow the page: capped with Show all",
+            () =>
+              Effect.gen(function* () {
+                const f = yield* environmentFixtureWith({}, { stage: false });
+                // Four merged that no release took yet, then one asking for review.
+                for (const title of ["Gift cards", "Prices per 100 g", "Search box", "Tea origins"])
+                  yield* f.merge(title);
+                yield* f.change("Wishlist");
+                yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* f.s.given.signedIn;
+                const read = () =>
+                  f.s.page.evaluate(() => {
+                    const page = document.querySelector(
+                      'main [data-zerops-surface="project-page"]',
+                    )!;
+                    const changes = page.querySelector<HTMLElement>(
+                      '[data-zerops-surface="project-changes"]',
+                    )!;
+                    return {
+                      needs: page.querySelectorAll(
+                        '[data-zerops-surface="project-needs"] .pp-needs-list > li',
+                      ).length,
+                      groups: [...changes.querySelectorAll("[data-zerops-changes]")].map(
+                        (group) => group.querySelectorAll("[data-zerops-change]").length,
+                      ),
+                      changesMore:
+                        changes.querySelector('[data-zerops-surface="changes-show-all"]') !== null,
+                      height: changes.getBoundingClientRect().height,
+                    };
+                  });
+                const capped = yield* Effect.promise(async () => {
+                  await f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`);
+                  await f.s.page.waitForFunction(
+                    () =>
+                      document.querySelectorAll(
+                        'main [data-zerops-surface="project-changes"] [data-zerops-change]',
+                      ).length > 0 &&
+                      document.querySelector('main [data-zerops-surface="project-needs"]') !== null,
+                    { timeout: 30_000 },
+                  );
+                  await waitForStillFrames(f.s.page);
+                  return read();
+                });
+                const seen = quoted(capped);
+                expect(
+                  capped.needs,
+                  `ASSERTION: what needs you lists a few: ${seen}`,
+                ).toBeLessThanOrEqual(4);
+                expect(
+                  capped.needs,
+                  `ASSERTION: the change waiting for review is asked above: ${seen}`,
+                ).toBeGreaterThan(0);
+                for (const rows of capped.groups)
+                  expect(
+                    rows,
+                    `ASSERTION: each group of Changes lists a few: ${seen}`,
+                  ).toBeLessThanOrEqual(3);
+                expect(capped.changesMore, `ASSERTION: Changes offers Show all: ${seen}`).toBe(
+                  true,
+                );
+                const opened = yield* Effect.promise(async () => {
+                  await f.s.page.click('main [data-zerops-surface="changes-show-all"]');
+                  await waitForStillFrames(f.s.page);
+                  return read();
+                });
+                expect(
+                  opened.height,
+                  `ASSERTION: Show all opens the rest in place: ${quoted({ capped, opened })}`,
+                ).toBeGreaterThan(capped.height);
+                yield* f.s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
   });
 });
