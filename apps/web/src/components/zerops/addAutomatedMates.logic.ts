@@ -11,7 +11,11 @@ import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
-import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import {
+  automatedModelOf,
+  automatedModelOffer,
+  OPENCODE_KEY_PROVIDERS,
+} from "@t3tools/shared/openCodeKeyProviders";
 
 import { AUTOMATED_KEY_PROVIDER, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 
@@ -181,11 +185,17 @@ export function automatedSourcesSentence(count: number, sources: AutomatedSource
 const dollars = (amount: number) =>
   Number.isInteger(amount) ? `$${String(amount)}` : `$${amount.toFixed(2)}`;
 
-/** The provider and model automated Mates run on, as a person names them: "Nebius · GLM-5.3". */
-export function automatedModelWords(): string {
+/**
+ * The provider and model automated Mates run on, as a person names them: "Nebius · GLM-5.3" — the
+ * organization's pick (`HqTaskLimitsView.model`), else the default.
+ */
+export function automatedModelWords(picked?: string): string {
   const provider = OPENCODE_KEY_PROVIDERS.find((one) => one.id === AUTOMATED_KEY_PROVIDER);
   if (provider === undefined) return "the organization's key";
-  const model = provider.automatedModel.split("/").pop() ?? provider.automatedModel;
+  const model =
+    automatedModelOffer(automatedModelOf(picked))?.name ??
+    provider.automatedModel.split("/").pop() ??
+    provider.automatedModel;
   return `${provider.name.split(" ")[0] ?? provider.name} · ${model}`;
 }
 
@@ -205,7 +215,7 @@ export function automatedWhatTheyDo(input: {
   const sentences: Array<string> = [];
   if (input.sources.kind !== "reading")
     sentences.push(automatedSourcesSentence(input.count, input.sources));
-  const model = automatedModelWords();
+  const model = automatedModelWords(input.limits?.model);
   const limits = input.limits;
   const perTask =
     limits === undefined

@@ -4,6 +4,7 @@
  */
 import type { AppIntakeRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
+import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
@@ -11,11 +12,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { RadioGroup } from "../ui/radio-group";
 import { AppIntakeView } from "./AutomatedMatesSettings";
 import {
   AppChannelView,
   AppSchedulesView,
   AppWebhooksView,
+  AutomatedModelView,
   DiscordSettingsView,
   SlackSettingsView,
   MonthlyBudgetView,
@@ -725,5 +728,78 @@ describe("taking a public repository's issues", () => {
     view.submit();
     expect(onSet).toHaveBeenCalledWith("acme/tea-shop", "mate", tick);
     view.unmount();
+  });
+});
+
+describe("the automated Mates' model in Settings", () => {
+  const nebius = OPENCODE_KEY_PROVIDERS[0]!;
+  const FLASH = "nebius/zai-org/GLM-5.3-Flash";
+  const held = {
+    minutes: 45,
+    costUsd: 3,
+    monthlyBudgetUsd: 50,
+    spentThisMonthUsd: 6.44,
+    model: FLASH,
+  };
+  /** The words under a node, as one line. */
+  const words = (node: ReactTestInstance): string =>
+    node.children
+      .map((child) => (typeof child === "string" ? child : words(child)))
+      .join(" ")
+      .replace(/\s+/gu, " ")
+      .trim();
+
+  it("Settings › Automation offers each model with its price and marks the current one", () => {
+    const limits = controls(known(held));
+    expect(shown(renderToStaticMarkup(<AutomatedModelView controls={limits} />))).toContain(
+      "GLM-5.3 Flash · $0.15 in · $0.50 out per million tokens",
+    );
+    const view = rendered(<AutomatedModelView controls={limits} />);
+    act(() => {
+      view.root
+        .findAllByType(Button)
+        .find((button) => words(button) === "Change")!
+        .props.onClick();
+    });
+    const offered = view.root.findAll((node) => node.props["data-automated-model"] !== undefined);
+    expect(
+      offered.map((node) => ({
+        model: node.props["data-automated-model"],
+        current: words(node).includes("Current"),
+      })),
+    ).toEqual(
+      nebius.automatedModels.map((offer) => ({
+        model: `nebius/${offer.id}`,
+        current: `nebius/${offer.id}` === FLASH,
+      })),
+    );
+    expect(words(offered[2]!)).toContain("DeepSeek V4 Flash");
+    expect(words(offered[2]!)).toContain("$0.14 in · $0.28 out per million tokens");
+    expect(words(offered[2]!)).toContain(nebius.automatedModels[2]!.why);
+    view.unmount();
+  });
+
+  it("a model picked saves with the limits as HQ holds them", () => {
+    const limits = controls(known(held));
+    const view = rendered(<AutomatedModelView controls={limits} />);
+    act(() => {
+      view.root
+        .findAllByType(Button)
+        .find((button) => words(button) === "Change")!
+        .props.onClick();
+    });
+    act(() => {
+      view.root.findByType(RadioGroup).props.onValueChange("nebius/zai-org/GLM-5.3");
+    });
+    expect(limits.write).toHaveBeenCalledWith({
+      kind: "task-limits",
+      limits: { minutes: 45, costUsd: 3, model: "nebius/zai-org/GLM-5.3" },
+    });
+    view.unmount();
+  });
+
+  it("offers no model where HQ predates the choice", () => {
+    const limits = controls(known({ minutes: 60, costUsd: null }));
+    expect(renderToStaticMarkup(<AutomatedModelView controls={limits} />)).toBe("");
   });
 });

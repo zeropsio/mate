@@ -4,6 +4,7 @@
  * webhooks and schedules, the limits on each task — and what its forms take.
  */
 import type { AutomationAction, SettingValue, TaskSourceWrite } from "@t3tools/client-runtime/data";
+import type { AutomatedModel } from "@t3tools/shared/openCodeKeyProviders";
 import type {
   HqScheduleRule,
   HqSlackChannels,
@@ -167,6 +168,12 @@ export function budgetLine(limits: HqTaskLimitsView): string | null {
   return spent >= budget
     ? `${said} of ${dollars(budget)} spent this month: no task starts until next month or a higher budget.`
     : `${said} of ${dollars(budget)} spent this month.`;
+}
+
+/** A model's price as Settings says it: "$0.15 in · $0.50 out per million tokens". */
+export function modelPriceWords(offer: AutomatedModel): string {
+  const { input, output } = offer.usdPerMillion;
+  return `$${input.toFixed(2)} in · $${output.toFixed(2)} out per million tokens`;
 }
 
 const BUDGET_MAX = 1_000_000;

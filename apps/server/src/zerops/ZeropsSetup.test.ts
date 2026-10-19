@@ -143,6 +143,8 @@ const SIGNED: ProjectSigners = { "claude-code": "user-a" };
 interface World {
   /** Where the Mate stands with its HQ. */
   readonly hq: Ref.Ref<HqStanding>;
+  /** The model an automated Mate's agents start on, as HQ last handed it. */
+  readonly automatedModel: Ref.Ref<string>;
   /** Who this server saw sign each login in. */
   readonly signers: Ref.Ref<ProjectSigners>;
   readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
@@ -185,6 +187,7 @@ interface World {
 const makeWorld = Effect.gen(function* () {
   return {
     hq: yield* Ref.make(ASKED),
+    automatedModel: yield* Ref.make("nebius/zai-org/GLM-5.3"),
     providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
     signers: yield* Ref.make<ProjectSigners>({}),
     // Made by the new press: it always sets the runtimes plan, even an empty one.
@@ -229,6 +232,10 @@ const fakes = (world: World) =>
       processGone: (zcp) =>
         Effect.map(Ref.get(world.goneProcesses), (gone) => gone.includes(zcp.pid)),
       providers: Ref.get(world.providers),
+      automatedModel: Effect.map(Ref.get(world.automatedModel), (model) => ({
+        instanceId: ProviderInstanceId.make("opencode"),
+        model,
+      })),
     }),
     Layer.mock(ProjectionSnapshotQuery)({
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(PROJECT)),
@@ -644,6 +651,23 @@ describe("ZeropsSetup: the stand-up", () => {
           }),
         );
       }),
+  );
+
+  it.live("an automated Mate stands up on the model its organization picked", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      const automated = ASKED.kind === "linked" ? ASKED.mate : undefined;
+      yield* Ref.set(world.hq, { kind: "linked", mate: { ...automated!, automated: true } });
+      yield* Ref.set(world.automatedModel, "nebius/zai-org/GLM-5.3-Flash");
+      yield* Ref.set(world.providers, [instance("opencode")]);
+      const [turn] = yield* withServer(world, freshDatabase(), () =>
+        eventually(turnsOf(world), (turns) => turns.length > 0),
+      );
+      assert.deepStrictEqual(
+        [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+        ["opencode", "nebius/zai-org/GLM-5.3-Flash"],
+      );
+    }),
   );
 
   it.live("the asker's own sign-in comes before a ready Cursor", () =>

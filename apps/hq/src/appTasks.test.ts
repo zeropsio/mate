@@ -222,6 +222,7 @@ describe("an application's tasks, what they cost, and the organization's monthly
             costUsd: null,
             monthlyBudgetUsd: 1,
             spentThisMonthUsd: 0,
+            model: "nebius/zai-org/GLM-5.3",
           });
           yield* core.issue(1);
           const first = yield* toldTask(core, 1);
@@ -262,6 +263,7 @@ describe("an application's tasks, what they cost, and the organization's monthly
             costUsd: null,
             monthlyBudgetUsd: 1,
             spentThisMonthUsd: 1.25,
+            model: "nebius/zai-org/GLM-5.3",
           });
           yield* limits({ minutes: 60, costUsd: null, monthlyBudgetUsd: 5 });
           yield* toldTask(core, 2);

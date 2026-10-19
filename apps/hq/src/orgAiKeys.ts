@@ -5,7 +5,7 @@
  * when.
  *
  * An automated Mate's link brings them down at once and on each change (`provider-keys`,
- * `framesFor`); any Mate of the organization may ask for one (`POST /api/mate/ai-key`), so its zcp
+ * `framesFor`), with the model the organization picked for its automated Mates (`taskLimits.ts`); any Mate of the organization may ask for one (`POST /api/mate/ai-key`), so its zcp
  * puts it in its project's vault for an application that calls the provider — never through a
  * conversation.
  *
@@ -29,6 +29,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Structure } from "./structure.ts";
+import { pickedModel, TaskLimits } from "./taskLimits.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
 /** A key as a provider's API takes it: printable, no spaces, at most 1 KiB. */
@@ -52,8 +53,8 @@ export class OrgAiKeys extends Context.Service<
       provider: string | undefined,
     ) => Effect.Effect<HqMateAiKey, AutomationRefused | SqlError>;
     /**
-     * The `provider-keys` frames of an automated Mate's link: the keys now, then again each time
-     * one changes — and once its record says automated, where it did not as the link opened. None
+     * The `provider-keys` frames of an automated Mate's link: the keys and the organization's model
+     * now, then again each time one changes — and once its record says automated, where it did not as the link opened. None
      * for an ordinary Mate.
      */
     readonly framesFor: (projectId: string) => Stream.Stream<string, SqlError>;
@@ -74,6 +75,7 @@ export const orgAiKeysLayer = Layer.effect(
     const roles = yield* Roles;
     const keys = yield* DeployKeys;
     const structure = yield* Structure;
+    const limits = yield* TaskLimits;
     const ticks = yield* SubscriptionRef.make(0);
     const changed = SubscriptionRef.update(ticks, (tick) => tick + 1);
 
@@ -161,11 +163,11 @@ export const orgAiKeysLayer = Layer.effect(
             baseUrl: provider.baseUrl,
           };
         }),
-      // Read again on each key change and each move of the Mate's record: one HQ names automated
-      // after its link opened gets them there too, once.
+      // Read again on each key or model change and each move of the Mate's record: one HQ names
+      // automated after its link opened gets them there too, once.
       framesFor: (projectId) =>
         Stream.merge(
-          SubscriptionRef.changes(ticks),
+          Stream.merge(SubscriptionRef.changes(ticks), limits.changes),
           Stream.filter(structure.mateChanges, (changed) => changed === projectId),
         ).pipe(
           Stream.mapEffect(() =>
@@ -173,12 +175,16 @@ export const orgAiKeysLayer = Layer.effect(
               const [mate] = yield* sql<{ readonly automated: boolean }>`
                 SELECT automated FROM hq_mate WHERE project_id = ${projectId}`;
               if (mate?.automated !== true) return undefined;
+              const model = yield* pickedModel.pipe(
+                Effect.provideService(SqlClient.SqlClient, sql),
+              );
               return encodeDown({
                 type: "provider-keys",
                 keys: (yield* opened).map(({ provider, value }) => ({
                   env: provider.variable,
                   value: Redacted.value(value),
                 })),
+                ...(model === undefined ? {} : { model }),
               });
             }),
           ),

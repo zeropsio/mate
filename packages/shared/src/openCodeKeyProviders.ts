@@ -21,6 +21,27 @@ import {
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 
+/**
+ * A model an organization may pick for its automated Mates (Settings › Automation), as models.dev
+ * lists it under the provider. Its prices are models.dev's, which OpenCode charges a turn by and
+ * HQ's usage prices read: a model is offered only where every kind of token it bills is priced, so
+ * a task on it never reads $0 and always meets its cost limit.
+ */
+export interface AutomatedModel {
+  /** models.dev's id under the provider (the slug without the provider's segment). */
+  readonly id: string;
+  /** Its name as people see it. */
+  readonly name: string;
+  /** US dollars per million tokens. */
+  readonly usdPerMillion: {
+    readonly input: number;
+    readonly cachedInput: number;
+    readonly output: number;
+  };
+  /** Why pick it, in one line. */
+  readonly why: string;
+}
+
 export interface OpenCodeKeyProvider {
   /** models.dev's provider id: the first segment of the model slugs OpenCode lists. */
   readonly id: string;
@@ -34,9 +55,12 @@ export interface OpenCodeKeyProvider {
   readonly baseUrl: string;
   /**
    * The model an automated Mate's agents run on with the organization's key, as models.dev lists
-   * it under this provider (without the provider's segment): its strongest for coding with tools.
+   * it under this provider (without the provider's segment) — its strongest for coding with tools —
+   * until the organization picks another of `automatedModels`.
    */
   readonly automatedModel: string;
+  /** The models an organization may pick for its automated Mates: tool-calling, fully priced. */
+  readonly automatedModels: ReadonlyArray<AutomatedModel>;
 }
 
 export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
@@ -50,6 +74,34 @@ export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
     // delivery" — tool calls and reasoning, a 1M context with no short cap on what one answer
     // writes (Kimi K3 stops at 8k), a third of Kimi K3's price.
     automatedModel: "zai-org/GLM-5.3",
+    // Kimi K2.7 Code ($0.95/$4.00) is left out: models.dev prices no cached input for it, which
+    // OpenCode would then charge at $0.
+    automatedModels: [
+      {
+        id: "zai-org/GLM-5.3",
+        name: "GLM-5.3",
+        usdPerMillion: { input: 1.4, cachedInput: 1.4, output: 4.4 },
+        why: "The strongest for long coding work with tools; no short cap on one answer.",
+      },
+      {
+        id: "zai-org/GLM-5.3-Flash",
+        name: "GLM-5.3 Flash",
+        usdPerMillion: { input: 0.15, cachedInput: 0.15, output: 0.5 },
+        why: "GLM-5.3's light sibling: the same long answers at about a tenth of the price.",
+      },
+      {
+        id: "deepseek-ai/DeepSeek-V4-Flash-0731",
+        name: "DeepSeek V4 Flash",
+        usdPerMillion: { input: 0.14, cachedInput: 0.14, output: 0.28 },
+        why: "The cheapest here: fast, reasons and calls tools; best for small, clear tasks.",
+      },
+      {
+        id: "Qwen/Qwen3.5-397B-A17B",
+        name: "Qwen3.5 397B",
+        usdPerMillion: { input: 0.6, cachedInput: 0.06, output: 3.6 },
+        why: "Strong at code, repeated context at a tenth; one answer stops at 8k tokens.",
+      },
+    ],
   },
 ];
 
@@ -61,9 +113,29 @@ export function openCodeKeyProviderOfModel(
   return OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === providerId);
 }
 
-/** The OpenCode model slug (`provider/model`) an automated Mate runs on with the provider's key. */
-export const automatedOpenCodeModel = (provider: OpenCodeKeyProvider): string =>
-  `${provider.id}/${provider.automatedModel}`;
+/** An OpenCode model slug (`provider/model`) of the provider's: its default for automated Mates. */
+export const automatedOpenCodeModel = (
+  provider: OpenCodeKeyProvider,
+  model: string = provider.automatedModel,
+): string => `${provider.id}/${model}`;
+
+/**
+ * The offered model an OpenCode slug names — one of the first provider's `automatedModels`, the
+ * provider an automated Mate runs on; none for anything else.
+ */
+export function automatedModelOffer(slug: string | null | undefined): AutomatedModel | undefined {
+  const provider = OPENCODE_KEY_PROVIDERS[0];
+  if (provider === undefined) return undefined;
+  return provider.automatedModels.find(
+    (offer) => automatedOpenCodeModel(provider, offer.id) === slug?.trim(),
+  );
+}
+
+/** The slug an automated Mate runs on, given the organization's pick: offered, else the default. */
+export function automatedModelOf(slug: string | null | undefined): string {
+  const provider = OPENCODE_KEY_PROVIDERS[0]!;
+  return automatedOpenCodeModel(provider, automatedModelOffer(slug)?.id);
+}
 
 const OPENCODE = ProviderDriverKind.make("opencode");
 

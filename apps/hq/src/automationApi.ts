@@ -21,8 +21,8 @@
  * - `POST /api/apps/:appId/schedules` `HqScheduleRequest` → `201 HqScheduleView`, `GET` →
  *   `{ schedules }`, `DELETE …/:id` → `204`: the application's schedules (`schedules.ts`), by a
  *   structure writer.
- * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend; `PUT` it, by an owner
- *   or admin of the organization.
+ * - `GET /api/org/task-limits` → `HqTaskLimitsView`: what each task may spend, and the model it runs
+ *   on; `PUT` it, by an owner or admin of the organization.
  * - `GET /api/apps/:appId/tasks` → `HqAppTasksView`: the application's queued, at-work and latest
  *   ended tasks (`appTasks.ts`), to whoever sees it; `POST …/tasks/:taskId/stop` → `204`, by an
  *   owner or admin of the organization: a task no Mate took goes, one at work its Mate stops.
@@ -84,6 +84,7 @@ const TaskLimitsBody = Schema.Struct({
   minutes: Schema.Int,
   costUsd: Schema.NullOr(Schema.Number),
   monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  model: Schema.optionalKey(Schema.String),
 });
 
 const webhookParam = Effect.map(HttpRouter.params, (params) => params["id"] ?? "");

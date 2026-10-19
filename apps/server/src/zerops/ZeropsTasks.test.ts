@@ -16,6 +16,7 @@ import {
   type RunEnd,
   type SpiEvent,
 } from "@t3tools/contracts";
+import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -34,7 +35,7 @@ import {
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { CommitAuthorUnset, ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
 import { type WorkingCopyBase, ZeropsWorkingCopy } from "./ZeropsWorkingCopy.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
@@ -143,6 +144,8 @@ const rig = (
   options: {
     readonly automated?: boolean;
     readonly keySet?: boolean;
+    /** The organization's model as HQ last handed it, moved by the test; the default by default. */
+    readonly model?: { current: string };
     /** The brief's delivery could not be recorded: the server went away with it. */
     readonly unrecorded?: boolean;
     /** The engine refused the brief, in its own words. */
@@ -283,6 +286,10 @@ const rig = (
     const automation = Layer.mock(ZeropsAutomation)({
       automated: Effect.succeed(options.automated ?? true),
       keySet: Effect.succeed(options.keySet ?? true),
+      modelSelection: Effect.sync(() => ({
+        instanceId: AUTOMATED_MODEL_SELECTION.instanceId,
+        model: options.model?.current ?? AUTOMATED_MODEL_SELECTION.model,
+      })),
     });
     const instances = Layer.mock(ProviderInstances)({
       providers: Effect.succeed(options.providers ?? [openCode()]),
@@ -1420,6 +1427,39 @@ describe("a task stops at its limits", () => {
     }),
   );
 
+  it.effect(
+    "a task on the cheaper model is charged at that model's price and still stops at its limit",
+    () =>
+      Effect.gen(function* () {
+        const flash = OPENCODE_KEY_PROVIDERS[0]!.automatedModels.find(
+          (offer) => offer.id === "zai-org/GLM-5.3-Flash",
+        )!;
+        const { delivered, id, reports, running, sent } = yield* working(
+          "task-1",
+          { model: { current: `nebius/${flash.id}` } },
+          { minutes: 60, costUsd: 1 },
+        );
+        // OpenCode's charge for a turn at the model's price, per million tokens.
+        const charge = (input: number, output: number) =>
+          (input * flash.usdPerMillion.input + output * flash.usdPerMillion.output) / 1e6;
+        // Four million tokens in and half a million out: $0.85, under its $1 limit.
+        yield* running(id, "turn-1", charge(4e6, 0.5e6));
+        yield* settle;
+        assert.deepStrictEqual(stopsOf(delivered), []);
+        // The turn reads on: $1.15, past it.
+        yield* running(id, "turn-1", charge(6e6, 0.5e6));
+        yield* settle;
+        assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "failed",
+          conversationId: id,
+          detail: "It reached its $1 limit.",
+        });
+        assert.strictEqual(reports.at(-1)?.spentUsd, 1.15);
+      }),
+  );
+
   it.effect("a task's run is stopped once its spend passes its limit mid-turn", () =>
     Effect.gen(function* () {
       const { delivered, id, running, sent, unreadable } = yield* working(
@@ -1685,6 +1725,41 @@ describe("an automated Mate works every task in one conversation", () => {
         ],
       );
     }),
+  );
+
+  it.effect(
+    "an automated Mate runs a new task on the organization's model, and keeps a run's model while it runs",
+    () =>
+      Effect.gen(function* () {
+        const model = { current: "nebius/zai-org/GLM-5.3-Flash" };
+        const { assigned, link, move, views } = yield* rig({ model });
+        yield* link.receive(task("task-1"));
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: { ...run(TASKS, principalOf("task-1"), "running"), startedAt: 0 },
+        });
+        // The organization picks another while task 1 runs: its run, its follow-up and the task
+        // told again stay on the model it started on.
+        model.current = "nebius/deepseek-ai/DeepSeek-V4-Flash-0731";
+        yield* link.message("task-1", message("m-1", "Mind the tins."));
+        yield* link.receive(task("task-1"));
+        assert.deepStrictEqual(
+          assigned.map(({ agent }) => agent.model),
+          ["nebius/zai-org/GLM-5.3-Flash"],
+        );
+        // Its runs ended, the follow-up's too.
+        yield* move(TASKS, {
+          ...views.get(TASKS)!,
+          activeRun: null,
+          queued: [],
+          lastEnded: doneRun("task-1", 2, 0, 1),
+        });
+        yield* link.receive(task("task-2", 43));
+        assert.deepStrictEqual(
+          assigned.map(({ agent }) => agent.model),
+          ["nebius/zai-org/GLM-5.3-Flash", "nebius/deepseek-ai/DeepSeek-V4-Flash-0731"],
+        );
+      }),
   );
 
   it.effect("each task starts on a fresh agent session", () =>
