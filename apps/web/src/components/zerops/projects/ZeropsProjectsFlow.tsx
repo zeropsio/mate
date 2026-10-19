@@ -30,12 +30,6 @@ import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
-
-/**
- * How a place's panel is drawn (`renderPlacePanel`): `card` on an overview card, `detail` as a
- * block of the project page's Production or Stages, `lift` as only what went wrong.
- */
-export type PlacePanelLook = "card" | "detail" | "lift";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -89,25 +83,19 @@ export interface ProjectsFlowGroup<T> {
 }
 
 /**
- * A project's own page: its head, its Production, Stages and Mates in the wide column, and the
- * page's own cards beside them — its changes, spend, automation, access, people and repositories.
+ * A project's own page: its card at the page's width, every Mate unfolded, and the page's own
+ * column beside it — the people on it, its environments, its repositories and its history.
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The page's own cards, beside its places and Mates. */
+  /** The column beside the card. */
   readonly aside: ReactNode;
-  /**
-   * Each tier's environments in its section (`RoadEnvironmentRows`): a stage or production by its
-   * name and what it runs — its head, which opens its page — with `detail` of its place under it;
-   * or its quiet slot with its Add. Absent, the sections say what the flow says.
-   */
-  readonly roadEnvironments?:
-    | ((tier: "stage" | "production", detail: (projectId: string) => ReactNode) => ReactNode)
-    | undefined;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
   readonly addMateWhy?: string | null;
+  /** Who can work on it, and how — under its Mates on the card. */
+  readonly people?: ReactNode;
   /** What the page says while the project is not among the read ones yet. */
   readonly unread: ReactNode;
 }
@@ -136,11 +124,6 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly layout: "card" | "row";
       readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
-      /**
-       * Whether what it waits on the viewer for may lift it: a card lifts one thing, and a further
-       * waiting Mate is an ordinary row that says it waits on you (`unlifted`).
-       */
-      readonly lift?: boolean | undefined;
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
@@ -153,13 +136,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /**
-   * The ready release's door on a card, while one is offered: the road's chip between Stage and
-   * Production, by its words (`label`, "3 ready").
-   */
-  readonly renderReleaseVerb?:
-    | ((entry: ProjectsFlowGroup<T>, chip: { readonly label: string }) => ReactNode)
-    | undefined;
+  /** The ready release's door on a card (*Review release*), while one is offered. */
+  readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
   /** Re-probes the containers not answering. */
@@ -192,32 +170,19 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly rollsBackTo?: string | undefined;
         /** The stage runs every change a release would carry; `undefined` while unread. */
         readonly releaseOnStage?: boolean | undefined;
-        /** The release production's last attempt failed with (`releaseFailureOf`). */
-        readonly failedTag?: string | undefined;
-        /** When each stage last took a deploy, by its project. */
-        readonly stageSince?: ReadonlyMap<string, string> | undefined;
         /** When this tab's run began releasing (wall ms): production's line counts from it. */
         readonly releaseSince?: number | undefined;
       })
     | undefined;
-  /**
-   * A place's panel: its facts and its actions; without it, its line. `card` on an overview card;
-   * `detail` on the project page, under the row that names it and opens its page (`PlacePanelLook`).
-   */
+  /** A place's panel: its facts and its actions; without it, its line. */
   readonly renderPlacePanel?:
-    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine, look: PlacePanelLook) => ReactNode)
+    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
     | undefined;
   /**
    * A release or *Put it live* run on the project's production (`ProductionRun`): under way, live
    * for a while, or stopped with its one action — the project's, never a Mate's conversation's.
    */
   readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** The newest event a card has not said above: the latest merged change, with whose. */
-  readonly renderActivity?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** A Mate's lift or a change waits on the viewer in the project (the overview's Waiting filter). */
-  readonly waitsOnYou?: ((entry: ProjectsFlowGroup<T>) => boolean) | undefined;
-  /** An automated Mate: it takes tasks, and its card folds it into one line. */
-  readonly isAutomated?: ((item: T) => boolean) | undefined;
   /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
   readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /**
@@ -321,7 +286,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
             entry={entry}
             addMateWhy={page.addMateWhy ?? null}
             onAddMate={page.onAddMate}
-            roadEnvironments={page.roadEnvironments}
+            people={page.people}
             props={props}
           />
         )}

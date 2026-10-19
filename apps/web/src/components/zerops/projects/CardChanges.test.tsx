@@ -90,6 +90,35 @@ describe("a card's changes", () => {
     });
     expect(opened).toHaveBeenCalledWith(OPEN);
   });
+
+  it("a change shows its GitHub pull request where it has one, opened on GitHub", async () => {
+    const mirrored: CardChange = {
+      ...OPEN,
+      pull: {
+        ...OPEN.pull,
+        pullRequest: {
+          number: 5,
+          url: "https://github.com/acme/tea-shop/pull/5",
+          state: "open",
+        } as FlowPullRequest["pullRequest"],
+      },
+    };
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CardChanges changes={[mirrored, MERGED]} mateName={() => "Rossy"} onOpen={() => {}} />,
+      );
+    });
+    unmounts.push(() => root.unmount());
+    const [first, second] = [...container.querySelectorAll("li")];
+    const link = first?.querySelector<HTMLAnchorElement>("a");
+    expect(link?.textContent).toBe("PR #5");
+    expect(link?.getAttribute("href")).toBe("https://github.com/acme/tea-shop/pull/5");
+    // Outside the row's own press: the link opens GitHub, never the change's review.
+    expect(link?.closest("button")).toBeNull();
+    expect(second?.querySelector("a")).toBeNull();
+  });
 });
 
 describe("a card with no change to list", () => {

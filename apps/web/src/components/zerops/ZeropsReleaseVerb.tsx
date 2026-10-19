@@ -1,4 +1,3 @@
-import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { flowVerbKey, flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -46,12 +45,9 @@ export function ZeropsReleaseVerb({
   groupId,
   label,
   offered = false,
-  chip = false,
 }: {
   readonly groupId: string;
   readonly label: string;
-  /** Drawn as the chip a project's road carries between Stage and Production ("3 ready ›"). */
-  readonly chip?: boolean;
   /**
    * The caller's flow offers the release already: the door is there from the first paint, while
    * what goes out is still compared (the onboarding run's card grew 32 px when it came), and the
@@ -69,15 +65,12 @@ export function ZeropsReleaseVerb({
   // A card's own solid button, as a change's *Review* is beside it: one look for what waits on you.
   return (
     <Button
-      aria-label={chip ? `${label}: ${REVIEW_RELEASE_LABEL}` : undefined}
       data-zerops-primary-action={REVIEW_RELEASE_LABEL}
       onClick={(event) => {
         release.onReview(event.currentTarget);
       }}
-      {...(chip ? { size: "sm", variant: "secondary" } : {})}
     >
       {release.releasing ? flowVerbLabel("release", true) : label}
-      {chip ? <ChevronRightIcon aria-hidden="true" /> : null}
     </Button>
   );
 }

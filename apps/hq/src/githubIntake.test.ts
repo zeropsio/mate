@@ -20,7 +20,7 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { HQ_MARK } from "./githubChannel.ts";
 import { notWriter } from "./githubGate.ts";
 import { PUBLIC_REFUSED } from "./intake.ts";
-import { TASK_CHANGES_SINCE } from "./mateTasks.ts";
+import { TASK_CHANGES_SINCE } from "@t3tools/shared/hqIntake";
 import { NO_ANSWER } from "./taskSources.ts";
 
 const NAV = { kind: "navigation" } as const;

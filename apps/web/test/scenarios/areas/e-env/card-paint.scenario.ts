@@ -102,7 +102,7 @@ describe("owner-reported layout regressions", () => {
             await resizeMenu(page, 435);
           });
           yield* Effect.promise(() => page.evaluate(recordHeldCard, cardAt));
-          yield* a.when.releaseFromCard(cardAt);
+          yield* a.when.releaseFromReview;
           yield* a.then.text("Releasing v0.1.0", `${cardAt} [data-zerops-place="production"]`);
           yield* a.when.finish("production");
           yield* a.then.text("Running", `${cardAt} [data-zerops-place="production"]`);

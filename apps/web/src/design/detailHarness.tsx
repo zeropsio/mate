@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 /**
@@ -23,9 +24,11 @@ import {
   carriedReads,
   deployedCommit,
   deployedVersion,
+  environmentSlots,
   releaseRunBy,
   nameStopByRelease,
   sameCommit,
+  releaseContentsSummary,
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
@@ -55,7 +58,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
-import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
+import { ZeropsGroupPane, ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
@@ -64,7 +67,6 @@ import type {
   ProjectPeopleView,
   ProjectPerson,
 } from "~/components/zerops/projects/projectPeople.logic";
-import { NewProjectCards, ReadingCards, TeaShopCards } from "./projectCardsFixtures";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -121,6 +123,58 @@ const HISTORY: ZeropsHistoryState = {
 };
 /** What v1.4.0 shipped, as HQ's release records name it. */
 const TAGS: ReadonlyMap<string, ReadonlyArray<string>> = new Map([[sha("3f9c1b2e"), ["v1.4.0"]]]);
+
+function environment(over: Partial<EnvironmentRow> = {}): EnvironmentRow {
+  return {
+    id: HqEnvironmentId.make("shop-stage"),
+    target: { kind: "zerops", projectId: ProjectId.make("shop-stage") },
+    name: "stage",
+    tier: "stage",
+    source: "main",
+    tone: "good",
+    version: {
+      name: undefined,
+      label: "3f9c1b2",
+      commit: "3f9c1b2e",
+      sha: sha("3f9c1b2e"),
+      taggedBy: undefined,
+    },
+    versionRepository: "appdev",
+    ...over,
+  } as EnvironmentRow;
+}
+
+const WAITING = releaseContentsSummary(
+  [
+    {
+      repository: "appdev",
+      services: ["app"],
+      commits: [
+        "Two-step checkout: the basket step",
+        "Fix the VAT rate table for Ireland",
+        "Retry the payment webhook three times",
+      ].map((subject, index) => ({
+        sha: `c${String(index)}`,
+        subject,
+        authorName: "Juno",
+        at: "2026-10-02T10:00:00.000Z",
+        change: null,
+      })),
+      total: 3,
+      truncated: false,
+    },
+  ],
+  20,
+);
+const NOTHING_WAITING = releaseContentsSummary([], 20);
+
+const RELEASE_WAITING: ReleaseOffer = {
+  offered: true,
+  releasing: false,
+  tag: "v1.5.0",
+  reason: undefined,
+  onReview: () => {},
+};
 
 /** Nothing to release: production already runs every commit on main. */
 const RELEASE_NONE: ReleaseOffer = {
@@ -863,33 +917,73 @@ function State({
   );
 }
 
+const PRODUCTION_ROW = environment({
+  id: HqEnvironmentId.make("shop-prod"),
+  target: { kind: "zerops", projectId: ProjectId.make("shop-prod") },
+  name: "production",
+  tier: "production",
+  source: "release",
+  version: {
+    name: "v1.4.0",
+    label: "v1.4.0",
+    commit: "3f9c1b2e",
+    sha: sha("3f9c1b2e"),
+    taggedBy: "ales",
+  },
+});
+
+/**
+ * The application page with only its Environments section of interest: the section's rows are
+ * `environmentSlots`' answer over the facts a frame sets, and nothing else of the page is drawn but
+ * the stops' own rows.
+ */
+function EnvironmentsFrame({
+  environments,
+  facts,
+  release = RELEASE_NONE,
+  waiting = NOTHING_WAITING,
+}: {
+  readonly environments: ReadonlyArray<EnvironmentRow>;
+  readonly facts: Partial<Parameters<typeof environmentSlots>[0]>;
+  readonly release?: ReleaseOffer;
+  readonly waiting?: typeof NOTHING_WAITING;
+}) {
+  return (
+    <ZeropsGroupPane
+      history={{ kind: "read", commits: [], total: 0 }}
+      tags={new Map()}
+      environments={environments}
+      slots={environmentSlots({
+        environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
+        devstages: [],
+        pending: [],
+        halfMade: [],
+        recipeTiers: ["stage", "production"],
+        recipeRead: true,
+        offered: { stage: true, production: true },
+        productionRuns: "unknown",
+        waiting: { count: waiting.total, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: release.offered,
+        releasing: undefined,
+        ...facts,
+      })}
+      onAdd={() => {}}
+      onFinish={() => {}}
+      finishing={false}
+      groupId="shop"
+      name="Shop"
+      names={NAMES}
+      onSetUp={() => {}}
+      release={release}
+      repo={undefined}
+    />
+  );
+}
+
 function Harness() {
   return (
     <div className="flex flex-col gap-10 bg-background p-6">
-      <State
-        label="Project page cards · Tea Shop running"
-        note="Under the road: changes waiting, ready and released; automation; access, people and the mirror."
-      >
-        <div className="p-6" style={{ maxWidth: 1398 }}>
-          <TeaShopCards />
-        </div>
-      </State>
-      <State
-        label="Project page cards · a new project"
-        note="Nothing yet: each card says what will happen, at its final size."
-      >
-        <div className="p-6" style={{ maxWidth: 1398 }}>
-          <NewProjectCards />
-        </div>
-      </State>
-      <State
-        label="Project page cards · reading"
-        note="Rows held at their size while HQ and Zerops answer."
-      >
-        <div className="p-6" style={{ maxWidth: 1398 }}>
-          <ReadingCards />
-        </div>
-      </State>
       {(["building", "queued", "refused", "skipped"] as const).map((state) => (
         <State
           key={state}
@@ -951,6 +1045,202 @@ function Harness() {
               note: "The preview tier could not be read.",
             },
           }}
+        />
+      </State>
+
+      <State label="A project, running" note="Two stops, one change in flight, three waiting.">
+        <ZeropsGroupPane
+          history={HISTORY}
+          tags={TAGS}
+          environments={[
+            environment(),
+            environment({
+              id: HqEnvironmentId.make("shop-prod"),
+              target: { kind: "zerops", projectId: ProjectId.make("shop-prod") },
+              name: "production",
+              tier: "production",
+              source: "release",
+              version: {
+                name: "v1.4.0",
+                label: "v1.4.0",
+                commit: "3f9c1b2e",
+                sha: sha("3f9c1b2e"),
+                taggedBy: "ales",
+              },
+            }),
+          ]}
+          slots={[
+            { kind: "environment", tier: "stage", id: "shop-stage", note: undefined },
+            {
+              kind: "environment",
+              tier: "production",
+              id: "shop-prod",
+              note: { text: "3 changes waiting for production", review: true },
+            },
+          ]}
+          onAdd={() => {}}
+          onFinish={() => {}}
+          finishing={false}
+          groupId="shop"
+          name="Shop"
+          names={NAMES}
+          onSetUp={() => {}}
+          release={RELEASE_WAITING}
+          repo="appdev"
+        />
+      </State>
+
+      <State
+        label="A project with nothing set up"
+        note="No stops, no changes, no repository: every section is an empty state at once."
+      >
+        <ZeropsGroupPane
+          history={{ kind: "read", commits: [], total: 0 }}
+          tags={new Map()}
+          environments={[]}
+          slots={[
+            { kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true },
+            { kind: "slot", tier: "production", name: "Production", line: "Not added", add: true },
+          ]}
+          onAdd={() => {}}
+          onFinish={() => {}}
+          finishing={false}
+          groupId="fresh"
+          name="Design tokens"
+          names={NAMES}
+          onSetUp={() => {}}
+          release={RELEASE_NONE}
+          repo={undefined}
+        />
+      </State>
+
+      <State
+        label="Environments · nothing, setup not ready"
+        note="Neither tier is held by the setup on main yet: both slots say they wait for the Mate's setup, with no Add."
+      >
+        <EnvironmentsFrame environments={[]} facts={{ recipeTiers: [] }} />
+      </State>
+      <State
+        label="Environments · nothing, setup ready"
+        note="Two quiet slots, each with its own Add — peers, neither optional, neither first."
+      >
+        <EnvironmentsFrame environments={[]} facts={{}} />
+      </State>
+      <State
+        label="Environments · stage only"
+        note="A stage runs; production is a quiet slot with Add."
+      >
+        <EnvironmentsFrame environments={[environment()]} facts={{}} />
+      </State>
+      <State
+        label="Environments · an application of several parts"
+        note="The stage names how many parts and each that differs; production names a part its rollback stopped."
+      >
+        <EnvironmentsFrame
+          environments={[
+            environmentRow({
+              projectId: "shop-stage",
+              name: "stage",
+              tier: "stage",
+              sources: ["main"],
+              services: [
+                service("api", "3f9c1b2e", undefined),
+                service("web", "a1b2c3d4", undefined),
+                service("worker", "3f9c1b2e", undefined, "building"),
+              ],
+            }),
+            environmentRow({
+              projectId: "shop-prod",
+              name: "production",
+              tier: "production",
+              sources: "release",
+              services: [
+                service("api", "3f9c1b2e", "v1.4.0"),
+                service("web", "3f9c1b2e", "v1.4.0"),
+                service("worker", "9d8e7f6a", "v1.3.0"),
+              ],
+              release: {
+                id: "r-14",
+                tag: "v1.4.0",
+                planned: true,
+                ended: true,
+                endedAt: "2026-10-14T21:00:00.000Z",
+                leftOut: [
+                  {
+                    service: "worker",
+                    sha: sha("9d8e7f6a"),
+                    job: null,
+                    reason: "v1.3.0 does not declare worker",
+                    stopped: { rollbackTo: "v1.3.0" },
+                  },
+                ],
+              },
+            }),
+          ]}
+          facts={{ productionRuns: "running" }}
+        />
+      </State>
+      <State
+        label="Environments · a Mate is the stage"
+        note="A devstage Mate stands for the stage: its agent deploys, HQ does not. No second stage is offered to a developer."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ devstages: [{ id: "vera-dev", name: "Vera" }] }}
+        />
+      </State>
+      <State
+        label="Environments · production only, empty"
+        note="Production attached, no release yet, main has code: the first release is one press away."
+      >
+        <EnvironmentsFrame
+          environments={[PRODUCTION_ROW]}
+          facts={{ productionRuns: "empty" }}
+          release={RELEASE_WAITING}
+        />
+      </State>
+      <State
+        label="Environments · production only, 3 waiting"
+        note="Production runs v1.4.0; three merged changes wait for it."
+      >
+        <EnvironmentsFrame
+          environments={[PRODUCTION_ROW]}
+          facts={{ productionRuns: "running" }}
+          release={RELEASE_WAITING}
+          waiting={WAITING}
+        />
+      </State>
+      <State label="Environments · both" note="A stage and a production: no slots at all.">
+        <EnvironmentsFrame
+          environments={[environment(), PRODUCTION_ROW]}
+          facts={{ productionRuns: "running" }}
+        />
+      </State>
+      <State
+        label="Environments · a stage being created"
+        note="The stage stands in its slot as being set up; Add is not offered twice."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ pending: [{ id: "shop-stage-new", tier: "stage" }] }}
+        />
+      </State>
+      <State
+        label="Environments · half-made production"
+        note="A project made as the production that HQ does not hold in full: Finish setup, never a second Add."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ halfMade: [{ id: "shop-prod", tier: "production", finish: true }] }}
+        />
+      </State>
+      <State
+        label="Environments · a person HQ offers no tier"
+        note="The same two empty slots, drawn without any Add."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ offered: { stage: false, production: false } }}
         />
       </State>
 

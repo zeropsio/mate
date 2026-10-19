@@ -19,6 +19,7 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountOrgId: () => detail.org,
   useProjection: () => detail.reads,
   useAccountDataOptional: () => ({ demandDetail: detail.demand }),
+  useDetailDemand: () => {},
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
 vi.mock("@tanstack/react-router", async () => {
@@ -39,6 +40,7 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
+import { PlacePanel } from "./PlacePanel";
 import { CardMate, ProjectCards } from "./ProjectCards";
 import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
@@ -238,7 +240,7 @@ it.each([
   }
 });
 
-/** One card, drawn whole, outside an account. */
+/** One card, drawn whole, outside an account: each place by its panel, as the overview draws it. */
 async function drawCard(group: ReturnType<typeof entry>) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("IntersectionObserver", VisibleCard);
@@ -246,7 +248,22 @@ async function drawCard(group: ReturnType<typeof entry>) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
-    root.render(<ProjectCards focusGroup={undefined} groups={[group]} props={{ ...FLOW_PROPS }} />),
+    root.render(
+      <ProjectCards
+        focusGroup={undefined}
+        groups={[group]}
+        props={{
+          ...FLOW_PROPS,
+          renderPlacePanel: ({ group: { groupId } }, line) => (
+            <PlacePanel
+              actions={null}
+              groupId={groupId}
+              model={{ line, version: undefined, note: undefined, brought: [], services: [] }}
+            />
+          ),
+        }}
+      />,
+    ),
   );
   return {
     container,
@@ -293,12 +310,15 @@ it("a project with three stage environments lists each with its state and addres
       stages.map((stage) => [
         stage.querySelector("b")?.textContent,
         stage.querySelector("a")?.getAttribute("href"),
-        stage.querySelector("p")?.textContent?.includes("follows"),
+        // Its state: a dot and the words beside it, in the state's ink.
+        [...stage.querySelectorAll("[data-dot]")].some(
+          (said) => (said.textContent ?? "").trim().length > 0,
+        ),
       ]),
     ).toEqual([
-      ["stage", "https://stage.acme.example", true],
-      ["stage-checkout", "https://checkout.acme.example", true],
-      ["stage-perf", "https://perf.acme.example", true],
+      ["Stage", "https://stage.acme.example", true],
+      ["Stage-checkout", "https://checkout.acme.example", true],
+      ["Stage-perf", "https://perf.acme.example", true],
     ]);
   } finally {
     await card.done();
@@ -323,7 +343,11 @@ it("a project with no stage offers to add one where HQ offers it, and assumes no
     ),
   );
   try {
-    expect(container.querySelector('[data-zerops-place="stage"]')).toBeNull();
+    // Where a stage would stand, only the way to add one: no stage's state is assumed.
+    const places = [...container.querySelectorAll('[data-zerops-place="stage"]')];
+    expect(places).toHaveLength(1);
+    expect(places[0]?.querySelector('[data-zerops-place-setup="stage"]')).not.toBeNull();
+    expect(places[0]?.querySelector("[data-dot]")).toBeNull();
     const add = [...container.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Add stage"),
     );
