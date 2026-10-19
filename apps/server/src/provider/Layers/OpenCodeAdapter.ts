@@ -77,6 +77,7 @@ import {
   parseOpenCodeModelSlug,
   runOpenCodeSdk,
   openCodeFileAttachments,
+  openCodeModelReadsImages,
   toOpenCodeFileParts,
   toOpenCodePermissionReply,
   toOpenCodeQuestionAnswers,
@@ -378,8 +379,11 @@ interface OpenCodeSessionContext {
   readonly costByMessageId: Map<string, number>;
   /** The steps the session and its subagents ran since the last turn ended, for the bill. */
   readonly turnUsage: ReturnType<typeof makeOpenCodeTurnUsage>;
-  /** Each model's context window as OpenCode listed it when the session started, by slug. */
-  readonly contextWindows: ReadonlyMap<string, number>;
+  /** Each model's context window and image input as OpenCode listed them when the session started, by slug. */
+  readonly models: ReadonlyMap<
+    string,
+    { readonly contextWindow: number; readonly readsImages: boolean }
+  >;
   /** The window of the model the last prompt went to. */
   contextWindow: number | undefined;
   readonly client: OpencodeClient;
@@ -3053,8 +3057,9 @@ export function makeOpenCodeAdapter(
         }
         return startedExit.value;
       });
-      // OpenCode's steps report tokens only; the windows they fill are in its provider list.
-      const contextWindows = yield* runOpenCodeSdk("config.providers", (signal) =>
+      // OpenCode's steps report tokens only; the windows they fill are in its provider list,
+      // beside whether each model reads images.
+      const models = yield* runOpenCodeSdk("config.providers", (signal) =>
         started.client.config.providers(undefined, { signal }),
       ).pipe(
         Effect.map(
@@ -3062,13 +3067,22 @@ export function makeOpenCodeAdapter(
             new Map(
               (result.data?.providers ?? []).flatMap((provider) =>
                 Object.entries(provider.models).map(
-                  ([modelId, model]) => [`${provider.id}/${modelId}`, model.limit.context] as const,
+                  ([modelId, model]) =>
+                    [
+                      `${provider.id}/${modelId}`,
+                      {
+                        contextWindow: model.limit.context,
+                        readsImages: openCodeModelReadsImages(model),
+                      },
+                    ] as const,
                 ),
               ),
             ),
         ),
         Effect.timeout("5 seconds"),
-        Effect.orElseSucceed(() => new Map<string, number>()),
+        Effect.orElseSucceed(
+          () => new Map<string, { contextWindow: number; readsImages: boolean }>(),
+        ),
       );
 
       const createdAt = yield* nowIso;
@@ -3111,7 +3125,7 @@ export function makeOpenCodeAdapter(
         messageRoleById: new Map(),
         costByMessageId: new Map(),
         turnUsage: makeOpenCodeTurnUsage(),
-        contextWindows,
+        models,
         contextWindow: undefined,
         activeTurnId: undefined,
         activeAgent: undefined,
@@ -3361,9 +3375,10 @@ export function makeOpenCodeAdapter(
           context.activeTurnId = turnId;
           context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
           context.activeVariant = variant;
-          context.contextWindow = context.contextWindows.get(
+          const promptModel = context.models.get(
             `${parsedModel.providerID}/${parsedModel.modelID}`,
           );
+          context.contextWindow = promptModel?.contextWindow;
           if (steeringTurnId === undefined) {
             context.awaitingBusyAfterInterruption = context.interruptedTurnId !== undefined;
           }
@@ -3446,6 +3461,7 @@ export function makeOpenCodeAdapter(
                       buildRuntimeInstructions({
                         harness: "OpenCode",
                         model: `${parsedModel.providerID}/${parsedModel.modelID}`,
+                        imageInput: promptModel?.readsImages,
                       }),
                       turnProfile.instructions,
                     ]

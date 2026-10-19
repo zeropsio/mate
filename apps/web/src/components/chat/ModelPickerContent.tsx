@@ -69,6 +69,7 @@ type ModelPickerItem = {
   continuationGroupKey?: string | undefined;
   isLegacy?: boolean | undefined;
   isUnavailable?: boolean | undefined;
+  textOnly?: boolean | undefined;
 };
 
 /**
@@ -439,6 +440,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           ...(model.badge ? { badge: model.badge } : {}),
           ...(model.isLegacy ? { isLegacy: true } : {}),
           ...(model.isUnavailable ? { isUnavailable: true } : {}),
+          ...(model.textOnly ? { textOnly: true } : {}),
           instanceId,
           driverKind: entry.driverKind,
           instanceDisplayName: entry.displayName,

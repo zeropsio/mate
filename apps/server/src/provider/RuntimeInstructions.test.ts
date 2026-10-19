@@ -42,6 +42,32 @@ describe("buildRuntimeInstructions", () => {
     ).toContain("through the Codex harness, as my-model.");
   });
 
+  it("tells a model that takes no image input to verify by text and never say what an unseen image shows", () => {
+    const instructions = buildRuntimeInstructions({
+      harness: "OpenCode",
+      model: "nebius/zai-org/GLM-5.3-Flash",
+      imageInput: false,
+    });
+    expect(instructions).toContain("cannot see images");
+    expect(instructions).toContain("Verify a UI by text");
+    expect(instructions).toContain("zerops_browser");
+    expect(instructions).toContain("caption it only with what that text evidence proves");
+    expect(instructions).toContain("Never say what an image shows");
+    expect(instructions.endsWith(MAC_HOST_INSTRUCTIONS)).toBe(true);
+  });
+
+  it.each([true, undefined])(
+    "gives a model that reads images, or whose image input is unstated (%s), no text-only rule",
+    (imageInput) => {
+      const instructions = buildRuntimeInstructions({ harness: "Claude Code", imageInput });
+      expect(instructions).not.toContain("cannot see images");
+      expect(instructions).toBe(buildRuntimeInstructions({ harness: "Claude Code" }));
+      expect(instructions).toContain(
+        `</runtime_info>\n${CONTENT_CONTRACT}\n${MAC_HOST_INSTRUCTIONS}`,
+      );
+    },
+  );
+
   it.each([undefined, "", "auto", "default"])("omits unresolved model %s", (model) => {
     const instructions = buildRuntimeInstructions({ harness: "Cursor", model });
     expect(instructions).toContain("through the Cursor harness.");
