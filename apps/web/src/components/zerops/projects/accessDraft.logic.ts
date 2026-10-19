@@ -25,6 +25,7 @@ import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 import {
   levelOf,
   projectPeople,
+  type ChipLevel,
   type GivenLevel,
   type ProjectPeopleInput,
   type ProjectPeopleView,
@@ -216,4 +217,72 @@ export function draftSpeaks(view: ProjectPeopleView): boolean {
     view.kind === "people" &&
     (view.people.length > 1 || (view.invite && view.candidates.length > 0))
   );
+}
+
+/** A level as a sentence says it: "with Full access". */
+const LEVEL_PHRASE: Readonly<Record<ChipLevel, string>> = {
+  full: "Full access",
+  basic: "more than Read access",
+  read: "Read access",
+  mixed: "mixed access",
+  hidden: "no access",
+};
+
+const LEVEL_ORDER: ReadonlyArray<ChipLevel> = ["full", "basic", "read", "mixed"];
+
+/** "Ada", "Ada and Bo": a level's people named, the creator as you. */
+const named = (people: ReadonlyArray<ProjectPerson>) =>
+  people.map((person) => (person.creator ? "you" : person.short)).join(" and ");
+
+/**
+ * Who can open a new project, in one line, from the people the draft shows: everyone in the
+ * organization or how many of them, then how many at each level — the most common counted, a level
+ * of one or two named. `changes` counts the people whose access the person changed here from where
+ * the draft started; `null` while the people are read.
+ */
+export function draftSummary(input: {
+  readonly view: ProjectPeopleView;
+  /** The organization's name; `null` before it is read. */
+  readonly organization: string | null;
+  /** Where the draft started (`draftPrefill`). */
+  readonly prefill: ReadonlyArray<ProjectGrant> | null;
+  /** The draft now. */
+  readonly list: ReadonlyArray<ProjectGrant>;
+}): { readonly line: string; readonly changes: string | null } | null {
+  const { view } = input;
+  if (view.kind !== "people") return null;
+  const changed = draftChangeCount(input.prefill ?? [], input.list);
+  const changes = changed === 0 ? null : changed === 1 ? "1 change" : `${String(changed)} changes`;
+  const openers = view.people.filter((person) => person.level !== "hidden");
+  if (openers.length <= 1) return { line: "Only you can open it.", changes };
+  const total = view.people.length + view.candidates.length;
+  const organization = input.organization ?? "the organization";
+  const head =
+    openers.length === total
+      ? `Everyone in ${organization} can open it`
+      : `${String(openers.length)} of ${String(total)} people in ${organization} can open it`;
+  const groups = LEVEL_ORDER.flatMap((level) => {
+    const people = openers.filter((person) => person.level === level);
+    return people.length === 0 ? [] : [{ level, people }];
+  }).toSorted((a, b) => b.people.length - a.people.length);
+  const [first] = groups;
+  if (groups.length === 1 && first !== undefined)
+    return { line: `${head} with ${LEVEL_PHRASE[first.level]}.`, changes };
+  const parts = groups.map(
+    ({ level, people }, index) =>
+      `${index > 0 && people.length <= 2 ? named(people) : String(people.length)} with ${LEVEL_PHRASE[level]}`,
+  );
+  return { line: `${head}: ${parts.join(", ")}.`, changes };
+}
+
+/** How many people's grant differs between two drafts. */
+function draftChangeCount(
+  from: ReadonlyArray<ProjectGrant>,
+  to: ReadonlyArray<ProjectGrant>,
+): number {
+  const role = (list: ReadonlyArray<ProjectGrant>, clientUserId: string) =>
+    list.find((entry) => entry.clientUserId === clientUserId)?.roleCode;
+  const people = new Set([...from, ...to].map((entry) => entry.clientUserId));
+  return [...people].filter((clientUserId) => role(from, clientUserId) !== role(to, clientUserId))
+    .length;
 }

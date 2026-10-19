@@ -51,11 +51,13 @@ import {
   draftPeople,
   draftPrefill,
   draftSpeaks,
+  draftSummary,
   draftView,
   type DraftPeople,
 } from "./accessDraft.logic";
 import {
   ADD_TROUBLE,
+  AccessDraftFold,
   ProjectAccessChips,
   type AccessChoice,
   type AccessPick,
@@ -380,6 +382,7 @@ export function ProjectAccessDraft({
   kind,
   onChange,
   label,
+  fold,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
@@ -387,6 +390,11 @@ export function ProjectAccessDraft({
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
   /** What the creation form names the section: "Project access", "Who can work with this Mate". */
   readonly label: string;
+  /**
+   * Said in one line, who can open it in the organization named here, the chips opened only to
+   * change it (`AccessDraftFold`); absent, the chips are drawn open.
+   */
+  readonly fold?: { readonly organization: string | null };
 }) {
   const { base, input } = useDraftInput(groupId, kind);
   const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
@@ -426,6 +434,22 @@ export function ProjectAccessDraft({
   );
   // Someone alone in the organization is asked nothing: the creator's own chip says nothing new.
   if (!draftSpeaks(view)) return null;
+  const summary =
+    fold === undefined
+      ? null
+      : draftSummary({ view, organization: fold.organization, prefill, list });
+  if (summary !== null)
+    return (
+      <AccessDraftFold label={label} summary={summary}>
+        <ProjectAccessChips
+          heading={false}
+          label={label}
+          onAdd={add}
+          onChoose={choose}
+          view={view}
+        />
+      </AccessDraftFold>
+    );
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-sm">{label}</span>

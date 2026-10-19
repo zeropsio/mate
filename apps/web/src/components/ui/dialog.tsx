@@ -79,6 +79,7 @@ function DialogPopup({
   bottomStickOnMobile = true,
   keepMounted = false,
   backdrop = "blur",
+  placement = "top",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
@@ -86,13 +87,21 @@ function DialogPopup({
   keepMounted?: boolean;
   /** `plain` tints the app behind without blurring it, for a dialog that follows work in the background. */
   backdrop?: "blur" | "plain";
+  /**
+   * `top` stands it a little under the window's top; `center` in the window's middle with even
+   * margins, for a form sized to what it asks.
+   */
+  placement?: "top" | "center";
 }) {
   const held = useHeldHeight(props.ref);
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogBackdrop tint={backdrop} />
       <DialogViewport
-        className={cn(bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12")}
+        className={cn(
+          placement === "center" && "grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] p-6",
+          bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
+        )}
       >
         <DialogPrimitive.Popup
           className={cn(
