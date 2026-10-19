@@ -191,6 +191,8 @@ export interface ZeropsOperationVersion {
 export interface ZeropsOperationExplanation {
   readonly reason: string;
   readonly logTail?: ReadonlyArray<string>;
+  /** Only the person can fix it: zcp classified a refused sign-in, which its Mate cannot give. */
+  readonly forPerson?: true;
 }
 /** A status a read card draws beside a row: the word, and the tone of its dot. */
 export interface ZeropsReadStatus {

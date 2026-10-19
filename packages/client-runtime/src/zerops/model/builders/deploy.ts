@@ -49,7 +49,7 @@ import {
   firstLine,
   gatedStatusWord,
   mateVoiceFor,
-  phaseFor,
+  deployCallPhase,
   pickFirst,
   readInputString,
   urlHost,
@@ -75,7 +75,7 @@ function deployPhase(
   triggered: ReadonlyArray<string | undefined> | undefined,
   builds: OperationBuildContext["builds"],
 ): ZeropsOperationPhase {
-  const basePhase = phaseFor(call.status);
+  const basePhase = deployCallPhase(call);
   if (basePhase !== "done" || triggered === undefined) {
     return basePhase;
   }
@@ -228,7 +228,11 @@ function deployExplanation(
   if (fromResult.explanation !== undefined || errorInfo === undefined) {
     return fromResult;
   }
-  return explanationField(failedCallReason(decoded, errorInfo));
+  const field = explanationField(failedCallReason(decoded, errorInfo));
+  const category = readFailureClassification(decoded.document?.failureClassification)?.category;
+  return field.explanation !== undefined && category === "credential"
+    ? { explanation: { ...field.explanation, forPerson: true } }
+    : field;
 }
 
 /** A deploy result's own reason and the log of its failing phase — `{}` when it neither failed nor timed out. */
@@ -376,7 +380,7 @@ const GIT_PUSH_PHASE: Readonly<Record<GitPushOutcome, ZeropsOperationPhase>> = {
 
 /** A call that returned reads as its result says; any other keeps the call's own phase. */
 function gitPushPhase(call: ZeropsCall, pushed: GitPushResult | undefined): ZeropsOperationPhase {
-  const basePhase = phaseFor(call.status);
+  const basePhase = deployCallPhase(call);
   return basePhase === "done" && pushed !== undefined ? GIT_PUSH_PHASE[pushed.outcome] : basePhase;
 }
 
@@ -536,7 +540,11 @@ function batchEntryStep(
 ) {
   if (entry === undefined) {
     // No entry of its own: still running with the batch, or never reported.
-    return buildStep(hostname, hostname, phase === "running" ? "in_progress" : "FAILED");
+    return buildStep(
+      hostname,
+      hostname,
+      phase === "running" ? "in_progress" : phase === "uncertain" ? "pending" : "FAILED",
+    );
   }
   const result = entry.result;
   if (entry.error !== undefined || result === undefined) {
@@ -575,7 +583,7 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
   );
   const phase =
     batch === undefined
-      ? phaseFor(call.status)
+      ? deployCallPhase(call)
       : failedEntry !== undefined
         ? "failed"
         : deployPhase(call, stillBuilding.length > 0 ? stillBuilding : undefined, context.builds);

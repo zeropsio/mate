@@ -1847,11 +1847,11 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
     const phase: ZeropsOperation["phase"] =
       step.state === "done" || step.state === "failed"
         ? step.state
-        : operation.phase === "running"
-          ? "running"
-          : operation.phase === "failed"
-            ? "failed"
-            : "done";
+        : operation.phase === "running" ||
+            operation.phase === "failed" ||
+            operation.phase === "uncertain"
+          ? operation.phase
+          : "done";
     const reason = step.note ?? explanation?.reason;
     return {
       ...shared,
@@ -1865,7 +1865,7 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
           ? "Deployed"
           : phase === "failed"
             ? "Failed"
-            : step.state === "queued"
+            : step.state === "queued" && phase !== "uncertain"
               ? "Waiting"
               : operation.statusWord,
       // Its own step alone: the bar reads its state, waiting or running.
@@ -2372,6 +2372,8 @@ export interface OutcomeFailure {
   readonly at: string;
   /** The last lines of the log it left, oldest first. */
   readonly logLines: ReadonlyArray<string>;
+  /** Only the person can fix it (a refused sign-in): its Mate is not asked. */
+  readonly forPerson?: true;
 }
 
 /** Something the run set out to do and did not: a push, a service it could not create. */
@@ -2577,12 +2579,33 @@ function saysNothingAgainstDevServer(operation: ZeropsOperation): boolean {
   return failed.length > 0 && failed.every((step) => unanswered(step) || hostTurnedAway(step));
 }
 
-/** A service a failure left broken, in a few words: where it broke, not the call's status word. */
+/**
+ * A service a failure left broken, in a few words: where it broke, not the call's status word.
+ * "Build" only where the build was the step that failed: a failed call that named no phase marks
+ * every step failed, and it never reached the build.
+ */
 function brokenWord(operation: ZeropsOperation): string {
   if (operation.kind === "verify") return "Not healthy";
   if (operation.kind === "devServer") return "Dev server not running";
-  const failed = operation.steps.find((step) => step.state === "failed");
-  return failed !== undefined && BUILD_STEP_IDS.has(failed.id) ? "Build failing" : "Deploy failed";
+  const failed = operation.steps.filter((step) => step.state === "failed");
+  return failed.length === 1 && BUILD_STEP_IDS.has(failed[0]!.id)
+    ? "Build failing"
+    : "Deploy failed";
+}
+
+/**
+ * A deploy nothing confirmed: its call ended on the agent's client, not in
+ * zcp, or its build could not be read. The build may have landed; no fix is asked.
+ */
+const DEPLOY_UNCONFIRMED = "Deploy unconfirmed";
+
+/**
+ * A wait on a service (`zerops_process service=…`) that returned the processes it followed: every
+ * one finished settles a deploy nothing confirmed as deployed, one that failed as failed, in the
+ * platform's reason. A wait still running settles nothing.
+ */
+function waitedOn(operation: ZeropsOperation): boolean {
+  return operation.target !== undefined && operation.phase === "done" && operation.steps.length > 0;
 }
 
 function failureOf(operation: ZeropsOperation): OutcomeFailure {
@@ -2590,6 +2613,7 @@ function failureOf(operation: ZeropsOperation): OutcomeFailure {
     reason: failureWords(operation),
     at: operation.settledAt ?? operation.anchorAt,
     logLines: operation.explanation?.logTail ?? [],
+    ...(operation.explanation?.forPerson === true ? { forPerson: true as const } : {}),
   };
 }
 
@@ -2882,13 +2906,35 @@ export function deriveOutcome(input: {
     if (
       operation.kind !== "deploy" &&
       operation.kind !== "verify" &&
-      operation.kind !== "devServer"
+      operation.kind !== "devServer" &&
+      operation.kind !== "process"
     )
       continue;
     // A git push says nothing of the service: the build after it, if any, does.
     if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
+    if (operation.kind === "process") {
+      if (known?.word !== DEPLOY_UNCONFIRMED || !waitedOn(operation)) continue;
+      const at = operation.settledAt ?? operation.anchorAt;
+      const failed = operation.steps.find((step) => step.state === "failed");
+      if (failed !== undefined) {
+        services.set(host, {
+          ...known,
+          tone: "failed",
+          word: "Deploy failed",
+          at,
+          failure: {
+            reason: (failed.note ?? `${failed.label} failed`).replace(/\.$/u, ""),
+            at,
+            logLines: [],
+          },
+        });
+      } else if (operation.steps.every((step) => step.state === "done")) {
+        services.set(host, { ...known, tone: "ok", word: "Deployed", at });
+      }
+      continue;
+    }
     if (operation.kind === "devServer") {
       if (devServerRunning(operation) === true) devServerRuns.add(host);
       else devServerRuns.delete(host);
@@ -2907,6 +2953,18 @@ export function deriveOutcome(input: {
         url: known?.url ?? null,
         at: operation.settledAt ?? operation.anchorAt,
         failure: failureOf(operation),
+      });
+      continue;
+    }
+    if (operation.kind === "deploy" && phase === "uncertain") {
+      services.set(host, {
+        hostname: host,
+        tone: "attention",
+        word: DEPLOY_UNCONFIRMED,
+        version: known?.version ?? null,
+        url: null,
+        at: operation.settledAt ?? operation.anchorAt,
+        failure: null,
       });
       continue;
     }

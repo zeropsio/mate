@@ -407,7 +407,11 @@ function serviceRow(
       url: null,
       words: service.word,
       sub: textSub(service.failure?.reason ?? null),
-      action: service.failure === null ? null : { kind: "fix", problem: serviceProblem(service) },
+      // A refused sign-in is the person's to fix: asking the Mate does not help.
+      action:
+        service.failure === null || service.failure.forPerson === true
+          ? null
+          : { kind: "fix", problem: serviceProblem(service) },
     };
   }
   const ok = service.tone === "ok";
