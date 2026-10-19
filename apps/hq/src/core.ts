@@ -190,8 +190,10 @@ const services = (options: CoreOptions) => {
   );
   // Tasks from every source come in through one door (`taskIntake.ts`); each source's channel
   // registers itself (`githubChannel.ts`), and `mateTasks.ts` says through it how a task moves.
+  // The keys' frames carry the organization's model, kept beside its limits: one `TaskLimits`.
+  const aiKeys = orgAiKeysLayer.pipe(Layer.provide(taskLimitsLayer));
   const tasks = mateTasksLayer(options.tasks).pipe(
-    Layer.provide(orgAiKeysLayer),
+    Layer.provide(aiKeys),
     Layer.provide(taskSourceChannelsLayer),
     Layer.provide(remotes),
     Layer.provide(github),
@@ -240,7 +242,7 @@ const services = (options: CoreOptions) => {
   );
   return Layer.mergeAll(
     autoUpdatePolicyLayer,
-    orgAiKeysLayer,
+    aiKeys,
     taskLimitsLayer,
     sources,
     githubApp,

@@ -1,4 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
+import {
+  automatedOpenCodeModel,
+  OPENCODE_KEY_PROVIDERS,
+} from "@t3tools/shared/openCodeKeyProviders";
 import { automaticUsageRates, USAGE_CACHE_RATES_URL } from "./usagePrices.ts";
 describe("automatic HQ usage price coverage", () => {
   it("does not invent rates for missing cache bands or unknown models", () => {
@@ -126,4 +130,35 @@ it("a model an automated Mate runs on that LiteLLM does not list is priced from 
   assert.strictEqual(baseline("nebius/acme/listed")?.rates.uncachedInput, "1000");
   // Only the providers automated Mates run on: no other models.dev provider is copied in.
   assert.isUndefined(baseline("elsewhere/acme/juno"));
+});
+it("HQ prices every model an organization may pick for its automated Mates at the price it is offered", () => {
+  // models.dev's Nebius rows for the offered models, as published on 2026-10-18.
+  const modelsDev = {
+    nebius: {
+      models: {
+        "zai-org/GLM-5.3": { cost: { input: 1.4, output: 4.4, cache_read: 1.4 } },
+        "zai-org/GLM-5.3-Flash": { cost: { input: 0.15, output: 0.5, cache_read: 0.15 } },
+        "deepseek-ai/DeepSeek-V4-Flash-0731": {
+          cost: { input: 0.14, output: 0.28, cache_read: 0.14 },
+        },
+        "Qwen/Qwen3.5-397B-A17B": {
+          cost: { input: 0.6, output: 3.6, cache_read: 0.06, cache_write: 0.75 },
+        },
+      },
+    },
+  };
+  const rates = automaticUsageRates({}, modelsDev);
+  const nanos = (usdPerMillion: number) => String(Math.round(usdPerMillion * 1000));
+  const nebius = OPENCODE_KEY_PROVIDERS[0]!;
+  for (const offer of nebius.automatedModels) {
+    const priced = rates.find(
+      (rate) =>
+        rate.model === automatedOpenCodeModel(nebius, offer.id) && rate.pricingBand === "standard",
+    )?.rates;
+    assert.deepInclude(priced, {
+      uncachedInput: nanos(offer.usdPerMillion.input),
+      cachedInput: nanos(offer.usdPerMillion.cachedInput),
+      output: nanos(offer.usdPerMillion.output),
+    });
+  }
 });

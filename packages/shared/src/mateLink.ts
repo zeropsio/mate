@@ -435,6 +435,12 @@ export const MateLinkDown = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-keys"),
     keys: Schema.Array(Schema.Struct({ env: TrimmedNonEmptyString, value: Schema.String })),
+    /**
+     * The model the organization picked for its automated Mates, as an OpenCode slug
+     * (`nebius/zai-org/GLM-5.3-Flash`, one of `automatedModels`), told again when it changes.
+     * Absent: none picked, or an older HQ — the Mate's default. An older Mate reads past it.
+     */
+    model: Schema.optionalKey(TrimmedNonEmptyString),
   }),
 ]);
 export type MateLinkDown = typeof MateLinkDown.Type;

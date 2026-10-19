@@ -155,6 +155,58 @@ describe("the organization's API keys", () => {
     );
 
     it.effect(
+      "HQ hands automated Mates the organization's model, and a change reaches them without a restart",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true);
+          yield* untilHealth(core.call, "active");
+          const owner = yield* sessionFor(core.call, "door-owner");
+          yield* core.call("PUT", "/api/org/ai-keys/nebius", {
+            session: owner,
+            body: { value: KEY },
+          });
+          addProject(core.fake, "P_ROBOT");
+          const robot = yield* mateLinked(core, owner, "P_ROBOT");
+          const modelOf = (frame: { readonly type: string }) =>
+            frame.type === "provider-keys" ? { model: (frame as { model?: string }).model } : null;
+          // None picked: the frame names none, and the Mate runs its default.
+          const first = yield* robot.link.takeWhere(
+            "the key at once",
+            (frame) => frame.type === "provider-keys",
+          );
+          assert.deepStrictEqual(modelOf(first), { model: undefined });
+          const before = yield* core.call("GET", "/api/org/task-limits", { session: owner });
+          assert.strictEqual((before.body as { model?: string }).model, "nebius/zai-org/GLM-5.3");
+          const flash = "nebius/zai-org/GLM-5.3-Flash";
+          const picked = yield* core.call("PUT", "/api/org/task-limits", {
+            session: owner,
+            body: { minutes: 60, costUsd: null, model: flash },
+          });
+          assert.strictEqual(picked.status, 200);
+          assert.strictEqual((picked.body as { model?: string }).model, flash);
+          yield* robot.link.takeWhere(
+            "the picked model on the open link",
+            (frame) => modelOf(frame)?.model === flash,
+          );
+          // A write of the limits alone keeps the model; one outside the list is refused.
+          yield* core.call("PUT", "/api/org/task-limits", {
+            session: owner,
+            body: { minutes: 30, costUsd: 5 },
+          });
+          const outside = yield* core.call("PUT", "/api/org/task-limits", {
+            session: owner,
+            body: { minutes: 30, costUsd: 5, model: "nebius/moonshotai/Kimi-K2.7-Code" },
+          });
+          assert.deepStrictEqual(
+            [outside.status, outside.body],
+            [400, { code: "invalid", reason: "model" }],
+          );
+          const after = yield* core.call("GET", "/api/org/task-limits", { session: owner });
+          assert.strictEqual((after.body as { model?: string }).model, flash);
+        }),
+    );
+
+    it.effect(
       "an automated Mate's link that cannot read the organization's keys as it opens brings them once HQ can",
       () =>
         Effect.gen(function* () {

@@ -5,15 +5,20 @@
  * Mate stops the task at either and says where it got to. Beside them, what all its automated
  * Mates may spend in a calendar month (UTC), counted in the month each report said it: reached, HQ
  * hands out no task, puts those handed out but not taken back in line, and stops those at work
- * (`mateTasks.ts`).
+ * (`mateTasks.ts`). And the model they run each new task on: one of `automatedModels`, the default
+ * until one is picked, handed to each automated Mate on its link (`provider-keys`, `orgAiKeys.ts`)
+ * at once and again when it changes.
  *
  * @module taskLimits
  */
 import type { MateTaskLimits } from "@t3tools/contracts";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import { automatedModelOf, automatedModelOffer } from "@t3tools/shared/openCodeKeyProviders";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -64,6 +69,14 @@ export const readTaskLimits = Effect.gen(function* () {
     : ({ minutes: row.minutes, costUsd: row.cost_usd } satisfies MateTaskLimits);
 });
 
+/** The model the organization picked for its automated Mates; none while it picked none. */
+export const pickedModel = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [row] = yield* sql<{ readonly model: string | null }>`
+    SELECT automated_model AS model FROM hq_task_limits`;
+  return row?.model ?? undefined;
+});
+
 export class TaskLimits extends Context.Service<
   TaskLimits,
   {
@@ -71,9 +84,11 @@ export class TaskLimits extends Context.Service<
     /** Kept by an owner or admin of the organization. */
     readonly keep: (
       userId: string,
-      /** A monthly budget left out is kept as it is (a client that predates it). */
+      /** A monthly budget or a model left out is kept as it is (a client that predates them). */
       limits: Omit<HqTaskLimitsView, "spentThisMonthUsd">,
     ) => Effect.Effect<HqTaskLimitsView, AutomationRefused | NotLeader | SqlError | ZeropsError>;
+    /** Ticks after the limits or the model were kept, starting with the current tick. */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/taskLimits") {}
 
@@ -83,15 +98,17 @@ export const taskLimitsLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const leader = yield* Leader;
     const roles = yield* Roles;
+    const ticks = yield* SubscriptionRef.make(0);
     const view = Effect.provideService(
       Effect.gen(function* () {
         const limits = yield* readTaskLimits;
-        const [row] = yield* sql<{ readonly budget: number | null }>`
-          SELECT monthly_budget_usd AS budget FROM hq_task_limits`;
+        const [row] = yield* sql<{ readonly budget: number | null; readonly model: string | null }>`
+          SELECT monthly_budget_usd AS budget, automated_model AS model FROM hq_task_limits`;
         return {
           ...limits,
           monthlyBudgetUsd: row?.budget ?? null,
           spentThisMonthUsd: yield* spentThisMonth,
+          model: automatedModelOf(row?.model),
         } satisfies HqTaskLimitsView;
       }),
       SqlClient.SqlClient,
@@ -99,6 +116,7 @@ export const taskLimitsLayer = Layer.effect(
     );
     return TaskLimits.of({
       view,
+      changes: SubscriptionRef.changes(ticks),
       keep: (userId, limits) =>
         confirmingRefusal(
           Effect.gen(function* () {
@@ -118,15 +136,23 @@ export const taskLimitsLayer = Layer.effect(
             const budget = limits.monthlyBudgetUsd;
             if (budget != null && !(budget > 0 && budget <= BUDGET_MAX))
               return yield* new AutomationRefused({ code: "invalid", reason: "budget" });
+            const model = limits.model;
+            if (model !== undefined && automatedModelOffer(model) === undefined)
+              return yield* new AutomationRefused({ code: "invalid", reason: "model" });
             const given = budget !== undefined;
+            const picked = model !== undefined;
             yield* leader.write(sql`
-              INSERT INTO hq_task_limits (id, minutes, cost_usd, monthly_budget_usd, set_by, set_at)
-              VALUES (true, ${limits.minutes}, ${limits.costUsd}, ${budget ?? null}, ${userId},
-                now())
+              INSERT INTO hq_task_limits (id, minutes, cost_usd, monthly_budget_usd,
+                automated_model, set_by, set_at)
+              VALUES (true, ${limits.minutes}, ${limits.costUsd}, ${budget ?? null},
+                ${model?.trim() ?? null}, ${userId}, now())
               ON CONFLICT (id) DO UPDATE SET minutes = EXCLUDED.minutes,
                 cost_usd = EXCLUDED.cost_usd, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at,
                 monthly_budget_usd = CASE WHEN ${given} THEN EXCLUDED.monthly_budget_usd
-                  ELSE hq_task_limits.monthly_budget_usd END`);
+                  ELSE hq_task_limits.monthly_budget_usd END,
+                automated_model = CASE WHEN ${picked} THEN EXCLUDED.automated_model
+                  ELSE hq_task_limits.automated_model END`);
+            yield* SubscriptionRef.update(ticks, (tick) => tick + 1);
             return yield* view;
           }),
         ),

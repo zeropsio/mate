@@ -7,6 +7,9 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  automatedModelOf,
+  automatedModelOffer,
+  automatedOpenCodeModel,
   defaultOpenCodeInstance,
   OPENCODE_KEY_PROVIDERS,
   openCodeKeyIsSet,
@@ -108,5 +111,34 @@ describe("the OpenCode instance a key is written to", () => {
     expect(instance?.driver).toBe(opencode);
     expect(instance?.enabled).toBe(DEFAULT_SERVER_SETTINGS.providers.opencode.enabled);
     expect(instance?.config).not.toHaveProperty("enabled");
+  });
+});
+
+describe("the model an automated Mate runs on", () => {
+  it("runs on GLM-5.3 until the organization picks another", () => {
+    expect(automatedOpenCodeModel(nebius)).toBe("nebius/zai-org/GLM-5.3");
+    expect(automatedModelOf(undefined)).toBe("nebius/zai-org/GLM-5.3");
+  });
+
+  it("takes any model of the offered list, by its OpenCode slug", () => {
+    for (const offer of nebius.automatedModels)
+      expect(automatedModelOf(`nebius/${offer.id}`)).toBe(`nebius/${offer.id}`);
+  });
+
+  it.each([
+    { name: "a Nebius model outside the list", model: "nebius/moonshotai/Kimi-K2.7-Code" },
+    { name: "an offered model without its provider", model: "zai-org/GLM-5.3-Flash" },
+    { name: "another provider's model", model: "openai/zai-org/GLM-5.3-Flash" },
+    { name: "an empty slug", model: "" },
+  ])("a model outside the offered list is refused and the default kept: $name", ({ model }) => {
+    expect(automatedModelOffer(model)).toBeUndefined();
+    expect(automatedModelOf(model)).toBe("nebius/zai-org/GLM-5.3");
+  });
+
+  it("offers only models priced for every kind of token they bill, the default among them", () => {
+    expect(nebius.automatedModels.map((offer) => offer.id)).toContain(nebius.automatedModel);
+    for (const { usdPerMillion } of nebius.automatedModels)
+      for (const price of [usdPerMillion.input, usdPerMillion.cachedInput, usdPerMillion.output])
+        expect(price).toBeGreaterThan(0);
   });
 });
