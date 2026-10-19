@@ -691,8 +691,10 @@ export function ProjectAutomationView({
   const live = !update && pool.length > 0;
   const gauge = live ? (board?.gauge ?? null) : null;
   const spend = live ? (board?.spend ?? null) : null;
-  // The month's budget spent: HQ hands out no task until the next month or a higher budget.
-  const spent = gauge !== null && gauge.share >= 1;
+  // The month's budget spent: HQ hands out no task until the next month or a higher budget. A
+  // card says so with its way out; the page's part leaves both to what needs the person above
+  // (`ProjectBudgetNeed`), its line alone turning.
+  const spent = look === "card" && gauge !== null && gauge.share >= 1;
   const end = !live ? undefined : (
     <>
       {spend === null || spent ? null : (
@@ -723,7 +725,7 @@ export function ProjectAutomationView({
         <div
           aria-hidden="true"
           className="pp-cards-gauge"
-          data-tone={spent ? "attention" : undefined}
+          data-tone={gauge.share >= 1 ? "attention" : undefined}
         >
           <span style={{ width: `${String(Math.round(gauge.share * 1000) / 10)}%` }} />
         </div>
@@ -783,6 +785,60 @@ export function ProjectAutomationView({
         </div>
       )}
     </ProjectPageCard>
+  );
+}
+
+/**
+ * The month's automation budget spent, as the project page asks about it among what needs the
+ * person: what it means, and — for an Owner or Admin — its one way out. Nothing while it is not.
+ */
+export function BudgetNeedView({
+  gauge,
+  onRaise,
+}: {
+  readonly gauge: SpendGauge | null;
+  /** Opens Settings › Automation, where the budget is; absent for anyone who may not change it. */
+  readonly onRaise?: (() => void) | undefined;
+}) {
+  if (gauge === null || gauge.share < 1) return null;
+  return (
+    <li className="pp-need" data-zerops-need="budget">
+      <span className="pp-need-mark">
+        <i aria-hidden="true" className="ov-dot" data-dot="failed" />
+      </span>
+      <span className="pp-need-name">Automation</span>
+      <p className="pp-need-words text-status-attention-text">{spentWords(gauge.words)}</p>
+      {onRaise === undefined ? null : (
+        <span className="pp-need-act">
+          <Button onClick={onRaise} size="sm" variant="secondary">
+            Raise the budget
+          </Button>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** The organization's automation budget, spent, on the page of a project with automated Mates. */
+export function ProjectBudgetNeed({ groupId }: { readonly groupId: string }) {
+  const { activeOrganization } = useZeropsSession();
+  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const { pool } = usePool(groupId);
+  const limits = useOrgTaskSource("hqTaskLimits", pool.length > 0);
+  const nowMs = useNowMs();
+  const navigate = useNavigate();
+  if (pool.length === 0 || limits.read.setting.state !== "known") return null;
+  return (
+    <BudgetNeedView
+      gauge={spendGauge(limits.read.setting.held, nowMs)}
+      onRaise={
+        admin
+          ? () => {
+              void navigate({ to: AUTOMATION_SETTINGS });
+            }
+          : undefined
+      }
+    />
   );
 }
 

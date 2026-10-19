@@ -438,12 +438,13 @@ describe("a card's release on its way", () => {
 describe("a card's stage", () => {
   it("offers adding a stage where the project has none, where the stage would stand", () => {
     const pressed: string[] = [];
-    // On the project's page, where its road's Stage column stands; the card's ghost stop says
-    // only that there is none.
+    // On the project's page, where its road's Stage column stands, once it has a production (one
+    // still in development offers its one next step instead); the card's ghost stop says only
+    // that there is none.
     const offered = mount(
       <ZeropsProjectsFlow<Item>
         {...FLOW_PROPS}
-        groups={[entry([WREN])]}
+        groups={[entry([WREN, PROD])]}
         page={PAGE}
         setUpStage={({ group }) =>
           () => {
@@ -460,8 +461,57 @@ describe("a card's stage", () => {
     });
     expect(pressed).toEqual(["aaa"]);
     expect(
-      section(render({ groups: [entry([WREN])], page: PAGE }), 'data-zerops-group="aaa"'),
+      section(render({ groups: [entry([WREN, PROD])], page: PAGE }), 'data-zerops-group="aaa"'),
     ).not.toContain("Add stage");
+  });
+
+  // r3: a change waiting for review stood in the side column's Changes, and a release's door in
+  // production's head, in the Changes card and on production's row.
+  it("asks for what needs the person once, above both columns, each with its one action", () => {
+    const opened: number[] = [];
+    const tree = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[
+          entry([WREN, PROD], {
+            pullRequests: [pull({ number: 7, title: "Gift cards at checkout" })],
+            stops: [PRODUCTION_STOP],
+          }),
+        ]}
+        openChange={(_entry, change) => {
+          opened.push(change.number);
+        }}
+        page={PAGE}
+      />,
+    );
+    const needs = tree.root.findByProps({ "data-zerops-surface": "project-needs" });
+    const reviews = needs.findAll(
+      (node) => node.type === "button" && node.children.includes("Review"),
+    );
+    expect(reviews).toHaveLength(1);
+    act(() => {
+      reviews[0]!.props.onClick({ currentTarget: null });
+    });
+    expect(opened).toEqual([7]);
+    // The Mate's own row says its change no second time.
+    expect(tree.root.findByProps({ "data-test-mate": "wren-dev" }).props["data-test-review"]).toBe(
+      undefined,
+    );
+  });
+
+  // r3, the owner: "especially when there is no prod and or stage, you didn't take in
+  // consideration the empty state".
+  it("reads a project with no production and no stage as in development, with one next step", () => {
+    const html = render({
+      groups: [entry([WREN])],
+      page: PAGE,
+      setUpStage: () => () => {},
+    });
+    expect(html).toContain('data-zerops-surface="project-development"');
+    expect(html).toContain("Tell");
+    expect(html).not.toContain('data-zerops-surface="project-places"');
+    expect(html).not.toContain("Not released yet");
+    expect(html).not.toContain("Add stage");
   });
 
   // The run's Add stage: its progress stood in a 1434 px card of its own at the page's foot, below

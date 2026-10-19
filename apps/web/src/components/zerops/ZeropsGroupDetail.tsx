@@ -147,7 +147,7 @@ import { ProjectPageSpend } from "./projects/ProjectSpend";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { ProjectAutomation } from "./projectAutomation/ProjectAutomation";
+import { ProjectAutomation, ProjectBudgetNeed } from "./projectAutomation/ProjectAutomation";
 import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
@@ -445,10 +445,23 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     () => ({
       groupId,
       aside: <ZeropsGroupAside groupId={groupId} />,
+      changes: (developing: boolean) => (
+        <ZeropsGroupChanges developing={developing} groupId={groupId} />
+      ),
+      automation: <ZeropsGroupAutomation groupId={groupId} />,
+      needs: <ProjectBudgetNeed groupId={groupId} />,
       roadEnvironments: (
         tier: GroupEnvironmentTier,
         detail: (projectId: string) => React.ReactNode,
-      ) => <RoadEnvironmentsLive detail={detail} groupId={groupId} tier={tier} />,
+        options: { readonly releaseAbove: boolean },
+      ) => (
+        <RoadEnvironmentsLive
+          detail={detail}
+          groupId={groupId}
+          releaseAbove={options.releaseAbove}
+          tier={tier}
+        />
+      ),
       onAddMate: () => {
         addMate(groupId);
       },
@@ -473,10 +486,13 @@ function RoadEnvironmentsLive({
   groupId,
   tier,
   detail,
+  releaseAbove,
 }: {
   readonly groupId: string;
   readonly tier: GroupEnvironmentTier;
   readonly detail: (projectId: string) => React.ReactNode;
+  /** The release production waits for is asked above: its row offers it no second time. */
+  readonly releaseAbove: boolean;
 }) {
   const { flows } = useProjectFlows(
     useMemo(() => [groupId], [groupId]),
@@ -484,7 +500,15 @@ function RoadEnvironmentsLive({
   );
   const flow = flows.get(groupId);
   if (flow === undefined) return null;
-  return <KnownRoadEnvironments detail={detail} flow={flow} groupId={groupId} tier={tier} />;
+  return (
+    <KnownRoadEnvironments
+      detail={detail}
+      flow={flow}
+      groupId={groupId}
+      releaseAbove={releaseAbove}
+      tier={tier}
+    />
+  );
 }
 
 function KnownRoadEnvironments({
@@ -492,11 +516,13 @@ function KnownRoadEnvironments({
   flow,
   tier,
   detail,
+  releaseAbove,
 }: {
   readonly groupId: string;
   readonly flow: ZeropsProjectFlow;
   readonly tier: GroupEnvironmentTier;
   readonly detail: (projectId: string) => React.ReactNode;
+  readonly releaseAbove: boolean;
 }) {
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
@@ -556,6 +582,7 @@ function KnownRoadEnvironments({
         withheldNotice,
         firstDeployOf,
         release,
+        releaseAbove,
         detail,
         onAdd: (added) => {
           if (added === "production") openPutLive(groupId);
@@ -609,6 +636,84 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   );
 }
 
+/** How many rows each group of the page's Changes lists before *Show all*. */
+const PAGE_CHANGES_SHOWN = 3;
+
+/**
+ * The page's Changes, heading its side column, once its flow is read: capped, what waits for review
+ * asked above it, its Release the page's own door above it too (`NeedsYou`).
+ */
+function ZeropsGroupChanges({
+  groupId,
+  developing,
+}: {
+  readonly groupId: string;
+  /** Still in development: with no change, the page's next step says so, and this says nothing. */
+  readonly developing: boolean;
+}) {
+  // The merged changes come with the application's detail: held while the page is drawn.
+  useHqAppDetailHold(useMemo(() => [groupId], [groupId]));
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  if (flow === undefined) return null;
+  return <KnownGroupChanges developing={developing} flow={flow} groupId={groupId} />;
+}
+
+function KnownGroupChanges({
+  groupId,
+  flow,
+  developing,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly developing: boolean;
+}) {
+  const changes = useProjectChangesCard(groupId, flow);
+  const openProjects = useOpenProjects();
+  const repo = groupRepository(flow.environments);
+  return (
+    <ProjectChangesCard
+      {...changes}
+      cap={PAGE_CHANGES_SHOWN}
+      emptyAction={
+        repo === undefined && !developing
+          ? {
+              words: "No repository is declared for this project’s services yet.",
+              label: "Set up an environment",
+              onPress: openProjects,
+            }
+          : undefined
+      }
+      // The release is the page's own door, above with what needs the person.
+      onRelease={undefined}
+      quiet={developing}
+      reviewsAbove
+    />
+  );
+}
+
+/** The page's automated Mates — their pool and task board — under its Mates, once its flow is read. */
+function ZeropsGroupAutomation({ groupId }: { readonly groupId: string }) {
+  const groupName = useGroupName(groupId);
+  const { flows } = useProjectFlows(
+    useMemo(() => [groupId], [groupId]),
+    COMPARED,
+  );
+  const flow = flows.get(groupId);
+  if (flow === undefined) return null;
+  return (
+    <ProjectAutomation
+      groupId={groupId}
+      look="part"
+      name={groupName}
+      repos={flow.codeRepos ?? flow.repos}
+    />
+  );
+}
+
 function KnownGroupAside({
   groupId,
   flow,
@@ -618,15 +723,10 @@ function KnownGroupAside({
   readonly flow: ZeropsProjectFlow;
   readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
 }) {
-  // The merged changes come with the application's detail: held while the page is drawn.
-  useHqAppDetailHold(useMemo(() => [groupId], [groupId]));
   const spend = use(ProjectPageSpend);
   const deployments = useStopDeploymentsShown();
   const environments = flow.environments;
-  const repo = groupRepository(environments);
   const groupName = useGroupName(groupId);
-  const openProjects = useOpenProjects();
-  const changes = useProjectChangesCard(groupId, flow);
   // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
   const [mirroring, setMirroring] = useState(false);
   const { listing } = useZeropsCandidates();
@@ -664,33 +764,12 @@ function KnownGroupAside({
           if (entry !== undefined) finishing.finish(entry);
         }}
         finishing={finishing.finishing.has(groupId)}
-        changes={
-          <ProjectChangesCard
-            {...changes}
-            emptyAction={
-              repo === undefined
-                ? {
-                    words: "No repository is declared for this project’s services yet.",
-                    label: "Set up an environment",
-                    onPress: openProjects,
-                  }
-                : undefined
-            }
-          />
-        }
         access={<ProjectAccessCard groupId={groupId} places={places} />}
         people={<ProjectPeople card groupId={groupId} />}
         spend={spend}
         onMirror={() => {
           setMirroring(true);
         }}
-        automation={
-          <ProjectAutomation
-            groupId={groupId}
-            name={groupName}
-            repos={flow.codeRepos ?? flow.repos}
-          />
-        }
       />
       {mirroring && groupName !== undefined ? (
         <GitMirrorDialog
@@ -708,9 +787,9 @@ function KnownGroupAside({
 const NO_HALF_MADE: ReadonlyArray<never> = [];
 
 /**
- * A project page's cards beside its places, drawn — every read already done and handed in: what
- * moves first (its changes, its spend, its automation), then what it is (who reaches it, where,
- * and where its code mirrors); a failed read or an unfinished environment above them.
+ * A project page's cards under its Mates, drawn — every read already done and handed in: its
+ * spend, then what it is (who reaches it, where, and where its code mirrors); a failed read or an
+ * unfinished environment above them.
  *
  * Split from the page above for the same reason the change's pane is: a
  * harness and a test can then look at a project with nothing set up without an account behind it.
@@ -722,8 +801,6 @@ export function ZeropsGroupPane({
   halfMade = NO_HALF_MADE,
   onFinish,
   finishing,
-  changes,
-  automation,
   access,
   people,
   spend,
@@ -743,10 +820,6 @@ export function ZeropsGroupPane({
   readonly onFinish: (id: string) => void;
   /** An environment of this application is being finished now. */
   readonly finishing: boolean;
-  /** Its Changes card (`ProjectChangesCard`). */
-  readonly changes?: React.ReactNode;
-  /** Its Automation card (`ProjectAutomation`), under its changes. */
-  readonly automation?: React.ReactNode;
   /** Its Access card (`ProjectAccessCard`). */
   readonly access?: React.ReactNode;
   /** Its People card (`ProjectPeople`). */
@@ -789,9 +862,7 @@ export function ZeropsGroupPane({
             ))}
           </div>
         )}
-        {changes}
         {spend}
-        {automation}
         {access}
         {people}
         {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}

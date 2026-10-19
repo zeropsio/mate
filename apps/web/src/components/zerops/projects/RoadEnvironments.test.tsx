@@ -264,6 +264,39 @@ describe("the road's stops", () => {
     });
   });
 
+  // r3: production's row said "2 changes waiting for production" with a Review beside the page's
+  // own Release door and the Changes card's.
+  it("offers production's waiting release once, where the page asks for it above", () => {
+    const prod = environment("prod", "production", "production");
+    const facts = (releaseAbove: boolean) => ({
+      environments: [prod],
+      slots: environmentSlots({
+        environments: [{ id: prod.id, tier: prod.tier }],
+        devstages: [],
+        pending: [],
+        halfMade: [],
+        recipeTiers: [],
+        recipeRead: false,
+        offered: { stage: false, production: false },
+        productionRuns: "running" as const,
+        waiting: { count: 2, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: true,
+        releasing: undefined,
+      }),
+      releaseAbove,
+    });
+    const below = (releaseAbove: boolean) =>
+      renderToStaticMarkup(
+        <RoadEnvironmentRows
+          facts={{ groupId: "shop", release: RELEASE, onAdd: () => {}, ...facts(releaseAbove) }}
+          tier="production"
+        />,
+      );
+    expect(below(false)).toContain("2 changes waiting for production");
+    expect(below(true)).not.toContain("waiting for production");
+  });
+
   it("says an empty stage's first deploy on its line, as its cell does", () => {
     const empty = {
       ...environment("stage", "stage"),

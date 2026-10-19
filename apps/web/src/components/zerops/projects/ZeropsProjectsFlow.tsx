@@ -32,10 +32,13 @@ import { ProjectCards, ProjectPage } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 
 /**
- * How a place's panel is drawn (`renderPlacePanel`): `card` on an overview card, `detail` as a
- * block of the project page's Production or Stages, `lift` as only what went wrong.
+ * How a place's panel is drawn (`renderPlacePanel`): `card` on an overview card; on the project
+ * page, `detail` as production's block — its status line, addresses and every service — and
+ * `brief` as a stage's — its status line and addresses, its services on its own page; `lift` as
+ * only what went wrong, with its buttons, where the page says what needs the person. Neither
+ * `detail` nor `brief` says what went wrong again: its dot and its words carry it.
  */
-export type PlacePanelLook = "card" | "detail" | "lift";
+export type PlacePanelLook = "card" | "detail" | "brief" | "lift";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -94,15 +97,35 @@ export interface ProjectsFlowGroup<T> {
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The page's own cards, beside its places and Mates. */
+  /** The page's own cards, under its changes beside its places and Mates: spend, access, people. */
   readonly aside: ReactNode;
+  /**
+   * Its changes, heading the side column, capped with *Show all*, listing none that waits for
+   * review (what needs the person says them); quiet while it has none and is still in development
+   * (`developing`), whose next step says so.
+   */
+  readonly changes?: ((developing: boolean) => ReactNode) | undefined;
+  /** Its automated Mates — their pool and task board — under its Mates, in one section. */
+  readonly automation?: ReactNode;
+  /**
+   * What needs the person that the page reads apart from its flow — the organization's automation
+   * budget spent (`ProjectBudgetNeed`) — as rows of what needs them, after what went wrong; each
+   * nothing while it does not.
+   */
+  readonly needs?: ReactNode;
   /**
    * Each tier's environments in its section (`RoadEnvironmentRows`): a stage or production by its
    * name and what it runs — its head, which opens its page — with `detail` of its place under it;
-   * or its quiet slot with its Add. Absent, the sections say what the flow says.
+   * or its quiet slot with its Add. `releaseAbove`: the release production waits for is asked
+   * above, in what needs the person, so production's row offers it no second time. Absent, the
+   * sections say what the flow says.
    */
   readonly roadEnvironments?:
-    | ((tier: "stage" | "production", detail: (projectId: string) => ReactNode) => ReactNode)
+    | ((
+        tier: "stage" | "production",
+        detail: (projectId: string) => ReactNode,
+        options: { readonly releaseAbove: boolean },
+      ) => ReactNode)
     | undefined;
   /** *Add a Mate*, at the foot of its Mates. */
   readonly onAddMate?: (() => void) | undefined;
@@ -143,6 +166,15 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly lift?: boolean | undefined;
     },
   ) => ReactNode;
+  /**
+   * A Mate whose question, plan or stop waits on the viewer: the project's page lifts it above, in
+   * what needs the person, and lists it no second time.
+   */
+  readonly waitsOnViewer?: ((item: T) => boolean) | undefined;
+  /** Opens a change's review, from what was pressed: the project page's Review of it. */
+  readonly openChange?:
+    | ((entry: ProjectsFlowGroup<T>, pull: FlowPullRequest, from: HTMLElement) => void)
+    | undefined;
   /** A Mate's face, beside its name in a row. */
   readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
   /**
@@ -318,6 +350,9 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         ) : (
           <ProjectPage
             aside={page.aside}
+            automation={page.automation}
+            changes={page.changes}
+            needs={page.needs}
             entry={entry}
             addMateWhy={page.addMateWhy ?? null}
             onAddMate={page.onAddMate}

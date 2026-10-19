@@ -63,7 +63,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
-import { TeaShopCards } from "./projectCardsFixtures";
+import { TeaShopAside, TeaShopAutomation, TeaShopChanges } from "./projectCardsFixtures";
 import { PAGE_CARDS, S2_OPEN, S3_OPEN, S4_OPEN, S5_OPEN } from "./projectPageStates";
 import { ZeropsGroupPane } from "~/components/zerops/ZeropsGroupDetail";
 import { Button } from "~/components/ui/button";
@@ -811,15 +811,13 @@ const ARRIVAL =
 /** `?page=tea` (or another project's id) draws that project's own page instead. */
 const PAGE = params.get("page");
 
-/** A page's own cards: a state's (`PAGE_CARDS`), else Tea Shop's. */
+/** A page's own cards under its Mates: a state's (`PAGE_CARDS`), else Tea Shop's. */
 function PageAside({ groupId }: { readonly groupId: string }) {
   const cards = PAGE_CARDS.get(groupId);
-  if (cards === undefined) return <TeaShopCards />;
+  if (cards === undefined) return <TeaShopAside />;
   return (
     <ZeropsGroupPane
       access={cards.access}
-      automation={cards.automation}
-      changes={cards.changes}
       finishing={false}
       onFinish={() => {}}
       people={cards.people}
@@ -884,6 +882,10 @@ function HarnessPage() {
             )}
             hqCard={null}
             isAutomated={(entry) => entry.automated === true}
+            waitsOnViewer={(entry) =>
+              mineOf(entry) && (entry.view.state === "needs" || entry.view.state === "failed")
+            }
+            openChange={(_entry, pull) => acted.push(`review:${String(pull.number)}`)}
             isMate={() => true}
             onRetryContainers={() => {}}
             openMate={() => () => {}}
@@ -893,6 +895,12 @@ function HarnessPage() {
                 : {
                     groupId: PAGE,
                     aside: <PageAside groupId={PAGE} />,
+                    changes: (developing) =>
+                      PAGE_CARDS.get(PAGE)?.changes(developing) ?? <TeaShopChanges onPage />,
+                    needs: PAGE_CARDS.get(PAGE)?.needs,
+                    automation: PAGE_CARDS.get(PAGE)?.automation ?? (
+                      <TeaShopAutomation look="part" />
+                    ),
                     onAddMate: () => acted.push(`add-mate:${PAGE}`),
                     unread: null,
                   }
@@ -1026,23 +1034,17 @@ function HarnessPage() {
                 />
               );
             }}
-            renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
+            renderMateFace={(entry, size) => (
+              <MateFace size={size} state={entry.face} tint={entry.tint} />
+            )}
             renderPlacePanel={(entry, line, look) => {
               const found = byId.get(entry.group.groupId);
               const model = found?.panels[line.kind];
               if (found === undefined || model === undefined) return null;
-              if (look === "detail")
+              if (look === "detail" || look === "brief")
                 return (
                   <RoadPlace
-                    actions={(found.actions[line.kind] ?? []).map((label, index) => (
-                      <Button
-                        key={label}
-                        size="sm"
-                        variant={index === 0 && line.trouble ? "primary" : "secondary"}
-                      >
-                        {label}
-                      </Button>
-                    ))}
+                    actions={null}
                     menu={
                       line.kind === "production" && !line.trouble ? (
                         <Button aria-label="More for production" size="icon-sm" variant="ghost">
@@ -1050,24 +1052,23 @@ function HarnessPage() {
                         </Button>
                       ) : null
                     }
-                    model={{
-                      line,
-                      note: line.trouble ? model.note : undefined,
-                    }}
+                    model={{ line, note: undefined }}
                     tiles={
-                      <ServiceTiles
-                        rows={model.services.map((service, index) => {
-                          const known = SERVICE_TYPES.get(service.hostname);
-                          return known === undefined
-                            ? tileRow(
-                                service.hostname,
-                                index === 0 ? "Node.js 22" : "PostgreSQL 16",
-                                index === 0 ? "nodejs@22" : "postgresql@16",
-                              )
-                            : tileRow(service.hostname, known.short, known.type);
-                        })}
-                        usageRead
-                      />
+                      look === "brief" ? null : (
+                        <ServiceTiles
+                          rows={model.services.map((service, index) => {
+                            const known = SERVICE_TYPES.get(service.hostname);
+                            return known === undefined
+                              ? tileRow(
+                                  service.hostname,
+                                  index === 0 ? "Node.js 22" : "PostgreSQL 16",
+                                  index === 0 ? "nodejs@22" : "postgresql@16",
+                                )
+                              : tileRow(service.hostname, known.short, known.type);
+                          })}
+                          usageRead
+                        />
+                      )
                     }
                   />
                 );

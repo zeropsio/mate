@@ -407,10 +407,12 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ) : null}
       </>
     ) : null;
-    if (look === "detail") {
+    // The page's block: what went wrong is said above it, in what needs the person (`lift`), and
+    // a stage's services are its own page's.
+    if (look === "detail" || look === "brief") {
       return (
         <RoadPlace
-          actions={line.trouble ? actions : null}
+          actions={null}
           menu={
             back === undefined ? null : (
               <Menu>
@@ -440,8 +442,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               </Menu>
             )
           }
-          model={{ line, note: line.trouble ? note : undefined }}
-          tiles={<PlaceServiceTiles projectId={line.projectId} />}
+          model={{ line, note: undefined }}
+          tiles={look === "detail" ? <PlaceServiceTiles projectId={line.projectId} /> : null}
         />
       );
     }

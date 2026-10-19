@@ -111,7 +111,7 @@ export function ProjectChangesCard({
         </div>
       )
     ) : (
-      <>
+      <div className="pp-cards-groups">
         {waiting.length === 0 ? null : (
           <div className="grid gap-2" data-zerops-changes="waiting">
             <CardGroupName count={waiting.length}>Waiting on you</CardGroupName>
@@ -129,7 +129,7 @@ export function ProjectChangesCard({
           </div>
         )}
         {drafts.length === 0 ? null : (
-          <div className="grid gap-1" data-zerops-changes="drafts">
+          <div className="grid" data-zerops-changes="drafts">
             <CardGroupName count={drafts.length}>Being written</CardGroupName>
             <ul className="grid">
               {drafts.map((change) => (
@@ -145,7 +145,7 @@ export function ProjectChangesCard({
           </div>
         )}
         {ready.changes.length === 0 ? null : (
-          <div className="grid gap-1" data-zerops-changes="ready">
+          <div className="grid" data-zerops-changes="ready">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <CardGroupName
                 after={ready.onStage ? "on stage" : undefined}
@@ -210,7 +210,7 @@ export function ProjectChangesCard({
             )}
           </div>
         )}
-      </>
+      </div>
     );
   return (
     <ProjectPageCard

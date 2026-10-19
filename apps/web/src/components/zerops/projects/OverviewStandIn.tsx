@@ -78,30 +78,32 @@ export function ProjectPageStandIn({
   readonly label?: string | undefined;
   readonly ref?: ((element: HTMLElement | null) => void) | undefined;
 }) {
+  // The head across the page, as the page draws it; its places in the wide column.
   return (
-    <div
-      aria-busy={label === undefined ? undefined : "true"}
-      aria-label={label}
-      className="pp-main"
-      ref={ref}
-    >
-      <div className="pp-road-header" data-zerops-stand-in="project-header">
+    <>
+      <div className="pp-road-header" data-zerops-stand-in="project-header" ref={ref}>
         <div className="pp-road-header-text">
           <Skeleton className="h-3 w-20" />
           <Skeleton className="mt-2 h-6 w-48" />
           <Skeleton className="mt-3 h-5 w-24" shape="pill" />
         </div>
       </div>
-      {["production", "stages"].map((place) => (
-        <div className="pp-sec" data-zerops-stand-in={place} key={place}>
-          <div className="pp-sec-head">
-            <Skeleton className="h-4 w-24" />
+      <div
+        aria-busy={label === undefined ? undefined : "true"}
+        aria-label={label}
+        className="pp-main"
+      >
+        {["production", "stages"].map((place) => (
+          <div className="pp-sec" data-zerops-stand-in={place} key={place}>
+            <div className="pp-sec-head">
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-24 w-full" shape="card" />
           </div>
-          <Skeleton className="h-4 w-56" />
-          <Skeleton className="h-24 w-full" shape="card" />
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </>
   );
 }
 

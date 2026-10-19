@@ -2090,6 +2090,15 @@ export function ZeropsProjectsContent({
     enabled: status === "signed-in",
     releases: waitingReleases,
   });
+  const waitingAsks = useMemo(
+    () =>
+      new Set(
+        waiting.items.flatMap((item) =>
+          item.kind === "release" || item.kind === "change" ? [] : [item.mate.projectId],
+        ),
+      ),
+    [waiting.items],
+  );
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const filterFacts = useMemo(() => {
     const groupOf = new Map(
@@ -2745,6 +2754,22 @@ export function ZeropsProjectsContent({
         isAutomated={(candidate: ZeropsCandidatePresentation) =>
           candidate.project.hq?.mate?.automated === true
         }
+        // What the menu's Waiting on you holds of a Mate — a plan, a question, a stop — the
+        // project's page lifts above; its changes are the page's own reviews (`openChange`).
+        waitsOnViewer={(candidate: ZeropsCandidatePresentation) =>
+          waitingAsks.has(candidate.project.id)
+        }
+        openChange={({ group }, pull, from) => {
+          openReview(
+            {
+              kind: "change",
+              groupId: group.groupId,
+              repository: pull.repository,
+              number: pull.number,
+            },
+            { from },
+          );
+        }}
         renderReleaseVerb={({ group, flow }, chip) => {
           const { production } = flow;
           const candidate =

@@ -30,7 +30,11 @@ import {
   type ReactNode,
 } from "react";
 
-import { REVIEW_LABEL, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
+import {
+  changeAsksForReview,
+  REVIEW_LABEL,
+  type GroupFlowPreview,
+} from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
@@ -56,6 +60,7 @@ import {
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
   cardChangeRows,
+  cardChanges,
   cardReady,
   CARD_MATES_SHOWN,
   mateChangeForReview,
@@ -70,10 +75,22 @@ import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import { ProjectPageSpend, ProjectSpendCard, ProjectSpendLine } from "./ProjectSpend";
 import { spendProjectIds } from "./projectSpend.logic";
 import type {
+  ProjectPageSlot,
   ProjectsFlowGroup,
   StageSettingUp,
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
+import { WaitingRow } from "./ProjectChangesCard";
+import { ProjectPageCard } from "./ProjectPageCard";
+import {
+  capped,
+  developmentStep,
+  inDevelopment,
+  needsInOrder,
+  NEEDS_SHOWN,
+  PAGE_MATES_SHOWN,
+  type NeedKind,
+} from "./projectPage.logic";
 import { Button } from "~/components/ui/button";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
@@ -789,16 +806,19 @@ function ProjectChips<T>({
   entry,
   props,
   held = false,
+  automated: countAutomated = true,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   /** Its row's room is held where it says nothing: a page's header keeps one height. */
   readonly held?: boolean;
+  /** Says how many of its Mates are automated: not on its page, whose Mates card says them. */
+  readonly automated?: boolean;
 }) {
   const people = props.renderCardPeople?.(entry);
-  const automated = [...entry.mates.values()].filter(
-    (item) => props.isAutomated?.(item) === true,
-  ).length;
+  const automated = !countAutomated
+    ? 0
+    : [...entry.mates.values()].filter((item) => props.isAutomated?.(item) === true).length;
   if (!drawn(people) && automated === 0)
     return held ? <div aria-hidden="true" className="pp-road-chips" /> : null;
   return (
@@ -1073,7 +1093,8 @@ function ProjectCard<T>({
 
 /**
  * A place on the project page without the page's environment rows: its name, what it runs and its
- * state, as the row that opens its page says them, its detail under it.
+ * state, as the row that opens its page says them, its detail under it — production's in full, a
+ * stage's brief (`PlacePanelLook`).
  */
 function PageFlowPlace<T>({
   entry,
@@ -1089,32 +1110,348 @@ function PageFlowPlace<T>({
       <p className="pp-road-env">
         <span className="pp-road-env-name">{line.name}</span>
       </p>
-      {props.renderPlacePanel?.(entry, line, "detail") ?? <PlainPanel line={line} />}
+      {props.renderPlacePanel?.(entry, line, line.kind === "production" ? "detail" : "brief") ?? (
+        <PlainPanel line={line} />
+      )}
     </div>
   );
 }
 
+/** One thing that needs the person on a project page, drawn, by its kind (`needsInOrder`). */
+interface PageNeed {
+  readonly kind: NeedKind;
+  readonly key: string;
+  readonly node: ReactNode;
+}
+
+/** "2 changes are ready to go live"; "At least 20 …" where the count is a floor. */
+function readyToGoLive(count: number, atLeast: boolean): string {
+  if (count === 1 && !atLeast) return "1 change is ready to go live";
+  return `${atLeast ? "At least " : ""}${String(count)} changes are ready to go live`;
+}
+
 /**
- * A project's own page: its head — state, name, people, Add Mate and its menu — then its
- * Production, every stage and its Mates in the wide column, each environment a block with its
- * status line, addresses and services, its row opening its page; the page's own cards (`aside`)
- * beside them.
+ * What needs the person on the project, each with its one action, from what the page painted
+ * with: production's or a stage's trouble (`renderPlacePanel`'s `lift`), a Mate of theirs asking
+ * (its row lifted), the release production waits for (its door), and each change waiting for
+ * review (its Review). Nowhere else on the page says them with an action.
+ */
+function pageNeeds<T>(
+  entry: ProjectsFlowGroup<T>,
+  props: ZeropsProjectsFlowProps<T>,
+  read: PlacesReading,
+  nowMs: number,
+): ReadonlyArray<PageNeed> {
+  const { flow } = entry;
+  const troubles = [read.production, ...read.stages]
+    .filter((line) => line.trouble && !(line.kind === "production" && read.productionAbsent))
+    .map((line): PageNeed => ({
+      kind: "trouble",
+      key: `trouble:${line.projectId ?? line.name}`,
+      node: (
+        <li className="pp-need" data-zerops-need="trouble" data-zerops-place={line.kind}>
+          <span className="pp-need-mark">
+            <PlaceDot dot={line.dot} />
+          </span>
+          <span className="pp-need-name">
+            {line.kind === "production" ? "Production" : line.name}
+          </span>
+          <div className="pp-need-body">
+            {props.renderPlacePanel?.(entry, line, "lift") ?? (
+              <p className="pp-need-words">{line.words.join(" · ")}</p>
+            )}
+          </div>
+        </li>
+      ),
+    }));
+  const asks = matesOf(entry).flatMap((mate): ReadonlyArray<PageNeed> => {
+    if (mate.kind !== "listed" || props.waitsOnViewer?.(mate.item) !== true) return [];
+    return [
+      {
+        kind: "ask",
+        key: `ask:${props.getKey(mate.item)}`,
+        node: (
+          <li className="pp-need" data-zerops-need="ask">
+            {props.renderMate(mate.item, {
+              layout: "row",
+              previews: mate.mate.previews,
+              review: undefined,
+              lift: true,
+            })}
+          </li>
+        ),
+      },
+    ];
+  });
+  const ready = cardReady(flow);
+  const release: ReadonlyArray<PageNeed> =
+    read.releaseDoor === null || ready === undefined
+      ? []
+      : [
+          {
+            kind: "release",
+            key: "release",
+            node: (
+              <li className="pp-need" data-zerops-card-ready="true" data-zerops-need="release">
+                <span className="pp-need-mark">
+                  <PlaceDot dot="releasing" />
+                </span>
+                <span className="pp-need-name">Production</span>
+                <p className="pp-need-words">
+                  {readyToGoLive(ready.count, ready.atLeast)}
+                  {ready.stage === undefined ? null : (
+                    <span className="text-muted-foreground"> · on {ready.stage}</span>
+                  )}
+                </p>
+                <span className="pp-need-act">{read.releaseDoor}</span>
+              </li>
+            ),
+          },
+        ];
+  const openChange = props.openChange;
+  const reviews =
+    openChange === undefined
+      ? []
+      : cardChanges({
+          open: flow.pullRequests
+            .map((pull) => pull.pull)
+            .filter((pull) => pull.kind === "code" && changeAsksForReview(pull)),
+          merged: [],
+          releases: [],
+          stage: undefined,
+          production: !read.productionAbsent,
+          limit: Number.POSITIVE_INFINITY,
+        }).map((change): PageNeed => {
+          const item = entry.mates.get(change.pull.mateProjectId);
+          const name = flow.mates.find(
+            (mate) => mate.projectId === change.pull.mateProjectId,
+          )?.name;
+          return {
+            kind: "review",
+            key: `review:${change.pull.repository}#${String(change.pull.number)}`,
+            node: (
+              <WaitingRow
+                change={change}
+                mate={
+                  name === undefined
+                    ? undefined
+                    : {
+                        name,
+                        face: item === undefined ? undefined : props.renderMateFace(item, 20),
+                      }
+                }
+                onOpen={(opened, from) => {
+                  openChange(entry, opened.pull, from);
+                }}
+                when={ageOf(change.at, nowMs) ?? ""}
+              />
+            ),
+          };
+        });
+  return needsInOrder([...troubles, ...asks, ...release, ...reviews]);
+}
+
+/**
+ * What needs the person, under the page's head: a few, most urgent first, each with its one
+ * action, *Show all* opening the rest in place. Nothing where nothing does.
+ */
+function NeedsYou({
+  needs,
+  read,
+}: {
+  readonly needs: ReadonlyArray<PageNeed>;
+  /** What the page reads apart (`ProjectPageSlot.needs`): its rows after what went wrong. */
+  readonly read?: ReactNode;
+}) {
+  const [all, setAll] = useState(false);
+  if (needs.length === 0 && read === undefined) return null;
+  const { shown, hidden } = capped(needs, all ? Number.POSITIVE_INFINITY : NEEDS_SHOWN);
+  const troubles = shown.filter((need) => need.kind === "trouble");
+  return (
+    <section aria-label="Needs you" className="pp-needs" data-zerops-surface="project-needs">
+      <ul className="pp-needs-list">
+        {troubles.map((need) => (
+          <Fragment key={need.key}>{need.node}</Fragment>
+        ))}
+        {read}
+        {shown
+          .filter((need) => need.kind !== "trouble")
+          .map((need) => (
+            <Fragment key={need.key}>{need.node}</Fragment>
+          ))}
+      </ul>
+      {hidden === 0 && !all ? null : (
+        <button
+          className="ov-show-all"
+          data-zerops-surface="needs-show-all"
+          onClick={() => {
+            setAll((was) => !was);
+          }}
+          type="button"
+        >
+          {all ? "Show fewer" : `Show all · ${String(hidden)} more`}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A project still in development, in place of an empty Production and Stages: its Mates' faces,
+ * the one next step (`developmentStep`) and its one sentence of why.
+ */
+function DevelopmentPanel<T>({
+  entry,
+  props,
+  putLive,
+  reviews,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+  readonly putLive: (() => void) | "busy" | undefined;
+  readonly reviews: number;
+}) {
+  const people = matesOf(entry).filter(
+    (mate): mate is Listed<T> => mate.kind === "listed" && props.isAutomated?.(mate.item) !== true,
+  );
+  const step = developmentStep({
+    canPutLive: putLive !== undefined,
+    reviews,
+    mates: people.map((mate) => ({ name: mate.mate.name, working: mate.mate.working === true })),
+  });
+  const named =
+    step.kind === "open-mate" ? people.find((mate) => mate.mate.name === step.mate) : undefined;
+  const open = named === undefined ? undefined : props.openMate(named.item);
+  return (
+    <section
+      aria-label="In development"
+      className="pp-dev"
+      data-step={step.kind}
+      data-zerops-surface="project-development"
+    >
+      <span aria-hidden="true" className="pp-dev-faces">
+        {people.slice(0, 3).map((mate) => (
+          <Fragment key={props.getKey(mate.item)}>{props.renderMateFace(mate.item, 32)}</Fragment>
+        ))}
+      </span>
+      <div className="pp-dev-text">
+        <h2 className="pp-dev-title">{step.title}</h2>
+        <p className="pp-dev-why">{step.words}</p>
+      </div>
+      {step.kind === "put-live" && putLive !== undefined ? (
+        <span className="pp-dev-act">
+          <Button disabled={putLive === "busy"} onClick={putLive === "busy" ? undefined : putLive}>
+            Put it live
+            <ChevronRightIcon aria-hidden="true" />
+          </Button>
+        </span>
+      ) : step.kind === "open-mate" ? (
+        <span className="pp-dev-act">
+          <Button disabled={open === undefined} onClick={open}>
+            Open {step.mate}
+          </Button>
+        </span>
+      ) : null}
+      <PutLiveWaits onPut={putLive} />
+    </section>
+  );
+}
+
+/**
+ * The people and robots doing the project's work, as one section of the wide column: its Mates as
+ * rows — what waits on the person is above, in what needs them — a few before *Show all*, then its
+ * automated Mates' pool and task board (`automation`).
+ */
+function PageMates<T>({
+  entry,
+  props,
+  asking,
+  automation,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+  /** The Mates said above, asking the person: not listed again. */
+  readonly asking: ReadonlySet<string>;
+  readonly automation: ReactNode;
+}) {
+  const [all, setAll] = useState(false);
+  const { flow } = entry;
+  const people = matesOf(entry)
+    .filter(
+      (mate) =>
+        mate.kind === "coming" ||
+        (props.isAutomated?.(mate.item) !== true && !asking.has(props.getKey(mate.item))),
+    )
+    // What is at work or has something to show first, then the rest in the person's order.
+    .toSorted(
+      (left, right) => Number(mateIsLoud(right.mate, flow)) - Number(mateIsLoud(left.mate, flow)),
+    );
+  const { shown, hidden } = capped(people, all ? Number.POSITIVE_INFINITY : PAGE_MATES_SHOWN);
+  const folded = people.slice(shown.length);
+  return (
+    <ProjectPageCard look="section" surface="project-mates" title="Mates">
+      {people.length === 0 ? null : (
+        <div aria-label="Project Mates" className="pp-road-mates" role="list">
+          {shown.map((mate) =>
+            mate.kind === "coming" ? (
+              <CardComingMate key={`coming:${mate.mate.projectId}`} mate={mate} />
+            ) : (
+              <Fragment key={props.getKey(mate.item)}>
+                {props.renderMate(mate.item, {
+                  layout: "row",
+                  previews: mate.mate.previews,
+                  review: undefined,
+                  lift: false,
+                })}
+              </Fragment>
+            ),
+          )}
+          {hidden === 0 ? null : (
+            <MateFold
+              mates={folded.filter((mate): mate is Listed<T> => mate.kind === "listed")}
+              onUnfold={() => {
+                setAll(true);
+              }}
+              props={props}
+              surface="mates-more"
+              words={`Show all · ${String(hidden)} more`}
+            />
+          )}
+        </div>
+      )}
+      {automation}
+    </ProjectPageCard>
+  );
+}
+
+/**
+ * A project's own page: its head — state, name, people, Add Mate and its menu — then what needs
+ * the person (`NeedsYou`); in the wide column its Production and every stage (or, still in
+ * development, its one next step) and its Mates with their automation; beside them its changes,
+ * then the page's own cards (`aside`). Every list is capped, so neither column runs on.
  */
 export function ProjectPage<T>({
   entry,
   props,
   aside,
+  changes,
+  automation,
+  needs: needsRead,
   onAddMate,
   addMateWhy = null,
   roadEnvironments,
 }: {
+  /** What needs the person that the page reads apart (`ProjectPageSlot.needs`). */
+  readonly needs?: ReactNode;
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly aside: ReactNode;
+  /** Its changes, heading the side column (`ProjectPageSlot.changes`). */
+  readonly changes?: ((developing: boolean) => ReactNode) | undefined;
+  /** Its automated Mates, in its Mates card (`ProjectPageSlot.automation`). */
+  readonly automation?: ReactNode;
   /** Each tier's environments in its section, from the page's reads (`RoadEnvironmentRows`). */
-  readonly roadEnvironments?:
-    | ((tier: "stage" | "production", detail: (projectId: string) => ReactNode) => ReactNode)
-    | undefined;
+  readonly roadEnvironments?: ProjectPageSlot["roadEnvironments"];
   readonly onAddMate?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy?: string | null;
@@ -1135,115 +1472,133 @@ export function ProjectPage<T>({
         </ProjectPageSpend>
       </div>
     );
+  const needs = pageNeeds(entry, props, read, nowMs);
+  const asking = new Set(
+    needs.flatMap((need) => (need.kind === "ask" ? [need.key.slice("ask:".length)] : [])),
+  );
+  const releaseAbove = needs.some((need) => need.kind === "release");
+  const developing = inDevelopment({
+    productionAbsent: read.productionAbsent,
+    stages: flow.stages.length,
+    stageBeingAdded: read.stageSetUp === "creating",
+    placesHeld: group.environments.some(
+      (environment) => environment.role !== undefined && environment.role !== "dev",
+    ),
+  });
   const lineOf = (projectId: string) =>
     [production, ...stages].find((line) => line.projectId === projectId);
-  // Where the page reads its environments, each row opens its place and its detail follows.
+  // Where the page reads its environments, each row opens its place and its detail follows:
+  // production's in full, a stage's brief.
   const detailOf = (projectId: string) => {
     const line = lineOf(projectId);
-    return line === undefined ? null : props.renderPlacePanel?.(entry, line, "detail");
+    return line === undefined
+      ? null
+      : props.renderPlacePanel?.(entry, line, line.kind === "production" ? "detail" : "brief");
   };
   // A second stage is added from here too, once the project has one.
   const moreStage = flow.stages.length > 0 ? props.setUpStage?.(entry) : undefined;
   return (
     <div className="ov-page" data-zerops-group={group.groupId} data-zerops-surface="project-page">
-      <div className="pp-main">
-        <header className="pp-road-header" ref={detail.ref}>
-          <div className="pp-road-header-text">
-            <ProjectStateLine state={state} />
-            <h1 className="pp-road-title">
-              <GroupName entry={entry} />
-            </h1>
-            <ProjectChips entry={entry} held props={props} />
-          </div>
-          <div className="pp-road-header-acts">
-            {onAddMate === undefined ? null : (
-              <Button
-                aria-describedby={addMateWhy === null ? undefined : `${group.groupId}-add-why`}
-                data-zerops-surface="add-mate"
-                disabled={addMateWhy !== null}
-                onClick={addMateWhy === null ? onAddMate : undefined}
-                variant="secondary"
-              >
-                <PlusIcon aria-hidden="true" />
-                Add Mate
-              </Button>
-            )}
-            <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
-            {onAddMate === undefined || addMateWhy === null ? null : (
-              <p className="pp-road-why" id={`${group.groupId}-add-why`}>
-                {addMateWhy}
-              </p>
-            )}
-          </div>
-        </header>
-        <div className="pp-places" data-zerops-surface="project-places">
-          <section aria-label="Production" className="pp-sec" data-zerops-place="production">
-            <div className="pp-sec-head">
-              <h2 className="pp-sec-name">Production</h2>
-              {read.releaseDoor === null ? null : (
-                <span className="pp-sec-acts" data-zerops-card-ready="true">
-                  {read.releaseDoor}
-                </span>
-              )}
-            </div>
-            {props.renderProductionRun?.(entry)}
-            {roadEnvironments !== undefined ? (
-              roadEnvironments("production", detailOf)
-            ) : read.productionAbsent ? (
-              <div className="pp-place" data-ghost="">
-                <p className="pp-road-ghost-words">Not released yet.</p>
-                {putLive === undefined ? null : <PutLive onPut={putLive} />}
-              </div>
-            ) : (
-              <PageFlowPlace entry={entry} line={production} props={props} />
-            )}
-            <PutLiveWaits onPut={putLive} />
-          </section>
-          <section aria-label="Stages" className="pp-sec" data-zerops-surface="project-stages">
-            <div className="pp-sec-head">
-              <h2 className="pp-sec-name">Stages</h2>
-              {moreStage === undefined ? null : (
-                <span className="pp-sec-acts">
-                  <AddStage onAdd={moreStage} />
-                </span>
-              )}
-            </div>
-            {roadEnvironments !== undefined ? (
-              roadEnvironments("stage", detailOf)
-            ) : stages.length > 0 ? (
-              stages.map((line) => (
-                <PageFlowPlace
-                  entry={entry}
-                  key={line.projectId ?? line.name}
-                  line={line}
-                  props={props}
-                />
-              ))
-            ) : read.stageSetUp === "creating" ? (
-              <div className="pp-place" data-zerops-place="stage" data-zerops-setting-up="true">
-                <PlainPanel held line={settingUpLine(NEW_STAGE, read.settingUp)} />
-              </div>
-            ) : (
-              <div className="pp-place" data-ghost="" data-zerops-place="stage">
-                <p className="pp-road-ghost-words">
-                  No stage yet: changes go straight to production.
-                </p>
-                {read.stageSetUp === undefined ? null : <AddStage onAdd={read.stageSetUp} />}
-              </div>
-            )}
-          </section>
+      <header className="pp-road-header" ref={detail.ref}>
+        <div className="pp-road-header-text">
+          <ProjectStateLine state={state} />
+          <h1 className="pp-road-title">
+            <GroupName entry={entry} />
+          </h1>
+          <ProjectChips automated={false} entry={entry} held props={props} />
         </div>
-        <section aria-label="Mates" className="pp-sec" data-zerops-surface="project-mates">
-          <div className="pp-sec-head">
-            <h2 className="pp-sec-name">Mates</h2>
+        <div className="pp-road-header-acts">
+          {onAddMate === undefined ? null : (
+            <Button
+              aria-describedby={addMateWhy === null ? undefined : `${group.groupId}-add-why`}
+              data-zerops-surface="add-mate"
+              disabled={addMateWhy !== null}
+              onClick={addMateWhy === null ? onAddMate : undefined}
+              variant="secondary"
+            >
+              <PlusIcon aria-hidden="true" />
+              Add Mate
+            </Button>
+          )}
+          <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
+          {onAddMate === undefined || addMateWhy === null ? null : (
+            <p className="pp-road-why" id={`${group.groupId}-add-why`}>
+              {addMateWhy}
+            </p>
+          )}
+        </div>
+      </header>
+      <NeedsYou needs={needs} read={needsRead} />
+      <div className="pp-main">
+        {developing ? (
+          <DevelopmentPanel
+            entry={entry}
+            props={props}
+            putLive={putLive}
+            reviews={needs.filter((need) => need.kind === "review").length}
+          />
+        ) : (
+          <div className="pp-places" data-zerops-surface="project-places">
+            <section aria-label="Production" className="pp-sec" data-zerops-place="production">
+              <div className="pp-sec-head">
+                <h2 className="pp-sec-name">Production</h2>
+              </div>
+              {props.renderProductionRun?.(entry)}
+              {roadEnvironments !== undefined ? (
+                roadEnvironments("production", detailOf, { releaseAbove })
+              ) : read.productionAbsent ? (
+                <div className="pp-place" data-ghost="">
+                  <p className="pp-road-ghost-words">Not released yet.</p>
+                  {putLive === undefined ? null : <PutLive onPut={putLive} />}
+                </div>
+              ) : (
+                <PageFlowPlace entry={entry} line={production} props={props} />
+              )}
+              <PutLiveWaits onPut={putLive} />
+            </section>
+            <section aria-label="Stages" className="pp-sec" data-zerops-surface="project-stages">
+              <div className="pp-sec-head">
+                <h2 className="pp-sec-name">Stages</h2>
+                {moreStage === undefined ? null : (
+                  <span className="pp-sec-acts">
+                    <AddStage onAdd={moreStage} />
+                  </span>
+                )}
+              </div>
+              {roadEnvironments !== undefined ? (
+                roadEnvironments("stage", detailOf, { releaseAbove })
+              ) : stages.length > 0 ? (
+                stages.map((line) => (
+                  <PageFlowPlace
+                    entry={entry}
+                    key={line.projectId ?? line.name}
+                    line={line}
+                    props={props}
+                  />
+                ))
+              ) : read.stageSetUp === "creating" ? (
+                <div className="pp-place" data-zerops-place="stage" data-zerops-setting-up="true">
+                  <PlainPanel held line={settingUpLine(NEW_STAGE, read.settingUp)} />
+                </div>
+              ) : (
+                <div className="pp-place" data-ghost="" data-zerops-place="stage">
+                  <p className="pp-road-ghost-words">
+                    No stage yet: changes go straight to production.
+                  </p>
+                  {read.stageSetUp === undefined ? null : <AddStage onAdd={read.stageSetUp} />}
+                </div>
+              )}
+            </section>
           </div>
-          {/* Add Mate is the head's: one door, one reason (they shared its id). */}
-          <CardMates all entry={entry} props={props} />
-        </section>
+        )}
+        <PageMates asking={asking} automation={automation} entry={entry} props={props} />
         <StopReads entry={entry} />
       </div>
       <ProjectPageSpend value={spend}>
-        <div className="ov-page-aside">{aside}</div>
+        <div className="ov-page-aside">
+          {changes?.(developing)}
+          {aside}
+        </div>
       </ProjectPageSpend>
     </div>
   );

@@ -8472,9 +8472,10 @@ label.tm-advanced-row:not([data-disabled]) {
   --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
+/* The page's head hugs its words: its state, its name, its people — no band above or below. */
 .pp-road-header {
   display: flex;
-  min-height: 124px;
+  grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -8744,11 +8745,208 @@ button.pp-road-env:hover {
 
 /* The project page: its head, Production, Stages and Mates in the wide column; its cards beside
    them where the page is wide enough, under them where it is not. */
+.ov-page[data-zerops-surface="project-page"] {
+  row-gap: 24px;
+}
+
 @container flow (min-width: 1040px) {
   .ov-page[data-zerops-surface="project-page"] {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
     column-gap: 32px;
   }
+}
+
+/* What needs the person, under the page's head and across both columns: one lifted run of
+   hairline rows, each its mark, what it is and its one action. */
+.pp-needs {
+  --ov-ground: var(--background);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 8%, transparent);
+  display: grid;
+  grid-column: 1 / -1;
+  min-width: 0;
+  justify-items: stretch;
+  gap: 4px;
+}
+
+.dark .pp-needs {
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+/* Rows read apart from the page's flow may all say nothing: then there is nothing to show. */
+.pp-needs:has(> .pp-needs-list:empty) {
+  display: none;
+}
+
+.pp-needs > .ov-show-all {
+  justify-self: start;
+}
+
+.pp-needs-list {
+  display: grid;
+  min-width: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+}
+
+.dark .pp-needs-list {
+  background: var(--ov-lift);
+}
+
+.pp-needs-list > li + li {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-need {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+}
+
+/* A Mate's lifted row brings its own room; the run it stands in is its lift. */
+.pp-need[data-zerops-need="ask"] {
+  display: block;
+  padding: 4px 6px;
+}
+
+.pp-need .ov-mate[data-lift] {
+  background: none;
+  box-shadow: none;
+}
+
+.pp-need-mark {
+  display: inline-flex;
+  width: 20px;
+  flex: none;
+  justify-content: center;
+}
+
+.pp-need-name {
+  width: 112px;
+  flex: none;
+  overflow: hidden;
+  font-size: var(--text-line);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-need-words {
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-line);
+}
+
+.pp-need-act {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+}
+
+/* What went wrong, said in the row's own line: its note, then its buttons at the row's end. */
+.pp-need-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.pp-need-body > .ov-panel[data-look="lift"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.pp-need-body > .ov-panel[data-look="lift"] > .ov-panel-note {
+  min-width: 0;
+  flex: 1 1 320px;
+  margin: 0;
+  padding: 0;
+  background: none;
+}
+
+/* A project still in development: its Mates' faces, its one next step and why, its one button. */
+.pp-dev {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: 20px;
+  padding: 32px;
+  border-radius: var(--radius-card);
+  background: var(--ov-lift);
+}
+
+.pp-dev-faces {
+  display: inline-flex;
+}
+
+.pp-dev-faces > * + * {
+  margin-left: -10px;
+}
+
+.pp-dev-text {
+  display: grid;
+  gap: 6px;
+}
+
+.pp-dev-title {
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 28px;
+}
+
+.pp-dev-why {
+  max-width: 60ch;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+  line-height: 22px;
+  text-wrap: pretty;
+}
+
+.pp-dev-act {
+  display: inline-flex;
+}
+
+/* The automated half of the page's Mates: its small heading, then its pool and its board. */
+.pp-team-part {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-team-part-head {
+  display: flex;
+  min-height: 28px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pp-team-part-end {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-cards-gauge[data-tone="attention"] > span {
+  background: var(--color-status-attention);
 }
 
 .pp-main {
@@ -15196,6 +15394,13 @@ button.rv-relrow:hover .rv-relrow-go {
 .pp-cards-card {
   gap: 16px;
   padding: 20px 24px 20px;
+}
+
+/* A card's groups: a heading hugs its rows, groups stand twice a row's gap apart. */
+.pp-cards-groups {
+  display: grid;
+  min-width: 0;
+  gap: 28px;
 }
 
 .pp-cards-group-name {

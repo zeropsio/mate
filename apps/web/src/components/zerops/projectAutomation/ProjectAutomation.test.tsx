@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 
 import {
+  BudgetNeedView,
   ProjectAutomationView,
   type AutomationControls,
   type BoardView,
@@ -617,29 +618,37 @@ describe("a project's Automation section", () => {
 
   it("says the month's budget is spent and tasks wait, with the way to raise it", () => {
     const admin = controls();
-    const root = rendered(
-      <ProjectAutomationView
-        admin={admin}
-        board={boardView({
-          spend: "$47.00 of $47 this month · spent",
-          gauge: { words: "$47.00 of $47 · October", share: 1 },
-        })}
-        look="part"
-        onOpenMate={vi.fn()}
-        pool={[NOVA]}
-        sources={{ rows: [], reading: false, withheld: false }}
-        workingOf={() => false}
-      />,
-    );
-    const status = root.find((node) => node.props.role === "status");
-    expect(words(status)).toBe(
-      "October’s $47 is spent: tasks wait for a higher budget or the next month.",
-    );
-    const raise = root.find((node) => node.type === "button" && words(node) === "Raise the budget");
+    const spent = { words: "$47.00 of $47 · October", share: 1 };
+    const view = (look: "card" | "part") =>
+      rendered(
+        <ProjectAutomationView
+          admin={admin}
+          board={boardView({ spend: "$47.00 of $47 this month · spent", gauge: spent })}
+          look={look}
+          onOpenMate={vi.fn()}
+          pool={[NOVA]}
+          sources={{ rows: [], reading: false, withheld: false }}
+          workingOf={() => false}
+        />,
+      );
+    const said = "October’s $47 is spent: tasks wait for a higher budget or the next month.";
+    const card = view("card");
+    expect(words(card.find((node) => node.props.role === "status"))).toBe(said);
+    const raise = card.find((node) => node.type === "button" && words(node) === "Raise the budget");
     act(() => {
       raise.props.onClick();
     });
-    expect(admin.onOpenSettings).toHaveBeenCalled();
+    expect(admin.onOpenSettings).toHaveBeenCalledTimes(1);
+    // On the project page it is asked above, among what needs the person: said there once.
+    expect(view("part").findAll((node) => node.props.role === "status")).toHaveLength(0);
+    const onRaise = vi.fn();
+    const need = rendered(<BudgetNeedView gauge={spent} onRaise={onRaise} />);
+    expect(words(need)).toContain(said);
+    act(() => {
+      need.find((node) => node.type === "button").props.onClick();
+    });
+    expect(onRaise).toHaveBeenCalled();
+    expect(rendered(<BudgetNeedView gauge={{ ...spent, share: 0.9 }} />).children).toHaveLength(0);
   });
 
   it("offers no Stop of a task to anyone but an Owner or Admin", () => {

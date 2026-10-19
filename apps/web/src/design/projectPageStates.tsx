@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 
 import { MateFace } from "~/components/zerops/primitives";
 import {
+  BudgetNeedView,
   ProjectAutomationView,
   type AutomationControls,
   type PoolMate,
@@ -278,6 +279,7 @@ const automation = (input: {
 }) => (
   <ProjectAutomationView
     admin={ADMIN}
+    look="part"
     board={{
       read: {
         state: "known",
@@ -298,6 +300,7 @@ const automation = (input: {
 const NO_AUTOMATION = (
   <ProjectAutomationView
     admin={ADMIN}
+    look="part"
     onOpenMate={nothing}
     pool={[]}
     sources={{ rows: [], reading: false, withheld: false }}
@@ -324,7 +327,10 @@ const access = (rows: ReadonlyArray<readonly [string, "production" | "stage", bo
 
 /** What each state's page holds besides its places and Mates. */
 export interface PageCards {
-  readonly changes: ReactNode;
+  /** What needs the person that its page reads apart: the automation budget, spent. */
+  readonly needs?: ReactNode;
+  /** Its page's Changes, quiet while it is in development and has none. */
+  readonly changes: (developing: boolean) => ReactNode;
   readonly automation: ReactNode;
   readonly spend: ReactNode;
   readonly access: ReactNode;
@@ -333,16 +339,20 @@ export interface PageCards {
 
 const people = <ProjectAccessChips card label="People" onAdd={nothing} view={PEOPLE} />;
 
-const changes = (input: Parameters<typeof projectChangeGroups>[0], release: boolean): ReactNode => (
-  <ProjectChangesCard
-    groups={projectChangeGroups(input)}
-    mateOf={mateOf}
-    onOpen={nothing}
-    onOpenRelease={nothing}
-    {...(release ? { onRelease: nothing } : {})}
-    read={{ state: "known" }}
-  />
-);
+const changes =
+  (input: Parameters<typeof projectChangeGroups>[0]) =>
+  (developing: boolean): ReactNode => (
+    <ProjectChangesCard
+      cap={3}
+      groups={projectChangeGroups(input)}
+      mateOf={mateOf}
+      onOpen={nothing}
+      onOpenRelease={nothing}
+      quiet={developing}
+      read={{ state: "known" }}
+      reviewsAbove
+    />
+  );
 
 // S4: twelve released across three releases, six merged since, two older releases folded.
 const S4_RELEASED = [
@@ -401,10 +411,7 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
   [
     "s1",
     {
-      changes: changes(
-        { open: [], merged: [], releases: [], stage: undefined, production: false },
-        false,
-      ),
+      changes: changes({ open: [], merged: [], releases: [], stage: undefined, production: false }),
       automation: NO_AUTOMATION,
       spend: (
         <ProjectSpendCardView
@@ -421,10 +428,13 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
   [
     "s2",
     {
-      changes: changes(
-        { open: S2_OPEN, merged: [], releases: [], stage: undefined, production: false },
-        false,
-      ),
+      changes: changes({
+        open: S2_OPEN,
+        merged: [],
+        releases: [],
+        stage: undefined,
+        production: false,
+      }),
       automation: automation({
         ids: ["s2-kip", "s2-tam"],
         working: ["s2-kip"],
@@ -456,25 +466,22 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
   [
     "s3",
     {
-      changes: changes(
-        {
-          open: S3_OPEN,
-          merged: [
-            merged("Gift message on orders", "s3-bo", 50),
-            merged("Prices per 100 g", "s3-ada", 4 * 60),
-            merged("Newsletter sign-up", "s3-bo", 5 * DAY),
-            merged("Tea origins on each page", "s3-ada", 5 * DAY + 90),
-            merged("The shop, first cut", "s3-bo", 12 * DAY),
-          ],
-          releases: [
-            { tag: "v0.4.1", taggedAt: ago(4 * DAY), live: true },
-            { tag: "v0.4.0", taggedAt: ago(11 * DAY), live: false },
-          ],
-          stage: undefined,
-          production: true,
-        },
-        true,
-      ),
+      changes: changes({
+        open: S3_OPEN,
+        merged: [
+          merged("Gift message on orders", "s3-bo", 50),
+          merged("Prices per 100 g", "s3-ada", 4 * 60),
+          merged("Newsletter sign-up", "s3-bo", 5 * DAY),
+          merged("Tea origins on each page", "s3-ada", 5 * DAY + 90),
+          merged("The shop, first cut", "s3-bo", 12 * DAY),
+        ],
+        releases: [
+          { tag: "v0.4.1", taggedAt: ago(4 * DAY), live: true },
+          { tag: "v0.4.0", taggedAt: ago(11 * DAY), live: false },
+        ],
+        stage: undefined,
+        production: true,
+      }),
       automation: NO_AUTOMATION,
       spend: (
         <ProjectSpendCardView
@@ -494,22 +501,19 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
   [
     "s4",
     {
-      changes: changes(
-        {
-          open: S4_OPEN,
-          merged: [...S4_READY, ...S4_RELEASED],
-          releases: [
-            { tag: "v2.4.0", taggedAt: ago(2 * DAY), live: true },
-            { tag: "v2.3.0", taggedAt: ago(8 * DAY), live: false },
-            { tag: "v2.2.0", taggedAt: ago(15 * DAY), live: false },
-            { tag: "v2.1.0", taggedAt: ago(22 * DAY), live: false },
-            { tag: "v2.0.0", taggedAt: ago(29 * DAY), live: false },
-          ],
-          stage: undefined,
-          production: true,
-        },
-        true,
-      ),
+      changes: changes({
+        open: S4_OPEN,
+        merged: [...S4_READY, ...S4_RELEASED],
+        releases: [
+          { tag: "v2.4.0", taggedAt: ago(2 * DAY), live: true },
+          { tag: "v2.3.0", taggedAt: ago(8 * DAY), live: false },
+          { tag: "v2.2.0", taggedAt: ago(15 * DAY), live: false },
+          { tag: "v2.1.0", taggedAt: ago(22 * DAY), live: false },
+          { tag: "v2.0.0", taggedAt: ago(29 * DAY), live: false },
+        ],
+        stage: undefined,
+        production: true,
+      }),
       automation: automation({
         ids: ["s4-kip", "s4-tam", "s4-rho"],
         working: ["s4-kip", "s4-tam"],
@@ -538,22 +542,19 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
   [
     "s5",
     {
-      changes: changes(
-        {
-          open: S5_OPEN,
-          merged: [
-            merged("Post scheduling", "s5-nell", 3 * 60),
-            merged("Author pages", "s5-esme", 3 * DAY),
-          ],
-          releases: [
-            { tag: "v1.2.9", taggedAt: ago(2 * DAY), live: true },
-            { tag: "v1.2.8", taggedAt: ago(9 * DAY), live: false },
-          ],
-          stage: undefined,
-          production: true,
-        },
-        false,
-      ),
+      changes: changes({
+        open: S5_OPEN,
+        merged: [
+          merged("Post scheduling", "s5-nell", 3 * 60),
+          merged("Author pages", "s5-esme", 3 * DAY),
+        ],
+        releases: [
+          { tag: "v1.2.9", taggedAt: ago(2 * DAY), live: true },
+          { tag: "v1.2.8", taggedAt: ago(9 * DAY), live: false },
+        ],
+        stage: undefined,
+        production: true,
+      }),
       automation: automation({
         ids: ["s5-kip", "s5-tam"],
         working: [],
@@ -568,6 +569,9 @@ export const PAGE_CARDS: ReadonlyMap<string, PageCards> = new Map<string, PageCa
         gauge: { words: "$47.00 of $47 · October", share: 1 },
         spend: "$47.00 of $47 this month · spent",
       }),
+      needs: (
+        <BudgetNeedView gauge={{ words: "$47.00 of $47 · October", share: 1 }} onRaise={nothing} />
+      ),
       spend: (
         <ProjectSpendCardView
           state={spend(

@@ -62,6 +62,11 @@ export interface RoadEnvironmentFacts {
   /** A stage that runs nothing: where its first deploy stands. */
   readonly firstDeployOf?: ((projectId: string) => FirstDeploy | undefined) | undefined;
   readonly release: ReleaseOffer;
+  /**
+   * The release production waits for is asked above, in what the page says needs the person:
+   * production's row says no second "waiting for production" with its own Review.
+   */
+  readonly releaseAbove?: boolean | undefined;
   /** Adds a tier: Put it live for production, Add stage for a stage. */
   readonly onAdd: (tier: GroupEnvironmentTier) => void;
   /** Its place's block under an environment's row, by its project (`RoadPlace`). */
@@ -241,7 +246,8 @@ export function RoadEnvironmentRows({
                     />
                   </li>
                 ) : null}
-                {slot.note === undefined ? null : (
+                {slot.note === undefined ||
+                (slot.note.review && facts.releaseAbove === true) ? null : (
                   <li className="pp-road-env" data-quiet="">
                     <span className="pp-road-env-line">{slot.note.text}</span>
                     {slot.note.review ? (

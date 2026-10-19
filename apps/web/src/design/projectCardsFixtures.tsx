@@ -280,36 +280,46 @@ const REPOS = [
   },
 ];
 
-export function TeaShopCards() {
+/** Tea Shop's automated Mates: a card of its own, or the automated half of its page's Mates. */
+export function TeaShopAutomation({ look = "card" }: { readonly look?: "card" | "part" }) {
+  return (
+    <ProjectAutomationView
+      admin={ADMIN}
+      board={{
+        read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop") },
+        spend: "$21.40 of $40 this month",
+        gauge: { words: "$21.40 of $40 · October", share: 0.535 },
+        onReadAgain: nothing,
+        onOpen: nothing,
+      }}
+      look={look}
+      onOpenMate={nothing}
+      pool={POOL}
+      sources={{ rows: TEASHOP_SOURCES, reading: false, withheld: false }}
+      workingOf={(projectId) => projectId === "p-odo"}
+    />
+  );
+}
+
+/** Tea Shop's changes: a card, or its page's capped section with reviews asked above. */
+export function TeaShopChanges({ onPage = false }: { readonly onPage?: boolean }) {
+  return (
+    <ProjectChangesCard
+      groups={RUNNING_GROUPS}
+      mateOf={mateOf}
+      onOpen={nothing}
+      onOpenRelease={nothing}
+      read={{ state: "known" }}
+      {...(onPage ? { cap: 3, reviewsAbove: true } : { onRelease: nothing })}
+    />
+  );
+}
+
+/** Tea Shop's page cards under its Mates: access, people and the mirror. */
+export function TeaShopAside() {
   return (
     <ZeropsGroupPane
       access={<ProjectAccessCardView model={TEASHOP_ACCESS} onManage={nothing} />}
-      automation={
-        <ProjectAutomationView
-          admin={ADMIN}
-          board={{
-            read: { state: "known", board: boardOf(TASKS, NOW, "tea-shop") },
-            spend: "$21.40 of $40 this month",
-            gauge: { words: "$21.40 of $40 · October", share: 0.535 },
-            onReadAgain: nothing,
-            onOpen: nothing,
-          }}
-          onOpenMate={nothing}
-          pool={POOL}
-          sources={{ rows: TEASHOP_SOURCES, reading: false, withheld: false }}
-          workingOf={(projectId) => projectId === "p-odo"}
-        />
-      }
-      changes={
-        <ProjectChangesCard
-          groups={RUNNING_GROUPS}
-          mateOf={mateOf}
-          onOpen={nothing}
-          onOpenRelease={nothing}
-          onRelease={nothing}
-          read={{ state: "known" }}
-        />
-      }
       finishing={false}
       onFinish={nothing}
       people={
@@ -320,54 +330,65 @@ export function TeaShopCards() {
   );
 }
 
+/** Every card of Tea Shop's page, one under another. */
+export function TeaShopCards() {
+  return (
+    <div className="grid gap-4">
+      <TeaShopChanges />
+      <TeaShopAutomation />
+      <TeaShopAside />
+    </div>
+  );
+}
+
 export function NewProjectCards() {
   return (
-    <ZeropsGroupPane
-      access={<ProjectAccessCardView model={{ state: "ready", rows: [], offerDomain: false }} />}
-      automation={
-        <ProjectAutomationView
-          onOpenMate={nothing}
-          pool={[]}
-          sources={{ rows: [], reading: false, withheld: false }}
-          workingOf={() => false}
-        />
-      }
-      changes={
-        <ProjectChangesCard
-          emptyAction={{
-            words: "No repository is declared for this project’s services yet.",
-            label: "Set up an environment",
-            onPress: nothing,
-          }}
-          groups={EMPTY_GROUPS}
-          mateOf={mateOf}
-          onOpen={nothing}
-          read={{ state: "known" }}
-        />
-      }
-      finishing={false}
-      onFinish={nothing}
-      people={<ProjectAccessChips card label="People" view={PEOPLE} />}
-      repos={[]}
-    />
+    <div className="grid gap-4">
+      <ProjectChangesCard
+        emptyAction={{
+          words: "No repository is declared for this project’s services yet.",
+          label: "Set up an environment",
+          onPress: nothing,
+        }}
+        groups={EMPTY_GROUPS}
+        mateOf={mateOf}
+        onOpen={nothing}
+        read={{ state: "known" }}
+      />
+      <ProjectAutomationView
+        onOpenMate={nothing}
+        pool={[]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />
+      <ZeropsGroupPane
+        access={<ProjectAccessCardView model={{ state: "ready", rows: [], offerDomain: false }} />}
+        finishing={false}
+        onFinish={nothing}
+        people={<ProjectAccessChips card label="People" view={PEOPLE} />}
+        repos={[]}
+      />
+    </div>
   );
 }
 
 export function ReadingCards() {
   return (
-    <ZeropsGroupPane
-      access={<ProjectAccessCardView model={{ state: "reading", rows: [], offerDomain: false }} />}
-      changes={
-        <ProjectChangesCard
-          groups={EMPTY_GROUPS}
-          mateOf={mateOf}
-          onOpen={nothing}
-          read={{ state: "reading" }}
-        />
-      }
-      finishing={false}
-      onFinish={nothing}
-      people={<ProjectAccessChips card label="People" view={{ kind: "reading" }} />}
-    />
+    <div className="grid gap-4">
+      <ProjectChangesCard
+        groups={EMPTY_GROUPS}
+        mateOf={mateOf}
+        onOpen={nothing}
+        read={{ state: "reading" }}
+      />
+      <ZeropsGroupPane
+        access={
+          <ProjectAccessCardView model={{ state: "reading", rows: [], offerDomain: false }} />
+        }
+        finishing={false}
+        onFinish={nothing}
+        people={<ProjectAccessChips card label="People" view={{ kind: "reading" }} />}
+      />
+    </div>
   );
 }
