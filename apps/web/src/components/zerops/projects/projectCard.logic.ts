@@ -778,6 +778,26 @@ export function panelAddresses(input: {
   };
 }
 
+/**
+ * Every address a place's block on its project page links: its own domains that answer, then each
+ * service's zerops.app address. Its listing (`PlaceLine.addresses`) holds only the zerops.app ones,
+ * so a production reached only on its own domains drew no link; its own come from the place's
+ * addresses as read, the Access card's and the place page's.
+ */
+export function blockAddresses(input: {
+  /** The place's listed doors (`PlaceLine.addresses`). */
+  readonly listed: ReadonlyArray<GroupFlowAddress>;
+  /** The place's addresses as read; `undefined` outside an account. */
+  readonly place: PlaceAddresses | undefined;
+}): ReadonlyArray<{ readonly host: string; readonly url: string }> {
+  const own =
+    input.place?.state === "ready"
+      ? input.place.domains.filter((domain) => domain.face === "live").map((domain) => domain.url)
+      : [];
+  const urls = [...new Set([...own, ...input.listed.map((address) => address.url)])];
+  return urls.map((url) => ({ host: siteOf(url) ?? url, url }));
+}
+
 /** The people on a project, once each, in order; drawn only when more than one. */
 export function cardPeople<P extends { readonly userId: string }>(
   owners: ReadonlyArray<P | null | undefined>,

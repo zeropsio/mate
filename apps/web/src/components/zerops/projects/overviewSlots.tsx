@@ -407,11 +407,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       </>
     ) : null;
     if (look === "detail") {
-      // Every address the place answers at, as its flow lists them.
-      const addresses = line.addresses.map((address) => ({
-        host: hostOf(address.url),
-        url: address.url,
-      }));
       return (
         <RoadPlace
           actions={line.trouble ? actions : null}
@@ -444,7 +439,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               </Menu>
             )
           }
-          model={{ line, addresses, note: line.trouble ? note : undefined }}
+          model={{ line, note: line.trouble ? note : undefined }}
           tiles={<PlaceServiceTiles projectId={line.projectId} />}
         />
       );
@@ -598,14 +593,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
 
   return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople, renderActivity };
 }
-
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
 
 /** A working Mate's clock, a step a second (R6). */
 function CardClock({ since }: { readonly since: string }) {
