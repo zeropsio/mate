@@ -158,6 +158,18 @@ describe("HQ's one door for tasks from every source", () => {
               mate_project_id = ${state === "working" ? "P_ROBOT" : null},
               assigned_at = ${state === "working" ? core.sql`now()` : null}
               WHERE id::text = ${taskId}`;
+          // Its change, closed: its work settled.
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea" },
+          });
+          yield* core.sql`UPDATE hq_change SET state = 'closed' WHERE repo = 'web' AND number = 1`;
+          yield* core.sql`UPDATE hq_task SET change_repo = 'web', change_number = 1
+            WHERE id::text = ${taskId}`;
           // Live: its Mate hears it.
           assert.isUndefined(yield* answer());
           yield* moved("done");
@@ -176,18 +188,41 @@ describe("HQ's one door for tasks from every source", () => {
           assert.isUndefined(yield* answer());
           // Done while its change waits for review: a reply reaches its Mate there, never this.
           yield* moved("working");
-          yield* core.call("POST", "/api/mate/repos", {
-            headers: core.robot.auth,
-            body: { name: "web" },
-          });
-          yield* core.call("POST", "/api/mate/changes", {
-            headers: core.robot.auth,
-            body: { repo: "web", title: "Hotter tea" },
-          });
-          yield* core.sql`UPDATE hq_task SET change_repo = 'web', change_number = 1
-            WHERE id::text = ${taskId}`;
+          yield* core.sql`UPDATE hq_change SET state = 'open' WHERE repo = 'web' AND number = 1`;
           yield* moved("done");
           assert.isUndefined(yield* answer());
+        }),
+    );
+
+    it.effect(
+      "a reply on a task done without a change reaches its Mate and wakes it, as a person's message in its conversation does",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* automatedPool();
+          const key = "discord:1700000000000000001";
+          const taskId = queuedId(yield* ask(core, key, "d-1", "Show me the address."));
+          yield* taskFrame(core, taskId);
+          const word = (report: Record<string, unknown>) =>
+            core.robot.link.send({ type: "task-state", report: { taskId, ...report } });
+          yield* word({ state: "accepted", conversationId: "conversation-1" });
+          yield* word({ state: "done", answer: "It runs at https://appstage.example." });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state FROM hq_task",
+            (rows) => rows[0]?.["state"] === "done",
+          );
+          const reply = {
+            id: "m-1",
+            from: "reply",
+            author: "Nova",
+            text: "And the dev one?",
+          } as const;
+          assert.isTrue(yield* core.taskIntake.message(key, reply));
+          assert.deepStrictEqual(yield* core.robot.link.take("task-message"), {
+            taskId,
+            message: reply,
+          });
+          assert.isUndefined(yield* core.taskIntake.answerEnded(key, Effect.succeed(true)));
         }),
     );
 

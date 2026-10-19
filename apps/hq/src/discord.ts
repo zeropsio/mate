@@ -19,8 +19,9 @@
  * a public thread is opened on that answer, and the task is asked of HQ (`TaskIntake.enqueue`)
  * keyed by the thread (`discord:<thread id>`): the thread is its conversation. `/mate reply` in that
  * thread tells the task (`TaskIntake.message`), its words answered in the thread for all. The task's status is one message of the bot's in
- * its thread, posted the first time and edited after (`hq_discord_status`); a thread Discord no
- * longer has stops its task — HQ hears of no deletion otherwise, without the gateway.
+ * its thread, posted the first time and edited after (`hq_discord_status`); each ending its Mate
+ * gave words for is a new message under it. A thread Discord no longer has stops its task — HQ
+ * hears of no deletion otherwise, without the gateway.
  *
  * @module discord
  */
@@ -58,10 +59,12 @@ import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import {
   BUDGET_WAIT,
+  type TaskAnswer,
   type TaskOnSource,
   type TaskStatus,
   TaskIntake,
   TaskSourceChannels,
+  cutWords,
 } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -150,7 +153,7 @@ const SAY = {
     "This channel takes no tasks. An admin of the organization picks a channel for an application in Mate's settings.",
   inThread: "This is a task's thread: tell its task something with /mate reply.",
   noTask:
-    "This thread has no task to tell. Start one with /mate task in the application's channel.",
+    "This thread has no task taking replies now. Start one with /mate task in the application's channel.",
   noText: "Say what to do: /mate task text:<what to do>.",
   server: "Ask Mate in a channel of a server.",
   unknown: "Mate knows /mate task and /mate reply.",
@@ -312,6 +315,19 @@ export const statusWords = (status: TaskStatus): string => {
     }
   })();
   return words.length <= MESSAGE_MAX ? words : `${words.slice(0, MESSAGE_MAX - 1)}…`;
+};
+
+/**
+ * A task's ending as its thread reads it, a message of its own: its Mate's words, as a reply in
+ * the thread is (`Nova: …`), and the commit its change took this time.
+ */
+export const answerWords = (answer: TaskAnswer): string => {
+  const lead = `${answer.mate}: `;
+  const pushed =
+    answer.pushed === undefined
+      ? ""
+      : `\n\nNew commit on change #${String(answer.pushed.number)}: ${answer.pushed.link}`;
+  return `${lead}${cutWords(answer.words, MESSAGE_MAX - lead.length - pushed.length)}${pushed}`;
 };
 
 export class Discord extends Context.Service<
@@ -513,11 +529,36 @@ export const discordLayer = (options: {
           ),
         );
 
+      /** A task's ending, a new message in its thread: the status line's edit tells nobody. */
+      const answer = (task: TaskOnSource, said: TaskAnswer) =>
+        Effect.gen(function* () {
+          if (!task.sourceKey.startsWith(KEY_PREFIX)) return;
+          const row = yield* connection;
+          const token = row === undefined ? undefined : botToken(row);
+          if (token === undefined) return;
+          const posted = yield* api.post(
+            token,
+            task.sourceKey.slice(KEY_PREFIX.length),
+            answerWords(said),
+          );
+          if (posted.value === undefined)
+            yield* Effect.logInfo("discord answer not posted", {
+              taskId: task.taskId,
+              status: posted.status,
+            });
+        }).pipe(
+          statusLine.withPermits(1),
+          Effect.catch((error) =>
+            Effect.logInfo("discord answer not posted", { taskId: task.taskId, why: error._tag }),
+          ),
+        );
+
       yield* channels.register({
         kind: "discord-thread",
         // The interaction's own answer ("On it: …") is the acknowledgement.
         acknowledge: () => Effect.void,
         status,
+        answer,
       });
 
       /** A `/mate task`: said, its thread opened on what was said, and asked of HQ. */

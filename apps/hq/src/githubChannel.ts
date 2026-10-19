@@ -9,7 +9,9 @@
  *   `status_ref`): its place in the queue, the Mate that picked it up, the question it waits on
  *   (and the label `mate:blocked` while it waits), the change it opened, how it ended. A comment
  *   gone from the issue is made again;
- * - once, a day into a wait, a new comment asking again (an edit tells nobody).
+ * - once, a day into a wait, a new comment asking again (an edit tells nobody);
+ * - each ending its Mate gave words for, a new comment with them (`answerComment`): the status
+ *   comment stays the one place that says how the task stands.
  *
  * Every comment HQ makes carries `HQ_MARK`, so its own comments are never taken for a person's. A
  * call GitHub refuses is tried once more, then logged; it never moves the task.
@@ -27,9 +29,11 @@ import { remoteIdentity } from "./gitTransport.ts";
 import { Remotes } from "./repoRemotes.ts";
 import {
   BUDGET_WAIT,
+  type TaskAnswer,
   type TaskOnSource,
   TaskSourceChannels,
   type TaskStatus,
+  cutWords,
   taskEndWords,
 } from "./taskSources.ts";
 
@@ -95,6 +99,23 @@ export const statusWords = (status: TaskStatus): string => {
   }
 };
 
+/** How much of a Mate's words an issue's comment holds: GitHub takes 65,536 characters. */
+const ANSWER_MAX = 60_000;
+
+/**
+ * A task's ending, a comment of its own: its Mate's words, pinging nobody and linking no other
+ * issue, and the commit its change took this time.
+ */
+export const answerComment = (answer: TaskAnswer): string => {
+  const pushed =
+    answer.pushed === undefined
+      ? ""
+      : answer.pushed.pullRequest === undefined
+        ? `\n\nNew commit on its change: ${answer.pushed.link}`
+        : `\n\nNew commit on #${String(answer.pushed.pullRequest.number)}.`;
+  return `**${answer.mate}:** ${quieted(cutWords(answer.words, ANSWER_MAX))}${pushed}`;
+};
+
 /** A comment's body as HQ posts it: its words, then its mark. */
 export const marked = (words: string) => `${words}\n\n${HQ_MARK}`;
 
@@ -134,6 +155,20 @@ export const githubChannelLayer = Layer.effectDiscard(
             Effect.as(Effect.logWarning(what, { taskId: task.taskId, cause }), undefined),
           ),
         );
+
+    /** A new comment of HQ's on the task's issue, tried once more where GitHub refused it. */
+    const newComment = (task: TaskOnSource, words: string) =>
+      Effect.gen(function* () {
+        const issue = yield* issueOf(task);
+        if (issue === undefined) return;
+        yield* github.comment(issue.remote, issue.token, issue.number, marked(words)).pipe(
+          Effect.filterOrFail(
+            (answer) => answer.status === 201,
+            (answer) => ({ _tag: "GithubRefused", status: answer.status }) as const,
+          ),
+          Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
+        );
+      });
 
     yield* channels.register({
       kind: "github-issue",
@@ -192,46 +227,22 @@ export const githubChannelLayer = Layer.effectDiscard(
           return made.id === undefined ? undefined : String(made.id);
         }).pipe(quietly("a task's status not said", task)),
       remind: (task, question) =>
-        Effect.gen(function* () {
-          const issue = yield* issueOf(task);
-          if (issue === undefined) return;
-          yield* github
-            .comment(
-              issue.remote,
-              issue.token,
-              issue.number,
-              marked(
-                `Still waiting for an answer: ${quieted(question)}\n\nAnswer in a comment here.`,
-              ),
-            )
-            .pipe(
-              Effect.filterOrFail(
-                (answer) => answer.status === 201,
-                (answer) => ({ _tag: "GithubRefused", status: answer.status }) as const,
-              ),
-              Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
-            );
-        }).pipe(quietly("a task's reminder not posted", task), Effect.asVoid),
+        newComment(
+          task,
+          `Still waiting for an answer: ${quieted(question)}\n\nAnswer in a comment here.`,
+        ).pipe(quietly("a task's reminder not posted", task)),
       answerEnd: (task, end) =>
         Effect.gen(function* () {
-          const issue = yield* issueOf(task);
-          if (issue === undefined) return;
           const [intake] = yield* sql<{ readonly label: string }>`
             SELECT label FROM hq_intake WHERE app_id::text = ${task.appId}`;
           const again =
             intake === undefined
               ? "Open a new issue"
               : `Open a new issue labelled \`${intake.label}\``;
-          yield* github
-            .comment(issue.remote, issue.token, issue.number, marked(taskEndWords(end, again)))
-            .pipe(
-              Effect.filterOrFail(
-                (answer) => answer.status === 201,
-                (answer) => ({ _tag: "GithubRefused", status: answer.status }) as const,
-              ),
-              Effect.retry({ schedule: Schedule.spaced(Duration.seconds(1)), times: 1 }),
-            );
-        }).pipe(quietly("a task's end not answered", task), Effect.asVoid),
+          yield* newComment(task, taskEndWords(end, again));
+        }).pipe(quietly("a task's end not answered", task)),
+      answer: (task, answer) =>
+        newComment(task, answerComment(answer)).pipe(quietly("a task's answer not posted", task)),
     });
   }),
 );

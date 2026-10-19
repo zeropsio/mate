@@ -61,8 +61,8 @@ export class TaskIntake extends Context.Service<
     /** People stopped the key's live task (issue closed, label removed, thread deleted). */
     readonly stop: (sourceKey: string, reason: string) => Effect.Effect<void>;
     /**
-     * A reply on the key after its task ended (done with no change waiting for review, failed,
-     * stopped or dropped), from a person `allowed` says may steer it: how it ended, once per end —
+     * A reply on the key after its task ended (done with its work settled, failed, stopped or
+     * dropped), from a person `allowed` says may steer it: how it ended, once per end —
      * none for a second reply, while a task of the key is live or hears, or HQ cannot tell now. A
      * follow-up that woke it, and a new end, may be answered again.
      */
@@ -141,6 +141,36 @@ export type TaskStatus =
   | { readonly kind: "failed"; readonly mate: string | null; readonly why: string }
   | { readonly kind: "stopped"; readonly mate: string | null; readonly why: string };
 
+/**
+ * What one ending of a task tells where it came from, beside its status line: its Mate's closing
+ * words, and, ending after a follow-up, the new commit its change took this time.
+ */
+export interface TaskAnswer {
+  readonly mate: string;
+  /** Its Mate's closing words (`MateTaskReport.answer`), cleaned. */
+  readonly words: string;
+  /** Its change took a commit since the task last ended. */
+  readonly pushed?: {
+    readonly number: number;
+    readonly link: string;
+    readonly pullRequest?: TaskPullRequest;
+  };
+}
+
+/**
+ * A Mate's words cut to `max` characters, on a line's end where one is near, an open code block
+ * closed and the cut marked: they still read as the Mate wrote them.
+ */
+export const cutWords = (words: string, max: number): string => {
+  if (words.length <= max) return words;
+  const room = Math.max(0, max - "\n```\n…".length);
+  const head = words.slice(0, room);
+  const lineEnd = head.lastIndexOf("\n");
+  const cut = (lineEnd > room / 2 ? head.slice(0, lineEnd) : head).trimEnd();
+  const fences = cut.match(/^\s*```/gmu)?.length ?? 0;
+  return `${cut}${fences % 2 === 1 ? "\n```" : ""}\n…`;
+};
+
 /** The pull request a task's change is mirrored to on GitHub, as its status line names it. */
 export interface TaskPullRequest {
   readonly number: number;
@@ -181,6 +211,12 @@ export interface TaskSourceChannel {
    * source says nothing more than its status line.
    */
   readonly answerEnd?: (task: TaskOnSource, end: TaskEnd) => Effect.Effect<void>;
+  /**
+   * Once per ending its Mate gave words for: a new message on the source with them (an edit tells
+   * nobody, and a follow-up's ending leaves the status line as it was). Absent: the source says
+   * nothing more than its status line.
+   */
+  readonly answer?: (task: TaskOnSource, answer: TaskAnswer) => Effect.Effect<void>;
 }
 
 /** The registered channels, by source kind: each source's layer registers its own. */

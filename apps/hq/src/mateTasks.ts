@@ -92,6 +92,7 @@ import { DEFAULT_TASK_LIMITS, THIS_MONTH, budgetSpent, readTaskLimits } from "./
 import {
   BUDGET_SPENT,
   NO_ANSWER,
+  type TaskAnswer,
   type TaskOnSource,
   type TaskPullRequest,
   TaskSourceChannels,
@@ -164,6 +165,8 @@ export interface TaskFacts {
   readonly link: string | null;
   /** Its change's address in Mate, once it has one. */
   readonly change: string | null;
+  /** Its change's number in its repository, once it has one. */
+  readonly changeNumber: number | null;
   /** Its change asks for review: its Mate described its head. A draft does not yet. */
   readonly changeReady: boolean;
   /** Its change was merged. */
@@ -224,15 +227,21 @@ interface TaskRow {
 }
 
 /**
- * Whether the task's Mate hears what is said of it now: on it, or done with it while its change
- * waits for review (a review comment, or a reply where the task came from, is for the Mate that
- * made the change).
+ * Whether the task is done and its work unsettled: it opened no change, or its change waits for
+ * review. A person's message on it, in its conversation or where it came from, wakes it again.
+ */
+export const doneUnsettled = (sql: SqlClient.SqlClient, task: Statement.Fragment) => sql`(
+  ${task}.state = 'done' AND (${task}.change_number IS NULL
+    OR EXISTS (SELECT 1 FROM hq_change c
+      WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
+        AND c.number = ${task}.change_number AND c.state = 'open')))`;
+
+/**
+ * Whether the task's Mate hears what is said of it now: on it, or done with its work unsettled (a
+ * review comment, or a reply where the task came from, is for the Mate that did the task).
  */
 export const taskHears = (sql: SqlClient.SqlClient, task: Statement.Fragment) => sql`(
-  ${task}.state IN ('working', 'waiting')
-  OR (${task}.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
-    WHERE c.app_id = ${task}.app_id AND c.repo = ${task}.change_repo
-      AND c.number = ${task}.change_number AND c.state = 'open')))`;
+  ${task}.state IN ('working', 'waiting') OR ${doneUnsettled(sql, task)})`;
 
 /** Whether what is said of the task is kept for it: its Mate hears it now, or once it takes it. */
 export const taskListens = (sql: SqlClient.SqlClient, task: Statement.Fragment) =>
@@ -411,8 +420,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         );
 
       /**
-       * Whether the task's Mate hears what is said of it now: on it, or done with it while its
-       * change waits for review (a review comment is for the Mate that made the change).
+       * Whether the task's Mate hears what is said of it now: on it, or done with its work
+       * unsettled (a review comment is for the Mate that made the change).
        */
       const hears = (task: Statement.Fragment) => taskHears(sql, task);
 
@@ -448,8 +457,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const endedAt = (task: Statement.Fragment) =>
         sql`COALESCE(${task}.ended_at, ${task}.updated_at)`;
       /**
-       * A follow-up on a task the Mate is done with, its change waiting for review: something said
-       * of it since it ended — not told yet, or told within `followUpWithin` (`follow_up_at`) with no
+       * A follow-up on a task the Mate is done with, its work unsettled: something said of it
+       * since it ended — not told yet, or told within `followUpWithin` (`follow_up_at`) with no
        * word that the Mate is back on it. The Mate owes it: no new task until it is back on that
        * one, or the time passed with no word.
        */
@@ -457,13 +466,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         ${pendingOn(task)} AND (${untold(task)}
           OR ${task}.follow_up_at > now() - make_interval(secs => ${followUpSecs})))`;
       /**
-       * Something said of a task the Mate is done with, its change waiting for review, since it
-       * ended: told or not, what a link opening tells it, however long its Mate was away.
+       * Something said of a task the Mate is done with, its work unsettled, since it ended: told
+       * or not, what a link opening tells it, however long its Mate was away.
        */
       const pendingOn = (task: Statement.Fragment) => sql`(
-        ${task}.state = 'done' AND ${task}.mate_project_id IS NOT NULL
-        AND EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = ${task}.app_id
-          AND c.repo = ${task}.change_repo AND c.number = ${task}.change_number AND c.state = 'open')
+        ${doneUnsettled(sql, task)} AND ${task}.mate_project_id IS NOT NULL
         AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
           AND msg.created_at > ${endedAt(task)}))`;
       /** Said of the task since it ended, and since HQ last told its Mate a follow-up on it. */
@@ -616,9 +623,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       /**
        * The task's status line on its source, said through its channel with what `status` makes of
-       * its facts now: beside whatever moved the task, one at a time, never failing anything.
+       * its facts now — then, where `answer` makes one of them, its ending's words as a new message:
+       * beside whatever moved the task, one at a time, never failing anything.
        */
-      const say = (taskId: string, status: (facts: TaskFacts) => TaskStatus | undefined) =>
+      const say = (
+        taskId: string,
+        status: (facts: TaskFacts) => TaskStatus | undefined,
+        answer?: (facts: TaskFacts) => TaskAnswer,
+      ) =>
         Effect.gen(function* () {
           const [task] = yield* sql<{
             readonly app_id: string;
@@ -674,7 +686,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                   }),
                   () => "Mate",
                 );
-          const said = status({
+          const facts: TaskFacts = {
             mate: name,
             link: task.mate === null ? null : yield* linkTo(task.mate, task.conversation_id),
             pullRequest:
@@ -685,11 +697,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               task.change_repo === null || task.change_number === null
                 ? null
                 : `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(task.app_id, task.change_repo, task.change_number)}`,
+            changeNumber: task.change_repo === null ? null : task.change_number,
             changeReady: task.change_ready,
             changeMerged: task.change_state === "merged",
             detail: task.detail,
             question: task.question,
-          });
+          };
+          const said = status(facts);
           if (said === undefined) return;
           const onSource: TaskOnSource = {
             taskId,
@@ -702,6 +716,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           if (typeof ref === "string" && ref !== task.status_ref)
             yield* leader.write(sql`
               UPDATE hq_task SET status_ref = ${ref} WHERE id::text = ${taskId}`);
+          if (answer !== undefined && channel.answer !== undefined)
+            yield* channel.answer(onSource, answer(facts));
           // What a review asked and the Mate couldn't finish: said where the reviewer wrote too.
           if (
             said.kind === "failed" &&
@@ -1293,10 +1309,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const owns = (projectId: string) => sql`(
         (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting'))
         OR (state = 'queued' AND last_mate_project_id = ${projectId})
-        OR (mate_project_id = ${projectId} AND state = 'done' AND (change_number IS NULL
-          OR EXISTS (SELECT 1 FROM hq_change c
-            WHERE c.app_id = hq_task.app_id AND c.repo = hq_task.change_repo
-              AND c.number = hq_task.change_number AND c.state = 'open'))))`;
+        OR (mate_project_id = ${projectId} AND ${doneUnsettled(sql, sql`hq_task`)}))`;
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
@@ -1305,8 +1318,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly state: string;
             readonly app_id: string;
             readonly question: string | null;
+            readonly done_head: string | null;
           }>`
-            SELECT state, app_id::text AS app_id, question FROM hq_task
+            SELECT state, app_id::text AS app_id, question, done_head FROM hq_task
             WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
@@ -1513,7 +1527,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               yield* queueMoved(task.app_id);
             }
           } else {
-            const ended = yield* leader.write(sql`
+            const ended = yield* leader.write(sql<{ readonly done_head: string | null }>`
               UPDATE hq_task SET state = ${word.state}, updated_at = now(),
                 mate_project_id = ${projectId},
                 detail = ${
@@ -1527,29 +1541,58 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 conversation_id = COALESCE(${word.conversationId ?? null}, conversation_id),
                 stop_heard_at = ${word.state === "stopped" ? sql`now()` : sql`stop_heard_at`},
                 stop_reason = ${word.state === "done" ? null : sql`stop_reason`},
-                question = ${word.state === "done" ? null : sql`question`}
+                question = ${word.state === "done" ? null : sql`question`},
+                done_head = ${
+                  word.state === "done"
+                    ? sql`(SELECT c.head FROM hq_change c WHERE c.app_id = hq_task.app_id
+                        AND c.repo = hq_task.change_repo AND c.number = hq_task.change_number)`
+                    : sql`done_head`
+                }
               WHERE id::text = ${word.taskId} AND ${owns(projectId)}
-              RETURNING 1`);
+              RETURNING done_head`);
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
-            if (ended.length > 0 && word.state === "done" && task.state !== "done")
-              yield* say(word.taskId, ({ mate, change, changeMerged, pullRequest, detail }) =>
-                // Its change merged already: the line keeps saying so.
-                changeMerged
-                  ? {
-                      kind: "merged",
+            if (ended.length > 0 && word.state === "done" && task.state !== "done") {
+              // Its Mate's closing words (none from an older Mate), and the commit its change took
+              // since it last ended: an ending after a follow-up says what it did this time.
+              const words = cleanTaskText(word.answer ?? "").trim();
+              const head = ended[0]?.done_head ?? null;
+              const pushed = task.done_head !== null && head !== null && head !== task.done_head;
+              yield* say(
+                word.taskId,
+                ({ mate, change, changeMerged, pullRequest, detail }) =>
+                  // Its change merged already: the line keeps saying so.
+                  changeMerged
+                    ? {
+                        kind: "merged",
+                        mate: mate ?? "Mate",
+                        change,
+                        ...(pullRequest === null ? {} : { pullRequest }),
+                      }
+                    : {
+                        kind: "done",
+                        mate: mate ?? "Mate",
+                        link: change,
+                        ...(pullRequest === null ? {} : { pullRequest }),
+                        ...(detail === null ? {} : { left: detail }),
+                      },
+                words === ""
+                  ? undefined
+                  : ({ mate, change, changeNumber, pullRequest }) => ({
                       mate: mate ?? "Mate",
-                      change,
-                      ...(pullRequest === null ? {} : { pullRequest }),
-                    }
-                  : {
-                      kind: "done",
-                      mate: mate ?? "Mate",
-                      link: change,
-                      ...(pullRequest === null ? {} : { pullRequest }),
-                      ...(detail === null ? {} : { left: detail }),
-                    },
+                      words,
+                      ...(pushed && change !== null && changeNumber !== null
+                        ? {
+                            pushed: {
+                              number: changeNumber,
+                              link: change,
+                              ...(pullRequest === null ? {} : { pullRequest }),
+                            },
+                          }
+                        : {}),
+                    }),
               );
+            }
             if (ended.length > 0 && task.state === "queued") {
               yield* structure.touched;
               yield* queueMoved(task.app_id);

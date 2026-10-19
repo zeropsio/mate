@@ -32,7 +32,8 @@
  *   (`TaskIntake.message`) and marked 👀; the bot's own words and other bots' never are. The
  *   ask deleted stops its task (`TaskIntake.stop`); anyone else's message deleted, nothing.
  * - Its channel (`TaskSourceChannels`): 👀 on the ask, and one status message in the thread, posted
- *   for a task the first time and edited after; a question is put to the person who asked.
+ *   for a task the first time and edited after; a question is put to the person who asked, and
+ *   each ending its Mate gave words for is a message of its own.
  *
  * @module slack
  */
@@ -65,7 +66,15 @@ import {
   type SlackChannelPage,
   type SlackUnreachable,
 } from "./slackApi.ts";
-import { REPLIES, askOf, endedText, questionText, statusText, titleOf } from "./slackText.ts";
+import {
+  REPLIES,
+  answerText,
+  askOf,
+  endedText,
+  questionText,
+  statusText,
+  titleOf,
+} from "./slackText.ts";
 import { TaskIntake, TaskSourceChannels, type TaskOnSource } from "./taskSources.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -695,6 +704,10 @@ export const slackLayer = (options: { readonly hqProjectId: string }) =>
         answerEnd: (task, end) =>
           inThread(task, (link, thread) =>
             say(link, thread.channel_id, thread.thread_ts, endedText(end)),
+          ),
+        answer: (task, answer) =>
+          inThread(task, (link, thread) =>
+            say(link, thread.channel_id, thread.thread_ts, answerText(answer)),
           ),
         status: (task, status) =>
           inThread(task, (link, thread) =>

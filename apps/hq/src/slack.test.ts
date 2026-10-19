@@ -984,5 +984,41 @@ describe("Slack", () => {
           assert.lengthOf(yield* hq.slack.callsOf("chat.postMessage"), 3);
         }),
     );
+
+    it.effect(
+      "each ending a task's Mate gave words for is a message of its own in its thread, the status message edited as before",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          yield* hq.post(hq.event(mention("<@U0MATE> show me the address")));
+          const asked = yield* Queue.take(hq.intake.enqueued);
+          const [channel] = hq.registered;
+          const task = {
+            taskId: "task-1",
+            appId: hq.appId,
+            source: asked.source,
+            sourceKey: asked.sourceKey,
+          };
+          yield* channel!.status(task, { kind: "picked", mate: "Fen" });
+          yield* channel!.status(task, { kind: "done", mate: "Fen", link: null });
+          yield* channel!.answer!(task, {
+            mate: "Fen",
+            words: "It runs at https://appstage.example.",
+          });
+          const posted = yield* hq.slack.callsOf("chat.postMessage");
+          assert.deepStrictEqual(
+            posted.map((call) => [call.params["thread_ts"], call.params["text"]]),
+            [
+              ["1700000000.000100", "Fen picked this up."],
+              ["1700000000.000100", "Fen: It runs at https://appstage.example."],
+            ],
+          );
+          assert.deepStrictEqual(
+            (yield* hq.slack.callsOf("chat.update")).map((call) => call.params["text"]),
+            ["Fen finished this."],
+          );
+        }),
+    );
   });
 });
