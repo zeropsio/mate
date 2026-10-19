@@ -1,4 +1,6 @@
-import { assert, describe, it } from "@effect/vitest";
+import * as NodeSqlite from "node:sqlite";
+
+import { assert, describe, it, vi } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -9,7 +11,7 @@ import { CommandId, ConversationId, runId } from "@t3tools/contracts";
 import { USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 
 import { conversationRowOf } from "./conversationRow.ts";
-import { makeEngineWorld, mate } from "../testing/pump/engineWorld.ts";
+import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
 
 const world = Effect.gen(function* () {
   const w = yield* makeEngineWorld({ driver: "claudeAgent" });
@@ -838,5 +840,121 @@ describe("a conversation's row from a turn's end to the next turn the engine kno
           yield* w.shutdown;
         }),
       ),
+  );
+});
+
+/** The record's tables a view reads row by row. */
+const RECORD_TABLES = ["engine_item", "engine_run", "engine_request"] as const;
+
+/** Rows the counting function saw, on every connection it was given to. */
+const visits = { count: 0 };
+const counting = new WeakSet<NodeSqlite.DatabaseSync>();
+
+/**
+ * What `read` returns, and how many rows of the record's tables SQLite reached for it: each table
+ * is read through a view whose every row passes a counting function first, so the count is every
+ * row the read's plans visit, whatever index or filter they use.
+ */
+const rowsVisited = <A, E>(w: EngineWorld, read: Effect.Effect<A, E>) =>
+  Effect.gen(function* () {
+    const prepare = NodeSqlite.DatabaseSync.prototype.prepare;
+    const spy = vi.spyOn(NodeSqlite.DatabaseSync.prototype, "prepare").mockImplementation(function (
+      this: NodeSqlite.DatabaseSync,
+      ...args
+    ) {
+      if (!counting.has(this)) {
+        counting.add(this);
+        this.function("visited", { deterministic: false }, () => {
+          visits.count += 1;
+          return 1;
+        });
+      }
+      return prepare.apply(this, args);
+    });
+    const exec = (statement: string) =>
+      w.within(Effect.flatMap(SqlClient.SqlClient, (sql) => sql.unsafe(statement)));
+    for (const table of RECORD_TABLES) {
+      yield* exec(`ALTER TABLE ${table} RENAME TO ${table}_rows`);
+      yield* exec(`CREATE VIEW ${table} AS SELECT * FROM ${table}_rows WHERE visited()`);
+    }
+    visits.count = 0;
+    const value = yield* read;
+    const visited = visits.count;
+    for (const table of RECORD_TABLES) {
+      yield* exec(`DROP VIEW ${table}`);
+      yield* exec(`ALTER TABLE ${table}_rows RENAME TO ${table}`);
+    }
+    spy.mockRestore();
+    return { value, visited };
+  });
+
+/** Finished turns of a conversation: each the person's ask, the agent's calls and its answer. */
+const GROWN_TURNS = 30;
+const CALLS_PER_TURN = 32;
+
+describe("a conversation's view as its agent streams", () => {
+  // Every batch of streamed output commits, and every commit reads the view again (the menu's rows,
+  // the attention, HQ's overview): Vera's view walked all 1,065 items of the conversation per read,
+  // 176 GB from disk in 2 h 40 m (2026-10-19).
+  it.effect(
+    "reads no more of its record per streamed word as its conversation grows",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const engine = yield* w.engine;
+          let turn = 0;
+          const grow = Effect.gen(function* () {
+            for (let i = 0; i < GROWN_TURNS; i++) {
+              turn += 1;
+              yield* w.tell({ _tag: "Send", text: `Build part ${turn}` });
+              yield* w.agent((agent, thread) =>
+                Effect.gen(function* () {
+                  for (let call = 0; call < CALLS_PER_TURN; call++) {
+                    yield* agent.write(thread, `part-${turn}/${call}.ts`, "export {};");
+                  }
+                  yield* agent.say(thread, `Part ${turn} is built.`);
+                  yield* agent.finish(thread);
+                }),
+              );
+            }
+          });
+          // A turn on now, a command running and the agent's words streaming: what one word costs.
+          const streamedWord = Effect.gen(function* () {
+            turn += 1;
+            yield* w.tell({ _tag: "Send", text: `Check part ${turn}` });
+            yield* w.agent((agent, thread) => agent.call(thread));
+            yield* w.agent((agent, thread) => agent.stream(thread, `words-${turn}`, "Checking "));
+            const items = yield* w.within(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) => sql<{ readonly n: number }>`
+                  SELECT COUNT(*) AS n FROM engine_item WHERE conversation_id = ${mate}
+                `,
+              ),
+            );
+            const read = yield* rowsVisited(w, engine.conversation(mate));
+            assert.strictEqual(read.value?.liveCall?.words, "Command run");
+            assert.strictEqual(read.value?.lastAsked?.text, `Check part ${turn}`);
+            assert.strictEqual(read.value?.lastAgent?.text, `Part ${turn - 1} is built.`);
+            yield* w.agent((agent, thread) => agent.finish(thread));
+            return { items: items[0]?.n ?? 0, visited: read.visited };
+          });
+
+          yield* grow;
+          const shorter = yield* streamedWord;
+          yield* grow;
+          const longer = yield* streamedWord;
+          assert.isAtLeast(shorter.items, 1_000);
+          assert.isAtLeast(longer.items, 2 * shorter.items - 10);
+          assert.strictEqual(
+            longer.visited,
+            shorter.visited,
+            `rows visited per streamed word: ${shorter.visited} at ${shorter.items} items, ${longer.visited} at ${longer.items}`,
+          );
+          yield* w.shutdown;
+        }),
+      ),
+    120_000,
   );
 });
