@@ -62,7 +62,8 @@ const claudeConfig = (binaryPath: string, homePath: string): ClaudeSettings => (
 
 /**
  * A `claude` that answers `initialize` with whichever account the sibling
- * `account-email` file names at spawn time — a sign-in between two probes.
+ * `account-email` file names at spawn time — a sign-in between two probes —
+ * and the probe's follow-up `get_usage`, so neither waits on a deadline.
  */
 const writeFakeClaude = Effect.fn("ClaudeDriverRefresh.test.writeFakeClaude")(function* (
   dir: string,
@@ -84,19 +85,17 @@ const writeFakeClaude = Effect.fn("ClaudeDriverRefresh.test.writeFakeClaude")(fu
       "const lines = NodeReadline.createInterface({ input: process.stdin });",
       'lines.on("line", (line) => {',
       "  const message = JSON.parse(line);",
-      '  if (message.type !== "control_request" || message.request?.subtype !== "initialize") return;',
-      "  process.stdout.write(JSON.stringify({",
+      '  if (message.type !== "control_request") return;',
+      "  const reply = (response) => process.stdout.write(JSON.stringify({",
       '    type: "control_response",',
-      "    response: {",
-      '      subtype: "success",',
-      "      request_id: message.request_id,",
-      "      response: {",
-      "        commands: [], agents: [], models: [],",
-      '        output_style: "default", available_output_styles: ["default"],',
-      '        account: { email, subscriptionType: "pro", tokenSource: "oauth" },',
-      "      },",
-      "    },",
+      '    response: { subtype: "success", request_id: message.request_id, response },',
       '  }) + "\\n");',
+      '  if (message.request?.subtype === "initialize") reply({',
+      "    commands: [], agents: [], models: [],",
+      '    output_style: "default", available_output_styles: ["default"],',
+      '    account: { email, subscriptionType: "pro", tokenSource: "oauth" },',
+      "  });",
+      '  if (message.request?.subtype === "get_usage") reply({ rate_limits_available: false });',
       "});",
       'lines.on("close", () => process.exit(0));',
       "",
@@ -108,7 +107,8 @@ const writeFakeClaude = Effect.fn("ClaudeDriverRefresh.test.writeFakeClaude")(fu
 });
 
 describe("ClaudeDriver refresh", () => {
-  it.live("an explicit refresh re-reads the account instead of the cached capabilities", () =>
+  // TestClock: the probe's deadlines never fire on a loaded machine; the test waits on the replies.
+  it.effect("an explicit refresh re-reads the account instead of the cached capabilities", () =>
     Effect.gen(function* () {
       if (yield* isHostWindows) return;
       const fileSystem = yield* FileSystem.FileSystem;
