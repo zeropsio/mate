@@ -37,6 +37,7 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
+import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
@@ -846,12 +847,17 @@ export function cardChanges(input: {
   readonly open: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first, as the flow lists them. */
-  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "taggedAt">>;
+  readonly releases: ReadonlyArray<HistoryReleaseInput>;
   /** What the stage a merged change goes to first runs; `undefined` where the project has none. */
   readonly stage: CardStage | undefined;
   /** The project has a production, where a merged change is released. */
   readonly production: boolean;
   readonly limit: number;
+  /**
+   * Only what no release put live yet: on the project's page its History says the released ones,
+   * each in its release (`historyReleases`), so the card does not say them twice.
+   */
+  readonly unreleased?: boolean | undefined;
 }): ReadonlyArray<CardChange> {
   const open = input.open
     .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
@@ -866,12 +872,16 @@ export function cardChanges(input: {
       };
     });
   const merged = input.merged
-    .filter((pull) => pull.mergedAt !== undefined)
+    .filter(
+      (pull) =>
+        pull.mergedAt !== undefined &&
+        (input.unreleased !== true ||
+          pull.kind === "recipe" ||
+          releaseOfLanding(pull.mergedAt, input.releases) === undefined),
+    )
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt))
     .map((pull, _index, landed): CardChange => {
-      const took = input.releases.findLast(
-        (release) => pull.mergedAt !== undefined && release.taggedAt >= pull.mergedAt,
-      );
+      const took = releaseOfLanding(pull.mergedAt, input.releases);
       const stage = input.stage;
       const on = (shas: ReadonlyArray<string> | undefined) =>
         stage !== undefined &&

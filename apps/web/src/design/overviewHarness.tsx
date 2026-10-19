@@ -649,7 +649,8 @@ function HarnessPage() {
                   mateName={(projectId) => entry.mates.get(projectId)?.name}
                   onOpen={(opened) => acted.push(`change:${String(opened.pull.number)}`)}
                   releases={
-                    live === undefined
+                    // On its page the project's History says its releases.
+                    live === undefined || PAGE !== null
                       ? []
                       : [{ tag: live, taggedAt: ago(60 * 24 * 6), live: true }]
                   }

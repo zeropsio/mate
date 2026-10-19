@@ -950,8 +950,7 @@ function EnvironmentsFrame({
 }) {
   return (
     <ZeropsGroupPane
-      history={{ kind: "read", commits: [], total: 0 }}
-      tags={new Map()}
+      history={null}
       environments={environments}
       slots={environmentSlots({
         environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
@@ -973,7 +972,6 @@ function EnvironmentsFrame({
       finishing={false}
       groupId="shop"
       name="Shop"
-      names={NAMES}
       onSetUp={() => {}}
       release={release}
       repo={undefined}
@@ -1050,8 +1048,7 @@ function Harness() {
 
       <State label="A project, running" note="Two stops, one change in flight, three waiting.">
         <ZeropsGroupPane
-          history={HISTORY}
-          tags={TAGS}
+          history={null}
           environments={[
             environment(),
             environment({
@@ -1083,7 +1080,6 @@ function Harness() {
           finishing={false}
           groupId="shop"
           name="Shop"
-          names={NAMES}
           onSetUp={() => {}}
           release={RELEASE_WAITING}
           repo="appdev"
@@ -1095,8 +1091,7 @@ function Harness() {
         note="No stops, no changes, no repository: every section is an empty state at once."
       >
         <ZeropsGroupPane
-          history={{ kind: "read", commits: [], total: 0 }}
-          tags={new Map()}
+          history={null}
           environments={[]}
           slots={[
             { kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true },
@@ -1107,7 +1102,6 @@ function Harness() {
           finishing={false}
           groupId="fresh"
           name="Design tokens"
-          names={NAMES}
           onSetUp={() => {}}
           release={RELEASE_NONE}
           repo={undefined}

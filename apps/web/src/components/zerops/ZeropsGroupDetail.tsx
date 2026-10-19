@@ -145,6 +145,8 @@ import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFra
 import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ProjectPageSpend } from "./projects/ProjectSpend";
+import { ProjectPageHistory } from "./projects/ProjectHistory";
+import { groupRepository } from "./projects/projectHistory.logic";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
@@ -255,17 +257,6 @@ function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<
     if (sha !== undefined) deployed.set(environment.name, sha);
   }
   return deployed;
-}
-
-/**
- * The repository a group's history is read from: the one its environments are
- * built from. Never guessed from a hostname — that address 404s.
- */
-function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | undefined {
-  for (const environment of environments) {
-    if (environment.versionRepository !== undefined) return environment.versionRepository;
-  }
-  return undefined;
 }
 
 /** A surface that shows what a release would put live: it compares it while drawn. */
@@ -535,14 +526,11 @@ function KnownGroupAside({
   const spend = use(ProjectPageSpend);
   const environments = flow.environments;
   const repo = groupRepository(environments);
-  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow.repos });
-  const tags = useReleaseTags(flow.releases);
-  const openChange = useOpenChange(groupId, repo);
+  const history = use(ProjectPageHistory);
   const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
   const release = useReleaseOffer(groupId, flow);
-  const names = useHistoryNames();
   const { withheldNotice } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(flow);
   // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
@@ -617,12 +605,9 @@ function KnownGroupAside({
         history={history}
         groupId={groupId}
         name={groupName}
-        names={names}
         onSetUp={openProjects}
         release={release}
-        onOpenChange={openChange}
         repo={repo}
-        tags={tags}
         withheldNotice={withheldNotice}
         firstDeployOf={firstDeployOf}
         onMirror={() => {
@@ -677,12 +662,9 @@ export function ZeropsGroupPane({
   history,
   groupId,
   name,
-  names,
   onSetUp,
-  onOpenChange,
   release,
   repo,
-  tags,
   withheldNotice,
   firstDeployOf,
   onMirror,
@@ -693,12 +675,8 @@ export function ZeropsGroupPane({
   /** The repositories a Mate ships code to: the ones its Repositories section may name. */
   readonly codeRepos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly readFailures?: React.ReactNode;
-  /** What has landed on the repository, as HQ compares it. */
-  readonly history: ZeropsHistoryState;
-  /** `full sha → the release that shipped it`. */
-  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
-  /** Opens the review of the change that landed a commit. */
-  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
+  /** Its History, from the project page (`ProjectPageHistory`): its releases, each with its changes. */
+  readonly history: React.ReactNode;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   /** The *Environments* section's rows: what exists, and a slot for each tier that does not. */
   readonly slots: ReadonlyArray<EnvironmentSlotRow>;
@@ -716,7 +694,6 @@ export function ZeropsGroupPane({
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
-  readonly names: HistoryNames;
   /**
    * What a stop says in place of its content while the grant withholds its
    * project (DESIGN §3.4); `null` while it may be shown. Absent, every stop is.
@@ -731,17 +708,6 @@ export function ZeropsGroupPane({
   /** Its Automation section (`ProjectAutomation`), above its repositories. */
   readonly automation?: React.ReactNode;
 }) {
-  const deployed = useMemo(
-    () =>
-      deployedShas(
-        environments.filter(
-          (environment) =>
-            environment.target.kind !== "zerops" ||
-            (withheldNotice?.(environment.target.projectId) ?? null) === null,
-        ),
-      ),
-    [environments, withheldNotice],
-  );
   return (
     <>
       {readFailures}
@@ -896,13 +862,7 @@ export function ZeropsGroupPane({
             No repository is declared for this project’s services yet.
           </EmptyState>
         ) : (
-          <ZeropsHistoryView
-            history={history}
-            names={names}
-            onOpenChange={onOpenChange}
-            request={{ repo, deployed }}
-            tags={tags}
-          />
+          history
         )}
       </SideSection>
     </>
