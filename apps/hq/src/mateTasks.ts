@@ -87,6 +87,8 @@ import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
 import { DEFAULT_TASK_LIMITS, THIS_MONTH, budgetSpent, readTaskLimits } from "./taskLimits.ts";
 import {
+  BUDGET_SPENT,
+  NO_ANSWER,
   type TaskOnSource,
   type TaskPullRequest,
   TaskSourceChannels,
@@ -123,10 +125,6 @@ export const MATE_AWAY = "Its Mate went away mid-task.";
 export const DECLINED_FOR = Duration.minutes(30);
 /** How many messages a task keeps; past them, more are not kept. */
 export const TASK_MESSAGES_MAX = 200;
-/** Why a task stopped that waited three days for an answer that never came. */
-export const NO_ANSWER = "nobody answered its question for three days.";
-/** Why a task at work stopped once this month's spend reached the organization's budget. */
-export const BUDGET_SPENT = "it reached the organization's monthly budget.";
 /**
  * Whether `id` is shaped as HQ's task ids are (`hq_task.id`, a uuid): compared as one, so its
  * index is used, and an id of any other shape names no task, never an error.

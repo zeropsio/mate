@@ -35,6 +35,8 @@ export interface MateFaceFacts {
   /** Its container is restarting (`mateRestarting`). */
   readonly restarting: boolean;
   readonly watched?: MateFaceWatched | undefined;
+  /** An automated Mate free for its next task (`mateFaceOf`). */
+  readonly free?: boolean | undefined;
 }
 
 export interface MateFaceRead {

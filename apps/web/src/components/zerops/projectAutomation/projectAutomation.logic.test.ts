@@ -33,7 +33,13 @@ const schedule = {
 describe("a project's pool of automated Mates", () => {
   const task = { number: 1, title: "Add a search box" };
   it.each([
-    ["one with no task waits for one", { task: null }, false, "Waiting for a task"],
+    ["one that never had a task says so", { task: null }, false, "No tasks yet"],
+    [
+      "one free names its last task and how it ended",
+      { task: null, last: { ...task, ended: "merged" as const } },
+      false,
+      "#1 Add a search box · merged",
+    ],
     [
       "one with no task and no organization key waits for the key",
       { task: null, key: "missing" as const },

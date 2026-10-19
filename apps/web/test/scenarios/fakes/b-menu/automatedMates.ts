@@ -12,6 +12,8 @@ export interface WiredTask {
   readonly title: string;
   /** It waits for a person's answer (HQ's `task.waiting`). */
   readonly waiting?: true;
+  /** It ended, the Mate free for its next (HQ's `task.ended`). */
+  readonly ended?: "merged" | "closed" | "done" | "failed" | "stopped";
 }
 
 /**
@@ -46,6 +48,7 @@ export function automatedMatesWire(projectIds: ReadonlyArray<string>) {
                   url: `https://github.com/acme/tea-shop/issues/${String(task.number)}`,
                   label: `acme/tea-shop#${String(task.number)}`,
                   ...(task.waiting === true ? { waiting: true } : {}),
+                  ...(task.ended === undefined ? {} : { ended: task.ended }),
                 },
         },
       };

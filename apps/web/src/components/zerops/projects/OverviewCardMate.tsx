@@ -59,6 +59,7 @@ import {
   mateRowReading,
   mateRowSecond,
   mateAutomation,
+  mateRowTime,
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
@@ -140,6 +141,7 @@ export function OverviewCardMate({
     pose,
     restarting: watch.restarting,
     watched: watch.watched,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const read = mateRowReading({
@@ -153,6 +155,7 @@ export function OverviewCardMate({
     mine,
     pose,
     updating: watch.updating,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   // Going, or still coming up, as its row says it: no time, and its own line.
   const view = deleting
@@ -217,6 +220,7 @@ export function OverviewCardMate({
   });
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
+  const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   const second = mateRowSecond({
     view,
     askLine,
@@ -247,8 +251,10 @@ export function OverviewCardMate({
             mine: people?.waitsOnViewer !== false,
             ...(inReview > 1 ? { count: inReview } : {}),
           },
-    automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
+    automated,
   });
+  // Its time: a free automated Mate's, when its last task ended (`mateRowTime`).
+  const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const said: CardMateReading =
     view.coming !== undefined
@@ -370,7 +376,7 @@ export function OverviewCardMate({
           reviewButton
         ) : (
           <CardMateTime dot={view.dot}>
-            <CardMateSlot at={activity?.at} slot={view.slot} />
+            <CardMateSlot at={time.at} slot={time.slot} />
           </CardMateTime>
         )
       }

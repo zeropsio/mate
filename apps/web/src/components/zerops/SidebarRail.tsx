@@ -36,7 +36,7 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/to
 import { MateDot } from "./MateDot";
 import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
-import { ownerBadge, ownerMark, type BadgeSeat } from "./SidebarMateRow.logic";
+import { mateAutomation, ownerBadge, ownerMark, type BadgeSeat } from "./SidebarMateRow.logic";
 import { ProjectCluster } from "./SidebarProjectCluster";
 import {
   railDot,
@@ -116,6 +116,7 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
             reviewWaits: waited?.kind === "change",
             mine,
             pose: undefined,
+            free: mateAutomation(candidate.project.hq?.mate)?.task === null,
           }),
           known: activity !== undefined && activity.remembered !== true,
           dot: railDot({

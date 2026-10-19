@@ -321,6 +321,13 @@ export const HqNavigationMateTask = Schema.Struct({
    * its row says so, while the task's own conversation still shows where it got to. Absent: live.
    */
   ended: Schema.optionalKey(Schema.Literals(["merged", "closed", "done", "failed", "stopped"])),
+  /** When it ended — its change merged or closed, else it — for an ended task; absent while live. */
+  endedAt: Schema.optionalKey(Schema.String),
+  /**
+   * Why HQ stopped it, for a stopped task: this month's budget spent, or its question unanswered
+   * for three days. Absent: a person or its Mate stopped it, or an older HQ.
+   */
+  why: Schema.optionalKey(Schema.Literals(["budget", "unanswered"])),
   /** When its Mate took it; absent from an older HQ. */
   startedAt: Schema.optionalKey(Schema.String),
   /** What it cost and how long it worked so far, as its Mate last reported. */

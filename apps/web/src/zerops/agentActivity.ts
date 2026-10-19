@@ -384,6 +384,12 @@ export function mateFaceOf(input: {
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`). */
   readonly pose?: MatePoseFacts | undefined;
+  /**
+   * An automated Mate free for its next task (`mateAutomation`'s `task: null`): at rest it wears
+   * the quiet face, never its last task's end or a result nobody waits for — its line says the
+   * task.
+   */
+  readonly free?: boolean | undefined;
 }): MateMarkState {
   const live = input.activity?.remembered === true ? undefined : input.activity;
   const face = mateFaceAwaitingReview(
@@ -392,7 +398,16 @@ export function mateFaceOf(input: {
     live?.usageLimited === true || live?.pausedUntil !== undefined,
     input.mine,
   );
+  if (input.free === true) return restingWhenFree(face);
   return input.activity?.kind === "failed" && face === "needs" ? "idle" : face;
+}
+
+/**
+ * The face of an automated Mate free for its next task: at rest, the quiet one — never its last
+ * task's end, nor a result nobody waits for; at work, asleep or arriving, its own.
+ */
+export function restingWhenFree(face: MateMarkState): MateMarkState {
+  return face === "done" || face === "needs" ? "idle" : face;
 }
 
 /**

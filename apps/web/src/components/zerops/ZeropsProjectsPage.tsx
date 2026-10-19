@@ -129,6 +129,7 @@ import {
   mateReviewWaits,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
+import { mateAutomation } from "./SidebarMateRow.logic";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
@@ -1716,6 +1717,7 @@ export function ZeropsProjectsContent({
       mine: projectPeople[candidate.project.id]?.waitsOnViewer === true,
       // Waking while it comes up and arrives, as its row in the menu.
       pose: matePoseOf(candidate, nowMs),
+      free: mateAutomation(candidate.project.hq?.mate)?.task === null,
     });
   };
   const openReview = useOpenReview();

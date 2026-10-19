@@ -290,6 +290,27 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
       }),
     ).toBe("sleep");
   });
+
+  it.each([
+    { case: "its last task done", face: "done", connected: true, shown: "idle" },
+    { case: "its last result unseen", face: "needs", connected: true, shown: "idle" },
+    { case: "at work on its next", face: "working", connected: true, shown: "working" },
+    { case: "its container asleep", face: undefined, connected: false, shown: "sleep" },
+  ] as const)(
+    "an automated Mate free for a task wears the resting face: $case",
+    ({ face, connected, shown }) => {
+      expect(
+        mateFaceOf({
+          connected,
+          activity: face === undefined ? undefined : { face },
+          reviewWaits: false,
+          mine: true,
+          pose: undefined,
+          free: true,
+        }),
+      ).toBe(shown);
+    },
+  );
 });
 
 describe("deriveZeropsAgentActivity", () => {
