@@ -39,6 +39,7 @@ describe("the drain", () => {
           recorded: Stream.empty,
           pushes: yield* Queue.unbounded<PushedChange>(),
           moves: Stream.empty,
+          conflicts: Stream.empty,
         }),
         Layer.succeed(LiveSockets, {
           track: () => Effect.void,
