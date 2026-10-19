@@ -206,7 +206,7 @@ describe("procStartTime", () => {
   )("$title", ({ line, expected }) => assert.strictEqual(procStartTime(line), expected));
 });
 
-describe("standUpAgents", () => {
+describe("standUpSigners", () => {
   const signers = {
     "claude-code": "user-a",
     codex: "user-b",
