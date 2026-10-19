@@ -4,8 +4,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 /**
  * Git is the record of what a turn changed: nothing per turn is captured or reverted any more.
  * The events only capture and revert wrote no longer decode, so they leave the log; their
- * projection columns, their projector's cursor and the capture journal go with them. Checkpoint refs already in a
- * service's Git stay there untouched.
+ * projection columns, their projector's cursor and the capture journal go with them. The
+ * checkpoint refs it left in a service's Git go at the server's start (`vcs/checkpointRefsSweep.ts`).
  */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

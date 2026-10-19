@@ -300,7 +300,6 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
         "projection_turns",
         "projection_pending_approvals",
         "projection_thread_proposed_plans",
-        "checkpoint_diff_blobs",
       ]) {
         yield* sql.unsafe(
           `DELETE FROM ${table} WHERE thread_id NOT IN (SELECT thread_id FROM kept_threads)`,
