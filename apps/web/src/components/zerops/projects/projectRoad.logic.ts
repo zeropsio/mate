@@ -4,7 +4,11 @@
  *
  * Pure: no React, no clock of its own.
  */
-import type { GroupFlow, GroupFlowMate } from "@t3tools/client-runtime/zerops";
+import {
+  changeAsksForReview,
+  type GroupFlow,
+  type GroupFlowMate,
+} from "@t3tools/client-runtime/zerops";
 
 import type { PlaceLine } from "./projectCard.logic";
 
@@ -92,9 +96,11 @@ export function projectState(input: {
   return { kind, ...STATES[kind], ...(reason === undefined ? {} : { reason }) };
 }
 
-/** How many of a project's open code changes wait in review. */
+/** How many of a project's open code changes wait in review: none still being written. */
 export function inReview(flow: Pick<GroupFlow, "pullRequests">): number {
-  return flow.pullRequests.filter((entry) => entry.pull.kind === "code").length;
+  return flow.pullRequests.filter(
+    (entry) => entry.pull.kind === "code" && changeAsksForReview(entry.pull),
+  ).length;
 }
 
 /** "1 change in review", "2 changes in review". */

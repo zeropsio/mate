@@ -128,6 +128,12 @@ describe("a project's places", () => {
     expect(inReview({ pullRequests: [pull("code"), pull("recipe"), pull("code")] })).toBe(2);
   });
 
+  // r3: "3 changes in review" over a page whose Changes said two waited and one was being written.
+  it("counts no change still being written as in review", () => {
+    const pull = (ready: boolean | undefined) => ({ pull: { kind: "code", ready } }) as never;
+    expect(inReview({ pullRequests: [pull(undefined), pull(true), pull(false)] })).toBe(2);
+  });
+
   it.each([
     {
       name: "says what the stage follows and how long ago it was deployed",
