@@ -1377,7 +1377,8 @@ export const originAnswerWords = (
  * value, connects the origin), and the engine is told only how it ended. The record keeps who and
  * when in the engine's own words — never the client's, which could carry a value or a token — and
  * the agent hears its line in a run of its own, a wake that joins the run that asked while that is
- * the latest.
+ * the latest — and goes on for whom that run acted, as a self turn does: an answer to a task's ask
+ * is the task's work, held to its limits.
  */
 const answerOnCard = (
   b: StepBuilder,
@@ -1405,14 +1406,15 @@ const answerOnCard = (
     });
   }
   const wake = deriveWakeId(b.state.conversationId, ended.wake, request.id);
+  const joins = request.runId === b.state.latestRunId ? request.runId : null;
   b.emit({
     _tag: "WakeArmed",
     wakeId: wake,
     kind: ended.wake,
     dueAt: b.now,
     cron: null,
-    principal: b.envelope.principal,
-    joins: request.runId === b.state.latestRunId ? request.runId : null,
+    principal: joins === null ? b.envelope.principal : request.principal,
+    joins,
     text: ended.text,
   });
   b.result = { ...b.result, requestId: request.id, runId: request.runId, wakeId: wake };

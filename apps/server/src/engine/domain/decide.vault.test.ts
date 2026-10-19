@@ -78,7 +78,8 @@ const running: ReadonlyArray<Command> = [
 ];
 const afterTurn: ReadonlyArray<Command> = [...running, asked(), turnEnded(1)];
 
-const play = (steps: ReadonlyArray<Command>) => {
+/** The steps played, each by `by` of its index: Ana unless said. */
+const play = (steps: ReadonlyArray<Command>, by: (index: number) => Principal = () => ana) => {
   let state: ConversationState = initialState(conversation);
   const log: Array<KnownEngineEvent> = [];
   let last: ReturnType<typeof decide> | undefined;
@@ -86,7 +87,7 @@ const play = (steps: ReadonlyArray<Command>) => {
     const envelope = {
       commandId: CommandId.make(`c${index}`),
       conversationId: conversation,
-      principal: ana,
+      principal: by(index),
       command,
     };
     last = decide(state, envelope, T0 + index);
@@ -135,6 +136,21 @@ describe("decide: a value the agent asks the person for", () => {
     expect(of(log, "RequestClosed")).toMatchObject([{ state: "declined" }]);
     expect(of(log, "RunQueued").at(-1)).toMatchObject({
       text: vaultAnswerWords(stripe, "declined"),
+    });
+  });
+
+  it("an answer to a task's ask goes on as the task's work, the answer kept as the person's", () => {
+    const task: Principal = { kind: "task", taskId: "task-1" };
+    // The task's brief is its own; Ana answers the ask on its card.
+    const { log } = play([...afterTurn, answer({ outcome: "saved" }), fire], (index) =>
+      index === 0 ? task : ana,
+    );
+    expect(of(log, "RequestAnswered")).toMatchObject([{ by: ana }]);
+    expect(of(log, "RunQueued").at(-1)).toMatchObject({
+      runId: r(2),
+      trigger: { kind: "wake", cause: "vault-answer" },
+      joins: r(1),
+      principal: task,
     });
   });
 
