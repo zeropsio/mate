@@ -2698,6 +2698,7 @@ export function ZeropsProjectsContent({
         }}
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
+        renderHistory={overview.renderHistory}
         setUpProduction={({ group, flow }) =>
           !addableTiers(group).includes("production") ||
           groupIsEmpty(group) ||

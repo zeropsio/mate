@@ -185,6 +185,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
   readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /** A project page's History: its releases, each with what it put live (`historyReleases`). */
+  readonly renderHistory?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /**
    * Sets up a project's production, where it has none and HQ offers it to this person: its card
    * offers it where production is said (the owner, 2026-10-12: "why instead of 'no production'

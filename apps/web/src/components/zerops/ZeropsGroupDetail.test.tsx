@@ -174,7 +174,7 @@ function render(
 ) {
   const pane = (
     <ZeropsGroupPane
-      history={{ kind: "reading" }}
+      history={null}
       groupId="shop"
       name="Shop"
       {...stops}
@@ -182,7 +182,6 @@ function render(
       onFinish={() => {}}
       finishing={false}
       onAdd={() => {}}
-      names={{ mateNames: new Map() }}
       onSetUp={() => {}}
       release={{
         offered: false,
@@ -192,7 +191,6 @@ function render(
         onReview: () => {},
       }}
       repo={undefined}
-      tags={new Map()}
     />
   );
   platform.deployments = flow ?? new Map();
@@ -1938,8 +1936,7 @@ it("Environment navigation keeps its identity when the target's project name cha
             name="Shop"
             environments={[row]}
             slots={slotsOf([row])}
-            history={{ kind: "reading" }}
-            tags={new Map()}
+            history={null}
             repo={undefined}
             release={{
               offered: false,
@@ -1948,7 +1945,6 @@ it("Environment navigation keeps its identity when the target's project name cha
               reason: undefined,
               onReview: () => {},
             }}
-            names={{ mateNames: new Map() }}
             onFinish={() => {}}
             finishing={false}
             onAdd={() => {}}
