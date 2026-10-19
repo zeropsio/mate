@@ -17,6 +17,18 @@ export function orderedGlides(travel: ReadonlyArray<number>): ReadonlyArray<numb
     .reverse();
 }
 
+/**
+ * Whether a line leaving the slot plops to its place: only to one the reader
+ * sees. A history scrolled up lands it out of view, where it is simply there —
+ * a glide toward it would cross what the reader reads for nothing they see land.
+ */
+export function landsInView(
+  place: { readonly top: number; readonly bottom: number },
+  view: { readonly top: number; readonly bottom: number },
+): boolean {
+  return place.bottom > view.top && place.top < view.bottom;
+}
+
 export function slotMoves(
   from: LiveSlot,
   to: LiveSlot,
