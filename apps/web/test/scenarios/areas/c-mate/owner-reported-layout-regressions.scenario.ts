@@ -5016,8 +5016,112 @@ describe("owner-reported layout regressions", () => {
           }
           yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 20 }));
         });
-        return { s, steps };
+        return { s, steps, engine, run };
       });
+      interface CloseFrame {
+        /** The card's top: what stands above it goes with it. */
+        readonly card: number | null;
+        /** The answer's last line's foot: where the reader reads it. */
+        readonly answer: number | null;
+        readonly composer: number;
+        readonly fromEnd: number;
+      }
+      /** Each painted frame as a turn ends: the card's top and its answer's last line. */
+      const startCloseTrace = (page: Page, lastWords: string) =>
+        page.evaluate(
+          (outerSelector: string, words: string) => {
+            const outer = document.querySelector<HTMLElement>(outerSelector)!;
+            const footOf = () => {
+              const walker = document.createTreeWalker(outer, NodeFilter.SHOW_TEXT);
+              let foot: number | null = null;
+              while (walker.nextNode()) {
+                if (!walker.currentNode.textContent?.includes(words)) continue;
+                const box = walker.currentNode.parentElement!.getBoundingClientRect();
+                if (box.height > 0) foot = box.bottom;
+              }
+              return foot;
+            };
+            const frames: CloseFrame[] = [];
+            const state = { active: true, frames };
+            // Rows the list put in after a frame painted are not painted yet, nor what the next
+            // frame does with them before it paints (the answer's words read 7 px off their place):
+            // that reading waits for the next frame. A marker sized each frame says when the frame
+            // has laid out, after its callbacks, before it paints.
+            const at = { painted: 0, inserted: 0 };
+            new MutationObserver(() => {
+              at.inserted = performance.now();
+            }).observe(outer, { childList: true, subtree: true });
+            const marker = document.createElement("div");
+            marker.style.cssText =
+              "position:fixed;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none";
+            document.body.append(marker);
+            new ResizeObserver(() => {
+              at.painted = performance.now();
+            }).observe(marker);
+            const sample = () => {
+              marker.style.height = marker.style.height === "1px" ? "2px" : "1px";
+              setTimeout(() => {
+                const card = [...outer.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1);
+                if (at.inserted <= at.painted)
+                  frames.push({
+                    card: card?.getBoundingClientRect().top ?? null,
+                    answer: footOf(),
+                    composer: document
+                      .querySelector("[data-chat-composer-overlay]")!
+                      .getBoundingClientRect().top,
+                    fromEnd: outer.scrollHeight - outer.clientHeight - outer.scrollTop,
+                  });
+                if (state.active) requestAnimationFrame(sample);
+              }, 0);
+            };
+            (window as unknown as { closeTrace: typeof state }).closeTrace = state;
+            requestAnimationFrame(sample);
+          },
+          OUTER,
+          lastWords,
+        );
+      const stopCloseTrace = (page: Page) =>
+        page.evaluate(() => {
+          const state = (
+            window as unknown as { closeTrace: { active: boolean; frames: CloseFrame[] } }
+          ).closeTrace;
+          state.active = false;
+          return state.frames;
+        });
+      /** The way a reading travelled against its main direction, over the frames it was read in. */
+      const backTravel = (values: ReadonlyArray<number | null>) => {
+        let up = 0;
+        let down = 0;
+        let last: number | null = null;
+        for (const value of values) {
+          if (value === null) continue;
+          if (last !== null) {
+            if (value > last) down += value - last;
+            else up += last - value;
+          }
+          last = value;
+        }
+        return Math.min(up, down);
+      };
+      /** The most frames in a row nothing moved, between the first frame that moved and the last. */
+      const longestPause = (frames: ReadonlyArray<CloseFrame>) => {
+        const moved = frames.map((frame, index) => {
+          const before = frames[index - 1];
+          if (before === undefined) return false;
+          const travel = (now: number | null, then: number | null) =>
+            now === null || then === null ? 0 : Math.abs(now - then);
+          return travel(frame.card, before.card) > 0.5 || travel(frame.answer, before.answer) > 0.5;
+        });
+        const first = moved.indexOf(true);
+        const last = moved.lastIndexOf(true);
+        let longest = 0;
+        let run = 0;
+        for (let index = first; first !== -1 && index <= last; index++) {
+          run = moved[index] ? 0 : run + 1;
+          longest = Math.max(longest, run);
+        }
+        return longest;
+      };
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect("a conversation opened at its end stays at its end while its rows settle", () =>
@@ -5232,6 +5336,119 @@ describe("owner-reported layout regressions", () => {
                 strayed([left.top, ...trace.map((frame) => frame.outerTop)]),
                 `ASSERTION: the conversation stays where the flick left it, ${Math.round(left.end)} px above its end: ${seen}`,
               ).toBeLessThanOrEqual(2);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // The owner, 2026-10-19: a long Working card ("Working · 2:29 · 29 steps") closing at its
+        // turn's end was choppy. Reproduced: its answer coming with the end, the view glided 232 px
+        // up to it, then the work folded and brought it all 461 px back down; read in its slot
+        // first, the fold waited 250 ms; and the card's last 12 px left in one frame at its end.
+        it.effect.each([
+          { case: "its answer arriving with the end", streamed: false, scrolledUp: false },
+          { case: "its answer read in its slot first", streamed: true, scrolledUp: false },
+          { case: "the reader scrolled up in the conversation", streamed: false, scrolledUp: true },
+        ])(
+          "a long Working card closes at its turn's end in one motion: nothing goes back, nothing waits midway: $case",
+          ({ streamed, scrolledUp }) =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* longWork;
+              if (scrolledUp)
+                yield* Effect.promise(async () => {
+                  const outer = (await s.page.$(OUTER))!;
+                  const box = (await outer.boundingBox())!;
+                  await s.page.mouse.move(box.x + 40, box.y + 200);
+                  await s.page.mouse.wheel({ deltaY: -600 });
+                  await waitForStillFrames(s.page, { stillFrames: 12 });
+                });
+              const lastWords = "Paragraph 8, the last";
+              const text = Array.from({ length: 8 }, (_, index) =>
+                index === 7
+                  ? `${lastWords}: the deploy went through and the logs read clean.`
+                  : `Paragraph ${index + 1}: the deploy went through and the logs read clean.`,
+              ).join("\n\n");
+              const note = streamed
+                ? engine.item(run, { kind: "note", text: "", streaming: true, answer: false })
+                : null;
+              if (note !== null) {
+                engine.stream(note, text);
+                yield* Effect.promise(() =>
+                  s.page.waitForFunction(
+                    (words: string) =>
+                      [
+                        ...document.querySelectorAll(
+                          '[data-run-chat][data-run-live] [data-chat-kind="note"]',
+                        ),
+                      ].some((element) => element.textContent?.includes(words)),
+                    { polling: "raf", timeout: 8000 },
+                    lastWords,
+                  ),
+                );
+                yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+              }
+              yield* Effect.promise(() => startCloseTrace(s.page, lastWords));
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 4 }));
+              if (note === null)
+                engine.item(run, { kind: "note", text, streaming: false, answer: false });
+              else {
+                engine.settle(note);
+                engine.update(note, { text, streaming: false });
+              }
+              engine.end(run);
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    [...document.querySelectorAll("[data-run-chat]")]
+                      .at(-1)
+                      ?.getAttribute("data-run-fold") === "folded",
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 30 }));
+              const trace = yield* Effect.promise(() => stopCloseTrace(s.page));
+              const seen = trace
+                .map(
+                  (frame) =>
+                    `${frame.card === null ? "-" : Math.round(frame.card)}/${frame.answer === null ? "-" : Math.round(frame.answer)}`,
+                )
+                .join(" ");
+              const first = trace[0]!;
+              const rest = trace.at(-1)!;
+              if (scrolledUp) {
+                expect(
+                  first.fromEnd,
+                  `ASSERTION: the reader stands above the end: ${seen}`,
+                ).toBeGreaterThan(200);
+                expect(
+                  strayed(trace.map((frame) => frame.card)),
+                  `ASSERTION: the card the reader reads stands where it stood: ${seen}`,
+                ).toBeLessThanOrEqual(2);
+              } else {
+                expect(
+                  rest.card! - first.card!,
+                  `ASSERTION: what stood above the card came down as its work folded: ${seen}`,
+                ).toBeGreaterThan(100);
+                expect(
+                  rest.answer!,
+                  `ASSERTION: the answer's last line rests above the composer: ${seen}`,
+                ).toBeLessThanOrEqual(rest.composer);
+                expect(
+                  Math.abs(rest.fromEnd),
+                  `ASSERTION: the conversation rests at its end: ${seen}`,
+                ).toBeLessThanOrEqual(1);
+              }
+              expect(
+                backTravel(trace.map((frame) => frame.card)),
+                `ASSERTION: what stands above the card travels one way, never back: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              expect(
+                backTravel(trace.map((frame) => frame.answer)),
+                `ASSERTION: the answer's last line travels one way, never back: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              expect(
+                longestPause(trace),
+                `ASSERTION: once the card starts closing, it closes without waiting midway: ${seen}`,
+              ).toBeLessThan(6);
               yield* s.then.noExternalNetwork;
             }),
         );

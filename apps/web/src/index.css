@@ -9930,6 +9930,9 @@ button.run-bar:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  /* Its room over the work folds with it (`foldAway` takes it into the box): kept, it left the
+     card in one frame once the fold was done, 12 px. */
+  margin-top: 0;
   overflow: hidden;
   /* The edge that takes the work is soft: lines pass under it, whole. */
   mask-image: linear-gradient(to bottom, transparent, currentColor 24px);
