@@ -434,7 +434,10 @@ export const makeZeropsHqLink = (
                   Effect.andThen(usage?.state(message.value) ?? Effect.void),
                 );
               case "provider-keys":
-                return options.automation?.keysHeard(message.value.keys) ?? Effect.void;
+                return (
+                  options.automation?.keysHeard(message.value.keys, message.value.model) ??
+                  Effect.void
+                );
               case "task": {
                 if (tasks === undefined) return Effect.void;
                 const task = message.value.task;

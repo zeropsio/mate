@@ -16,8 +16,8 @@
  *   another conversation has a run on, waiting, due or held by a usage limit (its stand-up), or
  *   the tasks' conversation has work on for another task or a person: one task per Mate at a
  *   time, so a change it opens is the task's.
- * - **Taken:** the conversation has the automated agent (OpenCode on the organization's key,
- *   `AUTOMATED_MODEL_SELECTION`, given once) and gets the task's first message, for the task's
+ * - **Taken:** the conversation has the automated agent (OpenCode on the organization's key and
+ *   model, `ZeropsAutomation.modelSelection`, given once and again when the model changed) and gets the task's first message, for the task's
  *   principal: the brief the agent works from, its person item carrying the issue as `task`, so
  *   every client draws its card. Before it, the working copies are put on `main` as HQ's git
  *   holds it (`ZeropsWorkingCopy`, what they held kept): each task delivers to a change of its own,
@@ -939,13 +939,17 @@ export const make = Effect.gen(function* () {
         (held !== undefined && workOf(held).some((run) => !isTasks(run, task.id)));
       if (busy) return refused(REFUSALS.busy);
 
+      // On the organization's model as HQ last handed it: a run under way keeps the one it
+      // started on, and the next task's starts on this.
+      const selection = yield* automation.modelSelection;
       const agent: ConversationAgent = {
-        instanceId: AUTOMATED_MODEL_SELECTION.instanceId,
+        instanceId: selection.instanceId,
         driver: "opencode",
-        model: AUTOMATED_MODEL_SELECTION.model,
+        model: selection.model,
         profile: { kind: "mate" },
       };
-      // Given once: the conversation keeps it from task to task.
+      // Given once, and again where the organization's model changed: the conversation keeps it
+      // from task to task.
       if (!sameAgent(held?.agent, agent) && !(yield* engine.assignAgent(conversationId, agent)))
         return Option.none();
       // The task before's last run counted now, before this task's runs take the view's place.
