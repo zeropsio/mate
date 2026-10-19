@@ -3,9 +3,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+
 import type { TaskSession } from "~/zerops/taskSession.logic";
 
+vi.mock("~/zerops/review", () => ({ useOpenReview: () => () => undefined }));
+
 import { MateTaskCardView, MateTaskMessageRow, MateTaskStatusView } from "./MateTaskCard";
+import { changeReviewItem, HeaderReviewDoor } from "./SidebarProjectReview";
 
 const issue = {
   kind: "github-issue",
@@ -193,5 +198,71 @@ describe("a follow-up told to a task's Mate", () => {
     );
     expect(html).toContain(heading);
     expect(html).toContain("Keep the old rounding.");
+  });
+});
+
+// The owner, 2026-10-19: "why is this different from the normal mate? … the normal mate deals with
+// this with the review button at the app bar".
+describe("an automated Mate's task conversation's app bar", () => {
+  const change = (number: number) =>
+    changeReviewItem({
+      pull: {
+        repository: "appdev",
+        number,
+        title: `Change ${String(number)}`,
+        kind: "code",
+        mateProjectId: "mate-raya",
+      } as unknown as FlowPullRequest,
+      among: [],
+      groupId: "orbit",
+      by: { name: "Raya", tint: "amber", shape: "clover" },
+      mine: true,
+    });
+  const door = (items: ReturnType<typeof change>[]) => ({
+    review: { groupId: "orbit", projectName: "Orbit", items, release: undefined },
+    held: false,
+  });
+  const upForReview: TaskSession = {
+    status: "review",
+    taskId: "task-8",
+    stoppable: false,
+    workedMs: null,
+    spentUsd: null,
+    change: { repo: "appdev", number: 2 },
+    pullRequest: null,
+  };
+
+  it("an automated Mate's task conversation carries the Review door in its app bar, as a normal Mate's does", () => {
+    const html = renderToStaticMarkup(
+      <MateTaskStatusView review={door([change(2)])} session={upForReview} />,
+    );
+    expect(html).toBe(renderToStaticMarkup(<HeaderReviewDoor {...door([change(2)])} />));
+    expect(html).not.toContain("Up for review");
+  });
+
+  it("the door opens the change of the task the conversation shows, and says how many more wait", () => {
+    const html = renderToStaticMarkup(
+      <MateTaskStatusView review={door([change(1), change(2)])} session={upForReview} />,
+    );
+    expect(html).toContain('data-zerops-changes="appdev#2 appdev#1"');
+    expect(html).toContain('aria-label="2 to review in Orbit"');
+    expect(html).not.toContain("Up for review");
+  });
+
+  it("keeps the task's other states beside the door", () => {
+    const html = renderToStaticMarkup(
+      <MateTaskStatusView
+        review={door([change(1)])}
+        session={{ ...upForReview, status: "waiting", change: null }}
+      />,
+    );
+    expect(html).toContain('data-zerops-surface="sidebar-project-review"');
+    expect(html).toContain("Waiting for you");
+  });
+
+  it("says the task is up for review where no door stands", () => {
+    expect(renderToStaticMarkup(<MateTaskStatusView session={upForReview} />)).toContain(
+      "Up for review",
+    );
   });
 });

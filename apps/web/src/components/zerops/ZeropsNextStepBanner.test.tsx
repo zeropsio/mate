@@ -10,6 +10,7 @@ import { Button } from "../ui/button";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { nextStepBeforeChanges, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
+import { changeReviewItem, headerReviewItems } from "./SidebarProjectReview.logic";
 import {
   ZeropsNextStepStrip,
   useZeropsNextStepStrip,
@@ -204,6 +205,24 @@ describe("zeropsComposerTop", () => {
       zeropsComposerTop({ nextStep: WAITING_3, dismissed, pending: NOTHING_PENDING }).strip?.target
         .number,
     ).toBe(3);
+  });
+  // A normal Mate's and an automated Mate's task conversation alike: the strip can be put away
+  // because the app bar's Review stays, and nothing the strip remembers reaches the door.
+  it("a dismissed review strip leaves the app-bar door", () => {
+    const dismissed = JSON.stringify(["g-1", "app", 2]);
+    expect(
+      zeropsComposerTop({ nextStep: WAITING, dismissed, pending: NOTHING_PENDING }).strip,
+    ).toBeNull();
+    const door = changeReviewItem({
+      pull: PULL,
+      among: [PULL],
+      groupId: "g-1",
+      by: undefined,
+      mine: true,
+    });
+    expect(headerReviewItems([door], PULL.mateProjectId).map((item) => item.key)).toEqual([
+      "app#2",
+    ]);
   });
   it("shows current source lines for several waiting changes", () => {
     expect(zeropsComposerTop({ nextStep: WAITING_TWO, pending: NOTHING_PENDING }).strip).toEqual(

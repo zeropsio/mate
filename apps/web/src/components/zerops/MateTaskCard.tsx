@@ -26,7 +26,7 @@ import {
 import { useCallback, useState } from "react";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
-import { spentWords, type TaskSession } from "~/zerops/taskSession.logic";
+import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
 import { TASK_STATUS_WORDS, taskStatusDot, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
 
@@ -34,6 +34,8 @@ import { cn } from "~/lib/utils";
 
 import { GitHubIcon } from "../Icons";
 import { Button, InlineButton } from "../ui/button";
+import { HeaderReviewDoor } from "./SidebarProjectReview";
+import { taskReviewItems } from "./SidebarProjectReview.logic";
 
 /** "acme/tea-shop#12 · opened by nova-dev": where the task came from, and whose it is. */
 export function mateTaskCardSource(task: MateTaskSource): string {
@@ -69,15 +71,20 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
   }
 }
 
+/** The app bar's Review, as a Mate's conversation header holds it (`HeaderReviewDoor`). */
+export type TaskReviewDoor = Parameters<typeof HeaderReviewDoor>[0];
+
 /**
  * Where a task stands, beside its Mate in the conversation's header — in sight however far the
- * conversation scrolls — and Stop, for an Owner or Admin while it can be stopped, asked first.
+ * conversation scrolls — after the app bar's Review its Mate's changes wait on, as a normal Mate's
+ * header has it, and Stop, for an Owner or Admin while it can be stopped, asked first.
  */
 export function MateTaskStatus({
   task,
   taskId,
   environmentId,
   conversationId,
+  review = null,
 }: {
   /** The conversation's current task (`conversationTask`): its latest brief's. */
   readonly task: MateTaskSource;
@@ -85,82 +92,101 @@ export function MateTaskStatus({
   readonly taskId: string | null;
   readonly environmentId: EnvironmentId;
   readonly conversationId: string;
+  /** Its Mate's app-bar Review (`headerReviewItems`); `null` while nothing waits there. */
+  readonly review?: TaskReviewDoor | null;
 }) {
   const { session, stop } = useTaskSession(task, environmentId, conversationId, taskId);
-  return <MateTaskStatusView onStop={stop ?? undefined} session={session} />;
+  return <MateTaskStatusView onStop={stop ?? undefined} review={review} session={session} />;
 }
 
 export function MateTaskStatusView({
   session = NOT_KNOWN,
   onStop,
+  review = null,
 }: {
   /** Where it stands now (`taskSession`); not known: its room held, nothing said. */
   readonly session?: TaskSession;
   /** Stops the task, confirmed first; absent while it cannot be stopped from here. */
   readonly onStop?: (() => void) | undefined;
+  /**
+   * Its Mate's app-bar Review, led by this task's change (`taskReviewItems`); where it asks, the
+   * pill does not say the task is up for review again (`taskPillStatus`).
+   */
+  readonly review?: TaskReviewDoor | null;
 }) {
-  const { status } = session;
+  const items = review === null ? [] : taskReviewItems(review.review.items, session.change);
+  const status = taskPillStatus(session.status, items.length > 0);
   const [asking, setAsking] = useState(false);
   const confirming = asking && onStop !== undefined;
+  const door =
+    review === null ? null : (
+      <HeaderReviewDoor held={review.held} review={{ ...review.review, items }} />
+    );
+  if (status === undefined && onStop === undefined) return door;
   return (
-    <span
-      className="flex min-w-0 shrink-0 items-center gap-2 text-line"
-      data-zerops-surface="mate-task-session"
-    >
+    <>
+      {door}
       <span
-        className={cn(
-          "flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-2 py-px font-medium text-foreground",
-          status === null && "invisible",
-        )}
-        data-zerops-surface="mate-task-status"
+        className="flex min-w-0 shrink-0 items-center gap-2 text-line"
+        data-zerops-surface="mate-task-session"
       >
-        {status === null ? null : (
+        {status === undefined ? null : (
           <span
-            aria-hidden="true"
-            className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
-          />
-        )}
-        <span data-zerops-surface="mate-task-status-words">
-          {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
-        </span>
-      </span>
-      {confirming ? (
-        <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
-          <span className="text-muted-foreground">
-            Stop this task? Its Mate stops where it got to.
-          </span>
-          <Button
-            onClick={() => {
-              setAsking(false);
-            }}
-            size="sm"
-            variant="ghost"
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-2 py-px font-medium text-foreground",
+              status === null && "invisible",
+            )}
+            data-zerops-surface="mate-task-status"
           >
-            Keep
-          </Button>
+            {status === null ? null : (
+              <span
+                aria-hidden="true"
+                className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
+              />
+            )}
+            <span data-zerops-surface="mate-task-status-words">
+              {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
+            </span>
+          </span>
+        )}
+        {confirming ? (
+          <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
+            <span className="text-muted-foreground">
+              Stop this task? Its Mate stops where it got to.
+            </span>
+            <Button
+              onClick={() => {
+                setAsking(false);
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              Keep
+            </Button>
+            <Button
+              onClick={() => {
+                setAsking(false);
+                onStop?.();
+              }}
+              size="sm"
+              variant="destructive"
+            >
+              Stop
+            </Button>
+          </span>
+        ) : onStop !== undefined ? (
           <Button
             onClick={() => {
-              setAsking(false);
-              onStop?.();
+              setAsking(true);
             }}
             size="sm"
-            variant="destructive"
+            variant="secondary"
           >
             Stop
           </Button>
-        </span>
-      ) : onStop !== undefined ? (
-        <Button
-          onClick={() => {
-            setAsking(true);
-          }}
-          size="sm"
-          variant="secondary"
-        >
-          Stop
-        </Button>
-      ) : null}
-    </span>
+        ) : null}
+      </span>
+    </>
   );
 }
 

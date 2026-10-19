@@ -8,6 +8,7 @@ import {
   recordOf,
   sessionTaskId,
   spentWords,
+  taskPillStatus,
   taskSession,
   type TaskSessionInput,
 } from "./taskSession.logic";
@@ -235,6 +236,46 @@ describe("a task's session: how its conversation's task stands, in one word", ()
       }),
     );
     expect(session).toMatchObject({ taskId: "task-9", status: "working", stoppable: true });
+  });
+});
+
+// The app bar's Review door says a change waits for review: the task's pill never says it again.
+describe("the task's pill beside the app bar's Review door", () => {
+  it.each([
+    {
+      name: "says no Up for review where the door shows",
+      status: "review",
+      door: true,
+      pill: undefined,
+    },
+    {
+      name: "says Up for review where no door shows",
+      status: "review",
+      door: false,
+      pill: "review",
+    },
+    {
+      name: "holds no room where the door shows before the task is known",
+      status: null,
+      door: true,
+      pill: undefined,
+    },
+    { name: "holds its room while the task is not known", status: null, door: false, pill: null },
+    {
+      name: "still says it waits for an answer beside the door",
+      status: "waiting",
+      door: true,
+      pill: "waiting",
+    },
+    {
+      name: "still says it stopped beside the door",
+      status: "stopped",
+      door: true,
+      pill: "stopped",
+    },
+    { name: "still says it works", status: "working", door: false, pill: "working" },
+  ] as const)("$name", ({ status, door, pill }) => {
+    expect(taskPillStatus(status, door)).toBe(pill);
   });
 });
 

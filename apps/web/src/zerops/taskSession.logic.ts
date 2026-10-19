@@ -161,6 +161,19 @@ export function taskSession(input: TaskSessionInput): TaskSession {
   };
 }
 
+/**
+ * What the task's pill beside its Mate says, where the app bar's Review door may stand beside it:
+ * the door already says the change waits for review, so the pill does not, nor holds room for a
+ * word not known yet. `null`: room held, nothing said; `undefined`: no pill.
+ */
+export function taskPillStatus(
+  status: TaskStatus | null,
+  reviewDoor: boolean,
+): TaskStatus | null | undefined {
+  if (reviewDoor && (status === null || status === "review")) return undefined;
+  return status;
+}
+
 /** What a task cost in US dollars, to the cent: "$0.42", "<$0.01". */
 export function spentWords(usd: number): string {
   if (usd > 0 && usd < 0.005) return "<$0.01";

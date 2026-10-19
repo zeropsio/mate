@@ -55,7 +55,7 @@ import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
 import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
-import { ProjectReviewTags } from "../zerops/SidebarProjectReview";
+import { HeaderReviewDoor } from "../zerops/SidebarProjectReview";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useHeldBehindReview } from "~/zerops/heldBehindReview";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -646,25 +646,29 @@ export const ChatHeader = memo(function ChatHeader({
               }
               subject={crewOrigin === null && spoken ? headline : null}
               trailing={
-                // A task's conversation: where the task stands, and its Stop, right after it.
+                // What waits on the person, right after the Mate: its Review, the same door for
+                // an automated Mate's task conversation, where the task's state and its Stop
+                // follow it (the owner, 2026-10-19: "why is this different from the normal mate?").
                 activeThreadTask !== undefined && isServerThread ? (
                   <MateTaskStatus
                     conversationId={activeThreadId}
                     environmentId={activeThreadEnvironmentId}
+                    review={
+                      reviewTags.value === null
+                        ? null
+                        : {
+                            review: { ...reviewTags.value, items: headerChanges },
+                            held: reviewTags.held,
+                          }
+                    }
                     task={activeThreadTask.source}
                     taskId={activeThreadTask.taskId}
                   />
-                ) : // What waits on the person, right after the Mate (the owner, 2026-10-12: "it's
-                // pretty important after all … maybe placed on the left"): its changes to review,
-                // then what waits for production, together.
-                reviewTags.value === null ? null : (
-                  <span
-                    aria-hidden={reviewTags.held || undefined}
-                    className={cn("chat-header-review", reviewTags.held && "invisible")}
-                    inert={reviewTags.held}
-                  >
-                    <ProjectReviewTags {...reviewTags.value} items={headerChanges} />
-                  </span>
+                ) : reviewTags.value === null ? null : (
+                  <HeaderReviewDoor
+                    held={reviewTags.held}
+                    review={{ ...reviewTags.value, items: headerChanges }}
+                  />
                 )
               }
             />
