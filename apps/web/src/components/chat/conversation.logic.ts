@@ -2076,10 +2076,11 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
   const step = operation.browserSummary?.failedStep;
   if (step) {
     // The step as a thing the check could not do. The tool's bare class of
-    // error ("Other") tells a person nothing.
+    // error ("Other") tells a person nothing. Only zcp's own `open` loads the
+    // page; any later step that timed out waited for something on a loaded one.
     const note = step.note?.trim() && !/^other$/i.test(step.note.trim()) ? step.note.trim() : null;
     const label = step.label?.trim() ?? "";
-    if (/timeout|timed out/i.test(`${label} ${note ?? ""}`))
+    if (label.startsWith("open ") && /timeout|timed out/i.test(note ?? ""))
       return "timed out, the page never loaded";
     if (label.length === 0) return note ?? "failed";
     return note === null ? `couldn't ${label}` : `couldn't ${label}: ${note}`;
