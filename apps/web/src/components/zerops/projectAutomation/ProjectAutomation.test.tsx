@@ -583,6 +583,65 @@ describe("a project's Automation section", () => {
     expect(atWork).not.toContain("merged or closed");
   });
 
+  // r3, the owner: "the states with a lot of content (changes, automation)".
+  it("lists a few queued and ended tasks on the project page's Mates, Show all opening the rest in place", () => {
+    const queued = Array.from({ length: 6 }, (_, at) => ({
+      ...TASK,
+      id: `q${String(at)}`,
+      state: "queued" as const,
+      position: at + 1,
+      mate: null,
+    }));
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({
+          read: { state: "known", board: boardOf(queued, NOW, "tea-shop") },
+        })}
+        look="part"
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const rows = () =>
+      root.findAll((node) => node.type === "li" && node.props["data-zerops-task"] !== undefined);
+    expect(rows()).toHaveLength(3);
+    const more = root.find((node) => node.props["data-zerops-surface"] === "board-show-all");
+    expect(words(more)).toContain("3 more");
+    act(() => {
+      more.props.onClick();
+    });
+    expect(rows()).toHaveLength(6);
+  });
+
+  it("says the month's budget is spent and tasks wait, with the way to raise it", () => {
+    const admin = controls();
+    const root = rendered(
+      <ProjectAutomationView
+        admin={admin}
+        board={boardView({
+          spend: "$47.00 of $47 this month · spent",
+          gauge: { words: "$47.00 of $47 · October", share: 1 },
+        })}
+        look="part"
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const status = root.find((node) => node.props.role === "status");
+    expect(words(status)).toBe(
+      "October’s $47 is spent: tasks wait for a higher budget or the next month.",
+    );
+    const raise = root.find((node) => node.type === "button" && words(node) === "Raise the budget");
+    act(() => {
+      raise.props.onClick();
+    });
+    expect(admin.onOpenSettings).toHaveBeenCalled();
+  });
+
   it("offers no Stop of a task to anyone but an Owner or Admin", () => {
     const root = rendered(
       <ProjectAutomationView

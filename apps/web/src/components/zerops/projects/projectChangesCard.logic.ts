@@ -100,3 +100,34 @@ export function projectChangeGroups(input: {
     releases,
   };
 }
+
+/** How many folded releases a capped Changes lists before *Show all*. */
+export const FOLDED_SHOWN = 2;
+
+/**
+ * A project page's Changes cut to `perGroup` rows a group, newest first, and its folded releases
+ * to `FOLDED_SHOWN` — and how many rows *Show all* holds. Where the page asks for reviews above
+ * (`reviewsAbove`), the changes waiting for one are said there and listed here no more.
+ */
+export function cappedChangeGroups(
+  groups: ProjectChangeGroups,
+  perGroup: number,
+  options: { readonly reviewsAbove?: boolean } = {},
+): { readonly groups: ProjectChangeGroups; readonly hidden: number } {
+  let hidden = 0;
+  const cut = <T>(rows: ReadonlyArray<T>, max: number): ReadonlyArray<T> => {
+    hidden += Math.max(0, rows.length - max);
+    return rows.slice(0, max);
+  };
+  const waiting = options.reviewsAbove === true ? [] : cut(groups.waiting, perGroup);
+  const drafts = cut(groups.drafts, perGroup);
+  const ready = { ...groups.ready, changes: cut(groups.ready.changes, perGroup) };
+  const open = groups.releases
+    .filter((release) => release.open)
+    .map((release) => ({ ...release, changes: cut(release.changes, perGroup) }));
+  const folded = cut(
+    groups.releases.filter((release) => !release.open),
+    perGroup === Number.POSITIVE_INFINITY ? perGroup : FOLDED_SHOWN,
+  );
+  return { groups: { waiting, drafts, ready, releases: [...open, ...folded] }, hidden };
+}

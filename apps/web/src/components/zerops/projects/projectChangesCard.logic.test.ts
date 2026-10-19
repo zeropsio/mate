@@ -1,7 +1,7 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { projectChangeGroups } from "./projectChangesCard.logic";
+import { cappedChangeGroups, projectChangeGroups } from "./projectChangesCard.logic";
 
 function pull(number: number, over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -147,5 +147,49 @@ describe("projectChangeGroups", () => {
       production: true,
     });
     expect(groups.releases.map((group) => group.open)).toEqual([true, false]);
+  });
+});
+
+describe("a project page's Changes, capped", () => {
+  const many = projectChangeGroups({
+    open: [
+      pull(1),
+      pull(2, { ready: false }),
+      pull(3, { ready: false }),
+      pull(4, { ready: false }),
+      pull(5, { ready: false }),
+    ],
+    merged: [
+      ...Array.from({ length: 5 }, (_, at) => merged(10 + at, `2026-10-18T0${String(at)}:00:00Z`)),
+      ...Array.from({ length: 6 }, (_, at) => merged(20 + at, `2026-10-15T0${String(at)}:00:00Z`)),
+    ],
+    releases: [
+      release("v3", "2026-10-16T00:00:00Z", true),
+      release("v2", "2026-10-10T00:00:00Z"),
+      release("v1", "2026-10-05T00:00:00Z"),
+      release("v0", "2026-10-01T00:00:00Z"),
+    ],
+    stage: NO_STAGE,
+    production: true,
+  });
+
+  it("lists a few of each group, newest first, and counts what Show all holds", () => {
+    const { groups, hidden } = cappedChangeGroups(many, 3);
+    expect(groups.drafts.map((change) => change.pull.number)).toEqual([2, 3, 4]);
+    expect(groups.ready.changes).toHaveLength(3);
+    expect(groups.releases[0]?.changes).toHaveLength(3);
+    expect(groups.releases.filter((group) => !group.open)).toHaveLength(2);
+    // One draft, two ready, three released under v3 and one folded release.
+    expect(hidden).toBe(1 + 2 + 3 + 1);
+  });
+
+  it("lists none waiting for review where the page asks for them above", () => {
+    const { groups } = cappedChangeGroups(many, 3, { reviewsAbove: true });
+    expect(groups.waiting).toEqual([]);
+    expect(cappedChangeGroups(many, 3).groups.waiting).toHaveLength(1);
+  });
+
+  it("holds nothing back where every group fits", () => {
+    expect(cappedChangeGroups(many, Number.POSITIVE_INFINITY).hidden).toBe(0);
   });
 });

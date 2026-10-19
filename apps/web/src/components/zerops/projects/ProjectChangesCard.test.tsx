@@ -235,4 +235,31 @@ describe("a project's Changes card", () => {
     expect(link?.getAttribute("href")).toBe("https://github.com/acme/tea-shop/pull/5");
     expect(host.querySelector('[data-zerops-change="app#7"] a')).toBeNull();
   });
+
+  // r3, the owner: "the states with a lot of content (changes, automation)".
+  it("lists a few of each group on the project page, and opens the rest in place with Show all", async () => {
+    const many = projectChangeGroups({
+      open: Array.from({ length: 5 }, (_, at) => pull(20 + at, { ready: false })),
+      merged: [],
+      releases: [],
+      stage: undefined,
+      production: true,
+    });
+    const host = await mount(
+      <ProjectChangesCard
+        cap={3}
+        groups={many}
+        mateOf={MATES}
+        onOpen={vi.fn()}
+        read={{ state: "known" }}
+      />,
+    );
+    expect(host.querySelectorAll("[data-zerops-change]")).toHaveLength(3);
+    const more = host.querySelector<HTMLButtonElement>('[data-zerops-surface="changes-show-all"]');
+    expect(more?.textContent).toContain("2 more");
+    await act(async () => {
+      more?.click();
+    });
+    expect(host.querySelectorAll("[data-zerops-change]")).toHaveLength(5);
+  });
 });

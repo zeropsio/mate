@@ -7,7 +7,7 @@
  */
 import { flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -17,7 +17,11 @@ import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import type { CardChange } from "./projectCard.logic";
-import type { ProjectChangeGroups, ReleaseGroup } from "./projectChangesCard.logic";
+import {
+  cappedChangeGroups,
+  type ProjectChangeGroups,
+  type ReleaseGroup,
+} from "./projectChangesCard.logic";
 import { CardGroupName, CardRowsHeld, ProjectPageCard } from "./ProjectPageCard";
 
 /** A change's Mate, as the card names it: its name and face, where the page holds it. */
@@ -35,8 +39,23 @@ export function ProjectChangesCard({
   onRelease,
   releasing = false,
   emptyAction,
+  look = "card",
+  cap,
+  reviewsAbove = false,
+  quiet = false,
 }: {
   readonly groups: ProjectChangeGroups;
+  /** Where it stands: a card of the side column, or a section of the page's wide column. */
+  readonly look?: "card" | "section";
+  /**
+   * How many rows each group lists before *Show all*, which opens the rest in place; every row
+   * where absent.
+   */
+  readonly cap?: number | undefined;
+  /** The page asks for the changes waiting on the person above (`Needs you`): none listed here. */
+  readonly reviewsAbove?: boolean;
+  /** Nothing to list says nothing: the page says the project has no changes yet elsewhere. */
+  readonly quiet?: boolean;
   /**
    * `known` once HQ told the project's changes; `reading` until then (rows held at their size);
    * otherwise why they are not told, in HQ's words.
@@ -62,14 +81,19 @@ export function ProjectChangesCard({
     | undefined;
 }) {
   const nowMs = useNowMs();
+  const [all, setAll] = useState(false);
   const ago = (at: string | undefined) =>
     at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at, nowMs));
-  const { waiting, drafts, ready, releases } = groups;
+  const listed = cappedChangeGroups(groups, all || cap === undefined ? Infinity : cap, {
+    reviewsAbove,
+  });
+  const { waiting, drafts, ready, releases } = listed.groups;
   const nothing =
     waiting.length === 0 &&
     drafts.length === 0 &&
     ready.changes.length === 0 &&
     releases.length === 0;
+  if (nothing && quiet && read.state === "known") return null;
   const body =
     read.state === "reading" ? (
       <CardRowsHeld rows={3} />
@@ -189,8 +213,26 @@ export function ProjectChangesCard({
       </>
     );
   return (
-    <ProjectPageCard busy={read.state === "reading"} surface="project-changes" title="Changes">
+    <ProjectPageCard
+      busy={read.state === "reading"}
+      look={look}
+      surface="project-changes"
+      title="Changes"
+    >
       {body}
+      {/* The rest, opened in place: the full list it always was. */}
+      {read.state !== "known" || (listed.hidden === 0 && !all) ? null : (
+        <button
+          className="ov-show-all"
+          data-zerops-surface="changes-show-all"
+          onClick={() => {
+            setAll((was) => !was);
+          }}
+          type="button"
+        >
+          {all ? "Show fewer" : `Show all · ${String(listed.hidden)} more`}
+        </button>
+      )}
     </ProjectPageCard>
   );
 }
@@ -206,7 +248,7 @@ function Face({ mate }: { readonly mate: ChangeMate | undefined }) {
 }
 
 /** A change asking for review: face, title, whose and its state, and its Review. */
-function WaitingRow({
+export function WaitingRow({
   change,
   mate,
   when,

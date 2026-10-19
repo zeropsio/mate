@@ -9,9 +9,15 @@ export function ProjectPageCard({
   end,
   surface,
   busy = false,
+  look = "card",
   children,
 }: {
   readonly title: string;
+  /**
+   * `card` on the page's side column; `section` in its wide column, among Production and Stages:
+   * its name over a hairline, on the page's own ground.
+   */
+  readonly look?: "card" | "section";
   /** The head's right end: a quiet fact, or the card's one action. */
   readonly end?: ReactNode;
   /** Its `data-zerops-surface`. */
@@ -20,6 +26,21 @@ export function ProjectPageCard({
   readonly busy?: boolean;
   readonly children: ReactNode;
 }) {
+  if (look === "section")
+    return (
+      <section
+        aria-busy={busy || undefined}
+        aria-label={title}
+        className="pp-sec"
+        data-zerops-surface={surface}
+      >
+        <div className="pp-sec-head">
+          <h2 className="pp-sec-name">{title}</h2>
+          {end === undefined || end === null ? null : <span className="pp-sec-acts">{end}</span>}
+        </div>
+        {children}
+      </section>
+    );
   return (
     <section
       aria-busy={busy || undefined}

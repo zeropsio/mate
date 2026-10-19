@@ -59,7 +59,8 @@ import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
-import { ProjectPageCard } from "../projects/ProjectPageCard";
+import { CardGroupName, ProjectPageCard } from "../projects/ProjectPageCard";
+import { capped } from "../projects/projectPage.logic";
 import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -111,7 +112,10 @@ export function ProjectAutomation({
   groupId,
   name,
   repos,
+  look = "card",
 }: {
+  /** A card of its own, or the automated half of the page's Mates (`ProjectAutomationView`). */
+  readonly look?: "card" | "part";
   readonly groupId: string;
   /** The project's name; undefined while the listing has not named it. */
   readonly name: string | undefined;
@@ -154,6 +158,7 @@ export function ProjectAutomation({
     return (
       <ProjectAutomationView
         board={board}
+        look={look}
         onOpenMate={onOpenMate}
         pool={pool}
         sources={{ rows, reading: intake.read.intake === undefined, withheld }}
@@ -163,6 +168,7 @@ export function ProjectAutomation({
   if (automationSection({ admin, key, pool: 0, sources: 0 }) === "update")
     return (
       <ProjectAutomationView
+        look={look}
         onOpenMate={onOpenMate}
         pool={[]}
         sources={{ rows: [], reading: false, withheld: false }}
@@ -171,6 +177,7 @@ export function ProjectAutomation({
     );
   return (
     <AdminAutomation
+      look={look}
       addMate={addMate}
       board={board}
       groupId={groupId}
@@ -342,7 +349,9 @@ function AdminAutomation({
   addMate,
   board,
   onOpenMate,
+  look,
 }: {
+  readonly look: "card" | "part";
   readonly board: BoardView;
   readonly groupId: string;
   readonly name: string;
@@ -410,6 +419,7 @@ function AdminAutomation({
   return (
     <>
       <ProjectAutomationView
+        look={look}
         admin={{
           onAddMate: addMate,
           onTakeFrom: setOpen,
@@ -653,7 +663,14 @@ export function ProjectAutomationView({
   onOpenMate,
   workingOf,
   update = false,
+  look = "card",
 }: {
+  /**
+   * `card`: a card of its own. `part`: the automated half of the project page's Mates — its name
+   * a small heading under the people's Mates, its board capped with *Show all*; nothing at all
+   * while it holds nothing (the project's ··· adds automated Mates).
+   */
+  readonly look?: "card" | "part";
   /** The task board; absent, none is drawn. */
   readonly board?: BoardView | undefined;
   /** HQ predates automated Mates: the section keeps its place, saying HQ needs updating. */
@@ -674,37 +691,83 @@ export function ProjectAutomationView({
   const live = !update && pool.length > 0;
   const gauge = live ? (board?.gauge ?? null) : null;
   const spend = live ? (board?.spend ?? null) : null;
-  return (
-    <ProjectPageCard
-      end={
-        !live ? undefined : (
-          <>
-            {spend === null ? null : (
-              <span className="text-caption text-muted-foreground tabular-nums">
-                {gauge?.words ?? spend}
-              </span>
-            )}
-            {admin?.onAddMate === undefined ? null : (
-              <Button
-                aria-label="Add an automated Mate"
-                onClick={admin.onAddMate}
-                size="sm"
-                variant="ghost"
-              >
-                Add
-              </Button>
-            )}
-          </>
-        )
-      }
-      surface="project-automation"
-      title="Automation"
-    >
-      {gauge === null ? null : (
-        <div aria-hidden="true" className="pp-cards-gauge">
+  // The month's budget spent: HQ hands out no task until the next month or a higher budget.
+  const spent = gauge !== null && gauge.share >= 1;
+  const end = !live ? undefined : (
+    <>
+      {spend === null || spent ? null : (
+        <span className="text-caption text-muted-foreground tabular-nums">
+          {gauge?.words ?? spend}
+        </span>
+      )}
+      {!spent || admin === undefined ? null : (
+        <Button onClick={admin.onOpenSettings} size="sm" variant="secondary">
+          Raise the budget
+        </Button>
+      )}
+      {spent || admin?.onAddMate === undefined ? null : (
+        <Button
+          aria-label="Add an automated Mate"
+          onClick={admin.onAddMate}
+          size="sm"
+          variant="ghost"
+        >
+          Add
+        </Button>
+      )}
+    </>
+  );
+  const meter =
+    gauge === null ? null : (
+      <>
+        <div
+          aria-hidden="true"
+          className="pp-cards-gauge"
+          data-tone={spent ? "attention" : undefined}
+        >
           <span style={{ width: `${String(Math.round(gauge.share * 1000) / 10)}%` }} />
         </div>
-      )}
+        {spent ? (
+          <p className="text-line text-status-attention-text" role="status">
+            {spentWords(gauge.words)}
+          </p>
+        ) : null}
+      </>
+    );
+  if (look === "part") {
+    if (!update && pool.length === 0 && sources.rows.length === 0 && !sources.reading) return null;
+    return (
+      <section
+        aria-label="Automation"
+        className="pp-team-part"
+        data-zerops-surface="project-automation"
+      >
+        <header className="pp-team-part-head">
+          <CardGroupName>Automated</CardGroupName>
+          {end === undefined ? null : <div className="pp-team-part-end">{end}</div>}
+        </header>
+        {meter}
+        {update ? (
+          <p className="pp-cards-empty">Update HQ to set up automated Mates.</p>
+        ) : (
+          <div className="-mx-2 grid gap-4 text-line">
+            <AutomationBody
+              admin={admin}
+              board={board}
+              cap={BOARD_ROWS_SHOWN}
+              onOpenMate={onOpenMate}
+              pool={pool}
+              sources={sources}
+              workingOf={workingOf}
+            />
+          </div>
+        )}
+      </section>
+    );
+  }
+  return (
+    <ProjectPageCard end={end} surface="project-automation" title="Automation">
+      {meter}
       {update ? (
         <p className="pp-cards-empty">Update HQ to set up automated Mates.</p>
       ) : (
@@ -721,6 +784,17 @@ export function ProjectAutomationView({
       )}
     </ProjectPageCard>
   );
+}
+
+/**
+ * The month's budget spent, in words: "$47.00 of $47 · October" → "October's $47 is spent: tasks
+ * wait for a higher budget or the next month."
+ */
+function spentWords(gauge: string): string {
+  const [, cap, month] = /of (\S+) · (\S+)$/u.exec(gauge) ?? [];
+  return cap === undefined || month === undefined
+    ? "This month's budget is spent: tasks wait for a higher budget or the next month."
+    : `${month}’s ${cap} is spent: tasks wait for a higher budget or the next month.`;
 }
 
 /** *Take tasks from…*: each kind of source, opening its form. */
@@ -761,7 +835,11 @@ function AutomationBody({
   board,
   onOpenMate,
   workingOf,
-}: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
+  cap,
+}: Omit<Parameters<typeof ProjectAutomationView>[0], "update" | "look"> & {
+  /** How many rows Queued and Recent list before *Show all*; every row where absent. */
+  readonly cap?: number | undefined;
+}) {
   const [managing, setManaging] = useState(false);
   const names = pool.map((mate) => mate.name);
   const look = sources.rows.some((row) => sourceNeedsLook(row, admin));
@@ -866,7 +944,7 @@ function AutomationBody({
         </div>
       )}
       {board === undefined || board.read.state === "none" ? null : (
-        <TaskBoardView board={board} pool={pool} />
+        <TaskBoardView board={board} cap={cap} pool={pool} />
       )}
     </>
   );
@@ -1077,13 +1155,20 @@ function reviewingWords(name: string, count: number): string {
   return `${name} waits for a task · ${count > 1 ? changesInReview(count) : "1 change in review"}.`;
 }
 
+/** How many rows of Queued and of Recent the page's Mates list before *Show all*. */
+const BOARD_ROWS_SHOWN = 3;
+
 export function TaskBoardView({
   board,
   pool,
+  cap,
 }: {
   readonly board: BoardView;
   readonly pool: ReadonlyArray<PoolMate>;
+  /** How many rows Queued and Recent list before *Show all* opens the rest in place. */
+  readonly cap?: number | undefined;
 }) {
+  const [all, setAll] = useState(false);
   const { read } = board;
   if (read.state === "none") return null;
   if (read.state === "failed")
@@ -1097,7 +1182,14 @@ export function TaskBoardView({
         </Button>
       </div>
     );
-  if (read.state === "reading")
+  if (read.state === "reading") {
+    // Each block at the size it lands at, capped as it will be, and *Show all*'s room held.
+    const most = cap ?? Infinity;
+    const queuedHeld = Math.max(1, read.predicted.queued);
+    const recentHeld = Math.max(1, read.predicted.recent);
+    const more =
+      cap !== undefined &&
+      (queuedHeld > cap || recentHeld > cap || read.predicted.recentMore === true);
     return (
       <div className="pp-cards-board" data-zerops-surface="project-automation-board">
         <div className="pp-cards-pair">
@@ -1105,16 +1197,28 @@ export function TaskBoardView({
             <Placeholders count={read.predicted.atWork} />
           </BoardBlock>
           <BoardBlock name="Queued">
-            <Placeholders count={Math.max(1, read.predicted.queued)} />
+            <Placeholders count={Math.min(most, queuedHeld)} />
           </BoardBlock>
         </div>
         <BoardBlock name="Recent">
-          <Placeholders count={Math.max(1, read.predicted.recent)} />
-          {read.predicted.recentMore === true ? <div aria-hidden="true" className="h-6" /> : null}
+          <Placeholders count={Math.min(most, recentHeld)} />
+          {cap === undefined && read.predicted.recentMore === true ? (
+            <div aria-hidden="true" className="h-6" />
+          ) : null}
         </BoardBlock>
+        {more ? <div aria-hidden="true" className="h-5" /> : null}
       </div>
     );
-  const { atWork, blocked, reviewing, queued, recent, recentMore } = read.board;
+  }
+  const { atWork, blocked, reviewing } = read.board;
+  const limit = all || cap === undefined ? Infinity : cap;
+  const queuedCut = capped(read.board.queued, limit);
+  const recentCut = capped(read.board.recent, limit);
+  const queued = queuedCut.shown;
+  const recent = recentCut.shown;
+  const recentMore = all || cap === undefined ? read.board.recentMore : 0;
+  const hidden =
+    queuedCut.hidden + recentCut.hidden + (all || cap === undefined ? 0 : read.board.recentMore);
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
   const byName = new Map(pool.map((mate) => [mate.name, mate]));
   const busy = new Set([
@@ -1193,7 +1297,7 @@ export function TaskBoardView({
             <p className="flex h-8 items-center px-2 text-line text-muted-foreground">{idle}</p>
           )}
         </BoardBlock>
-        <BoardBlock count={queued.length} name="Queued">
+        <BoardBlock count={read.board.queued.length} name="Queued">
           {queued.length === 0 ? (
             <p className="flex h-8 items-center px-2 text-line text-muted-foreground">
               Nothing waiting.
@@ -1309,6 +1413,19 @@ export function TaskBoardView({
           </p>
         )}
       </BoardBlock>
+      {/* The rest of the queue and of what ended, opened in place: the whole board. */}
+      {cap === undefined || (hidden === 0 && !all) ? null : (
+        <button
+          className="ov-show-all mx-2"
+          data-zerops-surface="board-show-all"
+          onClick={() => {
+            setAll((was) => !was);
+          }}
+          type="button"
+        >
+          {all ? "Show fewer" : `Show all · ${String(hidden)} more`}
+        </button>
+      )}
     </div>
   );
 }
