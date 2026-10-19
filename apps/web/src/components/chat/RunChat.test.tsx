@@ -68,6 +68,19 @@ vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => ({
   useOperationCard: () => ({}),
 }));
 
+// Whether the card's Mate is automated: its record is not drawn here, so a test says it.
+const knownMate = vi.hoisted(() => ({ automated: false }));
+vi.mock("../../zerops/useZeropsMates", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../zerops/useZeropsMates")>();
+  return {
+    ...actual,
+    useKnownMate: (environmentId: EnvironmentId) =>
+      knownMate.automated
+        ? ({ automated: true } as ReturnType<typeof actual.useKnownMate>)
+        : actual.useKnownMate(environmentId),
+  };
+});
+
 // Measured execution is held until the test supplies its completion receipt.
 vi.mock("./foldWork", () => ({ foldWork: vi.fn(() => () => undefined) }));
 
@@ -1420,6 +1433,43 @@ describe("RunChat, as the person uses it", () => {
             (child) => typeof child.children[0] === "string" && child.children[0] === words,
           ).length > 0),
     );
+
+  // Erza on OpenCode, 2026-10-19: the working card's "Thinking" wore a chevron that opened nothing.
+  it("an automated Mate's thinking line opens onto its words, and while it thinks shows nothing to open", () => {
+    knownMate.automated = true;
+    try {
+      const chevrons = (renderer: ReactTestRenderer) =>
+        renderer.root.findAll(
+          (node) => node.type === "svg" && String(node.props.className).includes("chevron-down"),
+        );
+      const words = "The build needs Node 22. So I bump it";
+      const slot = mount(
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "thinking",
+            key: "thought:r9",
+            messages: [{ ...message("r9", "reasoning", words), streaming: true }],
+          },
+        }),
+      );
+      expect(JSON.stringify(slot.toJSON())).toContain("Thinking");
+      expect(chevrons(slot)).toHaveLength(0);
+      expect(slot.root.findAll((node) => node.props["aria-expanded"] !== undefined)).toEqual([]);
+
+      const landed = mount(record([thought("r1", words)]));
+      expect(JSON.stringify(landed.toJSON())).not.toContain(words);
+      expect(chevrons(landed)).toHaveLength(1);
+      act(() => {
+        button(landed, "Thinking").props.onClick();
+      });
+      expect(button(landed, "Thinking").props["aria-expanded"]).toBe(true);
+      expect(JSON.stringify(landed.toJSON())).toContain(words);
+    } finally {
+      knownMate.automated = false;
+    }
+  });
 
   // Stop ends the engine's call as failed and its work as stopped. The card reads the work's
   // meaning, and a helper report repeating its title never names that helper a second time.
