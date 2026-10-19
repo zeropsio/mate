@@ -32,6 +32,8 @@ interface Copy {
   readonly fetched: Record<string, string>;
   /** Git refuses this step (its first argument). */
   readonly failing?: string;
+  /** The branch on HQ's git its local branch tracks; none when it tracks none. */
+  upstream?: string;
 }
 
 const copy = (host: string, given: Partial<Copy> = {}): Copy => ({
@@ -115,6 +117,10 @@ const rig = (copies: ReadonlyArray<Copy>) =>
             case "branch":
               if (at.local[rest.at(-2)!] !== undefined) return refuse(input);
               at.local[rest.at(-2)!] = at.head;
+              return ok();
+            case "config":
+              if (rest[0]?.endsWith(".merge") === true)
+                at.upstream = rest[1]!.replace("refs/heads/", "");
               return ok();
             case "checkout":
               at.head = at.fetched[rest.at(-1)!]!;
@@ -201,6 +207,32 @@ describe("an automated Mate's working copies hold the task it works", () => {
       });
       assert.isFalse(ran.some((step) => step.includes("branch -f")));
     }),
+  );
+
+  it.effect.each([
+    ["a new task on a moved working copy", copy("appdev"), { kind: "main" }, "main"],
+    [
+      "a new task on a working copy at main",
+      copy("appdev", { head: "main1" }),
+      { kind: "main" },
+      "main",
+    ],
+    [
+      "a follow-up",
+      copy("appdev", { origin: { main: "main1", "mate/P_ROBOT/3": "change3" } }),
+      { kind: "change", repo: "appdev", branch: "mate/P_ROBOT/3" },
+      "mate/P_ROBOT/3",
+    ],
+  ] as const)(
+    "a task's working copy tracks the base it starts from, never the change an earlier task pushed (%s)",
+    ([, given, base, tracks]) =>
+      Effect.gen(function* () {
+        // zcp's `push -u` left it tracking the change an earlier task delivered to.
+        const appdev = { ...given, upstream: "mate/P_ROBOT/11" };
+        const { workingCopy } = yield* rig([appdev]);
+        yield* workingCopy.hold("task-2", base);
+        assert.strictEqual(appdev.upstream, tracks);
+      }),
   );
 
   it.effect("a clean working copy already at its base is left alone", () =>

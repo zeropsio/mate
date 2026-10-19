@@ -11,8 +11,10 @@
  * <id>`), commits on no remote branch kept on `mate-kept/<task it held>-<commit>`, a name never
  * written over — then the local branch, under
  * the name zcp gave it, reset onto the base (`git checkout -B`). A working copy already at the
- * base, and clean, is left alone. A step that fails leaves that working copy as it is (anything
- * kept before stays kept) and is named; the others move on. Never a force, never a lost commit.
+ * base, and clean, is left alone. Either way the branch tracks the base the task starts from, never
+ * the change an earlier task pushed it to (zcp's `push -u`). A step that fails leaves that working
+ * copy as it is (anything kept before stays kept) and is named; the others move on. Never a force,
+ * never a lost commit.
  *
  * Read only, a task's end asks which working copies hold work never delivered (`undelivered`):
  * changes to tracked files, or commits on no remote branch — a delivery pushes its branch to HQ's
@@ -154,8 +156,13 @@ export const make = Effect.gen(function* () {
       const ref = onChange ? base.branch : MAIN;
       const target = yield* commitOf(`refs/remotes/origin/${ref}`);
       if (target === undefined) return yield* Effect.fail("no base");
+      // Written whole, not by `--track`: the fetch above names its refspec, which `origin` may lack.
+      const tracksBase = Effect.andThen(
+        git(["config", `branch.${branch}.remote`, "origin"]),
+        git(["config", `branch.${branch}.merge`, `refs/heads/${ref}`]),
+      );
       const dirty = (yield* git(["status", "--porcelain"])).stdout.trim() !== "";
-      if (!dirty && (yield* commitOf("HEAD")) === target) return;
+      if (!dirty && (yield* commitOf("HEAD")) === target) return yield* tracksBase;
       if (dirty) yield* git(["stash", "push", "-u", "-m", `mate: kept before task ${taskId}`]);
       // Commits on no remote branch are nobody's but this working copy's: kept under a name.
       const unpushed = (yield* git([
@@ -174,6 +181,7 @@ export const make = Effect.gen(function* () {
           yield* git(["branch", kept, "HEAD"]);
       }
       yield* git(["checkout", "-q", "--no-track", "-B", branch, `refs/remotes/origin/${ref}`]);
+      yield* tracksBase;
     }).pipe(
       Effect.as(undefined),
       Effect.catch((error) =>
