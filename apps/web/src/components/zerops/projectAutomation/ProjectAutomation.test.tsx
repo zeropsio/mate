@@ -158,8 +158,8 @@ describe("a project's Automation section", () => {
       />,
     );
     const text = words(root);
-    expect(text).toContain("Nova and Juno take tasks from");
-    expect(text).toContain("Nova Add a search box Worked 10m $0.42");
+    expect(text).toContain("Nova, Juno · 2 automated Mates");
+    expect(text).toContain("Nova Add a search box Working Worked 10m $0.42");
     expect(text).toContain("Juno waits for a task.");
     // Each face says what its Mate is on.
     expect(
@@ -206,7 +206,7 @@ describe("a project's Automation section", () => {
       />,
     );
     expect(words(root)).toContain("No automated Mates yet.");
-    expect(words(root)).toContain("Tasks come from nowhere yet.");
+    expect(words(root)).toContain("Nowhere yet.");
   });
 
   it("names each source on its own row, with its own Edit and Stop", () => {
@@ -233,34 +233,6 @@ describe("a project's Automation section", () => {
     // A schedule is removed; webhooks are each deleted in their form, never all at once.
     expect(buttons(sourceRow(root, "schedule"), "Remove")).toHaveLength(1);
     expect(buttons(sourceRow(root, "webhook"), "Stop")).toHaveLength(0);
-  });
-
-  it("names its sources as chips after who takes their tasks: a chip opens its form, Edit shows each one's own controls", () => {
-    const admin = controls();
-    const rows = [ROWS[0]!, ROWS[3]!];
-    const root = rendered(
-      <ProjectAutomationView
-        admin={admin}
-        onOpenMate={vi.fn()}
-        pool={[NOVA]}
-        sources={{ rows, reading: false, withheld: false }}
-        workingOf={() => false}
-      />,
-    );
-    const pool = root.find(
-      (node) => node.props["data-zerops-surface"] === "project-automation-pool",
-    );
-    expect(words(pool)).toContain(`Nova takes tasks from ${ROWS[0]!.words} ${ROWS[3]!.words}`);
-    expect(root.findAll((node) => node.props["data-zerops-source"] !== undefined)).toHaveLength(0);
-    act(() => {
-      buttons(pool, ROWS[0]!.words)[0]?.props.onClick();
-    });
-    expect(admin.onEdit).toHaveBeenCalledWith(ROWS[0]);
-    act(() => {
-      buttons(pool, "Edit")[0]?.props.onClick();
-    });
-    expect(buttons(sourceRow(root, "github"), "Stop")).toHaveLength(1);
-    expect(words(root)).toContain("Take tasks from…");
   });
 
   it("asks on the row before it stops a source, and stops it only once confirmed", () => {
@@ -353,7 +325,7 @@ describe("a project's Automation section", () => {
       />,
     );
     const text = words(root);
-    expect(text).toContain("Nova Add a search box Worked");
+    expect(text).toContain("Nova Add a search box Working");
     for (const label of ["Add", "Add an automated Mate", "Edit", "Stop", "Remove", "Connect"])
       expect(buttons(root, label)).toHaveLength(0);
     expect(text).not.toContain("Take tasks from…");
@@ -426,8 +398,8 @@ describe("a project's Automation section", () => {
     );
     const block = (name: string) =>
       words(root.find((node) => node.props["data-zerops-board"] === name));
-    expect(block("Queued")).toContain("GH acme/tea-shop#3 Show prices in euros Waited 4m");
-    expect(block("Recent")).toContain("List six teas Nova · Ended 4h $0.31 PR #2");
+    expect(block("Queued")).toContain("1 Show prices in euros acme/tea-shop#3 Waited 4m");
+    expect(block("Recent")).toContain("Merged List six teas Nova Ended 4h ago $0.31 PR #2");
     expect(words(root)).toContain("$6.44 of $50 this month");
     // A task's title opens its conversation inside Mate.
     act(() => {

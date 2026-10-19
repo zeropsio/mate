@@ -192,20 +192,6 @@ describe("changing who can work on a project", () => {
     ]);
   });
 
-  it("On a project's page People is a card: each person with their level, a menu on each the viewer may change, and Add in its head", () => {
-    const section = drawn({ roleCode: "OWNER", membershipId: "cu-anna" }, { card: true });
-    expect(section?.querySelector("h2")?.textContent).toBe("People");
-    expect(chipsOf(section).map((row) => row.text)).toEqual([
-      ["Anna B.", "Full"],
-      ["Petr N.", "Mixed"],
-      ["iva@example.com", "More than Read"],
-    ]);
-    expect(section?.querySelectorAll("li[data-menu]")).toHaveLength(3);
-    expect(section?.querySelector("header [data-zerops-surface='add-access']")?.textContent).toBe(
-      "Add",
-    );
-  });
-
   it("An admin finds no menu on an owner: Zerops refuses an admin that write", () => {
     const section = drawn({ roleCode: "ADMIN", membershipId: "cu-someone" });
     expect(section?.querySelector('[aria-label="Change Anna Berg\'s access"]')).toBeNull();

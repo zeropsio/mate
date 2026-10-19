@@ -249,37 +249,3 @@ export function spendLine(limits: HqTaskLimitsView): string | null {
   const cap = Number.isInteger(budget) ? `$${String(budget)}` : costWords(budget);
   return `${spent} of ${cap} this month${limits.spentThisMonthUsd >= budget ? " · spent" : ""}`;
 }
-
-/** The month's spend against its budget, for the card's thin line: words and the share spent. */
-export interface SpendGauge {
-  /** "$21.40 of $40 · October". */
-  readonly words: string;
-  /** Spent over budget, 0–1. */
-  readonly share: number;
-}
-
-/** The month's spend as a share of its budget; `null` where HQ says no spend or sets no budget. */
-export function spendGauge(limits: HqTaskLimitsView, nowMs: number): SpendGauge | null {
-  const spent = limits.spentThisMonthUsd;
-  const budget = limits.monthlyBudgetUsd;
-  if (spent === undefined || budget == null || budget <= 0) return null;
-  const cap = Number.isInteger(budget) ? `$${String(budget)}` : costWords(budget);
-  const month = new Date(nowMs).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
-  return { words: `${costWords(spent)} of ${cap} · ${month}`, share: Math.min(1, spent / budget) };
-}
-
-/** Who takes tasks, as the pool line opens: "Odo and Tess take tasks from". */
-export function takesLine(names: ReadonlyArray<string>): string {
-  if (names.length === 0) return "Tasks come from";
-  if (names.length === 1) return `${names[0]!} takes tasks from`;
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)!} take tasks from`;
-}
-
-/** A queued task's source as a glyph: GitHub's "GH", a chat's "#"; `null` where unknown. */
-export function sourceGlyph(url: string | null): "GH" | "#" | null {
-  if (url === null) return null;
-  const host = URL.canParse(url) ? new URL(url).hostname : "";
-  if (host === "github.com" || host.endsWith(".github.com")) return "GH";
-  if (host.endsWith("slack.com") || host.endsWith("discord.com")) return "#";
-  return null;
-}

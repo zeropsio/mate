@@ -212,15 +212,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     yield* text("Version");
     yield* click("Release v0.1.0 to production");
   });
-  // The card's Release N under its production opens the same review.
-  const releaseFromCard = (cardAt: string) =>
-    Effect.gen(function* () {
-      yield* Effect.promise(() =>
-        page.locator(`${cardAt} [data-zerops-card-ready] button`).setTimeout(15_000).click(),
-      );
-      yield* text("Version");
-      yield* click("Release v0.1.0 to production");
-    });
   const reload = Effect.promise(async () => {
     await page.reload();
   });
@@ -269,7 +260,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       rollBackOnZerops,
       click,
       releaseFromReview,
-      releaseFromCard,
       reload,
       rollBack,
       editVersion,

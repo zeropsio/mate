@@ -1,6 +1,6 @@
 /**
- * A project's spend, from fixtures: the overview card's line at 400 px and the project page's card
- * at 440 px, each loaded, a real zero and reading. "Unknown" renders nothing, so it has no case.
+ * A project's spend, from fixtures: the project page's Spend section at 440 px, loaded, a real zero
+ * and reading. "Unknown" renders nothing, so it has no case.
  *
  * Served by the dev server at `/design-spend.html` (`?theme=dark`).
  *
@@ -10,11 +10,7 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Card } from "~/components/ui/card";
-import {
-  ProjectSpendCardView,
-  ProjectSpendLineView,
-} from "~/components/zerops/projects/ProjectSpend";
+import { ProjectSpendSectionView } from "~/components/zerops/projects/ProjectSpend";
 import { joinSpend, type SpendState } from "~/components/zerops/projects/projectSpend.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -75,45 +71,13 @@ function Case({
   );
 }
 
-/** The line as an overview card holds it: inside a card's padding. */
-function LineCard({ children }: { readonly children: ReactNode }) {
-  return (
-    <Card size="md">
-      <span className="text-emphasis font-semibold text-foreground">Tea Shop</span>
-      {children}
-    </Card>
-  );
-}
-
 function Harness() {
   return (
     <div className="min-h-screen bg-background px-8 py-10 text-foreground">
       <div className="flex flex-wrap items-start gap-10">
         <div className="flex flex-col gap-8">
-          <Case title="Line · running" width={400}>
-            <LineCard>
-              <ProjectSpendLineView state={TEA_SHOP} />
-            </LineCard>
-          </Case>
-          <Case title="Line · set up today" width={400}>
-            <LineCard>
-              <ProjectSpendLineView state={SETTING_UP} />
-            </LineCard>
-          </Case>
-          <Case title="Line · no spend" width={400}>
-            <LineCard>
-              <ProjectSpendLineView state={ZERO} />
-            </LineCard>
-          </Case>
-          <Case title="Line · reading" width={400}>
-            <LineCard>
-              <ProjectSpendLineView state={LOADING} />
-            </LineCard>
-          </Case>
-        </div>
-        <div className="flex flex-col gap-8">
-          <Case title="Card · running, two Mates on a subscription" width={440}>
-            <ProjectSpendCardView
+          <Case title="Section · running, two Mates on a subscription" width={440}>
+            <ProjectSpendSectionView
               state={TEA_SHOP}
               subscriptionMates={[
                 { name: "Raya", provider: "Claude" },
@@ -121,16 +85,16 @@ function Harness() {
               ]}
             />
           </Case>
-          <Case title="Card · reading" width={440}>
-            <ProjectSpendCardView state={LOADING} />
+          <Case title="Section · reading" width={440}>
+            <ProjectSpendSectionView state={LOADING} />
           </Case>
         </div>
         <div className="flex flex-col gap-8">
-          <Case title="Card · set up today" width={440}>
-            <ProjectSpendCardView state={SETTING_UP} />
+          <Case title="Section · set up today" width={440}>
+            <ProjectSpendSectionView state={SETTING_UP} />
           </Case>
-          <Case title="Card · no spend" width={440}>
-            <ProjectSpendCardView state={ZERO} />
+          <Case title="Section · no spend" width={440}>
+            <ProjectSpendSectionView state={ZERO} />
           </Case>
         </div>
       </div>

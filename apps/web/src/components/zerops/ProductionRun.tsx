@@ -90,18 +90,18 @@ export function PutLiveRow(props: PutLiveRowProps) {
   const progress = putLiveProgress(run);
   if (run.phase === "live") {
     return (
-      <div className="pp-run" data-zerops-production-run="live" role="status">
-        <p className="pp-run-line">
+      <div className="ov-run" data-zerops-production-run="live" role="status">
+        <p className="ov-run-line">
           <i aria-hidden="true" className="ov-dot" data-dot="running" />
           <span className="truncate">
             {run.tag === undefined ? progress.title : `${run.tag} is live`}
           </span>
-          <span className="pp-run-quiet">{putLiveReleased(run, props.nowMs)}</span>
+          <span className="ov-run-quiet">{putLiveReleased(run, props.nowMs)}</span>
           <DismissButton onDismiss={props.onDismiss} />
         </p>
         {address === undefined ? null : (
-          <p className="pp-run-acts">
-            <a className="pp-road-place-link" href={address.url} rel="noreferrer" target="_blank">
+          <p className="ov-run-acts">
+            <a className="ov-run-link" href={address.url} rel="noreferrer" target="_blank">
               {address.host}
             </a>
             <Button
@@ -121,19 +121,19 @@ export function PutLiveRow(props: PutLiveRowProps) {
   if (run.phase === "failed") {
     const action = run.failure?.action ?? "again";
     return (
-      <div className="pp-run" data-zerops-production-run="failed" role="status">
-        <p className="pp-run-line" data-tone="failed">
+      <div className="ov-run" data-zerops-production-run="failed" role="status">
+        <p className="ov-run-line" data-tone="failed">
           <i aria-hidden="true" className="ov-dot" data-dot="failed" />
           <span className="truncate">{progress.title}</span>
           <DismissButton onDismiss={props.onDismiss} />
         </p>
-        <div className="pp-run-cause">
+        <div className="ov-run-cause">
           {progress.step}
           {run.failure?.detail === undefined ? null : (
             <FailureDetails>{run.failure.detail}</FailureDetails>
           )}
         </div>
-        <p className="pp-run-acts">
+        <p className="ov-run-acts">
           <Button
             onClick={
               action === "again" || action === "release" ? props.onAgain : props.onOpenProject
@@ -152,8 +152,8 @@ export function PutLiveRow(props: PutLiveRowProps) {
     );
   }
   return (
-    <div aria-label={progress.title} className="pp-run" data-zerops-production-run="progress">
-      <p className="pp-run-line" data-tone="releasing">
+    <div aria-label={progress.title} className="ov-run" data-zerops-production-run="progress">
+      <p className="ov-run-line" data-tone="releasing">
         <PutLiveProgress since={progress.since} step={progress.step} />
       </p>
     </div>

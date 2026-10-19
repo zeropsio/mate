@@ -23,14 +23,15 @@ import {
   releaseDetails,
 } from "./fake.ts";
 
-/** Read the application's actual environment buttons, in the page's order: production, then its stages. */
+/** Read the application's actual environment buttons, in declaration order. */
 export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
   return Effect.promise(async () => {
     await page
       .waitForFunction(
         (expected) => {
-          // The project page's places: each tier's environments in its section.
-          const section = document.querySelector('main [data-zerops-surface="project-places"]');
+          const section = [...document.querySelectorAll("main section")].find(
+            (section) => section.querySelector("h2")?.textContent === "Environments",
+          );
           const rows = [
             ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
           ].flatMap((row) => {
@@ -44,8 +45,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
       )
       .catch(async (cause) => {
         const actual = await page.evaluate(() => {
-          // The project page's places: each tier's environments in its section.
-          const section = document.querySelector('main [data-zerops-surface="project-places"]');
+          const section = [...document.querySelectorAll("main section")].find(
+            (section) => section.querySelector("h2")?.textContent === "Environments",
+          );
           return [
             ...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? []),
           ].flatMap((row) => {
@@ -58,8 +60,9 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
       });
     expect(
       await page.evaluate(() => {
-        // The project page's places: each tier's environments in its section.
-        const section = document.querySelector('main [data-zerops-surface="project-places"]');
+        const section = [...document.querySelectorAll("main section")].find(
+          (section) => section.querySelector("h2")?.textContent === "Environments",
+        );
         return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].flatMap(
           (row) => {
             const name = row.firstChild?.textContent?.trim();
@@ -75,8 +78,9 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
   return Effect.promise(async () => {
     const button = await page.waitForFunction(
       (name) => {
-        // The project page's places: each tier's environments in its section.
-        const section = document.querySelector('main [data-zerops-surface="project-places"]');
+        const section = [...document.querySelectorAll("main section")].find(
+          (section) => section.querySelector("h2")?.textContent === "Environments",
+        );
         return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].find(
           (row) => row.firstChild?.textContent?.trim() === name,
         );

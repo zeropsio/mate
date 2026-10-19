@@ -48,7 +48,6 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { PersonAvatar } from "../primitives";
 import { foldedFaces } from "../place/place.logic";
-import { CardRowsHeld, ProjectPageCard } from "./ProjectPageCard";
 import {
   ACCESS_LEVEL_LINES,
   asksFirst,
@@ -102,11 +101,6 @@ export interface ProjectAccessChipsProps {
   /** Whether a chip's face leads to that person's Team page; absent, none does. */
   readonly personPage?: PersonPageLink;
   /**
-   * Drawn as a project page's card: two columns of compact rows, each person's ⋮ on hover or
-   * focus, and *Add* in the card's head.
-   */
-  readonly card?: boolean;
-  /**
    * Folded to a row of faces, how many reach it and *Manage*, which opens the chips: a place's
    * page holds fifteen people in one line rather than a grid on every visit.
    */
@@ -141,7 +135,6 @@ export function ProjectAccessChips({
   onAdd,
   adding = false,
   personPage,
-  card = false,
   fold = false,
 }: ProjectAccessChipsProps) {
   const [unfolded, setUnfolded] = useState(false);
@@ -151,47 +144,6 @@ export function ProjectAccessChips({
     const person = people.find((one) => one.key === key);
     return person === undefined ? [] : [{ key, line: `${person.name}: ${line}` }];
   });
-  const offerAdd =
-    view.kind === "people" && view.invite && onAdd !== undefined && view.candidates.length > 0;
-  if (card)
-    return (
-      <ProjectPageCard
-        busy={view.kind === "reading"}
-        end={
-          offerAdd && view.kind === "people" && onAdd !== undefined ? (
-            <AddAccess adding={adding} candidates={view.candidates} compact onAdd={onAdd} />
-          ) : undefined
-        }
-        surface="project-people"
-        title={label}
-      >
-        {view.kind === "reading" ? (
-          <CardRowsHeld rows={2} />
-        ) : view.kind === "unreadable" ? (
-          <p className="pp-cards-empty">{view.line}</p>
-        ) : (
-          <ul aria-label={label} className="pp-cards-people">
-            {view.people.map((person) => (
-              <AccessChip
-                busy={saving?.has(person.key) === true}
-                compact
-                key={person.key}
-                linked={personPage?.(person.key) === true}
-                {...(onChoose === undefined
-                  ? {}
-                  : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
-                person={person}
-              />
-            ))}
-          </ul>
-        )}
-        {said.map(({ key, line }) => (
-          <p className="pp-cards-empty" data-tone="failed" key={key} role="alert">
-            {line}
-          </p>
-        ))}
-      </ProjectPageCard>
-    );
   if (fold && !unfolded && view.kind === "people" && said.length === 0) {
     const folded = foldedFaces(view.people, FOLDED_FACES);
     return (
@@ -238,7 +190,7 @@ export function ProjectAccessChips({
               person={person}
             />
           ))}
-          {offerAdd && onAdd !== undefined ? (
+          {view.invite && onAdd !== undefined && view.candidates.length > 0 ? (
             <li className="ov-chip-slot">
               <AddAccess adding={adding} candidates={view.candidates} onAdd={onAdd} />
             </li>
@@ -287,12 +239,9 @@ function AccessChip({
   busy,
   linked,
   onChoose,
-  compact = false,
 }: {
   readonly person: ProjectPerson;
   readonly busy: boolean;
-  /** A card's row: a smaller face, the name and its level on one line. */
-  readonly compact?: boolean;
   /** The face leads to the person's own Team page. */
   readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
@@ -305,7 +254,7 @@ function AccessChip({
   };
   return (
     <li
-      className={compact ? "pp-cards-person" : "ov-chip"}
+      className="ov-chip"
       data-menu={(change !== null && onChoose !== undefined) || undefined}
       data-pending={person.pending || undefined}
     >
@@ -323,8 +272,8 @@ function AccessChip({
             )
           }
         >
-          <PersonAvatar name={person.name} picture={person.avatarUrl} size={compact ? 24 : 32} />
-          <span className={compact ? "pp-cards-person-text" : "ov-chip-text"}>
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
+          <span className="ov-chip-text">
             <span
               className="ov-chip-name"
               data-creator={person.creator || undefined}
@@ -475,12 +424,9 @@ function AddAccess({
   candidates,
   adding,
   onAdd,
-  compact = false,
 }: {
   readonly candidates: ReadonlyArray<AccessCandidate>;
   readonly adding: boolean;
-  /** In a card's head: a quiet *Add*. */
-  readonly compact?: boolean;
   readonly onAdd: (picks: ReadonlyArray<AccessPick>) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -493,18 +439,12 @@ function AddAccess({
     >
       <PopoverTrigger
         disabled={adding}
-        render={
-          compact ? (
-            <Button data-zerops-surface="add-access" size="sm" variant="ghost" />
-          ) : (
-            <button className="ov-chip-add" data-zerops-surface="add-access" type="button" />
-          )
-        }
+        render={<button className="ov-chip-add" data-zerops-surface="add-access" type="button" />}
       >
         <PlusIcon aria-hidden="true" className="size-4" />
-        <span>{adding ? "Adding…" : compact ? "Add" : "Add access"}</span>
+        <span>{adding ? "Adding…" : "Add access"}</span>
       </PopoverTrigger>
-      <PopoverPopup align={compact ? "end" : "start"} padding="none" width="md">
+      <PopoverPopup align="start" padding="none" width="md">
         {open ? (
           <AddAccessPicker
             candidates={candidates}

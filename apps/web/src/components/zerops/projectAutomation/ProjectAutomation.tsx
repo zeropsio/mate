@@ -23,7 +23,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
+import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon, TimerIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
@@ -58,7 +58,6 @@ import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
-import { ProjectPageCard } from "../projects/ProjectPageCard";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -77,12 +76,8 @@ import {
   boardOf,
   poolLine,
   predictedBoard,
-  sourceGlyph,
-  spendGauge,
   spendLine,
-  takesLine,
   type Board,
-  type SpendGauge,
   type BlockedMate,
 } from "./taskBoard.logic";
 
@@ -286,8 +281,6 @@ function useTaskBoard(
             ? { state: "none" }
             : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
     spend: limits.read.setting.state === "known" ? spendLine(limits.read.setting.held) : null,
-    gauge:
-      limits.read.setting.state === "known" ? spendGauge(limits.read.setting.held, nowMs) : null,
     onReadAgain: tasks.again,
     onOpen: (route) => {
       void navigate({ href: route });
@@ -619,8 +612,6 @@ export interface BoardView {
     | { readonly state: "none" };
   /** The organization's spend this month against its budget (`spendLine`); `null` unknown. */
   readonly spend: string | null;
-  /** That spend as a share of its budget, for the card's thin line (`spendGauge`); none unknown. */
-  readonly gauge?: SpendGauge | null | undefined;
   readonly onReadAgain: () => void;
   /** Opens a task's conversation or its change, by its in-app path. */
   readonly onOpen: (route: string) => void;
@@ -663,89 +654,23 @@ export function ProjectAutomationView({
   readonly onOpenMate: (projectId: string) => void;
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
-  // The month's spend against its budget heads the card: its words beside the name, its share as
-  // one thin line under them.
-  const live = !update && pool.length > 0;
-  const gauge = live ? (board?.gauge ?? null) : null;
-  const spend = live ? (board?.spend ?? null) : null;
   return (
-    <ProjectPageCard
-      end={
-        !live ? undefined : (
-          <>
-            {spend === null ? null : (
-              <span className="text-caption text-muted-foreground tabular-nums">
-                {gauge?.words ?? spend}
-              </span>
-            )}
-            {admin?.onAddMate === undefined ? null : (
-              <Button
-                aria-label="Add an automated Mate"
-                onClick={admin.onAddMate}
-                size="sm"
-                variant="ghost"
-              >
-                Add
-              </Button>
-            )}
-          </>
-        )
-      }
-      surface="project-automation"
-      title="Automation"
-    >
-      {gauge === null ? null : (
-        <div aria-hidden="true" className="pp-cards-gauge">
-          <span style={{ width: `${String(Math.round(gauge.share * 1000) / 10)}%` }} />
-        </div>
-      )}
+    <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
+      <h2 className="ov-side-name">Automation</h2>
       {update ? (
-        <p className="pp-cards-empty">Update HQ to set up automated Mates.</p>
+        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
       ) : (
-        <div className="-mx-2 grid gap-4 text-line">
-          <AutomationBody
-            admin={admin}
-            board={board}
-            onOpenMate={onOpenMate}
-            pool={pool}
-            sources={sources}
-            workingOf={workingOf}
-          />
-        </div>
+        <AutomationBody
+          admin={admin}
+          board={board}
+          onOpenMate={onOpenMate}
+          pool={pool}
+          sources={sources}
+          workingOf={workingOf}
+        />
       )}
-    </ProjectPageCard>
+    </section>
   );
-}
-
-/** *Take tasks from…*: each kind of source, opening its form. */
-function TakeTasksFrom({ admin }: { readonly admin: AutomationControls }) {
-  return (
-    <Menu>
-      <MenuTrigger render={<Button size="sm" variant="secondary" />}>
-        Take tasks from…
-        <ChevronDownIcon aria-hidden="true" />
-      </MenuTrigger>
-      <MenuPopup align="start">
-        {SOURCE_KINDS.map((entry) => (
-          <MenuItem
-            key={entry.kind}
-            onClick={() => {
-              admin.onTakeFrom(entry.kind);
-            }}
-          >
-            {entry.label}
-          </MenuItem>
-        ))}
-      </MenuPopup>
-    </Menu>
-  );
-}
-
-/** A source wants a look: its read failed, its chat is not connected, or a Stop is under way. */
-function sourceNeedsLook(row: SourceRow, admin: AutomationControls | undefined): boolean {
-  if (row.kind === "failed") return true;
-  if ((row.kind === "slack" || row.kind === "discord") && row.disconnected) return true;
-  return admin !== undefined && admin.pressOf(row).kind !== "idle";
 }
 
 function AutomationBody({
@@ -756,34 +681,29 @@ function AutomationBody({
   onOpenMate,
   workingOf,
 }: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
-  const [managing, setManaging] = useState(false);
-  const names = pool.map((mate) => mate.name);
-  const look = sources.rows.some((row) => sourceNeedsLook(row, admin));
-  // Each source's own Edit, Stop and Connect: under the line while the person manages them, or
-  // while one of them wants a look.
-  const rowsOpen = admin !== undefined && sources.rows.length > 0 && (managing || look);
   return (
     <>
-      {pool.length > 0 ? null : (
-        <div className="grid justify-items-start gap-2 px-2">
-          <p className="text-line text-muted-foreground">
-            No automated Mates yet. Each takes the tasks you point it at and opens a change for
+      {pool.length === 0 ? (
+        <>
+          <p className="px-2 text-sm text-muted-foreground">
+            No automated Mates yet. They take tasks from the sources below and open a change for
             each.
           </p>
           {admin?.onAddMate === undefined ? null : (
-            <Button onClick={admin.onAddMate} size="sm" variant="secondary">
-              <PlusIcon aria-hidden="true" />
-              Add an automated Mate
-            </Button>
+            <div className="px-2">
+              <Button onClick={admin.onAddMate} size="sm" variant="secondary">
+                <PlusIcon aria-hidden="true" />
+                Add an automated Mate
+              </Button>
+            </div>
           )}
-        </div>
-      )}
-      <div
-        className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 px-2"
-        data-zerops-surface="project-automation-pool"
-      >
-        {pool.length === 0 ? null : (
-          <span aria-label={poolLine(names)} className="flex shrink-0 items-center" role="group">
+        </>
+      ) : (
+        <div
+          className="flex min-h-7 min-w-0 items-center gap-2 px-2"
+          data-zerops-surface="project-automation-pool"
+        >
+          <span className="flex shrink-0 items-center">
             {pool.map((mate) =>
               workingOf === undefined ? (
                 <PoolFace key={mate.projectId} mate={mate} onOpen={onOpenMate} />
@@ -797,70 +717,70 @@ function AutomationBody({
               ),
             )}
           </span>
-        )}
-        <span className="text-line text-foreground">{takesLine(names)}</span>
-        {sources.rows.length > 0 ? (
-          sources.rows.map((row) =>
-            admin === undefined || row.kind === "failed" ? (
-              <span
-                className="pp-cards-chip"
-                data-tone={sourceNeedsLook(row, admin) ? "attention" : undefined}
-                key={row.key}
-              >
-                {row.words}
+          <span className="min-w-0 truncate text-sm text-foreground">
+            {poolLine(pool.map((mate) => mate.name))}
+          </span>
+          {admin?.onAddMate === undefined ? null : (
+            <>
+              <span aria-hidden="true" className="text-sm text-muted-foreground">
+                ·
               </span>
-            ) : (
-              <button
-                className="pp-cards-chip"
-                data-tone={sourceNeedsLook(row, admin) ? "attention" : undefined}
-                key={row.key}
-                onClick={() => {
-                  admin.onEdit(row);
-                }}
-                type="button"
+              <Button
+                aria-label="Add an automated Mate"
+                onClick={admin.onAddMate}
+                size="sm"
+                variant="ghost"
               >
-                {row.words}
-              </button>
-            ),
-          )
-        ) : sources.reading ? (
-          <span className="text-muted-foreground">Reading…</span>
-        ) : sources.withheld ? null : (
-          <span className="text-muted-foreground">nowhere yet.</span>
-        )}
-        {admin === undefined ? null : sources.rows.length === 0 ? (
-          <TakeTasksFrom admin={admin} />
-        ) : look ? null : (
-          <Button
-            onClick={() => {
-              setManaging((was) => !was);
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            {managing ? "Done" : "Edit"}
-          </Button>
-        )}
-      </div>
-      {sources.withheld ? (
-        <p className="px-2 text-caption text-muted-foreground">
-          Owners and admins see every source.
-        </p>
-      ) : null}
-      {!rowsOpen || admin === undefined ? null : (
-        <div className="grid gap-1">
-          <ul className="grid" data-zerops-surface="project-automation-sources">
-            {sources.rows.map((row) => (
-              <SourceRowView admin={admin} key={row.key} row={row} />
-            ))}
-          </ul>
-          <div className="px-2">
-            <TakeTasksFrom admin={admin} />
-          </div>
+                Add
+              </Button>
+            </>
+          )}
+          {board?.spend == null ? null : (
+            <span className="ms-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+              {board.spend}
+            </span>
+          )}
         </div>
       )}
       {board === undefined || board.read.state === "none" ? null : (
         <TaskBoardView board={board} pool={pool} />
+      )}
+      <h3 className="px-2 pt-2 text-xs font-medium text-muted-foreground">Takes tasks from</h3>
+      {sources.rows.length > 0 ? (
+        <ul className="grid" data-zerops-surface="project-automation-sources">
+          {sources.rows.map((row) => (
+            <SourceRowView admin={admin} key={row.key} row={row} />
+          ))}
+        </ul>
+      ) : sources.reading ? (
+        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+      ) : sources.withheld ? null : (
+        <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
+      )}
+      {sources.withheld ? (
+        <p className="px-2 text-xs text-muted-foreground">Owners and admins see every source.</p>
+      ) : null}
+      {admin === undefined ? null : (
+        <div className="px-2">
+          <Menu>
+            <MenuTrigger render={<Button size="sm" variant="secondary" />}>
+              Take tasks from…
+              <ChevronDownIcon aria-hidden="true" />
+            </MenuTrigger>
+            <MenuPopup align="start">
+              {SOURCE_KINDS.map((entry) => (
+                <MenuItem
+                  key={entry.kind}
+                  onClick={() => {
+                    admin.onTakeFrom(entry.kind);
+                  }}
+                >
+                  {entry.label}
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        </div>
       )}
     </>
   );
@@ -925,19 +845,17 @@ function BoardBlock({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="grid content-start gap-0.5" data-zerops-board={name}>
-      <h3 className="pp-cards-group-name flex h-6 items-center gap-1.5 px-2">
+    <div className="grid" data-zerops-board={name}>
+      <h3 className="flex h-6 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground">
         {name}
-        {count === undefined || count === 0 ? null : (
-          <span className="tabular-nums">· {count}</span>
-        )}
+        {count === undefined || count === 0 ? null : <span className="tabular-nums">{count}</span>}
       </h3>
       {children}
     </div>
   );
 }
 
-const ROW = "flex h-8 min-w-0 items-center gap-3 px-2 text-line";
+const ROW = "flex h-8 min-w-0 items-center gap-3 px-2 text-sm";
 const NUMBER = "shrink-0 text-end text-muted-foreground tabular-nums";
 
 function Placeholders({ count }: { readonly count: number }) {
@@ -1026,7 +944,7 @@ function BlockedLine({
   const label = blocked.change.label.replace(/^Change/u, "change");
   return (
     <p
-      className="flex h-8 min-w-0 items-center gap-1 px-2 text-line text-muted-foreground"
+      className="flex h-8 min-w-0 items-center gap-1 px-2 text-sm text-muted-foreground"
       data-zerops-board-line="blocked"
     >
       <span className="truncate">
@@ -1078,7 +996,7 @@ export function TaskBoardView({
   if (read.state === "failed")
     return (
       <div className="flex min-h-8 items-center gap-2 px-2">
-        <span className="min-w-0 flex-1 text-line text-destructive-foreground" role="alert">
+        <span className="min-w-0 flex-1 text-sm text-destructive-foreground" role="alert">
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
@@ -1088,15 +1006,13 @@ export function TaskBoardView({
     );
   if (read.state === "reading")
     return (
-      <div className="pp-cards-board" data-zerops-surface="project-automation-board">
-        <div className="pp-cards-pair">
-          <BoardBlock name="At work">
-            <Placeholders count={read.predicted.atWork} />
-          </BoardBlock>
-          <BoardBlock name="Queued">
-            <Placeholders count={Math.max(1, read.predicted.queued)} />
-          </BoardBlock>
-        </div>
+      <div className="grid gap-1" data-zerops-surface="project-automation-board">
+        <BoardBlock name="At work">
+          <Placeholders count={read.predicted.atWork} />
+        </BoardBlock>
+        <BoardBlock name="Queued">
+          <Placeholders count={Math.max(1, read.predicted.queued)} />
+        </BoardBlock>
         <BoardBlock name="Recent">
           <Placeholders count={Math.max(1, read.predicted.recent)} />
           {read.predicted.recentMore === true ? <div aria-hidden="true" className="h-6" /> : null}
@@ -1105,177 +1021,157 @@ export function TaskBoardView({
     );
   const { atWork, blocked, queued, recent, recentMore } = read.board;
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
-  const byName = new Map(pool.map((mate) => [mate.name, mate]));
   const busy = new Set([
     ...atWork.flatMap((row) => (row.mate === null ? [] : [row.mate.projectId])),
     ...blocked.map((line) => line.projectId),
   ]);
   const idle = idleWords(pool.filter((mate) => !busy.has(mate.projectId)).map((mate) => mate.name));
   return (
-    <div className="pp-cards-board" data-zerops-surface="project-automation-board">
-      <div className="pp-cards-pair">
-        <BoardBlock count={atWork.length} name="At work">
-          {atWork.length === 0 ? null : (
-            <ul className="grid">
-              {atWork.map((row) => {
-                const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
-                return (
-                  <li className="grid" data-zerops-task={row.id} key={row.id}>
-                    <div className={ROW}>
-                      <span className="flex size-4 shrink-0 items-center">
-                        {mate === undefined ? null : (
-                          <MateFace
-                            shape={mate.shape}
-                            size={16}
-                            state={row.status === "waiting" ? "needs" : "working"}
-                            tint={mate.tint}
-                          />
-                        )}
-                      </span>
-                      <span className="sr-only">{mate?.name ?? row.mate?.name ?? "Mate"}</span>
-                      <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
-                      {row.status === "working" ? null : (
-                        <span className="shrink-0 text-caption text-muted-foreground">
-                          <StatusWord status={row.status} />
-                        </span>
-                      )}
-                      <span className={NUMBER}>
-                        <span className="sr-only">Worked </span>
-                        {row.worked}
-                      </span>
-                      <span className={`w-12 ${NUMBER}`}>{row.cost}</span>
-                      <TaskStop board={board} status={row.status} taskId={row.id} />
-                    </div>
-                    <TaskStopAsk board={board} taskId={row.id} />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {blocked.map((line) => (
-            <BlockedLine
-              blocked={line}
-              key={line.projectId}
-              mate={faces.get(line.projectId)?.name ?? "A Mate"}
-              onOpen={board.onOpen}
-            />
-          ))}
-          {idle === null ? null : (
-            <p className="flex h-8 items-center px-2 text-line text-muted-foreground">{idle}</p>
-          )}
-        </BoardBlock>
-        <BoardBlock count={queued.length} name="Queued">
-          {queued.length === 0 ? (
-            <p className="flex h-8 items-center px-2 text-line text-muted-foreground">
-              Nothing waiting.
-            </p>
-          ) : (
-            <ul className="grid">
-              {queued.map((row) => {
-                const glyph = sourceGlyph(row.url) ?? "·";
-                return (
-                  <li className="grid" data-zerops-task={row.id} key={row.id}>
-                    <div className={ROW}>
-                      {row.url === null ? (
-                        <span className="pp-cards-glyph">
-                          {glyph}
-                          <span className="sr-only"> {row.source}</span>
-                        </span>
-                      ) : (
-                        <a
-                          className="pp-cards-glyph"
-                          href={row.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {glyph}
-                          <span className="sr-only"> {row.source}</span>
-                        </a>
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                      <span className={NUMBER}>
-                        <span className="sr-only">Waited </span>
-                        {row.waited}
-                      </span>
-                      <TaskStop board={board} status="queued" taskId={row.id} />
-                    </div>
-                    <TaskStopAsk board={board} taskId={row.id} />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </BoardBlock>
-      </div>
-      <BoardBlock name="Recent">
-        {recent.length === 0 ? (
-          <p className="flex h-8 items-center px-2 text-line text-muted-foreground">
-            Nothing finished yet.
-          </p>
-        ) : (
+    <div className="grid gap-1" data-zerops-surface="project-automation-board">
+      <BoardBlock count={atWork.length} name="At work">
+        {atWork.length === 0 ? null : (
           <ul className="grid">
-            {recent.map((row) => {
-              const mate = row.mate === null ? undefined : byName.get(row.mate);
-              const quiet =
-                row.outcome === "failed" || row.outcome === "stopped" || row.outcome === "declined";
+            {atWork.map((row) => {
+              const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
               return (
-                <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                  <span className="flex size-4 shrink-0 items-center">
-                    {mate === undefined ? null : (
-                      <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
-                    )}
-                  </span>
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
-                    {quiet ? (
-                      <span className="shrink-0 text-caption text-muted-foreground">
-                        <StatusWord
-                          status={row.outcome}
-                          {...(row.detail === null ? {} : { why: row.detail })}
+                <li className="grid" data-zerops-task={row.id} key={row.id}>
+                  <div className={ROW}>
+                    <span className="flex w-24 shrink-0 items-center gap-1.5">
+                      {mate === undefined ? null : (
+                        <MateFace
+                          shape={mate.shape}
+                          size={16}
+                          state={row.status === "waiting" ? "needs" : "working"}
+                          tint={mate.tint}
                         />
+                      )}
+                      <span className="truncate font-medium">
+                        {mate?.name ?? row.mate?.name ?? "Mate"}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {row.mate === null ? null : `${row.mate} · `}
-                    <span className="sr-only">Ended </span>
-                    {row.when.replace(/ ago$/u, "")}
-                  </span>
-                  <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
-                  <span className="w-20 shrink-0 text-end">
-                    {row.change === null ? (
-                      <span className="text-muted-foreground">No change</span>
-                    ) : row.change.external ? (
-                      <a
-                        className="inline-flex items-center gap-0.5 text-info-foreground underline-offset-2 hover:underline"
-                        href={row.change.href}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {row.change.label}
-                        <ArrowUpRightIcon aria-hidden="true" className="size-3" />
-                      </a>
-                    ) : (
-                      <a
-                        className="text-info-foreground underline-offset-2 hover:underline"
-                        href={row.change.href}
-                        onClick={(event) => {
-                          if (event.metaKey || event.ctrlKey || event.button !== 0) return;
-                          event.preventDefault();
-                          board.onOpen(row.change!.href);
-                        }}
-                      >
-                        {row.change.label}
-                      </a>
-                    )}
-                  </span>
+                    </span>
+                    <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
+                    <span className="w-32 shrink-0 text-muted-foreground">
+                      <StatusWord status={row.status} />
+                    </span>
+                    <span className={`flex w-16 items-center justify-end gap-1 ${NUMBER}`}>
+                      <TimerIcon aria-hidden="true" className="size-3.5" />
+                      <span className="sr-only">Worked </span>
+                      {row.worked}
+                    </span>
+                    <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
+                    <TaskStop board={board} status={row.status} taskId={row.id} />
+                  </div>
+                  <TaskStopAsk board={board} taskId={row.id} />
                 </li>
               );
             })}
           </ul>
         )}
+        {blocked.map((line) => (
+          <BlockedLine
+            blocked={line}
+            key={line.projectId}
+            mate={faces.get(line.projectId)?.name ?? "A Mate"}
+            onOpen={board.onOpen}
+          />
+        ))}
+        {idle === null ? null : (
+          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">{idle}</p>
+        )}
+      </BoardBlock>
+      <BoardBlock count={queued.length} name="Queued">
+        {queued.length === 0 ? (
+          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
+            Nothing waiting.
+          </p>
+        ) : (
+          <ul className="grid">
+            {queued.map((row) => (
+              <li className="grid" data-zerops-task={row.id} key={row.id}>
+                <div className={ROW}>
+                  <span className={`w-5 ${NUMBER}`}>{row.position}</span>
+                  <span className="min-w-0 flex-1 truncate">{row.title}</span>
+                  {row.url === null ? (
+                    <span className="max-w-44 shrink-0 truncate text-muted-foreground">
+                      {row.source}
+                    </span>
+                  ) : (
+                    <a
+                      className="max-w-44 shrink-0 truncate text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      href={row.url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {row.source}
+                    </a>
+                  )}
+                  <span className={`w-9 ${NUMBER}`}>
+                    <span className="sr-only">Waited </span>
+                    {row.waited}
+                  </span>
+                  <TaskStop board={board} status="queued" taskId={row.id} />
+                </div>
+                <TaskStopAsk board={board} taskId={row.id} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </BoardBlock>
+      <BoardBlock name="Recent">
+        {recent.length === 0 ? (
+          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
+            Nothing finished yet.
+          </p>
+        ) : (
+          <ul className="grid">
+            {recent.map((row) => (
+              <li className={ROW} data-zerops-task={row.id} key={row.id}>
+                <span className="w-32 shrink-0 text-muted-foreground">
+                  <StatusWord
+                    status={row.outcome}
+                    {...(row.detail === null ? {} : { why: row.detail })}
+                  />
+                </span>
+                <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
+                <span className="w-16 shrink-0 truncate text-muted-foreground">
+                  {row.mate ?? ""}
+                </span>
+                <span className={`w-16 ${NUMBER}`}>
+                  <span className="sr-only">Ended </span>
+                  {row.when}
+                </span>
+                <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
+                <span className="w-20 shrink-0 text-end">
+                  {row.change === null ? null : row.change.external ? (
+                    <a
+                      className="inline-flex items-center gap-0.5 text-info-foreground underline-offset-2 hover:underline"
+                      href={row.change.href}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {row.change.label}
+                      <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+                    </a>
+                  ) : (
+                    <a
+                      className="text-info-foreground underline-offset-2 hover:underline"
+                      href={row.change.href}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.button !== 0) return;
+                        event.preventDefault();
+                        board.onOpen(row.change!.href);
+                      }}
+                    >
+                      {row.change.label}
+                    </a>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {recentMore === 0 ? null : (
-          <p className="flex h-6 items-center px-2 text-caption text-muted-foreground">
+          <p className="flex h-6 items-center px-2 text-xs text-muted-foreground">
             {recentMore} more ended earlier.
           </p>
         )}
@@ -1302,8 +1198,8 @@ function SourceRowView({
         <span
           className={
             row.kind === "failed"
-              ? "truncate text-line text-destructive-foreground"
-              : "truncate text-line text-foreground"
+              ? "truncate text-sm text-destructive-foreground"
+              : "truncate text-sm text-foreground"
           }
           role={row.kind === "failed" ? "alert" : undefined}
         >

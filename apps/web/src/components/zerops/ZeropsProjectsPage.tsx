@@ -213,7 +213,7 @@ import {
   useProjectFlows,
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
-import { useOpenReview } from "~/zerops/review";
+import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
@@ -2303,12 +2303,10 @@ export function ZeropsProjectsContent({
       layout,
       previews,
       review,
-      lift,
     }: {
       readonly layout: "card" | "row";
       readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
-      readonly lift?: boolean | undefined;
     },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
@@ -2386,7 +2384,6 @@ export function ZeropsProjectsContent({
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
-          lift={lift !== false}
           previews={previews}
           key={candidate.key}
           name={name}
@@ -2739,13 +2736,8 @@ export function ZeropsProjectsContent({
           why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
         })}
         renderCardPeople={overview.renderCardPeople}
-        renderActivity={overview.renderActivity}
         renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
-        waitsOnYou={({ group }) => filterFacts.waits.has(group.groupId)}
-        isAutomated={(candidate: ZeropsCandidatePresentation) =>
-          candidate.project.hq?.mate?.automated === true
-        }
-        renderReleaseVerb={({ group, flow }, chip) => {
+        renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;
           const candidate =
             production.kind === "ready-to-release" || production.kind === "deploy-failed"
@@ -2754,7 +2746,7 @@ export function ZeropsProjectsContent({
           if (candidate === undefined) return null;
           // Production being made by Put it live is released by it: nothing asks for a release.
           if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
-          return <ZeropsReleaseVerb chip groupId={group.groupId} label={chip.label} offered />;
+          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />;
         }}
         placementNotice={placementNotice(
           placementStatus,

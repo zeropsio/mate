@@ -7,7 +7,6 @@ import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { useNowMs } from "~/zerops/useNowMs";
-import { FolderGit2Icon } from "lucide-react";
 import { useId, useState } from "react";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -63,32 +62,18 @@ export function GitRemoteLines({
   const clock = useNowMs();
   const now = at ?? clock;
   return (
-    <ul className="grid gap-1" data-zerops-surface="git-remotes">
+    <ul data-zerops-surface="git-remotes">
       {connectedRepos(repos).map((repo) => (
-        <li className="grid min-w-0" key={repo.name}>
-          <p className="flex min-h-8 min-w-0 items-center gap-2 text-line">
-            <FolderGit2Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-            <span className="shrink-0 font-medium text-foreground">{repo.name}</span>
-            <span className="shrink-0 text-muted-foreground">{" → "}</span>
-            <a
-              className="min-w-0 truncate text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current"
-              href={repo.remote.url.replace(/\.git$/u, "")}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {gitRemoteLabel(repo.remote.url)}
-            </a>
+        <li className="py-1.5" key={repo.name}>
+          <p className="rv-words">
+            {repo.name} → {gitRemoteLabel(repo.remote.url)}
           </p>
           {repo.remote.invalidSince === null ? null : (
-            <p className="ps-6 text-caption text-destructive-foreground">
-              The remote refused Mate's token. Replace token.
-            </p>
+            <p className="rv-note">The remote refused Mate's token. Replace token.</p>
           )}
           {repo.remote.expiresAt == null ||
           gitRemoteExpiry(repo.remote, now) === undefined ? null : (
-            <p className="ps-6 text-caption text-muted-foreground">
-              {gitRemoteExpiry(repo.remote, now)}
-            </p>
+            <p className="rv-note">{gitRemoteExpiry(repo.remote, now)}</p>
           )}
         </li>
       ))}
