@@ -152,6 +152,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   const { reads, gitPage } = useDiffRepositories(
     activeThread?.environmentId ?? null,
     activeCwd ?? null,
+    activeThread?.crew ?? null,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
@@ -162,12 +163,12 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   const selectedGitScope = shownChoice?.scope ?? null;
   const shownCwd = shownChoice?.repository.cwd ?? null;
   const selectedBaseRef =
-    diffSelection.kind === "branch" &&
+    (diffSelection.kind === "branch" &&
     shownChoice?.scope === "branch" &&
     (diffSelection.repository === undefined ||
       diffSelection.repository === shownChoice.repository.name)
       ? diffSelection.baseRef
-      : null;
+      : null) ?? (shownChoice?.scope === "branch" ? shownChoice.baseRef : null);
   const reviewSectionId = shownChoice === null ? "diff" : choiceValue(shownChoice);
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`

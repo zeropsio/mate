@@ -147,6 +147,23 @@ describe("diffPanelStore", () => {
     expect(useDiffPanelStore.getState().diffRenderMode).toBe("split");
   });
 
+  it("a comparison base chosen in one repository is not applied to another, and stays with its own", () => {
+    const store = useDiffPanelStore.getState();
+    store.selectGitScope(THREAD_REF, "branch", "apidev");
+    store.selectBranchBaseRef(THREAD_REF, "origin/release");
+    store.selectGitScope(THREAD_REF, "branch", "appdev");
+
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: null, repository: "appdev" });
+
+    store.selectGitScope(THREAD_REF, "unstaged", "appdev");
+    store.selectGitScope(THREAD_REF, "branch", "apidev");
+    expect(
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, THREAD_REF),
+    ).toEqual({ kind: "branch", baseRef: "origin/release", repository: "apidev" });
+  });
+
   it("restores the selected branch base after visiting another scope", () => {
     useDiffPanelStore.getState().selectBranchBaseRef(THREAD_REF, "origin/main");
     useDiffPanelStore.getState().selectGitScope(THREAD_REF, "unstaged");

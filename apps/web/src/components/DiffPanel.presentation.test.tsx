@@ -54,6 +54,8 @@ const input = vi.hoisted(() => {
       gitPage: true,
     },
     previews: [] as Array<string>,
+    /** The comparison base each preview asked git for; `null` where it left it to the server. */
+    previewBases: [] as Array<string | null>,
   };
 });
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -101,8 +103,9 @@ vi.mock("../state/vcs", () => ({
 }));
 vi.mock("../state/review", () => ({
   reviewEnvironment: {
-    diffPreview: ({ input: { cwd } }: { input: { cwd: string } }) => {
-      input.previews.push(cwd);
+    diffPreview: (query: { input: { cwd: string; baseRef?: string } }) => {
+      input.previews.push(query.input.cwd);
+      input.previewBases.push(query.input.baseRef ?? null);
       return "preview";
     },
     diffFileContents: {},
@@ -318,6 +321,7 @@ function withReads(reads: ReadonlyArray<unknown> | null, selection = input.selec
   input.repositories.reads = reads;
   input.selection = selection;
   input.previews.length = 0;
+  input.previewBases.length = 0;
   return () => {
     input.repositories.reads = before.reads;
     input.selection = before.selection;
@@ -360,6 +364,30 @@ it("a Mate's Diff reads git in the checkout it shows, never a saved turn", async
     await withDiff(() => {
       expect(input.previews).toContain("/var/www/appdev");
       expect(input.previews).not.toContain("/var/www/apidev");
+    });
+  } finally {
+    restore();
+  }
+});
+
+it("on main, Diff shows the commits not pushed it counts, from git's upstream, on any Mate's server", async () => {
+  const onMain = input.checkout("apidev", 0, 0);
+  const restore = withReads(
+    [
+      {
+        ...onMain,
+        status: { ...onMain.status, isDefaultRef: true, refName: "main", aheadCount: 2 },
+      },
+    ],
+    { kind: "unstaged" },
+  );
+  try {
+    await withDiff((container) => {
+      expect(
+        container.querySelector('button[aria-label^="Diff shows"]')?.getAttribute("aria-label"),
+      ).toBe("Diff shows: Not pushed");
+      expect(input.previews.at(-1)).toBe("/var/www/apidev");
+      expect(input.previewBases.at(-1)).toBe("@{upstream}");
     });
   } finally {
     restore();

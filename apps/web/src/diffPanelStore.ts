@@ -29,9 +29,12 @@ export type DiffRenderMode = "stacked" | "split";
 
 const DEFAULT_SELECTION: DiffPanelSelection = { kind: "unstaged" };
 
+/** A repository's comparison bases are its own: by thread, then by repository (`""`: none named). */
+type BranchBaseRefs = Record<string, Record<string, string | null>>;
+
 interface DiffPanelStoreState {
   byThreadKey: Record<string, DiffPanelSelection>;
-  branchBaseRefByThreadKey: Record<string, string | null>;
+  branchBaseRefByThreadKey: BranchBaseRefs;
   diffRenderMode: DiffRenderMode;
   setDiffRenderMode: (mode: DiffRenderMode) => void;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged", repository?: string) => void;
@@ -46,6 +49,15 @@ function normalizeBaseRef(baseRef: string | null): string | null {
   return normalized ? normalized : null;
 }
 
+function withBaseRef(
+  baseRefs: BranchBaseRefs,
+  threadKey: string,
+  repository: string | undefined,
+  baseRef: string | null,
+): BranchBaseRefs {
+  return { ...baseRefs, [threadKey]: { ...baseRefs[threadKey], [repository ?? ""]: baseRef } };
+}
+
 export const useDiffPanelStore = create<DiffPanelStoreState>()(
   persist(
     (set) => ({
@@ -57,23 +69,26 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
         set((state) => {
           const threadKey = scopedThreadKey(ref);
           const previous = state.byThreadKey[threadKey];
-          const previousBaseRef =
+          const branchBaseRefByThreadKey =
             previous?.kind === "branch"
-              ? previous.baseRef
-              : (state.branchBaseRefByThreadKey[threadKey] ?? null);
+              ? withBaseRef(
+                  state.branchBaseRefByThreadKey,
+                  threadKey,
+                  previous.repository,
+                  previous.baseRef,
+                )
+              : state.branchBaseRefByThreadKey;
+          const baseRef = branchBaseRefByThreadKey[threadKey]?.[repository ?? ""] ?? null;
           const inRepository = repository === undefined ? {} : { repository };
           return {
             byThreadKey: {
               ...state.byThreadKey,
               [threadKey]:
                 scope === "branch"
-                  ? { kind: "branch", baseRef: previousBaseRef, ...inRepository }
+                  ? { kind: "branch", baseRef, ...inRepository }
                   : { kind: "unstaged", ...inRepository },
             },
-            branchBaseRefByThreadKey:
-              previous?.kind === "branch"
-                ? { ...state.branchBaseRefByThreadKey, [threadKey]: previous.baseRef }
-                : state.branchBaseRefByThreadKey,
+            branchBaseRefByThreadKey,
           };
         }),
       selectBranchBaseRef: (ref, baseRef) =>
@@ -90,10 +105,12 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
                 ...(repository === undefined ? {} : { repository }),
               },
             },
-            branchBaseRefByThreadKey: {
-              ...state.branchBaseRefByThreadKey,
-              [threadKey]: normalizedBaseRef,
-            },
+            branchBaseRefByThreadKey: withBaseRef(
+              state.branchBaseRefByThreadKey,
+              threadKey,
+              repository,
+              normalizedBaseRef,
+            ),
           };
         }),
       clearSelection: (ref) =>
@@ -117,18 +134,25 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
     }),
     {
       name: "t3code:diff-panel-state:v1",
-      version: 2,
+      version: 3,
       // Version 1 also held a turn's diff, which no longer exists: those selections are dropped.
+      // Versions before 3 held one comparison base per thread: it stays as the base of none named.
       migrate: (persisted) => {
         const state = persisted as Partial<
-          Pick<DiffPanelStoreState, "byThreadKey" | "branchBaseRefByThreadKey" | "diffRenderMode">
-        >;
+          Pick<DiffPanelStoreState, "byThreadKey" | "diffRenderMode">
+        > & { branchBaseRefByThreadKey?: Record<string, unknown> };
         return {
           ...state,
           byThreadKey: Object.fromEntries(
             Object.entries(state.byThreadKey ?? {}).filter(
               ([, selection]) => selection.kind === "branch" || selection.kind === "unstaged",
             ),
+          ),
+          branchBaseRefByThreadKey: Object.fromEntries(
+            Object.entries(state.branchBaseRefByThreadKey ?? {}).map(([key, baseRef]) => [
+              key,
+              { "": typeof baseRef === "string" ? baseRef : null },
+            ]),
           ),
         };
       },

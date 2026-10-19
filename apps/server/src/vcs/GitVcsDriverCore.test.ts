@@ -1430,6 +1430,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
     );
 
     it.effect(
+      "off main with no main to compare with, the branch's changes are not its commits not pushed",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const remote = yield* makeTmpDir("git-vcs-driver-remote-");
+          const { initialBranch } = yield* initRepoWithCommit(cwd);
+          yield* git(cwd, ["checkout", "-b", "work"]);
+          yield* git(cwd, ["branch", "-D", initialBranch]);
+          yield* git(remote, ["init", "--bare"]);
+          yield* git(cwd, ["remote", "add", "origin", remote]);
+          yield* git(cwd, ["push", "-u", "origin", "work"]);
+          yield* writeTextFile(cwd, "unpushed.txt", "not on the remote\n");
+          yield* git(cwd, ["add", "unpushed.txt"]);
+          yield* git(cwd, ["commit", "-m", "unpushed"]);
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+
+          const status = yield* driver.status({ cwd });
+          const preview = yield* driver.getReviewDiffPreview({ cwd });
+
+          assert.equal(status.isDefaultRef, false);
+          assert.equal(status.aheadOfDefaultCount, 0);
+          const branch = preview.sources.find((source) => source.kind === "branch-range")!;
+          assert.equal(branch.baseRef, null);
+          assert.deepStrictEqual(branch.files, []);
+        }),
+    );
+
+    it.effect(
       "a commit's changes are that commit's alone, against its parent, whatever came after it",
       () =>
         Effect.gen(function* () {
