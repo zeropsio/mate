@@ -807,10 +807,6 @@ function HarnessPage() {
                     }
                     model={{
                       line,
-                      addresses: line.addresses.map((address) => ({
-                        host: new URL(address.url).host,
-                        url: address.url,
-                      })),
                       note: line.trouble ? model.note : undefined,
                     }}
                     tiles={

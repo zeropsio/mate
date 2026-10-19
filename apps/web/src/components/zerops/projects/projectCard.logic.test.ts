@@ -14,6 +14,7 @@ import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { MateRowView } from "../SidebarMateRow.logic";
 import { entry, pull, WREN } from "./flowTestFixtures";
 import {
+  blockAddresses,
   broughtBy,
   cardChangeRows,
   cardChanges,
@@ -1511,4 +1512,45 @@ describe("a place's addresses on its panel", () => {
       if (!door) expect(said.offerDomain).toBe(false);
     },
   );
+
+  it("a production reached only on its own domains shows them on its block", () => {
+    const own = place(
+      [domain("example.xyz", "app"), domain("www.example.xyz", "app")],
+      [subdomain("app", false)],
+    );
+    expect(blockAddresses({ listed: [], place: own })).toEqual([
+      { host: "example.xyz", url: "https://example.xyz" },
+      { host: "www.example.xyz", url: "https://www.example.xyz" },
+    ]);
+  });
+
+  it.each([
+    {
+      case: "its own live domains first, then its zerops.app address",
+      place: place([domain("shop.acme.com", "app")], [subdomain("app")]),
+      hosts: ["shop.acme.com", "app-1a2b-3000.prg1.zerops.app"],
+    },
+    {
+      case: "a domain not answering yet is not one of them",
+      place: place([domain("shop.acme.com", "app", "dns")], [subdomain("app")]),
+      hosts: ["app-1a2b-3000.prg1.zerops.app"],
+    },
+    {
+      case: "no domain of its own: its zerops.app address",
+      place: place([], [subdomain("app")]),
+      hosts: ["app-1a2b-3000.prg1.zerops.app"],
+    },
+    {
+      case: "still being read: as its listing says it",
+      place: place([], [], "reading"),
+      hosts: ["app-1a2b-3000.prg1.zerops.app"],
+    },
+    {
+      case: "outside an account: as its listing says it",
+      place: undefined,
+      hosts: ["app-1a2b-3000.prg1.zerops.app"],
+    },
+  ])("a place's block lists every address it answers at: $case", ({ place, hosts }) => {
+    expect(blockAddresses({ listed, place }).map((address) => address.host)).toEqual(hosts);
+  });
 });

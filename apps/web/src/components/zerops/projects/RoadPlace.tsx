@@ -1,6 +1,6 @@
 /**
  * A place's block on the project page — production, or a stage — under the row that names it and
- * opens its page: its status line, its addresses, what went wrong lifted with its buttons, and its
+ * opens its page: its status line, its addresses (`blockAddresses`), what went wrong lifted with its buttons, and its
  * services as compact rows (each one's name and port, what it is, its CPU and RAM now with their
  * last day; a service that only stores, its kind alone), however many it runs. What else can be
  * done there sits behind the block's ···.
@@ -20,12 +20,18 @@ import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Skeleton } from "~/components/ui/skeleton";
-import { useAccountDataOptional, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
+import {
+  useAccountDataOptional,
+  useAccountOrgId,
+  useDetailDemand,
+  useProjection,
+} from "~/zerops/ZeropsAccountData";
 import { ResourceGraph } from "../ZeropsServiceMap";
+import { usePlaceAddresses } from "./PlacePanel";
 import { PlaceWords } from "./ProjectCards";
 import { PlaceDot } from "./ProjectState";
 import { serviceRowReading } from "./placeServices.logic";
-import type { PlaceLine } from "./projectCard.logic";
+import { blockAddresses, type PlaceLine } from "./projectCard.logic";
 
 const NO_TOPOLOGY = Atom.make(EMPTY_PROJECT_TOPOLOGY_SNAPSHOT);
 
@@ -158,8 +164,6 @@ export function PlaceServiceTiles({ projectId }: { readonly projectId: string | 
 export interface RoadPlaceModel {
   /** Its line, in the words its block says (`productionWords`, `stageWords`). */
   readonly line: PlaceLine;
-  /** Every address it answers at. */
-  readonly addresses: ReadonlyArray<{ readonly host: string; readonly url: string }>;
   /** What went wrong, in sentences. */
   readonly note: { readonly text: string; readonly tone: "attention" | "failed" } | undefined;
 }
@@ -180,6 +184,10 @@ export function RoadPlace({
   readonly menu?: ReactNode;
 }) {
   const { line } = model;
+  const addresses = blockAddresses({
+    listed: line.addresses,
+    place: usePlaceAddresses(useAccountOrgId(), line.projectId),
+  });
   return (
     <div className="pp-road-place" data-zerops-surface="road-place">
       <div className="pp-road-place-top">
@@ -189,9 +197,9 @@ export function RoadPlace({
         </span>
         {menu}
       </div>
-      {model.addresses.length === 0 ? null : (
+      {addresses.length === 0 ? null : (
         <span className="pp-road-place-links">
-          {model.addresses.map((address) => (
+          {addresses.map((address) => (
             <a
               className="pp-road-place-link"
               href={address.url}
