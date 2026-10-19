@@ -112,7 +112,8 @@ export type MergeabilityKind = typeof MergeabilityKind.Type;
 
 /**
  * How many open changes of a repository HQ judges again when its `main` moves, newest first; the
- * rest read `unknown` until their detail is read. A push judges its own change.
+ * rest read `unknown` until their detail is read. A task's change is judged beside them, every time:
+ * its Mate is told when it stops merging. A push judges its own change.
  */
 export const JUDGED_PER_MAIN_MOVE = 20;
 
