@@ -10,7 +10,7 @@
  * - `message`: kept by the key's live tasks, told to each one's Mate once it took it.
  * - `stop`: the key's live tasks dropped while no Mate took them, else their Mates told to stop.
  * - `answerEnded`: a reply after the key's latest task ended, answered once per end with how it
- *   ended (`hq_task.end_answered_at`), never while it is live or its change waits for review.
+ *   ended (`hq_task.end_answered_at`), never while it is live or done with its work unsettled.
  *
  * @module taskIntake
  */
@@ -22,7 +22,7 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { Leader } from "./leader.ts";
-import { MateTasks, taskListens } from "./mateTasks.ts";
+import { MateTasks, doneUnsettled, taskListens } from "./mateTasks.ts";
 import {
   type TaskSourceChannel,
   TaskIntake,
@@ -74,8 +74,8 @@ export const taskIntakeLayer = Layer.effect(
         WHERE source_key = ${sourceKey} AND state IN ('queued', 'assigned', 'working', 'waiting')`;
 
     /**
-     * The tasks of a work item that keep what is said of them: live, or done while their change
-     * waits for review, where their Mate still hears it.
+     * The tasks of a work item that keep what is said of them: live, or done with their work
+     * unsettled, where their Mate still hears it.
      */
     const listeningOf = (sourceKey: string) =>
       sql<{ readonly id: string }>`
@@ -91,8 +91,8 @@ export const taskIntakeLayer = Layer.effect(
       });
 
     /**
-     * The key's latest task, where it ended and its end is unanswered: done with no change waiting
-     * for review (it hears that one), failed, stopped or dropped.
+     * The key's latest task, where it ended and its end is unanswered: done with its work settled
+     * (it hears what is said while unsettled), failed, stopped or dropped.
      */
     const unansweredEnd = (sourceKey: string) =>
       Effect.map(
@@ -101,9 +101,7 @@ export const taskIntakeLayer = Layer.effect(
             SELECT * FROM hq_task WHERE source_key = ${sourceKey} ORDER BY seq DESC LIMIT 1) t
           WHERE t.state IN ('done', 'failed', 'stopped', 'dropped') AND t.ended_at IS NOT NULL
             AND t.end_answered_at IS DISTINCT FROM t.ended_at
-            AND NOT (t.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
-              WHERE c.app_id = t.app_id AND c.repo = t.change_repo
-                AND c.number = t.change_number AND c.state = 'open'))`,
+            AND NOT ${doneUnsettled(sql, sql`t`)}`,
         (rows) => rows[0]?.id,
       );
 

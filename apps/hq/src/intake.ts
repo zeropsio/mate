@@ -420,8 +420,8 @@ export const intakeLayer = (options: { readonly hqProjectId: string }) =>
         );
 
       /**
-       * Whether a task of the work item `key` keeps what is said of it: live, or done while its
-       * change waits for review.
+       * Whether a task of the work item `key` keeps what is said of it: live, or done with its
+       * work unsettled.
        */
       const listeningTask = (appId: string, key: string) =>
         Effect.map(

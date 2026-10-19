@@ -796,6 +796,107 @@ describe("tasks for automated Mates", () => {
         }),
     );
 
+    it.effect(
+      "a task answered in words ends with its Mate's answer as a comment of its own on the issue, pinging nobody and linking no other issue",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const issue = "/repos/acme/tea-shop/issues/1/comments";
+          const status = "/repos/acme/tea-shop/issues/comments/101";
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          const word = (report: Record<string, unknown>) =>
+            core.robot.link.send({ type: "task-state", report: { taskId: task.id, ...report } });
+          yield* word({ state: "accepted", conversationId: "conversation-1" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* word({
+            state: "done",
+            answer: "The shop runs at https://appstage.example, as @nova asked in #3.",
+          });
+          yield* core.github.seenWhere("the answer", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.startsWith("**P_ROBOT:**"),
+            ),
+          );
+          assert.deepStrictEqual((yield* core.github.commentLog).slice(-2), [
+            ["PATCH", status, "P_ROBOT is done."],
+            [
+              "POST",
+              issue,
+              "**P_ROBOT:** The shop runs at https://appstage.example, as @⁠nova asked in #⁠3.",
+            ],
+          ]);
+        }),
+    );
+
+    it.effect(
+      "a follow-up on a done task ends with a comment of its own saying what it did this time, its answer and the new commit on its change; an ending without words, as an older Mate's, says no more than its status line",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* withPool();
+          const issue = "/repos/acme/tea-shop/issues/1/comments";
+          const status = "/repos/acme/tea-shop/issues/comments/101";
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "appdev" },
+          });
+          yield* core.issue(1);
+          const task = yield* toldTask(core.robot.link, 1);
+          const word = (report: Record<string, unknown>) =>
+            core.robot.link.send({ type: "task-state", report: { taskId: task.id, ...report } });
+          yield* word({ state: "accepted", conversationId: "conversation-1" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          const change = yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "appdev", title: "Hotter tea" },
+          });
+          const number = (change.body as { change: { number: number } }).change.number;
+          const link = `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(core.appId, "appdev", number)}`;
+          const head = (sha: string) =>
+            core.sql`UPDATE hq_change SET head = ${sha} WHERE repo = 'appdev' AND number = ${number}`;
+          yield* head("a".repeat(40));
+          yield* word({ state: "done" });
+          yield* core.github.seenWhere("the first end", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.startsWith("P_ROBOT is done; its change"),
+            ),
+          );
+          yield* core.call(
+            "POST",
+            `/api/apps/${core.appId}/changes/appdev/${String(number)}/comments`,
+            { session: core.owner, body: { body: "Make it hotter still." } },
+          );
+          yield* core.robot.link.take("task-message");
+          yield* word({ state: "working" });
+          yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+          yield* head("b".repeat(40));
+          yield* word({ state: "done", answer: "The kettle now boils at 100 °C." });
+          yield* core.github.seenWhere("the follow-up's end", (seen) =>
+            seen.some((request) =>
+              (request.body as { body?: string })?.body?.startsWith("**P_ROBOT:**"),
+            ),
+          );
+          const log = yield* core.github.commentLog;
+          // The first end, said without words: its status line alone.
+          assert.deepStrictEqual(
+            log.filter(([method]) => method === "POST"),
+            [
+              ["POST", issue, "Queued for an automated Mate: #1 in line."],
+              [
+                "POST",
+                issue,
+                `**P_ROBOT:** The kettle now boils at 100 °C.\n\nNew commit on its change: ${link}`,
+              ],
+            ],
+          );
+          assert.deepStrictEqual(log.at(-2), [
+            "PATCH",
+            status,
+            `P_ROBOT is done; its change: ${link}`,
+          ]);
+        }),
+    );
+
     it.effect("a comment GitHub refuses is tried once more, and never fails the task", () =>
       Effect.gen(function* () {
         const core = yield* withPool();

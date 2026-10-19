@@ -1,4 +1,5 @@
 import {
+  type ThreadTokenUsageSnapshot,
   TurnUsageCompletedPayload,
   type UsageComponents,
   type UsageModelLine,
@@ -344,6 +345,38 @@ function openCodeComponents(tokens: Record<string, unknown> | undefined): UsageC
     reasoning,
     inclusiveTotal: quantity(tokens?.total),
   });
+}
+/**
+ * How full a session's context is after one OpenCode step: the step's prompt and its answer,
+ * what the next call starts from, against the model's window when OpenCode lists it.
+ * OpenCode compacts the session itself when it overflows.
+ */
+export function openCodeContextUsage(
+  tokens: unknown,
+  maxTokens: number | undefined,
+): ThreadTokenUsageSnapshot | undefined {
+  const meter = record(tokens);
+  const cache = record(meter?.cache);
+  const count = (value: unknown) =>
+    Predicate.isNumber(value) && Number.isSafeInteger(value) && value > 0 ? value : 0;
+  const input = count(meter?.input),
+    cachedInput = count(cache?.read),
+    cacheWrite = count(cache?.write),
+    output = count(meter?.output),
+    reasoning = count(meter?.reasoning);
+  const usedTokens = count(meter?.total) || input + cachedInput + cacheWrite + output + reasoning;
+  if (usedTokens === 0) return undefined;
+  return {
+    usedTokens,
+    ...(maxTokens !== undefined && Number.isSafeInteger(maxTokens) && maxTokens > 0
+      ? { maxTokens }
+      : {}),
+    inputTokens: input + cachedInput + cacheWrite,
+    cachedInputTokens: cachedInput,
+    outputTokens: output,
+    reasoningOutputTokens: reasoning,
+    compactsAutomatically: true,
+  };
 }
 const addCost = (a: UsageNativeCost | null, b: UsageNativeCost | null) =>
   a === null ? b : b === null ? a : { ...a, amount: String(BigInt(a.amount) + BigInt(b.amount)) };

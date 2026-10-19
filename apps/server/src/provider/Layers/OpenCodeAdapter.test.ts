@@ -138,6 +138,10 @@ const runtimeMock = {
     questionListImplementation: null as (() => Promise<Array<QuestionRequest>>) | null,
     sessionUpdateCalls: [] as Array<{ sessionID: string; permission: unknown }>,
     forkCalls: [] as Array<{ sessionID: string; directory?: string; messageID?: string }>,
+    configProviders: [] as Array<{
+      id: string;
+      models: Record<string, { id: string; limit: { context: number; output: number } }>;
+    }>,
   },
   reset() {
     this.state.startCalls.length = 0;
@@ -198,6 +202,7 @@ const runtimeMock = {
     this.state.questionListImplementation = null;
     this.state.sessionUpdateCalls.length = 0;
     this.state.forkCalls.length = 0;
+    this.state.configProviders = [];
   },
 };
 
@@ -506,6 +511,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             })(),
           };
         },
+      },
+      config: {
+        providers: async () => ({
+          data: { providers: runtimeMock.state.configProviders, default: {} },
+        }),
       },
       mcp: {
         add: async (body: { name: string; config: unknown }) => {
@@ -2791,6 +2801,105 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           ["turn.usage.updated", turn.turnId, "1200000"],
           ["turn.usage.updated", turn.turnId, "4200000"],
           ["turn.usage.completed", turn.turnId, "4200000"],
+        ]);
+        yield* adapter.stopSession(threadId);
+      }),
+  );
+
+  it.effect(
+    "an OpenCode thread tells how full its context is after each step, against its model's window",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("thread-context-usage");
+        const sessionID = "http://127.0.0.1:9999/session";
+        runtimeMock.state.configProviders = [
+          {
+            id: "nebius",
+            models: {
+              "zai-org/GLM-5.3": {
+                id: "zai-org/GLM-5.3",
+                limit: { context: 200_000, output: 32_000 },
+              },
+            },
+          },
+        ];
+        const step = (
+          id: string,
+          session: string,
+          input: number,
+          read: number,
+          output: number,
+        ) => ({
+          id: `evt-${id}`,
+          type: "message.part.updated",
+          properties: {
+            sessionID: session,
+            time: 0,
+            part: {
+              id,
+              sessionID: session,
+              messageID: "msg_a",
+              type: "step-finish",
+              reason: "tool-calls",
+              cost: 0,
+              tokens: {
+                total: input + read + output,
+                input,
+                output,
+                reasoning: 0,
+                cache: { read, write: 0 },
+              },
+            },
+          },
+        });
+        const events = [
+          {
+            id: "evt-busy",
+            type: "session.status",
+            properties: { sessionID, status: { type: "busy" } },
+          },
+          step("prt_1", sessionID, 9_000, 1_000, 500),
+          step("prt_other", "ses_someone_else", 150_000, 0, 10),
+          step("prt_2", sessionID, 3_000, 10_500, 700),
+          {
+            id: "evt-idle",
+            type: "session.status",
+            properties: { sessionID, status: { type: "idle" } },
+          },
+        ];
+        const gates = events.map(() => promiseWithResolvers<unknown>());
+        runtimeMock.state.subscribedEvents = gates.map((gate) => gate.promise);
+        runtimeMock.state.sessionStatusImplementation = async () => ({ data: {} });
+        const collected = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => event.threadId === threadId),
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({
+          threadId,
+          input: "Fix the tea shop's checkout.",
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("opencode"),
+            "nebius/zai-org/GLM-5.3",
+          ),
+        });
+        events.forEach((event, index) => gates[index]!.resolve(event));
+        yield* advanceTestClock(1_000);
+        const told = Array.from(yield* Fiber.join(collected)).flatMap((event) =>
+          event.type === "thread.token-usage.updated"
+            ? [[event.payload.usage.usedTokens, event.payload.usage.maxTokens]]
+            : [],
+        );
+        NodeAssert.deepEqual(told, [
+          [10_500, 200_000],
+          [14_200, 200_000],
         ]);
         yield* adapter.stopSession(threadId);
       }),

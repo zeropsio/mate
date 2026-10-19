@@ -1128,6 +1128,12 @@ describe("an automated Mate says how its task stands", () => {
     assert.include(brief, "Never tell anyone which buttons to press and never paste review links");
     assert.include(brief, "A reviewer's comment on your change comes to you the same way");
   });
+
+  it("the brief tells the agent its last message is posted where the task came from, an answer where it was asked a question", () => {
+    const brief = ZeropsTasksModule.taskBrief(task("task-1"));
+    assert.include(brief, "Finish with your answer where the ask was a question");
+    assert.include(brief, "Your last message is posted where the task came from");
+  });
 });
 
 const message = (id: string, text: string, from: MateTaskMessage["from"] = "comment") =>
@@ -1365,8 +1371,46 @@ describe("people steer a task its Mate works", () => {
         ...said("QUESTION: Which cart?\n\nI kept both carts, as asked."),
       });
       yield* settle;
-      assert.deepStrictEqual(sent.at(-1), { taskId: "task-1", state: "done", conversationId: id });
+      assert.deepStrictEqual(sent.at(-1), {
+        taskId: "task-1",
+        state: "done",
+        conversationId: id,
+        answer: "QUESTION: Which cart?\n\nI kept both carts, as asked.",
+      });
     }),
+  );
+
+  it.effect(
+    "a finished task's report carries its agent's closing words as its answer, said in its run alone",
+    () =>
+      Effect.gen(function* () {
+        const { id, move, sent } = yield* working("task-1");
+        const ended = run(id, principalOf("task-1"), "ended", { kind: "completed" });
+        yield* move(id, {
+          ...view(id, { lastEnded: ended }),
+          ...said("  The site runs at **https://appstage.example**.\n"),
+        });
+        yield* settle;
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: id,
+          answer: "The site runs at **https://appstage.example**.",
+        });
+        // Words said before the run began are an earlier run's, never this one's answer.
+        yield* move(id, {
+          ...view(id, {
+            lastEnded: { ...run(id, ended.principal, "ended", ended.end, 2), startedAt: 9 },
+          }),
+          ...said("An earlier run's words.", 8),
+        });
+        yield* settle;
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: id,
+        });
+      }),
   );
 
   it.effect("re-sends a waiting task's report with its question when the link opens again", () =>
