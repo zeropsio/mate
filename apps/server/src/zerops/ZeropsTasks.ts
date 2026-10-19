@@ -29,7 +29,9 @@
  *   task the working copies no longer hold, told with the task's change while nothing is at work,
  *   first puts them on that change's branch, so the follow-up lands in its own change. HQ tells a
  *   follow-up only while the Mate is on no other task; one told under another task's run still
- *   joins that run, on its session and its working copy.
+ *   joins that run, on its session and its working copy. A person writing in the conversation
+ *   under a task's run that is on or completed steers that task too: the engine runs the message
+ *   as the task's, so the task says `working` again and HQ links what it delivers.
  * - **Asking:** an agent that cannot go on without a person's answer ends its turn on a
  *   `QUESTION: …` line (the brief says how); the task then says `waiting` with the question, and
  *   the answer, a follow-up, resumes it.
@@ -364,7 +366,8 @@ const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRu
  * How a task stands in its conversation's record: `stopped` once people stopped it, `failed` once
  * a limit stopped it; else `working` from its run's start until nothing of it is on or due, then
  * how its last run ended — `waiting` when the agent's last words end on a question. A person's
- * later message in the conversation changes nothing of the task's: its end stands. Nothing while
+ * later message in the conversation is more work on it (the engine runs it as the task's), unless
+ * its run failed or was stopped: that end stands. Nothing while
  * no run holds its brief: the conversation was given its agent, and the brief never recorded.
  */
 export const taskReportOf = (

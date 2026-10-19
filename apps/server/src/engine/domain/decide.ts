@@ -1085,6 +1085,20 @@ const actsForSomeone = (b: StepBuilder): void => {
   }
 };
 
+/**
+ * The task a person's message is more work on: an automated Mate's task whose run is the
+ * conversation's newest, while it is on or its turn completed (done, or asking) — so the run it
+ * starts is the task's, and a change it delivers is that task's. None after one that failed or
+ * was stopped, whose end stands, and in any conversation that runs no tasks.
+ */
+const taskContinued = (state: ConversationState): Principal | undefined => {
+  let newest: RunRecord | undefined;
+  for (const run of Object.values(state.runs))
+    if (newest === undefined || run.ordinal > newest.ordinal) newest = run;
+  if (newest?.principal.kind !== "task") return undefined;
+  return newest.end === null || newest.end.kind === "completed" ? newest.principal : undefined;
+};
+
 const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void => {
   actsForSomeone(b);
   if (b.state.archived) throw new Rejected("archived");
@@ -1104,10 +1118,17 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   }
   const ordinal = b.state.nextRunOrdinal;
   const item = deriveItemId(deriveRunId(b.state.conversationId, ordinal), 1);
+  // A person writing under a task's run asks more of that task: the run is the task's, the words
+  // still theirs.
+  const continued =
+    b.envelope.principal.kind === "person" && command.taskId === undefined
+      ? taskContinued(b.state)
+      : undefined;
+  const taskId = command.taskId ?? (continued?.kind === "task" ? continued.taskId : undefined);
   const run = queueRun(b, {
     trigger: () => ({ kind: "person", itemId: item }),
     joins: null,
-    principal: b.envelope.principal,
+    principal: continued ?? b.envelope.principal,
     maintenance: command.maintenance === true,
     text: told,
     ...(command.interactionMode === undefined ? {} : { interactionMode: command.interactionMode }),
@@ -1132,7 +1153,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             ...(command.task === undefined ? {} : { task: command.task }),
             ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
-            ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
+            ...(taskId === undefined ? {} : { taskId }),
             delivery: { state: "queued", at: null },
           }
         : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },

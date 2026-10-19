@@ -26,8 +26,10 @@
  * - A Mate that turns its task down gives it back with no try against it; once its Mates have
  *   turned it down for 30 minutes it fails, with the last reason.
  * - The Mate's word moves its task (`task-state`): taken (`working`, in the conversation it names),
- *   then done, failed or stopped — its Mate free again. A word of a task not its own — never handed
- *   to it, or handed to another since — is passed by.
+ *   then done, failed or stopped — its Mate free again. Done, it is back at work on its Mate's word
+ *   (a review comment, a person's message in its conversation), and what it delivers then is its
+ *   change. A word of a task not its own — never handed to it, or handed to another since — is
+ *   passed by.
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it; one whose
  *   Mate has been offline for 2 hours while on it fails, saying so.
  * - What is said about a task after it came in (`message`) is kept, and told to its Mate
@@ -1283,15 +1285,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
 
       /**
        * The task is the Mate's: handed to it or taken by it — or, given back while its link was
-       * down, waiting for no other Mate yet, as the Mate it was last handed to — or done by it
-       * while its change waits for review (a review comment wakes it there).
+       * down, waiting for no other Mate yet, as the Mate it was last handed to — or done by it: a
+       * review comment on its change, or a person's message in its conversation, wakes it there.
        */
       const owns = (projectId: string) => sql`(
-        (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting'))
-        OR (state = 'queued' AND last_mate_project_id = ${projectId})
-        OR (mate_project_id = ${projectId} AND state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
-          WHERE c.app_id = hq_task.app_id AND c.repo = hq_task.change_repo
-            AND c.number = hq_task.change_number AND c.state = 'open')))`;
+        (mate_project_id = ${projectId} AND state IN ('assigned', 'working', 'waiting', 'done'))
+        OR (state = 'queued' AND last_mate_project_id = ${projectId}))`;
 
       /** The Mate's task, as it stands, where the Mate says it is its own. */
       const ownTask = (projectId: string, taskId: string) =>
@@ -1300,8 +1299,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly state: string;
             readonly app_id: string;
             readonly question: string | null;
+            readonly change_number: number | null;
           }>`
-            SELECT state, app_id::text AS app_id, question FROM hq_task
+            SELECT state, app_id::text AS app_id, question, change_number FROM hq_task
             WHERE id::text = ${taskId} AND ${owns(projectId)}`,
           (rows) => rows[0],
         );
@@ -1487,12 +1487,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
                 mate: mate ?? "Mate",
                 question: asked ?? "an answer.",
               }));
-            // Back on it after it was done (a review woke it): the line keeps saying its change.
+            // Back on it after it was done: a review woke it, and the line keeps saying its
+            // change; with no change yet (a person's message woke it), it says the Mate is on it.
             else if (
               taken.length > 0 &&
               !waiting &&
               task.state !== "working" &&
-              task.state !== "done"
+              (task.state !== "done" || task.change_number === null)
             )
               yield* pickedUp(word.taskId);
             if (taken.length > 0 && task.state === "queued") {

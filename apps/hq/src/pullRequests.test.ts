@@ -123,8 +123,12 @@ const mirroredPool = Effect.gen(function* () {
 
 type Pool = Effect.Success<typeof mirroredPool>;
 
-/** The robot on issue 1, its change `web` 1 described at `head`; the task. */
-const describedChange = (core: Pool, head = HEAD, described = true) =>
+/**
+ * The robot on issue 1, its change `web` 1 described at `head`; the task. `reopened`: the task
+ * ended done with nothing delivered, and a person's message in its conversation put its Mate back
+ * on it before it delivered.
+ */
+const describedChange = (core: Pool, head = HEAD, described = true, reopened = false) =>
   Effect.gen(function* () {
     yield* core.call("POST", "/api/mate/repos", {
       headers: core.robot.auth,
@@ -142,6 +146,18 @@ const describedChange = (core: Pool, head = HEAD, described = true) =>
       report: { taskId: task.id, state: "accepted", conversationId: "conversation-1" },
     });
     yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+    if (reopened) {
+      yield* core.robot.link.send({
+        type: "task-state",
+        report: { taskId: task.id, state: "done", conversationId: "conversation-1" },
+      });
+      yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+      yield* core.robot.link.send({
+        type: "task-state",
+        report: { taskId: task.id, state: "working", conversationId: "conversation-1" },
+      });
+      yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+    }
     yield* core.call("POST", "/api/mate/changes", {
       headers: core.robot.auth,
       body: { repo: "web", title: "Hotter tea" },
@@ -179,9 +195,9 @@ const statusSays = (core: Pool, words: string) =>
     ),
   );
 
-const opened = (core: Pool) =>
+const opened = (core: Pool, reopened = false) =>
   Effect.gen(function* () {
-    const task = yield* describedChange(core);
+    const task = yield* describedChange(core, HEAD, true, reopened);
     yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
     yield* rowsWhere(
       core.url,
@@ -534,6 +550,45 @@ describe("a change's pull request", () => {
           const [closed] = yield* asked(core, "PATCH", "/repos/acme/tea-shop/issues/1");
           assert.deepStrictEqual(closed!.body, { state: "closed", state_reason: "completed" });
         }),
+    );
+
+    it.effect(
+      "a person's message on a done task reopens it, and its delivery opens the task's own change",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const task = yield* opened(core, true);
+          const [row] = yield* rowsWhere(
+            core.url,
+            "SELECT id::text AS id, change_repo, change_number FROM hq_task",
+            (rows) => rows.length === 1,
+          );
+          assert.deepStrictEqual(row, { id: task.id, change_repo: "web", change_number: 1 });
+          const [made] = yield* asked(core, "POST", "/repos/acme/tea-shop/pulls");
+          assert.include((made!.body as { body: string }).body, "Fixes #1");
+          yield* statusSays(core, "**Juno** opened #2 for review.");
+        }),
+    );
+
+    it.effect("merging that change closes the task's issue", () =>
+      Effect.gen(function* () {
+        const core = yield* mirroredPool;
+        const task = yield* opened(core, true);
+        yield* core.robot.link.send({
+          type: "task-state",
+          report: { taskId: task.id, state: "done", conversationId: "conversation-1" },
+        });
+        yield* core.tasks((rows) => rows[0]?.["state"] === "done");
+        yield* squashOnMain(core);
+        const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+          session: core.owner,
+          body: { expectedHead: HEAD },
+        });
+        assert.strictEqual(merged.status, 200);
+        yield* statusSays(core, "Merged in #2.");
+        const [closed] = yield* asked(core, "PATCH", "/repos/acme/tea-shop/issues/1");
+        assert.deepStrictEqual(closed!.body, { state: "closed", state_reason: "completed" });
+      }),
     );
 
     it.effect(

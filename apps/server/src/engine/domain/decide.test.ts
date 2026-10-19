@@ -1162,6 +1162,38 @@ describe("decide: a task from outside opens its conversation", () => {
     expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("task");
     expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("taskId");
   });
+
+  /** The task's run, worked and ended as `outcome` says. */
+  const taskRun = (outcome: TurnOutcome): ReadonlyArray<Step> =>
+    [
+      send("Work issue #42", { task: source, taskId: "task-1" }),
+      prepared(1),
+      opened(1),
+      sent(1),
+      ended(1, outcome),
+    ].map((command) => ({ command, by: task }));
+
+  it("a person's message after a task's run is more work on that task, still in the person's name", () => {
+    const scene = play([...taskRun({ kind: "completed" }), send("Deliver it, please.")]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.by).toEqual({ kind: "person", principal: ana });
+    expect(item?._tag === "ItemOpened" && item.body).toMatchObject({
+      kind: "person",
+      text: "Deliver it, please.",
+      taskId: "task-1",
+    });
+    expect(scene.state.runs[r(2)]?.principal).toEqual(task);
+  });
+
+  it("a person's message after a task's run that failed is the person's own", () => {
+    const scene = play([
+      ...taskRun({ kind: "failed", class: "provider", words: "upstream 500" }),
+      send("What happened?"),
+    ]);
+    const item = scene.events.find((event) => event._tag === "ItemOpened");
+    expect(item?._tag === "ItemOpened" && item.body).not.toHaveProperty("taskId");
+    expect(scene.state.runs[r(2)]?.principal).toEqual(ana);
+  });
 });
 
 describe("decide: a turn's signals land on its own run", () => {
