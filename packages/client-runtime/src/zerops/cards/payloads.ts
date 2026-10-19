@@ -162,6 +162,8 @@ export type ZeropsCardPayload =
       readonly steps: ReadonlyArray<{
         readonly label: string;
         readonly success: boolean;
+        /** The browser's own words for a failed step: its first line, bounded. */
+        readonly error?: string;
         readonly errorKind?: string;
       }>;
       /** What the check read of the page: see {@link BrowserRead}. */
@@ -182,6 +184,7 @@ export interface BrowserRead {
 
 const BROWSER_PAGE_LIMIT = 24_000;
 const BROWSER_ANSWER_LIMIT = 12;
+const BROWSER_STEP_ERROR_LIMIT = 200;
 
 /** A `get text` of these reads the page itself; of anything else, it asks about one part of it. */
 const PAGE_SELECTORS: ReadonlySet<string> = new Set(["body", "html", "main", "article", ":root"]);
@@ -541,10 +544,16 @@ function devServersOf(
   return servers.length > 1 ? servers : undefined;
 }
 
+const stepError = (error: string | undefined): string | undefined => {
+  const line = error?.split("\n")[0];
+  return line === undefined ? undefined : said(line, BROWSER_STEP_ERROR_LIMIT) || undefined;
+};
+
 /** One `BrowserStepResult` — `internal/ops/browser.go`. */
 function browserSteps(value: unknown): ReadonlyArray<{
   readonly label: string;
   readonly success: boolean;
+  readonly error?: string;
   readonly errorKind?: string;
 }> {
   return readRecordArray(value).flatMap((entry) => {
@@ -556,6 +565,7 @@ function browserSteps(value: unknown): ReadonlyArray<{
       {
         label: command.join(" "),
         success: entry.success === true,
+        ...optional("error", stepError(readString(entry.error))),
         ...optional("errorKind", readString(entry.errorKind)),
       },
     ];

@@ -1611,6 +1611,122 @@ describe("browser checks", () => {
       live: false,
     });
   });
+
+  /** A check as zcp's `zerops_browser` returned it: one step of the Mate's between open and close. */
+  const checkWithStep = (step: { command: string[]; error: string; errorKind: string }) =>
+    reduceZeropsOperations(
+      [
+        {
+          id: "b1",
+          turnId: "t1",
+          toolName: "zerops_browser",
+          input: { url: "https://shop.example.com/" },
+          status: "completed",
+          resultText: JSON.stringify({
+            url: "https://shop.example.com/",
+            steps: [
+              { command: ["open", "https://shop.example.com/"], success: true },
+              { ...step, success: false },
+              { command: ["errors"], success: true },
+              { command: ["close"], success: true },
+            ],
+          }),
+          truncated: false,
+          startedAt: at(1),
+          anchorActivityId: "activity-b1",
+          settledAt: at(1, 30),
+          rowIds: new Set(["activity-b1"]),
+          agentInternal: false,
+        },
+      ],
+      { projectId: undefined, builds: () => "finished" },
+    ).operations[0]!;
+
+  // An agent's guessed ref or misspelt command read as "couldn't find role
+  // checkbox get --name Hide sold out" · "1 check failed": the page was never
+  // asked (browser-check-fails, 2026-10-19). zcp v9.217.0 files these under
+  // `other`; later zcp names them `invalid-command` and `stale-ref`.
+  it.each([
+    {
+      name: "an invalid command",
+      step: {
+        command: ["find", "role", "checkbox", "get"],
+        error: "Unknown action: get",
+        errorKind: "invalid-command",
+      },
+      note: "the check's command was wrong: Unknown action: get",
+    },
+    {
+      name: "a stale ref",
+      step: { command: ["click", "@e24"], error: "Unknown ref: e24", errorKind: "stale-ref" },
+      note: "the check's command was wrong: Unknown ref: e24",
+    },
+    {
+      name: "an unknown ref zcp did not classify",
+      step: {
+        command: ["click", "@e24"],
+        error: "Unknown ref: e24\n  at resolve",
+        errorKind: "other",
+      },
+      note: "the check's command was wrong: Unknown ref: e24",
+    },
+    {
+      name: "an unknown action zcp did not classify",
+      step: {
+        command: ["find", "role", "button", "Buy", "click"],
+        error: "Unknown action: Buy",
+        errorKind: "other",
+      },
+      note: "the check's command was wrong: Unknown action: Buy",
+    },
+  ])(
+    "A browser step whose command the browser rejected says so and is not counted as a failed check: $name",
+    ({ step, note }) => {
+      const check = checkWithStep(step);
+      const shown = check.steps.find((each) => each.label === step.command.join(" "));
+      expect(shown).toMatchObject({ note, stateLabel: "Not run" });
+      expect(shown?.state).not.toBe("failed");
+      expect(browserCheckFailure(check)).toBeNull();
+      expect(checksStrip([check], false).failures).toBe(0);
+    },
+  );
+
+  it.each([
+    {
+      name: "a selector the page does not have",
+      step: {
+        command: ["get", "text", "#stat"],
+        error: "Element not found: #stat",
+        errorKind: "selector-not-found",
+      },
+      words: "couldn't get text #stat: Element not found: #stat",
+    },
+    {
+      name: "a wait that timed out",
+      step: {
+        command: ["wait", "--text", "Cart"],
+        error: "Timeout 10000ms exceeded",
+        errorKind: "timeout",
+      },
+      words: "timed out, the page never loaded",
+    },
+    {
+      name: "a kind this build does not know",
+      step: {
+        command: ["click", "#buy"],
+        error: "Frame was detached",
+        errorKind: "frame-detached",
+      },
+      words: "couldn't click #buy: Frame was detached",
+    },
+  ])(
+    "A browser step that failed on the page still counts as a failed check, in the browser's own words: $name",
+    ({ step, words }) => {
+      const check = checkWithStep(step);
+      expect(browserCheckFailure(check)).toBe(words);
+      expect(checksStrip([check], false).failures).toBe(1);
+    },
+  );
 });
 
 describe("stretchIncidents", () => {
