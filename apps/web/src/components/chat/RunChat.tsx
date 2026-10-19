@@ -1014,8 +1014,13 @@ function DisclosureButton({
   );
 }
 
-/** The chevron a call that opens wears after its time: at rest, turned over while open. */
+/**
+ * The chevron a call that opens wears after its time: at rest, turned over while open. In the
+ * live slot nothing opens, so nothing wears it (Erza, 2026-10-19: a thought's chevron there
+ * opened nothing).
+ */
 function OpensMark() {
+  if (use(InSlotContext)) return null;
   return (
     <ChevronDownIcon
       aria-hidden="true"
