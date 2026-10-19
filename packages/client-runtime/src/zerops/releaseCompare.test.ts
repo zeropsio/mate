@@ -353,6 +353,28 @@ describe("how many commits move", () => {
     truncated: total > shas.length,
   });
 
+  it("counts a change once, however many of its commits a merge on GitHub brought in", () => {
+    const change = { number: 13, title: "Hide sold out", mateProjectId: "p-raya" };
+    const commit = (sha: string, landed: typeof change | null) => ({
+      sha,
+      subject: sha,
+      authorName: "Raya",
+      at: "2026-10-02T10:00:00.000Z",
+      change: landed,
+    });
+    expect(
+      movedCount([
+        {
+          repository: "mono",
+          services: ["mono"],
+          commits: [commit(API, change), commit(WEB, change), commit(OLD, null)],
+          total: 3,
+          truncated: false,
+        },
+      ]),
+    ).toEqual({ count: 2, atLeast: false });
+  });
+
   it("counts a commit once however many reads of its repository list it", () => {
     expect(
       movedCount([listed("mono", [API, WEB]), listed("mono", [API]), listed("docs", [OLD])]),

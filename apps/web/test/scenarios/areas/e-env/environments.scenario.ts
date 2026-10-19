@@ -82,7 +82,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.then.releaseEntriesShow("Ship the storefront");
           yield* a.when.click("Release v0.1.0 to production");
           yield* a.when.finish("production");
-          yield* a.then.text("Released");
+          yield* a.then.text("v0.1.0 is live");
           yield* a.when.click("Close");
           yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.0", "Live");
@@ -157,7 +157,7 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.then.running("production");
         expect(yield* a.then.productionBuildCount).toBe(1);
         yield* a.when.finish("production");
-        yield* a.then.text("Released");
+        yield* a.then.text("v0.1.0 is live");
         yield* a.when.click("Close");
         yield* a.then.rowShows("v0.1.0", "Live");
         expect(yield* a.then.productionBuildCount).toBe(1);
@@ -212,7 +212,7 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.when.open("production");
         yield* a.when.releaseFromReview;
         yield* a.when.finish("production");
-        yield* a.then.text("Released");
+        yield* a.then.text("v0.1.0 is live");
         yield* a.when.click("Close");
         yield* a.then.rowShows("v0.1.0", "Live");
         yield* f.s.then.noExternalNetwork;

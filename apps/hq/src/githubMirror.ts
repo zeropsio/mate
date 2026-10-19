@@ -7,6 +7,7 @@
  * @module githubMirror
  */
 import type { GitError, HqGit, MirrorRemote, Repo } from "@t3tools/hq-git";
+import { COMPARE_COMMITS_MAX } from "@t3tools/shared/hqChanges";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -297,7 +298,8 @@ export const githubMirrorLayer = (
 
       /**
        * After an import from `from` to `to`: each open change whose head `to` brought onto `main` —
-       * a merge on GitHub that kept its commits — merged as `to`.
+       * a merge on GitHub that kept its commits — merged as the merge commit that took its head, or
+       * as its head where `main` moved onto it with no merge commit. One import can bring several.
        */
       const landContained = (git: HqGit, at: Repo, from: string, to: string) =>
         Effect.gen(function* () {
@@ -305,10 +307,19 @@ export const githubMirrorLayer = (
             SELECT number, head FROM hq_change
             WHERE app_id::text = ${at.appId} AND repo = ${at.id} AND state = 'open'
               AND head IS NOT NULL`;
+          if (open.length === 0) return;
+          const brought = yield* git.range(at, from === "" ? null : from, to, {
+            limit: COMPARE_COMMITS_MAX,
+          });
           for (const change of open) {
             const before = from !== "" && (yield* git.isAncestor(at, change.head, from));
             if (before || !(yield* git.isAncestor(at, change.head, to))) continue;
-            yield* changes.landImported(at.appId, at.id, change.number, to).pipe(
+            // Oldest first: the merge that took the head, not a later one that took it along.
+            const merge = brought.items.findLast((commit) =>
+              commit.parents.slice(1).includes(change.head),
+            );
+            const mergedSha = merge?.sha ?? change.head;
+            yield* changes.landImported(at.appId, at.id, change.number, mergedSha).pipe(
               Effect.catch((error) =>
                 Effect.logWarning("an imported merge's change not recorded merged", {
                   appId: at.appId,

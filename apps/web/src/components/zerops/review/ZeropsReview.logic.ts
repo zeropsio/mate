@@ -14,6 +14,7 @@ import {
   linksChange,
   type Moved,
   RELEASE_TAKES,
+  type ReleaseReviewModel,
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
@@ -401,7 +402,7 @@ export type ReleaseStageMark = "on-stage" | "deploying-on-stage" | "failed-on-st
 
 export interface ReleaseChangeRow {
   readonly key: string;
-  /** `#54 Performance tuning…` — the change it landed as, or the commit's own words. */
+  /** The change's title, or the commit's own words: never HQ's number for the change. */
   readonly title: string;
   /** The change it landed as, whose review the row opens; none for a commit nobody reviewed. */
   readonly change: { readonly repository: string; readonly number: number } | undefined;
@@ -414,26 +415,27 @@ export interface ReleaseChangeRow {
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What HQ compared, one row per change: a commit is the change HQ says it landed — in the
- * repository it was compared in, since numbers are per repository — whose Mate wrote it and when;
- * a commit nobody reviewed is its own words. One commit several services take is one row.
+ * What HQ compared, one row per change: a commit is the change HQ says it is — in the repository
+ * it was compared in, since numbers are per repository — whose Mate wrote it and when, as its
+ * newest commit says; a merge on GitHub and the commits it brought in are all that change, one row.
+ * A commit nobody reviewed is its own words. One commit several services take is one row.
  */
 export function releaseChangeRows(input: {
   readonly moved: ReadonlyArray<Moved>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
   const rows = new Map<string, ReleaseChangeRow>();
+  const seen = new Set<string>();
   for (const { repository, commits } of input.moved) {
     for (const commit of commits) {
       const key = commit.sha.toLowerCase();
-      if (rows.has(key)) continue;
       const { change } = commit;
-      rows.set(key, {
+      const entry = change === null ? key : `${repository}#${String(change.number)}`;
+      if (seen.has(key) || rows.has(entry)) continue;
+      seen.add(key);
+      rows.set(entry, {
         key,
-        title:
-          change === null
-            ? commit.subject
-            : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
+        title: change === null ? commit.subject : change.title.replace(LANDED_AS, ""),
         change: change === null ? undefined : { repository, number: change.number },
         mateProjectId: change?.mateProjectId,
         mergedAt: change === null ? undefined : commit.at,
@@ -651,6 +653,80 @@ export function releaseFoot(input: {
   const back =
     input.live === undefined ? "" : ` You can roll back to ${input.live} from production's panel.`;
   return `${RELEASE_TAKES}${back}`;
+}
+
+/** A release's head: its title, the line under it, the quiet line under that, and its foot. */
+export interface ReleaseHeading {
+  readonly title: string;
+  /** Before the press, what goes out (`releaseLine`); once pressed, the state says it all. */
+  readonly meta: string | undefined;
+  /** Where it stands, said once on the line: a running release's step and clock. */
+  readonly state: string | undefined;
+  /** Quiet, under the line: why it cannot go, the way back once live, what stopped it. */
+  readonly note: string | undefined;
+  /** Under the buttons: what pressing does; nothing once it is pressed. */
+  readonly foot: string;
+}
+
+/**
+ * What a release's head says. Offered, it is the release to make, what goes out and what
+ * pressing does; pressed, its title is where it stands — releasing, live, or stopped — and the
+ * line says its step and clock once, never the offer's facts again beside it.
+ */
+export function releaseHeading(input: {
+  readonly tag: string;
+  readonly model: ReleaseReviewModel;
+  /** What goes out (`releaseLine`). */
+  readonly line: string;
+  /** What production ran as it was offered. */
+  readonly live: string | undefined;
+}): ReleaseHeading {
+  const { tag, model } = input;
+  const { verdict } = model;
+  switch (verdict.state) {
+    case "releasing":
+      return {
+        title: `Releasing ${tag} to production`,
+        meta: undefined,
+        state: verdict.why,
+        note: model.consequence,
+        foot: "",
+      };
+    case "released":
+      return {
+        title: `${tag} is live`,
+        meta: undefined,
+        state: verdict.why,
+        note: model.ifWrong,
+        foot: "",
+      };
+    // Failed, "Production now" says what it still runs: its cause alone, its fix beside it.
+    case "release-failed":
+      return {
+        title: verdict.title,
+        meta: undefined,
+        state: undefined,
+        note: `${verdict.why.replace(/\.$/u, "")}.`,
+        foot: "",
+      };
+    case "release-stalled":
+    case "release-superseded":
+      return {
+        title: verdict.title,
+        meta: undefined,
+        state: undefined,
+        note: `${verdict.why.replace(/\.$/u, "")}. ${model.consequence}`,
+        foot: "",
+      };
+  }
+  const ready = verdict.state === "release-ready";
+  return {
+    title: `Release ${tag} to production`,
+    meta: ready ? input.line : input.line.replace(/\.$/u, ""),
+    state: ready ? undefined : verdict.title,
+    note: whySaid(verdict, false) ? verdict.why : undefined,
+    foot: releaseFoot({ state: verdict.state, consequence: model.consequence, live: input.live }),
+  };
 }
 
 function changesWords(n: number): string {

@@ -239,10 +239,9 @@ describe("the release dialog's press", () => {
       return { ok: true, tag: "v0.1.5" };
     });
     await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
-    expect(container.textContent).toContain("1 change since v0.1.4");
-    expect(container.textContent).toContain("#6 Set version to 1.0.0");
-    expect(container.textContent).toContain("roll back to v0.1.4");
-    expect(container.textContent).toContain("Released v0.1.5");
+    expect(container.textContent).toContain("Set version to 1.0.0");
+    expect(container.textContent).toMatch(/roll back to v0\.1\.4/iu);
+    expect(container.textContent).toContain("v0.1.5 is live");
   });
 
   it("starts at the next patch, offers main's declaration, and sends the person's version", async () => {
@@ -361,7 +360,7 @@ describe("the release dialog's way to a domain of your own", () => {
     draw = render;
     const offered = domainDoor(container);
     await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
-    expect(container.textContent).toContain("Released v0.1.5");
+    expect(container.textContent).toContain("v0.1.5 is live");
     return { container, offered };
   }
 

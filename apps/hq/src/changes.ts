@@ -432,6 +432,65 @@ const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
 /** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
 type Aim<A> = { readonly main: string } | { readonly stop: A };
 
+/** A change a comparison names a commit by. */
+interface LandedChange {
+  readonly number: number;
+  readonly title: string;
+  readonly mateProjectId: string;
+}
+
+/**
+ * Which change each of `commits` (git's `base..head`, children first) is: the change merged as it —
+ * HQ's own squash, or GitHub's merge or squash commit as its pull request recorded it — and, for a
+ * merge commit, every commit it brought in beside `main`'s line, which are that change's own.
+ */
+const changesOfCommits = (
+  commits: ReadonlyArray<{ readonly sha: string; readonly parents: ReadonlyArray<string> }>,
+  merges: ReadonlyArray<{
+    readonly merged_sha: string | null;
+    readonly pr_merged_sha: string | null;
+    readonly number: number;
+    readonly title: string;
+    readonly mate_project_id: string;
+  }>,
+): ReadonlyMap<string, LandedChange> => {
+  const landed = new Map<string, LandedChange>();
+  const byChange = (row: (typeof merges)[number]) => ({
+    number: row.number,
+    title: row.title,
+    mateProjectId: row.mate_project_id,
+  });
+  // GitHub's word for its own merge first: a change HQ recorded merged by a later import's tip
+  // shares that tip with the change merged as it.
+  for (const row of merges)
+    if (row.pr_merged_sha !== null) landed.set(row.pr_merged_sha, byChange(row));
+  for (const row of merges) {
+    if (row.merged_sha !== null && !landed.has(row.merged_sha))
+      landed.set(row.merged_sha, byChange(row));
+  }
+  const between = new Map(commits.map((commit) => [commit.sha, commit]));
+  const reach = (from: ReadonlyArray<string>) => {
+    const seen = new Set<string>();
+    const next = [...from];
+    for (let sha = next.pop(); sha !== undefined; sha = next.pop()) {
+      const commit = between.get(sha);
+      if (commit === undefined || seen.has(sha)) continue;
+      seen.add(sha);
+      next.push(...commit.parents);
+    }
+    return seen;
+  };
+  for (const commit of commits) {
+    const change = landed.get(commit.sha);
+    const [line, ...side] = commit.parents;
+    if (change === undefined || line === undefined || side.length === 0) continue;
+    const onLine = reach([line]);
+    for (const sha of reach(side))
+      if (!onLine.has(sha) && !landed.has(sha)) landed.set(sha, change);
+  }
+  return landed;
+};
+
 const instant = (column: string) =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ${column}`;
 
@@ -1452,23 +1511,24 @@ export const changesLayer: Layer.Layer<
               ),
             );
           const shas = between.items.map((commit) => commit.sha);
-          const landed = new Map(
-            (shas.length === 0
+          const merges =
+            shas.length === 0
               ? []
               : yield* sql<{
-                  readonly merged_sha: string;
+                  readonly merged_sha: string | null;
+                  readonly pr_merged_sha: string | null;
                   readonly number: number;
                   readonly title: string;
                   readonly mate_project_id: string;
                 }>`
-                  SELECT merged_sha, number, title, mate_project_id FROM hq_change
-                  WHERE app_id::text = ${appId} AND repo = ${repo}
-                    AND ${sql.in("merged_sha", shas)}`
-            ).map((row) => [
-              row.merged_sha,
-              { number: row.number, title: row.title, mateProjectId: row.mate_project_id },
-            ]),
-          );
+                  SELECT c.merged_sha, pr.merged_sha AS pr_merged_sha, c.number, c.title,
+                    c.mate_project_id
+                  FROM hq_change c
+                  LEFT JOIN hq_pull_request pr
+                    ON pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
+                  WHERE c.app_id::text = ${appId} AND c.repo = ${repo}
+                    AND (${sql.in("c.merged_sha", shas)} OR ${sql.in("pr.merged_sha", shas)})`;
+          const landed = changesOfCommits(between.items, merges);
           return {
             base,
             head: query.head,
