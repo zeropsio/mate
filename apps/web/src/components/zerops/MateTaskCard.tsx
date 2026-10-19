@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 
-import { pullRequestName } from "~/zerops/automatedMate.logic";
+import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
 import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
 import { TASK_STATUS_WORDS, taskStatusDot, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
@@ -206,7 +206,7 @@ export function MateTaskCard({
   readonly task: MateTaskSource;
   /** HQ's id of the task, as its brief says; `null`: the one the conversation's id names. */
   readonly taskId: string | null;
-  /** What its asker wrote; empty: the ask had no more text than its title. */
+  /** What its asker wrote; the card shows what it says beyond the title (`taskAskBeyondTitle`). */
   readonly text: string;
   readonly environmentId: EnvironmentId;
   readonly conversationId: string;
@@ -245,6 +245,7 @@ export function MateTaskCardView({
 }) {
   const link = mateTaskSourceLink(task);
   const { pullRequest, change } = session;
+  const said = taskAskBeyondTitle(task.title, text);
   // A long ask stands cut at six lines, as measured before it paints, and opens in place.
   const [open, setOpen] = useState(false);
   const [cut, setCut] = useState(false);
@@ -274,7 +275,7 @@ export function MateTaskCardView({
         )}
       </div>
       <h3 className="text-emphasis font-semibold text-balance text-foreground">{task.title}</h3>
-      {text === "" ? null : (
+      {said === "" ? null : (
         <div className="flex flex-col items-start gap-1">
           <p
             ref={open ? undefined : watch}
@@ -283,7 +284,7 @@ export function MateTaskCardView({
               !open && "line-clamp-6",
             )}
           >
-            {text}
+            {said}
           </p>
           {open || cut ? (
             <InlineButton onClick={() => setOpen((value) => !value)}>

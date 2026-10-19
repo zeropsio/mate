@@ -41,6 +41,48 @@ describe("a task's issue card", () => {
   });
 });
 
+describe("a task card says its ask once", () => {
+  const thread = {
+    kind: "discord-thread",
+    server: "Erza",
+    channel: "tasks",
+    url: "https://discord.com/channels/1/2/3",
+    title: "redeisgn footer",
+    author: "erza",
+  } as const;
+  const asked = (html: string) =>
+    (/<h3[^>]*>[\s\S]*?(?=<div[^>]*data-zerops-surface="mate-task-facts")/u.exec(html)?.[0] ?? "")
+      .replace(/<[^>]+>/gu, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+
+  it.each([
+    [
+      "a one-line Discord ask stands as its title alone",
+      thread,
+      "redeisgn footer",
+      ["redeisgn footer"],
+    ],
+    [
+      "a multi-line Discord ask adds its lines after its title",
+      thread,
+      "redeisgn footer\nkeep the logo",
+      ["redeisgn footer", "keep the logo"],
+    ],
+    [
+      "an issue keeps its whole body under its title",
+      issue,
+      "The total ignores the discount.",
+      ["Fix the checkout total", "The total ignores the discount."],
+    ],
+  ] as const)("%s", (_case, task, text, lines) => {
+    expect(asked(renderToStaticMarkup(<MateTaskCardView task={task} text={text} />))).toEqual(
+      lines,
+    );
+  });
+});
+
 describe("a task's issue card, as its chain", () => {
   const statusOf = (html: string) =>
     (/data-zerops-surface="mate-task-status-words"[^>]*>([^<]*)</u.exec(html)?.[1] ?? "").replace(

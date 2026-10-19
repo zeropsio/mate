@@ -1,3 +1,4 @@
+import { MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -8,6 +9,7 @@ import {
   automatedRunsOnLine,
   conversationTask,
   pullRequestStateWords,
+  taskAskBeyondTitle,
   taskChain,
   taskTitle,
 } from "./automatedMate.logic";
@@ -361,5 +363,45 @@ describe("a pull request's state in words", () => {
     [{ state: "closed" }, "closed"],
   ] as const)("%o reads “%s”", (pullRequest, words) => {
     expect(pullRequestStateWords(pullRequest)).toBe(words);
+  });
+});
+
+describe("a task's ask beside its title", () => {
+  const long = `${"a".repeat(250)} footer and header`;
+  it.each([
+    ["a one-line chat ask is its title alone", "redeisgn footer", "redeisgn footer", ""],
+    [
+      "a chat ask with spaces around it is its title alone",
+      "redeisgn footer",
+      "  redeisgn footer\n",
+      "",
+    ],
+    [
+      "a multi-line chat ask adds the lines after its title",
+      "redesign footer",
+      "redesign footer\nkeep the logo\nmatch the header",
+      "keep the logo\nmatch the header",
+    ],
+    [
+      "a chat ask longer than a title adds what its title cut",
+      long.slice(0, MATE_TASK_TITLE_MAX),
+      `${long}\nthanks`,
+      `${long.slice(MATE_TASK_TITLE_MAX)}\nthanks`,
+    ],
+    [
+      "an issue's body is whole",
+      "Fix the checkout total",
+      "The total ignores the discount.",
+      "The total ignores the discount.",
+    ],
+    [
+      "an issue's body that opens with its title's word is whole",
+      "Fix",
+      "Fixes the total",
+      "Fixes the total",
+    ],
+    ["an ask with no text says nothing", "Fix the checkout total", "", ""],
+  ] as const)("a task card says its ask once: %s", (_case, title, ask, said) => {
+    expect(taskAskBeyondTitle(title, ask)).toBe(said);
   });
 });
