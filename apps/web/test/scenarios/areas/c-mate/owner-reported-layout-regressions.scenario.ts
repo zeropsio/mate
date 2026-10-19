@@ -5103,15 +5103,18 @@ describe("owner-reported layout regressions", () => {
         }
         return Math.min(up, down);
       };
-      /** The most frames in a row nothing moved, between the first frame that moved and the last. */
-      const longestPause = (frames: ReadonlyArray<CloseFrame>) => {
-        const moved = frames.map((frame, index) => {
+      /** Per frame, whether the card or the answer's last line moved since the frame before. */
+      const movedFrames = (frames: ReadonlyArray<CloseFrame>) =>
+        frames.map((frame, index) => {
           const before = frames[index - 1];
           if (before === undefined) return false;
           const travel = (now: number | null, then: number | null) =>
             now === null || then === null ? 0 : Math.abs(now - then);
           return travel(frame.card, before.card) > 0.5 || travel(frame.answer, before.answer) > 0.5;
         });
+      /** The most frames in a row nothing moved, between the first frame that moved and the last. */
+      const longestPause = (frames: ReadonlyArray<CloseFrame>) => {
+        const moved = movedFrames(frames);
         const first = moved.indexOf(true);
         const last = moved.lastIndexOf(true);
         let longest = 0;
@@ -5344,15 +5347,50 @@ describe("owner-reported layout regressions", () => {
         // turn's end was choppy. Reproduced: its answer coming with the end, the view glided 232 px
         // up to it, then the work folded and brought it all 461 px back down; read in its slot
         // first, the fold waited 250 ms; and the card's last 12 px left in one frame at its end.
+        // Under reduced motion the card folded at once under its held head, the answer 229 px up,
+        // and came back down when the hold ended: there, the turn lands in one swap.
         it.effect.each([
-          { case: "its answer arriving with the end", streamed: false, scrolledUp: false },
-          { case: "its answer read in its slot first", streamed: true, scrolledUp: false },
-          { case: "the reader scrolled up in the conversation", streamed: false, scrolledUp: true },
+          {
+            case: "its answer arriving with the end",
+            streamed: false,
+            scrolledUp: false,
+            reduced: false,
+          },
+          {
+            case: "its answer read in its slot first",
+            streamed: true,
+            scrolledUp: false,
+            reduced: false,
+          },
+          {
+            case: "the reader scrolled up in the conversation",
+            streamed: false,
+            scrolledUp: true,
+            reduced: false,
+          },
+          {
+            case: "under reduced motion, its answer arriving with the end",
+            streamed: false,
+            scrolledUp: false,
+            reduced: true,
+          },
+          {
+            case: "under reduced motion, its answer read in its slot first",
+            streamed: true,
+            scrolledUp: false,
+            reduced: true,
+          },
         ])(
           "a long Working card closes at its turn's end in one motion: nothing goes back, nothing waits midway: $case",
-          ({ streamed, scrolledUp }) =>
+          ({ streamed, scrolledUp, reduced }) =>
             Effect.gen(function* () {
               const { s, engine, run } = yield* longWork;
+              if (reduced)
+                yield* Effect.promise(() =>
+                  s.page.emulateMediaFeatures([
+                    { name: "prefers-reduced-motion", value: "reduce" },
+                  ]),
+                );
               if (scrolledUp)
                 yield* Effect.promise(async () => {
                   const outer = (await s.page.$(OUTER))!;
@@ -5449,6 +5487,11 @@ describe("owner-reported layout regressions", () => {
                 longestPause(trace),
                 `ASSERTION: once the card starts closing, it closes without waiting midway: ${seen}`,
               ).toBeLessThan(6);
+              if (reduced)
+                expect(
+                  movedFrames(trace).filter(Boolean).length,
+                  `ASSERTION: under reduced motion the turn lands in one swap: ${seen}`,
+                ).toBeLessThanOrEqual(1);
               yield* s.then.noExternalNetwork;
             }),
         );
