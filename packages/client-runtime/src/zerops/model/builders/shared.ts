@@ -241,6 +241,24 @@ export const KIND_LABEL: Readonly<
   proposal: "Proposal",
 };
 
+/**
+ * The agent's MCP client stopped waiting on the call while zcp worked on: the
+ * TypeScript SDK's request timeout (OpenCode, Claude) or Codex's
+ * `tool_timeout_sec`. zcp's own give-ups ("Build … timed out after 15m") are
+ * results and read as such.
+ */
+const CLIENT_GAVE_UP = /MCP error -32001\b|timed out awaiting tools\/call\b/u;
+
+/**
+ * A call's phase, where the client giving up says nothing of what it started:
+ * a deploy whose call timed out on the client is unconfirmed, never failed.
+ */
+export function deployCallPhase(call: ZeropsCall): ZeropsOperationPhase {
+  return call.status === "failed" && CLIENT_GAVE_UP.test(call.resultText ?? "")
+    ? "uncertain"
+    : phaseFor(call.status);
+}
+
 /** The ONE call-status → operation-phase mapping (§2.3, declined/stopped are not "done"). */
 export function phaseFor(status: ZeropsCall["status"]): ZeropsOperationPhase {
   switch (status) {

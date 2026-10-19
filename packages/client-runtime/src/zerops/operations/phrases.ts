@@ -613,7 +613,8 @@ export function operationClosing(
     return "Reset.";
   }
   if (phase === "uncertain") {
-    // Only a deploy's triggered build reaches it (`builders/deploy.ts`).
+    // Only a deploy reaches it: a triggered build it cannot read, or a call the
+    // agent's client stopped waiting on (`builders/deploy.ts`).
     return "No result from the build. Check it in Zerops.";
   }
   if (phase === "failed") {
