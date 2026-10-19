@@ -58,7 +58,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
-import { makeOpenCodeTurnUsage } from "../../spi/responseUsage.ts";
+import { makeOpenCodeTurnUsage, openCodeContextUsage } from "../../spi/responseUsage.ts";
 import {
   type OpenCodeThreadSetup,
   type OpenCodeToolInput,
@@ -378,6 +378,10 @@ interface OpenCodeSessionContext {
   readonly costByMessageId: Map<string, number>;
   /** The steps the session and its subagents ran since the last turn ended, for the bill. */
   readonly turnUsage: ReturnType<typeof makeOpenCodeTurnUsage>;
+  /** Each model's context window as OpenCode listed it when the session started, by slug. */
+  readonly contextWindows: ReadonlyMap<string, number>;
+  /** The window of the model the last prompt went to. */
+  contextWindow: number | undefined;
   readonly client: OpencodeClient;
   readonly server: OpenCodeServerConnection;
   readonly directory: string;
@@ -2496,6 +2500,23 @@ export function makeOpenCodeAdapter(
           const part = event.properties.part;
           const messageRole = messageRoleForPart(context, part);
 
+          // Each step of the thread's own session leaves its context this full.
+          const contextUsage =
+            part.type === "step-finish"
+              ? openCodeContextUsage(part.tokens, context.contextWindow)
+              : undefined;
+          if (contextUsage) {
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId,
+                raw: event,
+              })),
+              type: "thread.token-usage.updated",
+              payload: { usage: contextUsage },
+            });
+          }
+
           if ((part.type === "text" || part.type === "reasoning") && messageRole !== "user") {
             const state = retainOpenCodeTextPart(context, part);
             if (messageRole === "assistant") {
@@ -3032,6 +3053,23 @@ export function makeOpenCodeAdapter(
         }
         return startedExit.value;
       });
+      // OpenCode's steps report tokens only; the windows they fill are in its provider list.
+      const contextWindows = yield* runOpenCodeSdk("config.providers", (signal) =>
+        started.client.config.providers(undefined, { signal }),
+      ).pipe(
+        Effect.map(
+          (result) =>
+            new Map(
+              (result.data?.providers ?? []).flatMap((provider) =>
+                Object.entries(provider.models).map(
+                  ([modelId, model]) => [`${provider.id}/${modelId}`, model.limit.context] as const,
+                ),
+              ),
+            ),
+        ),
+        Effect.timeout("5 seconds"),
+        Effect.orElseSucceed(() => new Map<string, number>()),
+      );
 
       const createdAt = yield* nowIso;
       const session: ProviderSession = {
@@ -3073,6 +3111,8 @@ export function makeOpenCodeAdapter(
         messageRoleById: new Map(),
         costByMessageId: new Map(),
         turnUsage: makeOpenCodeTurnUsage(),
+        contextWindows,
+        contextWindow: undefined,
         activeTurnId: undefined,
         activeAgent: undefined,
         activeVariant: undefined,
@@ -3321,6 +3361,9 @@ export function makeOpenCodeAdapter(
           context.activeTurnId = turnId;
           context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
           context.activeVariant = variant;
+          context.contextWindow = context.contextWindows.get(
+            `${parsedModel.providerID}/${parsedModel.modelID}`,
+          );
           if (steeringTurnId === undefined) {
             context.awaitingBusyAfterInterruption = context.interruptedTurnId !== undefined;
           }

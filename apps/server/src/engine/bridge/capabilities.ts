@@ -108,7 +108,7 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     selfTurns: false,
     closedSendUndelivered: false,
     usageLimit: { typed: true, parksTurn: false, resetTime: false },
-    usage: { context: false, spend: true },
+    usage: { context: true, spend: true },
     backgroundWork: "none",
     questions: "structured",
     compaction: { reported: true, automatic: "reported" },
