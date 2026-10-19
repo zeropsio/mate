@@ -568,9 +568,11 @@ export const make = Effect.gen(function* () {
   const moved = yield* Queue.unbounded<ConversationId>();
   // Each task's minutes limit while its run is on: due, its conversation is read again.
   const deadlines = yield* FiberMap.make<string>();
-  // The task runs this Mate saw at work, until their end was read for undelivered work: a run
-  // that ended before the Mate began (a task long done) is never told to deliver.
-  const seenAtWork = new Set<string>();
+  // When this Mate began: a task's run that ended before it (a task long done) is never told to
+  // deliver its work.
+  const bootAt = yield* Clock.currentTimeMillis;
+  // The task runs whose end was read for undelivered work: each end is read once.
+  const readEnds = new Set<string>();
   // Each task's turns still at work, by native turn: what each cost so far (`now`, what its
   // limit is held to) and as the task was last seen live (`seen`, what its reports say, so a
   // turn's steps ride the once-a-minute report). Memory only: a Mate's restart loses them, and
@@ -681,7 +683,6 @@ export const make = Effect.gen(function* () {
       let entry = yield* counted(taskId, view);
       const running = isTasks(view.activeRun, taskId) ? view.activeRun : undefined;
       if (running !== undefined && running.startedAt !== null) {
-        seenAtWork.add(running.id);
         const seen = entry?.liveAt?.[running.id];
         if (seen === undefined || now - seen >= LIVE_EVERY_MS) {
           entry = yield* ledger.update(taskId, (kept) => ({
@@ -748,12 +749,14 @@ export const make = Effect.gen(function* () {
     });
 
   /**
-   * A task's run this Mate saw at work, just ended done — no question, nothing of it on or due —
-   * with the work on its working copies never delivered (`ZeropsWorkingCopy.undelivered`): its
-   * agent is told once, in the same session, to deliver it or say why not, and the task works
-   * on; that word's own run ending so too, the task ends saying where its work was left. A run
-   * whose working copies hold nothing undelivered (a question answered) ends as it did. Each end
-   * read once; the view to report from, read again once the word went in.
+   * A task's run that ended done since this Mate began — no question, nothing more of it on or
+   * due, no other conversation at work that may have changed its working copies — with work on
+   * them never delivered (`ZeropsWorkingCopy.undelivered`; new files only where the task's work
+   * started on them clean): its agent is told once per task, in the same session, to deliver it
+   * or say why not, and the task works on. A task run ending so after that word ends the task
+   * saying where its work was left. A run whose working copies hold nothing undelivered (a
+   * question answered) ends as it did. Each end read once; the view to report from, read again
+   * once the word went in.
    */
   const deliveryOf = (taskId: string, seen: ConversationView) => {
     /** The run whose end is still to read, in `view`. */
@@ -761,7 +764,9 @@ export const make = Effect.gen(function* () {
       const ended = view.lastEnded;
       return view.conversationId === TASKS_CONVERSATION_ID &&
         isTasks(ended, taskId) &&
-        seenAtWork.has(ended.id) &&
+        ended.end?.kind === "completed" &&
+        (ended.endedAt ?? 0) >= bootAt &&
+        !readEnds.has(ended.id) &&
         !atWork(view)
         ? ended
         : undefined;
@@ -772,16 +777,23 @@ export const make = Effect.gen(function* () {
       const view = (yield* engine.conversation(seen.conversationId)) ?? seen;
       const ended = toRead(view);
       if (ended === undefined) return view;
-      seenAtWork.delete(ended.id);
-      if (ended.end?.kind !== "completed" || questionAfter(view, ended) !== undefined) return view;
+      readEnds.add(ended.id);
+      if (questionAfter(view, ended) !== undefined) return view;
       const entry = yield* ledger.entry(taskId);
       if (entry?.stopped !== undefined || entry?.limitHit !== undefined || droppedIn(entry))
         return view;
-      const where = yield* workingCopy.undelivered;
+      // Another conversation's work (a person's own) may be what the working copies hold.
+      const desk = yield* engine.conversations;
+      if (
+        !desk.complete ||
+        desk.views.some((other) => other.conversationId !== view.conversationId && atWork(other))
+      )
+        return view;
+      const where = yield* workingCopy.undelivered((yield* ledger.workingCopyHolds) === taskId);
       if (where.length === 0) return view;
       const left = () =>
         ledger.update(taskId, (kept) => ({ ...kept, undelivered: { run: ended.id, where } }));
-      if (entry?.nudgeRun === ended.id) {
+      if (entry?.nudgeRun !== undefined) {
         yield* left();
         yield* Effect.logInfo("zerops tasks: a task ended with its work undelivered", { where });
         return view;
@@ -790,7 +802,7 @@ export const make = Effect.gen(function* () {
         .deliver(
           view.conversationId,
           { _tag: "Send", text: deliverWords(where), taskId },
-          CommandId.make(`task-deliver:${taskId}:${ended.id}`),
+          CommandId.make(`task-deliver:${taskId}`),
           principalOf(taskId),
         )
         .pipe(
@@ -798,7 +810,7 @@ export const make = Effect.gen(function* () {
             // The next move of the conversation reads this end again.
             DeliveryUnrecorded: () =>
               Effect.as(
-                Effect.sync(() => seenAtWork.add(ended.id)),
+                Effect.sync(() => readEnds.delete(ended.id)),
                 undefined,
               ),
           }),

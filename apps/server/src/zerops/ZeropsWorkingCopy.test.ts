@@ -16,6 +16,10 @@ interface Copy {
   branch: string | undefined;
   head: string;
   dirty: boolean;
+  /** Files git does not track, nor ignores. */
+  untracked?: boolean;
+  /** It has no `origin`: a working copy of no repository on HQ's git. */
+  noOrigin?: boolean;
   /** Commits of HEAD on no remote branch. */
   unpushed: number;
   /** The branches HQ's git holds for this repository, by name, at their commits. */
@@ -76,7 +80,9 @@ const rig = (copies: ReadonlyArray<Copy>) =>
           if (at.failing === step) return refuse(input);
           switch (step) {
             case "remote":
-              return ok(`https://hq.test/git/app-1/${encodeURIComponent(at.repo)}.git\n`);
+              return at.noOrigin === true
+                ? ok("", 2)
+                : ok(`https://hq.test/git/app-1/${encodeURIComponent(at.repo)}.git\n`);
             case "symbolic-ref":
               return at.branch === undefined ? refuse(input) : ok(`${at.branch}\n`);
             case "fetch": {
@@ -95,7 +101,12 @@ const rig = (copies: ReadonlyArray<Copy>) =>
               return commit === undefined ? ok("", 1) : ok(`${commit}\n`);
             }
             case "status":
-              return ok(at.dirty ? " M a.txt\n" : "");
+              return ok(
+                (at.dirty ? " M a.txt\n" : "") +
+                  (at.untracked === true && !rest.includes("--untracked-files=no")
+                    ? "?? new.txt\n"
+                    : ""),
+              );
             case "stash":
               at.dirty = false;
               return ok();
@@ -249,11 +260,26 @@ describe("an automated Mate's working copies hold the task it works", () => {
           copy("apidev", { unpushed: 2 }),
           copy("webdev"),
           copy("docsdev", { failing: "status" }),
+          // A working copy of no repository on HQ's git delivers nowhere: never named.
+          copy("scratchdev", { dirty: true, noOrigin: true }),
         ]);
-        assert.deepStrictEqual((yield* workingCopy.undelivered).toSorted(), ["apidev", "appdev"]);
+        assert.deepStrictEqual((yield* workingCopy.undelivered(true)).toSorted(), [
+          "apidev",
+          "appdev",
+        ]);
         // Read only: nothing kept, fetched or moved.
         assert.deepStrictEqual(changing(ran), []);
         assert.isFalse(ran.some((step) => step.includes(": fetch ")));
+      }),
+  );
+
+  it.effect(
+    "new files count as undelivered only on working copies the task's work started clean",
+    () =>
+      Effect.gen(function* () {
+        const { workingCopy } = yield* rig([copy("appdev", { untracked: true })]);
+        assert.deepStrictEqual(yield* workingCopy.undelivered(true), ["appdev"]);
+        assert.deepStrictEqual(yield* workingCopy.undelivered(false), []);
       }),
   );
 });

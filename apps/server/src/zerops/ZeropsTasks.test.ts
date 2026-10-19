@@ -318,7 +318,7 @@ const rig = (
           copies.push({ taskId, base, sentBefore: delivered.length });
           return { missed: options.workingCopyMissed ?? [], unlisted: false };
         }),
-      undelivered: Effect.sync(() => [...undelivered]),
+      undelivered: () => Effect.sync(() => [...undelivered]),
     });
     const bus = ProviderRuntimeEventBusTest.make(
       Stream.fromPubSub(runtime) as Stream.Stream<SpiEvent>,
@@ -977,6 +977,77 @@ describe("an automated Mate says how its task stands", () => {
           detail: "The work on appdev was left undelivered.",
         });
       }),
+    );
+
+    it.effect("a task's agent is told to deliver at most once", () =>
+      Effect.gen(function* () {
+        const { delivered, link, move, sent, undelivered } = yield* rig();
+        yield* Effect.forkScoped(link.run);
+        yield* settle;
+        yield* link.receive(task("task-1"));
+        undelivered.push("appdev");
+        yield* worked(move, 1);
+        yield* worked(move, 2);
+        // A run after it (a continuation, a review's follow-up) ends with the same work left.
+        yield* worked(move, 3);
+        assert.strictEqual(nudges(delivered).length, 1);
+        assert.deepStrictEqual(sent.at(-1), {
+          taskId: "task-1",
+          state: "done",
+          conversationId: TASKS,
+          detail: "The work on appdev was left undelivered.",
+        });
+      }),
+    );
+
+    it.effect(
+      "a word to deliver answered at once, never seen at work, still ends the task saying where its work was left",
+      () =>
+        Effect.gen(function* () {
+          const { link, move, sent, undelivered } = yield* rig();
+          yield* Effect.forkScoped(link.run);
+          yield* settle;
+          yield* link.receive(task("task-1"));
+          undelivered.push("appdev");
+          yield* worked(move, 1);
+          // The agent's one-line reply ended its run between two reads.
+          yield* move(
+            TASKS,
+            view(TASKS, {
+              lastEnded: run(TASKS, principalOf("task-1"), "ended", { kind: "completed" }, 2),
+            }),
+          );
+          yield* settle;
+          assert.deepStrictEqual(sent.at(-1), {
+            taskId: "task-1",
+            state: "done",
+            conversationId: TASKS,
+            detail: "The work on appdev was left undelivered.",
+          });
+        }),
+    );
+
+    it.effect(
+      "a task's agent is never told to deliver while another conversation of its Mate is at work",
+      () =>
+        Effect.gen(function* () {
+          const other = ConversationId.make("c-person");
+          const { delivered, link, move, sent, undelivered, views } = yield* rig();
+          yield* Effect.forkScoped(link.run);
+          yield* settle;
+          yield* link.receive(task("task-1"));
+          undelivered.push("appdev");
+          // A person's run elsewhere may be what changed the working copy.
+          views.set(
+            other,
+            view(other, {
+              activeRun: run(other, { kind: "person", subject: "zerops-user:nova" }, "running"),
+            }),
+          );
+          yield* worked(move, 1);
+          assert.deepStrictEqual(nudges(delivered), []);
+          assert.strictEqual(sent.at(-1)?.state, "done");
+        }),
     );
 
     it.effect("a task that changed nothing ends as before", () =>

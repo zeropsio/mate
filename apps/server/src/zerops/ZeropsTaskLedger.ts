@@ -42,8 +42,9 @@ const TaskEntry = Schema.Struct({
   /** The brief it was taken with: told again with a follow-up the agent's session no longer holds. */
   brief: Schema.optionalKey(Schema.String),
   /**
-   * The run started by the word the Mate told the agent when a run of the task's ended with its
-   * work never delivered (deliver it, or say why not): that run ending so too ends the task.
+   * The run started by the one word the Mate told the agent when a run of the task's ended with
+   * its work never delivered (deliver it, or say why not): told once per task, and a run ending so
+   * after it ends the task saying where its work was left.
    */
   nudgeRun: Schema.optionalKey(Schema.String),
   /** The run that ended the task with its work still undelivered, and the dev services it is on. */
