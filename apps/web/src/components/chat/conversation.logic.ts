@@ -1847,11 +1847,11 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
     const phase: ZeropsOperation["phase"] =
       step.state === "done" || step.state === "failed"
         ? step.state
-        : operation.phase === "running"
-          ? "running"
-          : operation.phase === "failed"
-            ? "failed"
-            : "done";
+        : operation.phase === "running" ||
+            operation.phase === "failed" ||
+            operation.phase === "uncertain"
+          ? operation.phase
+          : "done";
     const reason = step.note ?? explanation?.reason;
     return {
       ...shared,
@@ -1865,7 +1865,7 @@ export function splitBatchDeploy(operation: ZeropsOperation): ZeropsOperation[] 
           ? "Deployed"
           : phase === "failed"
             ? "Failed"
-            : step.state === "queued"
+            : step.state === "queued" && phase !== "uncertain"
               ? "Waiting"
               : operation.statusWord,
       // Its own step alone: the bar reads its state, waiting or running.
@@ -2585,6 +2585,25 @@ function brokenWord(operation: ZeropsOperation): string {
   return failed !== undefined && BUILD_STEP_IDS.has(failed.id) ? "Build failing" : "Deploy failed";
 }
 
+/**
+ * A deploy nothing confirmed: its call ended on the agent's client, not in
+ * zcp, or its build could not be read. The build may have landed; no fix is asked.
+ */
+const DEPLOY_UNCONFIRMED = "Deploy unconfirmed";
+
+/**
+ * A wait on a service (`zerops_process service=…`) that saw its work through:
+ * every process it followed finished. It settles a deploy nothing confirmed.
+ */
+function settlesDeploy(operation: ZeropsOperation): boolean {
+  return (
+    operation.target !== undefined &&
+    operation.phase === "done" &&
+    operation.steps.length > 0 &&
+    operation.steps.every((step) => step.state === "done")
+  );
+}
+
 function failureOf(operation: ZeropsOperation): OutcomeFailure {
   return {
     reason: failureWords(operation),
@@ -2882,13 +2901,25 @@ export function deriveOutcome(input: {
     if (
       operation.kind !== "deploy" &&
       operation.kind !== "verify" &&
-      operation.kind !== "devServer"
+      operation.kind !== "devServer" &&
+      operation.kind !== "process"
     )
       continue;
     // A git push says nothing of the service: the build after it, if any, does.
     if (isGitPushOnly(operation)) continue;
     const host = operationTargetKey(operation);
     const known = services.get(host);
+    if (operation.kind === "process") {
+      if (known?.word === DEPLOY_UNCONFIRMED && settlesDeploy(operation)) {
+        services.set(host, {
+          ...known,
+          tone: "ok",
+          word: "Deployed",
+          at: operation.settledAt ?? operation.anchorAt,
+        });
+      }
+      continue;
+    }
     if (operation.kind === "devServer") {
       if (devServerRunning(operation) === true) devServerRuns.add(host);
       else devServerRuns.delete(host);
@@ -2907,6 +2938,18 @@ export function deriveOutcome(input: {
         url: known?.url ?? null,
         at: operation.settledAt ?? operation.anchorAt,
         failure: failureOf(operation),
+      });
+      continue;
+    }
+    if (operation.kind === "deploy" && phase === "uncertain") {
+      services.set(host, {
+        hostname: host,
+        tone: "attention",
+        word: DEPLOY_UNCONFIRMED,
+        version: known?.version ?? null,
+        url: null,
+        at: operation.settledAt ?? operation.anchorAt,
+        failure: null,
       });
       continue;
     }
