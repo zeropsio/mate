@@ -1505,8 +1505,9 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               UPDATE hq_task SET state = ${word.state}, updated_at = now(),
                 mate_project_id = ${projectId},
                 detail = ${
-                  word.state === "failed"
-                    ? (word.detail ?? null)
+                  // Done keeps the Mate's words where it left its work undelivered.
+                  word.state === "failed" || word.state === "done"
+                    ? word.detail?.trim() || null
                     : word.state === "stopped"
                       ? sql`COALESCE(${word.detail?.trim() || null}, stop_reason, ${STOPPED})`
                       : null
@@ -1520,11 +1521,12 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             if (ended.length > 0 && word.state === "failed") yield* couldNotFinish(word.taskId);
             if (ended.length > 0 && word.state === "stopped") yield* stoppedSaid(word.taskId, true);
             if (ended.length > 0 && word.state === "done" && task.state !== "done")
-              yield* say(word.taskId, ({ mate, change, pullRequest }) => ({
+              yield* say(word.taskId, ({ mate, change, pullRequest, detail }) => ({
                 kind: "done",
                 mate: mate ?? "Mate",
                 link: change,
                 ...(pullRequest === null ? {} : { pullRequest }),
+                ...(detail === null ? {} : { left: detail }),
               }));
             if (ended.length > 0 && task.state === "queued") {
               yield* structure.touched;

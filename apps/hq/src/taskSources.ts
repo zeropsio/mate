@@ -125,6 +125,8 @@ export type TaskStatus =
       readonly mate: string;
       readonly link: string | null;
       readonly pullRequest?: TaskPullRequest;
+      /** Its Mate's words where it ended with its work left undelivered: never a plain done. */
+      readonly left?: string;
     }
   /**
    * Its change was merged: its pull request (on GitHub, or by Merge in Mate), or the change itself

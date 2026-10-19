@@ -49,6 +49,10 @@
  *   checked again at each step past it, and the task says `failed` with the limit, and a
  *   follow-up past one, or the task handed again, starts nothing. They hold whether or not HQ is
  *   linked: the Mate follows its own record.
+ * - **Delivered:** a run that ends done with the working copies holding work never delivered
+ *   (uncommitted, or committed on no change's branch) is not the task's end: its agent is told
+ *   once, in the same session, to deliver it or say why not. That word's own run ending so too,
+ *   the task says `done` with where its work was left, never a plain done.
  * - **Spent:** each report but a refusal carries what the task cost and how long it worked
  *   (`taskSpendOf`); while it works, those move, and are said, once a minute.
  * - **Said:** `accepted` once its brief is recorded, `working` once its run started, `done` or
@@ -178,6 +182,18 @@ const EARLIER_TASK =
 /** Told with a follow-up once the working copy was put on the task's own change. */
 const ON_ITS_CHANGE =
   "Your working copy is on this task's own change now, as it was last delivered: continue there, and deliver it the same way, so the follow-up lands in that change.";
+
+/**
+ * What a task's agent is told once its run ended with its work never delivered on `where`'s
+ * working copies (uncommitted, or committed on no change's branch): the turn ended, no change
+ * opened.
+ */
+const deliverWords = (where: ReadonlyArray<string>) =>
+  `Your work on ${where.join(", ")} isn't delivered yet: commit it and deliver it the way you open changes here, so its change opens for review, or say in one line why it shouldn't be.`;
+
+/** How a task that ended with its work still undelivered on `where` says so where it came from. */
+const undeliveredDetail = (where: ReadonlyArray<string>) =>
+  `The work on ${where.join(", ")} was left undelivered.`;
 
 /** Why a task's work started where it was: the working copies that could not be put on its base. */
 const asItWasDetail = (held: WorkingCopiesHeld) =>
@@ -362,6 +378,14 @@ const droppedIn = (entry: TaskEntry | undefined): boolean =>
 const isTasks = (run: ViewRun | null | undefined, taskId: string): run is ViewRun =>
   run?.principal.kind === "task" && run.principal.taskId === taskId;
 
+/** The question the agent's last words in `ended` end on; none when they end on anything else. */
+const questionAfter = (view: ConversationView, ended: ViewRun): string | undefined => {
+  const words = view.lastAgent;
+  return words !== null && words.at >= (ended.startedAt ?? 0)
+    ? taskQuestionOf(words.text).question
+    : undefined;
+};
+
 /**
  * How a task stands in its conversation's record: `stopped` once people stopped it, `failed` once
  * a limit stopped it; else `working` from its run's start until nothing of it is on or due, then
@@ -406,14 +430,13 @@ export const taskReportOf = (
     }
     const failure = ended.end === null ? undefined : failureOf(ended.end);
     if (failure !== undefined) return { ...base, state: "failed", detail: failure };
-    const words = view.lastAgent;
-    const question =
-      words !== null && words.at >= (ended.startedAt ?? 0)
-        ? taskQuestionOf(words.text).question
-        : undefined;
-    return question === undefined
-      ? { ...base, state: "done" }
-      : { ...base, state: "waiting", question };
+    const question = questionAfter(view, ended);
+    if (question !== undefined) return { ...base, state: "waiting", question };
+    // Ended, and what it worked on never delivered, after the word to deliver it.
+    const left = entry?.undelivered;
+    return left?.run === ended.id
+      ? { ...base, state: "done", detail: undeliveredDetail(left.where) }
+      : { ...base, state: "done" };
   }
   if (!hasRuns(view)) return undefined;
   // A person spoke in it after the task's own runs: the task ended before they did, as its own
@@ -535,6 +558,9 @@ export const make = Effect.gen(function* () {
   const moved = yield* Queue.unbounded<ConversationId>();
   // Each task's minutes limit while its run is on: due, its conversation is read again.
   const deadlines = yield* FiberMap.make<string>();
+  // The task runs this Mate saw at work, until their end was read for undelivered work: a run
+  // that ended before the Mate began (a task long done) is never told to deliver.
+  const seenAtWork = new Set<string>();
   // Each task's turns still at work, by native turn: what each cost so far (`now`, what its
   // limit is held to) and as the task was last seen live (`seen`, what its reports say, so a
   // turn's steps ride the once-a-minute report). Memory only: a Mate's restart loses them, and
@@ -645,6 +671,7 @@ export const make = Effect.gen(function* () {
       let entry = yield* counted(taskId, view);
       const running = isTasks(view.activeRun, taskId) ? view.activeRun : undefined;
       if (running !== undefined && running.startedAt !== null) {
+        seenAtWork.add(running.id);
         const seen = entry?.liveAt?.[running.id];
         if (seen === undefined || now - seen >= LIVE_EVERY_MS) {
           entry = yield* ledger.update(taskId, (kept) => ({
@@ -711,6 +738,77 @@ export const make = Effect.gen(function* () {
     });
 
   /**
+   * A task's run this Mate saw at work, just ended done — no question, nothing of it on or due —
+   * with the work on its working copies never delivered (`ZeropsWorkingCopy.undelivered`): its
+   * agent is told once, in the same session, to deliver it or say why not, and the task works
+   * on; that word's own run ending so too, the task ends saying where its work was left. A run
+   * whose working copies hold nothing undelivered (a question answered) ends as it did. Each end
+   * read once; the view to report from, read again once the word went in.
+   */
+  const deliveryOf = (taskId: string, seen: ConversationView) => {
+    /** The run whose end is still to read, in `view`. */
+    const toRead = (view: ConversationView) => {
+      const ended = view.lastEnded;
+      return view.conversationId === TASKS_CONVERSATION_ID &&
+        isTasks(ended, taskId) &&
+        seenAtWork.has(ended.id) &&
+        !atWork(view)
+        ? ended
+        : undefined;
+    };
+    if (toRead(seen) === undefined) return Effect.succeed(seen);
+    return Effect.gen(function* () {
+      // Read again once the takes let go: one may have moved the conversation on.
+      const view = (yield* engine.conversation(seen.conversationId)) ?? seen;
+      const ended = toRead(view);
+      if (ended === undefined) return view;
+      seenAtWork.delete(ended.id);
+      if (ended.end?.kind !== "completed" || questionAfter(view, ended) !== undefined) return view;
+      const entry = yield* ledger.entry(taskId);
+      if (entry?.stopped !== undefined || entry?.limitHit !== undefined || droppedIn(entry))
+        return view;
+      const where = yield* workingCopy.undelivered;
+      if (where.length === 0) return view;
+      const left = () =>
+        ledger.update(taskId, (kept) => ({ ...kept, undelivered: { run: ended.id, where } }));
+      if (entry?.nudgeRun === ended.id) {
+        yield* left();
+        yield* Effect.logInfo("zerops tasks: a task ended with its work undelivered", { where });
+        return view;
+      }
+      const told = yield* engine
+        .deliver(
+          view.conversationId,
+          { _tag: "Send", text: deliverWords(where), taskId },
+          CommandId.make(`task-deliver:${taskId}:${ended.id}`),
+          principalOf(taskId),
+        )
+        .pipe(
+          Effect.catchTags({
+            // The next move of the conversation reads this end again.
+            DeliveryUnrecorded: () =>
+              Effect.as(
+                Effect.sync(() => seenAtWork.add(ended.id)),
+                undefined,
+              ),
+          }),
+        );
+      if (told === undefined) return view;
+      if (told._tag === "Rejected" || told.runId === undefined) {
+        yield* left();
+        return view;
+      }
+      const nudgeRun = told.runId;
+      yield* ledger.update(taskId, (kept) => ({ ...kept, nudgeRun }));
+      yield* Effect.logInfo("zerops tasks: a task's agent was told to deliver its work", { where });
+      return (yield* engine.conversation(view.conversationId)) ?? view;
+    }).pipe(
+      // One frame at a time with the takes: the working copies never read while one moves them.
+      taking.withPermit,
+    );
+  };
+
+  /**
    * Reads a task conversation that moved: each task whose runs it holds is held to its limits,
    * and how it stands told.
    */
@@ -729,7 +827,8 @@ export const make = Effect.gen(function* () {
               tasksIn(view, current),
               (taskId) =>
                 enforce(taskId, view).pipe(
-                  Effect.andThen(reportFor(taskId, view)),
+                  Effect.andThen(deliveryOf(taskId, view)),
+                  Effect.flatMap((now) => reportFor(taskId, now)),
                   Effect.flatMap((report) =>
                     report === undefined ? Effect.void : PubSub.publish(reports, report),
                   ),

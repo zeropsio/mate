@@ -14,6 +14,10 @@
  * base, and clean, is left alone. A step that fails leaves that working copy as it is (anything
  * kept before stays kept) and is named; the others move on. Never a force, never a lost commit.
  *
+ * Read only, a task's end asks which working copies hold work never delivered (`undelivered`):
+ * uncommitted files, or commits on no remote branch — a delivery pushes its branch to HQ's git,
+ * which leaves none.
+ *
  * @module ZeropsWorkingCopy
  */
 import * as Context from "effect/Context";
@@ -57,6 +61,11 @@ export class ZeropsWorkingCopy extends Context.Service<
       base: WorkingCopyBase,
       held?: string,
     ) => Effect.Effect<WorkingCopiesHeld>;
+    /**
+     * The dev services (by host) whose working copy holds work never delivered: uncommitted files,
+     * or commits on no remote branch. One git cannot read is left out; none where none is reached.
+     */
+    readonly undelivered: Effect.Effect<ReadonlyArray<string>>;
   }
 >()("t3/zerops/ZeropsWorkingCopy") {}
 
@@ -197,7 +206,49 @@ export const make = Effect.gen(function* () {
       return { missed: missed.filter((host) => host !== undefined), unlisted: false };
     });
 
-  return ZeropsWorkingCopy.of({ hold });
+  /** Whether the working copy holds work never delivered; none where git cannot read it. */
+  const holdsUndelivered = (repository: ZeropsRepository) => {
+    const git = (args: ReadonlyArray<string>) =>
+      Effect.map(
+        vcs.run({
+          operation: "ZeropsWorkingCopy.undelivered",
+          command: "git",
+          args,
+          cwd: repository.mountPath,
+          timeoutMs: STEP_TIMEOUT_MS,
+        }),
+        (output) => output.stdout.trim(),
+      );
+    return Effect.gen(function* () {
+      if ((yield* git(["status", "--porcelain"])) !== "") return true;
+      const unpushed = yield* git(["rev-list", "--count", "HEAD", "--not", "--remotes=origin"]);
+      return unpushed !== "" && unpushed !== "0";
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.as(
+          Effect.logWarning("zerops working copy: could not read what it holds", {
+            host: repository.host,
+            error: error.message,
+          }),
+          false,
+        ),
+      ),
+    );
+  };
+
+  const undelivered = Effect.gen(function* () {
+    const listed = yield* source.list;
+    if (listed._tag !== "available") return [];
+    const held = yield* Effect.forEach(
+      listed.repositories,
+      (repository) =>
+        Effect.map(holdsUndelivered(repository), (holds) => (holds ? repository.host : undefined)),
+      { concurrency: "unbounded" },
+    );
+    return held.filter((host) => host !== undefined);
+  });
+
+  return ZeropsWorkingCopy.of({ hold, undelivered });
 });
 
 export const layer = Layer.effect(ZeropsWorkingCopy, make);

@@ -41,6 +41,15 @@ const TaskEntry = Schema.Struct({
   workingCopyAt: Schema.optionalKey(Schema.Number),
   /** The brief it was taken with: told again with a follow-up the agent's session no longer holds. */
   brief: Schema.optionalKey(Schema.String),
+  /**
+   * The run started by the word the Mate told the agent when a run of the task's ended with its
+   * work never delivered (deliver it, or say why not): that run ending so too ends the task.
+   */
+  nudgeRun: Schema.optionalKey(Schema.String),
+  /** The run that ended the task with its work still undelivered, and the dev services it is on. */
+  undelivered: Schema.optionalKey(
+    Schema.Struct({ run: Schema.String, where: Schema.Array(Schema.String) }),
+  ),
   /** The limit that stopped it, or turned a follow-up away. */
   limitHit: Schema.optionalKey(Schema.Literals(["minutes", "cost"])),
   /** Each ended run of the task's, by its id: how long it ran. */

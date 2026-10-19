@@ -290,10 +290,15 @@ export const statusWords = (status: TaskStatus): string => {
         return `${status.mate} is waiting for you: ${status.question}\n\nAnswer with /mate reply in this thread.`;
       case "change":
         return `${status.mate} opened a change for review: ${status.link}`;
-      case "done":
-        return status.link === null
-          ? `${status.mate} finished this.`
-          : `${status.mate} finished this: ${status.link}`;
+      case "done": {
+        const said =
+          status.link !== null
+            ? `${status.mate} finished this: ${status.link}`
+            : status.left === undefined
+              ? `${status.mate} finished this.`
+              : `${status.mate} finished this, without a change.`;
+        return status.left === undefined ? said : `${said} ${status.left}`;
+      }
       case "failed":
         return `${status.mate ?? "Mate"} couldn't finish this: ${status.why}`;
       case "stopped":

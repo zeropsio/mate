@@ -158,7 +158,10 @@ export const MateTaskReport = Schema.Struct({
   state: MateTaskStateKind,
   /** The conversation the Mate works it in, once it has one. */
   conversationId: Schema.optionalKey(TrimmedNonEmptyString),
-  /** Why it failed or stopped, in words a person reads. */
+  /**
+   * Why it failed or stopped, in words a person reads; done, where it left its work undelivered
+   * (never a plain done then).
+   */
   detail: Schema.optionalKey(Schema.String),
   /** What it asks a person, while `waiting`: posted where the task came from. */
   question: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),

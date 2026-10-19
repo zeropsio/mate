@@ -239,4 +239,21 @@ describe("an automated Mate's working copies hold the task it works", () => {
       assert.deepStrictEqual(ran, []);
     }),
   );
+
+  it.effect(
+    "the working copies holding work never delivered are named: uncommitted files, or commits on no remote branch",
+    () =>
+      Effect.gen(function* () {
+        const { workingCopy, ran } = yield* rig([
+          copy("appdev", { dirty: true }),
+          copy("apidev", { unpushed: 2 }),
+          copy("webdev"),
+          copy("docsdev", { failing: "status" }),
+        ]);
+        assert.deepStrictEqual((yield* workingCopy.undelivered).toSorted(), ["apidev", "appdev"]);
+        // Read only: nothing kept, fetched or moved.
+        assert.deepStrictEqual(changing(ran), []);
+        assert.isFalse(ran.some((step) => step.includes(": fetch ")));
+      }),
+  );
 });
