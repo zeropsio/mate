@@ -184,16 +184,24 @@ describe("a task's change when main moves", () => {
             [2, "Cooler cups", { "kettle.js": "cold\n" }],
             [3, "Bigger pot", { "pot.js": "big\n" }],
             [4, "Lid on", { "lid.js": "lid\n" }],
+            [5, "Smaller pot", { "pot.js": "small\n" }],
           ] as const) {
             const task = yield* taskWithChange(core, number, title);
-            landings.push({ change: task.change, head: yield* push(task.change, files) });
+            landings.push({
+              id: task.id,
+              change: task.change,
+              head: yield* push(task.change, files),
+            });
             yield* task.done;
           }
-          const [cooler, bigger, lid] = landings;
+          const [cooler, bigger, lid, smaller] = landings;
           yield* merge(core, cooler!.change, cooler!.head);
           yield* saidOf(core, first.id, 1);
           // Still conflicting at the head it was told at: nothing more to say.
           yield* merge(core, bigger!.change, bigger!.head);
+          // That move's look at every task's change is through once another it made conflict is
+          // told: the first change was judged at the head it was told at, before it moves.
+          yield* saidOf(core, smaller!.id, 1);
           // Its Mate delivers again, its conflict not resolved; the next landing conflicts anew.
           yield* push(first.change, { "lid.js": "glass\n" }, "change");
           yield* merge(core, lid!.change, lid!.head);
