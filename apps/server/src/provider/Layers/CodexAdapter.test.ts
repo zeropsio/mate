@@ -1242,6 +1242,44 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("streams a Codex reasoning summary as the thought's words", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-reasoning-summary-delta"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/reasoning/summaryTextDelta",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("rs_1"),
+        payload: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "rs_1",
+          summaryIndex: 0,
+          delta: "**Checking the build** before I edit",
+        },
+      } satisfies ProviderEvent);
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+
+      NodeAssert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some" || firstEvent.value.type !== "content.delta") {
+        return NodeAssert.fail(`expected a content delta, got ${JSON.stringify(firstEvent)}`);
+      }
+      NodeAssert.equal(firstEvent.value.itemId, "rs_1");
+      NodeAssert.deepStrictEqual(firstEvent.value.payload, {
+        streamKind: "reasoning_summary_text",
+        delta: "**Checking the build** before I edit",
+        summaryIndex: 0,
+      });
+    }),
+  );
+
   it.effect("maps app permission approval requests to permission_approval request types", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

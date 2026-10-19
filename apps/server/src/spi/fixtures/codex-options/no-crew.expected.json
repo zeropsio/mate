@@ -51,6 +51,7 @@
           "sandboxPolicy": {
             "type": "dangerFullAccess"
           },
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "default",
@@ -83,6 +84,7 @@
           "sandboxPolicy": {
             "type": "dangerFullAccess"
           },
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "plan",
@@ -159,6 +161,7 @@
             "type": "readOnly"
           },
           "serviceTier": "fast",
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "default",
@@ -193,6 +196,7 @@
             "type": "readOnly"
           },
           "serviceTier": "fast",
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "plan",
@@ -272,6 +276,7 @@
           "sandboxPolicy": {
             "type": "workspaceWrite"
           },
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "default",
@@ -316,6 +321,7 @@
           "sandboxPolicy": {
             "type": "workspaceWrite"
           },
+          "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
           "collaborationMode": {
             "mode": "plan",

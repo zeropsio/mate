@@ -663,6 +663,10 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
+    // Codex's models default to no summary, and their reasoning is otherwise
+    // encrypted, so a thought would carry no words. A model without summary
+    // support has Codex leave the setting out of its request.
+    summary: "auto",
     ...turnInstructions,
   }).pipe(
     Effect.mapError((cause) =>
