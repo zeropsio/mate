@@ -107,7 +107,7 @@ export const TASK_SOURCES_SINCE = "0.15.159";
  * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
  * holding that work, takes none until they are merged or closed.
  */
-export const TASK_CHANGES_SINCE = "0.15.176";
+export const TASK_CHANGES_SINCE = "0.15.178";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
