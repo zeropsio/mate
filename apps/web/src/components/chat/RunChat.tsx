@@ -4082,7 +4082,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       ),
     [row.items],
   );
-  const { fold, foldNow, settling, motionAllowed } = useRunFold({
+  const cardRoomsRef = useRef<Rooms | null>(null);
+  const { fold, foldNow, settling, motionAllowed, foldShutsRef } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
@@ -4092,6 +4093,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     rootRef,
     aboveRef,
     liveHeightRef,
+    roomsRef: cardRoomsRef,
     onFoldWork: ctx.onFoldWork ?? foldWork,
   });
   // The card's own height eases (`easeRooms`) as its parts come and go — the
@@ -4120,7 +4122,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       swapsRef.current = head !== null && wordsStoodUnder(head);
     }
     endedRef.current = turnOver;
-    cardEasesRef.current = watchedRef.current && !ctx.syncing && (!turnOver || !swapsRef.current);
+    cardEasesRef.current =
+      watchedRef.current &&
+      !ctx.syncing &&
+      (!turnOver || !swapsRef.current) &&
+      !foldShutsRef.current;
   });
   // Its turn ends under the person's eyes: the list holds its head where it stood as last painted,
   // from this commit — before anything under it moves (`onTurnLands`) — whatever its slot said
@@ -4183,7 +4189,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (head === null || stood === null) return;
     if (!wordsCutUnder(head)) onTurnLands(head, stood, !swapsRef.current);
   }, [turnOver, onTurnLands, ctx.syncing]);
-  const cardRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (root === null) return;
@@ -4612,6 +4617,7 @@ function useRunFold({
   rootRef,
   aboveRef,
   liveHeightRef,
+  roomsRef,
   onFoldWork,
 }: {
   readonly conversation: string;
@@ -4626,12 +4632,16 @@ function useRunFold({
   readonly aboveRef: { readonly current: HTMLElement | null };
   /** How tall the card stood in its last draw while its run was live. */
   readonly liveHeightRef: { readonly current: number | null };
+  /** The card's own ease (`easeRooms`), which its fold takes over. */
+  readonly roomsRef: { readonly current: Rooms | null };
   readonly onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>;
 }): {
   readonly fold: RunFold;
   readonly foldNow: () => void;
   readonly settling: boolean;
   readonly motionAllowed: boolean;
+  /** Its fold eases the card shut this moment: the card's own ease stands aside. */
+  readonly foldShutsRef: { readonly current: boolean };
 } {
   // A card drawn settled first is folded until it says otherwise, a run going on in it too: it
   // opens only as `observe` decides, never for a frame before.
@@ -4649,6 +4659,7 @@ function useRunFold({
   // How tall the card stood as the run settled: the fold starts there, the work under the head
   // taking up the room the present left, so the card's edge holds until it eases shut.
   const settledAtRef = useRef<number | null>(null);
+  const foldShutsRef = useRef(false);
   const motionAllowed = () =>
     !prefersReducedMotion() &&
     (typeof document === "undefined" || document.visibilityState !== "hidden");
@@ -4699,6 +4710,7 @@ function useRunFold({
     const done = () => {
       if (!active) return;
       active = false;
+      foldShutsRef.current = false;
       settledAtRef.current = null;
       transitionRunFold(conversation, run, { kind: "finished" });
     };
@@ -4706,13 +4718,22 @@ function useRunFold({
       done();
       return;
     }
+    // What the card's own ease holds it at, that ease goes on easing (Milo's limit: nothing over
+    // the line to fold, the card eased out what its slot left). A fold takes over from it at the
+    // height its live draw stood: both easing, the card went on shrinking after the fold was done
+    // (the owner's 29-step close, 2026-10-19: 17 px).
+    if ((heightOf(above) ?? 0) + from - (heightOf(root) ?? from) >= 1) {
+      foldShutsRef.current = true;
+      roomsRef.current?.settle();
+    }
     const cancel = foldAway(above, from - (heightOf(root) ?? from), done, onFoldWork);
     return () => {
       active = false;
+      foldShutsRef.current = false;
       cancel();
     };
-  }, [conversation, run, fold, aboveRef, rootRef, onFoldWork]);
-  return { fold, foldNow, settling, motionAllowed: motionAllowed() };
+  }, [conversation, run, fold, aboveRef, rootRef, roomsRef, onFoldWork]);
+  return { fold, foldNow, settling, motionAllowed: motionAllowed(), foldShutsRef };
 }
 
 /** How long a card whose turn ended takes to stand at its new height. */

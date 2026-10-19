@@ -23,6 +23,9 @@ export function foldWork({
   readonly outer?: FoldOuter;
 }): () => void {
   let height = from;
+  // Drawn whole pixels off where it started, as the view scrolls: a fraction left the answer
+  // under a held head flickering half a pixel each frame (the owner's 29-step close, 2026-10-19).
+  let drawn = from;
   let frame = 0;
   let last = 0;
   let finished = false;
@@ -36,12 +39,14 @@ export function foldWork({
     if (last === 0) outer?.start();
     const next = approach(height, 0, last === 0 ? 1000 / 60 : now - last, ROOM_TAU_MS);
     last = now;
-    const taken = height - next;
     height = next;
+    const shown = next === 0 ? 0 : from - Math.round(from - next);
+    const taken = drawn - shown;
+    drawn = shown;
     // A clip, never a fade (run 11: the work was gone by 40 % of the fold
     // while the card still moved): it stays whole until the edge takes it.
     const shrink = () => {
-      above.style.height = `${next}px`;
+      above.style.height = `${shown}px`;
     };
     if (outer === undefined) shrink();
     else outer.resize(taken, shrink);
