@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- a picture file in the isolated Mate workspace.
 import liveSlotSteps from "./live-slot-order.fixture.json";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
@@ -7,9 +8,17 @@ import {
   AssetCreateUrlInput,
   AssetCreateUrlResult,
   WS_METHODS,
+  CommandId,
+  ConversationId,
   ConversationRow,
+  MATE_ENGINE_PROTOCOLS,
   TurnId,
+  type EngineConversationFrame,
 } from "@t3tools/contracts";
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -4818,6 +4827,414 @@ describe("owner-reported layout regressions", () => {
             }),
           );
         });
+      });
+    });
+
+    describe("Decision: follow-bottom only at bottom; reader's scroll always wins; no animated jump while scrolled up.", () => {
+      const OUTER = ".timeline-legend-list";
+      const INNER = "[data-run-chat][data-run-live] [data-run-scroll]";
+      interface ScrollFrame {
+        readonly outerTop: number;
+        readonly outerEnd: number;
+        readonly innerTop: number | null;
+        readonly innerFollows: boolean;
+        /** Where the line the reader looked at in the conversation stands on screen. */
+        readonly read: number | null;
+        /** Every line in the Working card's scroll, by its top from the card's view. */
+        readonly innerLines: Readonly<Record<string, number>>;
+      }
+      /** Each painted frame: both scrolls, and the lines under the reader in each. */
+      const startScrollTrace = (page: Page) =>
+        page.evaluate(
+          (outerSelector: string, innerSelector: string) => {
+            const outer = document.querySelector<HTMLElement>(outerSelector)!;
+            const view = outer.getBoundingClientRect();
+            const read = [...outer.querySelectorAll<HTMLElement>("[data-timeline-root]")].find(
+              (row) => {
+                const box = row.getBoundingClientRect();
+                return box.height > 0 && box.top >= view.top && box.top < view.bottom - 200;
+              },
+            );
+            const linesIn = (card: HTMLElement | undefined) => {
+              if (card === undefined) return {};
+              const shown = card.getBoundingClientRect();
+              const lines: Record<string, number> = {};
+              for (const line of card.querySelectorAll<HTMLElement>("[data-run-key]")) {
+                const box = line.getBoundingClientRect();
+                if (box.height > 0) lines[line.dataset.runKey!] = box.top - shown.top;
+              }
+              return lines;
+            };
+            const frames: ScrollFrame[] = [];
+            const state = { active: true, frames };
+            const sample = () =>
+              setTimeout(() => {
+                const card = [...document.querySelectorAll<HTMLElement>(innerSelector)].at(-1);
+                frames.push({
+                  outerTop: outer.scrollTop,
+                  outerEnd: outer.scrollHeight - outer.clientHeight - outer.scrollTop,
+                  innerTop: card ? card.scrollTop : null,
+                  innerFollows: card?.hasAttribute("data-follows") ?? false,
+                  read: read?.isConnected ? read.getBoundingClientRect().top : null,
+                  innerLines: linesIn(card),
+                });
+                if (state.active) requestAnimationFrame(sample);
+              }, 0);
+            (window as unknown as { scrollTrace: typeof state }).scrollTrace = state;
+            requestAnimationFrame(sample);
+          },
+          OUTER,
+          INNER,
+        );
+      /** Where the conversation's end stands in each frame, and whether the frame shows it. */
+      const startOpenTrace = (page: Page) =>
+        page.evaluate((outerSelector: string) => {
+          const frames: { readonly shown: boolean; readonly end: number }[] = [];
+          const state = { active: true, frames };
+          const sample = () =>
+            setTimeout(() => {
+              const outer = document.querySelector<HTMLElement>(outerSelector);
+              frames.push({
+                shown: outer !== null && outer.closest("[data-timeline-placing]") === null,
+                end: outer === null ? 0 : outer.scrollHeight - outer.clientHeight - outer.scrollTop,
+              });
+              if (state.active) requestAnimationFrame(sample);
+            }, 0);
+          (window as unknown as { openTrace: typeof state }).openTrace = state;
+          requestAnimationFrame(sample);
+        }, OUTER);
+      const stopOpenTrace = (page: Page) =>
+        page.evaluate(() => {
+          const state = (
+            window as unknown as {
+              openTrace: { active: boolean; frames: { shown: boolean; end: number }[] };
+            }
+          ).openTrace;
+          state.active = false;
+          return state.frames;
+        });
+      const stopScrollTrace = (page: Page) =>
+        page.evaluate(() => {
+          const state = (
+            window as unknown as { scrollTrace: { active: boolean; frames: ScrollFrame[] } }
+          ).scrollTrace;
+          state.active = false;
+          return state.frames;
+        });
+      /** How far a reading strayed from the first frame's, over every frame it was read in. */
+      const strayed = (values: ReadonlyArray<number | null>) => {
+        const read = values.filter((value): value is number => value !== null);
+        return read.length === 0
+          ? Number.POSITIVE_INFINITY
+          : Math.max(...read.map((value) => Math.abs(value - read[0]!)));
+      };
+      /** A trackpad's flick: many small wheel turns on a momentum curve, as one gesture. */
+      const flick = (page: Page, selector: string, direction: 1 | -1) =>
+        Effect.promise(async () => {
+          const element = (await page.$$(selector)).at(-1)!;
+          const box = (await element.boundingBox())!;
+          const x = box.x + box.width / 2;
+          const y = box.y + box.height / 2;
+          await page.mouse.move(x, y);
+          const cdp = await page.createCDPSession();
+          for (const delta of [
+            2, 4, 8, 12, 16, 20, 20, 18, 16, 14, 12, 10, 8, 6, 5, 4, 3, 2, 2, 1, 1, 1,
+          ]) {
+            await cdp.send("Input.dispatchMouseEvent", {
+              type: "mouseWheel",
+              x,
+              y,
+              deltaX: 0,
+              deltaY: direction * delta * 3,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 16));
+          }
+          await cdp.detach();
+        });
+      /** Milo at work in a long conversation: thirty steps done, the Working card scrolling. */
+      const longWork = Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        for (let round = 0; round < 6; round++)
+          chat
+            .fixture()
+            .exchange(`How did deploy ${round} go?`, "The logs are clean.\n\n".repeat(12));
+        chat.fixture().exchange("And now?", "The existing conversation is still here");
+        const engine = chat.fixture().wire.engine;
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* chat.when.open();
+        yield* chat.when.send("Run the long piece of work");
+        const run = [...engine.runs.values()].at(-1)!.id;
+        for (let step = 0; step < 30; step++)
+          engine.item(run, {
+            kind: "call",
+            step: "command",
+            tool: { name: "Bash" },
+            words: `Command ${step}`,
+            state: "done",
+            endedAt: yield* Clock.currentTimeMillis,
+            input: `Bash: echo step-${step}`,
+          });
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (selector: string) => {
+              const inner = document.querySelector<HTMLElement>(selector);
+              return inner !== null && inner.scrollHeight > inner.clientHeight + 200;
+            },
+            { polling: "raf", timeout: 8000 },
+            INNER,
+          ),
+        );
+        yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+        /** Steps keep arriving: a note that lands from the slot, then a command, a dozen times. */
+        const steps = Effect.gen(function* () {
+          for (let step = 30; step < 42; step++) {
+            engine.item(run, {
+              kind: "note",
+              by: { kind: "mate" },
+              text: `Step ${step} is under way, and the build log reads clean so far.`,
+              streaming: false,
+              answer: false,
+            });
+            yield* Effect.sleep("200 millis");
+            const call = engine.item(run, {
+              kind: "call",
+              ...(step % 2 === 0
+                ? { step: "mcp", tool: { name: "zerops_browser", server: "zerops" } }
+                : { step: "command", tool: { name: "Bash" } }),
+              words: `Command ${step}`,
+              state: "running",
+              endedAt: null,
+              input: `Bash: echo step-${step}`,
+            });
+            yield* Effect.sleep("200 millis");
+            engine.update(call, { state: "done", endedAt: yield* Clock.currentTimeMillis });
+            yield* Effect.sleep("200 millis");
+          }
+          yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 20 }));
+        });
+        return { s, steps };
+      });
+
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect("a conversation opened at its end stays at its end while its rows settle", () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([], { mate: "real" });
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* s.given.project("Ada", { mate: true });
+            const mate = s.drivers.realMates.get("Ada")!;
+            const picture = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 1200;
+                canvas.height = 800;
+                return canvas.toDataURL("image/png").split(",")[1]!;
+              }),
+            );
+            yield* Effect.promise(() =>
+              NodeFSP.writeFile(
+                NodePath.join(mate.server.root, "workspace", "page.png"),
+                Buffer.from(picture, "base64"),
+              ),
+            );
+            const conversationId = ConversationId.make("settling-rows");
+            yield* mate.server.engine.assignAgent(conversationId, {
+              instanceId: "opencode",
+              driver: "opencode",
+              model: "gpt-5.4",
+              profile: { kind: "mate" },
+            });
+            const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+            const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
+            const frames = yield* Queue.unbounded<EngineConversationFrame>();
+            yield* mate.server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
+              Stream.runForEach((frame) => Queue.offer(frames, frame)),
+              Effect.forkScoped,
+            );
+            while ((yield* Queue.take(frames)).type !== "synchronized") {}
+            for (let round = 0; round < 4; round++) {
+              yield* mate.provider.turn([
+                {
+                  kind: "say",
+                  text:
+                    round === 3
+                      ? `${"The page as it stands.\n\n".repeat(6)}![The page](page.png)\n\nThat is the page.`
+                      : "An earlier answer stays readable.\n\n".repeat(20),
+                },
+              ]);
+              const sent = yield* mate.server.engine.wire.send(
+                {
+                  protocol,
+                  conversationId,
+                  commandId: CommandId.make(`late-${round}`),
+                  text: `Ask ${round}`,
+                },
+                caller,
+              );
+              expect(sent._tag).toBe("Accepted");
+              while (true) {
+                const frame = yield* Queue.take(frames);
+                if (
+                  frame.type === "changes" &&
+                  frame.runs.some((run) => run.ordinal === round + 1 && run.state === "ended")
+                )
+                  break;
+              }
+            }
+            yield* s.given.signedIn;
+            // A slower machine lays the answer's picture out after the conversation is placed: the
+            // answer grows 244 px with its record unchanged.
+            const cdp = yield* Effect.promise(() => s.page.createCDPSession());
+            yield* Effect.promise(() => cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 }));
+            yield* s.when.menu.opensMate("Ada");
+            yield* s.then.conversation.showsMessage("That is the page.");
+            yield* Effect.promise(() => startOpenTrace(s.page));
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () =>
+                  [...document.querySelectorAll<HTMLImageElement>("img")].some(
+                    (image) => image.alt === "The page" && image.complete && image.naturalWidth > 0,
+                  ),
+                { timeout: 8000 },
+              ),
+            );
+            yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 30 }));
+            const trace = yield* Effect.promise(() => stopOpenTrace(s.page));
+            const shown = trace
+              .filter((frame) => frame.shown)
+              .map((frame) => Math.round(frame.end));
+            expect(shown.length, "ASSERTION: the conversation stood in sight").toBeGreaterThan(20);
+            expect(
+              Math.max(...shown),
+              `ASSERTION: every frame in sight shows the conversation's end, never a chase to it: ${shown.join(" ")}`,
+            ).toBeLessThanOrEqual(2);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
+        it.effect(
+          "scrolled up in the conversation, arriving steps leave what the reader reads where it stands",
+          () =>
+            Effect.gen(function* () {
+              const { s, steps } = yield* longWork;
+              yield* Effect.promise(async () => {
+                const outer = (await s.page.$(OUTER))!;
+                const box = (await outer.boundingBox())!;
+                await s.page.mouse.move(box.x + 40, box.y + 200);
+                await s.page.mouse.wheel({ deltaY: -600 });
+                await waitForStillFrames(s.page, { stillFrames: 12 });
+              });
+              yield* Effect.promise(() => startScrollTrace(s.page));
+              yield* steps;
+              const trace = yield* Effect.promise(() => stopScrollTrace(s.page));
+              const seen = trace
+                .map(
+                  (frame) =>
+                    `${Math.round(frame.outerTop)}/${frame.read === null ? "-" : Math.round(frame.read)}`,
+                )
+                .join(" ");
+              expect(
+                trace[0]!.outerEnd,
+                `ASSERTION: the reader stands above the end: ${seen}`,
+              ).toBeGreaterThan(200);
+              expect(
+                strayed(trace.map((frame) => frame.outerTop)),
+                `ASSERTION: the conversation's scroll stays where the reader put it: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              expect(
+                strayed(trace.map((frame) => frame.read)),
+                `ASSERTION: the line under the reader never moves: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "scrolled up in the Working card, arriving steps leave its lines where they stand",
+          () =>
+            Effect.gen(function* () {
+              const { s, steps } = yield* longWork;
+              yield* Effect.promise(async () => {
+                const inner = (await s.page.$$(INNER)).at(-1)!;
+                const box = (await inner.boundingBox())!;
+                await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                await s.page.mouse.wheel({ deltaY: -200 });
+                await waitForStillFrames(s.page, { stillFrames: 12 });
+              });
+              yield* Effect.promise(() => startScrollTrace(s.page));
+              yield* steps;
+              const trace = yield* Effect.promise(() => stopScrollTrace(s.page));
+              const seen = trace
+                .map((frame) => (frame.innerTop === null ? "-" : Math.round(frame.innerTop)))
+                .join(" ");
+              // Every line stands still, those in view and those under it: none glides toward a place out of view.
+              const spans = new Map<string, number[]>();
+              for (const frame of trace)
+                for (const [key, top] of Object.entries(frame.innerLines))
+                  spans.set(key, [...(spans.get(key) ?? []), top]);
+              const moved = [...spans]
+                .map(([key, tops]) => ({ key, travel: Math.max(...tops) - Math.min(...tops) }))
+                .filter((line) => line.travel > 2)
+                .map((line) => `${line.key} ${Math.round(line.travel)} px`);
+              expect(
+                trace.some((frame) => frame.innerFollows),
+                `ASSERTION: the card stops following once the reader scrolls up in it: ${seen}`,
+              ).toBe(false);
+              expect(
+                strayed(trace.map((frame) => frame.innerTop)),
+                `ASSERTION: the card's scroll stays where the reader put it: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              expect(spans.size, "ASSERTION: the card shows lines to read").toBeGreaterThan(0);
+              expect(
+                moved,
+                "ASSERTION: every line in the card stands where it is; nothing plops toward a place out of view",
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "a wheel that carries the Working card past its top leaves the conversation where the reader took it",
+          () =>
+            Effect.gen(function* () {
+              const { s, steps } = yield* longWork;
+              // A short card scroll: the flick reaches its top and the rest of it scrolls the conversation.
+              yield* Effect.promise(async () => {
+                const inner = (await s.page.$$(INNER)).at(-1)!;
+                await inner.evaluate((node) => {
+                  node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight - 60);
+                });
+                await waitForStillFrames(s.page, { stillFrames: 12 });
+              });
+              const before = yield* Effect.promise(() =>
+                s.page.$eval(OUTER, (node) => node.scrollTop),
+              );
+              yield* flick(s.page, INNER, -1);
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 6 }));
+              const left = yield* Effect.promise(() =>
+                s.page.$eval(OUTER, (node) => ({
+                  top: node.scrollTop,
+                  end: node.scrollHeight - node.clientHeight - node.scrollTop,
+                })),
+              );
+              expect(
+                before - left.top,
+                "ASSERTION: the flick reached past the card's top into the conversation",
+              ).toBeGreaterThan(2);
+              yield* Effect.promise(() => startScrollTrace(s.page));
+              yield* steps;
+              const trace = yield* Effect.promise(() => stopScrollTrace(s.page));
+              const seen = trace.map((frame) => Math.round(frame.outerTop)).join(" ");
+              expect(
+                strayed([left.top, ...trace.map((frame) => frame.outerTop)]),
+                `ASSERTION: the conversation stays where the flick left it, ${Math.round(left.end)} px above its end: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
       });
     });
   });
