@@ -1349,6 +1349,38 @@ describe("the fold's rules", () => {
     );
   });
 
+  it("codex [scripted]: a thought carries the words of the model's reasoning summary", () => {
+    const w = wire("codex");
+    const reasoning = (phase: "started" | "completed") =>
+      w.event(`item.${phase}`, {
+        turnId: "X1",
+        itemId: "rs_1",
+        payload: {
+          itemType: "reasoning",
+          status: phase === "completed" ? "completed" : "inProgress",
+        },
+      });
+    const summary = (delta: string) =>
+      w.event("content.delta", {
+        turnId: "X1",
+        itemId: "rs_1",
+        payload: { streamKind: "reasoning_summary_text", delta, summaryIndex: 0 },
+      });
+    const { signals } = run("codex", THREAD, [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      reasoning("started"),
+      summary("**Checking the build**"),
+      summary(" before I edit"),
+      reasoning("completed"),
+      w.completed("X1"),
+    ]);
+    assert.strictEqual(
+      textOf(signals, "h1.i1", "reasoning"),
+      "**Checking the build** before I edit",
+    );
+  });
+
   it("codex [scripted]: an event naming a turn the bridge never saw is dropped, never attached to another", () => {
     const w = wire("codex");
     const translator = makeTranslator({ driver: "codex", threadId: THREAD });

@@ -221,6 +221,7 @@ describe("buildTurnStartParams", () => {
 
     NodeAssert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
+      summary: "auto",
       approvalPolicy: "never",
       approvalsReviewer: "user",
       sandboxPolicy: {
@@ -268,6 +269,7 @@ describe("buildTurnStartParams", () => {
 
     NodeAssert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
+      summary: "auto",
       approvalPolicy: "on-request",
       approvalsReviewer: "user",
       sandboxPolicy: {
@@ -335,6 +337,31 @@ describe("buildTurnStartParams", () => {
     }),
   );
 
+  // Codex's models default to no reasoning summary, which left every Codex thought empty.
+  it.effect("every Codex turn asks for a readable summary of the model's thinking", () =>
+    Effect.gen(function* () {
+      for (const input of [
+        { model: "gpt-6.1-sol", effort: "high" as const, interactionMode: "plan" as const },
+        { model: "gpt-5.6-sol", interactionMode: "default" as const },
+        {},
+      ]) {
+        const params = yield* buildTurnStartParams({
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "Go",
+          ...input,
+          overrides: {
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "readOnly" },
+          },
+        });
+
+        NodeAssert.equal(params.summary, "auto");
+      }
+    }),
+  );
+
   it.effect("routes approvals to the auto reviewer in auto mode", () =>
     Effect.gen(function* () {
       const params = yield* buildTurnStartParams({
@@ -345,6 +372,7 @@ describe("buildTurnStartParams", () => {
 
       NodeAssert.deepStrictEqual(params, {
         threadId: "provider-thread-1",
+        summary: "auto",
         approvalPolicy: "on-request",
         approvalsReviewer: "auto_review",
         sandboxPolicy: {
@@ -371,6 +399,7 @@ describe("buildTurnStartParams", () => {
 
     NodeAssert.deepStrictEqual(params, {
       threadId: "provider-thread-1",
+      summary: "auto",
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandboxPolicy: {
