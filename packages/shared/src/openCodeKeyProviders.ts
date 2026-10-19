@@ -38,6 +38,11 @@ export interface AutomatedModel {
     readonly cachedInput: number;
     readonly output: number;
   };
+  /**
+   * Whether it reads images, as models.dev's `modalities.input` lists them: OpenCode swaps an image
+   * sent to a model without them for an error.
+   */
+  readonly readsImages: boolean;
   /** Why pick it, in one line. */
   readonly why: string;
 }
@@ -81,25 +86,36 @@ export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
         id: "zai-org/GLM-5.3",
         name: "GLM-5.3",
         usdPerMillion: { input: 1.4, cachedInput: 1.4, output: 4.4 },
+        readsImages: false,
         why: "The strongest for long coding work with tools; no short cap on one answer.",
       },
       {
         id: "zai-org/GLM-5.3-Flash",
         name: "GLM-5.3 Flash",
         usdPerMillion: { input: 0.15, cachedInput: 0.15, output: 0.5 },
+        readsImages: false,
         why: "GLM-5.3's light sibling: the same long answers at about a tenth of the price.",
       },
       {
         id: "deepseek-ai/DeepSeek-V4-Flash-0731",
         name: "DeepSeek V4 Flash",
         usdPerMillion: { input: 0.14, cachedInput: 0.14, output: 0.28 },
+        readsImages: false,
         why: "The cheapest here: fast, reasons and calls tools; best for small, clear tasks.",
       },
       {
         id: "Qwen/Qwen3.5-397B-A17B",
         name: "Qwen3.5 397B",
         usdPerMillion: { input: 0.6, cachedInput: 0.06, output: 3.6 },
+        readsImages: false,
         why: "Strong at code, repeated context at a tenth; one answer stops at 8k tokens.",
+      },
+      {
+        id: "deepseek-ai/DeepSeek-V4.1-Flash",
+        name: "DeepSeek V4.1 Flash",
+        usdPerMillion: { input: 0.3, cachedInput: 0.3, output: 1.2 },
+        readsImages: true,
+        why: "The one here that sees images: screenshots and mockups, fast and cheap.",
       },
     ],
   },

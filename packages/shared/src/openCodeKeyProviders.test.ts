@@ -141,4 +141,23 @@ describe("the model an automated Mate runs on", () => {
       for (const price of [usdPerMillion.input, usdPerMillion.cachedInput, usdPerMillion.output])
         expect(price).toBeGreaterThan(0);
   });
+
+  // models.dev 2026-10-19: `modalities.input` of each offered Nebius model.
+  it.each([
+    { id: "zai-org/GLM-5.3", readsImages: false },
+    { id: "zai-org/GLM-5.3-Flash", readsImages: false },
+    { id: "deepseek-ai/DeepSeek-V4-Flash-0731", readsImages: false },
+    { id: "Qwen/Qwen3.5-397B-A17B", readsImages: false },
+    { id: "deepseek-ai/DeepSeek-V4.1-Flash", readsImages: true },
+  ])("an offered model says whether it reads images: $id $readsImages", ({ id, readsImages }) => {
+    expect(automatedModelOffer(`nebius/${id}`)?.readsImages).toBe(readsImages);
+  });
+
+  it("offers DeepSeek V4.1 Flash, a model that reads images, at its price", () => {
+    expect(automatedModelOffer("nebius/deepseek-ai/DeepSeek-V4.1-Flash")).toMatchObject({
+      name: "DeepSeek V4.1 Flash",
+      usdPerMillion: { input: 0.3, cachedInput: 0.3, output: 1.2 },
+      readsImages: true,
+    });
+  });
 });
