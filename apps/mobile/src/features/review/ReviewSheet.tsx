@@ -382,19 +382,12 @@ export function ReviewSheet(props: ReviewSheetProps) {
   useEffect(() => {
     showAuxiliaryPane("inspector");
   }, [environmentId, showAuxiliaryPane, threadId]);
-  const {
-    error,
-    historyNotice,
-    reviewSections,
-    selectedSection,
-    refreshSelectedSection,
-    selectSection,
-  } = useReviewSections({
-    enabled: isEnvironmentReady,
-    environmentId,
-    threadId,
-    reviewCache,
-  });
+  const { error, reviewSections, selectedSection, refreshSelectedSection, selectSection } =
+    useReviewSections({
+      enabled: isEnvironmentReady,
+      environmentId,
+      reviewCache,
+    });
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,
     sections: reviewSections,
@@ -550,20 +543,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     const actions: MenuAction[] = [
       sectionAction(sectionMenu.workingTree, "Working tree"),
       sectionAction(sectionMenu.branchChanges, "Branch changes"),
-      sectionAction(sectionMenu.latestTurn, "Latest turn"),
     ];
-
-    if (sectionMenu.turns.length > 0) {
-      actions.push({
-        id: "turns",
-        title: "Turn",
-        subactions: sectionMenu.turns.map((section) => ({
-          id: `section:${section.id}`,
-          title: section.id === selectedSection?.id ? `${section.title} (selected)` : section.title,
-          subtitle: section.subtitle ?? undefined,
-        })),
-      });
-    }
 
     // The Android native diff surface has no pull-to-refresh, so refresh
     // stays a menu action there (iOS refreshes via pull-to-refresh instead).
@@ -633,13 +613,6 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const listHeader = useMemo(() => {
     const children: ReactElement[] = [];
 
-    if (historyNotice) {
-      children.push(
-        <View key="review-history-coverage" className="border-b border-border bg-card px-4 py-3">
-          <Text className="text-xs leading-normal text-foreground-muted">{historyNotice}</Text>
-        </View>,
-      );
-    }
     if (error) {
       children.push(
         <View key="review-error" className="border-b border-border bg-card px-4 py-3">
@@ -658,7 +631,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
 
     return <>{children}</>;
-  }, [error, historyNotice, parsedDiffNotice]);
+  }, [error, parsedDiffNotice]);
   const headerSubtitle = [
     headerDiffSummary.additions,
     headerDiffSummary.deletions,
@@ -768,31 +741,6 @@ export function ReviewSheet(props: ReviewSheetProps) {
                 >
                   <NativeHeaderToolbar.Label>Branch changes</NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
-                <NativeHeaderToolbar.MenuAction
-                  disabled={sectionMenu.latestTurn === null}
-                  isOn={selectedSection?.id === sectionMenu.latestTurn?.id}
-                  onPress={() => {
-                    if (sectionMenu.latestTurn) {
-                      selectSection(sectionMenu.latestTurn.id);
-                    }
-                  }}
-                >
-                  <NativeHeaderToolbar.Label>Latest turn</NativeHeaderToolbar.Label>
-                </NativeHeaderToolbar.MenuAction>
-                {sectionMenu.turns.length > 0 ? (
-                  <NativeHeaderToolbar.Menu title="Turn">
-                    {sectionMenu.turns.map((section) => (
-                      <NativeHeaderToolbar.MenuAction
-                        key={section.id}
-                        isOn={section.id === selectedSection?.id}
-                        onPress={() => selectSection(section.id)}
-                        subtitle={section.subtitle ?? undefined}
-                      >
-                        <NativeHeaderToolbar.Label>{section.title}</NativeHeaderToolbar.Label>
-                      </NativeHeaderToolbar.MenuAction>
-                    ))}
-                  </NativeHeaderToolbar.Menu>
-                ) : null}
               </NativeHeaderToolbar.Menu>
             </NativeHeaderToolbar.Menu>
           ) : null}
@@ -896,12 +844,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
             ) : parsedDiff.kind === "empty" ? (
               <View className="border-b border-border bg-card px-4 py-5">
                 <Text className="text-sm font-t3-bold text-foreground">
-                  {error
-                    ? "Diff unavailable"
-                    : selectedSection.kind !== "turn" ||
-                        (selectedSection.diff !== null && selectedSection.coverage === "complete")
-                      ? "No changes"
-                      : "No recorded patch"}
+                  {error ? "Diff unavailable" : "No changes"}
                 </Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
                   {selectedSection.subtitle ?? "This diff is empty."}

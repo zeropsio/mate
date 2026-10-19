@@ -1409,9 +1409,9 @@ const turnRow = (database: string, threadId: string, messageId: string, state: s
     const sql = yield* SqlClient.SqlClient;
     yield* sql`
       INSERT OR REPLACE INTO projection_turns
-        (thread_id, turn_id, pending_message_id, state, requested_at, checkpoint_files_json)
+        (thread_id, turn_id, pending_message_id, state, requested_at)
       VALUES (${threadId}, ${`turn-${messageId}`}, ${messageId}, ${state},
-        '2026-10-01T10:00:00.000Z', '[]')
+        '2026-10-01T10:00:00.000Z')
     `;
   }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database })), Effect.orDie);
 

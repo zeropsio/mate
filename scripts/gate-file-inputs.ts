@@ -77,7 +77,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/auth/ServerSecretStore.test.ts": [],
   "apps/server/src/auth/replayMarkers.test.ts": [],
   "apps/server/src/bin.test.ts": [],
-  "apps/server/src/checkpointing/CheckpointStore.test.ts": [],
   "apps/server/src/cli/triagePrompt.test.ts": [".github/triage/PLAYBOOK.md"],
   "apps/server/src/engine/bridge/translate.test.ts": ["apps/server/src/spi/fixtures/**"],
   "apps/server/src/engine/history/historyImport.test.ts": ["apps/server/src/spi/fixtures/**"],

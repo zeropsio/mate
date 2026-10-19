@@ -16,7 +16,7 @@ import {
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import { Item } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import captureGapMarkers from "./__fixtures__/capture-gap-marker.json";
+import engineWarningMarkers from "./__fixtures__/engine-warning-marker.json";
 import {
   cardAccount,
   CARD_KEY,
@@ -96,10 +96,8 @@ const SHARED: TimelineRowSharedState = {
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
-  onRevertToTurnCount: () => undefined,
   onRunShellCommand: undefined,
   onImageExpand: () => undefined,
-  onOpenTurnDiff: () => undefined,
   speaker: { name: "Nova", tint: "sky" },
   standUpAsk: null,
   livePauseId: null,
@@ -117,7 +115,6 @@ const SHARED: TimelineRowSharedState = {
 const ACTIVITY: TimelineRowActivityState = {
   isWorking: true,
   isCompacting: false,
-  isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
 };
@@ -240,7 +237,6 @@ const outcomeOf = (activity: OutcomeModel["activity"]): OutcomeModel => ({
   turnKey: "turn-1",
   live: [],
   landed: [],
-  files: null,
   checks: null,
   pictures: [],
   created: [],
@@ -1164,7 +1160,7 @@ describe("RunChat, as the person uses it", () => {
     vi.unstubAllGlobals();
   });
 
-  // Recorded on GG, 2026-10-13: the engine's failed capture precedes Claude's first thought.
+  // Shaped on GG's recording, 2026-10-13: an engine warning precedes Claude's first thought.
   it.each([
     ["before provider thinking", true, false],
     ["during streaming", true, true],
@@ -1174,9 +1170,9 @@ describe("RunChat, as the person uses it", () => {
     "Decision: a non-call engine warning keeps its warning meaning all the way to the run card — %s",
     (_stage, live, hasCalls) => {
       vi.useFakeTimers();
-      const marker = Schema.decodeUnknownSync(Item)(captureGapMarkers[0]);
-      if (marker.kind !== "marker" || marker.marker.kind !== "capture-gap")
-        throw new Error("recorded capture-gap marker required");
+      const marker = Schema.decodeUnknownSync(Item)(engineWarningMarkers[0]);
+      if (marker.kind !== "marker" || marker.marker.kind !== "warning")
+        throw new Error("engine warning marker required");
       const key = { environmentId: "gg", conversationId: marker.conversationId };
       const run = engineRun(marker.conversationId, 6, {
         startedAt: marker.at - 127,
@@ -1238,8 +1234,6 @@ describe("RunChat, as the person uses it", () => {
           runningTurnId: live ? thread.latestTurn!.turnId : null,
           isWorking: live,
           activeTurnStartedAt: null,
-          turnDiffSummaries: [],
-          supportsConversationRollback: false,
         });
         const items = rows.flatMap((row) => (row.kind === "record" ? row.items : []));
         const view = (
@@ -1284,18 +1278,12 @@ describe("RunChat, as the person uses it", () => {
         act(() => opener.props.onClick());
       act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
       const warning = renderer.root.findByProps({ "data-chat-kind": "warning" });
-      const disclosure = warning.findByType("button");
-      expect(disclosure.props["aria-label"]).toBe(
-        "The workspace was not captured. Show the whole warning",
-      );
-      act(() => disclosure.props.onClick());
       const visible = warning
         .findAll((node) => typeof node.type === "string")
         .flatMap((node) =>
           node.children.filter((child): child is string => typeof child === "string"),
         )
         .join("\n");
-      expect(visible).toContain("The workspace was not captured");
       expect(visible).toContain(marker.marker.reason!.trim());
       expect(visible).not.toContain("Used a tool");
       expect(visible).not.toContain("Returned");
@@ -1548,8 +1536,6 @@ describe("RunChat, as the person uses it", () => {
       latestTurn: thread.latestTurn,
       isWorking: false,
       activeTurnStartedAt: null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       helperFinishes: helperFinishesOf(agentPanelModel),
     });
     let renderer!: ReactTestRenderer;
@@ -2033,8 +2019,6 @@ describe("RunChat, as the person uses it", () => {
         latestTurn: thread.latestTurn,
         isWorking: thread.latestTurn?.state === "running",
         runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
         helperFinishes: helperFinishesOf(agentPanelModel),
       });
       answers = rows.flatMap((row) =>

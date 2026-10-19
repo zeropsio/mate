@@ -7,7 +7,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
-import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRuntimeEventBusTest } from "../../spi/ProviderRuntimeEventBus.ts";
@@ -18,6 +17,5 @@ export const engineHostDoubles = Layer.mergeAll(
     listSessions: () => Effect.succeed([]),
   }),
   ProviderRuntimeEventBusTest.make(Stream.empty),
-  Layer.mock(WorkspaceHistory)({}),
   Layer.orDie(NodeSqliteClient.layer({ filename: ":memory:" })),
 );

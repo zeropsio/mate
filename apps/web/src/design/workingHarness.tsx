@@ -445,7 +445,6 @@ const REPORT: OutcomeModel = {
     },
   ],
   landed: [],
-  files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1"), fromTurnId: null },
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   pictures: [],
   created: [],
@@ -787,10 +786,8 @@ const SHARED: TimelineRowSharedState = {
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
-  onRevertToTurnCount: () => undefined,
   onRunShellCommand: undefined,
   onImageExpand: () => undefined,
-  onOpenTurnDiff: () => undefined,
   speaker: SPEAKER,
   standUpAsk: null,
   livePauseId: null,
@@ -808,7 +805,6 @@ const SHARED: TimelineRowSharedState = {
 const WORKING: TimelineRowActivityState = {
   isWorking: true,
   isCompacting: false,
-  isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
 };
@@ -1105,7 +1101,6 @@ const GUESTBOOK_RESULT: OutcomeModel = {
       failure: null,
     },
   ],
-  files: null,
   change: null,
   checks: { count: 2, views: 2, failures: 0, takes: STAGE_TAKES },
   pictures: STAGE_TAKES.map((take) => ({
@@ -1172,13 +1167,7 @@ function Harness() {
           note="Closed to its summary line, Show work on its right edge; the result under it."
         >
           <Card
-            result={
-              <TurnReport
-                onOpenImage={() => undefined}
-                onOpenTurnDiff={() => undefined}
-                outcome={REPORT_WITH_ACTIVITY}
-              />
-            }
+            result={<TurnReport onOpenImage={() => undefined} outcome={REPORT_WITH_ACTIVITY} />}
           >
             <RunChat
               row={record({
@@ -1267,7 +1256,6 @@ function Harness() {
               <TurnReport
                 facts={{}}
                 onOpenImage={() => undefined}
-                onOpenTurnDiff={() => undefined}
                 outcome={{
                   ...GUESTBOOK_RESULT,
                   pictures: [],
@@ -1315,12 +1303,7 @@ function Harness() {
         >
           <Card
             result={
-              <TurnReport
-                facts={{}}
-                onOpenImage={() => undefined}
-                onOpenTurnDiff={() => undefined}
-                outcome={GUESTBOOK_RESULT}
-              />
+              <TurnReport facts={{}} onOpenImage={() => undefined} outcome={GUESTBOOK_RESULT} />
             }
           >
             <RunChat

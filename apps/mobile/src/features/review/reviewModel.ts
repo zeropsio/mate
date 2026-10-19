@@ -1,15 +1,10 @@
-import {
-  checkpointHistoryNotice,
-  checkpointRootNotice,
-} from "@t3tools/client-runtime/state/threads";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
-import type { OrchestrationCheckpointSummary, ReviewDiffPreviewSource } from "@t3tools/contracts";
+import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
-import * as Order from "effect/Order";
 
-export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
+export type ReviewSectionKind = "working-tree" | "branch-range";
 
 const DIRTY_WORKTREE_SECTION_ID = "git:working-tree";
 const DIRTY_WORKTREE_TITLE = "Dirty worktree";
@@ -22,8 +17,6 @@ export interface ReviewSectionItem {
   readonly subtitle: string | null;
   readonly diff: string | null;
   readonly isLoading: boolean;
-  readonly rootId?: string;
-  readonly coverage?: "complete" | "partial" | "unknown";
 }
 
 export interface ReviewRenderableHunkRow {
@@ -94,33 +87,6 @@ export type ReviewParsedDiff =
       readonly deletions: number;
       readonly notice: string | null;
     };
-
-function checkpointTitle(checkpoint: OrchestrationCheckpointSummary): string {
-  return `Turn ${checkpoint.checkpointTurnCount}`;
-}
-
-function checkpointSubtitle(checkpoint: OrchestrationCheckpointSummary): string {
-  const fileCount = checkpoint.files.length;
-  if (checkpoint.status !== "ready") {
-    return `Diff ${checkpoint.status}`;
-  }
-  return `${fileCount} recorded file${fileCount === 1 ? "" : "s"}. ${checkpointHistoryNotice(checkpoint.history)}`;
-}
-
-function compareCheckpointTurnCountDescending(
-  left: OrchestrationCheckpointSummary,
-  right: OrchestrationCheckpointSummary,
-): -1 | 0 | 1 {
-  if (left.checkpointTurnCount === right.checkpointTurnCount) {
-    return 0;
-  }
-
-  return left.checkpointTurnCount > right.checkpointTurnCount ? -1 : 1;
-}
-
-const readyCheckpointOrder = Order.make<OrchestrationCheckpointSummary>(
-  compareCheckpointTurnCountDescending,
-);
 
 function gitSubtitle(section: ReviewDiffPreviewSource): string | null {
   if (section.kind === "working-tree") {
@@ -405,66 +371,10 @@ function mapRenderableFile(file: FileDiffMetadata): ReviewRenderableFile {
   };
 }
 
-export function getReviewSectionIdForCheckpoint(
-  checkpoint: Pick<OrchestrationCheckpointSummary, "checkpointTurnCount" | "history">,
-  rootId?: string,
-): string {
-  return checkpoint.history
-    ? `run:${checkpoint.history.runId}${rootId ? `:root:${rootId}` : ""}`
-    : `turn:${checkpoint.checkpointTurnCount}`;
-}
-
-export function getReadyReviewCheckpoints(
-  checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>,
-): ReadonlyArray<OrchestrationCheckpointSummary> {
-  return pipe(
-    checkpoints,
-    Arr.filter((checkpoint) => checkpoint.status === "ready" || checkpoint.history !== undefined),
-    Arr.sort(readyCheckpointOrder),
-  );
-}
-
 export function buildReviewSectionItems(input: {
-  readonly checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
   readonly gitSections: ReadonlyArray<ReviewDiffPreviewSource>;
-  readonly turnDiffById: Readonly<Record<string, string | undefined>>;
-  readonly loadingTurnIds: Readonly<Record<string, boolean | undefined>>;
   readonly loadingGitSections: boolean;
 }): ReadonlyArray<ReviewSectionItem> {
-  const turnItems = getReadyReviewCheckpoints(input.checkpoints).flatMap<ReviewSectionItem>(
-    (checkpoint) => {
-      if (checkpoint.history?.roots.length)
-        return checkpoint.history.roots.map((entry) => {
-          const id = getReviewSectionIdForCheckpoint(checkpoint, entry.root.rootId);
-          return {
-            id,
-            kind: "turn",
-            rootId: entry.root.rootId,
-            coverage:
-              entry.before.status === "captured" && entry.after.status === "captured"
-                ? "unknown"
-                : "partial",
-            title: `${checkpointTitle(checkpoint)} · ${entry.root.label}`,
-            subtitle: checkpointRootNotice(entry),
-            diff: input.turnDiffById[id] ?? null,
-            isLoading: input.loadingTurnIds[id] === true,
-          };
-        });
-      const id = getReviewSectionIdForCheckpoint(checkpoint);
-      return [
-        {
-          id,
-          kind: "turn",
-          coverage: checkpoint.history?.coverage ?? "unknown",
-          title: checkpointTitle(checkpoint),
-          subtitle: checkpointSubtitle(checkpoint),
-          diff: input.turnDiffById[id] ?? null,
-          isLoading: input.loadingTurnIds[id] === true,
-        },
-      ];
-    },
-  );
-
   const gitItems = input.gitSections.map<ReviewSectionItem>((section) => ({
     id: `git:${section.kind}`,
     kind: section.kind,
@@ -489,7 +399,7 @@ export function buildReviewSectionItems(input: {
         ]
       : gitItems;
 
-  return [...turnItems, ...visibleGitItems];
+  return visibleGitItems;
 }
 
 export function getDefaultReviewSectionId(

@@ -347,7 +347,6 @@ const READ_IMPORTS: Readonly<Record<string, ReadonlyArray<string>>> = {
     "useResourceTelemetry",
     "useResourceTelemetryHistory",
   ],
-  "apps/web/src/lib/checkpointDiffState": ["useCheckpointDiff"],
   "apps/web/src/zerops/useProjectTopology": ["useProjectTopology"],
   "apps/web/src/zerops/useZeropsDataMentions": ["useZeropsDataMentions"],
   "apps/web/src/zerops/projectFlows": [

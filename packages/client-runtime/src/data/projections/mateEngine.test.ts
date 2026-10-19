@@ -932,14 +932,6 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       },
     },
     {
-      marker: { kind: "capture-gap", reason: "api: Snapshot refused: disk full" },
-      expected: {
-        kind: "runtime.warning",
-        summary: "The workspace was not captured",
-        payload: { message: "api: Snapshot refused: disk full" },
-      },
-    },
-    {
       marker: { kind: "warning", reason: "The model is overloaded; retrying." },
       expected: {
         kind: "runtime.warning",
@@ -976,6 +968,12 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
 
   it("a marker this build does not know draws nothing", () => {
     expect(activitiesOf([markerItem(run1, 2, { kind: "rewound" })])).toEqual([]);
+  });
+
+  // Git is the record of what a turn changed: nothing says a workspace was or was not captured.
+  it("a capture gap an earlier Mate recorded draws nothing", () => {
+    const marker = { kind: "capture-gap", reason: "api: Snapshot refused: disk full" };
+    expect(activitiesOf([markerItem(run1, 2, marker)])).toEqual([]);
   });
 
   it("an item of a newer build shows its summary, or nothing when it gives none", () => {

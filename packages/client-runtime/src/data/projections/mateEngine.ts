@@ -467,16 +467,6 @@ function markerActivity(
         item.seq,
         "error",
       );
-    case "capture-gap":
-      return activity(
-        item.id,
-        "runtime.warning",
-        "The workspace was not captured",
-        marker.reason === undefined ? {} : { message: marker.reason },
-        card,
-        item.at,
-        item.seq,
-      );
     case "warning":
       // V1 labels a warning by its own words.
       return marker.reason === undefined
@@ -1066,7 +1056,6 @@ export function engineThreadOf(
     messages,
     proposedPlans: [],
     activities,
-    checkpoints: [],
     session,
     ...(crew === null ? {} : { crew }),
   };

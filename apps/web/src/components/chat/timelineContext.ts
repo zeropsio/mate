@@ -10,7 +10,6 @@ import type { MateLimit } from "@t3tools/client-runtime/data";
  */
 import type {
   EnvironmentId,
-  MessageId,
   ScopedThreadRef,
   ServerProviderSkill,
   TurnId,
@@ -50,10 +49,8 @@ export interface TimelineRowSharedState {
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
-  onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
   /** Takes the conversation's end row away (`ThreadEndNotice`); absent, it has no ×. */
   onDismissEndNotice?: (() => void) | undefined;
   /** Who the conversation is with: the Mate's name and colour. */
@@ -120,7 +117,6 @@ export interface TimelineRowActivityState {
   isCompacting: boolean;
   /** A person's Stop is in force (`conversationStop`): the live card and the work after it say so. */
   isStopping?: boolean;
-  isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;

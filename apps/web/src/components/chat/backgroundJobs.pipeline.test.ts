@@ -142,8 +142,6 @@ function rows(activities: OrchestrationThreadActivity[], live: ReadonlyArray<str
     runningTurnId: null,
     isWorking: false,
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     nowMs: Date.parse(at(600)),
     ...(live === null ? {} : { liveJobs: { ids: new Set(live) } }),
   });
@@ -242,8 +240,6 @@ describe("an engine Mate's command sent to the background, from its records", ()
       runningTurnId: working ? TurnId.make(run2) : null,
       isWorking: working,
       activeTurnStartedAt: null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       nowMs: Date.parse(at(600)),
       // An engine Mate names no live jobs: what the server holds is not said while it works.
       liveJobs: working ? null : { ids: new Set<string>() },

@@ -1,7 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
@@ -11,7 +10,6 @@ import { GitManagerError } from "@t3tools/contracts";
 import * as ServerConfig from "../config.ts";
 import * as GitManager from "../git/GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import * as VcsProcess from "../vcs/VcsProcess.ts";
 import { ProviderRegistryTest } from "../spi/ProviderRegistryTest.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -228,58 +226,5 @@ it.layer(NodeServices.layer)("GitManager under the Zerops policy", (it) => {
         );
       }
     }).pipe(Effect.provide(onZerops)),
-  );
-});
-
-/** A git executor that answers every command with a commit oid and records it. */
-const recordingVcsProcess = (recorded: Ref.Ref<ReadonlyArray<ReadonlyArray<string>>>) =>
-  Layer.succeed(VcsProcess.VcsProcess, {
-    run: (input: VcsProcess.VcsProcessInput) =>
-      Ref.update(recorded, (previous) => [...previous, input.args]).pipe(
-        Effect.as({
-          exitCode: 0,
-          stdout: "0123456789abcdef0123456789abcdef01234567\n",
-          stderr: "",
-          stdoutTruncated: false,
-          stderrTruncated: false,
-        }),
-      ),
-  } as never);
-
-const restoreArgs = (config: typeof onZerops) =>
-  Effect.gen(function* () {
-    const recorded = yield* Ref.make<ReadonlyArray<ReadonlyArray<string>>>([]);
-    const shape = yield* GitVcsDriver.makeVcsDriverShape().pipe(
-      Effect.provide(recordingVcsProcess(recorded)),
-    );
-    // A real directory: the restore recreates its workspace on disk after git
-    // runs, and the recording executor never creates one.
-    const fileSystem = yield* FileSystem.FileSystem;
-    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "zerops-policy-restore-" });
-    yield* shape.checkpoints.restoreCheckpoint({
-      cwd,
-      checkpointRef: "refs/t3/checkpoints/x/turn/1" as never,
-      fallbackToHead: false,
-    });
-    return yield* Ref.get(recorded);
-  }).pipe(Effect.scoped, Effect.provide(config));
-
-it.layer(NodeServices.layer)("restoring a checkpoint", (it) => {
-  it.effect("leaves what the running application wrote on Zerops", () =>
-    Effect.gen(function* () {
-      const args = yield* restoreArgs(onZerops);
-
-      assert.isTrue(args.some((argv) => argv[2] === "restore"));
-      assert.isFalse(args.some((argv) => argv[2] === "clean"));
-    }),
-  );
-
-  it.effect("still cleans untracked files everywhere else", () =>
-    Effect.gen(function* () {
-      const args = yield* restoreArgs(offZerops);
-
-      assert.isTrue(args.some((argv) => argv[2] === "restore"));
-      assert.isTrue(args.some((argv) => argv[2] === "clean" && argv[3] === "-fd"));
-    }),
   );
 });

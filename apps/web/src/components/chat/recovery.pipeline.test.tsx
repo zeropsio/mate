@@ -45,8 +45,6 @@ it("a long run stays working until the provider reports its result", () => {
       runningTurnId: working ? thread.latestTurn!.turnId : null,
       isWorking: working,
       activeTurnStartedAt: thread.latestTurn?.startedAt ?? null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       nowMs,
     });
     const controls = renderToStaticMarkup(

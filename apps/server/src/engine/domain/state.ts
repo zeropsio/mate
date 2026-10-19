@@ -73,7 +73,7 @@ export interface RunRecord {
   readonly sessionOpenAttempts: number;
   /** Sends asked for this run: a run requeued before its send started sends again. */
   readonly sendAttempts: number;
-  /** Its workspace capture (`run.prepare`): none asked, asked, or settled — the send waits on it. */
+  /** Its admission (`run.prepare`): none asked, asked, or settled — the send waits on it. */
   readonly prepare: "none" | "asked" | "done";
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;

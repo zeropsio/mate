@@ -9,8 +9,6 @@ describe("legacy update admission", () => {
     "thread.create",
     "thread.crew.create",
     "thread.runtime-mode.set",
-    "thread.conversation.revert",
-    "thread.checkpoint.revert",
     "project.create",
   ] as const)("%s is refused before new work is accepted", (tag) =>
     Effect.gen(function* () {
@@ -30,7 +28,6 @@ describe("legacy update admission", () => {
     "thread.session.stop",
     "thread.session.set",
     "thread.message.assistant.complete",
-    "thread.turn.diff.complete",
   ] as const)("%s can finish accepted work during an update", (tag) =>
     Effect.gen(function* () {
       const admission = yield* makeV1UpdateAdmission;

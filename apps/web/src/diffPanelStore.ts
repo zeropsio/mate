@@ -1,5 +1,5 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -17,17 +17,13 @@ const storage = {
   },
 };
 
+/**
+ * What a thread's Diff shows: a repository's changes not committed (`unstaged`), or its commits
+ * not on main (`branch`). Without a repository, the first of the conversation's repositories.
+ */
 export type DiffPanelSelection =
-  | { kind: "branch"; baseRef: string | null }
-  | { kind: "unstaged" }
-  | {
-      kind: "turn";
-      turnId: TurnId;
-      /** A run of several turns: its first, the diff the whole run's from where it began. */
-      fromTurnId?: TurnId;
-      filePath: string | null;
-      revealRequestId: number;
-    };
+  | { kind: "branch"; baseRef: string | null; repository?: string }
+  | { kind: "unstaged"; repository?: string };
 
 export type DiffRenderMode = "stacked" | "split";
 
@@ -38,15 +34,10 @@ interface DiffPanelStoreState {
   branchBaseRefByThreadKey: Record<string, string | null>;
   diffRenderMode: DiffRenderMode;
   setDiffRenderMode: (mode: DiffRenderMode) => void;
-  selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged") => void;
+  selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged", repository?: string) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
-  selectTurn: (
-    ref: ScopedThreadRef,
-    turnId: TurnId,
-    filePath?: string,
-    fromTurnId?: TurnId,
-  ) => void;
-  reconcileTurnSelection: (ref: ScopedThreadRef, availableTurnIds: ReadonlyArray<TurnId>) => void;
+  /** Forgets what the thread showed: its Diff opens on what is not on main yet. */
+  clearSelection: (ref: ScopedThreadRef) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
 
@@ -62,7 +53,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
       branchBaseRefByThreadKey: {},
       diffRenderMode: "stacked",
       setDiffRenderMode: (diffRenderMode) => set({ diffRenderMode }),
-      selectGitScope: (ref, scope) =>
+      selectGitScope: (ref, scope, repository) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
           const previous = state.byThreadKey[threadKey];
@@ -70,13 +61,14 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
             previous?.kind === "branch"
               ? previous.baseRef
               : (state.branchBaseRefByThreadKey[threadKey] ?? null);
+          const inRepository = repository === undefined ? {} : { repository };
           return {
             byThreadKey: {
               ...state.byThreadKey,
               [threadKey]:
                 scope === "branch"
-                  ? { kind: "branch", baseRef: previousBaseRef }
-                  : { kind: "unstaged" },
+                  ? { kind: "branch", baseRef: previousBaseRef, ...inRepository }
+                  : { kind: "unstaged", ...inRepository },
             },
             branchBaseRefByThreadKey:
               previous?.kind === "branch"
@@ -88,10 +80,15 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
         set((state) => {
           const threadKey = scopedThreadKey(ref);
           const normalizedBaseRef = normalizeBaseRef(baseRef);
+          const repository = state.byThreadKey[threadKey]?.repository;
           return {
             byThreadKey: {
               ...state.byThreadKey,
-              [threadKey]: { kind: "branch", baseRef: normalizedBaseRef },
+              [threadKey]: {
+                kind: "branch",
+                baseRef: normalizedBaseRef,
+                ...(repository === undefined ? {} : { repository }),
+              },
             },
             branchBaseRefByThreadKey: {
               ...state.branchBaseRefByThreadKey,
@@ -99,42 +96,12 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
             },
           };
         }),
-      selectTurn: (ref, turnId, filePath, fromTurnId) =>
+      clearSelection: (ref) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
-          const previous = state.byThreadKey[threadKey];
-          return {
-            byThreadKey: {
-              ...state.byThreadKey,
-              [threadKey]: {
-                kind: "turn",
-                turnId,
-                ...(fromTurnId === undefined || fromTurnId === turnId ? {} : { fromTurnId }),
-                filePath: filePath?.trim() || null,
-                revealRequestId: previous?.kind === "turn" ? previous.revealRequestId + 1 : 1,
-              },
-            },
-          };
-        }),
-      reconcileTurnSelection: (ref, availableTurnIds) =>
-        set((state) => {
-          const threadKey = scopedThreadKey(ref);
-          const previous = state.byThreadKey[threadKey];
-          const latestTurnId = availableTurnIds[0];
-          if (
-            previous?.kind !== "turn" ||
-            latestTurnId === undefined ||
-            availableTurnIds.includes(previous.turnId)
-          ) {
-            return state;
-          }
-          const { fromTurnId: _range, ...turn } = previous;
-          return {
-            byThreadKey: {
-              ...state.byThreadKey,
-              [threadKey]: { ...turn, turnId: latestTurnId },
-            },
-          };
+          if (!(threadKey in state.byThreadKey)) return state;
+          const { [threadKey]: _cleared, ...byThreadKey } = state.byThreadKey;
+          return { byThreadKey };
         }),
       removeThread: (ref) =>
         set((state) => {
@@ -150,7 +117,21 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
     }),
     {
       name: "t3code:diff-panel-state:v1",
-      version: 1,
+      version: 2,
+      // Version 1 also held a turn's diff, which no longer exists: those selections are dropped.
+      migrate: (persisted) => {
+        const state = persisted as Partial<
+          Pick<DiffPanelStoreState, "byThreadKey" | "branchBaseRefByThreadKey" | "diffRenderMode">
+        >;
+        return {
+          ...state,
+          byThreadKey: Object.fromEntries(
+            Object.entries(state.byThreadKey ?? {}).filter(
+              ([, selection]) => selection.kind === "branch" || selection.kind === "unstaged",
+            ),
+          ),
+        };
+      },
       skipHydration: true,
       storage: createJSONStorage(() => storage),
       partialize: (state) => ({

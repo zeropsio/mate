@@ -174,9 +174,9 @@ export class World {
             return ok();
           }),
       },
-      // Replay-safe work beside the agent: a capture and its release land as evidence.
-      ...["run.prepare", "workspace.finish"].map((kind): EffectHandler => ({
-        kind,
+      // Replay-safe work beside the agent: an admission lands as evidence.
+      {
+        kind: "run.prepare",
         adopt: (row) =>
           Effect.sync(() =>
             this.landed.has(row.effectId)
@@ -189,7 +189,7 @@ export class World {
             this.landed.add(row.effectId);
             return hang(row, ok());
           }),
-      })),
+      },
       { kind: "provider.respond", run: (row) => Effect.sync(() => (this.act(row), ok())) },
       { kind: "provider.steer", run: (row) => Effect.sync(() => (this.act(row), ok())) },
       {

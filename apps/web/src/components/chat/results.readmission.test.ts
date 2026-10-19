@@ -40,8 +40,6 @@ const conversation = (records: EngineRecords, conversationId = key.conversationI
     runningTurnId: working ? thread.latestTurn!.turnId : null,
     isWorking: working,
     activeTurnStartedAt: thread.latestTurn?.startedAt ?? null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
   });
   return { thread, rows };
 };

@@ -12,8 +12,6 @@ import {
   OrchestrationCommand,
   OrchestrationDispatchCommandError,
   OrchestrationEvent,
-  OrchestrationGetFullThreadDiffInput,
-  OrchestrationGetTurnDiffInput,
   OrchestrationLatestTurn,
   ProjectCreatedPayload,
   ProjectMetaUpdatedPayload,
@@ -27,16 +25,12 @@ import {
   ThreadMetaUpdatedPayload,
   ThreadTurnStartCommand,
   ThreadCreatedPayload,
-  ThreadTurnDiff,
   ThreadTurnStartRequestedPayload,
   isProviderSendTurnSupportedImageMimeType,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
-const decodeTurnDiffInput = Schema.decodeUnknownEffect(OrchestrationGetTurnDiffInput);
-const decodeFullThreadDiffInput = Schema.decodeUnknownEffect(OrchestrationGetFullThreadDiffInput);
-const decodeThreadTurnDiff = Schema.decodeUnknownEffect(ThreadTurnDiff);
 const decodeProjectCreateCommand = Schema.decodeUnknownEffect(ProjectCreateCommand);
 const decodeProjectCreatedPayload = Schema.decodeUnknownEffect(ProjectCreatedPayload);
 const decodeProjectMetaUpdatedPayload = Schema.decodeUnknownEffect(ProjectMetaUpdatedPayload);
@@ -75,68 +69,6 @@ it.effect("decodes a dispatch error after its bootstrap thread was deleted", () 
     });
 
     assert.strictEqual(error.bootstrapThreadDisposition, "deleted");
-  }),
-);
-
-it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
-  Effect.gen(function* () {
-    const parsed = yield* decodeTurnDiffInput({
-      threadId: "thread-1",
-      fromTurnCount: 1,
-      toTurnCount: 2,
-    });
-    assert.strictEqual(parsed.fromTurnCount, 1);
-    assert.strictEqual(parsed.toTurnCount, 2);
-  }),
-);
-
-it.effect("parses turn diff input with whitespace ignoring enabled", () =>
-  Effect.gen(function* () {
-    const parsed = yield* decodeTurnDiffInput({
-      threadId: "thread-1",
-      fromTurnCount: 1,
-      toTurnCount: 2,
-      ignoreWhitespace: true,
-    });
-    assert.strictEqual(parsed.ignoreWhitespace, true);
-  }),
-);
-
-it.effect("parses full thread diff input with whitespace ignoring enabled", () =>
-  Effect.gen(function* () {
-    const parsed = yield* decodeFullThreadDiffInput({
-      threadId: "thread-1",
-      toTurnCount: 2,
-      ignoreWhitespace: true,
-    });
-    assert.strictEqual(parsed.ignoreWhitespace, true);
-  }),
-);
-
-it.effect("rejects turn diff input when fromTurnCount > toTurnCount", () =>
-  Effect.gen(function* () {
-    const result = yield* Effect.exit(
-      decodeTurnDiffInput({
-        threadId: "thread-1",
-        fromTurnCount: 3,
-        toTurnCount: 2,
-      }),
-    );
-    assert.strictEqual(result._tag, "Failure");
-  }),
-);
-
-it.effect("rejects thread turn diff when fromTurnCount > toTurnCount", () =>
-  Effect.gen(function* () {
-    const result = yield* Effect.exit(
-      decodeThreadTurnDiff({
-        threadId: "thread-1",
-        fromTurnCount: 3,
-        toTurnCount: 2,
-        diff: "patch",
-      }),
-    );
-    assert.strictEqual(result._tag, "Failure");
   }),
 );
 
@@ -562,7 +494,6 @@ it.effect("defaults settled fields when decoding historical thread data", () =>
       messages: [],
       proposedPlans: [],
       activities: [],
-      checkpoints: [],
     });
     const shell = yield* decodeOrchestrationThreadShell({
       ...common,
@@ -1326,7 +1257,6 @@ it.effect("a thread shell and a thread carry their crew origin; absent on a pers
       deletedAt: null,
       messages: [],
       activities: [],
-      checkpoints: [],
     };
     assert.isUndefined((yield* decodeOrchestrationThread(thread)).crew);
     assert.deepStrictEqual(

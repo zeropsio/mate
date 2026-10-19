@@ -122,10 +122,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       login RPCs. Absent on older servers, so a client offers *Add another
       login* only where it would work. */
   mateLogins: Schema.optionalKey(Schema.Boolean),
-  /** Server understands `orchestration.getRunChanges`: the Diff page reads which of a
-      conversation's runs changed its workspace. Absent on older servers, so a client says the
-      Mate shows them after its update instead of sending a call it would not know. */
-  runChanges: Schema.optionalKey(Schema.Boolean),
   /** Server understands `zerops.crew.propose`: the crew setup asks the Mate's agent for a crew
       from the goal. Absent on older servers, so a client says the Mate proposes after its update
       instead of sending a call it would not know. */

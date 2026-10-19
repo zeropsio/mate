@@ -13,7 +13,6 @@ const PROJECTOR_NAMES = [
   "projection.thread-activities",
   "projection.thread-sessions",
   "projection.thread-turns",
-  "projection.checkpoints",
   "projection.pending-approvals",
 ] as const;
 
@@ -160,10 +159,9 @@ export function seedShowcaseSceneInto(
   const insertTurn = database.prepare(
     `INSERT INTO projection_turns (
         thread_id, turn_id, pending_message_id, assistant_message_id, state,
-        requested_at, started_at, completed_at, checkpoint_turn_count, checkpoint_ref,
-        checkpoint_status, checkpoint_files_json, source_proposed_plan_thread_id,
+        requested_at, started_at, completed_at, source_proposed_plan_thread_id,
         source_proposed_plan_id
-      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, NULL, '[]', ?, ?)`,
+      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertSession = database.prepare(
     `INSERT INTO projection_thread_sessions (

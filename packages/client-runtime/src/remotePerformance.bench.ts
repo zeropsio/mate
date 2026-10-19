@@ -47,7 +47,6 @@ const thread: OrchestrationThread = {
   })),
   proposedPlans: [],
   activities: [],
-  checkpoints: [],
   session: null,
 };
 const target = new PrimaryConnectionTarget({

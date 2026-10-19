@@ -292,7 +292,6 @@ const OUTCOME: OutcomeModel = {
   turnKey: "status-run",
   live: [APPDEV_RUNNING],
   landed: [],
-  files: { count: 3, additions: 42, deletions: 3, turnId: TURN, fromTurnId: null },
   checks: { count: 1, views: 1, failures: 0, takes: [CHECK] },
   pictures: [],
   created: [],
@@ -350,12 +349,7 @@ function Turn({
           <div data-card-slice="middle">
             <div className="run-tray run-tray-middle pt-1">
               <div className="run-band">
-                <TurnReport
-                  facts={FACTS}
-                  onOpenImage={() => undefined}
-                  onOpenTurnDiff={() => undefined}
-                  outcome={OUTCOME}
-                />
+                <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} />
               </div>
             </div>
           </div>
@@ -449,7 +443,6 @@ const TESTS_OUTCOME: OutcomeModel = {
   turnKey: "tests-run",
   live: [],
   landed: [],
-  files: null,
   checks: null,
   pictures: [],
   created: [],

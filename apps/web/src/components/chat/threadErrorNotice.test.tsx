@@ -78,8 +78,6 @@ function ConversationEnd(props: {
     timelineEntries: [],
     isWorking: false,
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     endNotice: threadErrorNotice(props),
   });
   const end = rows.at(-1);

@@ -29,11 +29,8 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
-  OrchestrationGetFullThreadDiffError,
-  OrchestrationGetRunChangesError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
-  OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
@@ -71,7 +68,6 @@ import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgro
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
-import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -377,7 +373,6 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const currentSessionId = currentSession.sessionId;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-      const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -863,36 +858,6 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           admit(ORCHESTRATION_WS_METHODS.dispatchCommand, Effect.fail(engineMoved())),
         [ORCHESTRATION_WS_METHODS.getWorkflowScript]: (input) =>
           readWorkflowScript({ scriptPath: input.scriptPath }),
-        [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
-          checkpointDiffQuery.getTurnDiff(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationGetTurnDiffError({
-                  message: "Failed to load turn diff",
-                  cause,
-                }),
-            ),
-          ),
-        [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: (input) =>
-          checkpointDiffQuery.getFullThreadDiff(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationGetFullThreadDiffError({
-                  message: "Failed to load full thread diff",
-                  cause,
-                }),
-            ),
-          ),
-        [ORCHESTRATION_WS_METHODS.getRunChanges]: (input) =>
-          checkpointDiffQuery.getRunChanges(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OrchestrationGetRunChangesError({
-                  message: "Failed to load the conversation's run changes",
-                  cause,
-                }),
-            ),
-          ),
         [ORCHESTRATION_WS_METHODS.searchThreads]: (input) =>
           projectionSnapshotQuery.searchThreads(input).pipe(
             Effect.mapError(

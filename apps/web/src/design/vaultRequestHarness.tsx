@@ -210,13 +210,11 @@ function DrawerHarness() {
             <TurnReport
               facts={{ asks: { activities, vault: VAULT_FIXTURE } }}
               onOpenImage={() => undefined}
-              onOpenTurnDiff={() => undefined}
               outcome={{
                 key: "outcome:asked",
                 turnKey: "asked",
                 live: [],
                 landed: [],
-                files: null,
                 checks: null,
                 pictures: [],
                 created: [],

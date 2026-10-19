@@ -8,9 +8,7 @@
  */
 import type {
   ApprovalRequestId,
-  CheckpointRef,
   MessageId,
-  OrchestrationCheckpointSummary,
   OrchestrationMessage,
   OrchestrationProject,
   OrchestrationProjectShell,
@@ -46,23 +44,6 @@ export interface ProjectionEventReplayStats {
   readonly payloadBytes: number;
 }
 
-export interface ProjectionThreadCheckpointContext {
-  readonly threadId: ThreadId;
-  readonly projectId: ProjectId;
-  readonly workspaceRoot: string;
-  readonly worktreePath: string | null;
-  readonly checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
-}
-
-export interface ProjectionFullThreadDiffContext {
-  readonly threadId: ThreadId;
-  readonly projectId: ProjectId;
-  readonly workspaceRoot: string;
-  readonly worktreePath: string | null;
-  readonly latestCheckpointTurnCount: number;
-  readonly toCheckpointRef: CheckpointRef | null;
-}
-
 export interface ProjectionThreadDetailQuery {
   /**
    * Limit activities before SQLite returns and decodes their payloads.
@@ -84,7 +65,7 @@ export interface ProjectionSnapshotQueryShape {
 
   /**
    * Read the lightweight command snapshot used to bootstrap the in-memory
-   * orchestration engine without hydrating message/activity/checkpoint bodies.
+   * orchestration engine without hydrating message/activity bodies.
    */
   readonly getCommandReadModel: () => Effect.Effect<
     OrchestrationReadModel,
@@ -178,22 +159,6 @@ export interface ProjectionSnapshotQueryShape {
   ) => Effect.Effect<Option.Option<ThreadId>, ProjectionRepositoryError>;
 
   /**
-   * Read the checkpoint context needed to resolve a single thread diff.
-   */
-  readonly getThreadCheckpointContext: (
-    threadId: ThreadId,
-  ) => Effect.Effect<Option.Option<ProjectionThreadCheckpointContext>, ProjectionRepositoryError>;
-
-  /**
-   * Read only the narrow context needed to compute a full-thread diff from
-   * checkpoint 0 to a specific turn count.
-   */
-  readonly getFullThreadDiffContext: (
-    threadId: ThreadId,
-    toTurnCount: number,
-  ) => Effect.Effect<Option.Option<ProjectionFullThreadDiffContext>, ProjectionRepositoryError>;
-
-  /**
    * Read a single active thread shell row by id.
    */
   readonly getThreadShellById: (
@@ -240,7 +205,7 @@ export interface ProjectionSnapshotQueryShape {
    * update between the two reads).
    *
    * When `window` is provided, the thread's messages, activities, proposed
-   * plans, and checkpoints are bounded to a page of recent turns and the
+   * plans are bounded to a page of recent turns and the
    * response carries `page` metadata (see `OrchestrationThreadDetailWindow`).
    * Without a window the full thread is returned with no `page` field —
    * pagination is strictly opt-in.

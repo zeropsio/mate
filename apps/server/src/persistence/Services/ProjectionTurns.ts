@@ -1,20 +1,15 @@
 /**
  * ProjectionTurnRepository - Projection repository interface for unified turn state.
  *
- * Owns persistence operations for pending starts, running/completed turn lifecycle,
- * and checkpoint metadata in a single projection table.
+ * Owns persistence operations for pending starts and running/completed turn lifecycle
+ * in a single projection table.
  *
  * @module ProjectionTurnRepository
  */
 import {
-  CheckpointRef,
-  CheckpointHistory,
   IsoDateTime,
   MessageId,
-  NonNegativeInt,
   OrchestrationProposedPlanId,
-  OrchestrationCheckpointFile,
-  OrchestrationCheckpointStatus,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -45,11 +40,6 @@ export const ProjectionTurn = Schema.Struct({
   requestedAt: IsoDateTime,
   startedAt: Schema.NullOr(IsoDateTime),
   completedAt: Schema.NullOr(IsoDateTime),
-  checkpointTurnCount: Schema.NullOr(NonNegativeInt),
-  checkpointRef: Schema.NullOr(CheckpointRef),
-  checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
-  checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
-  checkpointHistory: Schema.optionalKey(Schema.NullOr(CheckpointHistory)),
 });
 export type ProjectionTurn = typeof ProjectionTurn.Type;
 
@@ -64,11 +54,6 @@ export const ProjectionTurnById = Schema.Struct({
   requestedAt: IsoDateTime,
   startedAt: Schema.NullOr(IsoDateTime),
   completedAt: Schema.NullOr(IsoDateTime),
-  checkpointTurnCount: Schema.NullOr(NonNegativeInt),
-  checkpointRef: Schema.NullOr(CheckpointRef),
-  checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
-  checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
-  checkpointHistory: Schema.optionalKey(Schema.NullOr(CheckpointHistory)),
 });
 export type ProjectionTurnById = typeof ProjectionTurnById.Type;
 
@@ -102,13 +87,6 @@ export const DeleteProjectionTurnsByThreadInput = Schema.Struct({
 });
 export type DeleteProjectionTurnsByThreadInput = typeof DeleteProjectionTurnsByThreadInput.Type;
 
-export const ClearCheckpointTurnConflictInput = Schema.Struct({
-  threadId: ThreadId,
-  turnId: TurnId,
-  checkpointTurnCount: NonNegativeInt,
-});
-export type ClearCheckpointTurnConflictInput = typeof ClearCheckpointTurnConflictInput.Type;
-
 export interface ProjectionTurnRepositoryShape {
   /**
    * Inserts or updates the canonical row for a concrete `{threadId, turnId}` turn lifecycle state.
@@ -139,7 +117,7 @@ export interface ProjectionTurnRepositoryShape {
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 
   /**
-   * Lists all projection rows for a thread, including pending placeholders, with checkpoint rows ordered before non-checkpoint rows.
+   * Lists all projection rows for a thread, including pending placeholders, oldest request first.
    */
   readonly listByThreadId: (
     input: ListProjectionTurnsByThreadInput,
@@ -153,14 +131,7 @@ export interface ProjectionTurnRepositoryShape {
   ) => Effect.Effect<Option.Option<ProjectionTurnById>, ProjectionRepositoryError>;
 
   /**
-   * Clears checkpoint fields on conflicting rows that reuse the same checkpoint turn count in a thread, excluding the provided turn.
-   */
-  readonly clearCheckpointTurnConflict: (
-    input: ClearCheckpointTurnConflictInput,
-  ) => Effect.Effect<void, ProjectionRepositoryError>;
-
-  /**
-   * Hard-deletes all projection rows for a thread, including pending-start placeholders and checkpoint metadata rows.
+   * Hard-deletes all projection rows for a thread, including pending-start placeholders.
    */
   readonly deleteByThreadId: (
     input: DeleteProjectionTurnsByThreadInput,

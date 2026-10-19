@@ -15,17 +15,13 @@ function section(id: string, kind: ReviewSectionKind): ReviewSectionItem {
 }
 
 describe("buildReviewSectionMenu", () => {
-  it("exposes git scopes and the latest turn at the top level", () => {
-    const turn28 = section("turn:28", "turn");
-    const turn27 = section("turn:27", "turn");
+  it("exposes the working tree and the branch's changes at the top level", () => {
     const workingTree = section("git:working-tree", "working-tree");
     const branchChanges = section("git:branch-range", "branch-range");
 
-    expect(buildReviewSectionMenu([turn28, turn27, workingTree, branchChanges])).toEqual({
+    expect(buildReviewSectionMenu([workingTree, branchChanges])).toEqual({
       workingTree,
       branchChanges,
-      latestTurn: turn28,
-      turns: [turn28, turn27],
     });
   });
 
@@ -33,8 +29,6 @@ describe("buildReviewSectionMenu", () => {
     expect(buildReviewSectionMenu([])).toEqual({
       workingTree: null,
       branchChanges: null,
-      latestTurn: null,
-      turns: [],
     });
   });
 });

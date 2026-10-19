@@ -1,178 +1,202 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { TurnId } from "@t3tools/contracts";
+import type { VcsStatusResult } from "@t3tools/contracts";
 
+import type { DiffPanelSelection } from "../diffPanelStore";
 import {
-  diffScope,
-  latestChangedTurnId,
-  resolveCheckpointDiffAvailability,
-  resolveDiffSelection,
+  diffChoiceCount,
+  diffChoices,
+  shownDiff,
+  type DiffRepositoryRead,
+  type DiffRepositoryStatus,
 } from "./DiffPanel.logic";
 
-describe("resolveCheckpointDiffAvailability", () => {
-  it("keeps a selected checkpoint diff available when the workspace cwd is not one Git repo", () => {
+/** What git says of a checkout, as the Git page reads it. */
+function status(
+  input: {
+    readonly changed?: number;
+    readonly onMain?: boolean;
+    readonly pushed?: boolean;
+    readonly ahead?: number;
+    readonly aheadOfMain?: number;
+    readonly isRepo?: boolean;
+  } = {},
+): VcsStatusResult {
+  const files = Array.from({ length: input.changed ?? 0 }, (_, index) => ({
+    path: `file-${index}.ts`,
+    insertions: 1,
+    deletions: 0,
+  }));
+  return {
+    isRepo: input.isRepo ?? true,
+    hasPrimaryRemote: true,
+    isDefaultRef: input.onMain ?? false,
+    refName: input.onMain ? "main" : "feature",
+    hasWorkingTreeChanges: files.length > 0,
+    workingTree: { files, insertions: files.length, deletions: 0 },
+    hasUpstream: input.pushed ?? true,
+    aheadCount: input.ahead ?? 0,
+    behindCount: 0,
+    ...(input.aheadOfMain === undefined ? {} : { aheadOfDefaultCount: input.aheadOfMain }),
+    pr: null,
+  };
+}
+
+const read = (name: string, repositoryStatus: DiffRepositoryStatus): DiffRepositoryRead => ({
+  repository: { name, cwd: `/var/www/${name}` },
+  status: repositoryStatus,
+});
+
+const OPENED: DiffPanelSelection = { kind: "unstaged" };
+
+describe("diffChoices", () => {
+  it.each([
+    {
+      name: "a checkout on a branch offers its files not committed and its commits not on main",
+      status: status({ changed: 2, aheadOfMain: 3 }),
+      shows: [
+        ["Not committed", "2 files"],
+        ["Not on main", "3 commits"],
+      ],
+    },
+    {
+      name: "a checkout on main offers its commits not pushed",
+      status: status({ onMain: true, changed: 1, ahead: 1 }),
+      shows: [
+        ["Not committed", "1 file"],
+        ["Not pushed", "1 commit"],
+      ],
+    },
+    {
+      name: "a checkout on main never pushed counts no commits it cannot compare",
+      status: status({ onMain: true, pushed: false, ahead: 0 }),
+      shows: [
+        ["Not committed", "0 files"],
+        ["Not pushed", null],
+      ],
+    },
+    {
+      name: "a checkout git has not answered for counts nothing yet",
+      status: "reading" as const,
+      shows: [
+        ["Not committed", null],
+        ["Not on main", null],
+      ],
+    },
+    {
+      name: "a folder that is no repository offers nothing",
+      status: status({ isRepo: false }),
+      shows: [],
+    },
+  ])("$name", ({ status: repositoryStatus, shows }) => {
     expect(
-      resolveCheckpointDiffAvailability({
-        hasActiveThread: true,
-        hasSelectedTurn: true,
-        isTurnScope: true,
-        isGitRepo: false,
-      }),
-    ).toEqual({ enabled: true, showNotRepository: false });
+      diffChoices([read("apidev", repositoryStatus)]).map((choice) => [
+        choice.label,
+        diffChoiceCount(choice),
+      ]),
+    ).toEqual(shows);
   });
 
-  it("keeps the non-repository state scoped to working-tree and branch views", () => {
+  it("says what each kind of nothing is, in the repository's name", () => {
+    const [notCommitted, notOnMain] = diffChoices([read("apidev", status())]);
+    const [, notPushed] = diffChoices([read("apidev", status({ onMain: true }))]);
+    const [, neverPushed] = diffChoices([read("apidev", status({ onMain: true, pushed: false }))]);
     expect(
-      resolveCheckpointDiffAvailability({
-        hasActiveThread: true,
-        hasSelectedTurn: false,
-        isTurnScope: false,
-        isGitRepo: false,
-      }),
-    ).toEqual({ enabled: false, showNotRepository: true });
-  });
-
-  it("does not query without an active thread", () => {
-    expect(
-      resolveCheckpointDiffAvailability({
-        hasActiveThread: false,
-        hasSelectedTurn: true,
-        isTurnScope: true,
-        isGitRepo: true,
-      }),
-    ).toEqual({ enabled: false, showNotRepository: false });
-  });
-
-  it("does not replace an empty turn scope with the single-repository warning", () => {
-    expect(
-      resolveCheckpointDiffAvailability({
-        hasActiveThread: true,
-        hasSelectedTurn: false,
-        isTurnScope: true,
-        isGitRepo: false,
-      }),
-    ).toEqual({ enabled: false, showNotRepository: false });
+      [notCommitted, notOnMain, notPushed, neverPushed].map((choice) => choice?.nothing),
+    ).toEqual([
+      "Everything in apidev is committed.",
+      "Nothing in apidev is outside main.",
+      "Everything in apidev is pushed.",
+      "apidev has never been pushed: there is nothing to compare it with.",
+    ]);
   });
 });
 
-describe("resolveDiffSelection", () => {
-  const latest = TurnId.make("turn-2");
-  const older = TurnId.make("turn-1");
-  const turn = (turnId: TurnId) => ({
-    kind: "turn" as const,
-    turnId,
-    filePath: null,
-    revealRequestId: 0,
-  });
-
-  /**
-   * A Mate's workspace (`/var/www`) is no Git repository of its own: its code
-   * is in the services' checkouts below it, which every turn's saved diff
-   * covers. So there Diff is its turns — the latest one first — and never a
-   * working tree or a branch that cannot be read (the owner: "the diff tab
-   * hasn't been working / doing anything for ages").
-   */
-  it.each([
+describe("shownDiff", () => {
+  it.each<{
+    readonly name: string;
+    readonly reads: ReadonlyArray<DiffRepositoryRead> | null;
+    readonly selection: DiffPanelSelection;
+    readonly shows: string;
+  }>([
     {
-      name: "a Git workspace keeps the working tree",
-      input: { selection: { kind: "unstaged" }, isGitRepo: true, latestTurnId: latest },
-      expected: { kind: "unstaged" },
+      name: "while the repositories are still read, Diff reads git",
+      reads: null,
+      selection: OPENED,
+      shows: "reading",
     },
     {
-      name: "a Git workspace keeps the branch",
-      input: {
-        selection: { kind: "branch", baseRef: "main" },
-        isGitRepo: true,
-        latestTurnId: latest,
-      },
-      expected: { kind: "branch", baseRef: "main" },
+      name: "while one repository's status is still read, Diff picks none yet",
+      reads: [read("apidev", status({ changed: 1 })), read("appdev", "reading")],
+      selection: OPENED,
+      shows: "reading",
     },
     {
-      name: "a workspace of checkouts shows the latest turn for the working tree",
-      input: { selection: { kind: "unstaged" }, isGitRepo: false, latestTurnId: latest },
-      expected: turn(latest),
+      name: "opened, Diff shows the first repository with changes not committed",
+      reads: [read("apidev", status({ aheadOfMain: 2 })), read("appdev", status({ changed: 1 }))],
+      selection: OPENED,
+      shows: "appdev:unstaged",
     },
     {
-      name: "a workspace of checkouts shows the latest turn for the branch",
-      input: {
-        selection: { kind: "branch", baseRef: null },
-        isGitRepo: false,
-        latestTurnId: latest,
-      },
-      expected: turn(latest),
+      name: "with everything committed, Diff shows the first repository's commits not on main",
+      reads: [read("apidev", status()), read("appdev", status({ aheadOfMain: 2 }))],
+      selection: OPENED,
+      shows: "appdev:branch",
     },
     {
-      name: "a workspace of checkouts keeps the turn a person picked",
-      input: { selection: turn(older), isGitRepo: false, latestTurnId: latest },
-      expected: turn(older),
+      name: "on main, commits not pushed are what Diff shows",
+      reads: [read("apidev", status({ onMain: true, ahead: 1 }))],
+      selection: OPENED,
+      shows: "apidev:branch",
     },
     {
-      name: "a workspace of checkouts with no turn yet has nothing to show",
-      input: { selection: { kind: "unstaged" }, isGitRepo: false, latestTurnId: undefined },
-      expected: { kind: "no-turns" },
-    },
-  ] satisfies ReadonlyArray<{
-    name: string;
-    input: Parameters<typeof resolveDiffSelection>[0];
-    expected: ReturnType<typeof resolveDiffSelection>;
-  }>)("$name", ({ input, expected }) => {
-    expect(resolveDiffSelection(input)).toEqual(expected);
-  });
-});
-
-describe("diffScope", () => {
-  const latest = TurnId.make("turn-2");
-  const older = TurnId.make("turn-1");
-  const turn = (turnId: TurnId) => ({
-    kind: "turn" as const,
-    turnId,
-    filePath: null,
-    revealRequestId: 0,
-  });
-
-  /**
-   * The scope button names what the body shows: before a Mate's first turn
-   * it read "Branch changes" above "No changes yet", and the menu marked
-   * nothing.
-   */
-  it.each([
-    { name: "the working tree", shown: { kind: "unstaged" }, expected: "unstaged" },
-    { name: "the branch", shown: { kind: "branch", baseRef: null }, expected: "branch" },
-    { name: "the latest turn", shown: turn(latest), expected: "latest" },
-    { name: "an older turn", shown: turn(older), expected: "turn" },
-    {
-      name: "no turn yet, where only turns are shown",
-      shown: { kind: "no-turns" },
-      expected: "latest",
-    },
-  ] satisfies ReadonlyArray<{
-    name: string;
-    shown: ReturnType<typeof resolveDiffSelection>;
-    expected: ReturnType<typeof diffScope>;
-  }>)("$name reads $expected", ({ shown, expected }) => {
-    expect(diffScope({ shown, latestTurnId: latest })).toBe(expected);
-  });
-});
-
-/**
- * Diff lists only turns that changed code. Beside a later turn that changed none (stopped after
- * 28 s in the onboarding run), the newest change was still called "Latest turn".
- */
-describe("latestChangedTurnId", () => {
-  const newest = { turnId: TurnId.make("turn-1"), completedAt: "2026-10-16T10:00:00.000Z" };
-  it.each([
-    { name: "no turn has been asked for", latestTurn: null, expected: newest.turnId },
-    {
-      name: "the latest turn is the one that changed code",
-      latestTurn: { requestedAt: "2026-10-16T09:50:00.000Z" },
-      expected: newest.turnId,
+      name: "a person's choice stands, even of nothing",
+      reads: [read("apidev", status({ changed: 1 })), read("appdev", status())],
+      selection: { kind: "branch", baseRef: null, repository: "appdev" },
+      shows: "appdev:branch",
     },
     {
-      name: "a later turn changed no code",
-      latestTurn: { requestedAt: "2026-10-16T10:05:00.000Z" },
-      expected: undefined,
+      name: "a person's choice stands while its repository's status is still read",
+      reads: [read("apidev", "reading"), read("appdev", "reading")],
+      selection: { kind: "unstaged", repository: "appdev" },
+      shows: "appdev:unstaged",
     },
-  ])("the newest change is the latest turn when $name", ({ latestTurn, expected }) => {
-    expect(latestChangedTurnId({ newest, latestTurn })).toBe(expected);
+    {
+      name: "a choice whose repository is gone gives way to what is not on main",
+      reads: [read("apidev", status({ changed: 1 }))],
+      selection: { kind: "branch", baseRef: null, repository: "appdev" },
+      shows: "apidev:unstaged",
+    },
+    {
+      name: "a repository never pushed is shown rather than called all clear",
+      reads: [read("apidev", status({ onMain: true, pushed: false }))],
+      selection: OPENED,
+      shows: "apidev:branch",
+    },
+    {
+      name: "with nothing outside main in any repository, Diff says so",
+      reads: [read("apidev", status({ onMain: true })), read("appdev", status({ aheadOfMain: 0 }))],
+      selection: OPENED,
+      shows: "nothing-outside-main",
+    },
+    {
+      name: "with no repository, Diff says there is no code here",
+      reads: [read("var/www", status({ isRepo: false }))],
+      selection: OPENED,
+      shows: "no-code",
+    },
+    {
+      name: "a Mate with no checkouts has no code here",
+      reads: [],
+      selection: OPENED,
+      shows: "no-code",
+    },
+  ])("$name", ({ reads, selection, shows }) => {
+    const shown = shownDiff(reads, selection);
+    expect(
+      shown.kind === "choice"
+        ? `${shown.choice.repository.name}:${shown.choice.scope}`
+        : shown.kind,
+    ).toBe(shows);
   });
 });

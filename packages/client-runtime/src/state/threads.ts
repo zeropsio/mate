@@ -118,7 +118,6 @@ export function createEnvironmentThreadStateAtoms<R, E>(
 }
 
 export * from "./archivedThreads.ts";
-export * from "./checkpointDiff.ts";
 export * from "./composerPathSearch.ts";
 export * from "./threadCommands.ts";
 export * from "./threadFeedback.ts";
@@ -126,5 +125,3 @@ export * from "./threadDetail.ts";
 export * from "./threadReducer.ts";
 export * from "./threadShell.ts";
 export * from "./threadState.ts";
-
-export * from "./checkpointHistory.ts";

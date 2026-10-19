@@ -34,7 +34,7 @@ import {
 
 import { brokeOffReason } from "@t3tools/shared/threadStatus";
 import { workLogEntryIsToolLike, type TimelineEntry, type WorkLogEntry } from "../../session-logic";
-import type { ChatMessage, TurnDiffSummary } from "../../types";
+import type { ChatMessage } from "../../types";
 import {
   CREW_CARD_OPENER,
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
@@ -2453,14 +2453,6 @@ export interface OutcomeModel {
     readonly line: string;
     readonly title: string;
   }>;
-  readonly files: {
-    readonly count: number;
-    readonly additions: number;
-    readonly deletions: number;
-    readonly turnId: TurnId;
-    /** A run of several turns: the first whose diff it shows, its diff the whole run's. */
-    readonly fromTurnId: TurnId | null;
-  } | null;
   readonly checks: {
     readonly count: number;
     readonly views: number;
@@ -2867,16 +2859,14 @@ export function turnsAfter(
  * What a settled turn left, each fact once: the services it left running or
  * broken — as the run left them, never a failure it came back from (the
  * owner, 2026-09-29: "it doesn't make sense to keep log of things that were
- * fixed later") — the changes that landed and the files it changed, the
- * checks and the pictures it took and looked at, what it created, what it
- * could not do, and what its calls came to. Built only from what the turn
- * already carries — null when it did nothing.
+ * fixed later") — the changes that landed, the checks and the pictures it
+ * took and looked at, what it created, what it could not do, and what its
+ * calls came to. Built only from what the turn already carries — null when it
+ * did nothing.
  */
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
-  /** The diff of each of its turns that has one, in order. */
-  readonly diffs: ReadonlyArray<TurnDiffSummary>;
   /** What its calls came to (`activityCounts`). */
   readonly activity?: ReadonlyArray<OutcomeActivity>;
   /** The conversation's turns after it (`turnsAfter`): what they took over since. */
@@ -3039,26 +3029,6 @@ export function deriveOutcome(input: {
       at: operation.settledAt ?? operation.anchorAt,
     }));
 
-  // Every turn of the run: the turns its helpers woke change files too
-  // (review of pass 42: a run's first turn launched them, and said none).
-  const changed = input.diffs.filter((diff) => diff.files.length > 0);
-  const first = changed[0];
-  const lastDiff = changed.at(-1);
-  const files =
-    first !== undefined && lastDiff !== undefined
-      ? {
-          count: new Set(changed.flatMap((diff) => diff.files.map((file) => file.path))).size,
-          additions: changed
-            .flatMap((diff) => diff.files)
-            .reduce((sum, file) => sum + (file.additions ?? 0), 0),
-          deletions: changed
-            .flatMap((diff) => diff.files)
-            .reduce((sum, file) => sum + (file.deletions ?? 0), 0),
-          turnId: lastDiff.turnId,
-          fromTurnId: first === lastDiff ? null : first.turnId,
-        }
-      : null;
-
   const outcome: OutcomeModel = {
     key: `outcome:${turn.key}`,
     turnKey: turn.key,
@@ -3070,7 +3040,6 @@ export function deriveOutcome(input: {
       line: `${entry.event.repository} #${entry.event.number}`,
       title: entry.event.title,
     })),
-    files,
     checks:
       checks.length > 0
         ? {
@@ -3111,7 +3080,6 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
   return (
     outcome.live.length > 0 ||
     outcome.landed.length > 0 ||
-    outcome.files !== null ||
     outcome.checks !== null ||
     outcome.pictures.length > 0 ||
     outcome.created.length > 0 ||

@@ -2700,10 +2700,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const cwd = repository.worktreeRoot;
     const branch = repository.currentBranch;
+    // On the base branch itself, what is not on it yet is what its remote does not have.
     const baseRef =
       input.baseRef ??
       (branch
-        ? yield* resolveBaseBranchForNoUpstream(cwd, branch).pipe(Effect.orElseSucceed(() => null))
+        ? ((yield* resolveBaseBranchForNoUpstream(cwd, branch).pipe(
+            Effect.orElseSucceed(() => null),
+          )) ??
+          (yield* resolveCurrentUpstream(cwd).pipe(Effect.orElseSucceed(() => null)))
+            ?.upstreamRef ??
+          null)
         : null);
 
     const diffArgs = [

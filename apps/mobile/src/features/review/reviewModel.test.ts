@@ -1,33 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  MessageId,
-  TurnId,
-  type OrchestrationCheckpointSummary,
-  type ReviewDiffPreviewSource,
-} from "@t3tools/contracts";
+import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 
 import {
   buildReviewParsedDiff,
   buildReviewSectionItems,
   getDefaultReviewSectionId,
   getReviewFilePreviewState,
-  getReviewSectionIdForCheckpoint,
   type ReviewRenderableFile,
 } from "./reviewModel";
-
-function makeCheckpoint(
-  input: Partial<OrchestrationCheckpointSummary> &
-    Pick<OrchestrationCheckpointSummary, "turnId" | "checkpointTurnCount" | "completedAt">,
-): OrchestrationCheckpointSummary {
-  return {
-    checkpointRef: `refs/t3/checkpoints/thread/${input.checkpointTurnCount}` as any,
-    status: "ready",
-    files: [],
-    assistantMessageId: MessageId.make(`msg-${input.checkpointTurnCount}`),
-    ...input,
-  };
-}
 
 function makeRenderableFile(
   input: Partial<ReviewRenderableFile> & Pick<ReviewRenderableFile, "path">,
@@ -48,19 +29,7 @@ function makeRenderableFile(
 }
 
 describe("buildReviewSectionItems", () => {
-  it("keeps one chip per checkpoint and appends git sources", () => {
-    const checkpoints = [
-      makeCheckpoint({
-        turnId: TurnId.make("turn-1"),
-        checkpointTurnCount: 1,
-        completedAt: "2026-04-01T00:00:00.000Z",
-      }),
-      makeCheckpoint({
-        turnId: TurnId.make("turn-2"),
-        checkpointTurnCount: 2,
-        completedAt: "2026-04-02T00:00:00.000Z",
-      }),
-    ];
+  it("lists the working tree and the branch's changes in the preview's order", () => {
     const gitSections: ReviewDiffPreviewSource[] = [
       {
         id: "working-tree",
@@ -84,41 +53,15 @@ describe("buildReviewSectionItems", () => {
       },
     ];
 
-    const loadedTurnId = getReviewSectionIdForCheckpoint(checkpoints[0]!);
-    const items = buildReviewSectionItems({
-      checkpoints,
-      gitSections,
-      turnDiffById: {
-        [loadedTurnId]: "diff --git a/loaded.ts b/loaded.ts",
-      },
-      loadingTurnIds: {
-        [getReviewSectionIdForCheckpoint(checkpoints[1]!)]: true,
-      },
-      loadingGitSections: false,
-    });
+    const items = buildReviewSectionItems({ gitSections, loadingGitSections: false });
 
-    expect(items.map((item) => item.id)).toEqual([
-      "turn:2",
-      "turn:1",
-      "git:working-tree",
-      "git:branch-range",
-    ]);
-    expect(items[0]).toMatchObject({ isLoading: true, diff: null });
-    expect(items[1]).toMatchObject({
-      isLoading: false,
-      diff: expect.stringContaining("loaded.ts"),
-    });
-    expect(getDefaultReviewSectionId(items)).toBe("turn:2");
+    expect(items.map((item) => item.id)).toEqual(["git:working-tree", "git:branch-range"]);
+    expect(items[1]).toMatchObject({ subtitle: "main ... feature", isLoading: false });
+    expect(getDefaultReviewSectionId(items)).toBe("git:working-tree");
   });
 
   it("shows dirty worktree while git preview is loading", () => {
-    const items = buildReviewSectionItems({
-      checkpoints: [],
-      gitSections: [],
-      turnDiffById: {},
-      loadingTurnIds: {},
-      loadingGitSections: true,
-    });
+    const items = buildReviewSectionItems({ gitSections: [], loadingGitSections: true });
 
     expect(items).toEqual([
       expect.objectContaining({
@@ -269,42 +212,5 @@ describe("buildReviewParsedDiff", () => {
       title: "Large diff",
       actionLabel: "Load diff",
     });
-  });
-});
-
-it("keeps incomplete zero-file services reviewable with independent run-scoped sections", () => {
-  const checkpoint = makeCheckpoint({
-    turnId: TurnId.make("turn-1"),
-    checkpointTurnCount: 1,
-    completedAt: "2026-09-07T10:00:00.000Z",
-    status: "error",
-    history: {
-      runId: "run-new",
-      coverage: "partial",
-      semantics: "observed-workspace",
-      representation: "git-normalized",
-      policyVersion: "git-v1",
-      roots: ["api", "web"].map((rootId) => ({
-        root: { rootId, label: rootId, remotePath: "/var/www", pathPrefix: `${rootId}/` },
-        before: { status: "missing-baseline", reason: `${rootId} baseline unavailable` },
-        after: { status: "unavailable", reason: "Service unreachable" },
-      })),
-    },
-  });
-  const sections = buildReviewSectionItems({
-    checkpoints: [checkpoint],
-    gitSections: [],
-    turnDiffById: {},
-    loadingTurnIds: {},
-    loadingGitSections: false,
-  });
-  expect(sections.map((section) => section.id)).toEqual([
-    "run:run-new:root:api",
-    "run:run-new:root:web",
-  ]);
-  expect(sections[0]).toMatchObject({
-    coverage: "partial",
-    rootId: "api",
-    subtitle: "api baseline unavailable",
   });
 });

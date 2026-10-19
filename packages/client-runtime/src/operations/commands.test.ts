@@ -21,12 +21,7 @@ import {
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as RpcSession from "../rpc/session.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
-import {
-  createProject,
-  deleteProject,
-  revertThreadCheckpoint,
-  stopThreadSession,
-} from "./commands.ts";
+import { createProject, deleteProject, stopThreadSession } from "./commands.ts";
 
 const TEST_CRYPTO_LAYER = Layer.succeed(
   Crypto.Crypto,
@@ -97,27 +92,6 @@ describe("environment commands", () => {
           workspaceRoot: "/workspace/project",
           createdAt: "2026-06-06T00:00:00.000Z",
         },
-      ]);
-    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
-  );
-
-  it.effect("uses a distinct command when keeping workspace changes", () =>
-    Effect.gen(function* () {
-      const dispatched: ClientOrchestrationCommand[] = [];
-      const supervisor = yield* makeSupervisor(dispatched);
-      for (const restoreFiles of [undefined, true, false]) {
-        yield* revertThreadCheckpoint({
-          commandId: CommandId.make("rewind-command"),
-          threadId: ThreadId.make("thread-1"),
-          turnCount: 0,
-          ...(restoreFiles !== undefined ? { restoreFiles } : {}),
-          createdAt: "2026-06-06T00:01:00.000Z",
-        }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-      }
-      expect(dispatched.map((command) => command.type)).toEqual([
-        "thread.checkpoint.revert",
-        "thread.checkpoint.revert",
-        "thread.conversation.revert",
       ]);
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
   );

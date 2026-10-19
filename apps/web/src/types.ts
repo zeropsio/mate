@@ -4,8 +4,6 @@ import type {
   CrewCard as ContractCrewCard,
   MateTaskMessage,
   MateTaskSource,
-  OrchestrationCheckpointFile,
-  OrchestrationCheckpointSummary,
   OrchestrationMessage,
   OrchestrationProposedPlan,
   OrchestrationSession,
@@ -75,8 +73,6 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
 }
 
 export type ProposedPlan = OrchestrationProposedPlan;
-export type TurnDiffFileChange = OrchestrationCheckpointFile;
-export type TurnDiffSummary = OrchestrationCheckpointSummary;
 
 export type Project = EnvironmentProject;
 export type Thread = EnvironmentThread;

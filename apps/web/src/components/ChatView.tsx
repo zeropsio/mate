@@ -461,7 +461,6 @@ import {
 } from "./chat/draftHeroTransition";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
@@ -515,7 +514,6 @@ import {
   startNewThreadForProject,
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
-  diffOpeningShowsWorkingTree,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
@@ -1546,9 +1544,6 @@ function ConversationView(props: ChatViewProps) {
   const dismissThreadUserInput = useAtomCommand(threadEnvironment.dismissUserInput, {
     reportFailure: false,
   });
-  const revertThreadCheckpoint = useAtomCommand(threadEnvironment.revertCheckpoint, {
-    reportFailure: false,
-  });
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow);
@@ -1679,7 +1674,6 @@ function ConversationView(props: ChatViewProps) {
     Record<string, LocalThreadErrorEntry>
   >({});
   const [isConnecting, _setIsConnecting] = useState(false);
-  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [maximizedRightPanelThreadKey, setMaximizedRightPanelThreadKey] = useState<string | null>(
     null,
   );
@@ -2021,16 +2015,9 @@ function ConversationView(props: ChatViewProps) {
     selectActiveRightPanel(state.byThreadKey, activeThreadRef),
   );
   const diffOpen = activeRightPanelKind === "diff";
-  const explicitDiffOpenRef = useRef<ScopedThreadRef | null>(null);
+  // Every opening of Diff shows what is not on main yet, whatever it showed before.
   useLayoutEffect(() => {
-    const explicitThreadRef = explicitDiffOpenRef.current;
-    explicitDiffOpenRef.current = null;
-    if (
-      activeThreadRef &&
-      diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef, explicitThreadRef })
-    ) {
-      useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
-    }
+    if (activeThreadRef && diffOpen) useDiffPanelStore.getState().clearSelection(activeThreadRef);
   }, [activeThreadRef, diffOpen]);
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
@@ -2657,9 +2644,6 @@ function ConversationView(props: ChatViewProps) {
     providerStatuses.find(
       (status) => status.instanceId === activeThread?.session?.providerInstanceId,
     ) ?? activeProviderStatus;
-  const supportsConversationRollback =
-    conversationProviderStatus !== null &&
-    conversationProviderStatus.supportsConversationRollback !== false;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   // The origins the engine asked of the person, by run card: a key, so streaming draws nothing.
@@ -2968,7 +2952,6 @@ function ConversationView(props: ChatViewProps) {
     phase === "connecting" ||
     isSendBusy ||
     isConnecting ||
-    isRevertingCheckpoint ||
     isCompacting;
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
@@ -3321,17 +3304,7 @@ function ConversationView(props: ChatViewProps) {
   });
   // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
-  // The Mate by its project: the Diff page names its own service its workspace.
-  const diffMateProjectId =
-    admissionMate.kind === "mate" ? admissionMate.mate.projectId : undefined;
-  const diffMateName = admissionMate.kind === "mate" ? admissionMate.mate.name : undefined;
-  const diffMate = useMemo(
-    () =>
-      diffMateProjectId === undefined || diffMateName === undefined
-        ? undefined
-        : { projectId: diffMateProjectId, name: diffMateName },
-    [diffMateName, diffMateProjectId],
-  );
+  const pageMateName = admissionMate.kind === "mate" ? admissionMate.mate.name : undefined;
   // Its descriptor places a new Mate before HQ's overview can name its environment.
   const admissionProject = useEnvironmentProjectRef(environmentId);
   const nativeCapabilities = usePlatformCapabilities(environmentId);
@@ -4149,11 +4122,10 @@ function ConversationView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
-  // The launcher's availability decides who may open Diff; a workspace that
-  // is no repository reads the working tree as its latest turn (`resolveDiffSelection`).
+  // The launcher's availability decides who may open Diff.
   const addDiffSurface = useCallback(() => {
     if (!activeThreadRef || !isServerThread) return;
-    useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
+    useDiffPanelStore.getState().clearSelection(activeThreadRef);
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   }, [activeThreadRef, isServerThread, onDiffPanelOpen]);
@@ -5017,10 +4989,6 @@ function ConversationView(props: ChatViewProps) {
       );
     }
   }, [activeThreadKey, routeKind, timelineAnchorMessageId]);
-
-  useEffect(() => {
-    setIsRevertingCheckpoint(false);
-  }, [activeThread?.id]);
 
   // The conversation whose open found no composer (its room held, or a strip): its focus waits.
   const openFocusOwedRef = useRef<string | null>(null);
@@ -6103,103 +6071,6 @@ function ConversationView(props: ChatViewProps) {
     composerRef,
   ]);
 
-  const [pendingRevert, setPendingRevert] = useState<{
-    turnCount: number;
-    messageId: MessageId;
-    routeThreadKey: string;
-  } | null>(null);
-
-  if (pendingRevert && pendingRevert.routeThreadKey !== routeThreadKey) {
-    setPendingRevert(null);
-  }
-
-  const onRevertToTurnCount = useCallback(
-    async (turnCount: number, messageId: MessageId, restoreFiles?: boolean) => {
-      const localApi = readLocalApi();
-      if (!localApi || !activeThread || isRevertingCheckpoint) return;
-      const message = activeThread.messages.find((message) => message.id === messageId);
-      if (!message || message.role !== "user") return;
-
-      if (!supportsConversationRollback) {
-        setThreadError(
-          activeThread.id,
-          "This provider does not support reverting conversation history. Start a new thread instead.",
-        );
-        return;
-      }
-      if (activeEnvironmentUnavailable && activeEnvironmentUnavailableLabel) {
-        setThreadError(
-          activeThread.id,
-          `Reconnect ${activeEnvironmentUnavailableLabel} before reverting checkpoints.`,
-        );
-        return;
-      }
-      if (phase === "running" || isSendBusy || isConnecting) {
-        setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
-        return;
-      }
-      // The choice between keeping and restoring the files is the confirmation.
-      if (restoreFiles === undefined) {
-        setPendingRevert({ turnCount, messageId, routeThreadKey });
-        return;
-      }
-
-      setIsRevertingCheckpoint(true);
-      setThreadError(activeThread.id, null);
-      try {
-        // The command's acceptance is not the rewind: wait until the thread no
-        // longer holds the message, so the prompt comes back only once the
-        // provider history is rolled back too.
-        await waitForRevertedMessage(routeThreadRef, messageId, turnCount, async () => {
-          const result = await revertThreadCheckpoint({
-            environmentId,
-            input: { threadId: activeThread.id, turnCount, restoreFiles },
-          });
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            throw squashAtomCommandFailure(result);
-          }
-        });
-        const currentPrompt = promptRef.current;
-        const restoredPrompt = message.text.trim();
-        const nextPrompt =
-          restoredPrompt.length === 0
-            ? currentPrompt
-            : currentPrompt.length > 0
-              ? `${currentPrompt}\n\n${restoredPrompt}`
-              : restoredPrompt;
-        setComposerDraftPrompt(composerDraftTarget, nextPrompt);
-        promptRef.current = nextPrompt;
-        composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
-        requestAnimationFrame(() => composerRef.current?.focusAtEnd());
-      } catch (error) {
-        setThreadError(
-          activeThread.id,
-          error instanceof Error ? error.message : "Failed to revert thread state.",
-        );
-      } finally {
-        setIsRevertingCheckpoint(false);
-      }
-    },
-    [
-      activeThread,
-      activeEnvironmentUnavailable,
-      activeEnvironmentUnavailableLabel,
-      composerDraftTarget,
-      composerRef,
-      routeThreadKey,
-      routeThreadRef,
-      setComposerDraftPrompt,
-      environmentId,
-      isConnecting,
-      isRevertingCheckpoint,
-      isSendBusy,
-      phase,
-      revertThreadCheckpoint,
-      setThreadError,
-      supportsConversationRollback,
-    ],
-  );
-
   const onCompactContext = async () => {
     if (compactDisabled || !activeThread || sendInFlightRef.current) {
       return;
@@ -6306,7 +6177,6 @@ function ConversationView(props: ChatViewProps) {
     !feedbackUploading &&
     !isSendBusy &&
     !isConnecting &&
-    !isRevertingCheckpoint &&
     !threadDetailLoading &&
     !activeEnvironmentUnavailable &&
     !activePendingProgress;
@@ -6468,7 +6338,6 @@ function ConversationView(props: ChatViewProps) {
       !activeThread ||
       isSendBusy ||
       isConnecting ||
-      isRevertingCheckpoint ||
       threadDetailLoading ||
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
@@ -7409,7 +7278,6 @@ function ConversationView(props: ChatViewProps) {
   const queueSendGate =
     queuedSendInFlightAwaitsServer ||
     activeEnvironmentUnavailable ||
-    isRevertingCheckpoint ||
     threadDetailLoading ||
     activeProviderStatus === null ||
     !admission.canSend;
@@ -8142,23 +8010,6 @@ function ConversationView(props: ChatViewProps) {
   const onExpandTimelineImage = useCallback((preview: ExpandedImagePreview) => {
     setExpandedImage(preview);
   }, []);
-  const onOpenTurnDiff = useCallback(
-    (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => {
-      if (!isServerThread || !activeThreadRef) return;
-      explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-      useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath, fromTurnId);
-      useRightPanelStore.getState().open(activeThreadRef, "diff");
-      onDiffPanelOpen?.();
-    },
-    [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen],
-  );
-  // The revert handler is read from a ref at call-time so the callback
-  // reference is fully stable and never busts TimelineRowCtx identity.
-  const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
-  onRevertToTurnCountRef.current = onRevertToTurnCount;
-  const onRevertTimelineTurn = useCallback((targetTurnCount: number, messageId: MessageId) => {
-    void onRevertToTurnCountRef.current(targetTurnCount, messageId);
-  }, []);
 
   // Empty state: no active thread
   if (!activeThread) {
@@ -8290,7 +8141,6 @@ function ConversationView(props: ChatViewProps) {
                     key={activeThreadKey}
                     mode="embedded"
                     composerDraftTarget={composerDraftTarget}
-                    mate={diffMate}
                   />
                 </Suspense>
               );
@@ -8433,7 +8283,7 @@ function ConversationView(props: ChatViewProps) {
   // Every page opens the same way, its head painted before the page itself has read anything.
   const rightPanelContent =
     rightPanelPageBody === null || activeRightPanelSurface === null ? null : (
-      <RightPanelPage kind={activeRightPanelSurface.kind} mate={diffMateName}>
+      <RightPanelPage kind={activeRightPanelSurface.kind} mate={pageMateName}>
         {rightPanelPageBody}
       </RightPanelPage>
     );
@@ -8576,19 +8426,14 @@ function ConversationView(props: ChatViewProps) {
                   timelineEntries: conversationEntries,
                   latestTurn: activeLatestTurn,
                   runningTurnId: activeRunningTurnId,
-                  turnDiffSummaries: activeThread.checkpoints,
                   activeThreadEnvironmentId: activeThread.environmentId,
                   routeThreadKey,
                   arrivesFromItsDraft: draftArrival.fromItsDraft,
-                  onOpenTurnDiff,
-                  supportsConversationRollback,
                   provider:
                     activeThread.session?.providerName ??
                     conversationProviderStatus?.driver ??
                     null,
-                  onRevertToTurnCount: onRevertTimelineTurn,
                   ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
-                  isRevertingCheckpoint,
                   onImageExpand: onExpandTimelineImage,
                   markdownCwd: gitCwd ?? undefined,
                   resolvedTheme,
@@ -8724,7 +8569,6 @@ function ConversationView(props: ChatViewProps) {
             <div
               ref={setComposerOverlayElement}
               data-conversation-footer=""
-              inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               data-chat-composer-hero={isDraftHeroState ? "true" : undefined}
               className={
@@ -9161,35 +9005,6 @@ function ConversationView(props: ChatViewProps) {
         </RightPanelSheet>
       ) : null}
 
-      <AlertDialog
-        open={pendingRevert !== null && pendingRevert.routeThreadKey === routeThreadKey}
-        onOpenChange={(open) => {
-          if (!open) setPendingRevert(null);
-        }}
-      >
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revert to this message?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Rewind the conversation to before this message; its prompt returns to the composer.
-              Workspace files stay as they are: the service's changes are recorded in its workspace
-              history, where they can be reviewed and undone on purpose.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
-            <Button
-              onClick={() => {
-                if (!pendingRevert || pendingRevert.routeThreadKey !== routeThreadKey) return;
-                setPendingRevert(null);
-                void onRevertToTurnCount(pendingRevert.turnCount, pendingRevert.messageId, false);
-              }}
-            >
-              Revert and keep changes
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
       {expandedImage && (
         <ExpandedImageDialog
           key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${expandedImage.index}`}

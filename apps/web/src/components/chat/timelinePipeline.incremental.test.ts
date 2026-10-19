@@ -95,8 +95,6 @@ function derive(
     runningTurnId: running as never,
     isWorking: running !== null,
     activeTurnStartedAt: running === null ? null : frame.activities[0]!.createdAt,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     provider: "claudeAgent",
     nowMs: Date.parse(frame.activities.at(-1)!.createdAt) + 60_000,
     ...(cache === undefined ? {} : { cache }),

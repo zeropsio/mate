@@ -111,10 +111,8 @@ describe("a conversation warmed out of sight", () => {
     const openA = {
       routeThreadKey: "env:thread-a",
       timelineEntries: [],
-      turnDiffSummaries: [],
       isWorking: false,
       activeTurnStartedAt: null,
-      supportsConversationRollback: false,
       endNotice: { words: "Select a base branch before sending.", calm: false },
     } as unknown as Open;
     const warmedB = {
@@ -129,8 +127,6 @@ describe("a conversation warmed out of sight", () => {
       timelineEntries: b.timelineEntries,
       isWorking: b.isWorking,
       activeTurnStartedAt: b.activeTurnStartedAt,
-      turnDiffSummaries: b.turnDiffSummaries,
-      supportsConversationRollback: b.supportsConversationRollback,
       endNotice: b.endNotice ?? null,
     });
     expect(b.routeThreadKey).toBe("env:thread-b");
@@ -141,10 +137,8 @@ describe("a conversation warmed out of sight", () => {
     const openA = {
       routeThreadKey: "env:thread-a",
       timelineEntries: [],
-      turnDiffSummaries: [],
       isWorking: false,
       activeTurnStartedAt: null,
-      supportsConversationRollback: false,
       notices: [{ id: "usage-limits:1", icon: null, words: "Usage limits" }],
     } as unknown as Open;
     const warmedB = {
@@ -159,8 +153,6 @@ describe("a conversation warmed out of sight", () => {
       timelineEntries: b.timelineEntries,
       isWorking: b.isWorking,
       activeTurnStartedAt: b.activeTurnStartedAt,
-      turnDiffSummaries: b.turnDiffSummaries,
-      supportsConversationRollback: b.supportsConversationRollback,
       notices: (b.notices ?? []).map((notice) => notice.id),
     });
     expect(rows.filter((row) => row.kind === "notice")).toEqual([]);

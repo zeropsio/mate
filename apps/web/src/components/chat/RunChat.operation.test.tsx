@@ -168,10 +168,8 @@ const SHARED: TimelineRowSharedState = {
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
-  onRevertToTurnCount: () => undefined,
   onRunShellCommand: undefined,
   onImageExpand: () => undefined,
-  onOpenTurnDiff: () => undefined,
   speaker: { name: "Nova", tint: "sky" },
   standUpAsk: null,
   livePauseId: null,
@@ -189,7 +187,6 @@ const SHARED: TimelineRowSharedState = {
 const ACTIVITY: TimelineRowActivityState = {
   isWorking: true,
   isCompacting: false,
-  isRevertingCheckpoint: false,
   latestTurnId: TurnId.make("turn-1"),
   workingStepLabel: null,
 };

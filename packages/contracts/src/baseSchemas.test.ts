@@ -141,7 +141,6 @@ describe("trimmed non-empty strings", () => {
     "RuntimeRequestId",
     "RuntimeTaskId",
     "ApprovalRequestId",
-    "CheckpointRef",
   ] as const;
   const schemas = [
     ["TrimmedNonEmptyString", TrimmedNonEmptyString],

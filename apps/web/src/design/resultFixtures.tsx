@@ -176,7 +176,6 @@ function outcome(overrides: Partial<OutcomeModel>): OutcomeModel {
     turnKey: "t1",
     live: [],
     landed: [],
-    files: null,
     checks: null,
     pictures: [],
     created: [],
@@ -227,14 +226,12 @@ function forge(
 
 const APPDEV = "https://appdev-1f3c-3000.prg1.example.app";
 const WORLDSTAGE = "https://worldstage-2b7d.prg1.example.app";
-const TURN = TurnId.make("t1");
 
 const STATUS_PAGE: ResultChange = { repository: "app", number: 2, title: "Add a /status page" };
 const NOVA = outcome({
   live: [service("appdev", { word: "Dev server running" })],
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:b1", `${APPDEV}/status`)] },
   pictures: [checked("op:b1", `${APPDEV}/status`, PICTURE.src)],
-  files: { count: 3, additions: 45, deletions: 3, turnId: TURN, fromTurnId: null },
   change: { repository: "app", number: 2 },
   activity: [
     { kind: "edit", count: 3 },
@@ -281,7 +278,6 @@ const FEN = outcome({
       shapeOf(TABLET),
     ),
   ],
-  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN, fromTurnId: null },
   change: { repository: "world", number: 4 },
   activity: [
     { kind: "edit", count: 59 },
@@ -716,7 +712,6 @@ export function ResultStates() {
                 <TurnReport
                   facts={state.facts}
                   onOpenImage={setPreview}
-                  onOpenTurnDiff={() => undefined}
                   outcome={state.outcome}
                   {...(state.files === undefined
                     ? {}

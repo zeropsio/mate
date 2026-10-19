@@ -181,7 +181,5 @@ export function useCardTimelineInput(account: ReturnType<typeof cardAccount>) {
     runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
     isWorking: thread.latestTurn?.state === "running",
     activeTurnStartedAt: thread.latestTurn?.startedAt ?? null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
   };
 }

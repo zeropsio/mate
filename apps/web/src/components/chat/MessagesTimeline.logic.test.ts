@@ -88,8 +88,6 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     runningTurnId: scene.live ? turn(scene.live) : null,
     isWorking: scene.working ?? scene.live !== undefined,
     activeTurnStartedAt: scene.live ? at(scene.startedAt ?? 0) : null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
     provider: scene.provider === undefined ? "codex" : scene.provider,
@@ -3011,8 +3009,6 @@ describe("deriveMessagesTimelineRows", () => {
         },
         isWorking: false,
         activeTurnStartedAt: null,
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
       }).flatMap((row) => (row.kind === "seam" ? [row.seam] : []));
     };
     it.each([
@@ -3113,8 +3109,6 @@ describe("deriveMessagesTimelineRows", () => {
       },
       isWorking: false,
       activeTurnStartedAt: null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       newSince: at(5),
     });
     const seams = list.filter((row) => row.kind === "seam");
@@ -3259,8 +3253,6 @@ describe("deriveMessagesTimelineRows", () => {
         },
         isWorking: false,
         activeTurnStartedAt: null,
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
         afterTurnWork,
         liveJobs: { ids: new Set(live) },
       });
@@ -3282,8 +3274,6 @@ describe("deriveMessagesTimelineRows", () => {
       timelineEntries: [user("m0", 0)],
       isWorking: true,
       activeTurnStartedAt: at(0),
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       queuedMessages: [
         {
           id: "q1",
@@ -3303,8 +3293,6 @@ describe("deriveMessagesTimelineRows", () => {
       timelineEntries: [user("m0", 0)],
       isWorking: false,
       activeTurnStartedAt: null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       endNotice: { words: "Select a base branch before sending.", calm: false },
       queuedMessages: [
         {
@@ -3335,8 +3323,6 @@ describe("deriveMessagesTimelineRows", () => {
       latestTurn: { turnId: turn("t1"), state: ended, startedAt: at(0), completedAt: at(3) },
       isWorking: false,
       activeTurnStartedAt: null,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
       endNotice: { words: "Stopped — nothing more will change.", calm: true, stop: true },
     });
     expect(list.some((row) => row.id === "thread-error")).toBe(shown);
@@ -3358,8 +3344,6 @@ describe("deriveMessagesTimelineRows", () => {
         timelineEntries: [user("m0", 0)],
         isWorking: true,
         activeTurnStartedAt: at(0),
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
         queuedMessages: [
           {
             id: "q1",

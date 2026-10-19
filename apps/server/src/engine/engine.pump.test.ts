@@ -1,8 +1,7 @@
 /**
  * The running engine, end to end: the live layer over a scripted ProviderService (each driver
- * answering as its adapter does, through the real SPI bus and the bridge), a WorkspaceHistory
- * that remembers what it was asked, and a SQLite file. Titles are engine sentences; "(×6)" runs
- * once per driver.
+ * answering as its adapter does, through the real SPI bus and the bridge) and a SQLite file.
+ * Titles are engine sentences; "(×6)" runs once per driver.
  */
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
@@ -73,39 +72,27 @@ const sendLine = (w: EngineWorld, text: string) => `send ${w.thread}: ${text}`;
 const scene = <E, R>(body: Effect.Effect<void, E, R>) => Effect.scoped(body);
 
 describe("the running engine", () => {
-  it.effect(
-    "a message is confirmed at once and reaches the agent only after the workspace capture",
-    () =>
-      scene(
-        Effect.gen(function* () {
-          const w = yield* world("claudeAgent");
-          const result = yield* send(w);
-          assert.strictEqual(result._tag, "Accepted");
-          assert.strictEqual(w.history.calls[0], `prepare ${r(1)}`);
-          assert.deepStrictEqual(w.provider.calls, [`start ${w.thread}`, sendLine(w, "hello")]);
-          assert.strictEqual((yield* w.run(r(1)))?.state, "running");
-          yield* w.agent((agent, thread) => agent.say(thread, "hi there"));
-          yield* w.agent((agent, thread) => agent.finish(thread));
-          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
-          assert.deepStrictEqual(
-            (yield* w.items(r(1))).map((item) => [item.kind, item.body.text]),
-            [
-              ["person", "hello"],
-              ["note", "hi there"],
-            ],
-          );
-          // The capture is finished by the turn the message went into, then let go: the next
-          // message's capture never waits on it.
-          assert.deepStrictEqual(w.history.calls, [
-            `prepare ${r(1)}`,
-            `sent ${r(1)} → T1`,
-            "bind T1",
-            "finish T1",
-            `release ${r(1)}`,
-          ]);
-          yield* w.shutdown;
-        }),
-      ),
+  it.effect("a message is confirmed at once and reaches the agent only after its admission", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        const result = yield* send(w);
+        assert.strictEqual(result._tag, "Accepted");
+        assert.deepStrictEqual(w.provider.calls, [`start ${w.thread}`, sendLine(w, "hello")]);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "running");
+        yield* w.agent((agent, thread) => agent.say(thread, "hi there"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+        assert.deepStrictEqual(
+          (yield* w.items(r(1))).map((item) => [item.kind, item.body.text]),
+          [
+            ["person", "hello"],
+            ["note", "hi there"],
+          ],
+        );
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   // What the person did not type but the agent should hear: a merged change, a vault key's name.
@@ -175,45 +162,27 @@ describe("the running engine", () => {
   );
 
   it.effect(
-    "a capture that can't snapshot a service still sends the message and records the gap",
+    "a refused admission ends the run with the refusal's words, before anything is sent",
     () =>
       scene(
         Effect.gen(function* () {
-          const w = yield* world("claudeAgent");
-          w.history.controls.breaks = "ssh timed out";
+          const w = yield* world("codex", { refuse: "Ana's sign-in was removed." });
           yield* send(w);
-          assert.deepStrictEqual(w.provider.calls.at(-1), sendLine(w, "hello"));
-          const marker = (yield* w.items(r(1))).find((item) => item.kind === "marker");
-          assert.deepStrictEqual(marker?.body.marker, {
-            kind: "capture-gap",
-            reason: "workspace: ssh timed out",
-          });
+          const run = yield* w.run(r(1));
+          assert.deepStrictEqual(
+            [run?.end, run?.source],
+            [
+              { kind: "failed", reason: "Ana's sign-in was removed.", next: null },
+              "inferred-from-effect",
+            ],
+          );
+          assert.deepStrictEqual(w.provider.calls, []);
           yield* w.shutdown;
         }),
       ),
   );
 
-  it.effect("a refused admission ends the run with the refusal's words, before any capture", () =>
-    scene(
-      Effect.gen(function* () {
-        const w = yield* world("codex", { refuse: "Ana's sign-in was removed." });
-        yield* send(w);
-        const run = yield* w.run(r(1));
-        assert.deepStrictEqual(
-          [run?.end, run?.source],
-          [
-            { kind: "failed", reason: "Ana's sign-in was removed.", next: null },
-            "inferred-from-effect",
-          ],
-        );
-        assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
-        assert.deepStrictEqual(w.provider.calls, []);
-        yield* w.shutdown;
-      }),
-    ),
-  );
-
-  it.effect("an admission that breaks ends the run failed, and nothing is captured or sent", () =>
+  it.effect("an admission that breaks ends the run failed, and nothing is sent", () =>
     scene(
       Effect.gen(function* () {
         const w = yield* world("codex", { admissionDies: "the signer store is unreachable" });
@@ -221,7 +190,6 @@ describe("the running engine", () => {
         yield* w.advance(MINUTE);
         const run = yield* w.run(r(1));
         assert.deepStrictEqual([run?.end?.kind, run?.source], ["failed", "inferred-from-effect"]);
-        assert.isFalse(w.history.calls.some((call) => call.startsWith("prepare")));
         assert.deepStrictEqual(w.provider.calls, []);
         yield* w.shutdown;
       }),
@@ -884,11 +852,14 @@ describe("the running engine", () => {
     () =>
       scene(
         Effect.gen(function* () {
-          // The capture's read and the session's first open find no workspace.
+          // The session's first two opens find no workspace.
           const w = yield* world("codex", { workspaceUnavailable: 2 });
           yield* send(w);
           assert.isFalse(w.provider.calls.some((call) => call.startsWith("start")));
+          // Each open waits out its owner's backoff: one second, then two.
           yield* w.advance(1_000);
+          assert.isFalse(w.provider.calls.some((call) => call.startsWith("start")));
+          yield* w.advance(2_000);
           assert.include(w.provider.calls, sendLine(w, "hello"));
           assert.deepStrictEqual(
             w.provider.starts.map((start) => (start as { readonly cwd: string }).cwd),
@@ -1427,7 +1398,7 @@ describe("the running engine", () => {
   // Milo's second stress run, 2026-10-09: Claude's background-result turns ran ahead of a queued
   // "carry on".
   it.effect(
-    "a message waiting for its capture goes into Claude's turn of its own and is answered there",
+    "a message waiting for its admission goes into Claude's turn of its own and is answered there",
     () =>
       scene(
         Effect.gen(function* () {
@@ -1436,7 +1407,7 @@ describe("the running engine", () => {
           const work = yield* w.agent((agent, thread) => agent.startWork(thread));
           yield* w.agent((agent, thread) => agent.finish(thread));
           const gate = yield* Deferred.make<void>();
-          w.history.controls.gate = gate;
+          w.admission.gate = gate;
           yield* send(w, "carry on");
           assert.strictEqual((yield* w.run(r(2)))?.state, "admitted");
           yield* w.agent((agent, thread) => agent.endWork(thread, work));

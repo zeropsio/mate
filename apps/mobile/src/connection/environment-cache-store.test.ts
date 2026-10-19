@@ -109,7 +109,6 @@ describe("mobile SQLite environment cache store", () => {
             ],
             proposedPlans: [],
             activities: [],
-            checkpoints: [],
             session: null,
           },
           page: { beforeCursor: null, hasMore: false, snapshotSequence: 2, threadSequence: 2 },

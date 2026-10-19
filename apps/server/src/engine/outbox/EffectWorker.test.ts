@@ -431,7 +431,7 @@ describe("EffectWorker: a restart", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "first" }));
-        for (let i = 0; i < 3; i++) yield* worker.runOnce; // capture, session, send
+        for (let i = 0; i < 3; i++) yield* worker.runOnce; // admission, session, send
         yield* conversations.tell(signalsFrom("w1", ended));
       }).pipe(Effect.provide(engineLayer(file, world.handlers())));
       world.crash();
@@ -467,11 +467,10 @@ describe("EffectWorker: a restart", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "first" }));
-        for (let i = 0; i < 3; i++) yield* worker.runOnce; // capture, session, send
+        for (let i = 0; i < 3; i++) yield* worker.runOnce; // admission, session, send
         yield* conversations.tell(signalsFrom("w1", ended));
         yield* conversations.ask(env({ _tag: "Send", text: "second" }));
-        yield* worker.runOnce; // the first run releases its capture
-        yield* worker.runOnce; // the second is captured: its send is queued on w1
+        yield* worker.runOnce; // the second is admitted: its send is queued on w1
       }).pipe(Effect.provide(engineLayer(file, world.handlers())));
       world.crash();
       const received = yield* Effect.gen(function* () {
@@ -569,7 +568,7 @@ describe("EffectWorker: the worker", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "go" }));
-        yield* worker.runOnce; // the capture
+        yield* worker.runOnce; // the admission
         failing = 4; // the session's outcome: the first try and the worker's three immediate retries
         yield* Effect.exit(worker.runOnce);
         for (let i = 0; i < 3; i++) {
@@ -608,7 +607,7 @@ describe("EffectWorker: the worker", () => {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
         yield* conversations.ask(env({ _tag: "Send", text: "go" }));
-        yield* worker.runOnce; // the capture
+        yield* worker.runOnce; // the admission
         failing = 1; // the store refuses every commit from now on, then the process dies
         yield* Effect.exit(worker.runOnce);
       }).pipe(Effect.provide(engineLayer(file, world.handlers(), { fault: () => fault() })));

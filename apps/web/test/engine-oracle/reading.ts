@@ -228,8 +228,6 @@ export function readConversation(
       null,
       latestUserMessageAt,
     ),
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     afterTurnWork: null,
     liveJobs: null,
     nowMs,

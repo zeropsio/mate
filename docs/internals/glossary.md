@@ -3,8 +3,8 @@
 Clients send typed WebSocket requests. The server turns them into commands, a pure decider turns
 commands into persisted events, and a projector derives the read model. Provider adapters translate
 native CLI protocols into orchestration events. Queue-backed reactors perform side effects and emit
-receipts. Each turn ends with a checkpoint, stored as a hidden git ref, so the app can diff and
-restore.
+receipts. What an agent changed in a workspace is read from git itself: the working tree and the
+branch's commits not yet on main. Nothing per turn is stored.
 
 - **Server environment**: One running mate server and the machine, filesystem, provider credentials
   and state it owns. Distinct from an application's environment in the
@@ -36,10 +36,5 @@ restore.
 - **Assistant delivery mode**: The policy for delivering assistant text to a conversation.
 - **Snapshot**: A point-in-time view of state.
 - **Model manifest**: Provider-owned model catalogue metadata.
-- **Checkpoint**: A saved workspace state.
-- **Checkpoint ref**: The durable identifier of a checkpoint.
-- **Checkpoint baseline**: The starting checkpoint for a comparison.
-- **Checkpoint diff**: The difference between checkpoints.
-- **Turn diff**: The workspace changes attributed to one turn.
 
 Application and platform terms live in the [domain glossary](zerops/primer.md).

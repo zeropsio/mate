@@ -1103,30 +1103,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
-    case "thread.conversation.revert":
-    case "thread.checkpoint.revert": {
-      yield* requireThread({
-        readModel,
-        command,
-        threadId: command.threadId,
-      });
-      return {
-        ...(yield* withEventBase({
-          aggregateKind: "thread",
-          aggregateId: command.threadId,
-          occurredAt: command.createdAt,
-          commandId: command.commandId,
-        })),
-        type: "thread.checkpoint-revert-requested",
-        payload: {
-          threadId: command.threadId,
-          turnCount: command.turnCount,
-          ...(command.type === "thread.conversation.revert" ? { restoreFiles: false } : {}),
-          createdAt: command.createdAt,
-        },
-      };
-    }
-
     case "thread.session.stop": {
       const thread = yield* requireThread({
         readModel,
@@ -1291,73 +1267,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           proposedPlan: command.proposedPlan,
-        },
-      };
-    }
-
-    case "thread.turn.diff.complete": {
-      const thread = yield* requireThread({
-        readModel,
-        command,
-        threadId: command.threadId,
-      });
-      // A placeholder (status "missing") must never replace a checkpoint that
-      // was already captured with a real git ref. Provider diff ingestion
-      // checks this before dispatching, but CheckpointReactor can commit the
-      // real capture in between; the decider runs under the engine's command
-      // lock, so rejecting here closes that window.
-      const existingCheckpoint = thread.checkpoints.find(
-        (checkpoint) => checkpoint.turnId === command.turnId,
-      );
-      if (
-        command.status === "missing" &&
-        existingCheckpoint !== undefined &&
-        existingCheckpoint.status !== "missing"
-      ) {
-        return yield* new OrchestrationCommandInvariantError({
-          commandType: command.type,
-          detail: `turn ${command.turnId} already has a captured checkpoint`,
-        });
-      }
-      return {
-        ...(yield* withEventBase({
-          aggregateKind: "thread",
-          aggregateId: command.threadId,
-          occurredAt: command.createdAt,
-          commandId: command.commandId,
-        })),
-        type: "thread.turn-diff-completed",
-        payload: {
-          threadId: command.threadId,
-          turnId: command.turnId,
-          checkpointTurnCount: command.checkpointTurnCount,
-          checkpointRef: command.checkpointRef,
-          status: command.status,
-          files: command.files,
-          ...(command.history === undefined ? {} : { history: command.history }),
-          assistantMessageId: command.assistantMessageId ?? null,
-          completedAt: command.completedAt,
-        },
-      };
-    }
-
-    case "thread.revert.complete": {
-      yield* requireThread({
-        readModel,
-        command,
-        threadId: command.threadId,
-      });
-      return {
-        ...(yield* withEventBase({
-          aggregateKind: "thread",
-          aggregateId: command.threadId,
-          occurredAt: command.createdAt,
-          commandId: command.commandId,
-        })),
-        type: "thread.reverted",
-        payload: {
-          threadId: command.threadId,
-          turnCount: command.turnCount,
         },
       };
     }

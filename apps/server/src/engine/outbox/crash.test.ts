@@ -89,7 +89,6 @@ const script: ReadonlyArray<Move> = [
     id: "mode-1",
   },
   { kind: "ask", command: { _tag: "Send", text: "again" }, id: "send-2" },
-  { kind: "work" }, // workspace.finish of the first run
   { kind: "work" }, // run.prepare
   { kind: "work" }, // session.close (settings)
   { kind: "work" }, // session.open
@@ -101,7 +100,6 @@ const script: ReadonlyArray<Move> = [
     command: { _tag: "RotateSession", reason: "context", fresh: true, seed: "the state packet" },
     id: "rotate-1",
   },
-  { kind: "work" }, // workspace.finish of the second run
   { kind: "ask", command: { _tag: "Send", text: "after the rotation" }, id: "send-3" },
   { kind: "work" }, // run.prepare
   { kind: "work" }, // session.close, the session the rotation replaces
@@ -186,7 +184,6 @@ const playUntilCrash = (file: string, world: World, crash: Crash, played: Played
           "provider.send",
           "provider.respond",
           "provider.interrupt",
-          "workspace.finish",
         ])
           world.hangAfterAct.add(kind);
         yield* Effect.forkDetach(worker.runOnce);

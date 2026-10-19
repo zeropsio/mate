@@ -255,10 +255,8 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
     workspaceRoot: undefined,
     skills: [],
     activeThreadEnvironmentId: EnvironmentId.make(CARD_KEY.environmentId),
-    onRevertToTurnCount() {},
     onRunShellCommand: undefined,
     onImageExpand() {},
-    onOpenTurnDiff() {},
     speaker: { name: "Ada", tint: "sky" },
     standUpAsk: null,
     livePauseId: null,
@@ -282,7 +280,6 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
               value={{
                 isWorking: true,
                 isCompacting: false,
-                isRevertingCheckpoint: false,
                 latestTurnId: null,
                 workingStepLabel: null,
               }}

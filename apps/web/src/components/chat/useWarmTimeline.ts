@@ -58,7 +58,6 @@ export type WarmTimelineProps = Pick<
   | "timelineEntries"
   | "latestTurn"
   | "runningTurnId"
-  | "turnDiffSummaries"
   | "activeThreadEnvironmentId"
   | "routeThreadKey"
   | "isWorking"
@@ -125,7 +124,7 @@ export function useWarmTimeline(
   const read = useHeld(
     live,
     // Until its conversation has loaded, it reads every change: it fills.
-    hold && liveThread?.checkpoints !== undefined,
+    hold && liveThread != null,
     warmReadBeat(liveThread),
     HELD_READ_EVERY_MS,
   );
@@ -226,7 +225,7 @@ export function useWarmTimeline(
     shellExists: shell !== null,
     status,
   });
-  const checkpoints = thread?.checkpoints;
+  const loaded = thread != null;
   // A crewmate's chat opens on its own rows, as the pane draws it.
   const inCrewChat = shell?.crew != null;
   const conversationEntries = useMemo(
@@ -234,13 +233,12 @@ export function useWarmTimeline(
     [entries, inCrewChat, loadEarlier],
   );
   return useMemo((): WarmTimelineProps | null => {
-    if (ref === null || checkpoints === undefined) return null;
+    if (ref === null || !loaded) return null;
     const detailLoading = syncPhase === "loading";
     return {
       timelineEntries: conversationEntries,
       latestTurn,
       runningTurnId,
-      turnDiffSummaries: checkpoints,
       activeThreadEnvironmentId: ref.environmentId,
       routeThreadKey: scopedThreadKey(ref),
       isWorking,
@@ -262,7 +260,7 @@ export function useWarmTimeline(
     };
   }, [
     activeTurnStartedAt,
-    checkpoints,
+    loaded,
     conversationEntries,
     isWorking,
     latestTurn,

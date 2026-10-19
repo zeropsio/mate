@@ -62,11 +62,7 @@ import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRe
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderUsageLimitsIngestionLive } from "./provider/Layers/ProviderUsageLimitsIngestion.ts";
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
-import * as WorkspaceHistory from "./checkpointing/WorkspaceHistory.ts";
-import * as WorkspaceCaptureJournal from "./checkpointing/WorkspaceCaptureJournal.ts";
 import * as ZeropsWorkspaceObserver from "./zerops/ZeropsWorkspaceObserver.ts";
-import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
-import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
@@ -394,12 +390,6 @@ const VcsLayerLive = Layer.empty.pipe(
   Layer.provideMerge(VcsStatusBroadcaster.layer.pipe(Layer.provide(GitWorkflowLayerLive))),
 );
 
-const CheckpointingLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(CheckpointDiffQuery.layer),
-  Layer.provideMerge(WorkspaceHistory.layer.pipe(Layer.provide(WorkspaceCaptureJournal.layer))),
-  Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistryLayerLive))),
-);
-
 const WorkspaceEntriesLayerLive = WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer));
 
 const WorkspaceFileSystemLayerLive = WorkspaceFileSystem.layer.pipe(
@@ -486,7 +476,6 @@ const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
     Layer.provideMerge(ProviderAuthServiceLive),
     // Core Services
     Layer.provideMerge(ServerSettingsLayerLive),
-    Layer.provideMerge(CheckpointingLayerLive),
     Layer.provideMerge(SourceControlProviderRegistryLayerLive),
     Layer.provideMerge(GitLayerLive),
     Layer.provideMerge(VcsLayerLive),

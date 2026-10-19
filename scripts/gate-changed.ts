@@ -473,8 +473,10 @@ export function buildRelatedFileGraph(
       if (!sourceFile.test(file)) continue;
       const parsed = parseSync(file, source, parserOptions);
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
+      // A test the lane deleted never runs again; only its base text is read, for its edges.
       if (
         /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file) &&
+        NodeFS.existsSync(NodePath.join(root, file)) &&
         hasFileReads(parsed.program) &&
         !Object.hasOwn(fileReadInputs, file)
       )

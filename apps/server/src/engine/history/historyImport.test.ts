@@ -600,7 +600,7 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
       },
     ],
     [
-      "a plan, a compaction, a warning, an error, a denial, a failed provider call, a capture's gap, a note and a proposed plan are markers",
+      "a plan, a compaction, a warning, an error, a denial, a failed provider call, a note and a proposed plan are markers",
       (held) => {
         expect(
           held.items.flatMap((item) => (item.kind === "marker" ? [[item.runId, item.marker]] : [])),
@@ -613,7 +613,6 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
             { kind: "error", reason: "Provider user input response failed: the session is gone" },
           ],
           [`${c}/r/3`, { kind: "compacted" }],
-          [`${c}/r/4`, { kind: "capture-gap", reason: "api: the service did not answer" }],
           [`${c}/r/4`, { kind: "error", reason: "Socket hang up." }],
           [`${c}/r/4`, { kind: "runtime.note", reason: "Model switched to opus" }],
           [`${c}/r/4`, { kind: "plan", reason: "Footer plan" }],
@@ -625,14 +624,14 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
       },
     ],
     [
-      "what V1 shows nowhere is left: a progress tick, the meter, a capture that went well, a system line",
+      "what V1 shows nowhere is left: a progress tick, the meter, a workspace checkpoint, a system line",
       (held) =>
         expect(held.items.map((item) => [item.runId?.slice(-1), item.kind])).toEqual(
           [
             ["1", "person thought call call call call call marker note"],
             ["2", "person call work call request request call note call"],
             ["3", "person marker marker marker marker work request"],
-            ["4", "person marker marker marker request work marker"],
+            ["4", "person marker marker request work marker"],
             ["5", "person"],
           ].flatMap(([run, kinds]) => kinds!.split(" ").map((kind) => [run, kind])),
         ),

@@ -93,7 +93,6 @@ import * as ServerConfig from "./config.ts";
 import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { HTTP_ROUTER_CONFIG, serveRoutes } from "./server.ts";
 import { resolveAvailableEditorsForConfig, resolveFileManagerRevealKindForConfig } from "./ws.ts";
-import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -327,7 +326,6 @@ const makeDefaultOrchestrationReadModel = () => {
         session: null,
         activities: [],
         proposedPlans: [],
-        checkpoints: [],
         deletedAt: null,
       },
     ],
@@ -550,7 +548,6 @@ const buildAppUnderTest = (options?: {
     terminalManager?: Partial<TerminalManager.TerminalManager["Service"]>;
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
-    checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartup.ServerRuntimeStartup["Service"]>;
@@ -814,7 +811,6 @@ const buildAppUnderTest = (options?: {
         }),
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
       getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-      getThreadCheckpointContext: () => Effect.succeed(Option.none()),
       ...options?.layers?.projectionSnapshotQuery,
     });
     // One registry for the routes and for D6's gate, which reads an
@@ -1022,25 +1018,6 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(projectionSnapshotQueryLayer),
-      Layer.provide(
-        Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
-          getTurnDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          getFullThreadDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          ...options?.layers?.checkpointDiffQuery,
-        }),
-      ),
     );
 
     const appLayer = servedRoutesLayer.pipe(
@@ -8145,7 +8122,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             session: null,
             activities: [],
             proposedPlans: [],
-            checkpoints: [],
             deletedAt: null,
           },
         ],
@@ -8168,47 +8144,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 ],
               }),
           },
-          checkpointDiffQuery: {
-            getTurnDiff: () =>
-              Effect.succeed({
-                threadId: ThreadId.make("thread-1"),
-                fromTurnCount: 0,
-                toTurnCount: 1,
-                diff: "turn-diff",
-              }),
-            getFullThreadDiff: () =>
-              Effect.succeed({
-                threadId: ThreadId.make("thread-1"),
-                fromTurnCount: 0,
-                toTurnCount: 1,
-                diff: "full-diff",
-              }),
-          },
         },
       });
 
       const wsUrl = yield* getWsServerUrl("/ws");
-
-      const turnDiffResult = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.getTurnDiff]({
-            threadId: ThreadId.make("thread-1"),
-            fromTurnCount: 0,
-            toTurnCount: 1,
-          }),
-        ),
-      );
-      assert.equal(turnDiffResult.diff, "turn-diff");
-
-      const fullDiffResult = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.getFullThreadDiff]({
-            threadId: ThreadId.make("thread-1"),
-            toTurnCount: 1,
-          }),
-        ),
-      );
-      assert.equal(fullDiffResult.diff, "full-diff");
 
       const searchResult = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>

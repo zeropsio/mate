@@ -81,8 +81,6 @@ function renderRows(
     latestTurn: thread.latestTurn,
     isWorking: false,
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     ...(tail === "unheld" ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
   });
   return { rows, first };

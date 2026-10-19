@@ -740,16 +740,11 @@ function Pane() {
             timelineEntries: entries,
             latestTurn,
             runningTurnId: ended ? null : second ? TURN2 : TURN,
-            turnDiffSummaries: [],
             working: dock,
             routeThreadKey,
-            onOpenTurnDiff: () => undefined,
-            supportsConversationRollback: false,
             // Its calls name no response: Codex's timing rule reads its
             // batches, unless `?provider=claudeAgent` (nothing goes stale).
             provider: PROVIDER,
-            onRevertToTurnCount: () => undefined,
-            isRevertingCheckpoint: false,
             onImageExpand: () => undefined,
             activeThreadEnvironmentId: ENVIRONMENT,
             markdownCwd: undefined,

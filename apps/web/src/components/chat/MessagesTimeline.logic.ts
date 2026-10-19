@@ -29,14 +29,13 @@ import {
 } from "@t3tools/contracts";
 
 import {
-  inferCheckpointTurnCountByTurnId,
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   type TimelineEntry,
   type TurnPlanEntry,
   type WorkLogEntry,
 } from "../../session-logic";
-import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
+import { type ChatMessage, type ProposedPlan } from "../../types";
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import type { ConversationSpeaker } from "./ConversationRows";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
@@ -574,7 +573,6 @@ type MessagesTimelineRowBody =
       /** The client's own placeholder stands in for the text: show the images alone. */
       imageOnly: boolean;
       showAssistantMeta: boolean;
-      revertTurnCount?: number | undefined;
       /** The Mate's last word under a run that has nothing to report: see `FoldsFrom`. */
       foldsFrom?: FoldsFrom;
     }
@@ -1194,48 +1192,6 @@ export function rowGap(
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
   result: MessagesTimelineRow[];
-}
-
-/** A turn's captured work can be rewound even if it failed before an assistant answer. */
-function buildRevertTurnCountByUserMessageId(input: {
-  supportsConversationRollback: boolean;
-  timelineEntries: ReadonlyArray<TimelineEntry>;
-  turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
-  turnDiffSummaryByTurnId: ReadonlyMap<TurnId, TurnDiffSummary>;
-  inferredCheckpointTurnCountByTurnId: Readonly<Record<string, number | undefined>>;
-}): Map<MessageId, number> {
-  const byUserMessageId = new Map<MessageId, number>();
-  const entryCount = input.supportsConversationRollback ? input.timelineEntries.length : 0;
-  for (let index = 0; index < entryCount; index += 1) {
-    const entry = input.timelineEntries[index];
-    if (!entry || entry.kind !== "message" || entry.message.role !== "user") continue;
-    const ownSummary =
-      entry.message.turnId === null
-        ? undefined
-        : input.turnDiffSummaryByTurnId.get(entry.message.turnId);
-    const ownCount =
-      ownSummary?.checkpointTurnCount ??
-      (ownSummary === undefined
-        ? undefined
-        : input.inferredCheckpointTurnCountByTurnId[ownSummary.turnId]);
-    if (typeof ownCount === "number") {
-      byUserMessageId.set(entry.message.id, Math.max(0, ownCount - 1));
-      continue;
-    }
-    for (let nextIndex = index + 1; nextIndex < input.timelineEntries.length; nextIndex += 1) {
-      const nextEntry = input.timelineEntries[nextIndex];
-      if (!nextEntry || nextEntry.kind !== "message") continue;
-      if (nextEntry.message.role === "user") break;
-      const summary = input.turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id);
-      if (!summary) continue;
-      const turnCount =
-        summary.checkpointTurnCount ?? input.inferredCheckpointTurnCountByTurnId[summary.turnId];
-      if (typeof turnCount !== "number") break;
-      byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1));
-      break;
-    }
-  }
-  return byUserMessageId;
 }
 
 /**
@@ -2458,8 +2414,6 @@ export function deriveMessagesTimelineRows(input: {
   runningTurnId?: TurnId | null;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
-  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
-  supportsConversationRollback: boolean;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
   /** What happened that still holds, by id: the conversation's last rows, in this order. */
@@ -2542,23 +2496,6 @@ export function deriveMessagesTimelineRows(input: {
     ),
     liveJobs: input.liveJobs ?? null,
   };
-
-  const diffByTurnId = new Map<TurnId, TurnDiffSummary>();
-  const diffByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
-  for (const summary of input.turnDiffSummaries) {
-    diffByTurnId.set(summary.turnId, summary);
-    if (summary.assistantMessageId)
-      diffByAssistantMessageId.set(summary.assistantMessageId, summary);
-  }
-  const revertTurnCountByUserMessageId = buildRevertTurnCountByUserMessageId({
-    supportsConversationRollback: input.supportsConversationRollback,
-    timelineEntries: entries,
-    turnDiffSummaryByAssistantMessageId: diffByAssistantMessageId,
-    turnDiffSummaryByTurnId: diffByTurnId,
-    inferredCheckpointTurnCountByTurnId: input.supportsConversationRollback
-      ? inferCheckpointTurnCountByTurnId(input.turnDiffSummaries)
-      : {},
-  });
 
   // Usage limits: the first refusal draws the pause; the attempts after it
   // that did nothing else fold into it, until a turn does real work again.
@@ -2759,7 +2696,6 @@ export function deriveMessagesTimelineRows(input: {
       aside,
       imageOnly: isImageOnlyPlaceholder(entry.message.text),
       showAssistantMeta: false,
-      revertTurnCount: revertTurnCountByUserMessageId.get(entry.message.id),
     };
   };
 
@@ -3144,14 +3080,12 @@ export function deriveMessagesTimelineRows(input: {
       !waiting &&
       input.limit !== undefined &&
       input.limit.kind !== "none";
-    const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =
       turn.live || waiting
         ? null
         : deriveOutcome({
             turn,
             landed: landedByTurnKey.get(turn.key) ?? [],
-            diffs,
             activity:
               engineCard === undefined
                 ? remembered(
@@ -3795,7 +3729,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.aside === bm.aside &&
         a.imageOnly === bm.imageOnly &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        a.revertTurnCount === bm.revertTurnCount &&
         sameFold(a.foldsFrom, bm.foldsFrom)
       );
     }

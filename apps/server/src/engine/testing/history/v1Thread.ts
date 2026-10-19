@@ -4,8 +4,8 @@
  * message never sent — holding every record V1's client draws: the person's words with a picture
  * and a file, the agent's notes and thoughts, a tool of every kind with its lifecycle, a helper
  * and its own call, background work, an approval and questions answered, dismissed and left, a
- * compaction, a plan, a warning, a denial, a failed provider call, a capture's gap, a runtime
- * note, a proposed plan, and the records V1 shows nowhere (progress, the meter, a capture).
+ * compaction, a plan, a warning, a denial, a failed provider call, a runtime note, a proposed
+ * plan, and the records an import leaves (progress, the meter, a checkpoint captured or not).
  *
  * @module engine/testing/history/v1Thread
  */

@@ -12,7 +12,7 @@ login live in the [primer](primer.md); runtime vocabulary lives in the [glossary
 - An **item** is a typed entry in the conversation record.
 - A **request** is an approval, question or other answer owed by a person.
 - An **effect** is recorded work outside the pure engine: a send, interruption, session change,
-  workspace capture or crew step.
+  admission or crew step.
 - A **wake** is scheduled work with an owner and an admission guard.
 - An **owner** writes one stream of the log: a conversation, or a Mate's crew (`crew/main`). Every
   kind has the same machinery: one writer, the receipt, the outbox, wakes, boot recovery. The crew
