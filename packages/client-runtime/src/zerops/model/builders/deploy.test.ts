@@ -755,3 +755,51 @@ describe("buildDeployFields — a batch whose builds zcp stopped following reads
     expect(buildDeployFields(call, { projectId: undefined, builds }).phaseOverride).toBe(phase);
   });
 });
+
+// The agent's MCP client stops waiting on a long call while zcp works on: the
+// TypeScript SDK's request timeout under OpenCode and Claude, Codex's
+// tool_timeout_sec. The build it started goes on, so nothing is known of it.
+describe("buildDeployFields — a call the agent's client stopped waiting on", () => {
+  const timedOut = (toolName: string, input: Record<string, unknown>, resultText: string) =>
+    deployCall({
+      toolName,
+      input,
+      status: "failed",
+      resultText,
+      settledAt: "2026-09-01T00:01:00.000Z",
+    });
+  const clients = [
+    { client: "OpenCode or Claude", text: "MCP error -32001: Request timed out" },
+    { client: "Codex", text: "timed out awaiting tools/call after 600s" },
+  ];
+  const tools = [
+    { tool: "zerops_deploy", input: { targetService: "appstage" } },
+    {
+      tool: "zerops_deploy (git push)",
+      input: { targetService: "appstage", strategy: "git-push" },
+    },
+    {
+      tool: "zerops_deploy_batch",
+      input: { targets: [{ sourceService: "appdev", targetService: "appstage" }] },
+    },
+  ];
+
+  it.each(clients.flatMap((client) => tools.map((tool) => ({ ...client, ...tool }))))(
+    "$tool under $client is unconfirmed, never a failed build",
+    ({ tool, input, text }) => {
+      const fields = buildDeployFields(timedOut(tool.split(" ")[0]!, input, text), CONTEXT);
+      expect({
+        phase: fields.phaseOverride,
+        failedSteps: fields.steps.filter((step) => step.state === "failed").length,
+      }).toEqual({ phase: "uncertain", failedSteps: 0 });
+    },
+  );
+
+  it("a call zcp itself failed stays failed", () => {
+    const fields = buildDeployFields(
+      timedOut("zerops_deploy", { targetService: "appstage" }, "service not found"),
+      CONTEXT,
+    );
+    expect(fields.phaseOverride).toBe("failed");
+  });
+});
