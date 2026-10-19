@@ -23,6 +23,7 @@ import {
 import {
   MINIMUM_OPENCODE_VERSION,
   OpenCodeRuntime,
+  openCodeModelReadsImages,
   openCodeRuntimeErrorDetail,
   type OpenCodeInventory,
 } from "../opencodeRuntime.ts";
@@ -278,6 +279,7 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
         name,
         ...(subProvider ? { subProvider } : {}),
         isCustom: false,
+        ...(openCodeModelReadsImages(model) ? {} : { textOnly: true }),
         capabilities: openCodeCapabilitiesForModel({
           providerID: provider.id,
           model,

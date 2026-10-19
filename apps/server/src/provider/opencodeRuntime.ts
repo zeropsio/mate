@@ -482,6 +482,16 @@ export function openCodeFileAttachments(
   );
 }
 
+/**
+ * Whether a model OpenCode lists reads images: OpenCode swaps every image for
+ * an error when its `capabilities.input.image` is false. Unstated reads as yes.
+ */
+export function openCodeModelReadsImages(model: {
+  readonly capabilities?: { readonly input?: { readonly image?: boolean } };
+}): boolean {
+  return model.capabilities?.input?.image !== false;
+}
+
 export function toOpenCodeFileParts(input: {
   readonly attachments: ReadonlyArray<ChatAttachment> | undefined;
   readonly resolveAttachmentPath: (attachment: ChatAttachment) => string | null;

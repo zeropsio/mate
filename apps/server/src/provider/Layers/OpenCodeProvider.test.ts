@@ -512,6 +512,47 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       }),
   );
 
+  it.effect("marks a model that takes no image input as text only, and no other", () =>
+    Effect.gen(function* () {
+      const model = (id: string, input?: { image: boolean }) => ({
+        id,
+        name: id,
+        capabilities: { toolcall: true, ...(input ? { input } : {}) },
+      });
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: ["nebius"],
+          all: [
+            {
+              id: "nebius",
+              name: "Nebius Token Factory",
+              models: {
+                "zai-org/GLM-5.3-Flash": model("zai-org/GLM-5.3-Flash", { image: false }),
+                "moonshotai/Kimi-K3": model("moonshotai/Kimi-K3", { image: true }),
+                unstated: model("unstated"),
+              },
+            },
+          ],
+          default: {},
+        },
+        agents: [{ name: "build", hidden: false, mode: "primary" }],
+      };
+
+      const snapshot = yield* checkProvider(makeOpenCodeSettings());
+
+      NodeAssert.deepEqual(
+        snapshot.models
+          .filter((entry) => !entry.isCustom)
+          .map((entry) => [entry.slug, entry.textOnly === true]),
+        [
+          ["nebius/moonshotai/Kimi-K3", false],
+          ["nebius/unstated", false],
+          ["nebius/zai-org/GLM-5.3-Flash", true],
+        ],
+      );
+    }),
+  );
+
   it.effect("includes OpenCode skills in the provider snapshot", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {

@@ -140,7 +140,14 @@ const runtimeMock = {
     forkCalls: [] as Array<{ sessionID: string; directory?: string; messageID?: string }>,
     configProviders: [] as Array<{
       id: string;
-      models: Record<string, { id: string; limit: { context: number; output: number } }>;
+      models: Record<
+        string,
+        {
+          id: string;
+          limit: { context: number; output: number };
+          capabilities?: { input: { image: boolean } };
+        }
+      >;
     }>,
   },
   reset() {
@@ -1880,6 +1887,55 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       );
       yield* adapter.stopSession(threadId);
     }),
+  );
+
+  it.effect(
+    "an OpenCode thread whose model takes no image input is told to verify by text; a vision model's prompt is unchanged",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("thread-text-only-model");
+        const model = (id: string, image: boolean) => ({
+          id,
+          limit: { context: 200_000, output: 32_000 },
+          capabilities: { input: { image } },
+        });
+        runtimeMock.state.configProviders = [
+          {
+            id: "nebius",
+            models: {
+              "zai-org/GLM-5.3-Flash": model("zai-org/GLM-5.3-Flash", false),
+              "moonshotai/Kimi-K3": model("moonshotai/Kimi-K3", true),
+            },
+          },
+        ];
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        for (const slug of ["nebius/zai-org/GLM-5.3-Flash", "nebius/moonshotai/Kimi-K3"]) {
+          yield* adapter.sendTurn({
+            threadId,
+            input: "check the page",
+            modelSelection: createModelSelection(ProviderInstanceId.make("opencode"), slug),
+          });
+        }
+        const systems = runtimeMock.state.promptCalls.map(
+          (call) => (call as { system: string }).system,
+        );
+        NodeAssert.deepEqual(systems, [
+          buildRuntimeInstructions({
+            harness: "OpenCode",
+            model: "nebius/zai-org/GLM-5.3-Flash",
+            imageInput: false,
+          }),
+          buildRuntimeInstructions({ harness: "OpenCode", model: "nebius/moonshotai/Kimi-K3" }),
+        ]);
+        NodeAssert.ok(systems[0]!.includes("cannot see images"));
+        NodeAssert.ok(!systems[1]!.includes("cannot see images"));
+        yield* adapter.stopSession(threadId);
+      }),
   );
 
   it.effect("keeps unknown slash text on the ordinary prompt path", () =>
