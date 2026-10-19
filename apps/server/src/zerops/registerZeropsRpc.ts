@@ -54,7 +54,6 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsHealth
   | typeof WS_METHODS.subscribeZeropsAttention
   | typeof WS_METHODS.subscribeZeropsBrowserStream
-  | typeof WS_METHODS.zeropsBrowserInput
   | typeof WS_METHODS.subscribeZeropsMacStream
   | typeof WS_METHODS.zeropsMacInput
   | typeof WS_METHODS.zeropsMacForget
@@ -468,8 +467,6 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       Stream.unwrap(zeropsBrowserStream.subscribe).pipe(
         Stream.filter((event) => input.callFrames === true || event.type !== "call-result"),
       ),
-    [WS_METHODS.zeropsBrowserInput]: (input) =>
-      admit(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input)),
     [WS_METHODS.subscribeZeropsMacStream]: (_input) => Stream.unwrap(zeropsMacStream.subscribe),
     [WS_METHODS.zeropsMacInput]: (input) =>
       admit(WS_METHODS.zeropsMacInput, zeropsMacStream.sendInput(input)),

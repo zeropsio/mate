@@ -60,8 +60,34 @@ export class TaskIntake extends Context.Service<
     readonly message: (sourceKey: string, message: MateTaskMessage) => Effect.Effect<boolean>;
     /** People stopped the key's live task (issue closed, label removed, thread deleted). */
     readonly stop: (sourceKey: string, reason: string) => Effect.Effect<void>;
+    /**
+     * A reply on the key after its task ended (done with no change waiting for review, failed,
+     * stopped or dropped), from a person `allowed` says may steer it: how it ended, once per end —
+     * none for a second reply, while a task of the key is live or hears, or HQ cannot tell now. A
+     * follow-up that woke it, and a new end, may be answered again.
+     */
+    readonly answerEnded: <E, R>(
+      sourceKey: string,
+      allowed: Effect.Effect<boolean, E, R>,
+    ) => Effect.Effect<TaskEnd | undefined, E, R>;
   }
 >()("@t3tools/hq/taskSources/TaskIntake") {}
+
+/** How a task ended, as a reply after it hears: finished, or stopped with why (none known). */
+export type TaskEnd =
+  | { readonly kind: "finished" }
+  | { readonly kind: "stopped"; readonly why: string | null };
+
+/**
+ * The one line a reply after a task's end gets: that it ended, and how to ask again in `again`'s
+ * words ("Mention @Mate in a new message").
+ */
+export const taskEndWords = (end: TaskEnd, again: string): string => {
+  if (end.kind === "finished") return `This task is finished. ${again} to start another.`;
+  const why = (end.why ?? "").trim();
+  const said = why === "" ? "" : /[.!?]$/u.test(why) ? `: ${why}` : `: ${why}.`;
+  return `This task stopped${said === "" ? "." : said} ${again} to try again.`;
+};
 
 /** A task as its source's channel addresses it. */
 export interface TaskOnSource {
@@ -143,6 +169,12 @@ export interface TaskSourceChannel {
    * again (an edit tells nobody). Absent: HQ says the waiting status again instead.
    */
   readonly remind?: (task: TaskOnSource, question: string) => Effect.Effect<void>;
+  /**
+   * How the task ended (`taskEndWords`), said as a new message once: a reply kept for it while its
+   * Mate worked another task, its change merged or closed before the Mate got to it. Absent: the
+   * source says nothing more than its status line.
+   */
+  readonly answerEnd?: (task: TaskOnSource, end: TaskEnd) => Effect.Effect<void>;
 }
 
 /** The registered channels, by source kind: each source's layer registers its own. */

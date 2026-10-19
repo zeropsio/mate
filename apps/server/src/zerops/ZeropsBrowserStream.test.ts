@@ -244,86 +244,6 @@ describe("ZeropsBrowserStream", () => {
     }),
   );
 
-  it.effect("sendInput is a silent no-op when nothing is connected", () =>
-    Effect.gen(function* () {
-      const service = yield* make({
-        readStreamPort: Effect.succeed(undefined),
-        connect: fakeConnect([]),
-        reconnectDelaysMs: [0],
-      });
-      yield* service.sendInput({ kind: "mouse", eventType: "mousePressed", x: 1, y: 2 });
-    }),
-  );
-
-  it.effect("forwards a mouse press to the live daemon connection, CDP vocabulary verbatim", () =>
-    Effect.gen(function* () {
-      const sockets: Array<FakeBrowserSocket> = [];
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        connect: fakeConnect(sockets),
-        reconnectDelaysMs: [0],
-      });
-
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          yield* Stream.takeUntil(
-            stream,
-            (event) => event.type === "state" && event.status === "live",
-          ).pipe(Stream.runCollect);
-          yield* service.sendInput({
-            kind: "mouse",
-            eventType: "mousePressed",
-            x: 12,
-            y: 34,
-            button: "left",
-            clickCount: 1,
-          });
-          const sent = sockets[0]?.sent.at(-1);
-          expect(sent).toBeDefined();
-          expect(decodeJsonString(sent!)).toEqual({
-            type: "input_mouse",
-            eventType: "mousePressed",
-            x: 12,
-            y: 34,
-            button: "left",
-            clickCount: 1,
-          });
-        }),
-      );
-    }),
-  );
-
-  it.effect(
-    "forwards a keyboard event to the live daemon connection, CDP vocabulary verbatim",
-    () =>
-      Effect.gen(function* () {
-        const sockets: Array<FakeBrowserSocket> = [];
-        const service = yield* make({
-          readStreamPort: Effect.succeed(44831),
-          connect: fakeConnect(sockets),
-          reconnectDelaysMs: [0],
-        });
-
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const stream = yield* service.subscribe;
-            yield* Stream.takeUntil(
-              stream,
-              (event) => event.type === "state" && event.status === "live",
-            ).pipe(Stream.runCollect);
-            yield* service.sendInput({ kind: "keyboard", eventType: "keyDown", key: "a" });
-            const sent = sockets[0]?.sent.at(-1);
-            expect(decodeJsonString(sent!)).toEqual({
-              type: "input_keyboard",
-              eventType: "keyDown",
-              key: "a",
-            });
-          }),
-        );
-      }),
-  );
-
   const frameMessage = (seq: number) =>
     encodeJsonUnknown({
       type: "frame",
@@ -529,7 +449,7 @@ describe("ZeropsBrowserStream", () => {
     }),
   );
 
-  it.effect("an ack or input during reconnect never ends the subscription", () =>
+  it.effect("an ack during reconnect never ends the subscription", () =>
     Effect.gen(function* () {
       const sockets: Array<FakeBrowserSocket> = [];
       let throwOnSend = false;
@@ -569,10 +489,6 @@ describe("ZeropsBrowserStream", () => {
           }
 
           throwOnSend = true;
-          // A send that throws must not propagate as a defect and kill the
-          // subscription — sendInput swallows it (best-effort).
-          yield* service.sendInput({ kind: "mouse", eventType: "mousePressed", x: 1, y: 2 });
-
           // A frame arriving while sends throw: pulling it triggers the
           // (also throwing) daemon ack — the pull itself must still
           // succeed and hand back the frame.

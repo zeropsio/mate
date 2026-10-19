@@ -3,11 +3,17 @@
  * on — and the sources its tasks come from, one row each, from what is read of them.
  */
 import type { SettingValue } from "@t3tools/client-runtime/data";
-import type { HqChannelView, HqScheduleRule, HqScheduleView } from "@t3tools/shared/hqIntake";
+import type {
+  HqChannelView,
+  HqScheduleRule,
+  HqScheduleView,
+  HqSlackChannels,
+} from "@t3tools/shared/hqIntake";
 import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
 
 import type { AutomatedKeyState } from "~/zerops/automatedMate.logic";
 
+import { slackChannelChoices } from "../../settings/taskSourcesSettings.logic";
 import {
   mateAutomatedLine,
   tasksWaitingWords,
@@ -239,4 +245,24 @@ export function stopWords(kind: "github" | "slack" | "discord" | "schedule"): {
   if (kind === "github")
     return { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" };
   return { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" };
+}
+
+/**
+ * How a project's Slack channel is chosen: picked from the channels the bot is in, or its ID typed
+ * — as the person asks, where the bot is in none yet (with where to start), or where the list is
+ * not at hand. While the list is read, the picker's room waits.
+ */
+export function slackChannelForm(
+  choices: SettingValue<HqSlackChannels>,
+  typing: boolean,
+):
+  | { readonly kind: "pick"; readonly channels: HqSlackChannels["channels"] }
+  | { readonly kind: "type"; readonly invite: string | null }
+  | { readonly kind: "reading" } {
+  if (choices.state === "unread" || choices.state === "reading")
+    return typing ? { kind: "type", invite: null } : { kind: "reading" };
+  if (choices.state !== "known") return { kind: "type", invite: null };
+  const read = slackChannelChoices(choices.held);
+  if (read.kind === "none") return { kind: "type", invite: read.words };
+  return typing ? { kind: "type", invite: null } : { kind: "pick", channels: read.channels };
 }

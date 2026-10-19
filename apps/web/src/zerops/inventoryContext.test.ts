@@ -134,6 +134,28 @@ describe("withheldProjectNotice", () => {
     ).toEqual(["Checking your access to this project…", "Your access to this project changed."]);
   });
 
+  it("renaming a project raises no removal notice", () => {
+    // A rename's realtime remove can prove a project deleted for a moment; the overview names no
+    // project gone, so the notice neither lies about a rename nor hangs for a real removal.
+    expect(
+      withheldProjectNotices({
+        ...inventory({ kind: "withheld", reason: "access-denied", cause: null }),
+        deleted: ["p1"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("a project page's environment row never says its project was removed; its own route does, once", () => {
+    // A rename on the project page proves its projects deleted for a moment: their rows keep
+    // their place, and only the environment's own route names a real removal.
+    const deleted = {
+      ...inventory({ kind: "withheld", reason: "access-denied", cause: null }),
+      deleted: ["p1"],
+    };
+    expect(withheldProjectNotice(deleted, "p1", "Production", { removal: false })).toBeNull();
+    expect(withheldProjectNotice(deleted, "p1", "Production")).toBe("Production was removed.");
+  });
+
   it("says why a project withheld alone is not shown", () => {
     expect(
       withheldProjectNotices(

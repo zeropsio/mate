@@ -3,12 +3,14 @@
  * `MateTask`): the leading Core's dispatcher. Tasks come in through one door (`taskIntake.ts`),
  * whatever their source (`taskSources.ts`).
  *
- * - A Mate is free while it is automated, of the application's projects, online, on no task, no
- *   change of its last task waits for review (its copy of the code holds that work), and its agents
- *   work on nothing (its attention says `working: 0`). The oldest waiting task of an
- *   application goes to a free Mate of it (`assigned`), told over the Mate's link (`task`), and told
- *   again on each link it opens until it takes it. HQ looks again when a task waits, a Mate's link
- *   or attention moves, and a task ends.
+ * - A Mate is free while it is automated, of the application's projects, online, on no task, owes
+ *   no follow-up (below), and its agents work on nothing (its attention says `working: 0`). Each
+ *   task delivers to a change of its own (`changes.ts`), so a Mate whose changes wait for review is
+ *   still free — handed a task only once no free Mate of the application holds none (an older Mate
+ *   than `TASK_CHANGES_SINCE`, its one working copy holding that work, is not). The oldest
+ *   waiting task of an application goes to a free Mate of it (`assigned`), told over the Mate's
+ *   link (`task`), and told again on each link it opens until it takes it. HQ looks again when a
+ *   task waits, a Mate's link or attention moves, and a task ends.
  * - Nothing is handed out while the organization keeps no key for the provider automated Mates run
  *   on (`orgAiKeys.ts`): tasks wait, counted as waiting. Nor once this month's spend reached the
  *   organization's monthly budget (`taskLimits.ts`): the waiting tasks' status lines say so (and
@@ -29,14 +31,20 @@
  * - A task whose Mate's record went is given back, or failed where the Mate had taken it; one whose
  *   Mate has been offline for 2 hours while on it fails, saying so.
  * - What is said about a task after it came in (`message`) is kept, and told to its Mate
- *   (`task-message`) once it took it — then, and on each link it opens while on it (it hears each
- *   once). People stopping a task (`stop`) drop it while no Mate took it; one a Mate took, its Mate
+ *   (`task-message`, with the task's change) once it took it — then, and on each link it opens
+ *   while on it (it hears each once). Said of a task it is done with, its change waiting for
+ *   review, it is a follow-up: kept while the Mate is on another task, told once it is on none —
+ *   one task's at a time, again on each link it opens — and owed until the Mate says it is back on
+ *   it (or `followUpWithin`, 5 minutes, passes with no word), so its work never lands in another
+ *   task's. People stopping a task (`stop`) drop it while no Mate took it; one a Mate took, its Mate
  *   is told to stop (`task-stop`, again on each link) and it ends `stopped` on the Mate's word, or
  *   on HQ's after `stopWithin` (10 minutes).
  * - The task's source hears how it stands on ONE status line HQ keeps there through its channel
  *   (`TaskSourceChannels`): its place in the queue (kept true as the queue moves), the Mate that
  *   picked it up, the change it opened, and how it ended — the Mate by name, plain sentences only.
  *   One line at a time, in the order the task moved; a channel's failure never moves a task.
+ *   A task that couldn't finish what a review asked last says so on its pull request too, as the
+ *   organization's app, where the reviewer wrote.
  *
  * @module mateTasks
  */
@@ -67,9 +75,13 @@ import type * as Statement from "effect/sql/Statement";
 
 import { Changes } from "./changes.ts";
 import { GithubAuth, botCommitAuthor } from "./githubAuth.ts";
+import { marked, statusWords } from "./githubChannel.ts";
+import { GithubIssues } from "./githubIssues.ts";
+import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { OrgAiKeys } from "./orgAiKeys.ts";
+import { Remotes } from "./repoRemotes.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
 import { DEFAULT_TASK_LIMITS, THIS_MONTH, budgetSpent, readTaskLimits } from "./taskLimits.ts";
@@ -89,6 +101,13 @@ import {
  * older one passes such a `task` frame by, so it is never handed one.
  */
 export const TASK_SOURCES_SINCE = "0.15.159";
+
+/**
+ * The first Mate that puts its working copies on each task's base (`ZeropsWorkingCopy`): HQ hands
+ * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
+ * holding that work, takes none until they are merged or closed.
+ */
+export const TASK_CHANGES_SINCE = "0.15.176";
 
 /** How many times a task is handed out before it fails untaken. */
 export const TASK_TRIES = 3;
@@ -264,12 +283,26 @@ interface MessageRow {
   readonly source: MateTaskMessage["from"];
   readonly author: string | null;
   readonly text: string;
+  /** The task's change, where it opened one, and the Mate it is the change of. */
+  readonly change_repo: string | null;
+  readonly change_number: number | null;
+  readonly change_mate: string | null;
 }
+/** A message as its Mate is told it, with its task's change: where a follow-up's work starts. */
 const messageFrame = (row: MessageRow) =>
   encodeDown({
     type: "task-message",
     taskId: row.task_id,
     message: { id: row.id, from: row.source, author: row.author, text: row.text },
+    ...(row.change_repo === null || row.change_number === null || row.change_mate === null
+      ? {}
+      : {
+          change: {
+            repo: row.change_repo,
+            number: row.change_number,
+            branch: `mate/${row.change_mate}/${String(row.change_number)}`,
+          },
+        }),
   });
 
 export interface MateTasksOptions {
@@ -285,6 +318,11 @@ export interface MateTasksOptions {
   readonly remindAfter?: Duration.Duration;
   /** How long a task waits for an answer before it stops; three days. */
   readonly giveUpAfter?: Duration.Duration;
+  /**
+   * How long a Mate told a follow-up on a task it is done with has to say it is back on it, while
+   * it takes no new task: its working copies move to the task's change first; 5 minutes.
+   */
+  readonly followUpWithin?: Duration.Duration;
 }
 
 export const mateTasksLayer = (options: MateTasksOptions = {}) =>
@@ -314,6 +352,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       // One status line at a time, in the order the task moved: its source shows them so.
       const telling = yield* Semaphore.make(1);
       const acceptMs = Duration.toMillis(options.acceptWithin ?? Duration.seconds(60));
+      const followUpSecs = Duration.toSeconds(options.followUpWithin ?? Duration.minutes(5));
       const told = yield* PubSub.unbounded<{
         readonly projectId: string;
         readonly frame: string;
@@ -327,6 +366,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       const limitsNow = Effect.provideService(readTaskLimits, SqlClient.SqlClient, sql);
       const overBudget = Effect.provideService(budgetSpent, SqlClient.SqlClient, sql);
       const github = yield* GithubAuth;
+      const githubIssues = yield* GithubIssues;
+      const remotes = yield* Remotes;
       /**
        * Who the commits of the application's tasks are by: the organization's app's bot, where a
        * repository of the application is mirrored through the app (its bot read once, then kept
@@ -352,13 +393,102 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         );
 
       /**
-       * Whether the Mate's last task's change still waits for review: its copy of the code holds
-       * that work, so it takes no new task until the change is merged or closed.
+       * Whether the task's Mate hears what is said of it now: on it, or done with it while its
+       * change waits for review (a review comment is for the Mate that made the change).
+       */
+      const hears = (task: Statement.Fragment) => taskHears(sql, task);
+
+      /** The messages kept of `taskIds`, in the order they came, as frames. */
+      const messagesOf = (taskIds: ReadonlyArray<string>, sinceEnded = false) =>
+        taskIds.length === 0
+          ? Effect.succeed([] as ReadonlyArray<string>)
+          : Effect.map(
+              sql<MessageRow>`
+                SELECT m.task_id::text AS task_id, m.id, m.source, m.author, m.text,
+                  t.change_repo, t.change_number, c.mate_project_id AS change_mate
+                FROM hq_task_message m JOIN hq_task t ON t.id = m.task_id
+                LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
+                  AND c.number = t.change_number
+                WHERE m.task_id::text IN ${sql.in(taskIds)}
+                  AND (NOT ${sinceEnded} OR m.created_at > ${endedAt(sql`t`)})
+                ORDER BY m.seq`,
+              (rows) => rows.map(messageFrame),
+            );
+
+      /**
+       * Whether a task of the Mate's has its change waiting for review: its row reads that task
+       * while it is on no other.
        */
       const heldBy = (mate: Statement.Fragment) => sql`EXISTS (
         SELECT 1 FROM hq_task t JOIN hq_change c ON c.app_id = t.app_id
           AND c.repo = t.change_repo AND c.number = t.change_number
         WHERE t.mate_project_id = ${mate} AND c.state = 'open')`;
+      /** Whether the Mate holds a change waiting for review, a task's or its own: free last. */
+      const holdsChange = (mate: Statement.Fragment) => sql`EXISTS (
+        SELECT 1 FROM hq_change c WHERE c.mate_project_id = ${mate} AND c.state = 'open')`;
+      /** When the task last ended, for what was said of it since. */
+      const endedAt = (task: Statement.Fragment) =>
+        sql`COALESCE(${task}.ended_at, ${task}.updated_at)`;
+      /**
+       * A follow-up on a task the Mate is done with, its change waiting for review: something said
+       * of it since it ended — not told yet, or told within `followUpWithin` (`follow_up_at`) with no
+       * word that the Mate is back on it. The Mate owes it: no new task until it is back on that
+       * one, or the time passed with no word.
+       */
+      const followUpOn = (task: Statement.Fragment) => sql`(
+        ${pendingOn(task)} AND (${untold(task)}
+          OR ${task}.follow_up_at > now() - make_interval(secs => ${followUpSecs})))`;
+      /**
+       * Something said of a task the Mate is done with, its change waiting for review, since it
+       * ended: told or not, what a link opening tells it, however long its Mate was away.
+       */
+      const pendingOn = (task: Statement.Fragment) => sql`(
+        ${task}.state = 'done' AND ${task}.mate_project_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = ${task}.app_id
+          AND c.repo = ${task}.change_repo AND c.number = ${task}.change_number AND c.state = 'open')
+        AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
+          AND msg.created_at > ${endedAt(task)}))`;
+      /** Said of the task since it ended, and since HQ last told its Mate a follow-up on it. */
+      const untold = (task: Statement.Fragment) => sql`EXISTS (
+        SELECT 1 FROM hq_task_message msg WHERE msg.task_id = ${task}.id
+          AND msg.created_at > GREATEST(${endedAt(task)},
+            COALESCE(${task}.follow_up_at, '-infinity'::timestamptz)))`;
+      /** Whether the Mate is on a task: handed it, at work on it, or asking about it. */
+      const onATask = (mate: Statement.Fragment) => sql`EXISTS (SELECT 1 FROM hq_task live
+        WHERE live.mate_project_id = ${mate} AND live.state IN ('assigned', 'working', 'waiting'))`;
+      /**
+       * Each automated Mate's one follow-up to tell now — of the tasks it is done with, the one
+       * said of first — once it is on no task: one task's work at a time, on its own change.
+       * `all` tells it again (a link opening): any said of since its task ended, told before or
+       * not; else only one with something not told yet.
+       */
+      const followUps = (mates: Statement.Fragment, all: boolean) =>
+        Effect.gen(function* () {
+          const owed = sql`
+              SELECT DISTINCT ON (t.mate_project_id) t.id, t.mate_project_id,
+                ${untold(sql`t`)} AS untold
+              FROM hq_task t JOIN hq_task_message msg ON msg.task_id = t.id
+              WHERE t.mate_project_id IN (SELECT project_id FROM hq_mate WHERE automated AND ${mates})
+                AND ${all ? pendingOn(sql`t`) : followUpOn(sql`t`)}
+                AND NOT ${onATask(sql`t.mate_project_id`)}
+                AND msg.created_at > ${endedAt(sql`t`)}
+              ORDER BY t.mate_project_id, msg.seq`;
+          // Read first: most looks find none, and write nothing.
+          const found = yield* sql<{ readonly untold: boolean }>`SELECT untold FROM (${owed}) o`;
+          if (!found.some((row) => row.untold || all)) return [];
+          const due = yield* leader.write(sql<{
+            readonly task_id: string;
+            readonly mate_project_id: string;
+          }>`
+            WITH due AS (${owed})
+            UPDATE hq_task t SET follow_up_at = now() FROM due
+            WHERE t.id = due.id AND (due.untold OR ${all})
+            RETURNING t.id::text AS task_id, t.mate_project_id`);
+          for (const row of due)
+            for (const frame of yield* messagesOf([row.task_id], true))
+              yield* tellMate(row.mate_project_id, frame);
+          return due;
+        });
       /**
        * The automated Mates, by project, as their records say: only their links and attention move
        * a task, while every Mate's overview moves often.
@@ -366,10 +496,50 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       let automated: ReadonlySet<string> = new Set();
       /** The Mates held so, as last read: their rows read that task until it is let go. */
       let held: ReadonlySet<string> = new Set();
+      /**
+       * Replies kept for a task while its Mate worked another, its change merged or closed before
+       * the Mate got to them: each source says how the task ended, once per end (`end_answered_at`,
+       * as a reply after its end is answered), never silence. What was said in HQ's own review
+       * reads the change's fate there.
+       */
+      const unheardEnds = Effect.gen(function* () {
+        const ended = yield* leader.write(sql<{
+          readonly id: string;
+          readonly app_id: string;
+          readonly source: unknown;
+          readonly source_key: string;
+          readonly state: string;
+          readonly why: string | null;
+        }>`
+          UPDATE hq_task t SET end_answered_at = t.ended_at
+          WHERE t.state IN ('done', 'stopped') AND t.ended_at IS NOT NULL
+            AND t.end_answered_at IS DISTINCT FROM t.ended_at
+            AND EXISTS (SELECT 1 FROM hq_change c WHERE c.app_id = t.app_id
+              AND c.repo = t.change_repo AND c.number = t.change_number AND c.state <> 'open')
+            AND EXISTS (SELECT 1 FROM hq_task_message msg WHERE msg.task_id = t.id
+              AND msg.source <> 'review'
+              AND msg.created_at > GREATEST(t.ended_at,
+                COALESCE(t.follow_up_at, '-infinity'::timestamptz)))
+          RETURNING t.id::text AS id, t.app_id::text AS app_id, t.source, t.source_key, t.state,
+            COALESCE(t.detail, t.stop_reason) AS why`);
+        for (const task of ended) {
+          const source = sourceOfRow(task.source);
+          if (source === undefined) continue;
+          const channel = yield* channels.of(source.kind);
+          yield* (
+            channel?.answerEnd?.(
+              { taskId: task.id, appId: task.app_id, source, sourceKey: task.source_key },
+              task.state === "done" ? { kind: "finished" } : { kind: "stopped", why: task.why },
+            ) ?? Effect.void
+          );
+        }
+      });
+
       /** A change moved: every Mate it holds or let go told, and HQ looks again for free Mates. */
       const changeMoved = Effect.gen(function* () {
         // An HQ with no automated Mate has nothing a change could hold or let go.
         if (automated.size === 0 && held.size === 0) return;
+        yield* unheardEnds.pipe(Effect.catchTags({ NotLeader: () => Effect.void }));
         const rows = yield* sql<{ readonly project_id: string }>`
           SELECT m.project_id FROM hq_mate m WHERE m.automated AND ${heldBy(sql`m.project_id`)}`;
         const now = new Set(rows.map((row) => row.project_id));
@@ -383,11 +553,13 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       /** A Mate HQ may hand a task to now, of those its records name free. */
       // A Mate that declined a task is not offered one again until this passes: it said it was busy.
       const declinedUntil = new Map<string, number>();
-      const freeNow = (projectIds: ReadonlyArray<string>) =>
+      const freeNow = (
+        mates: ReadonlyArray<{ readonly project_id: string; readonly held: boolean }>,
+      ) =>
         Effect.gen(function* () {
           const all = yield* overviews.all;
           const now = yield* Clock.currentTimeMillis;
-          return projectIds.flatMap((projectId) => {
+          return mates.flatMap(({ project_id: projectId, held }) => {
             const entry = all.get(projectId);
             const cooled = (declinedUntil.get(projectId) ?? 0) <= now;
             if (!cooled || entry?.presence.online !== true || entry.attention?.working !== 0)
@@ -395,11 +567,34 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             // Only a Mate whose overview says it runs a version that reads them takes tasks from
             // beyond GitHub; one that has not said its version yet takes issues alone.
             const version = entry.overview?.identity.serverVersion;
-            const everySource =
-              version !== undefined && compareSemverVersions(version, TASK_SOURCES_SINCE) >= 0;
-            return [{ projectId, everySource }];
+            const since = (first: string) =>
+              version !== undefined && compareSemverVersions(version, first) >= 0;
+            // One whose task's change waits for review takes another only where it moves its
+            // working copies to each task's base.
+            if (held && !since(TASK_CHANGES_SINCE)) return [];
+            return [{ projectId, everySource: since(TASK_SOURCES_SINCE) }];
           });
         });
+
+      /** Words said on a change's pull request, as the organization's app; none where it is not. */
+      const onPullRequest = (
+        ref: { readonly appId: string; readonly repo: string },
+        repository: string,
+        number: number,
+        words: string,
+      ) =>
+        Effect.gen(function* () {
+          const remote = remoteIdentity(`https://github.com/${repository}`);
+          const reached = yield* remotes.tokenOf(ref, "pullRequests", "act");
+          if (remote === undefined || reached.as !== "app") return;
+          const posted = yield* githubIssues.comment(remote, reached.token, number, marked(words));
+          if (posted.status !== 201)
+            yield* Effect.logInfo("a pull request's line not said", { status: posted.status });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a pull request's line not said", { cause }),
+          ),
+        );
 
       /**
        * The task's status line on its source, said through its channel with what `status` makes of
@@ -423,13 +618,17 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
             readonly conversation_id: string | null;
             readonly change_ready: boolean;
             readonly change_state: string | null;
+            readonly pr_repository: string | null;
+            readonly last_from: string | null;
           }>`
             SELECT t.app_id::text AS app_id, t.source, t.source_key, t.status_ref,
               COALESCE(t.mate_project_id, t.last_mate_project_id) AS mate, t.conversation_id,
               t.change_repo,
               t.change_number, t.detail, t.question, a.name AS app_name, pr.pr_number,
               pr.url AS pr_url, COALESCE(c.ready_head = c.head, false) AS change_ready,
-              c.state AS change_state
+              c.state AS change_state, pr.github_repo AS pr_repository,
+              (SELECT m.source FROM hq_task_message m WHERE m.task_id = t.id
+                ORDER BY m.seq DESC LIMIT 1) AS last_from
             FROM hq_task t
             LEFT JOIN hq_app a ON a.id = t.app_id
             LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
@@ -485,6 +684,20 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           if (typeof ref === "string" && ref !== task.status_ref)
             yield* leader.write(sql`
               UPDATE hq_task SET status_ref = ${ref} WHERE id::text = ${taskId}`);
+          // What a review asked and the Mate couldn't finish: said where the reviewer wrote too.
+          if (
+            said.kind === "failed" &&
+            task.last_from === "review" &&
+            task.change_repo !== null &&
+            task.pr_number !== null &&
+            task.pr_repository !== null
+          )
+            yield* onPullRequest(
+              { appId: task.app_id, repo: task.change_repo },
+              task.pr_repository,
+              task.pr_number,
+              statusWords(said),
+            );
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("a task's status not said", { taskId, cause }),
@@ -622,6 +835,11 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
        */
       const dispatch = Effect.gen(function* () {
         if (!(yield* leading)) return;
+        // A Mate on no task first hears the follow-up it owes, whatever the key or the budget —
+        // one whose link is open: one away hears it as its link opens.
+        const present = yield* overviews.all;
+        const online = [...automated].filter((id) => present.get(id)?.presence.online === true);
+        if (online.length > 0) yield* followUps(sql`project_id IN ${sql.in(online)}`, false);
         const keyed = yield* sql`
           SELECT 1 FROM hq_org_ai_key WHERE provider = ${AUTOMATED_PROVIDER.id}`;
         if (keyed.length === 0) return;
@@ -634,15 +852,15 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         const apps = yield* sql<{ readonly app_id: string }>`
           SELECT DISTINCT app_id::text AS app_id FROM hq_task WHERE state = 'queued'`;
         for (const { app_id: appId } of apps) {
-          const idle = yield* sql<{ readonly project_id: string }>`
-            SELECT m.project_id FROM hq_mate m
+          const idle = yield* sql<{ readonly project_id: string; readonly held: boolean }>`
+            SELECT m.project_id, ${heldBy(sql`m.project_id`)} AS held FROM hq_mate m
             JOIN hq_app_project p ON p.project_id = m.project_id
             WHERE p.app_id::text = ${appId} AND p.kind IN ('mate', 'devstage') AND m.automated
+              AND NOT ${onATask(sql`m.project_id`)}
               AND NOT EXISTS (SELECT 1 FROM hq_task t
-                WHERE t.mate_project_id = m.project_id AND t.state IN ('assigned', 'working', 'waiting'))
-              AND NOT (${heldBy(sql`m.project_id`)})
-            ORDER BY m.seq`;
-          const free = [...(yield* freeNow(idle.map((row) => row.project_id)))];
+                WHERE t.mate_project_id = m.project_id AND ${followUpOn(sql`t`)})
+            ORDER BY ${holdsChange(sql`m.project_id`)}, m.seq`;
+          const free = [...(yield* freeNow(idle))];
           if (free.length === 0) continue;
           // An issue's only from the intake's own repository: one it left or stopped gives nobody work.
           const waiting = yield* sql<TaskRow & { readonly source_kind: string }>`
@@ -876,19 +1094,31 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
       );
       // A key kept: the tasks that waited for one go.
       yield* Effect.forkScoped(Stream.runForEach(aiKeys.changes, () => wake));
-      /** Something said about the task, kept and told to its Mate where it hears it now. */
+      /**
+       * Something said about the task, kept and told to its Mate while it is on it. One for a task
+       * it is done with, its change waiting for review, is a follow-up: told once its Mate is on
+       * no other task (`followUps`), so it never lands in another task's work.
+       */
       const messageTask = (taskId: string, said: MateTaskMessage) =>
         Effect.gen(function* () {
           // The Mate takes a named author only: a blank name is nobody's.
           const message = { ...said, author: authorOf(said.author) };
-          const [kept] = yield* leader.write(sql<{
-            readonly heard: boolean;
-            readonly mate_project_id: string | null;
-          }>`
+          const [kept] = yield* leader.write(sql<
+            MessageRow & {
+              readonly on: boolean;
+              readonly follow_up: boolean;
+              readonly mate_project_id: string | null;
+            }
+          >`
             -- The task's row held while the message is kept: a pickup at the same moment either
             -- sees it (and tells it), or is seen here as taken (and it is told now).
             WITH task AS (
-              SELECT t.id, t.mate_project_id, ${hears(sql`t`)} AS heard FROM hq_task t
+              SELECT t.id, t.mate_project_id, t.change_repo, t.change_number,
+                t.state IN ('working', 'waiting') AS on,
+                ${hears(sql`t`)} AND t.state = 'done' AS follow_up,
+                (SELECT c.mate_project_id FROM hq_change c WHERE c.app_id = t.app_id
+                  AND c.repo = t.change_repo AND c.number = t.change_number) AS change_mate
+              FROM hq_task t
               WHERE t.id::text = ${taskId}
                 AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
                   < ${TASK_MESSAGES_MAX}
@@ -897,21 +1127,16 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               INSERT INTO hq_task_message (task_id, id, source, author, text)
               SELECT id, ${message.id}, ${message.from}, ${message.author}, ${message.text}
               FROM task ON CONFLICT DO NOTHING RETURNING task_id)
-            SELECT task.heard, task.mate_project_id FROM task JOIN kept ON kept.task_id = task.id`);
+            SELECT task.on, task.follow_up, task.mate_project_id, task.id::text AS task_id,
+              ${message.id} AS id, ${message.from} AS source, ${message.author}::text AS author,
+              ${message.text} AS text, task.change_repo, task.change_number, task.change_mate
+            FROM task JOIN kept ON kept.task_id = task.id`);
           if (kept === undefined) return;
-          // Told now to a Mate on it — or done with it, its change still waiting for review —
-          // and kept for one that has not taken it yet.
-          if (kept.mate_project_id !== null && kept.heard)
-            yield* tellMate(
-              kept.mate_project_id,
-              messageFrame({
-                task_id: taskId,
-                id: message.id,
-                source: message.from,
-                author: message.author,
-                text: message.text,
-              }),
-            );
+          // Told now to a Mate on it, kept for one that has not taken it yet; a follow-up goes
+          // out with HQ's next look, once its Mate is on nothing else.
+          if (kept.mate_project_id !== null && kept.on)
+            yield* tellMate(kept.mate_project_id, messageFrame(kept));
+          else if (kept.follow_up) yield* wake;
         });
 
       /** People stopped the task: dropped while no Mate took it, else its Mate told to stop. */
@@ -972,11 +1197,14 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
         Stream.runForEach(changes.comments, (comment) =>
           logged("a review comment not told")(
             Effect.gen(function* () {
+              // The task the change was opened on, else the one it is linked to.
               const [task] = yield* sql<{ readonly id: string }>`
-                SELECT id::text AS id FROM hq_task
-                WHERE app_id::text = ${comment.appId} AND change_repo = ${comment.repo}
-                  AND change_number = ${comment.number} AND mate_project_id IS NOT NULL
-                ORDER BY seq DESC LIMIT 1`;
+                SELECT t.id::text AS id FROM hq_task t
+                WHERE t.app_id::text = ${comment.appId} AND t.mate_project_id IS NOT NULL AND (
+                  t.id = (SELECT c.task_id FROM hq_change c WHERE c.app_id::text = ${comment.appId}
+                    AND c.repo = ${comment.repo} AND c.number = ${comment.number})
+                  OR (t.change_repo = ${comment.repo} AND t.change_number = ${comment.number}))
+                ORDER BY t.seq DESC LIMIT 1`;
               if (task === undefined) return;
               const author = yield* Effect.orElseSucceed(
                 Effect.map(
@@ -1016,19 +1244,6 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           ),
         ),
       );
-
-      const hears = (task: Statement.Fragment) => taskHears(sql, task);
-
-      /** The messages kept of `taskIds`, in the order they came, as frames. */
-      const messagesOf = (taskIds: ReadonlyArray<string>) =>
-        taskIds.length === 0
-          ? Effect.succeed([] as ReadonlyArray<string>)
-          : Effect.map(
-              sql<MessageRow>`
-                SELECT task_id::text AS task_id, id, source, author, text FROM hq_task_message
-                WHERE task_id::text IN ${sql.in(taskIds)} ORDER BY seq`,
-              (rows) => rows.map(messageFrame),
-            );
 
       /**
        * The task is the Mate's: handed to it or taken by it — or, given back while its link was
@@ -1349,12 +1564,18 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               const frames = yield* Effect.forEach(handed, (row) =>
                 Effect.map(commitAuthorOf(row.app_id), (author) => taskFrame(row, limits, author)),
               );
-              // On it, or its change waiting for review: what was said of it, and whether people
-              // stopped it.
+              // On it: what was said of it, and whether people stopped it.
               const on = yield* sql<{ readonly id: string; readonly stop_reason: string | null }>`
                 SELECT t.id::text AS id, t.stop_reason FROM hq_task t
-                WHERE t.mate_project_id = ${projectId} AND ${hears(sql`t`)}`;
+                WHERE t.mate_project_id = ${projectId} AND t.state IN ('working', 'waiting')`;
               const said = yield* messagesOf(on.map((task) => task.id));
+              // On none: the follow-up it owes on one it is done with, told again (it hears each
+              // message once).
+              // (A Core that does not lead leaves it to the one that does.)
+              if (on.length === 0)
+                yield* followUps(sql`project_id = ${projectId}`, true).pipe(
+                  Effect.catchTags({ NotLeader: () => Effect.void }),
+                );
               // Stopped by people since it was handed it, and not yet heard to have stopped: a
               // Mate away meanwhile may still be on it.
               const ended = yield* sql<{ readonly id: string; readonly why: string | null }>`

@@ -184,6 +184,34 @@ describe("publicAccess", () => {
       },
     },
     {
+      name: "a service its own domain reaches is never offered to the internet, though its subdomain is off",
+      inputs: [
+        ...navigation({ subdomainAccess: false }),
+        ...baselined(routingsScope(ORG), { r1: routing() }),
+      ],
+      expected: {
+        state: "ready",
+        routes: [DOMAIN],
+        pending: [],
+        offers: [],
+        readsProject: false,
+      },
+    },
+    {
+      name: "a service whose domain is being put in place is never offered to the internet",
+      inputs: [
+        ...navigation({ subdomainAccess: false }),
+        ...baselined(routingsScope(ORG), { r1: routing({ isSynced: false }) }),
+      ],
+      expected: {
+        state: "ready",
+        routes: [],
+        pending: [DOMAIN],
+        offers: [],
+        readsProject: false,
+      },
+    },
+    {
       name: "routings not read yet: reading, nothing claimed",
       inputs: navigation(),
       expected: { state: "reading", routes: [], pending: [], offers: [], readsProject: false },

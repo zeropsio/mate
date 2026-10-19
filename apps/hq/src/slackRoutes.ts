@@ -4,7 +4,10 @@
  *
  * - `GET /api/org/slack` → `HqSlackView`, to any member; `PUT` `HqSlackConnectRequest` →
  *   `HqSlackView` and `DELETE` → `204`, by an owner or admin of the organization; never the token
- *   or the secret back. `GET /api/org/slack/manifest` → the Slack app's manifest, by the same.
+ *   or the secret back (once connected, either alone replaces the one HQ holds).
+ *   `GET /api/org/slack/manifest` → the Slack app's manifest, by the same.
+ *   `GET /api/org/slack/channels` → `HqSlackChannels`, the channels the bot is in, by a structure
+ *   writer.
  * - `GET /api/apps/:appId/slack` → `HqChannelView` (`null` while none); `PUT` `HqChannelRequest` →
  *   `HqChannelView` and `DELETE` → `204`, by a structure writer.
  * - `POST /api/intake/slack/:publicId`: Slack's event, limited per address. Past 1 MiB `413`; no
@@ -102,8 +105,8 @@ export const slackRoutes = Layer.mergeAll(
           Effect.gen(function* () {
             const { userId } = yield* principal;
             const view = yield* (yield* Slack).connect(userId, {
-              botToken: Redacted.make(botToken),
-              signingSecret: Redacted.make(signingSecret),
+              botToken: botToken === undefined ? undefined : Redacted.make(botToken),
+              signingSecret: signingSecret === undefined ? undefined : Redacted.make(signingSecret),
             });
             return json(view, 200);
           }),
@@ -131,6 +134,16 @@ export const slackRoutes = Layer.mergeAll(
       Effect.gen(function* () {
         const { userId } = yield* principal;
         return json(yield* (yield* Slack).manifest(userId), 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "GET",
+    "/api/org/slack/channels",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        return json(yield* (yield* Slack).channels(userId), 200);
       }),
     ),
   ),

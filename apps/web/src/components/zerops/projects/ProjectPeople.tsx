@@ -299,19 +299,22 @@ export function ProjectAccess({
   kind,
   name,
   heading = true,
+  fold = false,
 }: {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   readonly name?: string;
   /** Drawn with its own heading; `false` where the host names the section. */
   readonly heading?: boolean;
+  /** Folded to a row of faces until *Manage* opens the chips (`ProjectAccessChips`). */
+  readonly fold?: boolean;
 }) {
   const projects = useMemo(
     () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
     [kind, name, projectId],
   );
   const access = useProjectAccess(projects);
-  return <ProjectAccessChips heading={heading} {...access} />;
+  return <ProjectAccessChips fold={fold} heading={heading} {...access} />;
 }
 
 /**

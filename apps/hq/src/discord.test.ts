@@ -160,6 +160,7 @@ const withDiscord = Effect.gen(function* () {
           return live;
         }),
       stop: (sourceKey, reason) => Effect.sync(() => void asked.stops.push([sourceKey, reason])),
+      answerEnded: () => Effect.undefined,
     }),
   );
   const channels = Layer.succeed(

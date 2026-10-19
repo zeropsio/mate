@@ -1083,8 +1083,8 @@ export const structureLayer = (options: {
                          END) END END AS mate
               FROM hq_app_project p FULL OUTER JOIN hq_mate m USING (project_id)
               LEFT JOIN hq_press press ON press.project_id = m.project_id AND press.kind = 'mate'
-              -- Its live task — on it, or done while its change waits for review — else its most
-              -- recent one of the last 7 days, saying how it ended (its change's fate first).
+              -- Its live task — on it, else the newest done while its change waits for review — else
+              -- its most recent one of the last 7 days, saying how it ended (its change's fate first).
               LEFT JOIN (SELECT DISTINCT ON (t.mate_project_id) t.mate_project_id, t.id::text AS id,
                   t.source, t.state, t.app_id, t.change_repo, t.change_number, t.started_at,
                   t.spent_usd, t.worked_ms,
@@ -1102,7 +1102,8 @@ export const structureLayer = (options: {
                   OR (t.state IN ('done', 'failed', 'stopped', 'dropped')
                     AND t.updated_at > now() - interval '7 days'))
                 ORDER BY t.mate_project_id,
-                  (t.state IN ('assigned', 'working', 'waiting') OR tc.state = 'open') DESC, t.seq DESC
+                  t.state IN ('assigned', 'working', 'waiting') DESC, tc.state = 'open' DESC NULLS LAST,
+                  t.seq DESC
               ) task ON task.mate_project_id = m.project_id
               LEFT JOIN hq_pull_request task_pr ON task_pr.app_id = task.app_id
                 AND task_pr.repo = task.change_repo AND task_pr.number = task.change_number

@@ -5,12 +5,14 @@
  *
  * Drawn from its reads, handed in, so a test and the harness look at it with no account behind it.
  */
-import { ChevronRightIcon } from "lucide-react";
+import { flowVerbLabel } from "@t3tools/client-runtime/zerops";
+import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
@@ -30,6 +32,8 @@ export function ProjectChangesCard({
   mateOf,
   onOpen,
   onOpenRelease,
+  onRelease,
+  releasing = false,
   emptyAction,
 }: {
   readonly groups: ProjectChangeGroups;
@@ -45,6 +49,13 @@ export function ProjectChangesCard({
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
   /** Opens production's releases, where it has a page; absent, a folded release is only a line. */
   readonly onOpenRelease?: ((tag: string) => void) | undefined;
+  /**
+   * Opens the release review, from the button pressed: the ready group's *Release*, the same
+   * review as the road's chip. Absent, the group offers none.
+   */
+  readonly onRelease?: ((from: HTMLElement) => void) | undefined;
+  /** A release is on its way: its Release waits, saying so, until it lands. */
+  readonly releasing?: boolean | undefined;
   /** The way to a first environment, where the project has no repository yet. */
   readonly emptyAction?:
     | { readonly words: string; readonly label: string; readonly onPress: () => void }
@@ -111,12 +122,25 @@ export function ProjectChangesCard({
         )}
         {ready.changes.length === 0 ? null : (
           <div className="grid gap-1" data-zerops-changes="ready">
-            <CardGroupName
-              after={ready.onStage ? "on stage" : undefined}
-              count={ready.changes.length}
-            >
-              {ready.title}
-            </CardGroupName>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <CardGroupName
+                after={ready.onStage ? "on stage" : undefined}
+                count={ready.changes.length}
+              >
+                {ready.title}
+              </CardGroupName>
+              {onRelease === undefined || ready.title !== "Ready to release" ? null : (
+                <Button
+                  disabled={releasing}
+                  onClick={(event) => {
+                    onRelease(event.currentTarget);
+                  }}
+                  size="sm"
+                >
+                  {releasing ? flowVerbLabel("release", true) : "Release"}
+                </Button>
+              )}
+            </div>
             <ul className="grid">
               {ready.changes.map((change) => (
                 <ChangeRow
@@ -238,10 +262,11 @@ function ChangeRow({
 }) {
   const time = when === "" ? undefined : merged ? `merged ${when} ago` : when;
   const end = [mate?.name, time].filter((part) => part !== undefined).join(" · ");
+  const github = change.pull.pullRequest;
   return (
-    <li data-zerops-change={changeKey(change)}>
+    <li className="flex min-w-0 items-center gap-2" data-zerops-change={changeKey(change)}>
       <button
-        className="pp-cards-row pp-cards-press"
+        className="pp-cards-row pp-cards-press min-w-0 flex-1"
         onClick={(event) => {
           onOpen(change, event.currentTarget);
         }}
@@ -253,6 +278,19 @@ function ChangeRow({
         </span>
         <span className="shrink-0 text-caption text-muted-foreground tabular-nums">{end}</span>
       </button>
+      {/* Its pull request on GitHub, where the change is mirrored to one: the automation's link. */}
+      {github === undefined ? null : (
+        <a
+          aria-label={pullRequestLinkWords(github)}
+          className="pp-cards-pr"
+          href={github.url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          #{github.number}
+          <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+        </a>
+      )}
     </li>
   );
 }

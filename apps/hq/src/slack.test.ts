@@ -36,6 +36,7 @@ import { REPLIES } from "./slackText.ts";
 import {
   type TaskEnqueue,
   TaskIntake,
+  type TaskEnd,
   type TaskSourceChannel,
   TaskSourceChannels,
 } from "./taskSources.ts";
@@ -95,6 +96,8 @@ const fakeIntake = Effect.gen(function* () {
   }>();
   const stops = yield* Queue.unbounded<{ readonly sourceKey: string; readonly reason: string }>();
   const live = new Set<string>();
+  /** The keys whose task ended, and how, until a reply after it was answered. */
+  const ended = new Map<string, TaskEnd>();
   /** While set, HQ takes no task in (not the leading HQ, its database away). */
   const away = { now: false };
   const service = TaskIntake.of({
@@ -112,8 +115,15 @@ const fakeIntake = Effect.gen(function* () {
       Effect.sync(() => live.delete(sourceKey)).pipe(
         Effect.andThen(Queue.offer(stops, { sourceKey, reason })),
       ),
+    answerEnded: (sourceKey, allowed) =>
+      Effect.gen(function* () {
+        const end = ended.get(sourceKey);
+        if (end === undefined || !(yield* allowed)) return undefined;
+        ended.delete(sourceKey);
+        return end;
+      }),
   });
-  return { service, enqueued, messages, stops, live, away };
+  return { service, enqueued, messages, stops, live, ended, away };
 });
 
 /**
@@ -281,6 +291,8 @@ describe("Slack", () => {
             connected: true,
             workspace: "Tea Shop",
             eventsUrl: before.eventsUrl,
+            eventsRefusedAt: null,
+            eventsAcceptedAt: null,
           });
           const [identity] = yield* hq.slack.callsOf("auth.test");
           assert.strictEqual(identity?.authorization, `Bearer ${SLACK_BOT_TOKEN}`);
@@ -301,6 +313,8 @@ describe("Slack", () => {
             connected: false,
             workspace: null,
             eventsUrl: before.eventsUrl,
+            eventsRefusedAt: null,
+            eventsAcceptedAt: null,
           });
           for (const line of hq.logged) {
             assert.notInclude(line, SLACK_BOT_TOKEN);
@@ -409,6 +423,137 @@ describe("Slack", () => {
           assert.deepInclude(taken, { code: "conflict", reason: "channel_taken" });
           yield* hq.service.unmapChannel("owner", hq.appId);
           assert.isUndefined(yield* hq.service.channelOf(hq.appId));
+        }),
+    );
+
+    it.effect(
+      "connecting Slack again keeps every application's channel, a new app's included, as Slack names it now; an archived one goes, and connected to another workspace they all go",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const front = yield* hq.appNamed("Shop Front");
+          hq.slack.state.channels.set("C0FRONT", { name: "front", member: true });
+          yield* hq.service.mapChannel("owner", front, "C0FRONT");
+          yield* hq.service.disconnect("owner");
+          assert.strictEqual((yield* hq.service.channelOf(hq.appId))?.channel, "support");
+          // A new Slack app in the same workspace: its own bot and token.
+          const newToken = ["xoxb", "1000", "3000", "newfakenewfake"].join("-");
+          hq.slack.state.token = newToken;
+          hq.slack.state.botUserId = "U0MATE2";
+          hq.slack.state.channels.set("C0SUPPORT", { name: "support-desk", member: false });
+          hq.slack.state.channels.set("C0FRONT", { name: "front", member: true, archived: true });
+          yield* hq.service.connect("owner", {
+            botToken: Redacted.make(newToken),
+            signingSecret: Redacted.make(SIGNING_SECRET),
+          });
+          assert.deepStrictEqual(yield* hq.service.channelOf(hq.appId), {
+            appId: hq.appId,
+            channelId: "C0SUPPORT",
+            channel: "support-desk",
+          });
+          assert.isUndefined(yield* hq.service.channelOf(front));
+          hq.slack.state.team = { id: "T0ELSE", name: "Elsewhere" };
+          yield* hq.service.connect("owner", {
+            botToken: Redacted.make(newToken),
+            signingSecret: Redacted.make(SIGNING_SECRET),
+          });
+          assert.isUndefined(yield* hq.service.channelOf(hq.appId));
+        }),
+    );
+
+    it.effect(
+      "an owner replaces the signing secret or the bot token of a connected Slack in place: its channels stay, and events signed with the old secret are refused",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          const alone = yield* Effect.flip(
+            hq.service.connect("owner", { signingSecret: Redacted.make(SIGNING_SECRET) }),
+          );
+          assert.deepInclude(alone, { code: "invalid", reason: "bot_token" });
+          yield* hq.connected;
+          const checks = (yield* hq.slack.callsOf("auth.test")).length;
+          const newSecret = ["fake", "signing", "secret", "fedcba9876543210"].join("-");
+          const view = yield* hq.service.connect("owner", {
+            signingSecret: Redacted.make(newSecret),
+          });
+          assert.deepInclude(view, { connected: true, workspace: "Tea Shop" });
+          assert.lengthOf(yield* hq.slack.callsOf("auth.test"), checks);
+          const ask = hq.event(mention("<@U0MATE> brew more tea"));
+          assert.strictEqual((yield* hq.post(ask)).status, 401);
+          assert.strictEqual((yield* hq.post(ask, { secret: newSecret })).status, 200);
+          const newToken = ["xoxb", "1000", "4000", "rotatedfakefake"].join("-");
+          hq.slack.state.token = newToken;
+          yield* hq.service.connect("owner", { botToken: Redacted.make(newToken) });
+          const [, checked] = yield* hq.slack.callsOf("auth.test");
+          assert.strictEqual(checked?.authorization, `Bearer ${newToken}`);
+          assert.strictEqual(
+            (yield* hq.post(hq.event(mention("<@U0MATE> and scones")), { secret: newSecret }))
+              .status,
+            200,
+          );
+          assert.strictEqual((yield* hq.service.channelOf(hq.appId))?.channelId, "C0SUPPORT");
+          const refused = yield* Effect.flip(
+            hq.service.connect("dev", { signingSecret: Redacted.make(newSecret) }),
+          );
+          assert.deepInclude(refused, { code: "forbidden" });
+        }),
+    );
+
+    it.effect(
+      "HQ keeps when an event's signature last failed and last held; replacing the signing secret forgets the failures",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          const ask = hq.event(mention("<@U0MATE> brew more tea"));
+          // No signature at all, or a stale one, says nothing of the secret.
+          yield* hq.post(ask, { signature: null });
+          yield* hq.post(ask, { ageSeconds: 6 * 60 });
+          assert.deepInclude(yield* hq.service.view, {
+            eventsRefusedAt: null,
+            eventsAcceptedAt: null,
+          });
+          yield* hq.post(ask, { secret: "not-the-secret" });
+          const refused = yield* hq.service.view;
+          assert.isString(refused.eventsRefusedAt);
+          assert.isNull(refused.eventsAcceptedAt);
+          yield* hq.post(ask);
+          const held = yield* hq.service.view;
+          assert.isTrue(held.eventsAcceptedAt! >= held.eventsRefusedAt!);
+          yield* hq.post(ask, { secret: "not-the-secret" });
+          const again = yield* hq.service.view;
+          assert.isTrue(again.eventsRefusedAt! >= again.eventsAcceptedAt!);
+          yield* hq.service.connect("owner", {
+            signingSecret: Redacted.make(["fake", "signing", "secret", "replaced00"].join("-")),
+          });
+          assert.isNull((yield* hq.service.view).eventsRefusedAt);
+        }),
+    );
+
+    it.effect(
+      "a structure writer lists the channels the bot is in, unarchived, by name, every page of them, with the bot's name to invite",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          const unconnected = yield* Effect.flip(hq.service.channels("owner"));
+          assert.deepInclude(unconnected, { code: "conflict", reason: "slack_not_connected" });
+          yield* hq.connected;
+          hq.slack.state.channels.set("C0ZED", { name: "zed", member: true });
+          hq.slack.state.channels.set("C0QUIET", { name: "quiet", member: false });
+          hq.slack.state.channels.set("C0OLD", { name: "old", member: true, archived: true });
+          hq.slack.state.channels.set("C0ALPHA", { name: "alpha", member: true });
+          assert.deepStrictEqual(yield* hq.service.channels("owner"), {
+            bot: "mate",
+            channels: [
+              { id: "C0ALPHA", name: "alpha" },
+              { id: "C0SUPPORT", name: "support" },
+              { id: "C0ZED", name: "zed" },
+            ],
+          });
+          assert.lengthOf(yield* hq.slack.callsOf("users.conversations"), 2);
+          const refused = yield* Effect.flip(hq.service.channels("dev"));
+          assert.deepInclude(refused, { code: "forbidden" });
         }),
     );
 
@@ -689,6 +834,60 @@ describe("Slack", () => {
           assert.strictEqual(yield* Queue.size(hq.intake.messages), 0);
           assert.strictEqual((yield* hq.slack.callsOf("users.info")).length, asked);
           for (const line of hq.logged) assert.notInclude(line, SLACK_BOT_TOKEN);
+        }),
+    );
+
+    it.effect(
+      "a member's reply in a thread whose task ended is answered once, in the thread, with how it ended and how to ask again",
+      () =>
+        Effect.gen(function* () {
+          const hq = yield* withSlack;
+          yield* hq.connected;
+          yield* hq.post(hq.event(mention("<@U0MATE> brew more tea")));
+          const asked = yield* Queue.take(hq.intake.enqueued);
+          const reply = (ts: string, user = "U0NOVA") =>
+            hq.event({
+              type: "message",
+              channel: "C0SUPPORT",
+              channel_type: "channel",
+              user,
+              text: "And the green one?",
+              ts,
+              thread_ts: "1700000000.000100",
+            });
+          const said = Effect.map(hq.slack.callsOf("chat.postMessage"), (calls) =>
+            calls.map((call) => [call.params["thread_ts"], call.params["text"]]),
+          );
+          hq.intake.live.delete(asked.sourceKey);
+          hq.intake.ended.set(asked.sourceKey, { kind: "finished" });
+          // Someone who may not steer it hears nothing, and the end stays unanswered.
+          hq.slack.state.users.set("U0GUEST", {
+            email: "nova@acme.test",
+            name: "Gus",
+            guest: true,
+          });
+          yield* hq.post(reply("1700000000.000150", "U0GUEST"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual(yield* said, []);
+          yield* hq.post(reply("1700000000.000200"));
+          yield* hq.post(reply("1700000000.000300"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual(yield* said, [
+            [
+              "1700000000.000100",
+              "This task is finished. Mention @Mate in a new message to start another.",
+            ],
+          ]);
+          hq.intake.ended.set(asked.sourceKey, {
+            kind: "stopped",
+            why: "It reached its $5 limit.",
+          });
+          yield* hq.post(reply("1700000000.000400"));
+          yield* hq.service.drained;
+          assert.deepStrictEqual((yield* said).at(-1), [
+            "1700000000.000100",
+            "This task stopped: It reached its $5 limit. Mention @Mate in a new message to try again.",
+          ]);
         }),
     );
 

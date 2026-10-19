@@ -24,7 +24,7 @@ import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { PlaceWords, ServicesHeld } from "./ProjectCards";
-import { PlaceDot } from "./ProjectRoad";
+import { PlaceDot } from "./ProjectState";
 import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
 import { Button } from "~/components/ui/button";
 

@@ -15,7 +15,9 @@ import {
   type FlowReleaseRow,
   type Moved,
   type MovedCommits,
+  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
   serviceRows,
   stopKeyGap,
@@ -403,11 +405,17 @@ interface StopCase {
   };
   /** Who reaches the environment's project, as the page draws it. */
   readonly access?: React.ReactNode;
+  /** The place's own name; its tier's unless given. */
+  readonly name?: string;
+  /** Where the place answers publicly. */
+  readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  /** Every service the platform lists there, as the service map reads it. */
+  readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
 }
 
 /** A stop's page with every read already done — the producers' words, the pane's drawing. */
 function renderStop(input: StopCase): string {
-  const name = input.tier === "production" ? "production" : "stage";
+  const name = input.name ?? (input.tier === "production" ? "production" : "stage");
   const declared = {
     projectId: `shop-${name}`,
     name,
@@ -436,7 +444,7 @@ function renderStop(input: StopCase): string {
     services: input.services,
     platform: input.platform ?? { state: "unread", waitingFor: null },
     mainHead: undefined,
-    routes: [],
+    routes: input.routes ?? [],
     offers: [],
     nowMs: NOW,
     age: () => "1h ago",
@@ -505,7 +513,9 @@ function renderStop(input: StopCase): string {
         input.tier === "production" ? releases(input.releases ?? 0, running, input.moving) : []
       }
       repo={input.repository === null ? undefined : (input.repository ?? "appdev")}
-      routes={[]}
+      routes={input.routes ?? []}
+      platformServices={input.platformServices}
+      usageRead
       services={input.servicesRead === false ? undefined : rows}
       stop={stop}
       tags={new Map()}
@@ -550,6 +560,27 @@ it("keeps runtime read recovery inside the verdict that reports its failure", ()
 });
 
 const TWO_LIVE = [service("api", "a1", "v0.1.13"), service("web", "b2", "v0.1.13")];
+
+/** A public address of `service`. */
+const ROUTE = (service: string, host: string): ZeropsPublicRoute => ({
+  service,
+  port: 80,
+  url: `https://${host}`,
+  host,
+});
+
+/** A service as the service map reads it, its use known. */
+const mapRow = (hostname: string, type: string, typeShort: string) =>
+  ({
+    isControlPlane: false,
+    service: { hostname, serviceId: `svc-${hostname}`, type },
+    typeShort,
+    typeLabel: type,
+    statusLabel: "Running",
+    statusNeedsWord: false,
+    dashboardUrl: `https://app.zerops.io/service-stack/svc-${hostname}`,
+    metrics: [{ id: "cores", label: "CPU", value: "2", used: "0.08", fraction: 0.04 }],
+  }) as unknown as ZeropsServiceRow;
 
 const count = (markup: string, needle: string | RegExp) => markup.split(needle).length - 1;
 
@@ -892,7 +923,8 @@ describe("ZeropsStopPane", () => {
       input: { tier: "production", services: TWO_LIVE, releases: 2 },
       contains: [
         "Production already runs what is merged.",
-        "Moves on release · 2 services",
+        "Running · v0.1.13 · released",
+        "· 2 services</span>",
         "Services · 2",
         "Releases · 2",
         "Live",
@@ -1169,6 +1201,23 @@ describe("ZeropsStopPane", () => {
     expect(markup.slice(services)).toContain("None yet");
   });
 
+  it("lists a place's platform services though it has no code service, never None yet under their count", () => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "production",
+      services: [],
+      deployment: NONE,
+      platformServices: [mapRow("db", "postgresql@17", "PostgreSQL 17")],
+    });
+    expect(document.body.textContent).toContain("Services · 1");
+    expect(document.body.textContent).not.toContain("None yet");
+    expect(
+      [...document.querySelectorAll("[data-zerops-place-service]")].map((row) =>
+        row.getAttribute("data-zerops-place-service"),
+      ),
+    ).toEqual(["db"]);
+  });
+
   it("offers the way back only to an earlier release, never to the one that runs", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
     expect(count(markup, ">Roll back to this</button>")).toBe(1);
@@ -1296,6 +1345,73 @@ describe("ZeropsStopPane", () => {
       expect(count(seven, "data-zerops-environment-row")).toBe(5);
       expect(seven).toContain("Show 2 earlier releases");
     });
+  });
+
+  it("a place's head names it, says what runs and links its primary address", () => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "production",
+      services: TWO_LIVE,
+      releases: 2,
+      routes: [ROUTE("api", "api-a1b2.prg1.zerops.app"), ROUTE("api", "teashop.example")],
+    });
+    expect(document.querySelector("h1")?.textContent).toBe("Production");
+    expect(document.querySelector("h1")?.parentElement?.textContent).not.toContain("prod");
+    expect(document.querySelector("[data-zerops-place-status]")?.textContent).toMatch(
+      /^Running · v0\.1\.13 · released .+ · 2 services$/u,
+    );
+    expect(document.querySelector("[data-zerops-place-address]")?.getAttribute("href")).toBe(
+      "https://teashop.example",
+    );
+    const trail = [...document.querySelectorAll('nav[aria-label="Zerops breadcrumb"] li')];
+    expect(trail.map((step) => step.textContent)).toContain("Production");
+
+    document.body.innerHTML = renderStop({ tier: "stage", name: "preview-eu", services: [] });
+    expect(document.querySelector("h1")?.textContent).toBe("preview-eu");
+    expect(document.querySelector("h1")?.parentElement?.textContent).toContain("stage");
+  });
+
+  it("a service without compute shows no meters", () => {
+    const document = new Window().document;
+    document.body.innerHTML = renderStop({
+      tier: "production",
+      services: TWO_LIVE,
+      platformServices: [
+        mapRow("api", "nodejs@22", "Node.js 22"),
+        mapRow("db", "postgresql@17", "PostgreSQL 17"),
+        mapRow("storage", "object-storage", "Object storage"),
+      ],
+    });
+    const rows = [...document.querySelectorAll("[data-zerops-place-service]")];
+    expect(
+      rows.map((row) => [
+        row.getAttribute("data-zerops-place-service"),
+        row.querySelector("[data-zerops-place-meters]") !== null,
+      ]),
+    ).toEqual([
+      ["api", true],
+      ["web", false],
+      ["db", true],
+      ["storage", false],
+    ]);
+    expect(rows[3]?.textContent).toContain("Object storage");
+    expect(document.body.textContent).toContain("Services · 4");
+  });
+
+  it("rollback is offered from the production page, never the project's road", () => {
+    const menuItems = (markup: string) => {
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      return [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent);
+    };
+    expect(
+      menuItems(renderStop({ tier: "production", services: TWO_LIVE, releases: 2 })),
+    ).toContain("Roll back to v0.1.12");
+    expect(
+      menuItems(renderStop({ tier: "stage", services: [service("api", "a1", undefined)] })).some(
+        (item) => item?.startsWith("Roll back"),
+      ),
+    ).toBe(false);
   });
 
   it("writes no Deploys under a production and no Releases under a stage", () => {

@@ -37,6 +37,8 @@ export function LimitsList({ children }: { readonly children: ReactNode }) {
 export type IntegrationState =
   | { readonly kind: "checking" }
   | { readonly kind: "on"; readonly words: string }
+  /** Connected, but what it sends is refused: it needs the person. */
+  | { readonly kind: "refused"; readonly words: string }
   | { readonly kind: "off"; readonly words: string }
   | { readonly kind: "none" };
 
@@ -52,6 +54,12 @@ export function IntegrationStatus({ state }: { readonly state: IntegrationState 
     case "on":
       return (
         <Badge dot tone="success">
+          {state.words}
+        </Badge>
+      );
+    case "refused":
+      return (
+        <Badge dot tone="warning">
           {state.words}
         </Badge>
       );

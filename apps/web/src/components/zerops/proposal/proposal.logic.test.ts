@@ -21,6 +21,7 @@ import {
   furtherDecision,
   hqWriteOf,
   proposalMessage,
+  handOverWords,
   heldMessageWords,
   proposalOutcomeWords,
   proposalRecipient,
@@ -701,6 +702,27 @@ describe("asking the Chief", () => {
   ])("an ask of the Chief %s", (_title, own, target) => {
     expect(chiefMessageTarget(own)).toEqual(target);
   });
+});
+
+describe("handOverWords", () => {
+  it.each([
+    { ended: "it went out", outcome: { kind: "sent" } as const, words: null },
+    {
+      ended: "its words wait in the composer",
+      outcome: { kind: "waits", why: "It did not go out." } as const,
+      words: "It did not go out. Your message waits in Eddy's composer.",
+    },
+    {
+      ended: "the person sent or changed it by hand",
+      outcome: { kind: "taken-over" } as const,
+      words: "You sent or changed the message yourself in Eddy's composer.",
+    },
+  ])(
+    "an approved message to a Mate reads as sent only once it went out: $ended",
+    ({ outcome, words }) => {
+      expect(handOverWords("Eddy", outcome)).toBe(words);
+    },
+  );
 });
 
 describe("heldMessageWords", () => {

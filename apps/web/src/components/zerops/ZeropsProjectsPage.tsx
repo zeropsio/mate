@@ -158,6 +158,7 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
+import { ProductionRun } from "./ProductionRun";
 import { putLiveHasChange } from "./projects/projectCard.logic";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
@@ -2688,7 +2689,14 @@ export function ZeropsProjectsContent({
             />
           );
         }}
-        cardPlaces={overview.cardPlaces}
+        cardPlaces={(entry) => {
+          // This tab's run, releasing: production's line says it once, counting from its step.
+          const run = putLiveRuns.get(entry.group.groupId);
+          return {
+            ...overview.cardPlaces(entry),
+            releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
+          };
+        }}
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         setUpProduction={({ group, flow }) =>
@@ -2730,6 +2738,7 @@ export function ZeropsProjectsContent({
         })}
         renderCardPeople={overview.renderCardPeople}
         renderActivity={overview.renderActivity}
+        renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
         waitsOnYou={({ group }) => filterFacts.waits.has(group.groupId)}
         isAutomated={(candidate: ZeropsCandidatePresentation) =>
           candidate.project.hq?.mate?.automated === true

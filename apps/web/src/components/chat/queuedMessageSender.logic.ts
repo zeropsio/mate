@@ -15,6 +15,7 @@ import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 
 import type { ComposerImageAttachment, ComposerSendIds } from "../../composerDraftStore";
+import { tellSendOutcome } from "../../hooks/useComposerSendRequests";
 import type { ComposerFileAttachment } from "../../lib/composerFiles";
 import { materializePicturePrompt } from "../../lib/composerPictures";
 import { appendTerminalContextsToPrompt } from "../../lib/terminalContext";
@@ -313,6 +314,7 @@ export async function sendQueuedMessageInBackground(
     }
     settleQueuedSend(threadKey, null);
     deps.uploads.release(message.images, files);
+    tellSendOutcome(ids.messageId, { kind: "sent" });
     return;
   }
 
@@ -375,5 +377,7 @@ export async function sendQueuedMessageInBackground(
     return;
   }
   deps.receipts?.accepted(environmentId, ids.messageId);
+  // A queued request's asker hears here, as its message leaves the queue with its turn.
+  tellSendOutcome(ids.messageId, { kind: "sent" });
   deps.uploads.release(message.images, files);
 }

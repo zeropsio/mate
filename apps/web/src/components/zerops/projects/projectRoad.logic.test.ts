@@ -4,10 +4,10 @@ import {
   automatedWords,
   freeWords,
   inReview,
-  productionUnder,
+  productionWords,
   projectState,
-  releaseSegment,
-  stageUnder,
+  releaseWords,
+  stageWords,
 } from "./projectRoad.logic";
 import { unlifted } from "./projectCard.logic";
 
@@ -70,9 +70,59 @@ describe("a project's state line", () => {
   ] as const)("$name", ({ production, waitsOnYou, mates, want }) => {
     expect(projectState({ production, waitsOnYou, mates }).words).toBe(want);
   });
+
+  it.each([
+    {
+      name: "a change in review",
+      review: 1,
+      ready: undefined,
+      waitsOnYou: true,
+      want: "1 change in review",
+    },
+    {
+      name: "a release ready to go",
+      review: 0,
+      ready: { count: 2, atLeast: false },
+      waitsOnYou: false,
+      want: "2 ready to release",
+    },
+    {
+      name: "a change in review before a release ready to go",
+      review: 2,
+      ready: { count: 3, atLeast: false },
+      waitsOnYou: true,
+      want: "2 changes in review",
+    },
+    {
+      // Nothing waits on the viewer but the release: an open change is no reason of theirs.
+      name: "a release ready to go, though a change is open",
+      review: 1,
+      ready: { count: 2, atLeast: false },
+      waitsOnYou: false,
+      want: "2 ready to release",
+    },
+    {
+      name: "a Mate's question, before a change in review",
+      review: 1,
+      ready: undefined,
+      waitsOnYou: true,
+      asking: ["Juno"],
+      want: "Juno asks",
+    },
+  ] as const)("says why it needs you: $name", (row) => {
+    const state = projectState({
+      production: RUNS,
+      waitsOnYou: row.waitsOnYou,
+      mates: [MATE],
+      review: row.review,
+      ready: row.ready,
+      asking: "asking" in row ? row.asking : undefined,
+    });
+    expect([state.words, state.reason]).toEqual(["Needs you", row.want]);
+  });
 });
 
-describe("a project's road", () => {
+describe("a project's places", () => {
   it("counts the code changes in review, never a Mate's setup files", () => {
     const pull = (kind: "code" | "recipe") => ({ pull: { kind } }) as never;
     expect(inReview({ pullRequests: [pull("code"), pull("recipe"), pull("code")] })).toBe(2);
@@ -82,15 +132,31 @@ describe("a project's road", () => {
     {
       name: "says what the stage follows and how long ago it was deployed",
       line: { dot: "running", words: ["Running"], trouble: false },
-      want: { words: ["main", "25m"], tone: "muted" },
+      want: { words: ["Deployed 25m ago", "follows main"], tone: "muted" },
     },
     {
       name: "says a stage's failed deploy in red",
       line: { dot: "failed", words: ["Deploy failed"], trouble: true },
-      want: { words: ["Deploy failed"], tone: "failed" },
+      want: { words: ["Deploy failed", "follows main"], tone: "failed" },
     },
   ] as const)("a stage $name", ({ line, want }) => {
-    expect(stageUnder(line, { source: "main", age: "25m" })).toEqual(want);
+    expect(stageWords(line, { source: "main", age: "25m" })).toEqual(want);
+  });
+
+  it("each of several stages says its own state and what it follows", () => {
+    const running = { dot: "running", words: ["Running"], trouble: false } as const;
+    expect([
+      stageWords(running, { source: "main", age: "19m" }).words,
+      stageWords(running, { source: "checkout-redesign", age: "2h" }).words,
+      stageWords(
+        { dot: "failed", words: ["Deploy failed"], trouble: true },
+        { source: "perf", age: undefined },
+      ).words,
+    ]).toEqual([
+      ["Deployed 19m ago", "follows main"],
+      ["Deployed 2h ago", "follows checkout-redesign"],
+      ["Deploy failed", "follows perf"],
+    ]);
   });
 
   it.each([
@@ -98,59 +164,26 @@ describe("a project's road", () => {
       name: "says what it runs and for how long",
       line: { dot: "running", words: ["Running", "v0.1.3"], trouble: false },
       version: "v0.1.3",
-      want: ["v0.1.3", "up 6d"],
+      want: ["Running", "v0.1.3", "up 6d"],
     },
     {
       name: "still says what it runs after a failed release",
       line: { dot: "failed", words: ["Release failed"], trouble: true },
       version: "v0.1.2",
-      want: ["v0.1.2", "up 6d"],
+      want: ["Release failed", "still runs v0.1.2"],
     },
     {
       name: "says it is not live where nothing runs",
       line: { dot: "none", words: ["Not released yet"], trouble: false },
       version: undefined,
-      want: ["not live"],
+      want: ["Not released yet"],
     },
   ] as const)("production $name", ({ line, version, want }) => {
-    expect(productionUnder(line, { version, up: "6d" }).words).toEqual(want);
+    expect(productionWords(line, { version, up: "6d" })).toEqual(want);
   });
 
-  it.each([
-    {
-      name: "carries a failed release on the line it failed on, beside the release that mends it",
-      production: { dot: "failed", trouble: true },
-      ready: { count: 2, atLeast: false },
-      productionAbsent: false,
-      notLive: 2,
-      want: { kind: "failed", tag: "v0.1.3", ready: { count: 2, atLeast: false } },
-    },
-    {
-      name: "carries a release ready to go",
-      production: RUNS,
-      ready: { count: 3, atLeast: false },
-      productionAbsent: false,
-      notLive: 3,
-      want: { kind: "ready", count: 3, atLeast: false },
-    },
-    {
-      name: "carries what is merged where there is no production to go to",
-      production: NONE,
-      ready: undefined,
-      productionAbsent: true,
-      notLive: 4,
-      want: { kind: "merged", count: 4 },
-    },
-    {
-      name: "carries nothing where nothing waits",
-      production: RUNS,
-      ready: undefined,
-      productionAbsent: false,
-      notLive: 0,
-      want: { kind: "none" },
-    },
-  ] as const)("$name", ({ want, ...input }) => {
-    expect(releaseSegment({ ...input, failedTag: "v0.1.3" })).toEqual(want);
+  it("offers the release production waits for by its count", () => {
+    expect([releaseWords(2, false), releaseWords(20, true)]).toEqual(["Release 2", "Release 20+"]);
   });
 });
 

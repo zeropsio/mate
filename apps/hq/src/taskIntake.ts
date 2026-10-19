@@ -9,10 +9,13 @@
  *   source's own kind of message, none where its text is the task's already.
  * - `message`: kept by the key's live tasks, told to each one's Mate once it took it.
  * - `stop`: the key's live tasks dropped while no Mate took them, else their Mates told to stop.
+ * - `answerEnded`: a reply after the key's latest task ended, answered once per end with how it
+ *   ended (`hq_task.end_answered_at`), never while it is live or its change waits for review.
  *
  * @module taskIntake
  */
 import type { MateTaskMessage, MateTaskSource } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -25,6 +28,7 @@ import {
   TaskIntake,
   TaskIntakeUnavailable,
   TaskSourceChannels,
+  type TaskEnd,
   authorOf,
   cleanTaskText,
   cleanTaskTitle,
@@ -86,6 +90,46 @@ export const taskIntakeLayer = Layer.effect(
         return live.length > 0;
       });
 
+    /**
+     * The key's latest task, where it ended and its end is unanswered: done with no change waiting
+     * for review (it hears that one), failed, stopped or dropped.
+     */
+    const unansweredEnd = (sourceKey: string) =>
+      Effect.map(
+        sql<{ readonly id: string }>`
+          SELECT t.id::text AS id FROM (
+            SELECT * FROM hq_task WHERE source_key = ${sourceKey} ORDER BY seq DESC LIMIT 1) t
+          WHERE t.state IN ('done', 'failed', 'stopped', 'dropped') AND t.ended_at IS NOT NULL
+            AND t.end_answered_at IS DISTINCT FROM t.ended_at
+            AND NOT (t.state = 'done' AND EXISTS (SELECT 1 FROM hq_change c
+              WHERE c.app_id = t.app_id AND c.repo = t.change_repo
+                AND c.number = t.change_number AND c.state = 'open'))`,
+        (rows) => rows[0]?.id,
+      );
+
+    /** The end answered: how it ended, once — none where another reply answered it first. */
+    const answer = (taskId: string) =>
+      Effect.map(
+        leader.write(sql<{ readonly state: string; readonly why: string | null }>`
+          UPDATE hq_task SET end_answered_at = ended_at
+          WHERE id::text = ${taskId} AND ended_at IS NOT NULL
+            AND state IN ('done', 'failed', 'stopped', 'dropped')
+            AND end_answered_at IS DISTINCT FROM ended_at
+          RETURNING state, COALESCE(detail, stop_reason) AS why`),
+        ([row]): TaskEnd | undefined =>
+          row === undefined
+            ? undefined
+            : row.state === "done"
+              ? { kind: "finished" }
+              : { kind: "stopped", why: row.why },
+      );
+
+    /** HQ's own failure to tell (not the leading HQ, its database away): nothing said. */
+    const untold = (what: string, sourceKey: string) =>
+      Effect.catchCause((cause: Cause.Cause<unknown>) =>
+        Effect.as(Effect.logWarning(what, { sourceKey, cause }), undefined),
+      );
+
     return TaskIntake.of({
       enqueue: (input) =>
         Effect.gen(function* () {
@@ -146,6 +190,14 @@ export const taskIntakeLayer = Layer.effect(
             Effect.as(Effect.logWarning("a task's message not kept", { sourceKey, cause }), false),
           ),
         ),
+      answerEnded: <E, R>(sourceKey: string, allowed: Effect.Effect<boolean, E, R>) =>
+        Effect.gen(function* () {
+          const ended = yield* unansweredEnd(sourceKey).pipe(
+            untold("a task's end not read", sourceKey),
+          );
+          if (ended === undefined || !(yield* allowed)) return undefined;
+          return yield* answer(ended).pipe(untold("a task's end not answered", sourceKey));
+        }),
       stop: (sourceKey, reason) =>
         Effect.gen(function* () {
           for (const task of yield* liveOf(sourceKey)) yield* tasks.stop(task.id, reason);

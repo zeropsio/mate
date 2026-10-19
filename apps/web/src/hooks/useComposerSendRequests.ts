@@ -21,7 +21,19 @@
  * keeps the words in its composer instead, and whoever asked hears so and why
  * (`sendOutcomeOf`): an approved message never reads as sent when it was not.
  * While the conversation still reads whether its agent takes a turn, a request
- * waits.
+ * waits; so it does while its composer cannot send yet (`ready`: the
+ * conversation loading or connecting, its composer not mounted, another send
+ * in flight), since the composer's send would drop it unsaid.
+ *
+ * Whoever asked hears it went only from the send's own answer. A send the
+ * composer declines, or one that breaks, leaves its words there and says so;
+ * one it was not yet ready for is filed again and taken once that
+ * conversation's readiness changes, never retried in a loop. A queued one is
+ * told when it leaves the queue (`tellSendOutcome`). Filing a request writes
+ * its words into the composer, so the person may send or change them by hand
+ * first: then the request is dropped, never sent a second time. A request no
+ * conversation takes within `REQUESTED_SEND_WAIT_MS` is withdrawn, its words
+ * left waiting in the composer, and its asker told so.
  */
 import type { MessageId } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
@@ -52,22 +64,68 @@ export function composerAdmits(
   return why === null ? { kind: "reading" } : { kind: "holds", why };
 }
 
-/** What became of a requested send: it went out, or its words wait in the composer, and why. */
+/**
+ * What became of a requested send: it went out; its words wait in the composer, and why; or the
+ * person took them over there — sent or changed them by hand — before it went.
+ */
 export type ComposerSendOutcome =
-  | { readonly sent: true }
-  | { readonly sent: false; readonly why: string };
+  | { readonly kind: "sent" }
+  | { readonly kind: "waits"; readonly why: string }
+  | { readonly kind: "taken-over" };
 
-const awaiting = new Map<MessageId, (outcome: ComposerSendOutcome) => void>();
+/**
+ * What the composer's send made of a request: its outcome; queued behind the running turn, told
+ * when it leaves the queue; or not ready for it yet.
+ */
+export type ComposerSendResult =
+  | ComposerSendOutcome
+  | { readonly kind: "queued" }
+  | { readonly kind: "not-ready" };
 
-/** What becomes of the requested send carrying `messageId`; asked before the request is filed. */
+/** How long a request may wait for its conversation to take it before its asker hears it waits. */
+export const REQUESTED_SEND_WAIT_MS = 60_000;
+
+const NOT_TAKEN = "Its conversation was not ready to send it.";
+const BROKE = "It did not go out.";
+
+interface Awaiting {
+  readonly resolve: (outcome: ComposerSendOutcome) => void;
+  readonly timer: ReturnType<typeof setTimeout>;
+  /** Past its wait: a send not ready for it is told so instead of filed again. */
+  expired: boolean;
+}
+
+const awaiting = new Map<MessageId, Awaiting>();
+
+/**
+ * What becomes of the requested send carrying `messageId`; asked before the request is filed. A
+ * request still filed after `REQUESTED_SEND_WAIT_MS` is withdrawn and told its words wait; one
+ * taken by then is told by its send.
+ */
 export function sendOutcomeOf(messageId: MessageId): Promise<ComposerSendOutcome> {
-  return new Promise((resolve) => awaiting.set(messageId, resolve));
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      const entry = awaiting.get(messageId);
+      if (entry === undefined) return;
+      entry.expired = true;
+      if (useComposerDraftStore.getState().withdrawSendRequest(messageId))
+        tellSendOutcome(messageId, { kind: "waits", why: NOT_TAKEN });
+    }, REQUESTED_SEND_WAIT_MS);
+    awaiting.set(messageId, { resolve, timer, expired: false });
+  });
+}
+
+/** Tells whoever asked for the send carrying `messageId` what became of it; once, if anyone asked. */
+export function tellSendOutcome(messageId: MessageId, outcome: ComposerSendOutcome): void {
+  const entry = awaiting.get(messageId);
+  if (entry === undefined) return;
+  awaiting.delete(messageId);
+  clearTimeout(entry.timer);
+  entry.resolve(outcome);
 }
 
 function tellOutcome(ids: ComposerSendIds | undefined, outcome: ComposerSendOutcome): void {
-  if (ids === undefined) return;
-  awaiting.get(ids.messageId)?.(outcome);
-  awaiting.delete(ids.messageId);
+  if (ids !== undefined) tellSendOutcome(ids.messageId, outcome);
 }
 
 const subscribe = useComposerDraftStore.subscribe;
@@ -82,14 +140,17 @@ export function useComposerSendRequests(input: {
   readonly targetKey: string | null;
   /** Whether its agent takes a turn now: a request waits while this reads, and is held where not. */
   readonly admits: ComposerAdmits;
+  /** Whether the composer can send now; a request its agent would take waits while it cannot. */
+  readonly ready: boolean;
   /** Writes the request's words where the composer's send reads them. */
   readonly write: (prompt: string) => void;
-  /** The composer's own send, with the ids the request carries. */
-  readonly send: (ids: ComposerSendIds | undefined) => void;
+  /** The composer's own send, with the ids the request carries: what it made of them. */
+  readonly send: (ids: ComposerSendIds | undefined) => Promise<ComposerSendResult>;
 }): void {
   const { target, targetKey } = input;
   const admitting = input.admits.kind;
   const heldBecause = input.admits.kind === "holds" ? input.admits.why : null;
+  const { ready } = input;
   const requestKeys = useSyncExternalStore(subscribe, readRequestKeys, noRequestKeys);
   const write = useEffectEvent(input.write);
   const send = useEffectEvent(input.send);
@@ -101,22 +162,51 @@ export function useComposerSendRequests(input: {
       shownKey.current = null;
     };
   }, [targetKey]);
+  // Each change of `ready` is a new readiness. A send the composer was not ready for, though
+  // `ready` said it was, is taken again only in a later readiness of that same conversation.
+  const readiness = useRef({ ready, count: 0 });
+  const unready = useRef<{ readonly key: string; readonly count: number } | null>(null);
   useEffect(() => {
+    if (readiness.current.ready !== ready)
+      readiness.current = { ready, count: readiness.current.count + 1 };
     // Nothing asked anywhere, no conversation to send it in, or not yet known whether it takes one.
     if (requestKeys === "" || target === null || targetKey === null || admitting === "reading")
       return;
-    const request = useComposerDraftStore.getState().takeSendRequest(target);
+    // Its agent takes the turn, but its composer cannot send it yet.
+    const heldBack =
+      unready.current?.key === targetKey && unready.current.count === readiness.current.count;
+    if (heldBecause === null && (!ready || heldBack)) return;
+    const store = useComposerDraftStore.getState();
+    const request = store.takeSendRequest(target);
     if (request === null || request.prompt.trim().length === 0) return;
-    write(request.prompt);
-    if (heldBecause !== null) {
-      tellOutcome(request.ids, { sent: false, why: heldBecause });
+    // Filed, its words went into the composer; the person sent or changed them by hand since.
+    if (store.getComposerDraft(target)?.prompt.trim() !== request.prompt.trim()) {
+      tellOutcome(request.ids, { kind: "taken-over" });
       return;
     }
+    write(request.prompt);
+    if (heldBecause !== null) {
+      tellOutcome(request.ids, { kind: "waits", why: heldBecause });
+      return;
+    }
+    const takenIn = { key: targetKey, count: readiness.current.count };
+    const fileAgain = () => {
+      const messageId = request.ids?.messageId;
+      if (messageId !== undefined && awaiting.get(messageId)?.expired === true)
+        return tellSendOutcome(messageId, { kind: "waits", why: NOT_TAKEN });
+      useComposerDraftStore.getState().requestSend(target, request.prompt, request.ids);
+    };
     setTimeout(() => {
-      if (shownKey.current === targetKey) {
-        send(request.ids);
-        tellOutcome(request.ids, { sent: true });
-      } else useComposerDraftStore.getState().requestSend(target, request.prompt, request.ids);
+      if (shownKey.current !== targetKey) return fileAgain();
+      send(request.ids).then(
+        (result) => {
+          if (result.kind === "queued") return;
+          if (result.kind !== "not-ready") return tellOutcome(request.ids, result);
+          unready.current = takenIn;
+          fileAgain();
+        },
+        () => tellOutcome(request.ids, { kind: "waits", why: BROKE }),
+      );
     }, 0);
-  }, [requestKeys, target, targetKey, admitting, heldBecause]);
+  }, [requestKeys, target, targetKey, admitting, heldBecause, ready]);
 }

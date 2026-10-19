@@ -2,7 +2,7 @@
  * Settings › Automation and the mirror dialog, in each of their states, from fixtures.
  *
  * Served by the dev server at `/design-automation.html` (`?theme=dark`). Open it at the owner's
- * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect pressed), `checking` (every read under way), `connected`, `manage` (Discord connected, its Manage open), `older` (an HQ older
+ * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect pressed), `checking` (every read under way), `connected`, `manage` (Discord connected, its Manage open), `slack-refused` (Slack's signatures refused, its Replace open), `older` (an HQ older
  * than the app), `member`, `dialog` (the mirror dialog's repositories, each state).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
@@ -194,8 +194,27 @@ function Automation({
               />
               {app}
               <SlackSettingsView
-                controls={at(open ? { ...SLACK, connected: false, workspace: null } : SLACK)}
-                defaultOpen={open}
+                channels={controls(
+                  known({
+                    bot: "mate",
+                    channels: [
+                      { id: "C0SUPPORT", name: "support" },
+                      { id: "C0ORDERS", name: "orders" },
+                    ],
+                  }),
+                )}
+                controls={at(
+                  open
+                    ? { ...SLACK, connected: false, workspace: null }
+                    : view === "slack-refused"
+                      ? {
+                          ...SLACK,
+                          eventsRefusedAt: "2026-10-18T22:05:00.000Z",
+                          eventsAcceptedAt: "2026-10-18T21:40:00.000Z",
+                        }
+                      : SLACK,
+                )}
+                defaultOpen={open || view === "slack-refused"}
                 manifest={controls(known(SLACK_MANIFEST))}
               />
               <DiscordSettingsView

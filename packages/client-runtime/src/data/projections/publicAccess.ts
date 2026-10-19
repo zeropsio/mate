@@ -172,14 +172,22 @@ export const publicAccess: Projection<ProjectKey, PublicAccess> = {
     const project = read.fact("project", key.projectId);
     if (services.services === undefined || routings.kind !== "read" || project.kind !== "known")
       return { state: "reading", ...NOTHING, readsProject };
+    const addresses = addressesOf(
+      project.value as ZeropsProject,
+      services.services,
+      routings.rows.map(({ value }) => value),
+    );
+    // A service its own domain reaches, or is being put on, is open to the internet already: its
+    // subdomain being off is no reason to offer it as closed.
+    const reached = new Set(
+      [...addresses.routes, ...addresses.pending].map((route) => route.serviceId),
+    );
     return {
       state: routings.complete ? "ready" : "reading",
-      ...addressesOf(
-        project.value as ZeropsProject,
-        services.services,
-        routings.rows.map(({ value }) => value),
+      ...addresses,
+      offers: derivePublicRouteOffers(services.services).filter(
+        (offer) => !reached.has(offer.serviceId),
       ),
-      offers: derivePublicRouteOffers(services.services),
       readsProject,
     };
   },

@@ -442,8 +442,8 @@ export const makeZeropsHqLink = (
               }
               case "task-message": {
                 if (tasks === undefined) return Effect.void;
-                const { taskId, message: said } = message.value;
-                return onceStated(tasks.message(taskId, said));
+                const { taskId, message: said, change } = message.value;
+                return onceStated(tasks.message(taskId, said, change));
               }
               case "task-stop": {
                 if (tasks === undefined) return Effect.void;

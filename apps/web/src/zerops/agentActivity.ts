@@ -320,11 +320,31 @@ export function mateReviewWaits(
     | undefined,
   mateProjectId: string,
 ): boolean {
-  if (flow === undefined || flow.changesKnown === false) return false;
-  return (
-    mateNextStep({ pullRequests: flow.pullRequests, mateProjectId, mateName: undefined }).kind ===
-    "review"
-  );
+  return mateReviewCount(flow, mateProjectId) > 0;
+}
+
+/**
+ * How many of a Mate's own changes wait on the person's review, by the same rule
+ * (`mateNextStep`): an automated Mate holds one per task, several at once; 0 before HQ answered.
+ */
+export function mateReviewCount(
+  flow:
+    | {
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+        /** Absent reads as answered. */
+        readonly changesKnown?: boolean | undefined;
+      }
+    | undefined,
+  mateProjectId: string,
+): number {
+  if (flow === undefined || flow.changesKnown === false) return 0;
+  const step = mateNextStep({
+    pullRequests: flow.pullRequests,
+    mateProjectId,
+    mateName: undefined,
+  });
+  if (step.kind !== "review") return 0;
+  return step.lines.length === 0 ? 1 : step.lines.length + step.more;
 }
 
 /**

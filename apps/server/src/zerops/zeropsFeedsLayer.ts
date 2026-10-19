@@ -56,6 +56,7 @@ import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsStandUpReceiptModule from "./ZeropsStandUpReceipt.ts";
 import * as ZeropsCommitAuthorModule from "./ZeropsCommitAuthor.ts";
+import * as ZeropsWorkingCopyModule from "./ZeropsWorkingCopy.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
@@ -213,6 +214,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
       Layer.provide(providerInstancesLayer),
       Layer.provide(ZeropsTaskLedgerModule.layer),
       Layer.provide(ZeropsCommitAuthorModule.layer),
+      Layer.provide(ZeropsWorkingCopyModule.layer),
     ),
   ),
   Layer.provide(MateEngineLive),

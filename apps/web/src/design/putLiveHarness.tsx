@@ -9,7 +9,7 @@
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { PutLiveRow } from "~/components/zerops/PutLiveTop";
+import { PutLiveRow } from "~/components/zerops/ProductionRun";
 import { PutLiveSheet } from "~/components/zerops/PutLiveSheet";
 import { ZeropsNextStepStrip } from "~/components/zerops/ZeropsNextStepBanner";
 import { Dialog } from "~/components/ui/dialog";
@@ -23,18 +23,13 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const SHEET = params.get("sheet") === "1";
 const NOW = Date.now();
 
+const TITLE = "Cookbook: add, browse and search dishes by ingredient";
+
 const RUN: PutLiveRun = {
   orgId: "o-1",
   groupId: "g-1",
   project: "Cookbook",
-  change: {
-    repository: "app",
-    number: 1,
-    title: "Cookbook: add, browse and search dishes by ingredient",
-    head: "abc",
-    merged: false,
-  },
-  phase: "merging",
+  phase: "creating",
 };
 
 const ADDRESS = {
@@ -43,7 +38,6 @@ const ADDRESS = {
 };
 
 const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> = [
-  { name: "Merging", run: { ...RUN, stepAt: NOW - 4_000 } },
   { name: "Making production", run: { ...RUN, phase: "creating", stepAt: NOW - 133_000 } },
   {
     name: "Releasing",
@@ -63,7 +57,6 @@ const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> =
     name: "After a reload, not released yet",
     run: {
       ...RUN,
-      change: undefined,
       phase: "failed",
       failedAt: "creating",
       productionId: "p-prod",
@@ -116,32 +109,28 @@ function Harness() {
               onReview={noop}
               strip={{
                 title: "Alba is waiting for your review of #1",
-                detail: RUN.change!.title,
+                detail: TITLE,
                 tint: "coral",
                 target: { kind: "change", groupId: "g-1", repository: "app", number: 1 },
               }}
             />
           }
         />
+        {/* A run is its project's production's: drawn there, never above a composer. */}
         {ROWS.map(({ name, run }) => (
-          <Composer
-            key={name}
-            name={name}
-            top={
-              <PutLiveRow
-                address={ADDRESS}
-                copied={false}
-                face={{ tint: "coral" }}
-                nowMs={NOW}
-                onAgain={noop}
-                onCopy={noop}
-                onDismiss={noop}
-                onOpenProject={noop}
-                onSeeCode={noop}
-                run={run}
-              />
-            }
-          />
+          <section className="grid max-w-md gap-2" key={name}>
+            <h3 className="text-xs text-muted-foreground">{name}</h3>
+            <PutLiveRow
+              address={ADDRESS}
+              copied={false}
+              nowMs={NOW}
+              onAgain={noop}
+              onCopy={noop}
+              onDismiss={noop}
+              onOpenProject={noop}
+              run={run}
+            />
+          </section>
         ))}
       </div>
       <Dialog onOpenChange={noop} open={SHEET}>
@@ -150,7 +139,7 @@ function Harness() {
             project: "Cookbook",
             changes: [
               {
-                title: RUN.change!.title,
+                title: TITLE,
                 description: [
                   "A small, phone-friendly shop front backed by PostgreSQL.",
                   "",

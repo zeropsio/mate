@@ -38,6 +38,7 @@ export function ZeropsStopMenu({
   groupId,
   onOpenStop,
   triggerClassName,
+  rollBack,
 }: {
   readonly name: string;
   /** What the stop runs, or the line that stands in for it while that is not known. */
@@ -49,6 +50,14 @@ export function ZeropsStopMenu({
   readonly onOpenStop: (() => void) | undefined;
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
   readonly triggerClassName: string;
+  /**
+   * A production's way back: the release it rolls back to, whose review opens from the item. Only
+   * the production's own page offers it, never the project's road.
+   */
+  readonly rollBack?: {
+    readonly tag: string;
+    readonly onRollBack: (from: HTMLElement) => void;
+  };
 }) {
   const publicAccess = usePublicAccess(projectId);
   const orgId = useAccountOrgId();
@@ -86,6 +95,18 @@ export function ZeropsStopMenu({
           )}
         </MenuGroup>
         <MenuSeparator />
+        {rollBack === undefined ? null : (
+          <>
+            <MenuItem
+              onClick={(event) => {
+                rollBack.onRollBack(event.currentTarget);
+              }}
+            >
+              Roll back to {rollBack.tag}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         {orgId === null ? null : (
           <MenuItem
             onClick={() => {
