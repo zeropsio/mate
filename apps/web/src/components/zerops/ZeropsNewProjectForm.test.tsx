@@ -12,6 +12,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { Dialog } from "../ui/dialog";
+import { draftSummary, draftView } from "./projects/accessDraft.logic";
+import { AccessDraftFold } from "./projects/ProjectAccessChips";
 import { ZeropsNewProjectForm } from "./ZeropsNewProjectForm";
 
 /** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */
@@ -339,6 +341,69 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
 
 // Board D1, 2026-09-30: the dialog ends with what happens next — the project and its Mate, then
 // the person signs it in.
+/** An organization of eighteen as the draft reads it: you, sixteen admins, and Karlos. */
+function eighteen() {
+  const member = (id: string, fullName: string, roleCode: string) => ({
+    id: `cu-${id}`,
+    status: "ACTIVE",
+    roleCode,
+    user: { id: `u-${id}`, fullName },
+  });
+  const list = [
+    member("me", "Mia Moss", "ADMIN"),
+    ...Array.from({ length: 16 }, (_, index) =>
+      member(`p${String(index)}`, `Person ${String(index)}`, "ADMIN"),
+    ),
+    member("karlos", "Karlos", "BASIC_USER"),
+  ];
+  return draftView({
+    members: { known: true, status: "ready", refused: false, list },
+    kind: "mate",
+    app: { projects: [], grants: {}, owners: {} },
+    pictures: {},
+    creator: { membershipId: "cu-me", userId: "u-me" },
+    list: [],
+  });
+}
+
+describe("ZeropsNewProjectForm — who can open the project", () => {
+  it("the new project dialog says who can open the project in one line, and opens the full list to change it", () => {
+    const view = eighteen();
+    const summary = draftSummary({ view, organization: "Mate s.r.o.", prefill: [], list: [] });
+    if (summary === null) throw new Error("the people are not read");
+    const tree = mount(
+      projectForm({
+        access: () => (
+          <AccessDraftFold label="Project access" summary={summary}>
+            {/* The chips stand in as their list: Base UI's tooltips need a document. */}
+            <ul aria-label="Project access">
+              {view.kind === "people"
+                ? view.people.map((person) => <li key={person.key}>{person.short}</li>)
+                : null}
+            </ul>
+          </AccessDraftFold>
+        ),
+      }),
+    );
+    const chips = () =>
+      tree.root.findAll(
+        (node) => node.props["aria-label"] === "Project access" && node.type === "ul",
+      );
+    expect(spoken(host(tree, (node) => node.props["data-zerops-access"] === "line"))).toBe(
+      "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+    );
+    expect(chips()).toHaveLength(0);
+    const change = host(
+      tree,
+      (node) => node.type === "button" && spoken(node) === "Change who can open it",
+    );
+    act(() => {
+      change.props.onClick();
+    });
+    expect(chips()[0]?.findAll((node) => node.type === "li")).toHaveLength(18);
+  });
+});
+
 describe("ZeropsNewProjectForm — what happens next", () => {
   it("says the project and its Mate come up, then the person signs it in", () => {
     const tree = mount(projectForm());

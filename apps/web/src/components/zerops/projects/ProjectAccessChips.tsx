@@ -20,7 +20,7 @@ import {
   SplitIcon,
 } from "lucide-react";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import {
   AlertDialog,
@@ -35,6 +35,7 @@ import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
 import {
   Menu,
   MenuItem,
@@ -550,5 +551,52 @@ export function AddAccessPicker({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * A creation dialog's *Project access* in one line: who can open the project, in words
+ * (`draftSummary`), and *Change who can open it*, which opens the people chips in place for edits;
+ * *Done* folds them again. Changes made in the chips are counted on the line.
+ */
+export function AccessDraftFold({
+  label,
+  summary,
+  children,
+}: {
+  readonly label: string;
+  readonly summary: { readonly line: string; readonly changes: string | null };
+  /** The people chips, drawn while the list is open. */
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  return (
+    <section aria-label={label} className="flex flex-col gap-1" data-zerops-surface="access-fold">
+      {/* The quiet button's words end on the section's end edge. */}
+      <div className="-me-2.5 flex min-h-7 items-center justify-between gap-3">
+        <Label render={<h3 />}>{label}</Label>
+        <Button
+          aria-controls={open ? listId : undefined}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          size="sm"
+          variant="ghost"
+        >
+          {open ? "Done" : "Change who can open it"}
+        </Button>
+      </div>
+      <p className="text-body text-muted-foreground text-pretty" data-zerops-access="line">
+        {summary.line}
+        {summary.changes === null ? null : (
+          <span className="text-foreground"> · {summary.changes}</span>
+        )}
+      </p>
+      {open ? (
+        <div className="pt-2" id={listId}>
+          {children}
+        </div>
+      ) : null}
+    </section>
   );
 }

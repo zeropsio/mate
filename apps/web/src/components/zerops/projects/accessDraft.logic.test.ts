@@ -1,7 +1,13 @@
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { draftChoose, draftPrefill, draftView, type DraftInput } from "./accessDraft.logic";
+import {
+  draftChoose,
+  draftPrefill,
+  draftSummary,
+  draftView,
+  type DraftInput,
+} from "./accessDraft.logic";
 
 const member = (
   id: string,
@@ -176,5 +182,138 @@ describe("a new project's access, before it exists", () => {
     expect(
       draftChoose([{ clientUserId: "cu-ro", roleCode: "ADMIN" }], MEMBERS, "cu-own", "full"),
     ).toEqual([{ clientUserId: "cu-ro", roleCode: "ADMIN" }]);
+  });
+});
+
+/** An organization of eighteen: you and sixteen admins, and Karlos, a developer. */
+const TEAM = [
+  member("me", "Mia Moss", "ADMIN"),
+  ...[
+    "Ada Lind",
+    "Bo Hale",
+    "Cy Nord",
+    "Di Park",
+    "Ed Moon",
+    "Fay Lin",
+    "Gus Orr",
+    "Hal Pike",
+    "Ivy Rowe",
+    "Jo Sand",
+    "Kit Tate",
+    "Lu Vale",
+    "Mo West",
+    "Ned Yoke",
+    "Ola Zorn",
+    "Pia Ames",
+  ].map((name) => member(name.split(" ")[0]!.toLowerCase(), name, "ADMIN")),
+  member("karlos", "Karlos", "BASIC_USER"),
+];
+
+const team = (extra: ReadonlyArray<ZeropsOrganizationMember>, list: DraftInput["list"] = []) =>
+  draft({
+    members: { known: true, status: "ready", refused: false, list: [...TEAM, ...extra] },
+    app: { projects: [], grants: {}, owners: {} },
+    list,
+  });
+
+describe("a new project's access, in one line", () => {
+  it.each([
+    {
+      title: "Everyone in the organization, counted by level, the exception named",
+      input: team([]),
+      organization: "Mate s.r.o.",
+      line: "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+    },
+    {
+      title: "Everyone at one level is said once",
+      input: draft({
+        members: {
+          known: true,
+          status: "ready",
+          refused: false,
+          list: TEAM.filter((one) => one.id !== "cu-karlos"),
+        },
+        app: { projects: [], grants: {}, owners: {} },
+      }),
+      organization: "Mate s.r.o.",
+      line: "Everyone in Mate s.r.o. can open it with Full access.",
+    },
+    {
+      title: "Two at a level are named, three are counted",
+      input: team(
+        [member("x1", "Xu One", "BASIC_USER"), member("x2", "Xi Two", "BASIC_USER")],
+        [
+          { clientUserId: "cu-ada", roleCode: "READ_ONLY" },
+          { clientUserId: "cu-bo", roleCode: "READ_ONLY" },
+        ],
+      ),
+      organization: "Mate s.r.o.",
+      line: "Everyone in Mate s.r.o. can open it: 15 with Full access, 3 with more than Read access, Ada L. and Bo H. with Read access.",
+    },
+    {
+      title: "Whoever cannot open it is left out of everyone",
+      input: team([member("nobody", "Nora Quill", "NO_ACCESS")]),
+      organization: "Mate s.r.o.",
+      line: "18 of 19 people in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+    },
+    {
+      title: "Alone on it, the creator reads only you",
+      input: draft({
+        members: {
+          known: true,
+          status: "ready",
+          refused: false,
+          list: [member("me", "Mia Moss", "ADMIN"), member("na", "Ned", "NO_ACCESS")],
+        },
+        app: { projects: [], grants: {}, owners: {} },
+      }),
+      organization: "Mate s.r.o.",
+      line: "Only you can open it.",
+    },
+    {
+      title: "An organization not yet named is the organization",
+      input: team([]),
+      organization: null,
+      line: "Everyone in the organization can open it: 17 with Full access, Karlos with more than Read access.",
+    },
+  ])("$title", ({ input, organization, line }) => {
+    expect(
+      draftSummary({ view: draftView(input), organization, prefill: [], list: input.list })?.line,
+    ).toBe(line);
+  });
+
+  it.each([
+    { title: "No change from where it started says none", list: [], changes: null },
+    {
+      title: "One person changed says one change",
+      list: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+      changes: "1 change",
+    },
+    {
+      title: "Two people changed say two changes",
+      list: [
+        { clientUserId: "cu-ada", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-bo", roleCode: "NO_ACCESS" },
+      ],
+      changes: "2 changes",
+    },
+    {
+      title: "A prefilled grant taken back counts as a change",
+      list: [],
+      prefill: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+      changes: "1 change",
+    },
+  ])("$title", ({ list, changes, ...rest }) => {
+    const prefill = "prefill" in rest ? rest.prefill : [];
+    const input = team([], list);
+    expect(
+      draftSummary({ view: draftView(input), organization: "Mate s.r.o.", prefill, list })?.changes,
+    ).toBe(changes);
+  });
+
+  it("Says nothing while the people are read", () => {
+    expect(
+      draftSummary({ view: { kind: "reading" }, organization: "Mate", prefill: null, list: [] }),
+    ).toBeNull();
   });
 });
