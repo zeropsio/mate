@@ -2013,6 +2013,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       cancelled = true;
       if (frame !== null) cancelAnimationFrame(frame);
       if (position !== undefined) setPositionRestored(true);
+      // Placed at its end, the end is the follower's, and the list's initial scroll ends before
+      // `initialScrollAtEnd` turns off: LegendList (3.3.5) keeps its bootstrap target and, as the
+      // prop turns off, hands it to the scroll as its content offset — where the end stood
+      // before a late picture grew it — and puts the view there, unheard; the follower then
+      // glided the gap. An imperative scroll to the end it stands at drops that target.
+      if (followingEndRef.current)
+        void list.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
       setListPlaced(true);
     };
     // A reading position being put back hands the page to the person's

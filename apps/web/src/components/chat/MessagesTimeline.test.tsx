@@ -647,6 +647,7 @@ describe("MessagesTimeline", () => {
       current: {
         getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
         getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(),
       } as unknown as LegendListRef,
     };
     const timeline = (liveFollowEnabled: boolean) => (
@@ -710,6 +711,7 @@ describe("MessagesTimeline", () => {
       current: {
         getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
         getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(),
       } as unknown as LegendListRef,
     };
     let renderer: ReactTestRenderer | undefined;
@@ -763,6 +765,7 @@ describe("MessagesTimeline", () => {
           isAtEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 2,
         }),
         getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(),
       } as unknown as LegendListRef,
     };
     const first = buildUserTimelineEntry("Keep following after measurement.");
@@ -870,6 +873,7 @@ describe("MessagesTimeline", () => {
       current: {
         getState: () => ({ isWithinMaintainScrollAtEndThreshold: within }),
         getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(),
       } as unknown as LegendListRef,
     };
     let renderer: ReactTestRenderer | undefined;
@@ -1564,6 +1568,7 @@ describe("MessagesTimeline — the conversation", () => {
           current: {
             getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
             getScrollableNode: () => viewport,
+            scrollToEnd: vi.fn(),
           } as unknown as LegendListRef,
         };
         const entry = (phase: "running" | "done") => ({
@@ -2471,6 +2476,7 @@ describe("MessagesTimeline — placing its rows", () => {
     current: {
       getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
       getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+      scrollToEnd: vi.fn(),
     } as unknown as LegendListRef,
   };
   const mount = async (props: Pick<Parameters<typeof MessagesTimeline>[0], "timelineEntries">) => {
@@ -2547,6 +2553,7 @@ describe("MessagesTimeline — placing its rows", () => {
               elementAtIndex: () => null,
             }),
             getScrollableNode: () => viewport,
+            scrollToEnd: vi.fn(),
           } as unknown as LegendListRef,
         };
         function AccountTimeline() {
@@ -2804,6 +2811,7 @@ describe("MessagesTimeline — placing its rows", () => {
           isWithinMaintainScrollAtEndThreshold: false,
         }),
         getScrollableNode: () => reading,
+        scrollToEnd: vi.fn(),
       } as unknown as LegendListRef,
     };
     // As ChatView does: the person's place being put back turns follow off.
@@ -3075,6 +3083,7 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     current: {
       getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),
       getScrollableNode: () => ({ scrollTop: 0, scrollHeight: 2000, clientHeight: 800 }),
+      scrollToEnd: vi.fn(),
     } as unknown as LegendListRef,
   };
   const KEY_A = "environment-local:thread-a";
