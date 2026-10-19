@@ -29,6 +29,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import {
   COMMENT_BODY_MAX,
   type ChangeReceipt,
+  type ChangeReceiptPart,
   type HqChange,
   changeRoutePath,
 } from "@t3tools/shared/hqChanges";
@@ -99,6 +100,15 @@ export interface PullFacts {
   readonly mate: string;
   readonly description: string;
   readonly receipt: ChangeReceipt | null;
+  /**
+   * Its Mate's other changes with a receipt, each by its page in Mate: their previews are this
+   * one's, so a later deploy of one by another of them shows that change there now.
+   */
+  readonly alongside: ReadonlyArray<{
+    readonly number: number;
+    readonly link: string;
+    readonly receipt: ChangeReceipt;
+  }>;
   /** The issue of the same repository its task came from. */
   readonly fixes: number | null;
   /** Where its task is followed in Mate; none for a change no task asked for. */
@@ -125,13 +135,38 @@ const checkedLines = (receipt: ChangeReceipt | null) =>
         ],
   );
 
-/** Where to try it: a part's preview that names a whole host. */
-const previewLines = (receipt: ChangeReceipt | null) =>
-  (receipt?.parts ?? []).flatMap((part) =>
-    part.deploy === "ok" && part.previewHostname.includes(".")
-      ? [`- https://${part.previewHostname}`]
-      : [],
-  );
+/** When a part's preview was deployed ok, as a receipt says; none where it was not. */
+const deployedOkAt = (part: ChangeReceiptPart) =>
+  part.deploy === "ok" && part.deployedAt !== undefined ? Date.parse(part.deployedAt) : undefined;
+
+/** The other change a preview shows now: the one that deployed it after this one did; none. */
+const shownBy = (part: ChangeReceiptPart, alongside: PullFacts["alongside"]) => {
+  const own = deployedOkAt(part);
+  if (own === undefined) return undefined;
+  let latest: { readonly at: number; readonly change: PullFacts["alongside"][number] } | undefined;
+  for (const change of alongside)
+    for (const other of change.receipt.parts) {
+      const at = other.previewHostname === part.previewHostname ? deployedOkAt(other) : undefined;
+      if (at !== undefined && at > own && (latest === undefined || at > latest.at))
+        latest = { at, change };
+    }
+  return latest?.change;
+};
+
+/**
+ * Where to try it: a part's preview that names a whole host — and, where another change of its
+ * Mate deployed there since, that the preview shows that change now.
+ */
+const previewLines = (receipt: ChangeReceipt | null, alongside: PullFacts["alongside"]) =>
+  (receipt?.parts ?? []).flatMap((part) => {
+    if (part.deploy !== "ok" || !part.previewHostname.includes(".")) return [];
+    const other = shownBy(part, alongside);
+    return [
+      other === undefined
+        ? `- https://${part.previewHostname}`
+        : `- https://${part.previewHostname} — it shows [change #${String(other.number)}](${other.link}) now`,
+    ];
+  });
 
 /**
  * A Mate's words as a pull request's body shows them: they read the same, but close no issue
@@ -151,7 +186,7 @@ export const inert = (text: string) =>
 /** HQ's part of a pull request's body, markers included. */
 export const pullSection = (facts: PullFacts) => {
   const checked = checkedLines(facts.receipt);
-  const preview = previewLines(facts.receipt);
+  const preview = previewLines(facts.receipt, facts.alongside);
   const requester =
     facts.requester === null
       ? ""
@@ -460,12 +495,24 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               ORDER BY seq DESC LIMIT 1) t ON true
             WHERE c.app_id::text = ${appId} AND c.repo = ${repo} AND c.number = ${number}`;
           if (row === undefined) return undefined;
+          // Their previews are this one's: read only where this one deployed one.
+          const alongside =
+            row.receipt?.parts.some((part) => part.deploy === "ok") === true
+              ? yield* sql<{
+                  readonly repo: string;
+                  readonly number: number;
+                  readonly receipt: ChangeReceipt;
+                }>`
+                  SELECT repo, number, receipt FROM hq_change
+                  WHERE app_id::text = ${appId} AND mate_project_id = ${row.mate_project_id}
+                    AND receipt IS NOT NULL AND NOT (repo = ${repo} AND number = ${number})`
+              : [];
           const view = yield* Effect.orElseSucceed(roles.view, () => undefined);
           const project = view?.projects.find((found) => found.id === row.mate_project_id);
           const mate = project === undefined ? "Mate" : mateNameIn(project.name, row.app_name);
           const source = sourceOfRow(row.task_source);
           const taskLink = row.task_id === null ? null : yield* tasks.link(row.task_id);
-          return { row, mate: mate || "Mate", source, view, taskLink };
+          return { row, alongside, mate: mate || "Mate", source, view, taskLink };
         });
 
       /** What the pull request of the change says of it, for the GitHub repository `repository`. */
@@ -498,6 +545,11 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             mate: facts.mate,
             description: row.body,
             receipt: row.receipt,
+            alongside: facts.alongside.map((other) => ({
+              number: other.number,
+              link: `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(appId, other.repo, other.number)}`,
+              receipt: other.receipt,
+            })),
             fixes: fromIssue?.number ?? null,
             taskLink: facts.taskLink,
             changeLink: `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(appId, repo, number)}`,

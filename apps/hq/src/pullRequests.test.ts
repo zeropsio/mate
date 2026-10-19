@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import type { HqChange, HqChangeComment } from "@t3tools/shared/hqChanges";
 import type { HqNavigationApp, HqNavigationProject } from "@t3tools/shared/hqStream";
 import * as Duration from "effect/Duration";
@@ -268,6 +269,7 @@ describe("a change's pull request", () => {
       description:
         "Fixes #3, closes acme/samovar#4, resolved https://github.com/acme/tea-shop/issues/5. Thanks @nova and @acme/tea.",
       receipt: null,
+      alongside: [],
       fixes: 1,
       taskLink: null,
       changeLink: "https://mate.zerops.io/change/a/web/1",
@@ -300,6 +302,7 @@ describe("a change's pull request", () => {
           },
         ],
       },
+      alongside: [],
       fixes: 1,
       taskLink: "https://mate.zerops.io/mate/P1",
       changeLink: "https://mate.zerops.io/change/a/web/1",
@@ -310,6 +313,52 @@ describe("a change's pull request", () => {
     assert.include(body, "Fixes #1");
     assert.include(body, "Juno · [Mate task](https://mate.zerops.io/mate/P1) · Requested by @nova");
   });
+
+  it.each([
+    ["deployed there after it", "2026-10-19T01:30:00Z", "ok", true],
+    ["deployed there before it", "2026-10-19T01:10:00Z", "ok", false],
+    ["failed to deploy there after it", "2026-10-19T01:30:00Z", "failed", false],
+  ] as const)(
+    "a pull request's preview says it shows another change of its Mate now when that one %s",
+    (_, deployedAt, deploy, shown) => {
+      const preview = (at: string, outcome: "ok" | "failed") => ({
+        at,
+        parts: [
+          {
+            setup: "web",
+            previewHostname: "webstage-1.prg1.zerops.app",
+            deploy: outcome,
+            deployedAt: at,
+            workspaceClean: true,
+            verified: outcome === "ok",
+          },
+        ],
+      });
+      const body = pullSection({
+        mate: "Juno",
+        description: "Boils the water twice.",
+        receipt: preview("2026-10-19T01:20:00Z", "ok"),
+        alongside: [
+          {
+            number: 12,
+            link: "https://mate.zerops.io/change/a/web/12",
+            receipt: preview(deployedAt, deploy),
+          },
+        ],
+        fixes: null,
+        taskLink: null,
+        changeLink: "https://mate.zerops.io/change/a/web/11",
+        requester: null,
+      });
+      const line = body.split("\n").find((each) => each.includes("https://webstage-1"));
+      assert.strictEqual(
+        line,
+        shown
+          ? "- https://webstage-1.prg1.zerops.app — it shows [change #12](https://mate.zerops.io/change/a/web/12) now"
+          : "- https://webstage-1.prg1.zerops.app",
+      );
+    },
+  );
 
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -509,6 +558,59 @@ describe("a change's pull request", () => {
             (rows) => rows[0]?.["head_sha"] === HEAD_2,
           );
           assert.isTrue(core.mirrored.pushes.length >= 2);
+        }),
+    );
+
+    it.effect(
+      "a pull request's preview says it shows another change of its Mate once that one deploys there",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const preview = (at: string) => ({
+            at,
+            parts: [
+              {
+                setup: "web",
+                previewHostname: "webstage-1.prg1.zerops.app",
+                deploy: "ok",
+                deployedAt: at,
+                workspaceClean: true,
+                verified: true,
+              },
+            ],
+          });
+          const bodyOnceIt = (what: string, says: string) =>
+            Effect.map(
+              core.github.seenWhere(what, (seen) =>
+                seen.some(
+                  (request) =>
+                    request.method === "PATCH" &&
+                    request.path === PULL &&
+                    (request.body as { body?: string }).body?.includes(says) === true,
+                ),
+              ),
+              (seen) =>
+                (seen.findLast((request) => request.path === PULL)!.body as { body: string }).body,
+            );
+          const receipt = yield* core.call("PATCH", "/api/mate/changes/web/1", {
+            headers: core.robot.auth,
+            body: { receipt: preview("2026-10-19T01:20:00Z") },
+          });
+          assert.strictEqual(receipt.status, 200);
+          const own = yield* bodyOnceIt("its preview", "- https://webstage-1.prg1.zerops.app");
+          assert.notInclude(own, "it shows [change");
+          // Another task of the same Mate delivers to a change of its own, and deploys the preview.
+          yield* core.sql`
+            INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, head, receipt)
+            SELECT app_id, repo, 2, mate_project_id, 'Colder tea', ${HEAD_2},
+              ${JSON.stringify(preview("2026-10-19T01:30:00Z"))}::jsonb
+            FROM hq_change WHERE repo = 'web' AND number = 1`;
+          const now = yield* bodyOnceIt("the preview another change shows", "it shows [change #2]");
+          assert.include(
+            now,
+            `- https://webstage-1.prg1.zerops.app — it shows [change #2](${DEFAULT_HOSTED_APP_URL}`,
+          );
         }),
     );
 
