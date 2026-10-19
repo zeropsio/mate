@@ -1912,3 +1912,22 @@ it("a filesystem guard without a declaration stops gate selection with its ownin
     NodeFS.rmSync(path, { force: true });
   }
 });
+
+it("a deleted test that read the filesystem needs no declaration, since it never runs again", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-deleted-"));
+  const file = "deleted-source-guard.test.ts";
+  try {
+    // The test exists only at the base: the lane deleted it.
+    const graph = buildRelatedFileGraph(
+      root,
+      [],
+      new Map([[file, "import * as fs from 'node:fs'; fs.readFileSync('owner.ts');"]]),
+    );
+    expect(
+      () => graph.inputFiles([file], []),
+      "ASSERTION: a deleted guard's base reads need no declaration",
+    ).not.toThrow();
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
