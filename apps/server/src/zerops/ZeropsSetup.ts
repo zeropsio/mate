@@ -63,7 +63,7 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
-import { AUTOMATED_MODEL_SELECTION } from "./ZeropsAutomation.ts";
+import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -119,6 +119,8 @@ export class ZeropsSetupReads extends Context.Service<
      * agent-auth feed (`overlayZeropsAgentAuth`), every other driver by its own probe.
      */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    /** What an automated Mate's agents start on: its organization's model (`ZeropsAutomation`). */
+    readonly automatedModel: Effect.Effect<ModelSelection>;
   }
 >()("t3/zerops/ZeropsSetup/ZeropsSetupReads") {}
 
@@ -653,7 +655,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const defaults = yield* projectDefault;
         let chosen: ModelSelection;
         if (automated) {
-          chosen = AUTOMATED_MODEL_SELECTION;
+          chosen = yield* reads.automatedModel;
         } else if ("agentId" in decision) {
           chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
         } else if (readyHere !== undefined) {
@@ -938,6 +940,7 @@ export const liveReadsLayer = Layer.effect(
     const projectSigners = yield* ZeropsProjectSigners;
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;
+    const automation = yield* ZeropsAutomation;
     const zerops = (yield* ServerConfig.ServerConfig).zerops;
     const statusFilePath = zerops?.statusFile;
     return ZeropsSetupReads.of({
@@ -952,6 +955,7 @@ export const liveReadsLayer = Layer.effect(
           : readFileJson(fs, statusFilePath),
       processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
+      automatedModel: automation.modelSelection,
     });
   }),
 );

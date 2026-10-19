@@ -221,7 +221,8 @@ const rig = (
         }),
       automation: {
         heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
-        keysHeard: (keys) => Effect.sync(() => void automation.push({ keys })),
+        keysHeard: (keys, model) =>
+          Effect.sync(() => void automation.push(model === undefined ? { keys } : { keys, model })),
       },
       tasks: {
         open: (send) =>
@@ -415,8 +416,10 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "state", mate: automated });
         const keys = [{ env: "NEBIUS_API_KEY", value: ["nb", "acme", "fixture"].join("-") }];
         socket.hear({ type: "provider-keys", keys });
-        yield* until(() => automation[1]);
-        assert.deepStrictEqual(automation, [{ heard: automated }, { keys }]);
+        const model = "nebius/zai-org/GLM-5.3-Flash";
+        socket.hear({ type: "provider-keys", keys, model });
+        yield* until(() => automation[2]);
+        assert.deepStrictEqual(automation, [{ heard: automated }, { keys }, { keys, model }]);
       }),
     ),
   );

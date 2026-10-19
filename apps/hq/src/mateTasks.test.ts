@@ -190,7 +190,13 @@ describe("tasks for automated Mates", () => {
             session: core.owner,
             body: { minutes: 30, costUsd: 5 },
           });
-          const limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 0 };
+          const limits = {
+            minutes: 30,
+            costUsd: 5,
+            monthlyBudgetUsd: null,
+            spentThisMonthUsd: 0,
+            model: "nebius/zai-org/GLM-5.3",
+          };
           assert.deepStrictEqual(kept.body, limits);
           const read = yield* core.call("GET", "/api/org/task-limits", { session: developer });
           assert.deepStrictEqual(read.body, limits);

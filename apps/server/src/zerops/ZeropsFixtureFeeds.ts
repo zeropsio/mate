@@ -51,7 +51,7 @@ import {
 } from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsCrewProposals from "./ZeropsCrewProposals.ts";
-import { ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -578,6 +578,7 @@ const automationFixtureLayer = Layer.succeed(
     keySet: Effect.succeed(false),
     heard: () => Effect.void,
     keysHeard: () => Effect.void,
+    modelSelection: Effect.succeed(AUTOMATED_MODEL_SELECTION),
   }),
 );
 

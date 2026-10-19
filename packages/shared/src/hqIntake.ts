@@ -213,6 +213,12 @@ export const HqTaskLimitsView = Schema.Struct({
   monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   /** What they spent this month so far, as their Mates reported it. Read only. */
   spentThisMonthUsd: Schema.optionalKey(Schema.Number),
+  /**
+   * The model the organization's automated Mates run each new task on, as an OpenCode slug (one
+   * of `automatedModels`): the default until one is picked. Left out of a write, kept as it is.
+   * Absent from an older HQ, which picks none.
+   */
+  model: Schema.optionalKey(Schema.String),
 });
 export type HqTaskLimitsView = typeof HqTaskLimitsView.Type;
 

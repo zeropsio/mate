@@ -121,6 +121,18 @@ describe("what automated Mates do, in one paragraph", () => {
       ],
     },
     {
+      case: "they say the model the organization picked",
+      input: {
+        count: 2,
+        sources: { kind: "reading" as const },
+        key: "set" as const,
+        limits: { minutes: 30, costUsd: null, model: "nebius/zai-org/GLM-5.3-Flash" },
+      },
+      words: [
+        "They run on the organization's key (Nebius · GLM-5.3 Flash), at most 30 minutes per task.",
+      ],
+    },
+    {
       case: "an organization with no key says it isn't set",
       input: {
         count: 1,

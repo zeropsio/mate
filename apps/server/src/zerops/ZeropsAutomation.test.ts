@@ -98,6 +98,64 @@ describe("an automated Mate and the organization's keys", () => {
   );
 
   it.effect(
+    "an automated Mate's agents start on the organization's model once HQ hands it, and again after a restart",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* keptDirectory;
+        const restart = (body: (automation: ZeropsAutomation["Service"]) => Effect.Effect<void>) =>
+          withAutomation(
+            Effect.gen(function* () {
+              yield* body(yield* ZeropsAutomation);
+            }),
+            ServerSettingsModule.layerTest(),
+            directory,
+          );
+        const modelOf = (automation: ZeropsAutomation["Service"]) =>
+          Effect.map(automation.modelSelection, (selection) => selection.model);
+        const flash = "nebius/zai-org/GLM-5.3-Flash";
+        yield* restart((automation) =>
+          Effect.gen(function* () {
+            yield* automation.heard(mate(true));
+            assert.strictEqual(yield* modelOf(automation), "nebius/zai-org/GLM-5.3");
+            yield* automation.keysHeard(keys, flash);
+            assert.deepStrictEqual(yield* automation.modelSelection, {
+              instanceId: ZeropsAutomationModule.AUTOMATED_MODEL_SELECTION.instanceId,
+              model: flash,
+            });
+          }),
+        );
+        yield* restart((automation) =>
+          Effect.map(modelOf(automation), (model) => assert.strictEqual(model, flash)),
+        );
+        // None picked any more: the default again.
+        yield* restart((automation) => automation.keysHeard(keys));
+        yield* restart((automation) =>
+          Effect.map(modelOf(automation), (model) =>
+            assert.strictEqual(model, "nebius/zai-org/GLM-5.3"),
+          ),
+        );
+      }),
+  );
+
+  it.effect.each([
+    { name: "a Nebius model outside the list", model: "nebius/moonshotai/Kimi-K2.7-Code" },
+    { name: "another provider's model", model: "anthropic/claude-opus-4" },
+  ])("a model outside the offered list is refused and the default kept: $name", ({ model }) =>
+    withAutomation(
+      Effect.gen(function* () {
+        const automation = yield* ZeropsAutomation;
+        yield* automation.heard(mate(true));
+        yield* automation.keysHeard(keys, "nebius/zai-org/GLM-5.3-Flash");
+        yield* automation.keysHeard(keys, model);
+        assert.strictEqual(
+          (yield* automation.modelSelection).model,
+          ZeropsAutomationModule.AUTOMATED_MODEL_SELECTION.model,
+        );
+      }),
+    ),
+  );
+
+  it.effect(
     "sets the organization's key on its OpenCode as a secret variable and turns OpenCode on",
     () =>
       withAutomation(
