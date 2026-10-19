@@ -132,6 +132,12 @@ describe("mateReviewWaits — a Mate's own change waits for the person's review"
       ],
       count: 1,
     },
+    // r3: "3 changes in review" where one of them was still being written.
+    {
+      case: "none still being written",
+      pulls: [pull(), pull({ number: 3, ready: false }), pull({ number: 4, ready: true })],
+      count: 2,
+    },
   ])("counts a Mate's own changes waiting for the person's review: $case", ({ pulls, count }) => {
     expect(mateReviewCount({ pullRequests: pulls }, "nova")).toBe(count);
   });
