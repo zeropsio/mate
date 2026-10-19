@@ -88,6 +88,7 @@ export interface AppModelOption {
   isDefault?: boolean;
   isLegacy?: boolean;
   isUnavailable?: boolean;
+  textOnly?: boolean;
 }
 
 function appendUnavailableDynamicModelSelection(
@@ -123,6 +124,7 @@ function toAppModelOption(model: ServerProvider["models"][number]): AppModelOpti
   if (model.badge) option.badge = model.badge;
   if (model.isDefault) option.isDefault = true;
   if (model.isLegacy) option.isLegacy = true;
+  if (model.textOnly) option.textOnly = true;
   return option;
 }
 

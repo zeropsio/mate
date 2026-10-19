@@ -80,6 +80,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
               Unavailable
             </Badge>
           ) : null}
+          {props.model.textOnly ? (
+            <Badge tone="neutral" size="sm">
+              Text only
+            </Badge>
+          ) : null}
         </div>
         {props.showProvider && (
           <div className="mt-1 flex items-center gap-1.5">

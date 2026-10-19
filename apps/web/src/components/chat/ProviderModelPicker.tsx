@@ -344,6 +344,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               Unavailable
             </Badge>
           ) : null}
+          {selectedModel?.textOnly ? (
+            <Badge tone="neutral" size="sm">
+              Text only
+            </Badge>
+          ) : null}
           <ComposerControlChevron size="quiet" />
         </PopoverTrigger>
         <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
@@ -421,6 +426,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {selectedModel?.isUnavailable ? (
             <Badge tone="neutral" size="sm">
               Unavailable
+            </Badge>
+          ) : null}
+          {selectedModel?.textOnly ? (
+            <Badge tone="neutral" size="sm">
+              Text only
             </Badge>
           ) : null}
         </span>

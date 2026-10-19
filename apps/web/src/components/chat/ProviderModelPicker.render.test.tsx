@@ -9,6 +9,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+
+import { getAppModelOptionsForInstance } from "../../modelSelection";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 
@@ -176,5 +179,54 @@ describe("the model control while its agent is not fully available", () => {
     await drawControl(provider, true);
     expect(document.querySelector('[data-chat-provider-model-picker] [role="img"]')).toBeNull();
     expect(document.querySelector("[data-agent-availability]")).toBeNull();
+  });
+});
+
+describe("a model that reads no images", () => {
+  const OPENCODE = ProviderInstanceId.make("opencode");
+  const opencode: ServerProvider = {
+    ...provider,
+    instanceId: OPENCODE,
+    driver: ProviderDriverKind.make("opencode"),
+    models: [
+      {
+        slug: "nebius/zai-org/GLM-5.3-Flash",
+        name: "GLM-5.3-Flash",
+        isCustom: false,
+        textOnly: true,
+        capabilities: null,
+      },
+      { slug: "nebius/moonshotai/Kimi-K3", name: "Kimi K3", isCustom: false, capabilities: null },
+    ],
+  };
+
+  async function drawOpenCode(model: string) {
+    const entries = deriveProviderInstanceEntries([opencode]);
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(() =>
+      root!.render(
+        <ProviderModelPicker
+          activeInstanceId={OPENCODE}
+          model={model}
+          lockedProvider={null}
+          instanceEntries={entries}
+          modelOptionsByInstance={
+            new Map([
+              [OPENCODE, getAppModelOptionsForInstance(DEFAULT_UNIFIED_SETTINGS, entries[0]!)],
+            ])
+          }
+          onInstanceModelChange={() => {}}
+        />,
+      ),
+    );
+  }
+
+  it.each([
+    { model: "nebius/zai-org/GLM-5.3-Flash", textOnly: true },
+    { model: "nebius/moonshotai/Kimi-K3", textOnly: false },
+  ])("the model control says $model is text only: $textOnly", async ({ model, textOnly }) => {
+    await drawOpenCode(model);
+    const control = document.querySelector("[data-chat-provider-model-picker]")!;
+    expect(control.textContent?.includes("Text only")).toBe(textOnly);
   });
 });
