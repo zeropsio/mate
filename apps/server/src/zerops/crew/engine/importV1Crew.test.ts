@@ -7,8 +7,11 @@
 import * as NodeFS from "node:fs";
 
 import { afterAll, describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 import {
   CREW_OWNER_ID,
   ConversationId,
@@ -432,7 +435,7 @@ const lifetime = <A, E>(
     ),
   );
 
-/** Works the outbox until nothing waits in it. */
+/** Works the outbox until nothing waits in it: a retry's backoff passes on the test clock. */
 const drain = (worker: Worker) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -442,7 +445,7 @@ const drain = (worker: Worker) =>
         SELECT COUNT(*) AS n FROM engine_effect WHERE state IN ('pending', 'running', 'settling')
       `;
       if ((waiting?.n ?? 0) === 0) return;
-      yield* Effect.sleep(20);
+      yield* TestClock.adjust(20);
     }
   });
 
@@ -530,7 +533,7 @@ afterAll(() => {
 });
 
 describe("the flip on the engine", () => {
-  it.live("a crewmate's stints read as one conversation with boundaries", () =>
+  it.effect("a crewmate's stints read as one conversation with boundaries", () =>
     Effect.gen(function* () {
       const held = yield* cached;
       const record = held.records[ana] as {
@@ -557,7 +560,7 @@ describe("the flip on the engine", () => {
     }),
   );
 
-  it.live("takes the crew whole, with every crewmate's agent asked", () =>
+  it.effect("takes the crew whole, with every crewmate's agent asked", () =>
     Effect.gen(function* () {
       const held = yield* cached;
       expect(held.crew.order).toEqual(["lead", "ana", "bob", "cy", "dee"]);
@@ -567,7 +570,7 @@ describe("the flip on the engine", () => {
     }),
   );
 
-  it.live("leaves V1's crew tables as they were, so flipping back finds the crew", () =>
+  it.effect("leaves V1's crew tables as they were, so flipping back finds the crew", () =>
     Effect.gen(function* () {
       const file = yield* seeded("crew-v1-unchanged");
       const tables = v1CrewTables.pipe(Effect.provide(NodeSqliteClient.layer({ filename: file })));
@@ -577,7 +580,7 @@ describe("the flip on the engine", () => {
     }),
   );
 
-  it.live(
+  it.effect(
     "a re-run imports nothing: a second flip finds its crew and its records as they are",
     () =>
       Effect.gen(function* () {
@@ -638,7 +641,7 @@ const crashes: ReadonlyArray<Crash> = Array.from({ length: MOVES }, (_, move) =>
 const FLIP_COMMITS = [0, 1, 2];
 
 describe("the crew import's crash table", () => {
-  it.live(
+  it.effect(
     "a restart at any of its step boundaries imports the crew once, whole",
     () =>
       Effect.gen(function* () {
@@ -656,7 +659,7 @@ describe("the crew import's crash table", () => {
           yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
           let armed = false;
           let commits = 0;
-          let acted = false;
+          const acted = yield* Deferred.make<void>();
           const label = `${crash.at} ${crash.at === 0 ? `flip#${crash.commit}` : "worker"} — ${crash.how}${crash.how === "mid-commit" ? `@${crash.stage}` : ""}`;
           yield* lifetime(
             file,
@@ -665,11 +668,9 @@ describe("the crew import's crash table", () => {
                 for (let move = 0; move <= crash.at; move++) {
                   armed = move === crash.at;
                   if (armed && crash.how === "mid-effect") {
-                    yield* Effect.forkDetach(worker.runOnce);
-                    for (let spin = 0; spin < 200; spin++) {
-                      if (acted) break;
-                      yield* Effect.sleep(5);
-                    }
+                    const running = yield* Effect.forkDetach(worker.runOnce);
+                    // A crew move tells no history batch: its effect runs whole before the crash.
+                    yield* Effect.raceFirst(Deferred.await(acted), Fiber.await(running));
                     return;
                   }
                   if (move === 0) yield* Effect.exit(flip);
@@ -695,10 +696,7 @@ describe("the crew import's crash table", () => {
                 if (crash.how === "mid-effect" && envelope.command._tag === "HistoryBatch")
                   return Effect.andThen(
                     tell(envelope),
-                    Effect.suspend(() => {
-                      acted = true;
-                      return Effect.never;
-                    }),
+                    Deferred.succeed(acted, undefined).pipe(Effect.andThen(Effect.never)),
                   );
                 if (crash.how === "outcome-unrecorded" && envelope.command._tag === "EffectSettled")
                   return Effect.die("process died before the outcome was recorded");
