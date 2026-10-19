@@ -81,6 +81,11 @@ export interface ZeropsMateUpdateOptions {
   readonly stateFile?: string | undefined;
   /** zcp's cached release manifest; rewritten whenever anyone's `zcp mate status` fetches one. */
   readonly manifestFile?: string | undefined;
+  /** Watches a directory for the files above; a test hands the change itself, not the OS's report. */
+  readonly watch?: (
+    dir: string,
+    listener: (event: string, name: string | null) => void,
+  ) => { readonly close: () => void };
   readonly recoverAdmission?: Effect.Effect<void> | undefined;
 }
 
@@ -188,6 +193,8 @@ export const make = (options: ZeropsMateUpdateOptions) =>
     );
     if (watched.length > 0 && options.isZeropsEnvironment) {
       const notices = yield* Queue.unbounded<void>();
+      const watch =
+        options.watch ?? ((dir, listener) => NodeFS.watch(dir, listener).on("error", () => {}));
       for (const dir of new Set(watched.map((file) => NodePath.dirname(file)))) {
         const names = new Set(
           watched
@@ -197,9 +204,9 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         yield* Effect.acquireRelease(
           Effect.sync(() => {
             try {
-              return NodeFS.watch(dir, (_event, name) => {
+              return watch(dir, (_event, name) => {
                 if (name !== null && names.has(name)) Queue.offerUnsafe(notices, undefined);
-              }).on("error", () => {});
+              });
             } catch {
               return undefined;
             }
