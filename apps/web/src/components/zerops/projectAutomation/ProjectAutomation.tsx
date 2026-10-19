@@ -41,6 +41,7 @@ import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { mateActivityAtom } from "~/zerops/mateActivityAtoms";
+import { hqMateVersionsAtom } from "~/state/zerops";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
@@ -59,7 +60,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { MateFace } from "../primitives";
 import { ProjectPageCard } from "../projects/ProjectPageCard";
-import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
+import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
   connectionMissing,
@@ -75,6 +76,7 @@ import {
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
 import {
   boardOf,
+  heldOnItsChange,
   poolLine,
   predictedBoard,
   sourceGlyph,
@@ -263,6 +265,8 @@ function useTaskBoard(
 ): BoardView {
   const tasks = useAppTaskSource("hqAppTasks", groupId);
   const limits = useOrgTaskSource("hqTaskLimits");
+  // HQ holds a Mate on its open change only where it runs a version before its change per task.
+  const versions = useAtomValue(hqMateVersionsAtom);
   const nowMs = useNowMs();
   const navigate = useNavigate();
   const [asking, setAsking] = useState<string | null>(null);
@@ -270,10 +274,12 @@ function useTaskBoard(
   const held = setting.state === "known" ? setting.held : null;
   const board = useMemo(() => {
     if (held === null) return null;
-    const made = boardOf(held, nowMs, groupId, live);
+    const made = boardOf(held, nowMs, groupId, live, (projectId) =>
+      heldOnItsChange(versions[projectId]),
+    );
     landed.set(groupId, { recent: made.recent.length, recentMore: made.recentMore > 0 });
     return made;
-  }, [held, nowMs, groupId, live]);
+  }, [held, nowMs, groupId, live, versions]);
   const stoppable = board === null ? [] : [...board.atWork, ...board.queued].map((row) => row.id);
   const stops = useAppTaskStops(groupId, stoppable);
   return {
@@ -1066,6 +1072,11 @@ function idleWords(names: ReadonlyArray<string>): string | null {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)!} wait for a task.`;
 }
 
+/** "Raya waits for a task · 2 changes in review.": free, its changes in its row's words. */
+function reviewingWords(name: string, count: number): string {
+  return `${name} waits for a task · ${count > 1 ? changesInReview(count) : "1 change in review"}.`;
+}
+
 export function TaskBoardView({
   board,
   pool,
@@ -1103,14 +1114,18 @@ export function TaskBoardView({
         </BoardBlock>
       </div>
     );
-  const { atWork, blocked, queued, recent, recentMore } = read.board;
+  const { atWork, blocked, reviewing, queued, recent, recentMore } = read.board;
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
   const byName = new Map(pool.map((mate) => [mate.name, mate]));
   const busy = new Set([
     ...atWork.flatMap((row) => (row.mate === null ? [] : [row.mate.projectId])),
     ...blocked.map((line) => line.projectId),
   ]);
-  const idle = idleWords(pool.filter((mate) => !busy.has(mate.projectId)).map((mate) => mate.name));
+  const holding = new Map(reviewing.map((entry) => [entry.projectId, entry.count]));
+  const free = pool.filter((mate) => !busy.has(mate.projectId));
+  const idle = idleWords(
+    free.filter((mate) => !holding.has(mate.projectId)).map((mate) => mate.name),
+  );
   return (
     <div className="pp-cards-board" data-zerops-surface="project-automation-board">
       <div className="pp-cards-pair">
@@ -1160,6 +1175,20 @@ export function TaskBoardView({
               onOpen={board.onOpen}
             />
           ))}
+          {free.flatMap((mate) => {
+            const count = holding.get(mate.projectId);
+            return count === undefined
+              ? []
+              : [
+                  <p
+                    className="flex h-8 items-center px-2 text-line text-muted-foreground"
+                    data-zerops-board-line="reviewing"
+                    key={mate.projectId}
+                  >
+                    <span className="truncate">{reviewingWords(mate.name, count)}</span>
+                  </p>,
+                ];
+          })}
           {idle === null ? null : (
             <p className="flex h-8 items-center px-2 text-line text-muted-foreground">{idle}</p>
           )}

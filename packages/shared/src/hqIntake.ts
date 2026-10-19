@@ -20,6 +20,13 @@ import { TrimmedNonEmptyString } from "@t3tools/contracts";
 /** The label HQ takes issues by when none is chosen. */
 export const DEFAULT_INTAKE_LABEL = "mate";
 
+/**
+ * The first Mate that puts its working copies on each task's base (`ZeropsWorkingCopy`): HQ hands
+ * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
+ * holding that work, takes none until they are merged or closed — and its board says so.
+ */
+export const TASK_CHANGES_SINCE = "0.15.178";
+
 export const HqIntakeRequest = Schema.Struct({
   /** `owner/name`, one of the application's repositories with a GitHub remote. */
   repo: TrimmedNonEmptyString,

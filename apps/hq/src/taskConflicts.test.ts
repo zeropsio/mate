@@ -11,7 +11,7 @@ import { gitClient } from "../test/harness/gitClient.ts";
 import { remoteOf, rowsWhere } from "../test/harness/mates.ts";
 import type { SocketMessage } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { TASK_CHANGES_SINCE } from "./mateTasks.ts";
+import { TASK_CHANGES_SINCE } from "@t3tools/shared/hqIntake";
 
 type Core = Effect.Success<ReturnType<typeof automatedPool>>;
 
