@@ -514,45 +514,43 @@ it.effect("an automated Mate answers every sign-in with a refusal: nobody signs 
   ),
 );
 
-// Real wall-clock time (`excludeTestServices: true` opts out of the default
-// virtual TestClock, matching `ZeropsAgentAuthIo.test.ts`'s own established
-// pattern for anything depending on a real debounce/timer delay) — the
-// stall timer's `Stream.debounce` needs an actual second to pass.
-it.layer(NodeServices.layer, { excludeTestServices: true })(
-  "ZeropsAgentLogin — stall timer",
-  (it) => {
-    it.effect(
-      "presses Enter after a second of silence in an unrecognized menu screen",
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const fakeTerminal = yield* makeFakeTerminalManager();
-            const fakeAuth = yield* makeFakeAuth();
-            const feed = yield* makeFeed({
-              terminalManager: fakeTerminal.service,
-              zeropsAgentAuth: fakeAuth,
-              isZeropsEnvironment: true,
-            });
+// The stall timer's `Stream.debounce` second passes on the test clock.
+it.layer(NodeServices.layer)("ZeropsAgentLogin — stall timer", (it) => {
+  it.effect(
+    "presses Enter after a second of silence in an unrecognized menu screen",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fakeTerminal = yield* makeFakeTerminalManager();
+          const fakeAuth = yield* makeFakeAuth();
+          const feed = yield* makeFeed({
+            terminalManager: fakeTerminal.service,
+            zeropsAgentAuth: fakeAuth,
+            isZeropsEnvironment: true,
+          });
 
-            yield* feed.start("claude-code", "thread-1", "user-test");
-            yield* fakeTerminal.emit(
-              "thread-1",
-              "agent-login-claude-code",
-              "Select login method:\n1. Claude account with subscription\n2. Anthropic Console account\n",
-            );
+          yield* feed.start("claude-code", "thread-1", "user-test");
+          yield* fakeTerminal.emit(
+            "thread-1",
+            "agent-login-claude-code",
+            "Select login method:\n1. Claude account with subscription\n2. Anthropic Console account\n",
+          );
 
-            yield* fakeTerminal.writeWhere((write) => write.data === "\r");
+          const enter = yield* fakeTerminal
+            .writeWhere((write) => write.data === "\r")
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* TestClock.adjust("1 second");
+          yield* Fiber.join(enter);
 
-            const writes = yield* Ref.get(fakeTerminal.writes);
-            // The login command itself, then the stall's own auto-Enter.
-            assert.equal(writes.length, 2);
-            assert.equal(writes[1]?.data, "\r");
-          }),
-        ),
-      10_000,
-    );
-  },
-);
+          const writes = yield* Ref.get(fakeTerminal.writes);
+          // The login command itself, then the stall's own auto-Enter.
+          assert.equal(writes.length, 2);
+          assert.equal(writes[1]?.data, "\r");
+        }),
+      ),
+    10_000,
+  );
+});
 
 // Who signed in is recorded as a tag on the Mate's project, written by the app
 // as the person (D6, `ZeropsProjectSigners`): this container's own key cannot
