@@ -12,6 +12,7 @@ import {
   reviewMarkOf,
   reviewTagLabel,
   headerReviewItems,
+  taskReviewItems,
   type ProjectReviewItem,
 } from "./SidebarProjectReview.logic";
 
@@ -222,6 +223,39 @@ describe("what the conversation's header asks to review", () => {
     expect(
       headerReviewItems([item("1")], "mate-vira", { mateWorks: false }).map((one) => one.key),
     ).toEqual(["appdev#1"]);
+  });
+});
+
+// The owner, 2026-10-19: "why is this different from the normal mate?" An automated Mate's task
+// conversation holds the same app-bar Review as a normal Mate's, led by the task it shows.
+describe("an automated Mate's task conversation's app-bar Review", () => {
+  it.each([
+    {
+      name: "the door opens the change of the task the conversation shows, and says how many more wait",
+      items: [item("1"), item("2"), item("3")],
+      change: { repo: "appdev", number: 2 },
+      shown: ["appdev#2", "appdev#1", "appdev#3"],
+    },
+    {
+      name: "a task whose change does not wait leaves the Mate's others in the flow's order",
+      items: [item("1"), item("3")],
+      change: { repo: "appdev", number: 2 },
+      shown: ["appdev#1", "appdev#3"],
+    },
+    {
+      name: "a task with no change yet leaves the Mate's others in the flow's order",
+      items: [item("1"), item("3")],
+      change: null,
+      shown: ["appdev#1", "appdev#3"],
+    },
+    {
+      name: "the same number in another repository is another change",
+      items: [item("1"), item("2")],
+      change: { repo: "apidev", number: 2 },
+      shown: ["appdev#1", "appdev#2"],
+    },
+  ])("$name", ({ items, change, shown }) => {
+    expect(taskReviewItems(items, change).map((one) => one.key)).toEqual(shown);
   });
 });
 

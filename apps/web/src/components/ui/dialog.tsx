@@ -6,6 +6,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import {
   DIALOG_BACKDROP_CLASS,
+  DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
@@ -36,18 +37,25 @@ function DialogClose(props: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
+const DIALOG_BACKDROP_TINT_CLASS = {
+  blur: DIALOG_BACKDROP_CLASS,
+  plain: DIALOG_BACKDROP_PLAIN_CLASS,
+  media: DIALOG_BACKDROP_MEDIA_CLASS,
+} as const;
+
 function DialogBackdrop({
   className,
-  plain = false,
+  tint = "blur",
   ...props
 }: DialogPrimitive.Backdrop.Props & {
-  /** The tint without the blur. */
-  plain?: boolean;
+  /** `plain` is the tint without the blur; `media` dims the page to near black. */
+  tint?: keyof typeof DIALOG_BACKDROP_TINT_CLASS;
 }) {
   return (
+    // Drawn even when the dialog opens from inside another popup, where Base UI leaves it out.
     <DialogPrimitive.Backdrop
       forceRender
-      className={cn(plain ? DIALOG_BACKDROP_PLAIN_CLASS : DIALOG_BACKDROP_CLASS, className)}
+      className={cn(DIALOG_BACKDROP_TINT_CLASS[tint], className)}
       data-slot="dialog-backdrop"
       {...props}
     />
@@ -82,7 +90,7 @@ function DialogPopup({
   const held = useHeldHeight(props.ref);
   return (
     <DialogPortal keepMounted={keepMounted}>
-      <DialogBackdrop plain={backdrop === "plain"} />
+      <DialogBackdrop tint={backdrop} />
       <DialogViewport
         className={cn(bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12")}
       >
@@ -120,10 +128,7 @@ function DialogPopup({
 function DialogMediaPopup({ children, ...props }: DialogPrimitive.Popup.Props) {
   return (
     <DialogPortal>
-      <DialogPrimitive.Backdrop
-        className="dialog-media-backdrop fixed inset-0 z-50 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0"
-        data-slot="dialog-backdrop"
-      />
+      <DialogBackdrop tint="media" />
       <DialogPrimitive.Viewport className="fixed inset-0 z-50" data-slot="dialog-viewport">
         <DialogPrimitive.Popup
           // Modal, and said so: the composer behind takes letters typed outside any field unless

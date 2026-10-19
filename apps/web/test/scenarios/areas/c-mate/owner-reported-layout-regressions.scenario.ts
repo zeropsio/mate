@@ -238,6 +238,89 @@ const decodeConversationRow = Schema.decodeUnknownEffect(ConversationRow);
 
 const quoted = (reading: object) => JSON.stringify(reading);
 
+/** A Mate whose conversation holds one picture of `shape` the person sent, opened at the owner's width. */
+const pictureConversation = (shape: {
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+}) =>
+  Effect.gen(function* () {
+    const s = yield* createScenario([installArea]);
+    yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+    const bytes = Buffer.from(
+      yield* Effect.promise(() =>
+        s.page.evaluate(({ width, height }) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = "#e66432";
+          ctx.beginPath();
+          ctx.arc(width / 2, height / 2, Math.min(width, height) / 3, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.fillStyle = "#000000";
+          ctx.font = "16px sans-serif";
+          ctx.fillText("Picture proportions", 4, 20);
+          return canvas.toDataURL("image/png").split(",")[1]!;
+        }, shape),
+      ),
+      "base64",
+    );
+    s.drivers.onMate.push((mate) => {
+      Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+      Object.assign(mate.config.environment.capabilities, {
+        contentAddressedImages: true,
+      });
+      mate.rpcHandlers.unshift((request, socket) => {
+        if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+        const input = decodeAssetInput(request.payload);
+        const relativeUrl = `/api/assets/objects/${"a".repeat(64)}/${input.preview ? "preview" : "original"}`;
+        mate.reply(
+          socket,
+          request.id,
+          encodeAssetResult({
+            representation: {
+              digest: "a".repeat(64),
+              relativeUrl,
+              mimeType: "image/png",
+              sizeBytes: bytes.length,
+              width: shape.width,
+              height: shape.height,
+            },
+            relativeUrl,
+            expiresAt: 0,
+            imageDimensions: { width: shape.width, height: shape.height },
+          }),
+        );
+        return true;
+      });
+      const handle = mate.handle;
+      mate.handle = (request) =>
+        request.url.pathname.includes("/api/assets/objects/")
+          ? Promise.resolve({ bytes, headers: { "content-type": "image/png" } })
+          : handle(request);
+    });
+    yield* s.given.project("Ada", { mate: true });
+    const chat = mateChat(s);
+    chat.fixture().history("[Picture 1]\nCheck proportions", null, [
+      {
+        type: "image",
+        id: "picture",
+        name: `${shape.name}.png`,
+        mimeType: "image/png",
+        sizeBytes: bytes.length,
+        width: shape.width,
+        height: shape.height,
+      },
+    ]);
+    yield* s.given.signedIn;
+    yield* Effect.promise(() => ownerMenu(s.page));
+    yield* chat.when.open("Ada", "Check proportions");
+    return s;
+  });
+
 /** The end of the conversation once its opening and motion have finished. */
 async function settledEnd(page: Page) {
   await page.waitForFunction(
@@ -690,79 +773,7 @@ describe("owner-reported layout regressions", () => {
               `the ${shape.name} picture keeps its natural proportions before and after zoom and resizing`,
               () =>
                 Effect.gen(function* () {
-                  const s = yield* createScenario([installArea]);
-                  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-                  const bytes = Buffer.from(
-                    yield* Effect.promise(() =>
-                      s.page.evaluate(({ width, height }) => {
-                        const canvas = document.createElement("canvas");
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext("2d")!;
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillRect(0, 0, width, height);
-                        ctx.fillStyle = "#e66432";
-                        ctx.beginPath();
-                        ctx.arc(width / 2, height / 2, Math.min(width, height) / 3, 0, 2 * Math.PI);
-                        ctx.fill();
-                        ctx.fillStyle = "#000000";
-                        ctx.font = "16px sans-serif";
-                        ctx.fillText("Picture proportions", 4, 20);
-                        return canvas.toDataURL("image/png").split(",")[1]!;
-                      }, shape),
-                    ),
-                    "base64",
-                  );
-                  s.drivers.onMate.push((mate) => {
-                    Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-                    Object.assign(mate.config.environment.capabilities, {
-                      contentAddressedImages: true,
-                    });
-                    mate.rpcHandlers.unshift((request, socket) => {
-                      if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-                      const input = decodeAssetInput(request.payload);
-                      const relativeUrl = `/api/assets/objects/${"a".repeat(64)}/${input.preview ? "preview" : "original"}`;
-                      mate.reply(
-                        socket,
-                        request.id,
-                        encodeAssetResult({
-                          representation: {
-                            digest: "a".repeat(64),
-                            relativeUrl,
-                            mimeType: "image/png",
-                            sizeBytes: bytes.length,
-                            width: shape.width,
-                            height: shape.height,
-                          },
-                          relativeUrl,
-                          expiresAt: 0,
-                          imageDimensions: { width: shape.width, height: shape.height },
-                        }),
-                      );
-                      return true;
-                    });
-                    const handle = mate.handle;
-                    mate.handle = (request) =>
-                      request.url.pathname.includes("/api/assets/objects/")
-                        ? Promise.resolve({ bytes, headers: { "content-type": "image/png" } })
-                        : handle(request);
-                  });
-                  yield* s.given.project("Ada", { mate: true });
-                  const chat = mateChat(s);
-                  chat.fixture().history("[Picture 1]\nCheck proportions", null, [
-                    {
-                      type: "image",
-                      id: "picture",
-                      name: `${shape.name}.png`,
-                      mimeType: "image/png",
-                      sizeBytes: bytes.length,
-                      width: shape.width,
-                      height: shape.height,
-                    },
-                  ]);
-                  yield* s.given.signedIn;
-                  yield* Effect.promise(() => ownerMenu(s.page));
-                  yield* chat.when.open("Ada", "Check proportions");
+                  const s = yield* pictureConversation(shape);
                   yield* Effect.promise(async () => {
                     await s.page.click('button[aria-label="Open picture 1"]');
                     await s.page
@@ -873,6 +884,75 @@ describe("owner-reported layout regressions", () => {
             );
           }
         });
+      });
+    });
+
+    describe("C: image viewer backdrop", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect("an opened picture covers the conversation with its dark backdrop", () =>
+          Effect.gen(function* () {
+            const s = yield* pictureConversation({ name: "square", width: 640, height: 640 });
+            const cover = yield* Effect.promise(async () => {
+              await s.page.click('button[aria-label="Open picture 1"]');
+              await s.page.waitForFunction(
+                () => {
+                  const image = document.querySelector<HTMLImageElement>(
+                    '[role="dialog"] img[data-image-src]',
+                  );
+                  return image && image.naturalWidth > 0 && getComputedStyle(image).opacity === "1";
+                },
+                { timeout: 8000 },
+              );
+              await waitForStillFrames(s.page);
+              return s.page.evaluate(() => {
+                const picture = document
+                  .querySelector('[role="dialog"] img[data-image-src]')!
+                  .getBoundingClientRect();
+                // Beside the picture, over the conversation's column (the menu ends at 435 px).
+                const beside = { x: picture.left - 40, y: picture.top + picture.height / 2 };
+                const stack = document.elementsFromPoint(beside.x, beside.y);
+                const backdrop = document.querySelector('[data-slot="dialog-backdrop"]');
+                const root = document.getElementById("root")!;
+                const box = backdrop?.getBoundingClientRect();
+                const style = backdrop === null ? null : getComputedStyle(backdrop);
+                return {
+                  beside,
+                  viewport: { width: innerWidth, height: innerHeight },
+                  backdrop:
+                    box === undefined
+                      ? null
+                      : { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+                  backdropAt: backdrop === null ? -1 : stack.indexOf(backdrop),
+                  conversationAt: stack.findIndex((element) => root.contains(element)),
+                  shown:
+                    style !== null &&
+                    style.opacity === "1" &&
+                    style.backgroundColor !== "transparent" &&
+                    !/\/ 0\)$|, 0\)$/u.test(style.backgroundColor),
+                };
+              });
+            });
+            const reading = quoted(cover);
+            expect(
+              cover.backdrop,
+              `ASSERTION: an opened picture has a backdrop: ${reading}`,
+            ).toEqual({
+              left: 0,
+              top: 0,
+              right: cover.viewport.width,
+              bottom: cover.viewport.height,
+            });
+            expect(
+              cover.backdropAt >= 0 &&
+                (cover.conversationAt === -1 || cover.backdropAt < cover.conversationAt),
+              `ASSERTION: beside the picture, the backdrop lies over the conversation: ${reading}`,
+            ).toBe(true);
+            expect(
+              cover.shown,
+              `ASSERTION: the backdrop is drawn, not see-through: ${reading}`,
+            ).toBe(true);
+          }),
+        );
       });
     });
 

@@ -154,6 +154,14 @@ describe("B: text-only drafts", () => {
                 return { y: box.y, height: box.height };
               }),
             );
+          // The groups the witness opened unfold over 220 ms: measure the menu once they stand.
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() =>
+              [...document.querySelectorAll('[data-zerops-surface="sidebar-project-rows"]')].every(
+                (fold) => fold.getAnimations().length === 0,
+              ),
+            ),
+          );
           const before = yield* Effect.promise(geometry);
           yield* dropZerops(s.drivers);
           yield* lastingZeropsOutage(s);

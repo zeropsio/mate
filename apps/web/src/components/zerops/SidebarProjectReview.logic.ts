@@ -130,6 +130,24 @@ export function headerReviewItems(
   return items.filter((item) => item.mateProjectId === mateProjectId && item.inProgress !== true);
 }
 
+/**
+ * An automated Mate's task conversation's app-bar Review (`headerReviewItems`), led by the change
+ * of the task the conversation shows: one waiting opens at once, several list it first. Its Mate
+ * holds a change per task, so the others wait there too, in the flow's order.
+ */
+export function taskReviewItems(
+  items: ReadonlyArray<ProjectReviewItem>,
+  change: { readonly repo: string; readonly number: number } | null,
+): ReadonlyArray<ProjectReviewItem> {
+  if (change === null) return items;
+  const isTasks = (item: ProjectReviewItem) =>
+    item.target.kind === "change" &&
+    item.target.repository === change.repo &&
+    item.target.number === change.number;
+  const own = items.filter(isTasks);
+  return own.length === 0 ? items : [...own, ...items.filter((item) => !isTasks(item))];
+}
+
 /** What the Review tag says to somebody who cannot see it. */
 export function reviewTagLabel(
   items: ReadonlyArray<Pick<ProjectReviewItem, "title">>,

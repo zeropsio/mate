@@ -17,6 +17,7 @@ import type {
   OrgAiKeysRead,
   TaskSourceSettingValue,
 } from "@t3tools/client-runtime/data";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { MateTaskSource } from "@t3tools/contracts";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
@@ -45,6 +46,8 @@ import {
   MateTaskMessageRow,
   MateTaskStatusView,
 } from "~/components/zerops/MateTaskCard";
+import { MateFace } from "~/components/zerops/primitives";
+import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
@@ -205,6 +208,55 @@ function Panel({ title, children }: { readonly title: string; readonly children:
   );
 }
 
+const RAYA = { name: "Raya", tint: "amber", shape: "clover" } as const;
+
+/** A change of Raya's waiting for review, as the menu hands it to the app bar's Review. */
+const rayaChange = (number: number, title: string) =>
+  changeReviewItem({
+    pull: {
+      repository: "web",
+      number,
+      title,
+      kind: "code",
+      mateProjectId: "mate-raya",
+    } as unknown as FlowPullRequest,
+    among: [],
+    groupId: "tea-shop",
+    by: RAYA,
+    mine: true,
+  });
+
+const RAYA_CHANGES = [
+  rayaChange(7, "Show the tea's origin"),
+  rayaChange(8, "Add a Back to top link in the footer"),
+];
+
+const doorOf = (items: ReadonlyArray<ReturnType<typeof rayaChange>>) => ({
+  review: { groupId: "tea-shop", projectName: "Tea Shop", items, release: undefined },
+  held: false,
+});
+
+const UP_FOR_REVIEW: TaskSession = {
+  status: "review",
+  taskId: "task-8",
+  stoppable: false,
+  workedMs: 420_000,
+  spentUsd: 0.31,
+  change: { repo: "web", number: 8 },
+  pullRequest: null,
+};
+
+/** The conversation's app bar as far as its Mate's line goes: face, name, then what follows it. */
+function AppBar({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="flex h-13 items-center gap-2 border-b border-border px-4 text-line">
+      <MateFace shape={RAYA.shape} size={24} state="needs" tint={RAYA.tint} />
+      <span className="font-medium">Raya ▾</span>
+      {children}
+    </div>
+  );
+}
+
 function Harness() {
   return (
     <div className="grid min-h-screen grid-cols-2 gap-8 bg-background p-8 text-foreground">
@@ -283,6 +335,26 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
+        <Panel title="The app bar's Review: a normal Mate, then an automated Mate's task conversation">
+          <div className="grid max-w-2xl gap-3" data-harness="app-bar-review">
+            <AppBar>
+              <HeaderReviewDoor {...doorOf(RAYA_CHANGES.slice(1))} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView review={doorOf(RAYA_CHANGES.slice(1))} session={UP_FOR_REVIEW} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView review={doorOf(RAYA_CHANGES)} session={UP_FOR_REVIEW} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView
+                onStop={nothing}
+                review={doorOf(RAYA_CHANGES.slice(0, 1))}
+                session={{ ...UP_FOR_REVIEW, status: "waiting", stoppable: true, change: null }}
+              />
+            </AppBar>
+          </div>
+        </Panel>
         <Panel title="One conversation, a turn per task: two finished, one at work">
           <div className="grid max-w-2xl gap-3">
             {/* The header follows the conversation's current task. */}
