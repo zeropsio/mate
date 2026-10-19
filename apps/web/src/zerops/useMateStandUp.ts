@@ -57,6 +57,8 @@ export function useMateStandUp(input: {
   /** It is read live from its Mate, not a copy being read again (`mateStandUpConversation`). */
   readonly live: boolean;
 }): {
+  /** The stand-up waits in this conversation (`mateStandUpAwaitedIn`). */
+  readonly awaited: boolean;
   readonly holdsComposer: boolean;
   readonly sendFailed: boolean;
   readonly failed: boolean;
@@ -71,20 +73,25 @@ export function useMateStandUp(input: {
   const viewer = session?.user?.id;
   const orgId = session?.activeOrganization?.id;
   const threads = useThreadShells();
-  // The stand-up goes into the Mate's main conversation, the one opening the Mate lands on.
-  const primary = useMemo(
+  const mateConversations = useMemo(
     () =>
       environmentId === null
-        ? undefined
-        : resolvePrimaryConversation(
-            threads.filter((thread) => thread.environmentId === environmentId),
-          ).primary,
+        ? []
+        : threads.filter((thread) => thread.environmentId === environmentId),
     [environmentId, threads],
+  );
+  // The stand-up goes into the Mate's main conversation, the one opening the Mate lands on.
+  const primary = useMemo(
+    () => resolvePrimaryConversation(mateConversations).primary,
+    [mateConversations],
   );
   const conversationsRead = useEnvironmentConversationsRead(environmentId);
   const main = threadRef !== null && primary?.id === threadRef.threadId;
+  // A ref none of the Mate's conversations holds is a draft's, however it is named.
+  const draft =
+    threadRef === null || !mateConversations.some((thread) => thread.id === threadRef.threadId);
   const awaitedHere = mateStandUpAwaitedIn({
-    conversation: threadRef === null ? "draft" : main ? "main" : "other",
+    conversation: draft ? "draft" : main ? "main" : "other",
     mateHasConversation: primary !== undefined,
     conversationsRead,
   });
@@ -121,6 +128,7 @@ export function useMateStandUp(input: {
     }
   };
   return {
+    awaited: awaitedHere,
     holdsComposer: mateStandUpHoldsComposer({
       marker: awaitedHere ? marker : undefined,
       viewer,

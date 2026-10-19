@@ -39,9 +39,10 @@ import type {
   ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
-  classifyZeropsAgentAuth,
+  loginTurnRefusal,
+  turnRefusal,
+  type TurnRefusal,
   type ZeropsAgentAuthFields,
-  type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -64,65 +65,6 @@ export type ProjectSigners = Readonly<Record<string, string>>;
 /** The signers out of the sign-ins this server kept. */
 const signersOf = (records: SignInRecords): ProjectSigners =>
   Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
-
-/** Why a turn may not start on an agent, or `undefined` when it may. */
-export type TurnRefusal =
-  /** The agent is not signed in on this project: the turn would only fail inside its CLI. */
-  | {
-      readonly kind: "not-signed-in";
-      readonly auth: Exclude<ZeropsAgentAuthKind["kind"], "authorized" | "registering">;
-    }
-  /** Signed in, but no signer was recorded for it. */
-  | { readonly kind: "unrecorded" }
-  /** Signed in by somebody other than this session's person. */
-  | { readonly kind: "someone-else" };
-
-/**
- * Whether this session may start a turn on this agent.
- *
- * - an agent that is **not signed in** (never, or its login no longer works)
- *   is refused first: nothing it would run can succeed;
- * - a **token**-authorized agent is nobody's personal login, so it is
- *   unaffected by D6: `flagToken` means the container was given an API key,
- *   and an API key belongs to the project;
- * - an agent whose recorded signer **is** this session's subject: yes;
- * - anything else — someone else's, or no record at all — no. D6 keeps no
- *   backward compatibility here: a login with no recorded signer (an older
- *   one, a terminal login, a copied file) cannot run until somebody signs in
- *   through Mate, because "unrecorded" and "somebody else's" are the same
- *   thing to everyone but the person who knows.
- */
-export function turnRefusal(input: {
-  readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
-  readonly signer: string | undefined;
-  readonly subject: string | undefined;
-}): TurnRefusal | undefined {
-  return loginTurnRefusal({
-    state: classifyZeropsAgentAuth(input.agent).kind,
-    token: input.agent.flagToken,
-    signer: input.signer,
-    subject: input.subject,
-  });
-}
-
-/**
- * {@link turnRefusal} for any login, from its classified state: a default
- * login's comes from its agent row, another login's from its own check. The
- * same order — signed in at all, then a project token, then whose it is.
- */
-export function loginTurnRefusal(input: {
-  readonly state: ZeropsLoginState;
-  readonly token: boolean;
-  readonly signer: string | undefined;
-  readonly subject: string | undefined;
-}): TurnRefusal | undefined {
-  if (input.state !== "authorized" && input.state !== "registering") {
-    return { kind: "not-signed-in", auth: input.state };
-  }
-  if (input.token) return undefined;
-  if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
-  return input.subject === input.signer ? undefined : { kind: "someone-else" };
-}
 
 /**
  * The commands that spend somebody's subscription by starting a turn. Every

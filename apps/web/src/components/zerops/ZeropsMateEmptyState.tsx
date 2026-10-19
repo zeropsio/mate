@@ -23,7 +23,7 @@
 import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { useMateStandUp } from "../../zerops/useMateStandUp";
 import { Button } from "../ui/button";
-import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import { mateArriving } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
   type BirthRuntimeFact,
@@ -53,7 +53,7 @@ import {
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateMarkState } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
 
-import { useServerConfigs, useThreadShells } from "../../state/entities";
+import { useServerConfigs } from "../../state/entities";
 import {
   arrivalFace,
   arrivalHeadlineClauses,
@@ -173,26 +173,18 @@ export function useMateEmptyState({
     agentAuth !== null &&
     (zeropsAgentSignInRequired(agentAuth, providers) || signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  // The stand-up goes into the Mate's main conversation, the one opening it lands on.
-  const threads = useThreadShells();
-  const main = useMemo(
-    () =>
-      threadRef !== null &&
-      resolvePrimaryConversation(
-        threads.filter((thread) => thread.environmentId === threadRef.environmentId),
-      ).primary?.id === threadRef.threadId,
-    [threadRef, threads],
-  );
   const viewerSignedIn =
     agentAuth !== null &&
     viewerSubject !== undefined &&
     mateStandUpSignedIn(agentAuth, viewerSubject);
   const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
   const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0, live: true });
+  // It speaks of the stand-up where the stand-up holds the composer: the Mate's main conversation,
+  // or its opening draft while it has none (`useMateStandUp`).
   const phase = mateStandUpPhase({
     marker: mate.standUp,
     viewer: viewerSubject,
-    main,
+    awaited: standUp.awaited,
     signIn:
       agentAuth === null
         ? "unknown"

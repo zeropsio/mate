@@ -719,7 +719,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const phaseAhead = mateStandUpPhase({
     marker: mate.standUp,
     viewer: user?.id,
-    main: true,
+    awaited: true,
     signIn: "unknown",
   });
   // Any other Mate: its name over what its link waits for, or why it cannot be opened — nameless

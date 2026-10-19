@@ -16,6 +16,7 @@ import type {
   TerminalSessionSnapshot,
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
+import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -35,11 +36,9 @@ import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { isMemberListComplete } from "./ZeropsProjectAccess.ts";
 import {
-  loginTurnRefusal,
   isTurnStartingCommand,
   make as makeProjectSigners,
   SIGN_IN_CHECK_WAIT,
-  turnRefusal,
 } from "./ZeropsProjectSigners.ts";
 
 const JAN = "jan-user-id";

@@ -50,6 +50,7 @@ import {
   type ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
+  type TurnRefusal,
   zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
@@ -69,11 +70,7 @@ import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutoma
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
-import {
-  isTurnStartingCommand,
-  type TurnRefusal,
-  ZeropsProjectSigners,
-} from "./ZeropsProjectSigners.ts";
+import { isTurnStartingCommand, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 
 /**
  * Whom a turn is for.

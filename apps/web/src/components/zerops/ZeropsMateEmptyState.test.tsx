@@ -22,10 +22,17 @@ const feedState = vi.hoisted(() => ({
   threads: [] as ReadonlyArray<Record<string, unknown>>,
   names: new Map<string, string>(),
   providers: [] as ReadonlyArray<OtherAgentFields>,
+  /** The conversations the stand-up waits in (`useMateStandUp`'s `awaited`). */
+  awaitedIn: ["thread-main"] as ReadonlyArray<string>,
 }));
 
 vi.mock("../../zerops/useMateStandUp", () => ({
-  useMateStandUp: () => ({ sendFailed: false, retrying: false, retry: async () => undefined }),
+  useMateStandUp: (input: { readonly threadRef: { readonly threadId: string } | null }) => ({
+    awaited: input.threadRef !== null && feedState.awaitedIn.includes(input.threadRef.threadId),
+    sendFailed: false,
+    retrying: false,
+    retry: async () => undefined,
+  }),
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
@@ -155,10 +162,22 @@ describe("ZeropsMateEmptyState", () => {
     feedState.viewer = ADA;
     feedState.names = new Map();
     feedState.providers = [];
+    feedState.awaitedIn = ["thread-main"];
     feedState.threads = [
       shell("thread-main", "2026-09-29T10:00:00.000Z"),
       shell("thread-second", "2026-09-29T09:00:00.000Z"),
     ];
+  });
+
+  // The Mate's opening draft, before the Mate has a conversation for the ask to go into: its
+  // composer is held for the stand-up (`useMateStandUp`), so it asks nothing it cannot take.
+  it("a draft its person's stand-up holds says the stand-up is on its way, never asks a question", () => {
+    feedState.agentAuth = known(SIGNED_IN_BY_ADA);
+    feedState.threads = [];
+    feedState.awaitedIn = ["draft-1"];
+    const html = render(ASKED, scopeThreadRef(ENVIRONMENT_ID, ThreadId.make("draft-1")));
+    expect(stage(html).headline).toBe("Fen is standing up development on Acme Docs.");
+    expect(stage(html).sentence).toBe("Signed in. It starts in a moment.");
   });
 
   it("leaves the conversation's one face in its header while retaining sign-in content", () => {

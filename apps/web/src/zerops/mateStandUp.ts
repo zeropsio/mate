@@ -19,7 +19,7 @@ import {
   zeropsOtherAgentReady,
   type OtherAgentFields,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
+import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
@@ -114,9 +114,10 @@ export function mateStandUpHoldsComposer(input: {
 }
 
 /**
- * Whether one of the Mate's agents is signed in and this person's to run: the server records them
- * as its signer the moment their sign-in succeeds, never while its code is being checked; a token
- * belongs to the project and runs for anybody.
+ * Whether one of the Mate's agents is signed in and this person's to run — the gate the Mate's
+ * server admits the stand-up by (`turnRefusal`): the server records them as its signer the moment
+ * their sign-in succeeds, never while its code is being checked; a token belongs to the project and
+ * runs for anybody.
  */
 export function mateStandUpSignedIn(
   snapshot: ZeropsAgentAuthSnapshot,
@@ -124,11 +125,10 @@ export function mateStandUpSignedIn(
   providers?: ReadonlyArray<OtherAgentFields>,
 ): boolean {
   if (zeropsOtherAgentReady(providers)) return true;
-  return snapshot.agents.some((agent) => {
-    const kind = classifyZeropsAgentAuth(agent).kind;
-    if (kind !== "authorized" && kind !== "registering") return false;
-    return agent.flagToken || agent.authorizedBy?.subject === viewer;
-  });
+  return snapshot.agents.some(
+    (agent) =>
+      turnRefusal({ agent, signer: agent.authorizedBy?.subject, subject: viewer }) === undefined,
+  );
 }
 
 /** Where the person's sign-in stands, for the empty conversation. */
@@ -139,17 +139,17 @@ export type MateStandUpPhase = "sign-in" | "standing-up";
 
 /**
  * The empty conversation's state, or `null` where it asks today's question: a Mate nobody asked
- * it of, a colleague looking (the ask is its person's, sent from their sign-in), or another of the
- * Mate's chats (the stand-up goes to the main one).
+ * it of, a colleague looking (the ask is its person's, sent from their sign-in), or a conversation
+ * the stand-up does not wait in — another of the Mate's chats, or a draft beside its main one.
  */
 export function mateStandUpPhase(input: {
   readonly marker: MateStandUpMarker;
   readonly viewer: string | undefined;
-  /** This conversation is the Mate's main one. */
-  readonly main: boolean;
+  /** The stand-up waits in this conversation (`mateStandUpAwaitedIn`). */
+  readonly awaited: boolean;
   readonly signIn: MateStandUpSignIn;
 }): MateStandUpPhase | null {
-  if (!askedOf(input.marker, input.viewer) || !input.main) return null;
+  if (!askedOf(input.marker, input.viewer) || !input.awaited) return null;
   return input.signIn === "signed-in" ? "standing-up" : "sign-in";
 }
 

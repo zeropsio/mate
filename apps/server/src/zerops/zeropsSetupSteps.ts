@@ -12,7 +12,8 @@
  *
  * @module zeropsSetupSteps
  */
-import type { ZeropsAgentId } from "@t3tools/contracts";
+import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
 
@@ -35,14 +36,26 @@ export const standUpCommandIds = (threadId: string, attempt = 1) => {
 /** The order an agent is chosen in when a person signed in both. */
 const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
 
-/** The agents this server saw `userId` sign in. */
-export const standUpSigners = (
+/**
+ * The agents a turn of `userId`'s may start on, by D6's own gate (`turnRefusal`), the one the
+ * stand-up's run is admitted by: one they signed in here, or one on a token the project holds,
+ * which runs for anybody.
+ */
+export const standUpAgents = (
+  agents: ReadonlyArray<ZeropsAgentAuth>,
   signers: ProjectSigners,
   userId: string,
-): ReadonlyArray<ZeropsAgentId> => AGENT_ORDER.filter((agentId) => signers[agentId] === userId);
+): ReadonlyArray<ZeropsAgentId> =>
+  AGENT_ORDER.filter((agentId) => {
+    const agent = agents.find((row) => row.agentId === agentId);
+    return (
+      agent !== undefined &&
+      turnRefusal({ agent, signer: signers[agentId], subject: userId }) === undefined
+    );
+  });
 
 export type StandUpDecision =
-  /** On the agent the asker signed in. */
+  /** On an agent the asker may run (`standUpAgents`). */
   | { readonly kind: "start"; readonly userId: string; readonly agentId: ZeropsAgentId }
   /** On an agent Mate signs nobody in to, ready: it runs for the asker as for anybody. */
   | { readonly kind: "start"; readonly userId: string; readonly instanceId: string }
@@ -55,21 +68,22 @@ export type StandUpDecision =
 
 /**
  * Whether to start the stand-up now: asked for by someone with an agent to run
- * — one they signed in, else one Mate signs nobody in to that is ready — never
- * twice, and never into a conversation already under way. Their own sign-in
- * comes first: it is the agent they chose.
+ * — one they signed in or a token the project holds, else one Mate signs nobody
+ * in to that is ready — never twice, and never into a conversation already
+ * under way. Their Claude Code or Codex comes first: it is the agent they chose.
  */
 export const standUpDecision = (input: {
   readonly recorded: boolean;
   readonly requestedBy: string | undefined;
-  readonly signers: ReadonlyArray<ZeropsAgentId>;
+  /** The agents the asker may run (`standUpAgents`). */
+  readonly agents: ReadonlyArray<ZeropsAgentId>;
   /** The instance of a ready agent outside the sign-in (`pickReadyAgentWithoutSignIn`). */
   readonly ready?: string | undefined;
   readonly spoken: boolean;
 }): StandUpDecision => {
   if (input.recorded) return { kind: "done" };
   if (input.requestedBy === undefined) return { kind: "wait" };
-  const agentId = AGENT_ORDER.find((agent) => input.signers.includes(agent));
+  const agentId = AGENT_ORDER.find((agent) => input.agents.includes(agent));
   const start: StandUpDecision | undefined =
     agentId !== undefined
       ? { kind: "start", userId: input.requestedBy, agentId }

@@ -231,7 +231,7 @@ describe("mateStandUpSignedIn", () => {
 });
 
 describe("mateStandUpPhase", () => {
-  const ASKED = { marker: { by: ADA }, viewer: ADA, main: true };
+  const ASKED = { marker: { by: ADA }, viewer: ADA, awaited: true };
   it.each([
     { name: "sign-in required", input: { signIn: "required" as const }, expected: "sign-in" },
     // Nothing painted that a known answer takes back: the common answer for a Mate just made.
@@ -258,7 +258,7 @@ describe("mateStandUpPhase", () => {
     },
     {
       name: "another of the Mate's chats",
-      input: { signIn: "signed-in" as const, main: false },
+      input: { signIn: "signed-in" as const, awaited: false },
       expected: null,
     },
   ])("$name: $expected", ({ input, expected }) => {

@@ -15,6 +15,7 @@ import {
   type ShowcaseScene,
   type ShowcaseSceneId,
 } from "@t3tools/shared/showcaseScenes";
+import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
@@ -532,11 +533,9 @@ const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners.of({
     signers: Effect.succeed({}),
     turnRefusal: ({ agent, subject }) =>
-      Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
+      Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
     loginRefusal: ({ state, token, subject }) =>
-      Effect.succeed(
-        ZeropsProjectSigners.loginTurnRefusal({ state, token, signer: undefined, subject }),
-      ),
+      Effect.succeed(loginTurnRefusal({ state, token, signer: undefined, subject })),
     hasProjectAccess: () => Effect.succeed(undefined),
   }),
 );

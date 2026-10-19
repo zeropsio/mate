@@ -109,7 +109,11 @@ async function holdsComposer(
   await act(async () => root.render(createElement(View)));
   if (again) await act(async () => readings.at(-1)?.retry());
   await act(async () => root.unmount());
-  return { holds: held.at(-1), failed: readings.at(-1)?.sendFailed };
+  return {
+    holds: held.at(-1),
+    failed: readings.at(-1)?.sendFailed,
+    awaited: readings.at(-1)?.awaited,
+  };
 }
 
 /**
@@ -233,6 +237,13 @@ describe("a new Mate's opening draft and its stand-up", () => {
   it("holds the draft's composer for its person while the Mate has no conversation for the ask", async () => {
     world.threads = [];
     expect((await holdsComposer(null, 0)).holds).toBe(true);
+  });
+
+  // The empty conversation reads a draft by its own ref: no conversation of the Mate's, so a draft.
+  it("waits in a draft named by its own ref as in any draft, where its empty conversation says so", async () => {
+    world.threads = [];
+    const draft = scopeThreadRef(ENVIRONMENT, ThreadId.make("draft-1"));
+    expect(await holdsComposer(draft, 0)).toMatchObject({ holds: true, awaited: true });
   });
 
   it("gives a draft's composer back once the Mate has a conversation", async () => {
