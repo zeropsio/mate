@@ -49,6 +49,13 @@ if git cat-file -e "$after_oid:untracked.js" 2>/dev/null; then
   printf 'ASSERTION: deleted files must be absent from the after snapshot\n' >&2
   exit 1
 fi
+# Content Git already holds spends none of the total budget.
+held=refs/t3/checkpoints/posix/runs/held/before
+if ! git -c "alias.mate-snapshot=!$SNAPSHOT_SCRIPT" mate-snapshot capture "$held" 10 128 1024 1 '' '' > .git/held-result; then
+  printf 'ASSERTION: content already in Git must not spend the total budget\n' >&2
+  exit 1
+fi
+[ "$(git rev-parse "$held^{tree}")" = "$(git rev-parse "$after_oid^{tree}")" ]
 # A selection containing only excluded files succeeds with an empty snapshot.
 mkdir empty
 cd empty

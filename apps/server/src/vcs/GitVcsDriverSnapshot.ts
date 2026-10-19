@@ -102,7 +102,6 @@ if [ -n "$baseline" ]; then
     xargs -0 sh -c 'for p do if [ -e "$p" ] || [ -L "$p" ]; then printf "Snapshot refused: selection rules changed for existing baseline file: %s\n" "$p" >&2; exit 1; fi; done' sh < "$scratch/ignored" || fail 'selection rules changed'
   fi
 fi
-: > "$scratch/sizes"
 : > "$scratch/present"
 cat > "$scratch/inspect" <<'MATE_INSPECT'
 set -eu
@@ -122,13 +121,10 @@ for p do
   [ -f "$p" ] || refuse "unsupported nested repository or special file: $p"
   size=$(stat -c %s -- "./$p" 2>/dev/null || stat -f %z "./$p")
   [ "$size" -le "$max_file" ] || refuse "file byte limit: $p"
-  printf '%s\n' "$size" >> "$scratch/sizes"
   printf '%s\0' "$p" >> "$scratch/present"
 done
 MATE_INSPECT
 if [ -s "$scratch/paths" ]; then xargs -0 sh "$scratch/inspect" "$scratch" "$max_file" < "$scratch/paths" || fail 'candidate validation failed'; fi
-total=$(awk '{s += $1} END {printf "%.0f", s}' "$scratch/sizes")
-[ "$total" -le "$max_total" ] || fail 'total input byte limit exceeded'
 git check-attr -z --stdin filter working-tree-encoding < "$scratch/present" > "$scratch/attrs"
 if [ -s "$scratch/attrs" ]; then
   xargs -0 -n 3 sh -c '[ "$3" = unspecified ] || [ "$3" = unset ] || { printf "Snapshot refused: unsupported filter or encoding: %s\n" "$1" >&2; exit 1; }' sh < "$scratch/attrs" || fail 'unsupported content attributes'
@@ -137,7 +133,12 @@ export GIT_INDEX_FILE="$PWD/$scratch/index"
 export GIT_AUTHOR_NAME='Mate' GIT_AUTHOR_EMAIL='mate@zerops.io' GIT_COMMITTER_NAME='Mate' GIT_COMMITTER_EMAIL='mate@zerops.io'
 git read-tree --empty
 : > "$scratch/index-info"
+: > "$scratch/new"
 printf '0\n' > "$scratch/total"
+# Each file is read once into the scratch directory and hashed without being stored. Content the
+# repository already holds (a committed image, an unchanged source file) costs nothing to keep, so
+# only content new to Git spends the total budget, and it is stored once the whole capture fits:
+# a site's committed media no longer refuses every capture of its tree.
 cat > "$scratch/capture" <<'MATE_CAPTURE'
 set -eu
 scratch=$1; max_file=$2; max_total=$3; shift 3
@@ -146,15 +147,22 @@ for p do
   head -c "$((max_file + 1))" < "$p" > "$scratch/content"
   size=$(wc -c < "$scratch/content")
   [ "$size" -le "$max_file" ] || { printf 'Snapshot refused: file grew past byte limit: %s\n' "$p" >&2; exit 1; }
-  total=$(cat "$scratch/total"); total=$((total + size))
-  [ "$total" -le "$max_total" ] || { printf 'Snapshot refused: total input byte limit exceeded\n' >&2; exit 1; }
-  printf '%s\n' "$total" > "$scratch/total"
-  oid=$(git hash-object -w --stdin --path="$p" < "$scratch/content")
+  oid=$(git hash-object --stdin --path="$p" < "$scratch/content")
   mode=100644; if [ -x "$p" ]; then mode=100755; fi
   printf '%s %s\t%s\0' "$mode" "$oid" "$p" >> "$scratch/index-info"
+  if ! git cat-file -e "$oid" 2>/dev/null && [ ! -e "$scratch/new.$oid" ]; then
+    total=$(cat "$scratch/total"); total=$((total + size))
+    [ "$total" -le "$max_total" ] || { printf 'Snapshot refused: total input byte limit exceeded\n' >&2; exit 1; }
+    printf '%s\n' "$total" > "$scratch/total"
+    mv "$scratch/content" "$scratch/new.$oid"
+    printf '%s\0%s\0' "$oid" "$p" >> "$scratch/new"
+  fi
 done
 MATE_CAPTURE
 if [ -s "$scratch/present" ]; then xargs -0 sh "$scratch/capture" "$scratch" "$max_file" "$max_total" < "$scratch/present" || fail 'content capture failed'; fi
+if [ -s "$scratch/new" ]; then
+  xargs -0 -n 2 sh -c '[ "$(git hash-object -w --stdin --path="$3" < "$1/new.$2")" = "$2" ]' sh "$scratch" < "$scratch/new" || fail 'content capture failed'
+fi
 git update-index -z --index-info < "$scratch/index-info"
 tree=$(git write-tree)
 oid=$(printf 'Mate snapshot %s\n' "$ref" | git commit-tree "$tree")
