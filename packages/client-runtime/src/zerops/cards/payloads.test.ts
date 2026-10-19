@@ -509,7 +509,12 @@ describe("decodeZeropsCard — browser", () => {
       steps: [
         { label: "open https://kanbandev-26a7.prg1.zerops.app", success: true },
         { label: "snapshot -i -c", success: true },
-        { label: "click @e1", success: false, errorKind: "selector-not-found" },
+        {
+          label: "click @e1",
+          success: false,
+          error: "no element matched @e1",
+          errorKind: "selector-not-found",
+        },
         { label: "errors", success: true },
         { label: "console", success: true },
         { label: "network requests", success: true },

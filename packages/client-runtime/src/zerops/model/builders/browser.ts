@@ -21,11 +21,41 @@ import {
   readInputString,
 } from "./shared.ts";
 
-function browserStepNote(step: {
+interface BrowserStepResult {
   readonly success: boolean;
+  readonly error?: string;
   readonly errorKind?: string;
-}): string | undefined {
-  return step.success || step.errorKind === undefined ? undefined : sentenceCase(step.errorKind);
+}
+
+/** The kinds zcp gives a command the browser rejected before it asked the page anything. */
+const WRONG_COMMAND_KINDS: ReadonlySet<string> = new Set(["invalid-command", "stale-ref"]);
+
+/** zcp v9.217.0 files agent-browser's "Unknown action" / "Unknown ref" under `other`. */
+const WRONG_COMMAND_ERROR = /\bunknown (action|command|ref)\b/i;
+
+/**
+ * A step whose command was wrong — a misspelt action, a ref no snapshot of
+ * this call gave — never ran on the page, so it fails no check of it.
+ */
+function browserCommandWasWrong(step: BrowserStepResult): boolean {
+  if (step.success || step.errorKind === undefined) return false;
+  return (
+    WRONG_COMMAND_KINDS.has(step.errorKind) ||
+    (step.errorKind === "other" && WRONG_COMMAND_ERROR.test(step.error ?? ""))
+  );
+}
+
+/** A failed step in the browser's own words, else its class of error. */
+function browserStepNote(step: BrowserStepResult): string | undefined {
+  if (step.success || step.errorKind === undefined) return undefined;
+  return step.error ?? sentenceCase(step.errorKind);
+}
+
+/** A wrong command's step reads "Not run", muted: it failed nothing on the page. */
+function buildBrowserStep(id: string, label: string, step: BrowserStepResult) {
+  return browserCommandWasWrong(step)
+    ? buildStep(id, label, "not_run", `the check's command was wrong: ${browserStepNote(step)}`)
+    : buildStep(id, label, step.success ? "ACTIVE" : "FAILED", browserStepNote(step));
 }
 
 /**
@@ -220,12 +250,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
   const steps = (card?.steps ?? [])
     .filter((step) => !isBrowserPaintWait(step.label))
     .map((step, index) => {
-      const built = buildStep(
-        `step-${index}`,
-        step.label,
-        step.success ? "ACTIVE" : "FAILED",
-        browserStepNote(step),
-      );
+      const built = buildBrowserStep(`step-${index}`, step.label, step);
       return isBrowserTailLabel(step.label) ? { ...built, kind: "tail" as const } : built;
     });
   const browserSummary =
