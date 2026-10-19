@@ -139,17 +139,17 @@ export type MateStandUpPhase = "sign-in" | "standing-up";
 
 /**
  * The empty conversation's state, or `null` where it asks today's question: a Mate nobody asked
- * it of, a colleague looking (the ask is its person's, sent from their sign-in), or another of the
- * Mate's chats (the stand-up goes to the main one).
+ * it of, a colleague looking (the ask is its person's, sent from their sign-in), or a conversation
+ * the stand-up does not wait in — another of the Mate's chats, or a draft beside its main one.
  */
 export function mateStandUpPhase(input: {
   readonly marker: MateStandUpMarker;
   readonly viewer: string | undefined;
-  /** This conversation is the Mate's main one. */
-  readonly main: boolean;
+  /** The stand-up waits in this conversation (`mateStandUpAwaitedIn`). */
+  readonly awaited: boolean;
   readonly signIn: MateStandUpSignIn;
 }): MateStandUpPhase | null {
-  if (!askedOf(input.marker, input.viewer) || !input.main) return null;
+  if (!askedOf(input.marker, input.viewer) || !input.awaited) return null;
   return input.signIn === "signed-in" ? "standing-up" : "sign-in";
 }
 
