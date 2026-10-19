@@ -677,10 +677,8 @@ function isResolvableContextWindowActivity(activity: OrchestrationThreadActivity
  * Drops all but the last resolvable context-window activity per turn from a
  * snapshot. Clients only ever read the latest usage value (walking the array
  * backwards), so shipping the full history — often thousands of rows on long
- * threads — buys nothing. Retention is per turn rather than per thread because
- * a live `thread.reverted` makes the client discard whole turns; keeping each
- * turn's latest row means the meter can still resolve a value from the turns
- * that survive. Malformed rows pass through untouched rather than shadowing a
+ * threads — buys nothing. Retention is per turn: each turn keeps its latest
+ * row. Malformed rows pass through untouched rather than shadowing a
  * valid earlier row. Live `thread.activity-appended` events are untouched:
  * newer updates still stream through and supersede the retained rows on the
  * client.
@@ -713,10 +711,9 @@ function dropStaleContextWindowActivities(
  * in one real database, and a single thread carries 2,291 of them totalling
  * ~1MB post-slimming.
  *
- * Matching is per turn for the same reason `dropStaleContextWindowActivities`
- * retains per turn: a live `thread.reverted` makes the client discard whole
- * turns, so a completion in a different turn could vanish and leave the
- * dropped update unrepresented. The completion must also come *after* the
+ * Matching is per turn, as `dropStaleContextWindowActivities` retains per
+ * turn: a completion in another turn never drops an update. The completion
+ * must also come *after* the
  * update within the turn — a later update belongs to a subsequent call that
  * reuses the same identity and is still in flight — but for a completion's
  * echo, which goes wherever it sorts (see below). Rows without a lifecycle

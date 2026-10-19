@@ -23,21 +23,6 @@ export const WORKSPACE_READS = {
     tag: ORCHESTRATION_WS_METHODS.searchThreads,
     suffix: "workspace-threadSearch",
   },
-  turnDiff: {
-    family: "mateTurnDiff",
-    tag: ORCHESTRATION_WS_METHODS.getTurnDiff,
-    suffix: "workspace-turnDiff",
-  },
-  fullThreadDiff: {
-    family: "mateThreadDiff",
-    tag: ORCHESTRATION_WS_METHODS.getFullThreadDiff,
-    suffix: "workspace-fullThreadDiff",
-  },
-  runChanges: {
-    family: "mateRunChanges",
-    tag: ORCHESTRATION_WS_METHODS.getRunChanges,
-    suffix: "workspace-runChanges",
-  },
   workflowScript: {
     family: "mateWorkflowScript",
     tag: ORCHESTRATION_WS_METHODS.getWorkflowScript,

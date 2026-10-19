@@ -10,11 +10,12 @@
  *   payload kept as the call's data (pictures out: they travel by reference, never inline). A
  *   task's is one piece of work.
  * - An approval or a question is a request in its final state, never answerable here.
- * - A compaction, an error, a warning, a plan, a capture's gap is a marker.
+ * - A compaction, an error, a warning, a plan is a marker.
  * - A chain of threads (a crewmate's stints, `planOfChain`) is one record: where a later thread
  *   begins, a `session-rotated` marker says why, as a live rotation's does.
  *
- * What V1 shows nowhere (a progress tick, the context meter, a checkpoint captured) is not copied.
+ * What V1 shows nowhere (a progress tick, the context meter) is not copied, nor its workspace
+ * checkpoints: git is the record of what a turn changed.
  *
  * @module engine/history/v1
  */
@@ -199,8 +200,14 @@ const REQUEST = new Set([
   "user-input.resolved",
   "user-input.answer-submitted",
 ]);
-/** What V1 draws nowhere: live ticks, the meter's readings, a capture that went well. */
-const UNSHOWN = new Set(["tool.progress", "context-window.updated", "checkpoint.captured"]);
+/** What V1 draws nowhere, live ticks and the meter's readings, and its workspace checkpoints. */
+const UNSHOWN = new Set([
+  "tool.progress",
+  "context-window.updated",
+  "checkpoint.captured",
+  "checkpoint.capture.failed",
+  "checkpoint.revert.failed",
+]);
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -1067,7 +1074,7 @@ const resolutionOf = (
 };
 
 /** The V1 events a person read as an error. */
-const ERRORS = new Set(["runtime.error", "tool.denied", "checkpoint.revert.failed"]);
+const ERRORS = new Set(["runtime.error", "tool.denied"]);
 
 /** A V1 event the record keeps as a marker: what V1's row said. */
 const markerOf = (activity: V1ActivityHead): ItemBody => {
@@ -1084,8 +1091,6 @@ const markerOf = (activity: V1ActivityHead): ItemBody => {
         kind: "marker",
         marker: { kind: "plan", reason: asText(payload.explanation) ?? activity.summary },
       };
-    case "checkpoint.capture.failed":
-      return { kind: "marker", marker: { kind: "capture-gap", reason: words } };
     case "proposed-plan":
       return {
         kind: "marker",

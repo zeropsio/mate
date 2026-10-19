@@ -11,77 +11,7 @@ import type {
   ReviewDiffPreviewResult,
   VcsRepositoryIdentity,
 } from "@t3tools/contracts";
-import { CheckpointRef } from "@t3tools/contracts";
 import * as VcsProcess from "./VcsProcess.ts";
-
-export interface VcsCaptureCheckpointInput {
-  readonly cwd: string;
-  readonly checkpointRef: CheckpointRef;
-}
-
-export interface VcsSnapshotPolicy {
-  readonly maxPaths?: number;
-  readonly maxPathBytes?: number;
-  readonly maxFileBytes?: number;
-  readonly maxTotalBytes?: number;
-}
-
-export interface VcsCaptureSnapshotInput extends VcsCaptureCheckpointInput {
-  readonly policy?: VcsSnapshotPolicy;
-  readonly baselineOid?: string;
-}
-
-export interface VcsResolveSnapshotInput extends VcsCaptureCheckpointInput {
-  readonly expectedOid?: string;
-}
-
-export interface VcsSnapshotResult {
-  readonly oid: string;
-  readonly representation: "git-normalized";
-  readonly policyVersion: "git-v1";
-  readonly reused: boolean;
-}
-
-export interface VcsRestoreCheckpointInput {
-  readonly cwd: string;
-  readonly checkpointRef: CheckpointRef;
-  readonly fallbackToHead?: boolean;
-}
-
-export interface VcsDiffCheckpointsInput {
-  readonly cwd: string;
-  readonly fromCheckpointRef: CheckpointRef;
-  readonly toCheckpointRef: CheckpointRef;
-  readonly fallbackFromToHead?: boolean;
-  readonly ignoreWhitespace: boolean;
-  readonly format?: "patch" | "numstat";
-  readonly maxOutputBytes?: number;
-}
-
-export interface VcsDeleteCheckpointRefsInput {
-  readonly cwd: string;
-  readonly checkpointRefs: ReadonlyArray<CheckpointRef>;
-}
-
-export interface VcsCheckpointOps {
-  readonly captureSnapshot: (
-    input: VcsCaptureSnapshotInput,
-  ) => Effect.Effect<VcsSnapshotResult, VcsError>;
-  readonly resolveSnapshot: (
-    input: VcsResolveSnapshotInput,
-  ) => Effect.Effect<string | null, VcsError>;
-  readonly captureCheckpoint: (input: VcsCaptureCheckpointInput) => Effect.Effect<void, VcsError>;
-  readonly hasCheckpointRef: (
-    input: Omit<VcsRestoreCheckpointInput, "fallbackToHead">,
-  ) => Effect.Effect<boolean, VcsError>;
-  readonly restoreCheckpoint: (
-    input: VcsRestoreCheckpointInput,
-  ) => Effect.Effect<boolean, VcsError>;
-  readonly diffCheckpoints: (input: VcsDiffCheckpointsInput) => Effect.Effect<string, VcsError>;
-  readonly deleteCheckpointRefs: (
-    input: VcsDeleteCheckpointRefsInput,
-  ) => Effect.Effect<void, VcsError>;
-}
 
 export class VcsDriver extends Context.Service<
   VcsDriver,
@@ -90,7 +20,6 @@ export class VcsDriver extends Context.Service<
     readonly execute: (
       input: Omit<VcsProcess.VcsProcessInput, "command">,
     ) => Effect.Effect<VcsProcess.VcsProcessOutput, VcsError>;
-    readonly checkpoints?: VcsCheckpointOps;
     readonly detectRepository: (
       cwd: string,
     ) => Effect.Effect<VcsRepositoryIdentity | null, VcsError>;

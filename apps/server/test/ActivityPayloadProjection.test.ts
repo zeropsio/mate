@@ -493,11 +493,9 @@ describe("superseded tool.updated snapshot dedup", () => {
   });
 
   it("keeps an update whose completion lives in another turn", () => {
-    // A live thread.reverted can discard the completing turn while keeping
-    // the updating one, which would leave the call unrepresented.
     const update = makeToolLifecycleActivity("upd-kept", "tool.updated", { turn: "turn-kept" });
     const completed = makeToolLifecycleActivity("done-later", "tool.completed", {
-      turn: "turn-reverted",
+      turn: "turn-completing",
     });
 
     expect(projectedIds([update, completed])).toEqual([update.id, completed.id]);
@@ -589,25 +587,6 @@ describe("context-window snapshot dedup", () => {
     // The retained rows keep their payloads untouched — the tool-data
     // projection only rewrites payloads with a `data` record.
     expect(projected.thread.activities[2]?.payload).toEqual(latestB.payload);
-  });
-
-  it("still resolves a meter value after the client reverts the newest turn", () => {
-    // A live thread.reverted makes the client drop all activities from
-    // discarded turns; each surviving turn must keep a usable row.
-    const olderTurn = makeContextWindowActivity("ctx-old", 1_500, "turn-kept");
-    const revertedTurn = makeContextWindowActivity("ctx-new", 9_000, "turn-reverted");
-
-    const projected = projectThreadDetailSnapshot({
-      snapshotSequence: 7,
-      thread: makeThread([olderTurn, revertedTurn]),
-    });
-    const afterRevert = projected.thread.activities.filter(
-      (activity) => activity.turnId === TurnId.make("turn-kept"),
-    );
-
-    expect(deriveLatestContextWindowSnapshot(afterRevert)).toEqual(
-      deriveLatestContextWindowSnapshot([olderTurn]),
-    );
   });
 
   it("matches what the web client derives from the full history", () => {

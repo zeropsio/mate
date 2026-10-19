@@ -21,9 +21,6 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 const RPC_AGGREGATES = {
   [ORCHESTRATION_WS_METHODS.dispatchCommand]: "orchestration",
   [ORCHESTRATION_WS_METHODS.getWorkflowScript]: "orchestration",
-  [ORCHESTRATION_WS_METHODS.getTurnDiff]: "orchestration",
-  [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: "orchestration",
-  [ORCHESTRATION_WS_METHODS.getRunChanges]: "orchestration",
   [ORCHESTRATION_WS_METHODS.searchThreads]: "orchestration",
   [ORCHESTRATION_WS_METHODS.subscribeShell]: "orchestration",
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: "orchestration",

@@ -3,8 +3,6 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Cause from "effect/Cause";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -89,130 +87,6 @@ describe("VcsProcess.run", () => {
         expect(error.retryable === true).toBe(retryable);
         const encoded = yield* encodeExitError(error);
         expect(encoded).not.toContain("/private/repo");
-      }),
-  );
-
-  it.effect.each(["timeout", "spawn"] as const)(
-    "checkpoint commands do not retry %s failures",
-    (kind) =>
-      Effect.gen(function* () {
-        let attempts = 0;
-        const fields = { command: "git", argumentCount: 2, cwd: "/workspace" };
-        const failure =
-          kind === "timeout"
-            ? new ProcessRunner.ProcessTimeoutError({ ...fields, timeoutMs: 30_000 })
-            : new ProcessRunner.ProcessSpawnError({ ...fields, cause: new Error("spawn failed") });
-        const service = yield* VcsProcess.make.pipe(
-          Effect.provideService(ProcessRunner.ProcessRunner, {
-            run: () =>
-              Effect.sync(() => {
-                attempts += 1;
-              }).pipe(Effect.andThen(Effect.fail(failure))),
-          }),
-        );
-        const error = yield* service
-          .run({
-            ...baseInput,
-            operation: VcsProcess.CHECKPOINT_CAPTURE_OPERATION,
-          })
-          .pipe(Effect.flip);
-        expect(attempts).toBe(1);
-        expect(error._tag).toBe(
-          kind === "timeout" ? "VcsProcessTimeoutError" : "VcsProcessSpawnError",
-        );
-      }),
-  );
-
-  it.effect.each([
-    {
-      name: "recovers after two lock failures",
-      failures: 2,
-      attempts: 3,
-      transient: true,
-      capture: true,
-      streaming: false,
-    },
-    {
-      name: "bounds persistent lock failures",
-      failures: Infinity,
-      attempts: 3,
-      transient: true,
-      capture: true,
-      streaming: false,
-    },
-    {
-      name: "does not retry unknown exits",
-      failures: Infinity,
-      attempts: 1,
-      transient: false,
-      capture: true,
-      streaming: false,
-    },
-    {
-      name: "leaves other operations unchanged",
-      failures: Infinity,
-      attempts: 1,
-      transient: true,
-      capture: false,
-      streaming: false,
-    },
-    {
-      name: "does not replay stdout callbacks",
-      failures: Infinity,
-      attempts: 1,
-      transient: true,
-      capture: true,
-      streaming: true,
-    },
-  ])(
-    "checkpoint command retry $name",
-    ({ failures, attempts: expectedAttempts, transient, capture, streaming }) =>
-      Effect.gen(function* () {
-        let attempts = 0;
-        const service = yield* VcsProcess.make.pipe(
-          Effect.provideService(ProcessRunner.ProcessRunner, {
-            run: () =>
-              Effect.sync(() => {
-                attempts += 1;
-                return {
-                  stdout: "",
-                  stderr:
-                    attempts > failures
-                      ? ""
-                      : transient
-                        ? "fatal: Unable to create '/repo/index.lock': File exists"
-                        : "fatal: index file corrupt",
-                  code: ChildProcessSpawner.ExitCode(attempts > failures ? 0 : attempts),
-                  timedOut: false,
-                  stdoutTruncated: false,
-                  stderrTruncated: false,
-                  stdoutInvalidUtf8: false,
-                  stderrInvalidUtf8: false,
-                };
-              }),
-          }),
-        );
-        const fiber = yield* service
-          .run({
-            ...baseInput,
-            operation: capture ? VcsProcess.CHECKPOINT_CAPTURE_OPERATION : baseInput.operation,
-            ...(streaming ? { onStdoutChunk: () => {} } : {}),
-          })
-          .pipe(Effect.exit, Effect.forkScoped);
-        yield* TestClock.adjust("150 millis");
-        const result = yield* Fiber.join(fiber);
-        expect(attempts).toBe(expectedAttempts);
-        if (failures === Infinity) {
-          if (Exit.isSuccess(result))
-            return yield* Effect.die("Expected a capture command failure");
-          const error = Cause.findErrorOption(result.cause);
-          if (error._tag === "None" || error.value._tag !== "VcsProcessExitError") {
-            return yield* Effect.die("Expected a Git exit error");
-          }
-          expect(error.value.exitCode).toBe(expectedAttempts);
-        } else {
-          expect(Exit.isSuccess(result)).toBe(true);
-        }
       }),
   );
 

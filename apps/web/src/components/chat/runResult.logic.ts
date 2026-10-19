@@ -22,7 +22,7 @@
  * left it until its fact is known.
  */
 import type { VaultView } from "@t3tools/client-runtime/data";
-import type { EnvironmentId, OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { zeropsStatusWord } from "@t3tools/client-runtime/zerops/serviceMap";
 
@@ -135,17 +135,7 @@ export type ResultTone = "ok" | "attention" | "failed" | "muted";
 export type ResultSub =
   | { readonly kind: "text"; readonly text: string }
   /** Broken since then: "Since 23:10". */
-  | { readonly kind: "since"; readonly at: string }
-  | {
-      readonly kind: "diff";
-      readonly files: number | null;
-      readonly additions: number;
-      readonly deletions: number;
-      /** The run whose diff the files open. */
-      readonly turnId: TurnId | null;
-      /** A run of several turns: the first, its diff the whole run's. */
-      readonly fromTurnId: TurnId | null;
-    };
+  | { readonly kind: "since"; readonly at: string };
 
 export type ResultAction =
   /** Review: the one door to merging and landing (R1). */
@@ -496,7 +486,6 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
   if (change === null || forge === undefined) return null;
   const open = forge.open.find((candidate) => changeKey(candidate) === changeKey(change));
   if (open === undefined) return null;
-  const { files } = outcome;
   const draft = open.ready === false;
   return {
     key: `change:${changeKey(change)}`,
@@ -506,17 +495,7 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
     title: `#${open.number} ${open.title}`,
     words: draft ? "Draft" : null,
     version: null,
-    sub:
-      files === null
-        ? null
-        : {
-            kind: "diff",
-            files: files.count,
-            additions: files.additions,
-            deletions: files.deletions,
-            turnId: files.turnId,
-            fromTurnId: files.fromTurnId,
-          },
+    sub: null,
     url: null,
     action: draft
       ? null

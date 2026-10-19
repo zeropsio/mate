@@ -359,7 +359,7 @@ export type ImportedRecord = Extract<
  * accepted it, so the lane frees while the turn runs. `control`: what must never wait behind a
  * send (interrupt, answer). `close`: a session's close, which never waits behind an interrupt the
  * driver does not answer (a second Stop closes the session). `side`: work beside the agent (the
- * workspace capture, its finish). Another owner kind names its own (the crew's `git/<handle>`,
+ * run's admission, a history import). Another owner kind names its own (the crew's `git/<handle>`,
  * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
 export type ConversationLane = "turn" | "control" | "close" | "side";

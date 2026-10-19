@@ -23,11 +23,7 @@ import { projectEnvironment } from "./projects";
 import { useEnvironmentQuery } from "./query";
 import { useEnvironmentThread } from "./threads";
 import { vcsEnvironment } from "./vcs";
-import {
-  buildCheckpointDiffTargets,
-  normalizeComposerPathSearchQuery,
-  type CheckpointDiffTarget,
-} from "./queryTargets";
+import { normalizeComposerPathSearchQuery } from "./queryTargets";
 
 const COMPOSER_PATH_SEARCH_DEBOUNCE_MS = 200;
 const COMPOSER_PATH_SEARCH_LIMIT = 20;
@@ -274,17 +270,4 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget) {
     isPending: normalizedTarget.query !== debouncedTarget.query || result.isPending,
     refresh: result.refresh,
   };
-}
-
-export function useCheckpointDiff(target: CheckpointDiffTarget) {
-  const targets = buildCheckpointDiffTargets(target);
-  const fullThread = useEnvironmentQuery(
-    targets.fullThread === null
-      ? null
-      : orchestrationEnvironment.fullThreadDiff(targets.fullThread),
-  );
-  const turn = useEnvironmentQuery(
-    targets.turn === null ? null : orchestrationEnvironment.turnDiff(targets.turn),
-  );
-  return targets.fullThread === null ? turn : fullThread;
 }

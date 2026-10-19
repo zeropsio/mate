@@ -36,8 +36,6 @@ function receipts(runs: ReadonlyArray<RunRecord>, items: ReadonlyArray<Item>) {
     runningTurnId: running,
     isWorking: running !== null,
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
   }).flatMap((row) =>
     row.kind === "message" && row.message.role === "user" ? [[row.message.text, row.receipt]] : [],
   );

@@ -2,7 +2,7 @@
  * EngineBoot: the engine's start, in order.
  *
  * 1. A new boot id; the platform's restart evidence, read once.
- * 2. Replay-safe work another boot was running goes back to its queue (a capture, a release).
+ * 2. Replay-safe work another boot was running goes back to its queue (an admission, an import).
  * 3. Every conversation the restart touched — process-bound work left behind, a live run, a
  *    session still open — is told `Recovered`, with typed platform restart evidence: what was
  *    cut is recorded, a live run ends cut by the restart, its continuation is armed when its guards

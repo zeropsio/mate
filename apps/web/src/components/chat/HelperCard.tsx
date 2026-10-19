@@ -115,10 +115,8 @@ export function HelperCard({
       workspaceRoot: undefined,
       skills: [],
       activeThreadEnvironmentId: threadRef.environmentId,
-      onRevertToTurnCount: NOOP,
       onRunShellCommand: undefined,
       onImageExpand: NOOP,
-      onOpenTurnDiff: NOOP,
       // It works under the Mate, in the Mate's colour, with no face of its
       // own (`helper`); its row above names it.
       speaker: { name: "Helper", tint: mate?.tint ?? "slate", shape: mate?.shape, helper: true },
@@ -140,7 +138,6 @@ export function HelperCard({
     () => ({
       isWorking: live,
       isCompacting: false,
-      isRevertingCheckpoint: false,
       latestTurnId: null,
       workingStepLabel: null,
     }),

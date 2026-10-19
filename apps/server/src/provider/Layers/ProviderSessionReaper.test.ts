@@ -113,7 +113,6 @@ function makeReadModel(
       backgroundLiveness: thread.backgroundLiveness ?? null,
       activities: [],
       proposedPlans: [],
-      checkpoints: [],
       deletedAt: null,
     })),
   };
@@ -245,8 +244,6 @@ describe("ProviderSessionReaper", () => {
           getProjectWorkspaceRootById: () => Effect.die("unused"),
           getProjectShellById: () => Effect.die("unused"),
           getFirstActiveThreadIdByProjectId: () => Effect.die("unused"),
-          getThreadCheckpointContext: () => Effect.die("unused"),
-          getFullThreadDiffContext: () => Effect.die("unused"),
           getThreadRuntimeContext: () => Effect.die("unused"),
           getTurnStartMessage: () => Effect.die("unused"),
           getThreadShellById: (threadId) =>

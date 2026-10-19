@@ -186,10 +186,8 @@ const SHARED: TimelineRowSharedState = {
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
-  onRevertToTurnCount: () => undefined,
   onRunShellCommand: undefined,
   onImageExpand: () => undefined,
-  onOpenTurnDiff: () => undefined,
   speaker: { name: "Nova", tint: "sky" },
   standUpAsk: null,
   livePauseId: null,
@@ -234,7 +232,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
             value={{
               isWorking: false,
               isCompacting: false,
-              isRevertingCheckpoint: false,
               latestTurnId: null,
               workingStepLabel: null,
             }}

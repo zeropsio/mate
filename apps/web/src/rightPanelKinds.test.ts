@@ -299,9 +299,9 @@ describe("right panel kinds", () => {
 
   /**
    * A Mate's workspace (`/var/www`) is no Git repository of its own, so Diff
-   * read "Available for Git repositories." on every Mate — yet each turn saves
-   * a diff of the services' checkouts below it (the owner: "the diff tab
-   * hasn't been working / doing anything for ages").
+   * read "Available for Git repositories." on every Mate — yet the services'
+   * checkouts below it are (the owner: "the diff tab hasn't been working /
+   * doing anything for ages").
    */
   it.each([
     { gitRepo: false, zeropsPanel: "available", serverThread: true, diff: "available" },

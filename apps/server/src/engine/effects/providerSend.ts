@@ -16,12 +16,9 @@ import type {
   ChatAttachment,
   ModelSelection,
   ProviderInteractionMode,
-  ThreadId,
   TurnHandle,
-  TurnId,
 } from "@t3tools/contracts";
 
-import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import type { SendMode } from "../bridge/spi3.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
@@ -101,7 +98,6 @@ export const makeDeliver = Effect.gen(function* () {
 });
 
 export const makeProviderSend = Effect.gen(function* () {
-  const history = yield* WorkspaceHistory;
   const deliver = yield* makeDeliver;
 
   const send: EffectHandler = {
@@ -128,12 +124,6 @@ export const makeProviderSend = Effect.gen(function* () {
             return failed(evidence.words, { undelivered: "unknown" });
           case "Accepted": {
             const native = yield* sent.host.nativeTurn(turn);
-            if (native !== undefined) {
-              // The run's capture is finished by the turn its message went into.
-              const thread = row.conversationId as string as ThreadId;
-              yield* history.sentTo(thread, payload.runId, native as TurnId);
-              yield* history.bindTurn(thread, native as TurnId);
-            }
             return ok({
               turn: evidence.as === "steered" && evidence.into !== null ? evidence.into : turn,
               providerTurnId: native ?? null,

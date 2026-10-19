@@ -15,9 +15,7 @@ export const allowedDuringV1Update = (type: OrchestrationCommand["type"]): boole
     case "thread.message.reasoning.delta":
     case "thread.message.reasoning.complete":
     case "thread.proposed-plan.upsert":
-    case "thread.turn.diff.complete":
     case "thread.activity.append":
-    case "thread.revert.complete":
     case "thread.title.generate.complete":
     case "thread.title.regeneration.complete":
     case "thread.title.refine":

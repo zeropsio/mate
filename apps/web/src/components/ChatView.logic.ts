@@ -273,7 +273,6 @@ export function buildLocalDraftThread(
     latestTurn: null,
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
-    checkpoints: [],
     activities: [],
     proposedPlans: [],
   };
@@ -285,7 +284,6 @@ export function buildLoadingThreadFromShell(shell: ThreadShell): Thread {
     messages: [],
     proposedPlans: [],
     activities: [],
-    checkpoints: [],
     deletedAt: null,
   };
 }
@@ -804,87 +802,6 @@ export function threadShellHasStarted(
   );
 }
 
-/**
- * Runs `revert` and resolves once the thread no longer holds `messageId` and
- * its checkpoints are back at `turnCount`, or rejects with the revert failure
- * the server recorded, or after `timeoutMs`. The command's acceptance alone is
- * not the rewind: the provider history rolls back asynchronously.
- */
-export async function waitForRevertedMessage(
-  threadRef: ScopedThreadRef,
-  messageId: MessageId,
-  turnCount: number,
-  revert: () => Promise<void>,
-  timeoutMs = 120_000,
-): Promise<void> {
-  const threadAtom = environmentThreadDetails.detailAtom(threadRef);
-  const initial = appAtomRegistry.get(threadAtom);
-  if (!initial?.messages.some((message) => message.id === messageId)) {
-    throw new Error("The message to rewind is no longer available.");
-  }
-  const previousFailures = new Set(
-    initial.activities
-      .filter((activity) => activity.kind === "checkpoint.revert.failed")
-      .map((activity) => activity.id),
-  );
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let accepted = false;
-    let unsubscribe = () => {};
-    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
-    const finish = (error?: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (timeout !== undefined) globalThis.clearTimeout(timeout);
-      unsubscribe();
-      if (error !== undefined) reject(error);
-      else resolve();
-    };
-    const inspect = () => {
-      const thread = appAtomRegistry.get(threadAtom);
-      if (!thread) return;
-      const failure = thread.activities.findLast(
-        (activity) =>
-          activity.kind === "checkpoint.revert.failed" && !previousFailures.has(activity.id),
-      );
-      if (failure) {
-        const payload = failure.payload;
-        finish(
-          new Error(
-            typeof payload === "object" &&
-              payload !== null &&
-              "detail" in payload &&
-              typeof payload.detail === "string"
-              ? payload.detail
-              : failure.summary,
-          ),
-        );
-      } else if (
-        accepted &&
-        !thread.messages.some((message) => message.id === messageId) &&
-        thread.checkpoints.every((checkpoint) => checkpoint.checkpointTurnCount <= turnCount) &&
-        (turnCount === 0
-          ? thread.latestTurn === null
-          : thread.checkpoints.some(
-              (checkpoint) => checkpoint.turnId === thread.latestTurn?.turnId,
-            ))
-      ) {
-        finish();
-      }
-    };
-    unsubscribe = appAtomRegistry.subscribe(threadAtom, inspect);
-    timeout = globalThis.setTimeout(() => {
-      finish(new Error("Timed out waiting for the thread to rewind."));
-    }, timeoutMs);
-    Promise.resolve()
-      .then(revert)
-      .then(() => {
-        accepted = true;
-        inspect();
-      }, finish);
-  });
-}
-
 export function threadHasStarted(thread: Thread | null | undefined): boolean {
   return Boolean(
     thread && (thread.latestTurn !== null || thread.messages.length > 0 || thread.session !== null),
@@ -1154,24 +1071,6 @@ export function shouldRefocusComposerOnWindowFocus(
     activeElement.closest(
       '[role="dialog"], [role="alertdialog"], [data-slot$="-popup"], [data-terminal-owner]',
     ) === null
-  );
-}
-
-/**
- * Whether the diff panel, as it opens, shows the working tree. Every generic
- * opening does — a tab's fallback, a thread change; one made for a specific
- * diff (a turn from the timeline) marks itself explicit for that thread and
- * keeps the selection it set.
- */
-export function diffOpeningShowsWorkingTree(input: {
-  readonly diffOpen: boolean;
-  readonly activeThreadRef: ScopedThreadRef | null;
-  readonly explicitThreadRef: ScopedThreadRef | null;
-}): boolean {
-  return (
-    input.diffOpen &&
-    input.activeThreadRef !== null &&
-    input.explicitThreadRef !== input.activeThreadRef
   );
 }
 

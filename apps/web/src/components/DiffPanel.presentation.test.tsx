@@ -8,20 +8,53 @@ import { useRightPanelStore } from "../rightPanelStore";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const input = vi.hoisted(() => ({
-  source: "local",
-  error: "Local refs refused." as string | null,
-  pending: false,
-  retained: false,
-  otherKnown: false,
-  refreshes: { preview: vi.fn(), local: vi.fn(), remote: vi.fn() },
-  repo: true,
-  turns: {
-    turnDiffSummaries: [] as ReadonlyArray<unknown>,
-    inferredCheckpointTurnCountByTurnId: {},
-    runChangesRead: "read" as "read" | "reading" | "failed" | "needs-update",
-  },
-}));
+const input = vi.hoisted(() => {
+  /** A checkout's status as the Git page reads it. */
+  const status = (changed: number, aheadOfMain: number) => ({
+    isRepo: true,
+    hasPrimaryRemote: true,
+    isDefaultRef: false,
+    refName: "work",
+    hasWorkingTreeChanges: changed > 0,
+    workingTree: {
+      files: Array.from({ length: changed }, (_, index) => ({
+        path: `file-${index}.ts`,
+        insertions: 1,
+        deletions: 0,
+      })),
+      insertions: changed,
+      deletions: 0,
+    },
+    hasUpstream: true,
+    aheadCount: 0,
+    behindCount: 0,
+    aheadOfDefaultCount: aheadOfMain,
+    pr: null,
+  });
+  const checkout = (name: string, changed: number, aheadOfMain: number) => ({
+    repository: { name, cwd: `/var/www/${name}` },
+    status: status(changed, aheadOfMain),
+  });
+  return {
+    checkout,
+    selection: { kind: "branch", baseRef: null } as {
+      kind: string;
+      baseRef?: null;
+      repository?: string;
+    },
+    source: "local",
+    error: "Local refs refused." as string | null,
+    pending: false,
+    retained: false,
+    otherKnown: false,
+    refreshes: { preview: vi.fn(), local: vi.fn(), remote: vi.fn() },
+    repositories: {
+      reads: [checkout("apidev", 0, 1)] as ReadonlyArray<unknown> | null,
+      gitPage: true,
+    },
+    previews: [] as Array<string>,
+  };
+});
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ environmentId: "mate", threadId: "thread" }),
@@ -30,9 +63,7 @@ vi.mock("../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: () => ({ wordWrap: false, diffIgnoreWhitespace: false }),
 }));
-vi.mock("../hooks/useTurnDiffSummaries", () => ({
-  useTurnDiffSummaries: () => input.turns,
-}));
+vi.mock("./useDiffRepositories", () => ({ useDiffRepositories: () => input.repositories }));
 vi.mock("../editorPreferences", () => ({ useOpenInPreferredEditor: () => () => {} }));
 vi.mock("../state/entities", () => ({
   useThread: () => ({
@@ -53,12 +84,9 @@ vi.mock("../diffPanelStore", async (importOriginal) => {
         setDiffRenderMode: () => {},
         byThreadKey: { "mate:thread": { kind: "branch", baseRef: null } },
       }),
-    selectThreadDiffPanelSelection: () => ({ kind: "branch", baseRef: null }),
+    selectThreadDiffPanelSelection: () => input.selection,
   };
 });
-vi.mock("../lib/checkpointDiffState", () => ({
-  useCheckpointDiff: () => ({ data: null, error: null, isPending: false }),
-}));
 vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => {} }));
 vi.mock("../state/vcs", () => ({
   vcsEnvironment: {
@@ -67,7 +95,13 @@ vi.mock("../state/vcs", () => ({
   },
 }));
 vi.mock("../state/review", () => ({
-  reviewEnvironment: { diffPreview: () => "preview", diffFileContents: {} },
+  reviewEnvironment: {
+    diffPreview: ({ input: { cwd } }: { input: { cwd: string } }) => {
+      input.previews.push(cwd);
+      return "preview";
+    },
+    diffFileContents: {},
+  },
 }));
 vi.mock("../state/server", () => ({ serverEnvironment: { configValueAtom: () => null } }));
 vi.mock("../state/query", async (importOriginal) => ({
@@ -87,39 +121,30 @@ vi.mock("../state/query", async (importOriginal) => ({
               },
             ],
           }
-        : key === "status"
-          ? { isRepo: input.repo }
-          : key === input.source
-            ? input.retained
-              ? { refs: [{ name: "main", current: false, isDefault: true, worktreePath: null }] }
-              : null
-            : key === "local" || key === "remote"
-              ? {
-                  refs: input.otherKnown
-                    ? [
-                        {
-                          name: "origin/main",
-                          current: false,
-                          isDefault: true,
-                          worktreePath: null,
-                          isRemote: true,
-                        },
-                      ]
-                    : [],
-                }
-              : null,
+        : key === input.source
+          ? input.retained
+            ? { refs: [{ name: "main", current: false, isDefault: true, worktreePath: null }] }
+            : null
+          : key === "local" || key === "remote"
+            ? {
+                refs: input.otherKnown
+                  ? [
+                      {
+                        name: "origin/main",
+                        current: false,
+                        isDefault: true,
+                        worktreePath: null,
+                        isRemote: true,
+                      },
+                    ]
+                  : [],
+              }
+            : null,
     error: key === input.source ? input.error : null,
     isPending: key === input.source && input.pending,
     refresh:
       key === "preview" || key === "local" || key === "remote" ? input.refreshes[key] : () => {},
   }),
-}));
-vi.mock("./zerops/ZeropsMateUpdateControl", () => ({
-  ZeropsMateUpdateControl: ({
-    children,
-  }: {
-    children: (view: { line: ReactNode; menuActions: [] }) => ReactNode;
-  }) => children({ line: <button type="button">Update</button>, menuActions: [] }),
 }));
 vi.mock("./ui/combobox", () => {
   const Part = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
@@ -207,7 +232,6 @@ it.each([
 });
 
 vi.mock("./diffs/AnnotatableCodeView", () => ({ AnnotatableCodeView: () => null }));
-vi.mock("./CheckpointHistoryDiff", () => ({ CheckpointHistoryDiff: () => null }));
 
 it.each(["toolbar", "failed read"])(
   "%s offers Refresh diff to retry the preview and both ref lists",
@@ -248,7 +272,8 @@ it.each(["toolbar", "failed read"])(
   },
 );
 
-it("offers no turn to pick while no turn has changes to show", async () => {
+/** Renders Diff for the conversation and hands its container to `look`. */
+async function withDiff(look: (container: HTMLElement) => Promise<void> | void) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -258,157 +283,112 @@ it("offers no turn to pick while no turn has changes to show", async () => {
         <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
       ),
     );
-    const scope = container.querySelector<HTMLButtonElement>('button[aria-label^="Diff scope"]');
-    expect(scope).not.toBeNull();
-    await act(async () => {
-      scope!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
-      scope!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-      scope!.click();
-    });
-    const items = Array.from(
-      document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'),
-    );
-    expect(items.map((item) => item.textContent)).toContain("Latest turn");
-    expect(items.map((item) => item.textContent)).not.toContain("Turn");
+    await look(container);
   } finally {
     await act(() => root.unmount());
     container.remove();
+  }
+}
+
+function withReads(reads: ReadonlyArray<unknown> | null, selection = input.selection) {
+  const before = { reads: input.repositories.reads, selection: input.selection };
+  input.repositories.reads = reads;
+  input.selection = selection;
+  input.previews.length = 0;
+  return () => {
+    input.repositories.reads = before.reads;
+    input.selection = before.selection;
+  };
+}
+
+it("Diff offers each repository's files not committed and commits not on main, counted as the Git page counts them", async () => {
+  const restore = withReads([input.checkout("apidev", 2, 0), input.checkout("appdev", 0, 3)], {
+    kind: "unstaged",
+  });
+  try {
+    await withDiff(async (container) => {
+      const menu = container.querySelector<HTMLButtonElement>('button[aria-label^="Diff shows"]');
+      expect(menu?.getAttribute("aria-label")).toBe("Diff shows: apidev · Not committed");
+      await act(async () => {
+        menu!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+        menu!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+        menu!.click();
+      });
+      const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'), (item) =>
+        item.textContent?.trim(),
+      );
+      expect(items).toEqual([
+        "Not committed2 files",
+        "Not on main0 commits",
+        "Not committed0 files",
+        "Not on main3 commits",
+      ]);
+    });
+  } finally {
+    restore();
+  }
+});
+
+it("a Mate's Diff reads git in the checkout it shows, never a saved turn", async () => {
+  const restore = withReads([input.checkout("apidev", 0, 0), input.checkout("appdev", 1, 0)], {
+    kind: "unstaged",
+  });
+  try {
+    await withDiff(() => {
+      expect(input.previews).toContain("/var/www/appdev");
+      expect(input.previews).not.toContain("/var/www/apidev");
+    });
+  } finally {
+    restore();
+  }
+});
+
+it("with nothing outside main, Diff says so, offers no views of nothing, and opens the Git page", async () => {
+  const restore = withReads([input.checkout("apidev", 0, 0)], { kind: "unstaged" });
+  const open = vi.spyOn(useRightPanelStore.getState(), "open");
+  try {
+    await withDiff(async (container) => {
+      expect(container.textContent).toContain("Nothing outside main.");
+      expect(container.querySelector('[aria-label="Hide whitespace changes"]')).toBeNull();
+      expect(input.previews).toEqual([]);
+      const button = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent === "Open Git",
+      );
+      expect(button).toBeDefined();
+      await act(() => button!.click());
+      expect(open).toHaveBeenCalledWith({ environmentId: "mate", threadId: "thread" }, "git");
+    });
+  } finally {
+    open.mockRestore();
+    restore();
   }
 });
 
 it.each([
-  { read: "reading" as const, says: "Loading changes..." },
-  { read: "failed" as const, says: "Couldn't read this conversation's changes." },
-  {
-    read: "needs-update" as const,
-    says: "This Mate shows its changes here after its next update.",
-  },
-])(
-  "the Diff page never says nothing changed while a Mate's runs are $read",
-  async ({ read, says }) => {
-    // A Mate's workspace of checkouts shows turns only.
-    input.repo = false;
-    input.turns = {
-      turnDiffSummaries: [],
-      inferredCheckpointTurnCountByTurnId: {},
-      runChangesRead: read,
-    };
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    try {
-      await act(() =>
-        root.render(
-          <DiffPanel
-            composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never}
-          />,
-        ),
-      );
+  { name: "no checkout", reads: [], says: "No code here yet." },
+  { name: "its checkouts still read", reads: null, says: "Reading git..." },
+])("a Mate's Diff with $name never says nothing changed", async ({ reads, says }) => {
+  const restore = withReads(reads, { kind: "unstaged" });
+  try {
+    await withDiff((container) => {
       expect(container.textContent).toContain(says);
-      expect(container.textContent).not.toContain("No changes yet");
-    } finally {
-      await act(() => root.unmount());
-      container.remove();
-      input.repo = true;
-      input.turns = {
-        turnDiffSummaries: [],
-        inferredCheckpointTurnCountByTurnId: {},
-        runChangesRead: "read",
-      };
-    }
-  },
-);
-
-// The onboarding run, 2026-10-16: beside a merged change, Diff said "No changes yet — Each turn's
-// changes to the code show here once the agent makes some" under four view toggles.
-it("a Mate's Diff with no recorded changes never says the agent changed nothing yet, and offers no views of nothing", async () => {
-  input.repo = false;
-  input.turns = {
-    turnDiffSummaries: [],
-    inferredCheckpointTurnCountByTurnId: {},
-    runChangesRead: "read",
-  };
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  try {
-    await act(() =>
-      root.render(
-        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
-      ),
-    );
-    expect(container.textContent).toContain("No code changes recorded here");
-    expect(container.textContent).not.toContain("yet");
-    expect(container.querySelector('[aria-label="Hide whitespace changes"]')).toBeNull();
+      expect(container.textContent).not.toContain("Nothing outside main.");
+      expect(input.previews).toEqual([]);
+    });
   } finally {
-    await act(() => root.unmount());
-    container.remove();
-    input.repo = true;
+    restore();
   }
 });
 
-it("a Mate's Diff with no recorded changes opens the Git page, where its merged changes are", async () => {
-  input.repo = false;
-  input.turns = {
-    turnDiffSummaries: [],
-    inferredCheckpointTurnCountByTurnId: {},
-    runChangesRead: "read",
-  };
-  const open = vi.spyOn(useRightPanelStore.getState(), "open");
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
+it("Diff of changes it shows offers the Git page beside them", async () => {
+  const restore = withReads([input.checkout("apidev", 1, 0)], { kind: "unstaged" });
   try {
-    await act(() =>
-      root.render(
-        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
-      ),
-    );
-    const button = Array.from(container.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent === "Open Git",
-    );
-    expect(button).toBeDefined();
-    await act(() => button!.click());
-    expect(open).toHaveBeenCalledWith({ environmentId: "mate", threadId: "thread" }, "git");
+    await withDiff((container) => {
+      expect(
+        Array.from(container.querySelectorAll("button"), (button) => button.textContent),
+      ).toContain("Open Git");
+    });
   } finally {
-    open.mockRestore();
-    await act(() => root.unmount());
-    container.remove();
-    input.repo = true;
-  }
-});
-
-it("a Mate whose server predates run changes says it shows them after its update, never that it couldn't read them", async () => {
-  input.repo = false;
-  input.turns = {
-    turnDiffSummaries: [],
-    inferredCheckpointTurnCountByTurnId: {},
-    runChangesRead: "needs-update",
-  };
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  try {
-    await act(() =>
-      root.render(
-        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
-      ),
-    );
-    expect(container.textContent).toContain(
-      "This Mate shows its changes here after its next update.",
-    );
-    expect(Array.from(container.querySelectorAll("button"), (b) => b.textContent)).toContain(
-      "Update",
-    );
-    expect(container.textContent).not.toContain("Couldn't read");
-  } finally {
-    await act(() => root.unmount());
-    container.remove();
-    input.repo = true;
-    input.turns = {
-      turnDiffSummaries: [],
-      inferredCheckpointTurnCountByTurnId: {},
-      runChangesRead: "read",
-    };
+    restore();
   }
 });

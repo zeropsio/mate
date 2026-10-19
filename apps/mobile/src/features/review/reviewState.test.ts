@@ -6,12 +6,11 @@ import {
   getCachedReviewParsedDiff,
   getReviewAsyncStateSnapshot,
   setReviewAsyncError,
-  setReviewTurnDiffLoading,
 } from "./reviewState";
 
 const reviewInput = {
   threadKey: "env-local:thread-review",
-  sectionId: "turn:1",
+  sectionId: "git:working-tree",
   diff: [
     "diff --git a/src/a.ts b/src/a.ts",
     "new file mode 100644",
@@ -26,24 +25,14 @@ afterEach(() => {
   appAtomRegistry.reset();
 });
 
-it("stores review async loading and error state in atoms", () => {
+it("stores review error state in atoms", () => {
   const threadKey = `env-local:thread-review-state-${Date.now()}`;
 
-  setReviewTurnDiffLoading(threadKey, "turn-1", true);
   setReviewAsyncError(threadKey, "load failed");
+  assert.deepStrictEqual(getReviewAsyncStateSnapshot(threadKey), { error: "load failed" });
 
-  assert.deepStrictEqual(getReviewAsyncStateSnapshot(threadKey), {
-    loadingTurnIds: { "turn-1": true },
-    error: "load failed",
-  });
-
-  setReviewTurnDiffLoading(threadKey, "turn-1", false);
   setReviewAsyncError(threadKey, null);
-
-  assert.deepStrictEqual(getReviewAsyncStateSnapshot(threadKey), {
-    loadingTurnIds: {},
-    error: null,
-  });
+  assert.deepStrictEqual(getReviewAsyncStateSnapshot(threadKey), { error: null });
 });
 
 it("reuses unchanged parsed diffs and replaces changed sections", () => {

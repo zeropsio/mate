@@ -3,7 +3,6 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
-import type { TurnDiffSummary } from "../../types";
 import {
   reduceZeropsOperations,
   type ZeropsCall,
@@ -1565,7 +1564,7 @@ describe("browser checks", () => {
       (operation) => operation.kind === "browser",
     );
     expect(checksStrip(checks, false)).toMatchObject({ views: 2, failures: 0 });
-    expect(deriveOutcome({ turn: only!, landed: [], diffs: [] })?.checks).toMatchObject({
+    expect(deriveOutcome({ turn: only!, landed: [] })?.checks).toMatchObject({
       count: 3,
       views: 2,
       failures: 0,
@@ -2038,21 +2037,6 @@ describe("standingIncidents — what the dock under the now line says of a servi
 
 describe("deriveOutcome", () => {
   const settled = { latest: { id: "t1", state: "completed", completed: true } } as const;
-  const diff = (files: number): TurnDiffSummary =>
-    ({
-      turnId: turn("t1"),
-      checkpointTurnCount: 1,
-      checkpointRef: "ref" as TurnDiffSummary["checkpointRef"],
-      status: "ready",
-      files: Array.from({ length: files }, (_, index) => ({
-        path: `src/file${index}.ts`,
-        kind: "modified",
-        additions: 10,
-        deletions: 2,
-      })),
-      assistantMessageId: null,
-      completedAt: at(9),
-    }) as TurnDiffSummary;
 
   // A failure the run came back from is the work's, never its result (the
   // owner, 2026-09-29: "it doesn't make sense to keep log of things that were
@@ -2085,7 +2069,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: only!,
       landed: [entries[5] as Extract<TimelineEntry, { kind: "change-landed" }>],
-      diffs: [diff(3)],
     });
     expect(outcome).toEqual({
       key: "outcome:msg:m0",
@@ -2111,7 +2094,6 @@ describe("deriveOutcome", () => {
           title: "Draw distance",
         },
       ],
-      files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1"), fromTurnId: null },
       checks: {
         count: 1,
         views: 1,
@@ -2161,7 +2143,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
+    const outcome = deriveOutcome({ turn: only!, landed: [] });
     expect(
       outcome?.live.map(({ hostname, tone, word, url, failure }) => ({
         hostname,
@@ -2249,7 +2231,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
+    const outcome = deriveOutcome({ turn: only!, landed: [] });
     expect(
       outcome?.live.map(({ hostname, tone, failure }) => ({
         hostname,
@@ -2286,7 +2268,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
+    const outcome = deriveOutcome({ turn: only!, landed: [] });
     expect(outcome?.live.map(({ hostname, word, url }) => ({ hostname, word, url }))).toEqual([
       { hostname: "apidev", word: "Deployed", url: "https://apidev.example.dev" },
     ]);
@@ -2357,7 +2339,6 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "appdev", tone: "failed", word, failure }),
@@ -2442,7 +2423,6 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live).toEqual([expect.objectContaining({ hostname: "appdev", tone, word })]);
   });
@@ -2463,7 +2443,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live.map((service) => service.word) ?? []).toEqual(words);
   });
@@ -2526,7 +2505,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live.map((service) => service.word) ?? []).toEqual(services);
     expect(outcome?.notDone.length ?? 0).toBe(notDone);
@@ -2692,7 +2670,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: turns[0]!,
       landed: [],
-      diffs: [],
       later: turns.slice(1),
     });
     expect(outcome?.later).toEqual(later);
@@ -2710,7 +2687,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.change).toEqual({ repository: "app", number: 2 });
     expect(outcome?.crewTask).toEqual({ number: 12, title: "Camera rig" });
@@ -2741,7 +2717,6 @@ describe("deriveOutcome", () => {
       turn: structure([user("m0", 0), plan, tool("w1", "t1", 2), assistant("a1", "t1", 3)], settled)
         .turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.planLeft).toEqual(["Style the page", "Write the tests"]);
   });
@@ -2852,7 +2827,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...pictures, assistant("a1", "t1", 9)], settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(readPictures(outcome?.pictures ?? [])).toEqual(read);
   });
@@ -2871,7 +2845,6 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.pictures[0]).toMatchObject({
       name: "home-mobile.png",
@@ -2896,7 +2869,6 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(
       outcome?.pictures.map((picture) =>
@@ -2919,7 +2891,6 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live.map((service) => service.at)).toEqual([at(4, 30)]);
   });
@@ -2929,7 +2900,7 @@ describe("deriveOutcome", () => {
       [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2)],
       settled,
     );
-    expect(deriveOutcome({ turn: quiet.turns[0]!, landed: [], diffs: [] })).toBeNull();
+    expect(deriveOutcome({ turn: quiet.turns[0]!, landed: [] })).toBeNull();
     const refused = structure(
       [
         user("m0", 0),
@@ -2937,7 +2908,7 @@ describe("deriveOutcome", () => {
       ],
       settled,
     );
-    expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diffs: [diff(2)] })).toBeNull();
+    expect(deriveOutcome({ turn: refused.turns[0]!, landed: [] })).toBeNull();
   });
 
   // What its calls came to is the run's effort: a run that only ran
@@ -2945,21 +2916,18 @@ describe("deriveOutcome", () => {
   const edited = { kind: "edit" as const, count: 1 };
   const ran = { kind: "command" as const, count: 2 };
   it.each([
-    { name: "only commands ran", changed: null, activity: [ran], files: null },
-    { name: "edits, no diff yet", changed: null, activity: [edited, ran], files: null },
-    { name: "edits, the files changed known", changed: 2, activity: [edited, ran], files: 2 },
-  ])("keeps what a run's calls came to: $name", ({ changed, activity, files }) => {
+    { name: "only commands ran", activity: [ran] },
+    { name: "edits", activity: [edited, ran] },
+  ])("keeps what a run's calls came to: $name", ({ activity }) => {
     const outcome = deriveOutcome({
       turn: structure(
         [user("m0", 0), tool("w1", "t1", 1), tool("w2", "t1", 2), assistant("a1", "t1", 3)],
         settled,
       ).turns[0]!,
       landed: [],
-      diffs: changed === null ? [] : [diff(changed)],
       activity,
     });
     expect(outcome?.activity).toEqual(activity);
-    expect(outcome?.files?.count ?? null).toBe(files);
   });
 
   it("reports checks alone, with every take: the report is where a settled turn's checks are seen", () => {
@@ -2969,7 +2937,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     expect(
-      deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [], diffs: [] }),
+      deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [] }),
     ).toMatchObject({
       checks: {
         count: 1,
@@ -3005,7 +2973,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "apistage", tone: "ok", word: "Deployed" }),
@@ -3029,7 +2996,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.notDone).toEqual([
       {
@@ -3070,7 +3036,6 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(outcome?.notDone).toEqual([
       expect.objectContaining({ subject: "cache", reason: "Zerops has no service type valkey@9" }),
@@ -3808,7 +3773,6 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 20)], settled).turns[0]!,
       landed: [],
-      diffs: [],
     });
     expect(
       Object.fromEntries((outcome?.live ?? []).map((service) => [service.hostname, service.tone])),
@@ -3889,44 +3853,6 @@ describe("a run, its woken turns and its work", () => {
 
   // Review of pass 42: the words a run said before the work its helpers woke
   // it to were on the way, never its answer.
-  // Review of pass 42: the files the turns its helpers woke changed went
-  // unsaid, and the diff opened the first turn's alone.
-  it("counts the files every turn of a run changed, its diff the whole run's", () => {
-    const entries = [
-      user("u1", 0),
-      launched("h1", 1),
-      assistant("a1", "t1", 2, "Started it."),
-      finished("h1", 4),
-      tool("w2", "t2", 5),
-      assistant("a2", "t2", 6, ANSWER),
-    ];
-    const [run] = structure(entries, {
-      latest: { id: "t2", state: "completed", completed: true },
-    }).turns;
-    const diffOf = (turnId: string, paths: ReadonlyArray<string>) =>
-      ({
-        turnId: turn(turnId),
-        checkpointTurnCount: 1,
-        checkpointRef: "ref" as TurnDiffSummary["checkpointRef"],
-        status: "ready",
-        files: paths.map((path) => ({ path, kind: "modified", additions: 5, deletions: 1 })),
-        assistantMessageId: null,
-        completedAt: at(9),
-      }) as TurnDiffSummary;
-    const outcome = deriveOutcome({
-      turn: run!,
-      landed: [],
-      diffs: [diffOf("t1", ["a.ts", "b.ts"]), diffOf("t2", ["b.ts", "c.ts"])],
-    });
-    expect(outcome?.files).toEqual({
-      count: 3,
-      additions: 20,
-      deletions: 4,
-      turnId: turn("t2"),
-      fromTurnId: turn("t1"),
-    });
-  });
-
   it("answers a run its helpers woke with its last turn's words alone", () => {
     const entries = [
       user("u1", 0),
@@ -4186,7 +4112,7 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
   };
   const live = (entries: TimelineEntry[]) => {
     const [only] = structure(entries, settled).turns;
-    return deriveOutcome({ turn: only!, landed: [], diffs: [] })?.live.map(
+    return deriveOutcome({ turn: only!, landed: [] })?.live.map(
       ({ hostname, tone, word, failure }) => ({ hostname, tone, word, fix: failure !== null }),
     );
   };
@@ -4286,7 +4212,7 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
   // asks the Mate to fix it.
   const rows = (entries: TimelineEntry[]) => {
     const [only] = structure([user("m0", 0), ...entries, assistant("a1", "t1", 9)], settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
+    const outcome = deriveOutcome({ turn: only!, landed: [] });
     return resultRows(outcome!)
       .filter((row) => row.key.startsWith("service:"))
       .map((row) => ({

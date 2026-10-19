@@ -193,8 +193,6 @@ function milo(
     latestTurn: thread.latestTurn,
     isWorking: phase === "lifted" || phase === "continued",
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     ...(notices === undefined ? {} : { notices }),
     ...(reload ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
   });

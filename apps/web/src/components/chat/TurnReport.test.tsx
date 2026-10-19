@@ -1,5 +1,5 @@
 import { markupDom } from "../../../test/markupDom";
-import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -97,7 +97,6 @@ const OUTCOME: OutcomeModel = {
     },
   ],
   landed: [],
-  files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("turn-1"), fromTurnId: null },
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:status")] },
   pictures: [],
   created: [],
@@ -123,13 +122,7 @@ function render(props: Partial<Parameters<typeof TurnReport>[0]> = {}): ReactTes
   let renderer!: ReactTestRenderer;
   act(() => {
     renderer = create(
-      <TurnReport
-        facts={FACTS}
-        onOpenImage={() => undefined}
-        onOpenTurnDiff={() => undefined}
-        outcome={OUTCOME}
-        {...props}
-      />,
+      <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} {...props} />,
     );
   });
   return renderer;
@@ -137,13 +130,7 @@ function render(props: Partial<Parameters<typeof TurnReport>[0]> = {}): ReactTes
 
 const markupOf = (props: Partial<Parameters<typeof TurnReport>[0]> = {}) =>
   renderToStaticMarkup(
-    <TurnReport
-      facts={FACTS}
-      onOpenImage={() => undefined}
-      onOpenTurnDiff={() => undefined}
-      outcome={OUTCOME}
-      {...props}
-    />,
+    <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} {...props} />,
   );
 
 const rowsOf = (renderer: ReactTestRenderer) =>
@@ -205,7 +192,6 @@ function renderPictures(
         <TurnReport
           facts={FACTS}
           onOpenImage={() => undefined}
-          onOpenTurnDiff={() => undefined}
           outcome={{ ...OUTCOME, pictures }}
           {...props}
         />,
@@ -273,7 +259,6 @@ describe("TurnReport's pictures", () => {
         <TurnReport
           facts={FACTS}
           onOpenImage={() => undefined}
-          onOpenTurnDiff={() => undefined}
           outcome={{ ...OUTCOME, pictures: [filePicture("home-mobile.png")] }}
         />,
       ),
@@ -289,7 +274,6 @@ describe("TurnReport's pictures", () => {
           <TurnReport
             facts={FACTS}
             onOpenImage={() => undefined}
-            onOpenTurnDiff={() => undefined}
             outcome={{
               ...OUTCOME,
               pictures: names.map((name) => checkPicture(`op:${name}`, `/${name}`)),
@@ -617,12 +601,7 @@ describe("TurnReport", () => {
     act(() => {
       renderer = create(
         <ReviewContext value={openReview}>
-          <TurnReport
-            facts={FACTS}
-            onOpenImage={() => undefined}
-            onOpenTurnDiff={() => undefined}
-            outcome={OUTCOME}
-          />
+          <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} />
         </ReviewContext>,
       );
     });
@@ -635,15 +614,6 @@ describe("TurnReport", () => {
       { kind: "change", groupId: "group-snap", repository: "app", number: 2 },
       { from },
     );
-  });
-
-  it("opens the run's own diff from the files it changed", () => {
-    const onOpenTurnDiff = vi.fn();
-    const files = render({ onOpenTurnDiff }).root.find(
-      (node) => node.type === "button" && node.children.includes("3 files"),
-    );
-    act(() => files.props.onClick());
-    expect(onOpenTurnDiff).toHaveBeenCalledWith(TurnId.make("turn-1"), null);
   });
 
   // A service that stopped since comes back in red, saying since when.
@@ -703,7 +673,6 @@ describe("TurnReport", () => {
             ]),
           }}
           onOpenImage={() => undefined}
-          onOpenTurnDiff={() => undefined}
           outcome={OUTCOME}
           settling
         />,
@@ -726,13 +695,7 @@ describe("TurnReport", () => {
     expect(rowsOf(renderer).map((row) => row.props["data-rising"] === true)).toEqual([true, true]);
     act(() =>
       renderer.update(
-        <TurnReport
-          facts={FACTS}
-          onOpenImage={() => undefined}
-          onOpenTurnDiff={() => undefined}
-          outcome={OUTCOME}
-          settling
-        />,
+        <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} settling />,
       ),
     );
     const change = rowsOf(renderer).find((row) => row.props["data-result-row"] === "waiting");

@@ -1633,10 +1633,10 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
 
 // The Mate engine's two boundaries (coexist.md §6). The engine lives in
 // `apps/server/src/engine/**` and reaches out only to its neutral seams: the
-// config, the SPI, the provider service, the workspace history, the attachment
-// store and the terminal manager; never V1's `orchestration/**`, never
+// config, the SPI, the provider service, the attachment store and the
+// terminal manager; never V1's `orchestration/**`, never
 // `zerops/**` directly (Zerops reaches it through `ports.ts`; a neutral seam
-// such as WorkspaceHistory may itself import zerops modules). Outside, only the wiring
+// may itself import zerops modules). Outside, only the wiring
 // files and the graft layers that branch reach in, and only to its public
 // surface: the service, the layer, the ports and the wire's RPC registration. Tests may reach
 // further.
@@ -1672,7 +1672,6 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/assets/ConversationMedia.ts",
   ...UPDATE_NEUTRAL_SEAMS,
   "apps/server/src/attachmentStore.ts",
-  "apps/server/src/checkpointing/WorkspaceHistory.ts",
   "apps/server/src/config.ts",
   // V1's own projection of a tool activity: an engine call (live or imported) carries what V1's
   // row of it shows by construction, and the Zerops result it decodes.

@@ -64,7 +64,7 @@ export const opened = (run: number, c: ConversationId = conversation): Command =
     },
   },
 });
-/** Run n's workspace capture settles: its send may go. */
+/** Run n's admission settles: its send may go. */
 export const prepared = (run: number, c: ConversationId = conversation): Command => ({
   _tag: "EffectSettled",
   effectId: effectId(r(run, c), "run.prepare", 1),

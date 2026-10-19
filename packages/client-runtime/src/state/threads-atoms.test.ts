@@ -62,7 +62,6 @@ const THREAD: OrchestrationThread = {
   messages: [],
   proposedPlans: [],
   activities: [],
-  checkpoints: [],
   session: null,
 };
 const SNAPSHOT: OrchestrationThreadDetailSnapshot = { snapshotSequence: 7, thread: THREAD };

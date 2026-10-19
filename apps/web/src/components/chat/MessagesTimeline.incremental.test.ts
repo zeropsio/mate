@@ -46,8 +46,6 @@ function derive(frame: Frame, cache?: MessagesTimelineRowsCache): MessagesTimeli
     runningTurnId: frame.live ? turn(frame.live) : null,
     isWorking: frame.live !== undefined,
     activeTurnStartedAt: frame.live ? (startedAt ?? null) : null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     provider: "claudeAgent",
     nowMs: frame.nowMs ?? Date.parse(at(60 * 24)),
     ...(frame.helperFinishes === undefined ? {} : { helperFinishes: frame.helperFinishes }),

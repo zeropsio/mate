@@ -1,5 +1,5 @@
 import type { VaultAskActivityPayload } from "@t3tools/client-runtime/data";
-import { EnvironmentId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import { EnvironmentId, type OrchestrationThreadActivity } from "@t3tools/contracts";
 import { VAULT_FIXTURE } from "../zerops/vault/vaultFixture";
 import type { VaultAsk } from "../zerops/vault/vaultRequest.logic";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -30,7 +30,6 @@ const at = (minute: number, second = 0) =>
   new Date(Date.UTC(2026, 8, 29, 20, minute, second)).toISOString();
 
 const PICTURE = { src: "data:image/png;base64,iVBORw0KGgo=", width: 1440, height: 900 };
-const TURN = TurnId.make("t1");
 const CREW_HOME = EnvironmentId.make("env-nova");
 
 /** A browser check of `url` that passed and took a picture, unless told otherwise. */
@@ -92,7 +91,6 @@ function outcome(overrides: Partial<OutcomeModel> = {}): OutcomeModel {
     turnKey: "t1",
     live: [],
     landed: [],
-    files: null,
     checks: null,
     pictures: [],
     created: [],
@@ -158,14 +156,7 @@ function facts(input: {
 /** A row as the person reads it: where it stands, its words, what is under it. */
 function read(row: ResultRow) {
   const { sub } = row;
-  const line =
-    sub === null
-      ? null
-      : sub.kind === "text"
-        ? sub.text
-        : sub.kind === "since"
-          ? `since ${sub.at}`
-          : `${sub.files === null ? "" : `${sub.files} files · `}+${sub.additions} −${sub.deletions}`;
+  const line = sub === null ? null : sub.kind === "text" ? sub.text : `since ${sub.at}`;
   return [row.group, row.tone, row.title, row.words, row.version, row.checked ?? null, line].filter(
     (part) => part !== null,
   );
@@ -177,7 +168,6 @@ const STATUS_PAGE: ResultChange = { repository: "app", number: 2, title: "Add a 
 const NOVA = outcome({
   live: [service("appdev", { word: "Dev server running" })],
   checks: checks([take("op:b1", `${APPDEV}/status`)]),
-  files: { count: 3, additions: 45, deletions: 3, turnId: TURN, fromTurnId: null },
   change: { repository: "app", number: 2 },
   activity: [
     { kind: "edit", count: 3 },
@@ -199,7 +189,6 @@ const FEN = outcome({
     take("op:b4", `${STAGE}/world`, { deviceName: "iPhone 16" }),
     take("op:b5", `${STAGE}/world`, { deviceName: "iPad Pro" }),
   ]),
-  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN, fromTurnId: null },
   change: { repository: "world", number: 4 },
   activity: [
     { kind: "edit", count: 59 },
@@ -256,7 +245,7 @@ describe("resultRows — one result over time (the plan's four moments)", () => 
       outcome: NOVA,
       facts: facts({ open: [STATUS_PAGE], services: { appdev: running() } }),
       rows: [
-        ["waiting", "muted", "#2 Add a /status page", "3 files · +45 −3"],
+        ["waiting", "muted", "#2 Add a /status page"],
         ["running", "ok", "appdev", "Dev server running", "/status checked ✓"],
       ],
       effort: "2 commands · 1 file read",
@@ -319,12 +308,7 @@ describe("resultRows", () => {
       outcome: FEN,
       facts: facts({ open: [WORLD_CORE] }),
       rows: [
-        [
-          "waiting",
-          "muted",
-          "#4 Move the world state into its own service",
-          "59 files · +2400 −529",
-        ],
+        ["waiting", "muted", "#4 Move the world state into its own service"],
         ["running", "ok", "worlddev", "Dev server running"],
         [
           "running",
@@ -459,7 +443,7 @@ describe("resultRows", () => {
       outcome: NOVA,
       facts: facts({ open: [STATUS_PAGE], known: false }),
       rows: [
-        ["waiting", "muted", "#2 Add a /status page", "3 files · +45 −3"],
+        ["waiting", "muted", "#2 Add a /status page"],
         ["running", "ok", "appdev", "Dev server running", "/status checked ✓"],
       ],
     },
@@ -646,21 +630,12 @@ describe("resultRows", () => {
     expect(row?.url).toBeNull();
   });
 
-  // One door (R1): the change and the crew task open the review; the files
-  // the run changed open its own diff.
-  it("reviews the change, and opens the run's diff from its files", () => {
+  // One door (R1): the change and the crew task open the review.
+  it("reviews the change a run pushed", () => {
     const [change] = resultRows(NOVA, facts({ open: [STATUS_PAGE] }));
     expect(change?.action).toEqual({
       kind: "review",
       target: { kind: "change", groupId: "group-snap", repository: "app", number: 2 },
-    });
-    expect(change?.sub).toEqual({
-      kind: "diff",
-      files: 3,
-      additions: 45,
-      deletions: 3,
-      turnId: TURN,
-      fromTurnId: null,
     });
   });
 
@@ -1143,7 +1118,6 @@ describe("runEffortWords", () => {
     {
       name: "edits no change holds are counted",
       outcome: outcome({
-        files: { count: 2, additions: 3, deletions: 1, turnId: TURN, fromTurnId: null },
         activity: [
           { kind: "edit", count: 2 },
           { kind: "command", count: 1 },

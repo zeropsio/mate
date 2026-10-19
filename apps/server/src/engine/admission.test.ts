@@ -53,7 +53,7 @@ describe("D6 on the engine: whose login a person's words spend", () => {
       ),
   );
 
-  it.effect("a maintenance command is admitted like any run, without a workspace capture", () =>
+  it.effect("a maintenance command is admitted like any run", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const w = yield* world;
@@ -64,45 +64,8 @@ describe("D6 on the engine: whose login a person's words spend", () => {
           ["ended", { kind: "failed", reason: "Bob did not sign this agent in.", next: null }],
         );
         assert.deepStrictEqual(w.provider.calls, []);
-        assert.deepStrictEqual(w.history.calls, []);
         yield* w.shutdown;
       }),
     ),
-  );
-
-  it.effect("a person's own maintenance command goes without a capture", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const w = yield* world;
-        yield* w.tell({ _tag: "Send", text: "/compact", maintenance: true });
-        assert.strictEqual((yield* w.run(runId(mate, 1)))?.state, "running");
-        assert.deepStrictEqual(
-          w.history.calls.filter((call) => call.startsWith("prepare")),
-          [],
-        );
-        yield* w.shutdown;
-      }),
-    ),
-  );
-});
-
-describe("a run's workspace capture", () => {
-  it.effect(
-    "a capture that misses a service still sends the message and records which one and why",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const w = yield* world;
-          w.history.controls.gaps = [{ service: "api", reason: "Snapshot refused: disk full" }];
-          yield* w.tell({ _tag: "Send", text: "Deploy" });
-          assert.strictEqual((yield* w.run(runId(mate, 1)))?.state, "running");
-          const markers = (yield* w.items(runId(mate, 1))).filter((item) => item.kind === "marker");
-          assert.deepStrictEqual(
-            markers.map((item) => item.body.marker),
-            [{ kind: "capture-gap", reason: "api: Snapshot refused: disk full" }],
-          );
-          yield* w.shutdown;
-        }),
-      ),
   );
 });

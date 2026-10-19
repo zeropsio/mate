@@ -277,12 +277,9 @@ export const rewriteGitSpawn = (
     ...mappedRest,
   ];
   const gitCommand = remoteTokens.map(shellQuote).join(" ");
-  const boundedCommand = mappedRest.includes("mate-snapshot")
-    ? `timeout -k 2 30 ${gitCommand}`
-    : gitCommand;
   const remoteCommand = repository.identity
-    ? `${identityGuard(repository.identity)}exec ${boundedCommand}`
-    : boundedCommand;
+    ? `${identityGuard(repository.identity)}exec ${gitCommand}`
+    : gitCommand;
 
   return {
     command: "ssh",

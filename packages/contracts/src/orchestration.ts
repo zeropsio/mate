@@ -3,14 +3,11 @@ import * as Schema from "effect/Schema";
 import { MateInterruption } from "./zeropsAttention.ts";
 import { ImageOccurrence } from "./assetReference.ts";
 import * as SchemaGetter from "effect/SchemaGetter";
-import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import * as Struct from "effect/Struct";
 import { ProviderOptionSelections } from "./model.ts";
 import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
 import {
   ApprovalRequestId,
-  CheckpointRef,
   ClientSurface,
   CommandId,
   EventId,
@@ -34,9 +31,6 @@ import { CrewHandle } from "./zeropsCrewStates.ts";
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
   getWorkflowScript: "orchestration.getWorkflowScript",
-  getTurnDiff: "orchestration.getTurnDiff",
-  getFullThreadDiff: "orchestration.getFullThreadDiff",
-  getRunChanges: "orchestration.getRunChanges",
   searchThreads: "orchestration.searchThreads",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
@@ -416,115 +410,6 @@ export const OrchestrationSession = Schema.Struct({
 });
 export type OrchestrationSession = typeof OrchestrationSession.Type;
 
-export const OrchestrationCheckpointFile = Schema.Struct({
-  path: TrimmedNonEmptyString,
-  kind: TrimmedNonEmptyString,
-  additions: NonNegativeInt,
-  deletions: NonNegativeInt,
-});
-export type OrchestrationCheckpointFile = typeof OrchestrationCheckpointFile.Type;
-
-export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
-export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
-
-/** Historical identity is independent of the root's current transport address. */
-export const CheckpointRoot = Schema.Struct({
-  rootId: TrimmedNonEmptyString,
-  label: TrimmedNonEmptyString,
-  projectId: Schema.optionalKey(TrimmedNonEmptyString),
-  serviceId: Schema.optionalKey(TrimmedNonEmptyString),
-  remotePath: TrimmedNonEmptyString,
-  host: Schema.optionalKey(TrimmedNonEmptyString),
-  mountPath: Schema.optionalKey(TrimmedNonEmptyString),
-  pathPrefix: Schema.String,
-});
-export type CheckpointRoot = typeof CheckpointRoot.Type;
-
-export const CheckpointCaptureSnapshot = Schema.Union([
-  Schema.Struct({
-    status: Schema.Literal("captured"),
-    oid: TrimmedNonEmptyString,
-    ref: CheckpointRef,
-    startedAt: IsoDateTime,
-    completedAt: IsoDateTime,
-  }),
-  Schema.Struct({
-    /**
-     * `absent`: a start with nothing in it — the source was not in a workspace whose every source
-     * the run's start listed, so everything in it at the end is the run's to show.
-     */
-    status: Schema.Literals([
-      "absent",
-      "missing-baseline",
-      "missing-end",
-      "unavailable",
-      "unsupported",
-      "refused",
-      "interrupted",
-      "error",
-    ]),
-    reason: TrimmedNonEmptyString,
-    startedAt: Schema.optionalKey(IsoDateTime),
-    completedAt: Schema.optionalKey(IsoDateTime),
-  }),
-]);
-export type CheckpointCaptureSnapshot = typeof CheckpointCaptureSnapshot.Type;
-
-export const CheckpointHistoryCoverage = Schema.Literals(["complete", "partial", "unknown"]);
-export type CheckpointHistoryCoverage = typeof CheckpointHistoryCoverage.Type;
-
-export const CheckpointHistoryRoot = Schema.Struct({
-  root: CheckpointRoot,
-  before: CheckpointCaptureSnapshot,
-  after: CheckpointCaptureSnapshot,
-  files: Schema.optionalKey(Schema.Array(OrchestrationCheckpointFile)),
-});
-export type CheckpointHistoryRoot = typeof CheckpointHistoryRoot.Type;
-
-/** Bounded capture metadata only. Patch bodies are computed on demand. */
-export const CheckpointHistory = Schema.Struct({
-  runId: TrimmedNonEmptyString,
-  coverage: CheckpointHistoryCoverage,
-  semantics: Schema.Literal("observed-workspace"),
-  representation: Schema.Literal("git-normalized"),
-  policyVersion: TrimmedNonEmptyString,
-  roots: Schema.Array(CheckpointHistoryRoot),
-  overlappingRunIds: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
-});
-export type CheckpointHistory = typeof CheckpointHistory.Type;
-
-export const CheckpointDiffRootResult = Schema.Struct({
-  rootId: TrimmedNonEmptyString,
-  label: TrimmedNonEmptyString,
-  pathPrefix: Schema.String,
-  status: Schema.Literals([
-    "available",
-    "missing-baseline",
-    "missing-end",
-    "unavailable",
-    "identity-unresolved",
-    "missing-objects",
-    "unsupported",
-    "oversized",
-    "error",
-  ]),
-  reason: Schema.optionalKey(TrimmedNonEmptyString),
-  truncated: Schema.optionalKey(Schema.Boolean),
-});
-export type CheckpointDiffRootResult = typeof CheckpointDiffRootResult.Type;
-
-export const OrchestrationCheckpointSummary = Schema.Struct({
-  turnId: TurnId,
-  checkpointTurnCount: NonNegativeInt,
-  checkpointRef: CheckpointRef,
-  status: OrchestrationCheckpointStatus,
-  files: Schema.Array(OrchestrationCheckpointFile),
-  history: Schema.optionalKey(CheckpointHistory),
-  assistantMessageId: Schema.NullOr(MessageId),
-  completedAt: IsoDateTime,
-});
-export type OrchestrationCheckpointSummary = typeof OrchestrationCheckpointSummary.Type;
-
 export const OrchestrationThreadActivityTone = Schema.Literals([
   "info",
   "tool",
@@ -713,7 +598,6 @@ export const OrchestrationThread = Schema.Struct({
   // A newer Mate may send an activity this build cannot read (a new tone): it
   // is dropped instead of failing the whole thread.
   activities: ForwardCompatibleArray(OrchestrationThreadActivity),
-  checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
   // Absent on a person's thread (see ThreadCrewOrigin).
   crew: Schema.optional(ThreadCrewOrigin),
@@ -1332,21 +1216,6 @@ const ThreadUserInputDismissCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
-const ThreadCheckpointRevertCommand = Schema.Struct({
-  type: Schema.Literal("thread.checkpoint.revert"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  turnCount: NonNegativeInt,
-  createdAt: IsoDateTime,
-});
-
-// A separate command makes older servers reject history-only rewinds rather than
-// ignoring an unfamiliar option and restoring files.
-const ThreadConversationRevertCommand = Schema.Struct({
-  ...ThreadCheckpointRevertCommand.fields,
-  type: Schema.Literal("thread.conversation.revert"),
-});
-
 const ThreadSessionStopCommand = Schema.Struct({
   type: Schema.Literal("thread.session.stop"),
   commandId: CommandId,
@@ -1375,8 +1244,6 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
-  ThreadCheckpointRevertCommand,
-  ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
@@ -1397,8 +1264,6 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadApprovalRespondCommand,
   ThreadUserInputRespondCommand,
   ThreadUserInputDismissCommand,
-  ThreadCheckpointRevertCommand,
-  ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
@@ -1457,34 +1322,11 @@ const ThreadProposedPlanUpsertCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
-const ThreadTurnDiffCompleteCommand = Schema.Struct({
-  type: Schema.Literal("thread.turn.diff.complete"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  turnId: TurnId,
-  completedAt: IsoDateTime,
-  checkpointRef: CheckpointRef,
-  status: OrchestrationCheckpointStatus,
-  files: Schema.Array(OrchestrationCheckpointFile),
-  history: Schema.optionalKey(CheckpointHistory),
-  assistantMessageId: Schema.optional(MessageId),
-  checkpointTurnCount: NonNegativeInt,
-  createdAt: IsoDateTime,
-});
-
 const ThreadActivityAppendCommand = Schema.Struct({
   type: Schema.Literal("thread.activity.append"),
   commandId: CommandId,
   threadId: ThreadId,
   activity: OrchestrationThreadActivity,
-  createdAt: IsoDateTime,
-});
-
-const ThreadRevertCompleteCommand = Schema.Struct({
-  type: Schema.Literal("thread.revert.complete"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  turnCount: NonNegativeInt,
   createdAt: IsoDateTime,
 });
 
@@ -1541,9 +1383,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadMessageReasoningDeltaCommand,
   ThreadMessageReasoningCompleteCommand,
   ThreadProposedPlanUpsertCommand,
-  ThreadTurnDiffCompleteCommand,
   ThreadActivityAppendCommand,
-  ThreadRevertCompleteCommand,
   ThreadTitleRegenerationCompleteCommand,
   ThreadTitleGenerateCompleteCommand,
   ThreadTitleRefineCommand,
@@ -1583,12 +1423,9 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.turn-interrupt-requested",
   "thread.approval-response-requested",
   "thread.user-input-response-requested",
-  "thread.checkpoint-revert-requested",
-  "thread.reverted",
   "thread.session-stop-requested",
   "thread.session-set",
   "thread.proposed-plan-upserted",
-  "thread.turn-diff-completed",
   "thread.activity-appended",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
@@ -1814,18 +1651,6 @@ const ThreadUserInputResponseRequestedPayload = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
-export const ThreadCheckpointRevertRequestedPayload = Schema.Struct({
-  threadId: ThreadId,
-  turnCount: NonNegativeInt,
-  restoreFiles: Schema.optional(Schema.Boolean),
-  createdAt: IsoDateTime,
-});
-
-export const ThreadRevertedPayload = Schema.Struct({
-  threadId: ThreadId,
-  turnCount: NonNegativeInt,
-});
-
 export const ThreadSessionStopRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   createdAt: IsoDateTime,
@@ -1839,18 +1664,6 @@ export const ThreadSessionSetPayload = Schema.Struct({
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
   threadId: ThreadId,
   proposedPlan: OrchestrationProposedPlan,
-});
-
-export const ThreadTurnDiffCompletedPayload = Schema.Struct({
-  threadId: ThreadId,
-  turnId: TurnId,
-  checkpointTurnCount: NonNegativeInt,
-  checkpointRef: CheckpointRef,
-  status: OrchestrationCheckpointStatus,
-  files: Schema.Array(OrchestrationCheckpointFile),
-  history: Schema.optionalKey(CheckpointHistory),
-  assistantMessageId: Schema.NullOr(MessageId),
-  completedAt: IsoDateTime,
 });
 
 export const ThreadActivityAppendedPayload = Schema.Struct({
@@ -2020,16 +1833,6 @@ export const OrchestrationEvent = Schema.Union([
   }),
   Schema.Struct({
     ...EventBaseFields,
-    type: Schema.Literal("thread.checkpoint-revert-requested"),
-    payload: ThreadCheckpointRevertRequestedPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
-    type: Schema.Literal("thread.reverted"),
-    payload: ThreadRevertedPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
     type: Schema.Literal("thread.session-stop-requested"),
     payload: ThreadSessionStopRequestedPayload,
   }),
@@ -2045,11 +1848,6 @@ export const OrchestrationEvent = Schema.Union([
   }),
   Schema.Struct({
     ...EventBaseFields,
-    type: Schema.Literal("thread.turn-diff-completed"),
-    payload: ThreadTurnDiffCompletedPayload,
-  }),
-  Schema.Struct({
-    ...EventBaseFields,
     type: Schema.Literal("thread.activity-appended"),
     payload: ThreadActivityAppendedPayload,
   }),
@@ -2058,30 +1856,6 @@ export type OrchestrationEvent = typeof OrchestrationEvent.Type;
 
 export const OrchestrationCommandReceiptStatus = Schema.Literals(["accepted", "rejected"]);
 export type OrchestrationCommandReceiptStatus = typeof OrchestrationCommandReceiptStatus.Type;
-
-export const TurnCountRange = Schema.Struct({
-  fromTurnCount: NonNegativeInt,
-  toTurnCount: NonNegativeInt,
-}).check(
-  Schema.makeFilter(
-    (input) =>
-      input.fromTurnCount <= input.toTurnCount ||
-      new SchemaIssue.InvalidValue({
-        message: "fromTurnCount must be less than or equal to toTurnCount",
-      }),
-    { identifier: "OrchestrationTurnDiffRange" },
-  ),
-);
-
-export const ThreadTurnDiff = TurnCountRange.mapFields(
-  Struct.assign({
-    threadId: ThreadId,
-    diff: Schema.String,
-    coverage: Schema.optionalKey(CheckpointHistoryCoverage),
-    roots: Schema.optionalKey(Schema.Array(CheckpointDiffRootResult)),
-  }),
-  { unsafePreserveChecks: true },
-);
 
 export const ProviderSessionRuntimeStatus = Schema.Literals([
   "starting",
@@ -2101,53 +1875,6 @@ export const DispatchResult = Schema.Struct({
   sequence: NonNegativeInt,
 });
 export type DispatchResult = typeof DispatchResult.Type;
-
-export const OrchestrationGetTurnDiffInput = TurnCountRange.mapFields(
-  Struct.assign({
-    threadId: ThreadId,
-    ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
-    rootId: Schema.optionalKey(TrimmedNonEmptyString),
-    runId: Schema.optionalKey(TrimmedNonEmptyString),
-  }),
-  { unsafePreserveChecks: true },
-);
-export type OrchestrationGetTurnDiffInput = typeof OrchestrationGetTurnDiffInput.Type;
-
-export const OrchestrationGetTurnDiffResult = ThreadTurnDiff;
-export type OrchestrationGetTurnDiffResult = typeof OrchestrationGetTurnDiffResult.Type;
-
-export const OrchestrationGetFullThreadDiffInput = Schema.Struct({
-  threadId: ThreadId,
-  toTurnCount: NonNegativeInt,
-  ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
-  rootId: Schema.optionalKey(TrimmedNonEmptyString),
-  runId: Schema.optionalKey(TrimmedNonEmptyString),
-});
-export type OrchestrationGetFullThreadDiffInput = typeof OrchestrationGetFullThreadDiffInput.Type;
-
-export const OrchestrationGetFullThreadDiffResult = ThreadTurnDiff;
-export type OrchestrationGetFullThreadDiffResult = typeof OrchestrationGetFullThreadDiffResult.Type;
-
-/**
- * A conversation's runs that changed its workspace, as the Mate's server recorded their capture:
- * each run a turn the Diff page offers, numbered by the run's ordinal, its history the diff reads.
- */
-export const OrchestrationGetRunChangesInput = Schema.Struct({
-  threadId: ThreadId,
-  /**
-   * What the reader last saw of the conversation's runs (its latest run, and whether it ended):
-   * a newer sight is a new read. The server answers from its record either way.
-   */
-  seen: Schema.optionalKey(Schema.String),
-});
-export type OrchestrationGetRunChangesInput = typeof OrchestrationGetRunChangesInput.Type;
-
-export const OrchestrationGetRunChangesResult = Schema.Struct({
-  threadId: ThreadId,
-  /** The runs that changed something, oldest first. */
-  turns: Schema.Array(OrchestrationCheckpointSummary),
-});
-export type OrchestrationGetRunChangesResult = typeof OrchestrationGetRunChangesResult.Type;
 
 export const OrchestrationThreadSearchSource = Schema.Literals(["user", "assistant"]);
 export type OrchestrationThreadSearchSource = typeof OrchestrationThreadSearchSource.Type;
@@ -2231,18 +1958,6 @@ export const OrchestrationRpcSchemas = {
     input: OrchestrationGetWorkflowScriptInput,
     output: OrchestrationGetWorkflowScriptResult,
   },
-  getTurnDiff: {
-    input: OrchestrationGetTurnDiffInput,
-    output: OrchestrationGetTurnDiffResult,
-  },
-  getFullThreadDiff: {
-    input: OrchestrationGetFullThreadDiffInput,
-    output: OrchestrationGetFullThreadDiffResult,
-  },
-  getRunChanges: {
-    input: OrchestrationGetRunChangesInput,
-    output: OrchestrationGetRunChangesResult,
-  },
   searchThreads: {
     input: OrchestrationSearchThreadsInput,
     output: OrchestrationSearchThreadsResult,
@@ -2278,30 +1993,6 @@ export class OrchestrationDispatchCommandError extends Schema.TaggedError<Orches
     cause: Schema.optional(Schema.Defect()),
     bootstrapThreadDisposition: Schema.optional(Schema.Literal("deleted")),
     agentAdmission: Schema.optional(AgentAdmissionRefusal),
-  },
-) {}
-
-export class OrchestrationGetTurnDiffError extends Schema.TaggedError<OrchestrationGetTurnDiffError>()(
-  "OrchestrationGetTurnDiffError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
-export class OrchestrationGetFullThreadDiffError extends Schema.TaggedError<OrchestrationGetFullThreadDiffError>()(
-  "OrchestrationGetFullThreadDiffError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}
-
-export class OrchestrationGetRunChangesError extends Schema.TaggedError<OrchestrationGetRunChangesError>()(
-  "OrchestrationGetRunChangesError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

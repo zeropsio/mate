@@ -1,13 +1,9 @@
 import {
   ApprovalRequestId,
   ChatAttachment,
-  CheckpointRef,
-  CheckpointHistory,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
-  OrchestrationCheckpointFile,
-  OrchestrationCheckpointStatus,
   OrchestrationProposedPlanId,
   OrchestrationReadModel,
   OrchestrationThreadSearchSource,
@@ -16,7 +12,6 @@ import {
   OrchestrationThreadDetailSnapshot,
   ProjectScript,
   TurnId,
-  type OrchestrationCheckpointSummary,
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
@@ -77,9 +72,7 @@ import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import {
   ProjectionSnapshotQuery,
   type ProjectionEventReplayStats,
-  type ProjectionFullThreadDiffContext,
   type ProjectionSnapshotCounts,
-  type ProjectionThreadCheckpointContext,
   type ProjectionThreadDetailQuery,
   type ProjectionSnapshotQueryShape,
 } from "../Services/ProjectionSnapshotQuery.ts";
@@ -184,17 +177,6 @@ const ProjectionThreadRuntimeContextDbRowSchema = Schema.Struct({
   title: Schema.String,
   session: Schema.NullOr(ProjectionThreadSessionDbRowSchema),
 });
-const ProjectionCheckpointDbRowSchema = Schema.Struct({
-  threadId: ThreadId,
-  turnId: TurnId,
-  checkpointTurnCount: NonNegativeInt,
-  checkpointRef: CheckpointRef,
-  status: OrchestrationCheckpointStatus,
-  files: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
-  history: Schema.optionalKey(Schema.NullOr(Schema.fromJsonString(CheckpointHistory))),
-  assistantMessageId: Schema.NullOr(MessageId),
-  completedAt: IsoDateTime,
-});
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({
   threadId: ProjectionThread.fields.threadId,
   turnId: TurnId,
@@ -252,8 +234,8 @@ const ThreadActivityIdsLookupInput = Schema.Struct({
 });
 // Windowed reads order turns by the stable keyset (anchor, turn key), where
 // anchor is requested_at and turn key is
-// COALESCE(turn_id, ''). Both are event-derived, so cursors survive the
-// revert projector's row-id rewrite and full projection rebuilds.
+// COALESCE(turn_id, ''). Both are event-derived, so cursors survive full
+// projection rebuilds.
 const ThreadTurnWindowLookupInput = Schema.Struct({
   threadId: ThreadId,
   // Exclusive keyset upper bound. Sentinels "~"/"" mean unbounded ("~" sorts
@@ -290,24 +272,6 @@ const ProjectionProjectLookupRowSchema = ProjectionProjectDbRowSchema;
 const ProjectionThreadIdLookupRowSchema = Schema.Struct({
   threadId: ThreadId,
 });
-const ProjectionThreadCheckpointContextThreadRowSchema = Schema.Struct({
-  threadId: ThreadId,
-  projectId: ProjectId,
-  workspaceRoot: Schema.String,
-  worktreePath: Schema.NullOr(Schema.String),
-});
-const FullThreadDiffContextLookupInput = Schema.Struct({
-  threadId: ThreadId,
-  checkpointTurnCount: NonNegativeInt,
-});
-const ProjectionFullThreadDiffContextRowSchema = Schema.Struct({
-  threadId: ThreadId,
-  projectId: ProjectId,
-  workspaceRoot: Schema.String,
-  worktreePath: Schema.NullOr(Schema.String),
-  latestCheckpointTurnCount: Schema.NullOr(NonNegativeInt),
-  toCheckpointRef: Schema.NullOr(CheckpointRef),
-});
 
 const REQUIRED_SNAPSHOT_PROJECTORS = [
   ORCHESTRATION_PROJECTOR_NAMES.projects,
@@ -316,7 +280,6 @@ const REQUIRED_SNAPSHOT_PROJECTORS = [
   ORCHESTRATION_PROJECTOR_NAMES.threadProposedPlans,
   ORCHESTRATION_PROJECTOR_NAMES.threadActivities,
   ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
-  ORCHESTRATION_PROJECTOR_NAMES.checkpoints,
 ] as const;
 
 function maxIso(left: string | null, right: string): string {
@@ -839,27 +802,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       `,
   });
 
-  const listCheckpointRows = SqlSchema.findAll({
-    Request: Schema.Void,
-    Result: ProjectionCheckpointDbRowSchema,
-    execute: () =>
-      sql`
-        SELECT
-          thread_id AS "threadId",
-          turn_id AS "turnId",
-          checkpoint_turn_count AS "checkpointTurnCount",
-          checkpoint_ref AS "checkpointRef",
-          checkpoint_status AS "status",
-          checkpoint_files_json AS "files",
-          checkpoint_history_json AS "history",
-          assistant_message_id AS "assistantMessageId",
-          completed_at AS "completedAt"
-        FROM projection_turns
-        WHERE checkpoint_turn_count IS NOT NULL
-        ORDER BY thread_id ASC, checkpoint_turn_count ASC
-      `,
-  });
-
   const listLatestTurnRows = SqlSchema.findAll({
     Request: Schema.Void,
     Result: ProjectionLatestTurnDbRowSchema,
@@ -1105,25 +1047,6 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           AND deleted_at IS NULL
           AND archived_at IS NULL
         ORDER BY created_at ASC, thread_id ASC
-        LIMIT 1
-      `,
-  });
-
-  const getThreadCheckpointContextThreadRow = SqlSchema.findOneOption({
-    Request: ThreadIdLookupInput,
-    Result: ProjectionThreadCheckpointContextThreadRowSchema,
-    execute: ({ threadId }) =>
-      sql`
-        SELECT
-          threads.thread_id AS "threadId",
-          threads.project_id AS "projectId",
-          projects.workspace_root AS "workspaceRoot",
-          threads.worktree_path AS "worktreePath"
-        FROM projection_threads AS threads
-        INNER JOIN projection_projects AS projects
-          ON projects.project_id = threads.project_id
-        WHERE threads.thread_id = ${threadId}
-          AND threads.deleted_at IS NULL
         LIMIT 1
       `,
   });
@@ -1790,28 +1713,6 @@ scoped_activities AS MATERIALIZED (
       `,
   });
 
-  const listCheckpointRowsByThread = SqlSchema.findAll({
-    Request: ThreadIdLookupInput,
-    Result: ProjectionCheckpointDbRowSchema,
-    execute: ({ threadId }) =>
-      sql`
-        SELECT
-          thread_id AS "threadId",
-          turn_id AS "turnId",
-          checkpoint_turn_count AS "checkpointTurnCount",
-          checkpoint_ref AS "checkpointRef",
-          checkpoint_status AS "status",
-          checkpoint_files_json AS "files",
-          checkpoint_history_json AS "history",
-          assistant_message_id AS "assistantMessageId",
-          completed_at AS "completedAt"
-        FROM projection_turns
-        WHERE thread_id = ${threadId}
-          AND checkpoint_turn_count IS NOT NULL
-        ORDER BY checkpoint_turn_count ASC
-      `,
-  });
-
   // Resolves a page of recent turns for a windowed thread detail read. Walks
   // back from the exclusive (beforeAnchorAt, beforeTurnKey) keyset boundary
   // (sentinels "~"/"" mean unbounded, i.e. the first page) until it has seen
@@ -1846,8 +1747,6 @@ scoped_activities AS MATERIALIZED (
             'thread.message-sent',
             'thread.proposed-plan-upserted',
             'thread.activity-appended',
-            'thread.turn-diff-completed',
-            'thread.reverted',
             'thread.session-set'
           )
       `,
@@ -1902,8 +1801,8 @@ scoped_activities AS MATERIALIZED (
   // projection_turns; rows with no turn linkage (user messages always, and
   // turnless activities like pre-turn context-window updates) are bounded by
   // the matching turn-anchor time range so they land on the same page as the
-  // turns around them. Proposed plans and checkpoints stay unwindowed: they
-  // are metadata-scale.
+  // turns around them. Proposed plans stay unwindowed: they are
+  // metadata-scale.
   const listThreadMessageRowsByThreadWindow = SqlSchema.findAll({
     Request: ThreadTurnRangeLookupInput,
     Result: ProjectionThreadMessageDbRowSchema,
@@ -2193,38 +2092,6 @@ pending_approval_requests AS (
       `,
   });
 
-  const getFullThreadDiffContextRow = SqlSchema.findOneOption({
-    Request: FullThreadDiffContextLookupInput,
-    Result: ProjectionFullThreadDiffContextRowSchema,
-    execute: ({ threadId, checkpointTurnCount }) =>
-      sql`
-        SELECT
-          threads.thread_id AS "threadId",
-          threads.project_id AS "projectId",
-          projects.workspace_root AS "workspaceRoot",
-          threads.worktree_path AS "worktreePath",
-          (
-            SELECT MAX(turns.checkpoint_turn_count)
-            FROM projection_turns AS turns
-            WHERE turns.thread_id = threads.thread_id
-              AND turns.checkpoint_turn_count IS NOT NULL
-          ) AS "latestCheckpointTurnCount",
-          (
-            SELECT turns.checkpoint_ref
-            FROM projection_turns AS turns
-            WHERE turns.thread_id = threads.thread_id
-              AND turns.checkpoint_turn_count = ${checkpointTurnCount}
-            LIMIT 1
-          ) AS "toCheckpointRef"
-        FROM projection_threads AS threads
-        INNER JOIN projection_projects AS projects
-          ON projects.project_id = threads.project_id
-        WHERE threads.thread_id = ${threadId}
-          AND threads.deleted_at IS NULL
-        LIMIT 1
-      `,
-  });
-
   const getSnapshot: ProjectionSnapshotQueryShape["getSnapshot"] = () =>
     sql
       .withTransaction(
@@ -2277,14 +2144,6 @@ pending_approval_requests AS (
               ),
             ),
           ),
-          listCheckpointRows(undefined).pipe(
-            Effect.mapError(
-              toPersistenceSqlOrDecodeError(
-                "ProjectionSnapshotQuery.getSnapshot:listCheckpoints:query",
-                "ProjectionSnapshotQuery.getSnapshot:listCheckpoints:decodeRows",
-              ),
-            ),
-          ),
           listLatestTurnRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
@@ -2312,7 +2171,6 @@ pending_approval_requests AS (
             proposedPlanRows,
             activityRows,
             sessionRows,
-            checkpointRows,
             latestTurnRows,
             stateRows,
           ]) =>
@@ -2320,7 +2178,6 @@ pending_approval_requests AS (
               const messagesByThread = new Map<string, Array<OrchestrationMessage>>();
               const proposedPlansByThread = new Map<string, Array<OrchestrationProposedPlan>>();
               const activitiesByThread = new Map<string, Array<OrchestrationThreadActivity>>();
-              const checkpointsByThread = new Map<string, Array<OrchestrationCheckpointSummary>>();
               const sessionsByThread = new Map<string, OrchestrationSession>();
               const latestTurnByThread = new Map<string, OrchestrationLatestTurn>();
 
@@ -2381,22 +2238,6 @@ pending_approval_requests AS (
                   createdAt: row.createdAt,
                 });
                 activitiesByThread.set(row.threadId, threadActivities);
-              }
-
-              for (const row of checkpointRows) {
-                updatedAt = maxIso(updatedAt, row.completedAt);
-                const threadCheckpoints = checkpointsByThread.get(row.threadId) ?? [];
-                threadCheckpoints.push({
-                  turnId: row.turnId,
-                  checkpointTurnCount: row.checkpointTurnCount,
-                  checkpointRef: row.checkpointRef,
-                  status: row.status,
-                  files: row.files,
-                  ...(row.history == null ? {} : { history: row.history }),
-                  assistantMessageId: row.assistantMessageId,
-                  completedAt: row.completedAt,
-                });
-                checkpointsByThread.set(row.threadId, threadCheckpoints);
               }
 
               for (const row of latestTurnRows) {
@@ -2505,7 +2346,6 @@ pending_approval_requests AS (
                 messages: messagesByThread.get(row.threadId) ?? [],
                 proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
                 activities: activitiesByThread.get(row.threadId) ?? [],
-                checkpoints: checkpointsByThread.get(row.threadId) ?? [],
                 session: sessionsByThread.get(row.threadId) ?? null,
                 ...(row.crew === null ? {} : { crew: row.crew }),
               }));
@@ -2720,7 +2560,6 @@ pending_approval_requests AS (
                   messages: [],
                   proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
                   activities: [],
-                  checkpoints: [],
                   session: sessionByThread.get(row.threadId) ?? null,
                   ...(row.crew === null ? {} : { crew: row.crew }),
                 });
@@ -3226,78 +3065,6 @@ pending_approval_requests AS (
         Effect.map(Option.map((row) => row.threadId)),
       );
 
-  const getThreadCheckpointContext: ProjectionSnapshotQueryShape["getThreadCheckpointContext"] = (
-    threadId,
-  ) =>
-    Effect.gen(function* () {
-      const threadRow = yield* getThreadCheckpointContextThreadRow({ threadId }).pipe(
-        Effect.mapError(
-          toPersistenceSqlOrDecodeError(
-            "ProjectionSnapshotQuery.getThreadCheckpointContext:getThread:query",
-            "ProjectionSnapshotQuery.getThreadCheckpointContext:getThread:decodeRow",
-          ),
-        ),
-      );
-      if (Option.isNone(threadRow)) {
-        return Option.none<ProjectionThreadCheckpointContext>();
-      }
-
-      const checkpointRows = yield* listCheckpointRowsByThread({ threadId }).pipe(
-        Effect.mapError(
-          toPersistenceSqlOrDecodeError(
-            "ProjectionSnapshotQuery.getThreadCheckpointContext:listCheckpoints:query",
-            "ProjectionSnapshotQuery.getThreadCheckpointContext:listCheckpoints:decodeRows",
-          ),
-        ),
-      );
-
-      return Option.some({
-        threadId: threadRow.value.threadId,
-        projectId: threadRow.value.projectId,
-        workspaceRoot: threadRow.value.workspaceRoot,
-        worktreePath: threadRow.value.worktreePath,
-        checkpoints: checkpointRows.map((row): OrchestrationCheckpointSummary => ({
-          turnId: row.turnId,
-          checkpointTurnCount: row.checkpointTurnCount,
-          checkpointRef: row.checkpointRef,
-          status: row.status,
-          files: row.files,
-          ...(row.history == null ? {} : { history: row.history }),
-          assistantMessageId: row.assistantMessageId,
-          completedAt: row.completedAt,
-        })),
-      });
-    });
-
-  const getFullThreadDiffContext: NonNullable<
-    ProjectionSnapshotQueryShape["getFullThreadDiffContext"]
-  > = (threadId, toTurnCount) =>
-    Effect.gen(function* () {
-      const row = yield* getFullThreadDiffContextRow({
-        threadId,
-        checkpointTurnCount: toTurnCount,
-      }).pipe(
-        Effect.mapError(
-          toPersistenceSqlOrDecodeError(
-            "ProjectionSnapshotQuery.getFullThreadDiffContext:query",
-            "ProjectionSnapshotQuery.getFullThreadDiffContext:decodeRow",
-          ),
-        ),
-      );
-      if (Option.isNone(row)) {
-        return Option.none<ProjectionFullThreadDiffContext>();
-      }
-
-      return Option.some({
-        threadId: row.value.threadId,
-        projectId: row.value.projectId,
-        workspaceRoot: row.value.workspaceRoot,
-        worktreePath: row.value.worktreePath,
-        latestCheckpointTurnCount: row.value.latestCheckpointTurnCount ?? 0,
-        toCheckpointRef: row.value.toCheckpointRef,
-      });
-    });
-
   const getThreadShellById: ProjectionSnapshotQueryShape["getThreadShellById"] = (threadId) =>
     Effect.gen(function* () {
       const [threadRow, latestTurnRow, sessionRow] = yield* Effect.all([
@@ -3574,68 +3341,53 @@ pending_approval_requests AS (
               ),
             );
 
-      const [
-        threadRow,
-        messageRows,
-        proposedPlanRows,
-        activities,
-        checkpointRows,
-        latestTurnRow,
-        sessionRow,
-      ] = yield* Effect.all([
-        getActiveThreadRowById({ threadId }).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:getThread:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:getThread:decodeRow",
+      const [threadRow, messageRows, proposedPlanRows, activities, latestTurnRow, sessionRow] =
+        yield* Effect.all([
+          getActiveThreadRowById({ threadId }).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getThreadDetailById:getThread:query",
+                "ProjectionSnapshotQuery.getThreadDetailById:getThread:decodeRow",
+              ),
             ),
           ),
-        ),
-        (bounds === undefined
-          ? listThreadMessageRowsByThread({ threadId })
-          : listThreadMessageRowsByThreadWindow({ threadId, ...bounds })
-        ).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:listMessages:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:listMessages:decodeRows",
+          (bounds === undefined
+            ? listThreadMessageRowsByThread({ threadId })
+            : listThreadMessageRowsByThreadWindow({ threadId, ...bounds })
+          ).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getThreadDetailById:listMessages:query",
+                "ProjectionSnapshotQuery.getThreadDetailById:listMessages:decodeRows",
+              ),
             ),
           ),
-        ),
-        listThreadProposedPlanRowsByThread({ threadId }).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:listPlans:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:listPlans:decodeRows",
+          listThreadProposedPlanRowsByThread({ threadId }).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getThreadDetailById:listPlans:query",
+                "ProjectionSnapshotQuery.getThreadDetailById:listPlans:decodeRows",
+              ),
             ),
           ),
-        ),
-        activitiesEffect,
-        listCheckpointRowsByThread({ threadId }).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:listCheckpoints:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:listCheckpoints:decodeRows",
+          activitiesEffect,
+          getLatestTurnRowByThread({ threadId }).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getThreadDetailById:getLatestTurn:query",
+                "ProjectionSnapshotQuery.getThreadDetailById:getLatestTurn:decodeRow",
+              ),
             ),
           ),
-        ),
-        getLatestTurnRowByThread({ threadId }).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:getLatestTurn:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:getLatestTurn:decodeRow",
+          getThreadSessionRowByThread({ threadId }).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getThreadDetailById:getSession:query",
+                "ProjectionSnapshotQuery.getThreadDetailById:getSession:decodeRow",
+              ),
             ),
           ),
-        ),
-        getThreadSessionRowByThread({ threadId }).pipe(
-          Effect.mapError(
-            toPersistenceSqlOrDecodeError(
-              "ProjectionSnapshotQuery.getThreadDetailById:getSession:query",
-              "ProjectionSnapshotQuery.getThreadDetailById:getSession:decodeRow",
-            ),
-          ),
-        ),
-      ]);
+        ]);
 
       if (Option.isNone(threadRow)) {
         return Option.none<OrchestrationThread>();
@@ -3686,16 +3438,6 @@ pending_approval_requests AS (
         }),
         proposedPlans: proposedPlanRows.map(mapProposedPlanRow),
         activities,
-        checkpoints: checkpointRows.map((row) => ({
-          turnId: row.turnId,
-          checkpointTurnCount: row.checkpointTurnCount,
-          checkpointRef: row.checkpointRef,
-          status: row.status,
-          files: row.files,
-          ...(row.history == null ? {} : { history: row.history }),
-          assistantMessageId: row.assistantMessageId,
-          completedAt: row.completedAt,
-        })),
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
         ...(threadRow.value.crew === null ? {} : { crew: threadRow.value.crew }),
       };
@@ -3751,7 +3493,7 @@ pending_approval_requests AS (
           }
 
           // A malformed or foreign-thread cursor falls back to the first page
-          // rather than failing: the client's stale cursor after a revert or
+          // rather than failing: the client's stale cursor after a
           // reconnect should degrade to "reload recent history", not error.
           const decodedCursor =
             window.beforeCursor === undefined
@@ -3905,8 +3647,6 @@ pending_approval_requests AS (
     getProjectWorkspaceRootById,
     getProjectShellById,
     getFirstActiveThreadIdByProjectId,
-    getThreadCheckpointContext,
-    getFullThreadDiffContext,
     getThreadShellById,
     getThreadRuntimeContext,
     getTurnStartMessage,

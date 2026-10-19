@@ -17,7 +17,7 @@
  */
 import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
-import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import {
   useCallback,
@@ -60,10 +60,6 @@ const NOTHING_RISING: ReadonlySet<string> = new Set();
 /** The strip's key among what rises: the rows' are theirs. */
 const PICTURES = "pictures";
 
-function compactCount(value: number): string {
-  return value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : String(value);
-}
-
 function RowMark({ row }: { readonly row: ResultRow }) {
   return (
     <span
@@ -85,44 +81,14 @@ function RowMark({ row }: { readonly row: ResultRow }) {
   );
 }
 
-function RowSub({
-  row,
-  onOpenTurnDiff,
-}: {
-  readonly row: ResultRow;
-  readonly onOpenTurnDiff: (turnId: TurnId, fromTurnId: TurnId | null) => void;
-}) {
+function RowSub({ row }: { readonly row: ResultRow }) {
   const timeline = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
   const { sub } = row;
   if (sub === null) return null;
   if (sub.kind === "text") return <span className="run-result-sub">{sub.text}</span>;
-  if (sub.kind === "since") {
-    return (
-      <span className="run-result-sub">
-        Since {formatDayAwareTimestamp(sub.at, timeline?.timestampFormat ?? "locale")}
-      </span>
-    );
-  }
-  const files = sub.files === null ? null : sub.files === 1 ? "1 file" : `${sub.files} files`;
-  const { turnId, fromTurnId } = sub;
   return (
     <span className="run-result-sub">
-      {files === null ? null : turnId === null ? (
-        files
-      ) : (
-        // What this run changed, in the diff: the change as a whole is Review's.
-        <button
-          aria-label={`${files} changed in this run. Open the diff`}
-          className="run-result-files"
-          onClick={() => onOpenTurnDiff(turnId, fromTurnId)}
-          type="button"
-        >
-          {files}
-        </button>
-      )}
-      {files === null ? null : " · "}
-      <span className="run-result-add">+{compactCount(sub.additions)}</span>{" "}
-      <span className="run-result-del">−{compactCount(sub.deletions)}</span>
+      Since {formatDayAwareTimestamp(sub.at, timeline?.timestampFormat ?? "locale")}
     </span>
   );
 }
@@ -359,7 +325,6 @@ function riseOf(
 
 type TurnReportProps = {
   readonly outcome: OutcomeModel;
-  readonly onOpenTurnDiff: (turnId: TurnId, fromTurnId: TurnId | null) => void;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
   /** The person watched the turn run: its result rises in, once. */
   readonly settling?: boolean;
@@ -420,7 +385,6 @@ function WorkspaceReport({
 
 function Report({
   outcome,
-  onOpenTurnDiff,
   onOpenImage,
   settling = false,
   facts,
@@ -492,7 +456,7 @@ function Report({
                   </span>
                 )}
               </div>
-              <RowSub onOpenTurnDiff={onOpenTurnDiff} row={row} />
+              <RowSub row={row} />
               {own.length === 0 ? null : (
                 <div className="run-result-row-pictures">
                   <PictureStrip

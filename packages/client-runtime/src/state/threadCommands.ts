@@ -19,14 +19,12 @@ import {
   type RespondToThreadApprovalInput,
   type RespondToThreadUserInputInput,
   type DismissThreadUserInputInput,
-  type RevertThreadCheckpointInput,
   type SetThreadInteractionModeInput,
   type SetThreadRuntimeModeInput,
   type StartThreadTurnInput,
   type StopThreadSessionInput,
   type UnarchiveThreadInput,
   type UpdateThreadMetadataInput,
-  revertThreadCheckpoint,
   stopThreadSession,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -57,7 +55,6 @@ export type {
   RespondToThreadApprovalInput,
   RespondToThreadUserInputInput,
   DismissThreadUserInputInput,
-  RevertThreadCheckpointInput,
   SetThreadInteractionModeInput,
   SetThreadRuntimeModeInput,
   StartThreadTurnInput,
@@ -200,12 +197,6 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:dismiss-user-input",
       execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineDismissUserInput(environmentId, input)),
-      scheduler,
-      concurrency,
-    }),
-    revertCheckpoint: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:revert-checkpoint",
-      execute: (input: RevertThreadCheckpointInput) => revertThreadCheckpoint(input),
       scheduler,
       concurrency,
     }),

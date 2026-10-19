@@ -1,41 +1,25 @@
-import {
-  checkpointDiffNotice,
-  legacyCheckpointDiffNotice,
-  checkpointRootResponseError,
-} from "@t3tools/client-runtime/state/threads";
 import { useCallback, useEffect, useMemo } from "react";
 
-import type { EnvironmentId, OrchestrationCheckpointSummary, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 
-import { useCheckpointDiff } from "../../state/queries";
 import { useEnvironmentQuery } from "../../state/query";
 import { reviewEnvironment } from "../../state/review";
-import { useSelectedThreadDetail } from "../../state/use-thread-detail";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
-import {
-  buildReviewSectionItems,
-  getDefaultReviewSectionId,
-  getReadyReviewCheckpoints,
-  getReviewSectionIdForCheckpoint,
-} from "./reviewModel";
+import { buildReviewSectionItems, getDefaultReviewSectionId } from "./reviewModel";
 import {
   setReviewAsyncError,
   setReviewGitSections,
   setReviewSelectedSectionId,
-  setReviewTurnDiff,
-  setReviewTurnDiffLoading,
   type ReviewCacheForThread,
 } from "./reviewState";
 
 export function useReviewSections(input: {
   readonly enabled?: boolean;
   readonly environmentId?: EnvironmentId;
-  readonly threadId?: ThreadId;
   readonly reviewCache: ReviewCacheForThread;
 }) {
-  const { environmentId, reviewCache, threadId } = input;
+  const { environmentId, reviewCache } = input;
   const enabled = input.enabled ?? true;
-  const selectedThread = useSelectedThreadDetail();
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const diffPreview = useEnvironmentQuery(
     enabled && environmentId !== undefined && selectedThreadCwd !== null
@@ -45,7 +29,6 @@ export function useReviewSections(input: {
         })
       : null,
   );
-  const { loadingTurnIds } = reviewCache.asyncState;
 
   useEffect(() => {
     if (reviewCache.threadKey && diffPreview.data) {
@@ -53,40 +36,13 @@ export function useReviewSections(input: {
     }
   }, [diffPreview.data, reviewCache.threadKey]);
 
-  const readyCheckpoints = useMemo(
-    () => getReadyReviewCheckpoints(selectedThread?.checkpoints ?? []),
-    [selectedThread?.checkpoints],
-  );
-  const checkpointBySectionId = useMemo(
-    () =>
-      Object.fromEntries(
-        readyCheckpoints.flatMap((checkpoint) =>
-          checkpoint.history?.roots.length
-            ? checkpoint.history.roots.map((entry) => [
-                getReviewSectionIdForCheckpoint(checkpoint, entry.root.rootId),
-                checkpoint,
-              ])
-            : [[getReviewSectionIdForCheckpoint(checkpoint), checkpoint]],
-        ),
-      ) as Record<string, OrchestrationCheckpointSummary>,
-    [readyCheckpoints],
-  );
   const reviewSections = useMemo(
     () =>
       buildReviewSectionItems({
-        checkpoints: readyCheckpoints,
         gitSections: reviewCache.gitSections,
-        turnDiffById: reviewCache.turnDiffById,
-        loadingTurnIds,
         loadingGitSections: diffPreview.isPending,
       }),
-    [
-      diffPreview.isPending,
-      loadingTurnIds,
-      readyCheckpoints,
-      reviewCache.gitSections,
-      reviewCache.turnDiffById,
-    ],
+    [diffPreview.isPending, reviewCache.gitSections],
   );
   const selectedSection = useMemo(
     () =>
@@ -123,62 +79,12 @@ export function useReviewSections(input: {
     selectedSectionIdExists,
   ]);
 
-  let activeCheckpoint = readyCheckpoints[0] ?? null;
-  if (selectedSection?.kind === "turn") {
-    activeCheckpoint = checkpointBySectionId[selectedSection.id] ?? activeCheckpoint;
-  }
-  const activeRootId =
-    selectedSection?.kind === "turn"
-      ? selectedSection.rootId
-      : activeCheckpoint?.history?.roots[0]?.root.rootId;
-  const activeSectionId = activeCheckpoint
-    ? getReviewSectionIdForCheckpoint(activeCheckpoint, activeRootId)
-    : null;
-  const activeTurnDiff = useCheckpointDiff({
-    environmentId: enabled ? (environmentId ?? null) : null,
-    threadId: enabled ? (threadId ?? null) : null,
-    fromTurnCount:
-      enabled && activeCheckpoint ? Math.max(0, activeCheckpoint.checkpointTurnCount - 1) : null,
-    toTurnCount: enabled ? (activeCheckpoint?.checkpointTurnCount ?? null) : null,
-    ignoreWhitespace: false,
-    ...(activeRootId === undefined ? {} : { rootId: activeRootId }),
-    cacheScope: activeCheckpoint?.history?.runId ?? null,
-    ...(activeCheckpoint?.history ? { runId: activeCheckpoint.history.runId } : {}),
-  });
-
-  const responseError = checkpointRootResponseError(activeTurnDiff.data, activeRootId);
-
-  useEffect(() => {
-    if (!reviewCache.threadKey || !activeSectionId) {
-      return;
-    }
-    setReviewTurnDiffLoading(reviewCache.threadKey, activeSectionId, activeTurnDiff.isPending);
-  }, [activeSectionId, activeTurnDiff.isPending, reviewCache.threadKey]);
-
-  useEffect(() => {
-    if (!reviewCache.threadKey || !activeSectionId || !activeTurnDiff.data || responseError) {
-      return;
-    }
-    setReviewTurnDiff(reviewCache.threadKey, activeSectionId, activeTurnDiff.data.diff);
-    setReviewAsyncError(reviewCache.threadKey, null);
-  }, [activeSectionId, activeTurnDiff.data, reviewCache.threadKey, responseError]);
-
-  useEffect(() => {
-    if (reviewCache.threadKey && activeTurnDiff.error) {
-      setReviewAsyncError(reviewCache.threadKey, activeTurnDiff.error);
-    }
-  }, [activeTurnDiff.error, reviewCache.threadKey]);
-
   const refreshSelectedSection = useCallback(async () => {
     if (!enabled) {
       return;
     }
-    if (selectedSection?.kind === "turn") {
-      activeTurnDiff.refresh();
-      return;
-    }
     diffPreview.refresh();
-  }, [activeTurnDiff, diffPreview, enabled, selectedSection?.kind]);
+  }, [diffPreview, enabled]);
 
   const selectSection = useCallback(
     (sectionId: string) => {
@@ -191,23 +97,10 @@ export function useReviewSections(input: {
   );
 
   return {
-    error:
-      selectedSection?.kind === "turn"
-        ? (activeTurnDiff.error ??
-          responseError ??
-          (activeCheckpoint?.history ? checkpointDiffNotice(activeTurnDiff.data?.roots) : null))
-        : (diffPreview.error ?? reviewCache.asyncState.error),
-    historyNotice:
-      selectedSection?.kind === "turn" && !activeCheckpoint?.history
-        ? legacyCheckpointDiffNotice(activeTurnDiff.data)
-        : null,
+    error: diffPreview.error ?? reviewCache.asyncState.error,
     loadingGitDiffs: diffPreview.isPending,
-    loadingTurnIds,
     reviewSections,
-    selectedSection:
-      selectedSection?.kind === "turn" && activeTurnDiff.data && !responseError
-        ? { ...selectedSection, coverage: activeTurnDiff.data.coverage ?? ("unknown" as const) }
-        : selectedSection,
+    selectedSection,
     refreshSelectedSection,
     selectSection,
   };

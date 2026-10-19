@@ -159,7 +159,6 @@ export class MateFake {
       messages: [],
       proposedPlans: [],
       activities: [],
-      checkpoints: [],
       session: null,
     });
     this.config = decodeServerConfig({

@@ -1,78 +1,115 @@
-import type { VcsListRefsResult } from "@t3tools/contracts";
+import type { VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
-import type { OrchestrationLatestTurn, TurnId } from "@t3tools/contracts";
 
 import type { DiffPanelSelection } from "../diffPanelStore";
-import type { TurnDiffSummary } from "../types";
 
-export interface CheckpointDiffAvailability {
-  readonly enabled: boolean;
-  readonly showNotRepository: boolean;
+/** A repository a conversation's Diff reads: a Mate's checkout by its service, or its own. */
+export interface DiffRepository {
+  readonly name: string;
+  readonly cwd: string;
 }
 
-export function resolveCheckpointDiffAvailability(input: {
-  readonly hasActiveThread: boolean;
-  readonly hasSelectedTurn: boolean;
-  readonly isTurnScope: boolean;
-  readonly isGitRepo: boolean;
-}): CheckpointDiffAvailability {
-  return {
-    enabled: input.hasActiveThread && input.hasSelectedTurn,
-    showNotRepository: input.hasActiveThread && !input.isTurnScope && !input.isGitRepo,
-  };
+/** What git says of a repository now: its status, the record the Git page reads too. */
+export type DiffRepositoryStatus = VcsStatusResult | "reading" | "failed";
+
+export interface DiffRepositoryRead {
+  readonly repository: DiffRepository;
+  readonly status: DiffRepositoryStatus;
 }
 
-/**
- * What Diff shows for the stored selection. A workspace that is no Git
- * repository of its own — a Mate's `/var/www`, whose code is in the services'
- * checkouts below it — has no working tree or branch to read, but every turn
- * keeps a saved diff of those checkouts: there a selection that is not a turn
- * reads as the latest turn, and as nothing to show before the first one.
- */
-export function resolveDiffSelection(input: {
-  readonly selection: DiffPanelSelection;
-  readonly isGitRepo: boolean;
-  readonly latestTurnId: TurnId | undefined;
-}): DiffPanelSelection | { readonly kind: "no-turns" } {
-  if (input.isGitRepo || input.selection.kind === "turn") return input.selection;
-  return input.latestTurnId === undefined
-    ? { kind: "no-turns" }
-    : { kind: "turn", turnId: input.latestTurnId, filePath: null, revealRequestId: 0 };
+/** One thing Diff can show: a repository's changes not committed, or its commits not on main. */
+export interface DiffChoice {
+  readonly repository: DiffRepository;
+  readonly scope: "unstaged" | "branch";
+  /** In the Git page's words. */
+  readonly label: string;
+  /** Files not committed, or commits not on main; `null` where git has not said or cannot. */
+  readonly count: number | null;
+  /** What the body says when there is nothing to show. */
+  readonly nothing: string;
+}
+
+/** How many there are, as the menu says it. */
+export function diffChoiceCount(choice: DiffChoice): string | null {
+  if (choice.count === null) return null;
+  const noun = choice.scope === "unstaged" ? "file" : "commit";
+  return `${choice.count} ${noun}${choice.count === 1 ? "" : "s"}`;
 }
 
 /**
- * What the scope button names, and which of its menu's items is marked: the
- * selection the body shows. Before the first turn of a workspace that shows
- * only turns, that is the latest turn, which is not there yet.
+ * What each repository has that is not on main yet: what is changed and not committed, and the
+ * commits of its branch that main does not have — on main itself, the ones not pushed. A folder
+ * git says is no repository offers nothing.
  */
-export function diffScope(input: {
-  readonly shown: ReturnType<typeof resolveDiffSelection>;
-  readonly latestTurnId: TurnId | undefined;
-}): "unstaged" | "branch" | "latest" | "turn" {
-  switch (input.shown.kind) {
-    case "unstaged":
-    case "branch":
-      return input.shown.kind;
-    case "no-turns":
-      return "latest";
-    case "turn":
-      return input.shown.turnId === input.latestTurnId ? "latest" : "turn";
-  }
+export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyArray<DiffChoice> {
+  return reads.flatMap(({ repository, status }): ReadonlyArray<DiffChoice> => {
+    if (typeof status === "object" && !status.isRepo) return [];
+    const read = typeof status === "object" ? status : null;
+    const onMain = read?.isDefaultRef === true;
+    const neverPushed = onMain && read?.hasUpstream === false;
+    return [
+      {
+        repository,
+        scope: "unstaged",
+        label: "Not committed",
+        count: read === null ? null : read.workingTree.files.length,
+        nothing: `Everything in ${repository.name} is committed.`,
+      },
+      {
+        repository,
+        scope: "branch",
+        label: onMain ? "Not pushed" : "Not on main",
+        count:
+          read === null || neverPushed
+            ? null
+            : onMain
+              ? read.aheadCount
+              : (read.aheadOfDefaultCount ?? null),
+        nothing: neverPushed
+          ? `${repository.name} has never been pushed: there is nothing to compare it with.`
+          : onMain
+            ? `Everything in ${repository.name} is pushed.`
+            : `Nothing in ${repository.name} is outside main.`,
+      },
+    ];
+  });
 }
 
+export type DiffShown =
+  | { readonly kind: "reading" }
+  | { readonly kind: "no-code" }
+  | { readonly kind: "nothing-outside-main" }
+  | { readonly kind: "choice"; readonly choice: DiffChoice };
+
 /**
- * The turn the scope may call the latest: the newest turn that changed code, unless the
- * conversation went on to a later turn that changed none — then that change goes by its number.
+ * What Diff shows; `reads` is `null` while which repositories there are is still read. A choice
+ * the person made stands while its repository is there. Otherwise, once git has said of every
+ * repository, the first with changes of the stored kind (not committed, unless they chose the
+ * branch), then of the other, then the first git cannot count; else nothing is outside main.
  */
-export function latestChangedTurnId(input: {
-  readonly newest: Pick<TurnDiffSummary, "turnId" | "completedAt"> | undefined;
-  readonly latestTurn: Pick<OrchestrationLatestTurn, "requestedAt"> | null | undefined;
-}): TurnId | undefined {
-  if (input.newest === undefined) return undefined;
-  return input.latestTurn && input.latestTurn.requestedAt > input.newest.completedAt
-    ? undefined
-    : input.newest.turnId;
+export function shownDiff(
+  reads: ReadonlyArray<DiffRepositoryRead> | null,
+  selection: DiffPanelSelection,
+): DiffShown {
+  if (reads === null) return { kind: "reading" };
+  const choices = diffChoices(reads);
+  const chosen =
+    selection.repository === undefined
+      ? undefined
+      : choices.find(
+          (choice) =>
+            choice.repository.name === selection.repository && choice.scope === selection.kind,
+        );
+  if (chosen !== undefined) return { kind: "choice", choice: chosen };
+  if (reads.some((read) => read.status === "reading")) return { kind: "reading" };
+  const other = selection.kind === "unstaged" ? "branch" : "unstaged";
+  const picked =
+    choices.find((choice) => choice.scope === selection.kind && (choice.count ?? 0) > 0) ??
+    choices.find((choice) => choice.scope === other && (choice.count ?? 0) > 0) ??
+    choices.find((choice) => choice.count === null);
+  if (picked !== undefined) return { kind: "choice", choice: picked };
+  return choices.length === 0 ? { kind: "no-code" } : { kind: "nothing-outside-main" };
 }
 
 export function baseRefPresentation(

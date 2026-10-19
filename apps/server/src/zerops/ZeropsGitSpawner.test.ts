@@ -349,18 +349,6 @@ describe("makeZeropsGitSpawner", () => {
       ),
   );
 
-  it("bounds snapshot scripts on the remote side after identity verification", () => {
-    const invocation = rewriteGitSpawn(
-      {
-        command: "git",
-        args: ["-c", "alias.mate-snapshot=!echo test", "mate-snapshot"],
-        options: { cwd: kanban.mountPath },
-      },
-      [{ ...kanban, identity: { projectId: "p", serviceId: "s" } }],
-    );
-    assert.include(invocation?.remoteCommand ?? "", "exit 126; }; exec timeout -k 2 30 git");
-  });
-
   it.effect("hands a non-git command to the inner spawner untouched", () =>
     Effect.scoped(
       Effect.gen(function* () {

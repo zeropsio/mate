@@ -212,7 +212,7 @@ describe("the engine's watch lines", () => {
         yield* tell({
           _tag: "EffectSettled",
           effectId: id,
-          outcome: { kind: "failed", reason: "the workspace could not be captured\n  at stack" },
+          outcome: { kind: "failed", reason: "the signer store did not answer\n  at stack" },
         });
         const failures = lines.filter(
           (line) => line.message === "Mate engine: an effect failed for good",
@@ -225,7 +225,7 @@ describe("the engine's watch lines", () => {
               kind: "run.prepare",
               conversation,
               effect: id,
-              reason: "the workspace could not be captured",
+              reason: "the signer store did not answer",
             },
           },
         ]);

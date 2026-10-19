@@ -265,7 +265,6 @@ function makeThread(
     messages: [],
     proposedPlans: [],
     activities: [],
-    checkpoints: [],
     session: null,
     ...input,
     settledOverride: input.settledOverride ?? null,

@@ -51,7 +51,6 @@ import { liveEngineLayer } from "../../../engine/live.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
 import { HandedOverResume } from "../../../engine/ports.ts";
 import { providerThreadOf } from "../../../engine/pump/TurnPump.ts";
-import { makeFakeWorkspaceHistory } from "../../../engine/testing/pump/fakeWorkspaceHistory.ts";
 import {
   makeScriptedProvider,
   scriptedProviderLayer,
@@ -998,7 +997,6 @@ const lifeLayer = (
   clock: Clock.Clock,
 ) => {
   const { world, signIns, holds } = fixture;
-  const history = makeFakeWorkspaceHistory();
   const base = Layer.mergeAll(
     // The world's clock: real time, which a journey moves on to let a wait come due.
     Layer.succeed(Clock.Clock, clock),
@@ -1031,7 +1029,6 @@ const lifeLayer = (
     Layer.provideMerge(
       Layer.mergeAll(
         scriptedProviderLayer(provider),
-        history.layer,
         noRestartEvidence,
         serverWorkspace,
         serverMessagePictures,

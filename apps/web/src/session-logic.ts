@@ -63,7 +63,6 @@ import {
   type SessionPhase,
   type Thread,
   type ThreadSession,
-  type TurnDiffSummary,
 } from "./types";
 
 export type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/pending-requests";
@@ -2406,19 +2405,6 @@ export function deriveTimelineEntries(
     zeropsEntries,
     changeEvents,
   ).entries;
-}
-
-export function inferCheckpointTurnCountByTurnId(
-  summaries: ReadonlyArray<TurnDiffSummary>,
-): Record<TurnId, number> {
-  const sorted = [...summaries].toSorted((a, b) => a.completedAt.localeCompare(b.completedAt));
-  const result: Record<TurnId, number> = {};
-  for (let index = 0; index < sorted.length; index += 1) {
-    const summary = sorted[index];
-    if (!summary) continue;
-    result[summary.turnId] = index + 1;
-  }
-  return result;
 }
 
 export function derivePhase(session: ThreadSession | null): SessionPhase {

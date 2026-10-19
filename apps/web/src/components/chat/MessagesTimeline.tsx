@@ -74,12 +74,7 @@ import {
   workEntrySignalsSevereFailure,
   workLogEntryIsToolLike,
 } from "../../session-logic";
-import {
-  type ChatImageAttachment,
-  type ChatMessage,
-  isImageAttachment,
-  type TurnDiffSummary,
-} from "../../types";
+import { type ChatImageAttachment, type ChatMessage, isImageAttachment } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
 import { queuedBubbleState, type QueuedComposerMessage } from "../../queuedMessageStore";
 import {
@@ -100,7 +95,6 @@ import {
   SearchIcon,
   SquarePenIcon,
   TerminalIcon,
-  Undo2Icon,
   WrenchIcon,
   XIcon,
   ZapIcon,
@@ -385,20 +379,15 @@ interface MessagesTimelineProps {
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   latestTurn: TimelineLatestTurn | null;
   runningTurnId: TurnId | null;
-  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
   /**
    * The conversation its own draft just became: its message was already on screen in the draft's
    * frame, so it opens with no opening of its own — nothing fades out and back in.
    */
   arrivesFromItsDraft?: boolean;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
-  supportsConversationRollback: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
   provider?: string | null;
-  onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onRunShellCommand?: (command: string) => void;
-  isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
   markdownCwd: string | undefined;
@@ -499,15 +488,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   timelineEntries,
   latestTurn,
   runningTurnId,
-  turnDiffSummaries,
   routeThreadKey,
   arrivesFromItsDraft = false,
-  onOpenTurnDiff,
-  supportsConversationRollback,
   provider = null,
-  onRevertToTurnCount,
   onRunShellCommand,
-  isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
   markdownCwd,
@@ -674,8 +658,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         runningTurnId,
         isWorking,
         activeTurnStartedAt,
-        turnDiffSummaries,
-        supportsConversationRollback,
         queuedMessages,
         notices: noticeIds,
         afterTurnWork,
@@ -702,8 +684,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       runningTurnId,
       isWorking,
       activeTurnStartedAt,
-      turnDiffSummaries,
-      supportsConversationRollback,
       queuedMessages,
       noticeIds,
       afterTurnWork,
@@ -1817,10 +1797,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
-      onRevertToTurnCount,
       onRunShellCommand,
       onImageExpand,
-      onOpenTurnDiff,
       speaker,
       onDismissEndNotice,
       driver: provider,
@@ -1863,10 +1841,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
-      onRevertToTurnCount,
       onRunShellCommand,
       onImageExpand,
-      onOpenTurnDiff,
       speaker,
       onDismissEndNotice,
       provider,
@@ -1902,18 +1878,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       isCompacting,
       isStopping,
-      isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
     }),
-    [
-      isCompacting,
-      isStopping,
-      isRevertingCheckpoint,
-      isWorking,
-      latestTurn?.turnId,
-      workingStepLabel,
-    ],
+    [isCompacting, isStopping, isWorking, latestTurn?.turnId, workingStepLabel],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -3403,14 +3371,7 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     // hairline, then its rows in the card's grid; nothing at all when the run
     // left none.
     <div ref={markerRef} className="run-band">
-      <TurnReport
-        onOpenImage={ctx.onImageExpand}
-        onOpenTurnDiff={(turnId, fromTurnId) =>
-          ctx.onOpenTurnDiff(turnId, undefined, fromTurnId ?? undefined)
-        }
-        outcome={row.outcome}
-        settling={settling}
-      />
+      <TurnReport onOpenImage={ctx.onImageExpand} outcome={row.outcome} settling={settling} />
     </div>
   );
 }
@@ -3623,7 +3584,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     const preview = buildExpandedImagePreview(userImages, image.id);
     if (preview) ctx.onImageExpand(preview);
   };
-  const revertTurnCount = row.revertTurnCount;
 
   const heldRunId = row.message.heldRunId;
   const withdrawHeld =
@@ -3729,9 +3689,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               </TooltipPopup>
             </Tooltip>
             <div className="flex items-center gap-0.5">
-              {typeof revertTurnCount === "number" && (
-                <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
-              )}
               {displayedUserMessage.copyText && (
                 <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
               )}
@@ -3766,37 +3723,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         />
       ) : null}
     </>
-  );
-}
-
-function RevertUserMessageButton({
-  turnCount,
-  messageId,
-}: {
-  turnCount: number;
-  messageId: MessageId;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const activity = use(TimelineRowActivityCtx);
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
-            aria-label="Revert to this message"
-          />
-        }
-      >
-        <Undo2Icon className="size-3" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">Revert to this message</TooltipPopup>
-    </Tooltip>
   );
 }
 

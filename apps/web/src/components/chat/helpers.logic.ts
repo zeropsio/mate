@@ -120,8 +120,6 @@ export function helperRecord(input: {
     runningTurnId: live ? turnId : null,
     isWorking: live,
     activeTurnStartedAt: live ? startedAt : null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
   });
   const record = rows.find((row): row is HelperRecord => row.kind === "record") ?? null;

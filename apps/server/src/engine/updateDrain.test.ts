@@ -170,7 +170,7 @@ describe("engine update drain", () => {
         yield* conversations.ask(envelope({ _tag: "Archive" }, { conversation: id }));
         const sql = yield* SqlClient.SqlClient;
         yield* sql`INSERT INTO engine_effect (effect_id, conversation_id, lane, kind, class, payload_json, state, available_at, cause_id, created_seq)
-          VALUES (${`receipt-${state}`}, ${id}, 'side', 'workspace.finish', 'replay-safe', '{}', ${state}, 0, 'test', 1)`;
+          VALUES (${`receipt-${state}`}, ${id}, 'side', 'run.prepare', 'replay-safe', '{}', ${state}, 0, 'test', 1)`;
         const drain = yield* makeEngineUpdateDrain;
         expect(drain).toBeDefined();
         const facts = yield* drain!.facts;

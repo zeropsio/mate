@@ -11,7 +11,6 @@ import {
 // @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
-  CheckpointRef,
   EnvironmentId,
   EventId,
   MessageId,
@@ -35,7 +34,6 @@ import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../p
 import {
   projectScriptKeybindingWrites,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
   buildRunningThreadTurnInterruptInput,
@@ -43,7 +41,6 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveLockedProvider,
-  diffOpeningShowsWorkingTree,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getAntigravitySendBlockReason,
   getStartedThreadModelChangeBlockReason,
@@ -402,7 +399,6 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     messages: [],
     proposedPlans: [],
     activities: [],
-    checkpoints: [],
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
@@ -476,7 +472,6 @@ describe("buildLoadingThreadFromShell", () => {
       messages: [],
       proposedPlans: [],
       activities: [],
-      checkpoints: [],
     });
   });
 });
@@ -1818,110 +1813,6 @@ describe("threadShellHasStarted", () => {
   });
 });
 
-describe("rewind draft recovery", () => {
-  const message = {
-    id: MessageId.make("rewound-message"),
-    role: "user" as const,
-    text: "edit this question",
-    turnId: TurnId.make("rewound-turn"),
-    createdAt: now,
-    updatedAt: now,
-    streaming: false,
-  };
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  });
-
-  it("waits past command acceptance until the exact message disappears", async () => {
-    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
-    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
-    let accepted = false;
-    const result = waitForRevertedMessage({ environmentId, threadId }, message.id, 0, async () => {
-      accepted = true;
-    });
-    let completed = false;
-    void result.then(() => {
-      completed = true;
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(accepted).toBe(true);
-    expect(completed).toBe(false);
-    appAtomRegistry.set(
-      atom,
-      makeThread({
-        messages: [],
-        latestTurn: completedTurn,
-        checkpoints: [
-          {
-            turnId: completedTurn.turnId,
-            checkpointTurnCount: 1,
-            checkpointRef: CheckpointRef.make("refs/t3/checkpoints/1"),
-            status: "ready",
-            files: [],
-            assistantMessageId: null,
-            completedAt: now,
-          },
-        ],
-      }),
-    );
-    await Promise.resolve();
-    expect(completed).toBe(false);
-    appAtomRegistry.set(atom, makeThread({ messages: [] }));
-    await result;
-  });
-
-  it("rejects a new provider rewind failure without restoring a draft", async () => {
-    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
-    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
-    const result = waitForRevertedMessage({ environmentId, threadId }, message.id, 0, async () => {
-      appAtomRegistry.set(
-        atom,
-        makeThread({
-          messages: [message],
-          activities: [
-            {
-              id: EventId.make("rewind-failed"),
-              kind: "checkpoint.revert.failed",
-              tone: "error",
-              summary: "Checkpoint revert failed",
-              payload: { detail: "Native history unavailable", turnCount: 0 },
-              turnId: null,
-              createdAt: now,
-            },
-          ],
-        }),
-      );
-    });
-    await expect(result).rejects.toThrow("Native history unavailable");
-  });
-
-  it("bounds waits when a provider never finishes", async () => {
-    vi.useFakeTimers();
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
-    const atom = Atom.make<Thread | null>(makeThread({ messages: [message] }));
-    vi.spyOn(environmentThreadDetails, "detailAtom").mockReturnValue(atom);
-    const result = waitForRevertedMessage(
-      { environmentId, threadId },
-      message.id,
-      0,
-      async () => {},
-      20,
-    );
-    const timeoutIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 20);
-    const rewindTimeout = setTimeoutSpy.mock.results[timeoutIndex]?.value;
-    expect(rewindTimeout).toBeDefined();
-    const rejection = expect(result).rejects.toThrow("Timed out waiting");
-    await vi.advanceTimersByTimeAsync(20);
-    await rejection;
-    expect(clearTimeoutSpy).toHaveBeenCalledWith(rewindTimeout);
-  });
-});
-
 describe("shouldRefocusComposerOnWindowFocus", () => {
   function element(
     tagName: string,
@@ -1976,50 +1867,6 @@ describe("composerOpenFocus", () => {
     ["shown after its room was held, with the person's focus elsewhere", true, true, true, false],
   ] as const)("%s", (_label, composerShown, late, focusElsewhere, expected) => {
     expect(composerOpenFocus({ composerShown, late, focusElsewhere })).toBe(expected);
-  });
-});
-
-describe("diffOpeningShowsWorkingTree", () => {
-  const thread: ScopedThreadRef = {
-    environmentId: EnvironmentId.make("env-1"),
-    threadId: ThreadId.make("thread-1"),
-  };
-  const other: ScopedThreadRef = { ...thread, threadId: ThreadId.make("thread-2") };
-
-  it.each<{
-    readonly name: string;
-    readonly diffOpen: boolean;
-    readonly explicitThreadRef: ScopedThreadRef | null;
-    readonly resets: boolean;
-  }>([
-    {
-      name: "a generic opening shows the working tree",
-      diffOpen: true,
-      explicitThreadRef: null,
-      resets: true,
-    },
-    {
-      name: "an opening made for one diff keeps its selection",
-      diffOpen: true,
-      explicitThreadRef: thread,
-      resets: false,
-    },
-    {
-      name: "an opening made for another thread's diff does not count here",
-      diffOpen: true,
-      explicitThreadRef: other,
-      resets: true,
-    },
-    {
-      name: "a closed panel shows nothing",
-      diffOpen: false,
-      explicitThreadRef: null,
-      resets: false,
-    },
-  ])("$name", ({ diffOpen, explicitThreadRef, resets }) => {
-    expect(
-      diffOpeningShowsWorkingTree({ diffOpen, activeThreadRef: thread, explicitThreadRef }),
-    ).toBe(resets);
   });
 });
 

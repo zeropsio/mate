@@ -562,10 +562,8 @@ const SHARED: TimelineRowSharedState = {
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-harness"),
-  onRevertToTurnCount: () => undefined,
   onRunShellCommand: undefined,
   onImageExpand: () => undefined,
-  onOpenTurnDiff: () => undefined,
   speaker: { name: WREN.name, tint: WREN.tint, shape: WREN.shape },
   standUpAsk: mateStandUpAskLine(WREN, ADA),
   livePauseId: null,
@@ -584,7 +582,6 @@ const SHARED: TimelineRowSharedState = {
 const WORKING: TimelineRowActivityState = {
   isWorking: true,
   isCompacting: false,
-  isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
 };

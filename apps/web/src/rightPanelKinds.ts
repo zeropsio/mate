@@ -125,9 +125,11 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "D",
       unavailableHint: "Available for Git repositories.",
     },
-    // A Mate's workspace is no repository of its own, but each turn keeps a
-    // diff of the services' checkouts below it (`resolveDiffSelection`).
-    page: { title: "Diff", line: (mate) => `What ${mate} changed in the code, turn by turn.` },
+    // A Mate's workspace is no repository of its own, but the services' checkouts below it are.
+    page: {
+      title: "Diff",
+      line: (mate) => `What ${mate}'s code has that main does not: not committed or not pushed.`,
+    },
     availability: (input) =>
       !input.serverThread
         ? "unavailable"

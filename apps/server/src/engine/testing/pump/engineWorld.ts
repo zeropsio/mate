@@ -1,8 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
 /**
  * The running engine for end-to-end tests: the live layer (store, actors, outbox, handlers, live
- * plane, pump) on a SQLite file, over a scripted ProviderService and a WorkspaceHistory that
- * remembers what it was asked. A life is one process: `boot` builds the layers and starts the
+ * plane, pump) on a SQLite file, over a scripted ProviderService. A life is one process: `boot` builds the layers and starts the
  * engine, `shutdown` closes them as a graceful stop does, `crash` kills every driver process
  * first, `kill` leaves the file as it was the instant the server died; the next `boot` is the
  * restart, on the same file, with drivers that hold nothing.
@@ -18,6 +17,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -29,6 +29,7 @@ import {
   CommandId,
   ConversationId,
   type Principal,
+  type RunTrigger,
   type RunEnd,
   type RunId,
   type RunState,
@@ -57,7 +58,6 @@ import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
 import { principalUserId } from "../../../zerops/ZeropsTurnAdmission.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "../../../zerops/ZeropsMembershipWatch.ts";
-import { makeFakeWorkspaceHistory } from "./fakeWorkspaceHistory.ts";
 import {
   makeScriptedProvider,
   scriptedProviderLayer,
@@ -109,8 +109,9 @@ export const makeEngineWorld = (options: WorldOptions) =>
   Effect.gen(function* () {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "engine-pump-"));
     const filename = NodePath.join(dir, "state.sqlite");
-    const history = makeFakeWorkspaceHistory();
     let unavailable = options.workspaceUnavailable ?? 0;
+    /** The next admission waits on `gate` before it answers. */
+    const admission: { gate: Deferred.Deferred<void> | undefined } = { gate: undefined };
     const thread = providerThreadOf(mate) as string;
     let provider: ScriptedProvider = yield* makeScriptedProvider({ driver: options.driver });
     let life: Scope.Closeable | undefined;
@@ -118,26 +119,33 @@ export const makeEngineWorld = (options: WorldOptions) =>
     // What the providers report of their accounts' usage: kept across lives, as the registry is.
     const usage = yield* SubscriptionRef.make<ReadonlyArray<InstanceUsage>>([]);
 
+    const admit = (principal: Principal, trigger: RunTrigger) => {
+      if (options.admissionDies !== undefined) {
+        return Effect.die(new Error(options.admissionDies));
+      }
+      const refusal =
+        typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
+      if (refusal !== undefined) return Effect.fail(new RunRefused({ message: refusal }));
+      // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
+      // session by its Zerops subject, a wake by the bare Zerops user id it continues.
+      const acting = turnPrincipalOf(principal, trigger);
+      const user = acting === null ? null : (principalUserId(acting) ?? null);
+      return user !== null && /^[^:]+$/.test(user)
+        ? Effect.void
+        : Effect.fail(
+            new RunRefused({ message: `No Zerops user this run acts for: ${String(user)}.` }),
+          );
+    };
+
     const ports = Layer.mergeAll(
       Layer.succeed(
         RunAdmission,
         RunAdmission.of({
           admit: ({ principal, trigger }) => {
-            if (options.admissionDies !== undefined) {
-              return Effect.die(new Error(options.admissionDies));
-            }
-            const refusal =
-              typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
-            if (refusal !== undefined) return Effect.fail(new RunRefused({ message: refusal }));
-            // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
-            // session by its Zerops subject, a wake by the bare Zerops user id it continues.
-            const acting = turnPrincipalOf(principal, trigger);
-            const user = acting === null ? null : (principalUserId(acting) ?? null);
-            return user !== null && /^[^:]+$/.test(user)
-              ? Effect.void
-              : Effect.fail(
-                  new RunRefused({ message: `No Zerops user this run acts for: ${String(user)}.` }),
-                );
+            const gate = admission.gate;
+            admission.gate = undefined;
+            const answer = admit(principal, trigger);
+            return gate === undefined ? answer : Deferred.await(gate).pipe(Effect.andThen(answer));
           },
         }),
       ),
@@ -188,7 +196,6 @@ export const makeEngineWorld = (options: WorldOptions) =>
         Layer.provideMerge(
           Layer.mergeAll(
             scriptedProviderLayer(scripted),
-            history.layer,
             ports,
             config,
             NodeSqliteClient.layer({ filename }),
@@ -375,7 +382,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
     return {
       dir,
       thread,
-      history,
+      admission,
       get provider() {
         return provider;
       },

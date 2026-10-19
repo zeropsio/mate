@@ -172,8 +172,6 @@ function render(input: {
     latestTurn: thread.latestTurn,
     isWorking: input.isWorking ?? false,
     activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
     ...(input.paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
     ...(input.away === undefined ? {} : { away: input.away }),
     ...(input.helpers

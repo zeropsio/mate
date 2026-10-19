@@ -10095,23 +10095,6 @@ button.run-bar:focus-visible {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-/* The files a run changed open its own diff: quiet, a link only under the pointer. */
-.run-result-files {
-  color: inherit;
-  text-decoration-line: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 2px;
-  transition: text-decoration-color 150ms ease;
-}
-.run-result-files:hover {
-  text-decoration-color: currentColor;
-}
-.run-result-add {
-  color: var(--color-diff-addition-foreground);
-}
-.run-result-del {
-  color: var(--color-diff-deletion-foreground);
-}
 .run-result-end {
   display: flex;
   align-items: center;
@@ -10134,7 +10117,6 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
-.run-result-files:focus-visible,
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);

@@ -2,7 +2,7 @@
  * `decide(state, envelope, now)`: every rule and guard of a conversation, pure.
  *
  * A run moves queued → admitted → sending → running ⇄ waiting → ended, one active at a time.
- * Admission captures the run's workspace first (`run.prepare`), then opens a session as an effect
+ * Admission asks the run's principal first (`run.prepare`), then opens a session as an effect
  * when none fits (never as a side effect of a send), and waits while a usage limit pauses the
  * conversation. Every turn-scoped signal is routed to its own turn's run, never to the active one.
  * A run ends by evidence, its source the bridge's word (the agent, a Stop asked or confirmed, a
@@ -153,7 +153,6 @@ export const EFFECT_KINDS = {
   "provider.respond": { lane: "control", class: "process-bound" },
   "session.close": { lane: "close", class: "process-bound" },
   "run.prepare": { lane: "side", class: "replay-safe" },
-  "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
@@ -393,21 +392,19 @@ const admitNext = (b: StepBuilder): void => {
   b.emit({ _tag: "RunAdmitted", runId: next });
   const run = b.run(next);
   if (needsPrepare(run) && run.prepare === "none") {
-    // Every run is admitted for its principal (D6) and its workspace captured before the agent
-    // starts work (D7): the send waits on both. A maintenance command captures nothing.
+    // Every run is admitted for its principal (D6) before the agent starts work: the send waits.
     b.effect("run.prepare", run.id, 1, run.id, {
       runId: run.id,
       instanceId: b.state.agent?.instanceId ?? null,
       principal: run.principal,
       trigger: run.trigger,
-      ...(run.maintenance ? { capture: false } : {}),
     });
     return;
   }
   dispatch(b, run);
 };
 
-/** Every run is prepared (admitted, its workspace captured) but one the agent started itself. */
+/** Every run is admitted but one the agent started itself. */
 const needsPrepare = (run: RunRecord): boolean =>
   !(run.trigger.kind === "wake" && run.trigger.cause === "self");
 
@@ -745,7 +742,7 @@ const selectionOf = (state: ConversationState) =>
  * turn. A run that needs a new session
  * for a setting while the agent's background work lives in this one waits — never ending that
  * work — until the work ends or the setting changes back (a message sent meanwhile is refused in
- * V1's words). A run whose workspace capture has not settled, or a session closing, waits.
+ * V1's words). A run whose admission has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (needsPrepare(run) && run.prepare !== "done") return;
@@ -981,14 +978,6 @@ const endRun = (
     updatePerson(b, run, run.state === "sending" ? unsent : "refused");
   }
   b.emit({ _tag: "RunEnded", runId: run.id, end, source, ...facts });
-  // Every run that asked for a capture releases it, whatever ended it.
-  if (run.prepare !== "none" && !run.maintenance) {
-    b.effect("workspace.finish", run.id, 1, run.id, {
-      runId: run.id,
-      started: run.startedAt !== null,
-      providerTurnId: b.run(run.id).providerTurnId,
-    });
-  }
 };
 
 const settledBody = (body: ItemBody, end: RunEnd): ItemBody => {
@@ -1902,10 +1891,6 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
         admitNext(b);
         return;
       }
-      // Any capture outcome sends the message; what could not be captured is recorded.
-      for (const gap of captureGaps(outcome, failure)) {
-        recordMarker(b, run, { kind: "capture-gap", reason: gap });
-      }
       if (run.state === "admitted") dispatch(b, b.run(run.id));
       return;
     }
@@ -2055,33 +2040,6 @@ const sendsAgain = (b: StepBuilder, run: RunRecord, reason: string): boolean => 
   b.emit({ _tag: "RunRequeued", runId: run.id, reason: `undelivered: ${reason}` });
   admitNext(b);
   return true;
-};
-
-/** What a capture could not take, one line per service; a failed capture is one gap. */
-const captureGaps = (outcome: EffectOutcome, failure: string | null): ReadonlyArray<string> => {
-  if (failure !== null) return [`The workspace capture failed: ${failure}`];
-  const value = outcome.kind === "ok" ? outcome.value : undefined;
-  const gaps =
-    typeof value === "object" && value !== null ? (value as { gaps?: unknown }).gaps : undefined;
-  if (!Array.isArray(gaps)) return [];
-  return gaps.flatMap((gap: unknown) => {
-    const { service, reason } = (gap ?? {}) as { service?: unknown; reason?: unknown };
-    return typeof service === "string" && typeof reason === "string"
-      ? [`${service}: ${reason}`]
-      : [];
-  });
-};
-
-/** A marker the engine records under a run, closed as it opens. */
-const recordMarker = (
-  b: StepBuilder,
-  run: RunRecord,
-  marker: { readonly kind: string; readonly reason?: string },
-): void => {
-  const id = deriveItemId(run.id, b.run(run.id).nextItemOrdinal);
-  const body: ItemBody = { kind: "marker", marker };
-  b.emit({ _tag: "ItemOpened", runId: run.id, itemId: id, key: null, by: ENGINE_ACTOR, body });
-  b.emit({ _tag: "ItemClosed", runId: run.id, itemId: id, body });
 };
 
 /**
@@ -2882,7 +2840,7 @@ const recovered = (
   }
   const admitted = activeRun(b.state);
   if (admitted?.state === "admitted") {
-    // Its capture, requeued with the replay-safe work, still settles first.
+    // Its admission, requeued with the replay-safe work, still settles first.
     dispatch(b, admitted);
     return;
   }

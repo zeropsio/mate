@@ -5,9 +5,6 @@ import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
 import { mateRepositoryFamily } from "./mateRepository.ts";
 import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
-import { mateTurnDiffFamily } from "./mateTurnDiff.ts";
-import { mateThreadDiffFamily } from "./mateThreadDiff.ts";
-import { mateRunChangesFamily } from "./mateRunChanges.ts";
 import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
 import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
 import { mateProcessDiagnosticsFamily } from "./mateProcessDiagnostics.ts";
@@ -131,9 +128,6 @@ export const FAMILIES = defineFamilies([
   mateRepositoryDiscoveryFamily,
   mateRepositoryFamily,
   mateThreadSearchFamily,
-  mateTurnDiffFamily,
-  mateThreadDiffFamily,
-  mateRunChangesFamily,
   mateWorkflowScriptFamily,
   mateTraceDiagnosticsFamily,
   mateProcessDiagnosticsFamily,
