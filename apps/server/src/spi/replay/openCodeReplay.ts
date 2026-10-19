@@ -10,6 +10,7 @@
  * uses for its deterministic tests (e.g. "does not strip coincidental
  * prefix overlap from OpenCode part deltas").
  */
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -245,10 +246,11 @@ export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>>
 /**
  * One turn through OpenCodeAdapter: the session opens, a message is sent, and once its prompt is
  * out the stream plays `events` — a turn's parts, ending with the session going idle. Returns
- * every event up to the turn's end.
+ * every event up to the turn's end, or fails once `within` passes without it.
  */
 export async function recordOpenCodeTurn(
   events: ReadonlyArray<unknown>,
+  within?: Duration.Input,
 ): Promise<ReadonlyArray<SpiEvent>> {
   const openCodeConfig = decodeOpenCodeSettings({
     binaryPath: "spi-replay-opencode",
@@ -275,7 +277,10 @@ export async function recordOpenCodeTurn(
       },
     });
 
-    yield* collector.waitFor((events) => events.some((event) => event.type === "turn.completed"));
+    yield* collector.waitFor(
+      (events) => events.some((event) => event.type === "turn.completed"),
+      within,
+    );
     yield* Fiber.interrupt(collector.fiber);
 
     return collector.events;

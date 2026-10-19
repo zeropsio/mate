@@ -26,9 +26,10 @@ describe("recordOpenCodeBaseline", () => {
   }, 15_000);
 });
 
-// A connected stream without the turn's terminal event cannot produce a complete recording.
+// A connected stream without the turn's terminal event cannot produce a complete recording,
+// however long the recorder waits for one.
 it("rejects a recording whose provider never completes the turn", async () => {
-  await expect(recordOpenCodeTurn([{ type: "server.heartbeat", properties: {} }])).rejects.toThrow(
-    /timed out|Timeout/i,
-  );
+  await expect(
+    recordOpenCodeTurn([{ type: "server.heartbeat", properties: {} }], "50 millis"),
+  ).rejects.toThrow(/timed out|Timeout/i);
 }, 15_000);
