@@ -1420,7 +1420,13 @@ const RELEASED: Readonly<Record<number, Partial<FlowPullRequest>>> = {
 };
 
 /** The harness's release and the change a row steps into. */
-function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
+function ReleaseTrySteps({
+  onClose,
+  running,
+}: {
+  readonly onClose: () => void;
+  readonly running: boolean;
+}) {
   const steps = useReleaseSteps();
   const onChange = steps.step.view === "change";
   const shown = steps.shown;
@@ -1466,6 +1472,12 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
           onClose={onClose}
           onOpenChange={steps.open}
           titleId={onChange ? undefined : "release-try-title"}
+          {...(running
+            ? {
+                outcome: { kind: "releasing", progress: "Putting v0.1.57 live · 8s", clock: "8s" },
+                press: { kind: "done", deploys: DEPLOY_ANSWER },
+              }
+            : {})}
         />
       }
       steps={steps}
@@ -1475,9 +1487,16 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
 
 /**
  * The release's dialog, opened from a button, to step into a change it carries and back: the
- * slide, the height, the focus and Esc twice. `?release=open` opens it as the page loads.
+ * slide, the height, the focus and Esc twice. `?release=open` opens it as the page loads;
+ * `?release=running`, pressed, on its way.
  */
-export function ReleaseDialogTry({ openAtStart }: { readonly openAtStart: boolean }) {
+export function ReleaseDialogTry({
+  openAtStart,
+  running = false,
+}: {
+  readonly openAtStart: boolean;
+  readonly running?: boolean;
+}) {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(openAtStart);
   const close = () => {
@@ -1502,7 +1521,7 @@ export function ReleaseDialogTry({ openAtStart }: { readonly openAtStart: boolea
         onOpenChange={setOpen}
         open={open}
       >
-        <ReleaseTrySteps onClose={close} />
+        <ReleaseTrySteps onClose={close} running={running} />
       </ZeropsReviewDialog>
     </div>
   );

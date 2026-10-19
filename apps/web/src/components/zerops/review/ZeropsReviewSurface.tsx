@@ -253,6 +253,32 @@ export function ZeropsReviewSurface({
               answers
             ) : (
               <>
+                {dismiss === undefined || frame === "page" ? null : (
+                  <Button onClick={onClose} variant="ghost">
+                    {dismiss}
+                  </Button>
+                )}
+                {secondary === undefined ? null : (
+                  <Button
+                    data-review-secondary=""
+                    disabled={!secondary.enabled}
+                    onClick={secondary.onPress}
+                    variant="ghost"
+                  >
+                    {secondary.label}
+                  </Button>
+                )}
+                {ask === undefined ? null : (
+                  <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
+                    {ask.label}
+                  </Button>
+                )}
+                {settled === undefined ? null : (
+                  <span className="rv-settled">
+                    <CheckIcon aria-hidden="true" />
+                    {settled}
+                  </span>
+                )}
                 {primary === undefined ? null : (
                   <Button
                     data-review-primary=""
@@ -272,32 +298,6 @@ export function ZeropsReviewSurface({
                         {PRESS_KEYS}
                       </kbd>
                     ) : null}
-                  </Button>
-                )}
-                {settled === undefined ? null : (
-                  <span className="rv-settled">
-                    <CheckIcon aria-hidden="true" />
-                    {settled}
-                  </span>
-                )}
-                {ask === undefined ? null : (
-                  <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
-                    {ask.label}
-                  </Button>
-                )}
-                {secondary === undefined ? null : (
-                  <Button
-                    data-review-secondary=""
-                    disabled={!secondary.enabled}
-                    onClick={secondary.onPress}
-                    variant="ghost"
-                  >
-                    {secondary.label}
-                  </Button>
-                )}
-                {dismiss === undefined || frame === "page" ? null : (
-                  <Button onClick={onClose} variant="ghost">
-                    {dismiss}
                   </Button>
                 )}
               </>

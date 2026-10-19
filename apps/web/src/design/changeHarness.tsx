@@ -33,8 +33,12 @@ import "../index.css";
 
 /** `?review=<id>` shows one review state alone; `?review=all` every one. */
 const REVIEW = new URLSearchParams(location.search).get("review") ?? "all";
-/** `?release=open`: the release's dialog open as the page loads, to step into its changes. */
-const RELEASE_OPEN = new URLSearchParams(location.search).get("release") === "open";
+/**
+ * `?release=open`: the release's dialog open as the page loads, to step into its changes;
+ * `?release=running`, the release on its way.
+ */
+const RELEASE = new URLSearchParams(location.search).get("release");
+const RELEASE_OPEN = RELEASE === "open" || RELEASE === "running";
 /** `?sheet=change`: the change's sheet open as the page loads. */
 const SHEET_OPEN = new URLSearchParams(location.search).get("sheet") === "change";
 
@@ -44,7 +48,7 @@ function Harness() {
   return (
     <div className="flex flex-col gap-8 bg-background p-6">
       <ReviewDialogTry openAtStart={SHEET_OPEN} />
-      <ReleaseDialogTry openAtStart={RELEASE_OPEN} />
+      <ReleaseDialogTry openAtStart={RELEASE_OPEN} running={RELEASE === "running"} />
       {shown.map((entry) =>
         entry.page === true ? (
           <ReviewPageStage key={entry.id} label={entry.label}>

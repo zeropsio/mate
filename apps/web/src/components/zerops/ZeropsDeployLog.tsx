@@ -6,7 +6,11 @@ import { Button } from "../ui/button";
 import { ZeropsBuildLog } from "./ZeropsBuildLog";
 import { PipelineCalculating, PipelineStepList } from "./operation/PipelineStepList";
 
-/** The same process handles open from a stop or the answer to a merge, release, or Run again. */
+/**
+ * The same process handles open from a stop or the answer to a merge, release, or Run again: its
+ * door at the end of its service's row in Where's list (`.rv-where`), and what it opens under the
+ * row, across the list.
+ */
 export function ZeropsDeployLog({
   projectId,
   target,
@@ -19,24 +23,28 @@ export function ZeropsDeployLog({
   const [open, setOpen] = useState(false);
   const unavailable = useDeployLogUnavailable(projectId, target);
   return (
-    <div className="pb-2" data-zerops-deploy-job={target.jobId}>
+    <>
+      <span className="rv-where-go" data-zerops-deploy-job={target.jobId}>
+        <Button aria-expanded={open} onClick={() => setOpen(!open)} size="sm" variant="link">
+          {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
+        </Button>
+      </span>
       {!open && unavailable ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="rv-where-more text-xs text-muted-foreground">
           Deploy history unavailable in Zerops’ recent processes.
         </p>
       ) : null}
-      <Button aria-expanded={open} onClick={() => setOpen(!open)} size="sm" variant="ghost">
-        {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
-      </Button>
       {open ? (
-        <DeployLogDetails
-          key={target.jobId}
-          projectId={projectId}
-          service={service}
-          target={target}
-        />
+        <div className="rv-where-more pb-2">
+          <DeployLogDetails
+            key={target.jobId}
+            projectId={projectId}
+            service={service}
+            target={target}
+          />
+        </div>
       ) : null}
-    </div>
+    </>
   );
 }
 

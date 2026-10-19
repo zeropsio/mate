@@ -1,4 +1,5 @@
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
+import { releaseReview, type ReleaseOutcome } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -31,6 +32,7 @@ import {
   productionNow,
   productionNowLine,
   releaseFoot,
+  releaseHeading,
   releaseLine,
   sinceWords,
   whySaid,
@@ -974,5 +976,73 @@ describe("a change's receipt: each part's preview", () => {
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();
+  });
+});
+
+describe("releaseHeading: a release's head says where it stands once", () => {
+  const NOW = Date.parse("2026-10-19T10:30:00Z");
+  const heading = (outcome: ReleaseOutcome) => {
+    const model = releaseReview({
+      tag: "v0.1.4",
+      gate: { allowed: true },
+      permission: { allowed: true },
+      changes: 1,
+      onStage: { total: 1, running: 1 },
+      services: ["app"],
+      replaces: { kind: "release", tag: "v0.1.3" },
+      outcome,
+      productionMoved: outcome.kind === "failed" ? false : undefined,
+      now: NOW,
+    });
+    return releaseHeading({
+      tag: "v0.1.4",
+      model,
+      line: "1 change, on stage since 10:19.",
+      live: "v0.1.3",
+    });
+  };
+
+  it("a running release says once that it is releasing, with its step and clock", () => {
+    expect(
+      heading({ kind: "releasing", progress: "Putting v0.1.4 live · 8s", clock: "8s" }),
+    ).toEqual({
+      title: "Releasing v0.1.4 to production",
+      meta: undefined,
+      state: "Putting v0.1.4 live · 8s",
+      note: "You can close this. Production's line on the project's card follows it.",
+      foot: "",
+    });
+  });
+
+  it("a released one says it is live, and the way back", () => {
+    expect(heading({ kind: "released", at: "2026-10-19T10:27:00Z" })).toEqual({
+      title: "v0.1.4 is live",
+      meta: undefined,
+      state: "Production runs it · released 3 minutes ago",
+      note: "Roll back to v0.1.3 from production's menu. It gets its own review.",
+      foot: "",
+    });
+  });
+
+  it("a failed one says its cause, its fix beside it", () => {
+    expect(
+      heading({ kind: "failed", detail: "The deploy of app failed", services: ["app"] }),
+    ).toEqual({
+      title: "v0.1.4 didn't go out",
+      meta: undefined,
+      state: undefined,
+      note: "The deploy of app failed.",
+      foot: "",
+    });
+  });
+
+  it("an offered one says what goes out, and under its button what pressing does", () => {
+    expect(heading({ kind: "offered" })).toEqual({
+      title: "Release v0.1.4 to production",
+      meta: "1 change, on stage since 10:19.",
+      state: undefined,
+      note: undefined,
+      foot: "It takes a minute or two. You can roll back to v0.1.3 from production's panel.",
+    });
   });
 });
