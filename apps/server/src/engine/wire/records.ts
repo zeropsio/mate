@@ -12,7 +12,6 @@ import {
   ENGINE_WIRE_BUDGETS,
   Item,
   PAGE_HEIGHTS_KEPT,
-  PAGE_MAX_HEIGHT,
   PAGE_WIDTH_MAX,
   PAGE_WIDTH_MIN,
   queuedBehind,
@@ -523,10 +522,8 @@ export const makeRecords = Effect.gen(function* () {
         if (found[0] === undefined) return false;
         const item = yield* itemOfRow(found[0]);
         if (item.kind !== "call" || item.result?.page === undefined) return false;
-        const clamp = (value: number, low: number, high: number) =>
-          Math.min(high, Math.max(low, Math.round(value)));
-        const at = clamp(width, PAGE_WIDTH_MIN, PAGE_WIDTH_MAX);
-        const tall = clamp(height, 1, PAGE_MAX_HEIGHT);
+        const at = Math.min(PAGE_WIDTH_MAX, Math.max(PAGE_WIDTH_MIN, Math.round(width)));
+        const tall = Math.max(1, Math.round(height));
         yield* sql`
           INSERT INTO engine_page_height (conversation_id, item_id, width, height, at)
           VALUES (${conversation}, ${itemId}, ${at}, ${tall}, (

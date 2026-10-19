@@ -337,9 +337,9 @@ describe("C: a page the Mate publishes", () => {
           stands: 900,
         },
         {
-          title: "a page taller than 4000 px stands at 4000 and scrolls inside",
+          title: "a page taller than 4000 px stands at its full height too: nothing caps it",
           page: 4400,
-          stands: 4000,
+          stands: 4400,
         },
       ])
         it.effect(shape.title, () =>
@@ -357,35 +357,57 @@ describe("C: a page the Mate publishes", () => {
               last.answer!,
               "ASSERTION: the answer stands under the whole page",
             ).toBeGreaterThanOrEqual(shape.stands);
-            if (shape.page > shape.stands) {
-              const wrapper = s.page
-                .frames()
-                .find((frame) => frame.parentFrame() === s.page.mainFrame());
-              const inner = wrapper?.childFrames()[0];
-              expect(inner, "ASSERTION: the page has its inner scrolling document").toBeDefined();
-              const scroll = yield* Effect.promise(() =>
-                inner!.evaluate(() => {
-                  const root = document.scrollingElement!;
-                  const before = root.scrollTop;
-                  window.scrollTo(0, root.scrollHeight);
-                  return {
-                    before,
-                    after: root.scrollTop,
-                    maximum: root.scrollHeight - root.clientHeight,
-                  };
-                }),
-              );
-              expect(scroll.maximum, "ASSERTION: the page extends below the frame").toBeGreaterThan(
-                0,
-              );
-              expect(scroll.after, "ASSERTION: the page scrolls inside to its bottom").toBe(
-                scroll.maximum,
-              );
-              expect(scroll.after).toBeGreaterThan(scroll.before);
-            }
             yield* s.then.noExternalNetwork;
           }),
         );
+
+      it.effect(
+        "a page its viewport sizes stands a screen tall and scrolls inside, never growing without end",
+        () =>
+          Effect.gen(function* () {
+            const { s, publish } = yield* journey("600vh");
+            const samples = yield* sampled(
+              s,
+              Effect.sync(() => publish()),
+            );
+            const last = samples.at(-1)!;
+            expect(
+              new Set(samples.slice(-20).map((sample) => sample.frame)).size,
+              "ASSERTION: the frame holds still",
+            ).toBe(1);
+            expect(last.frame, "ASSERTION: a screen tall, inside the window").toBeLessThan(1000);
+            expect(last.frame, "ASSERTION: past its first box").toBeGreaterThan(240);
+            expect(
+              last.answer!,
+              "ASSERTION: the answer stands under the frame",
+            ).toBeGreaterThanOrEqual(last.frame);
+            const wrapper = s.page
+              .frames()
+              .find((frame) => frame.parentFrame() === s.page.mainFrame());
+            const inner = wrapper?.childFrames()[0];
+            expect(inner, "ASSERTION: the page has its inner scrolling document").toBeDefined();
+            const scroll = yield* Effect.promise(() =>
+              inner!.evaluate(() => {
+                const root = document.scrollingElement!;
+                const before = root.scrollTop;
+                window.scrollTo(0, root.scrollHeight);
+                return {
+                  before,
+                  after: root.scrollTop,
+                  maximum: root.scrollHeight - root.clientHeight,
+                };
+              }),
+            );
+            expect(scroll.maximum, "ASSERTION: the page extends below the frame").toBeGreaterThan(
+              0,
+            );
+            expect(scroll.after, "ASSERTION: the page scrolls inside to its bottom").toBe(
+              scroll.maximum,
+            );
+            expect(scroll.after).toBeGreaterThan(scroll.before);
+            yield* s.then.noExternalNetwork;
+          }),
+      );
 
       it.effect("the first landing glides to the page's height, never cuts", () =>
         Effect.gen(function* () {

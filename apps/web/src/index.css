@@ -14560,8 +14560,8 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* A page the Mate published, above its answer (`PublishedPage.tsx`): its title and the page in a
-   frame that holds its height from its first paint — the page's remembered height, else the cap
-   every item shares — and scrolls a taller page inside it. */
+   frame that holds its height from its first paint — the page's remembered height, else a first
+   box — then stands at the page's own height, however tall. */
 .published-page {
   display: grid;
   gap: 6px;
@@ -14601,7 +14601,6 @@ button.rv-relrow:hover .rv-relrow-go {
   /* The page is the answer: it stands at its full height on the conversation's own ground, with
      no card around it. Before a client ever measured it, a modest first box it glides from. */
   height: 240px;
-  max-height: 4000px;
   overflow: hidden;
   border-radius: var(--radius-lg);
 }
@@ -14613,7 +14612,6 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 .published-page-frame[data-full] {
   height: min(80svh, 900px);
-  max-height: none;
   transition: none;
 }
 .published-page-frame > iframe {

@@ -906,7 +906,7 @@ describe("a page the Mate publishes", () => {
           return held?.kind === "call" ? held.result?.page?.heights : undefined;
         });
         assert.isUndefined(yield* heightsOf);
-        // The page's own claim, clamped; the same width again is the newer height.
+        // The page's own claim; the same width again is the newer height.
         assert.deepStrictEqual(yield* record(720, 9000), { _tag: "Recorded" });
         assert.deepStrictEqual(yield* record(375, 1400), { _tag: "Recorded" });
         assert.deepStrictEqual(yield* record(720, 1500), { _tag: "Recorded" });

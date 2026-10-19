@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vite-plus/test";
-import { PAGE_MAX_HEIGHT } from "@t3tools/contracts";
 
 import {
   PAGE_POLICY,
@@ -8,10 +7,16 @@ import {
   linkToOpen,
   pageDocument,
   PAGE_FIRST_HEIGHT,
+  PAGE_FIT_START,
+  PAGE_PROBE,
   knownPageHeights,
+  pageFitHeard,
+  pageFitStand,
   pageFrameHeight,
   pageHeightToRecord,
+  pageScreenHeight,
   pageStandHeight,
+  type PageFit,
   readPageMessage,
   type PageTheme,
 } from "./publishedPage.ts";
@@ -111,8 +116,13 @@ describe("what a published page says to the conversation", () => {
   it.each([
     {
       title: "its height",
+      data: { mate: "page", kind: "height", height: 812.4, viewport: 600 },
+      want: { kind: "height", height: 813, viewport: 600 },
+    },
+    {
+      title: "its height, from a page that says no viewport",
       data: { mate: "page", kind: "height", height: 812.4 },
-      want: { kind: "height", height: 813 },
+      want: { kind: "height", height: 813, viewport: null },
     },
     {
       title: "a link to open",
@@ -224,9 +234,9 @@ describe("a published page in a phone's web view", () => {
       reads: false,
     },
   ])("reads a message only when it carries $title", ({ token, reads }) => {
-    const data = JSON.stringify({ mate: "page", kind: "height", height: 120, token });
+    const data = JSON.stringify({ mate: "page", kind: "height", height: 120, viewport: 80, token });
     expect(readPageMessage(data, "null", native.token)).toEqual(
-      reads ? { kind: "height", height: 120 } : null,
+      reads ? { kind: "height", height: 120, viewport: 80 } : null,
     );
   });
 
@@ -238,11 +248,7 @@ describe("a published page in a phone's web view", () => {
 describe("a published page's frame height", () => {
   it.each([
     { title: "once the page says it, its own", content: 212, want: 212 },
-    {
-      title: "a page taller than the cap, the cap: it scrolls inside",
-      content: PAGE_MAX_HEIGHT + 400,
-      want: PAGE_MAX_HEIGHT,
-    },
+    { title: "a page of any height, its own: nothing caps it", content: 12_000, want: 12_000 },
     { title: "an empty page, still a line tall", content: 0, want: 48 },
   ])("is $title", ({ content, want }) => {
     expect(pageFrameHeight(content)).toBe(want);
@@ -272,17 +278,17 @@ describe("where a published page stands before it says its height", () => {
 });
 
 describe("the height a client records for a page", () => {
-  it("is its frame's width and the page's height, clamped, once per width", () => {
+  it("is its frame's width and the page's height, once per width", () => {
     const first = pageHeightToRecord({
       itemId: "c/r/1/i/2",
       heights: [],
       width: 727.6,
       content: 9000,
     });
-    expect(first).toEqual([728, PAGE_MAX_HEIGHT]);
+    expect(first).toEqual([728, 9000]);
     // Known now, in memory: a frame mounted again paints at it, and records nothing again.
     const known = knownPageHeights("c/r/1/i/2", undefined);
-    expect(known).toEqual([[728, PAGE_MAX_HEIGHT]]);
+    expect(known).toEqual([[728, 9000]]);
     expect(
       pageHeightToRecord({ itemId: "c/r/1/i/2", heights: known, width: 728, content: 9000 }),
     ).toBeNull();
@@ -293,4 +299,102 @@ describe("the height a client records for a page", () => {
       pageHeightToRecord({ itemId: "c/r/1/i/3", heights: [], width: 40, content: 300 }),
     ).toBeNull();
   });
+});
+
+/**
+ * A frame holding a page laid out by `layout` (its height at a viewport), as the conversation's
+ * frame runs it: the page says its height at its viewport, the frame hears it and stands again,
+ * until the page says nothing new.
+ */
+const fitted = (input: {
+  readonly layout: (viewport: number) => number;
+  readonly heights?: ReadonlyArray<readonly [number, number]>;
+  readonly screen?: number;
+}) => {
+  const heights = input.heights ?? [];
+  const screen = input.screen ?? 720;
+  let fit: PageFit = PAGE_FIT_START;
+  const stand = () => pageFitStand({ fit, heights, width: 728, screen });
+  const stood = [stand()];
+  for (let said = 0; said < 50; said++) {
+    const viewport = stand() + (fit.asking === null ? 0 : PAGE_PROBE);
+    const next = pageFitHeard(fit, { height: input.layout(viewport), viewport }, stand());
+    if (next === fit) break;
+    fit = next;
+    if (stand() !== stood.at(-1)) stood.push(stand());
+  }
+  return { fit, stood };
+};
+
+describe("how a published page is fitted to its frame", () => {
+  it.each([
+    { title: "a page taller than its frame, however tall", layout: () => 12_000, want: 12_000 },
+    { title: "a page shorter than its frame", layout: () => 150, want: 150 },
+    {
+      title: "a page that fills at least its viewport (min-height: 100vh), its content",
+      layout: (viewport: number) => Math.max(1500, viewport),
+      want: 1500,
+    },
+    {
+      title: "a page a fraction of it sizes (30vh), where that settles",
+      layout: (viewport: number) => Math.round(viewport * 0.3) + 700,
+      want: 1000,
+    },
+  ])("stands at its own height: $title", ({ layout, want }) => {
+    expect(fitted({ layout }).stood.at(-1)).toBe(want);
+  });
+
+  it.each([
+    { title: "slides each a viewport tall (100vh)", layout: (viewport: number) => viewport * 6 },
+    {
+      title: "a viewport-tall opening over its content",
+      layout: (viewport: number) => viewport + 900,
+    },
+  ])(
+    "a page its viewport sizes never grows without end: it stands a screen tall, $title",
+    ({ layout }) => {
+      const { fit, stood } = fitted({ layout, screen: 720 });
+      expect(fit.sizedBy).toBe("viewport");
+      expect(stood).toEqual([PAGE_FIRST_HEIGHT, 720]);
+    },
+  );
+
+  it("asks a page taller than its frame first, without moving: the asking stays hidden past the frame", () => {
+    const asked = pageFitHeard(PAGE_FIT_START, { height: 900, viewport: 240 }, 240);
+    expect(asked.asking).toBe(900);
+    expect(pageFitStand({ fit: asked, heights: [], width: 728, screen: 720 })).toBe(
+      PAGE_FIRST_HEIGHT,
+    );
+    // A height said before the view reached past the frame answers nothing yet.
+    expect(pageFitHeard(asked, { height: 910, viewport: 240 }, 240)).toBe(asked);
+  });
+
+  it("a page its content sizes follows its content straight after, up and down", () => {
+    let fit = fitted({ layout: () => 900 }).fit;
+    expect(fit.sizedBy).toBe("content");
+    fit = pageFitHeard(fit, { height: 1400, viewport: 900 }, 900);
+    expect(fit).toEqual({ content: 1400, sizedBy: "content", asking: null });
+    fit = pageFitHeard(fit, { height: 600, viewport: 1400 }, 1400);
+    expect(fit.content).toBe(600);
+  });
+
+  it("a page measured once stands at its height on a later view without asking", () => {
+    const { stood } = fitted({ layout: () => 900, heights: [[728, 900]] });
+    expect(stood).toEqual([900]);
+  });
+
+  it("a page its viewport sizes, measured once a screen tall, stands there on a later view", () => {
+    const { stood } = fitted({ layout: (viewport) => viewport * 6, heights: [[728, 720]] });
+    expect(stood).toEqual([720]);
+  });
+
+  it.each([
+    { visible: 900, want: 720 },
+    { visible: 200, want: PAGE_FIRST_HEIGHT },
+  ])(
+    "a screen is four fifths of the conversation's view, never less than a first box: $visible",
+    ({ visible, want }) => {
+      expect(pageScreenHeight(visible)).toBe(want);
+    },
+  );
 });
