@@ -47,6 +47,8 @@ export interface Rooms {
   readonly easeFrom: (element: HTMLElement, height: number) => void;
   /** Whether a box eases this moment. */
   readonly easing: () => boolean;
+  /** Every box takes its own height now; what changes after eases again. */
+  readonly settle: () => void;
   /** Stops easing: every box takes its own height. */
   readonly stop: () => void;
 }
@@ -160,6 +162,7 @@ const STILL: Rooms = {
   easeFrom: () => undefined,
   flush: () => undefined,
   easing: () => false,
+  settle: () => undefined,
   stop: () => undefined,
 };
 
@@ -475,6 +478,9 @@ export function easeRooms({
     flush: () => {
       const records = changes.takeRecords();
       if (records.length > 0) hear(records);
+    },
+    settle: () => {
+      for (const box of boxes.values()) if (box.shown !== null) release(box);
     },
     stop: () => {
       root.removeAttribute(ROOM_ROOT);

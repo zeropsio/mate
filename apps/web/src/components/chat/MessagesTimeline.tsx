@@ -286,6 +286,15 @@ const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home
 function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+/** How far a held head goes up for the view to stand at the conversation's end, `room` aside. */
+function headUnderEnd(
+  landing: { readonly element: HTMLElement; readonly at: number },
+  scroller: HTMLElement,
+  room: number,
+): number {
+  const end = scroller.scrollHeight - room - scroller.clientHeight;
+  return landing.at - (landing.element.getBoundingClientRect().top - (end - scroller.scrollTop));
+}
 /** How long after a person's click what they opened is brought into view, while it eases open. */
 const REVEAL_FOR_MS = 700;
 /**
@@ -935,7 +944,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const landingRef = useRef<{
     readonly element: HTMLElement;
     readonly edge: "top" | "bottom";
-    readonly at: number;
+    /** Where it holds its edge; a held head comes down with the work folding under it. */
+    at: number;
     readonly since: number;
     frame: number;
     /** A held head whose answer comes apart from its slot: the view may travel to that answer. */
@@ -944,6 +954,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     glide?: number | undefined;
     /** The held head's row as the last frame drew it, and how many frames it has stood so. */
     card?: { readonly height: number; readonly still: number };
+    /** Words landed under a held head where they were read, and how much of their way is left. */
+    words?: { readonly travel: Animation; left: number };
   } | null>(null);
   // A fold or a landing holds the view where it stands: the follower waits for it.
   const followEnd = useCallback((grew = 0, own?: OwnScroll) => {
@@ -963,17 +975,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const stands = landing.element.getBoundingClientRect()[landing.edge];
     let at = landing.at;
     if (landing.glides === true) {
-      const end = scroller.scrollHeight - askRoomRef.current - scroller.clientHeight;
       // How far the end stands under the view. The view sets off once the head's card stands at
       // its new height, its work folded: scrolled as they shed it, the list drew the rows under
-      // them a frame late (the usage limit's notice 47 px off the card's foot).
-      const under = landing.at - (stands - (end - scroller.scrollTop));
-      if (under <= 2) landing.glide = undefined;
-      else if (
-        landing.glide === undefined &&
-        (landing.card?.still ?? 0) >= CARD_STILL_FRAMES &&
-        outerFoldsRef.current.size === 0
-      )
+      // them a frame late (the usage limit's notice 47 px off the card's foot). Its work folding,
+      // the fold takes it there (`carried`).
+      const under = headUnderEnd(landing, scroller, askRoomRef.current);
+      if (under <= 2 || foldExecutionsRef.current.size > 0) landing.glide = undefined;
+      else if (landing.glide === undefined && (landing.card?.still ?? 0) >= CARD_STILL_FRAMES)
         landing.glide = performance.now();
       if (landing.glide !== undefined) {
         // Eased in from rest, as the card's own ease came to rest: one travel, never a kick.
@@ -999,6 +1007,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (!scroller || !followingEndRef.current) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
+      held?.words?.travel.finish();
       endFollowRef.current?.stop();
       const landing: NonNullable<typeof landingRef.current> = {
         ...target,
@@ -1039,6 +1048,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return;
         }
         landingRef.current = null;
+        landing.words?.travel.finish();
         list.removeAttribute("data-timeline-holds-head");
         // The room goes once nothing moves what it held, and the view glides out of it on the
         // follow curve (`useAskRoom`) to the conversation's true end. Kept until something came
@@ -1113,11 +1123,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             words.getBoundingClientRect().bottom -
             (holding.element.getBoundingClientRect().top - holding.at) -
             stood.bottom;
-          if (Math.abs(off) > 2)
-            row.animate([{ translate: `0 ${-off}px` }, { translate: "0 0" }], {
-              duration: WORDS_LAND_MS,
-              easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-            });
+          if (Math.abs(off) <= 2) return;
+          // Its work folding under the head, they go there on the fold's curve (`carried`): on
+          // their own, they went 7 px up as the fold took them 10 px down to the conversation's
+          // end (the owner's 29-step close, 2026-10-19).
+          const rides =
+            landingRef.current === holding &&
+            holding.element.parentElement?.querySelector(":scope > [data-folding]") != null;
+          const travel = row.animate([{ translate: `0 ${-off}px` }, { translate: "0 0" }], {
+            duration: WORDS_LAND_MS,
+            easing: rides ? "linear" : "cubic-bezier(0.23, 1, 0.32, 1)",
+          });
+          if (!rides) return;
+          travel.pause();
+          holding.words = { travel, left: 1 };
         });
         return;
       }
@@ -1173,6 +1192,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         foldExecutionsRef.current.delete(execution);
         followEnd();
       };
+      const share = { from: input.from, taken: 0, under: 0 };
+      // The held head over the work that folds: its card's own.
+      const heldOver = () => {
+        const landing = landingRef.current;
+        return landing?.edge === "top" && landing.element.parentElement?.contains(input.above)
+          ? landing
+          : null;
+      };
       const execution = foldTimelineWork({
         ...input,
         viewport: () => listRef.current?.getScrollableNode() ?? null,
@@ -1192,28 +1219,52 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             },
           );
         },
-        // What the settle brought is still arriving; or a head is held, then the view eases out of
-        // the room under the end: folded under the held head, the work carried the words read at
-        // the slot's foot up with it, and the view's way out of the room brought them back down
-        // (a crash-cut run, 298 px). Waited out, it folds with the view at the end: the history
-        // above comes down, the words stay where they were read.
+        // What the settle brought is still arriving, or the view eases out of the room under the end.
         waits: () =>
           arrivingRef.current ||
           (landingRef.current === null
             ? followRoomRef.current > 0
-            : landingRef.current.edge === "top"),
-        // Under a held head past its wait, the fold takes room under the end, never the view's place.
+            : landingRef.current.edge === "top" && heldOver() === null),
+        // Under a held head past its wait, the fold takes room under the end, never the view's place;
+        // its own head comes down with it instead (`carried`).
         follows: () => followingEndRef.current && landingRef.current?.edge !== "top",
+        // A held head comes down as its work folds under it, from the fold's first frame: the
+        // history above comes down, the words under it stay where they were read. Folded under a
+        // still head, the work carried those words up and the view's way out of the room brought
+        // them back down (a crash-cut run, 298 px); waiting for the hold to end paused the close.
+        // Its way to the conversation's end, read once as the fold starts — the list draws a
+        // fold's frame's end a frame late — goes along on the fold's curve, never after it: the
+        // view went up to the answer, then the fold brought it all back down (the owner's
+        // 29-step close, 2026-10-19: 232 px up, 461 px down; streamed, 250 ms still).
+        carried: (taken) => {
+          const left = share.from - share.taken;
+          share.taken += taken;
+          const landing = heldOver();
+          if (landing === null) return;
+          const part = left > 0 ? Math.min(1, taken / left) : 1;
+          const way = share.under * part;
+          share.under -= way;
+          landing.at += taken - way;
+          if (landing.words !== undefined) {
+            landing.words.left *= 1 - part;
+            landing.words.travel.currentTime = (1 - landing.words.left) * WORDS_LAND_MS;
+          }
+          holdAnswer();
+        },
         start: () => {
           outerFoldsRef.current.add(release);
           endFollowRef.current?.stop();
+          const landing = heldOver();
+          const scroller = listRef.current?.getScrollableNode();
+          if (landing !== null && scroller)
+            share.under = headUnderEnd(landing, scroller, askRoomRef.current);
         },
         release,
       });
       foldExecutionsRef.current.add(execution);
       return execution.cancel;
     },
-    [followEnd, listRef],
+    [followEnd, holdAnswer, listRef],
   );
   const placeFolds = useCallback(() => {
     for (const execution of foldExecutionsRef.current) execution.place();

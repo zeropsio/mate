@@ -15,6 +15,7 @@ export function foldTimelineWork({
   rows,
   waits,
   follows,
+  carried,
   start,
   release,
 }: Omit<Parameters<typeof foldWork>[0], "outer"> & {
@@ -27,6 +28,8 @@ export function foldTimelineWork({
   /** Something else places the rows or the view now: the fold starts once it is done. */
   readonly waits: () => boolean;
   readonly follows: () => boolean;
+  /** What the fold took this frame, drawn: what holds the view in place, if not `follows`, moves with it. */
+  readonly carried: (taken: number) => void;
   readonly start: () => void;
   readonly release: () => void;
 }): { readonly cancel: () => void; readonly dispose: () => void; readonly place: () => void } {
@@ -112,6 +115,7 @@ export function foldTimelineWork({
         const top = scroller?.scrollTop ?? 0;
         shrink();
         if (scroller !== null && follows()) scrollOwn(scroller, top - taken);
+        carried(taken);
         hold();
       },
       finish: () => {
