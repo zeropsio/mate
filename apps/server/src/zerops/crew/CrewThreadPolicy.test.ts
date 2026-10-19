@@ -64,6 +64,7 @@ const backend: CrewThreadMember = {
   maxBudgetUsd: 4,
   model: "claude-opus-5-5",
   effort: "high",
+  projectRoot: "/var/www",
 };
 
 /** The directory the engine would provide, backed by a map the test changes between calls. */
@@ -237,6 +238,30 @@ describe("CrewThreadPolicy", () => {
             expect(decision.kind).toBe("deny");
           }
         }),
+      );
+    },
+  );
+
+  it.effect(
+    "a writer's profile names the project its lane sits below; a reader, who runs in the project, names none",
+    () => {
+      const { projectRoot: _, ...reader } = {
+        ...backend,
+        handle: "reader",
+        kind: "reader",
+        gate: { ...gate, member: { handle: "reader", kind: "reader", env: {} } },
+      } satisfies CrewThreadMember;
+      const READER_THREAD = ThreadId.make("reader-thread");
+      return withPolicy(
+        new Map([
+          [CREW_THREAD, backend],
+          [READER_THREAD, reader],
+        ]),
+        () =>
+          Effect.gen(function* () {
+            expect((yield* setupFor(CREW_THREAD))?.profile.projectRoot).toBe("/var/www");
+            expect((yield* setupFor(READER_THREAD))?.profile.projectRoot).toBeUndefined();
+          }),
       );
     },
   );

@@ -215,6 +215,10 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
         ...(budget === null ? {} : { maxBudgetUsd: budget }),
         ...(member.model === null ? {} : { model: member.model }),
         ...(member.effort === null ? {} : { effort: member.effort }),
+        // A shaped writer works in its lane; readers and the lead work in the tree itself.
+        ...(shaped !== undefined && member.kind === "writer"
+          ? { projectRoot: inputs.workspaceRoot }
+          : {}),
       });
     });
 

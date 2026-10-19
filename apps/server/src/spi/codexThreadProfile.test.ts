@@ -1,4 +1,9 @@
-import { assert, describe, it } from "@effect/vitest";
+// @effect-diagnostics nodeBuiltinImport:off - the project AGENTS.md fixture is a real file on disk.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import { afterAll, assert, describe, it } from "@effect/vitest";
 import { type ModelSelection, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -472,6 +477,45 @@ describe("a Codex session start asks the installed policy", () => {
       const started = yield* codexThreadStart(Option.some(slot), THREAD, SELECTION);
       assert.strictEqual(started.setup?.thread.developerInstructions, PROFILE.sessionContext);
       assert.deepStrictEqual(started.modelSelection, { ...SELECTION, model: "gpt-5.6-luna" });
+    }).pipe(Effect.scoped),
+  );
+
+  // Codex reads AGENTS.md only from the git root down to the cwd, so from a
+  // crew writer's lane (its own git repository below the project) it reads
+  // none of the project's; at the project root it reads it itself.
+  const project = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codex-project-"));
+  NodeFS.writeFileSync(NodePath.join(project, "AGENTS.md"), "# Project\n\nDeploy with zcp.\n");
+  const noGuidance = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codex-bare-"));
+  afterAll(() => {
+    NodeFS.rmSync(project, { recursive: true, force: true });
+    NodeFS.rmSync(noGuidance, { recursive: true, force: true });
+  });
+
+  it.effect.each([
+    {
+      title: "a crew lane's session gets the project's AGENTS.md once, before the crew's context",
+      projectRoot: project,
+      expected: `# AGENTS.md instructions for ${project}\n\n<INSTRUCTIONS>\n# Project\n\nDeploy with zcp.\n\n</INSTRUCTIONS>\n\n${PROFILE.sessionContext}`,
+    },
+    {
+      title: "a session at the project root gets nothing added: Codex already reads it there",
+      projectRoot: undefined,
+      expected: PROFILE.sessionContext,
+    },
+    {
+      title: "a project without an AGENTS.md adds nothing",
+      projectRoot: noGuidance,
+      expected: PROFILE.sessionContext,
+    },
+  ])("$title", ({ projectRoot, expected }) =>
+    Effect.gen(function* () {
+      const slot = yield* makeInstallSlot<ThreadToolPolicy>();
+      yield* slot.install({
+        profileFor: () =>
+          Effect.succeed({ ...PROFILE, ...(projectRoot === undefined ? {} : { projectRoot }) }),
+      });
+      const started = yield* codexThreadStart(Option.some(slot), THREAD, SELECTION);
+      assert.strictEqual(started.setup?.thread.developerInstructions, expected);
     }).pipe(Effect.scoped),
   );
 });
