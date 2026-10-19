@@ -140,6 +140,7 @@ export function OverviewCardMate({
     pose,
     restarting: watch.restarting,
     watched: watch.watched,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const read = mateRowReading({
@@ -153,6 +154,7 @@ export function OverviewCardMate({
     mine,
     pose,
     updating: watch.updating,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   // Going, or still coming up, as its row says it: no time, and its own line.
   const view = deleting
@@ -248,6 +250,7 @@ export function OverviewCardMate({
             ...(inReview > 1 ? { count: inReview } : {}),
           },
     automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
+    nowMs,
   });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const said: CardMateReading =

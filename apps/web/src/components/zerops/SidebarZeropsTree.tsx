@@ -1912,6 +1912,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         reviewWaits: reviewWaits(item),
         mine: waitsOnViewer(item.project.id),
         pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+        free: mateAutomation(item.project.hq?.mate)?.task === null,
       });
       const comingNow = getComing?.(item);
       const view = comingNow === undefined ? read : mateComingRowView(read, comingNow);
@@ -3360,6 +3361,7 @@ function useMateRowState<T extends RosterCandidate>({
     mine: hqPeople?.waitsOnViewer === true,
     pose,
     updating: watch.updating,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -3436,6 +3438,7 @@ function useMateRowState<T extends RosterCandidate>({
     pose,
     restarting: watch.restarting,
     watched: watch.watched,
+    free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
   const { known } = face;
   // What the person is about to send it, waiting in its composer: the row's second line says it,
@@ -3495,6 +3498,7 @@ function useMateRowState<T extends RosterCandidate>({
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
     automated: mateAutomation(candidate.project.hq?.mate, automatedKey, inReview),
+    nowMs,
   });
   const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // A new ask rises into the row's second line as the person sets it; the

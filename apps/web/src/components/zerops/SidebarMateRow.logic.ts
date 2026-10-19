@@ -8,7 +8,7 @@ import {
 } from "../../zerops/lastKnownMate.logic";
 import { pullRequestName, type AutomatedKeyState } from "../../zerops/automatedMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
-import { TASK_STATUS_WORDS, type TaskStatus } from "../../zerops/taskStatus";
+import { TASK_STATUS_WORDS, endedWords, type TaskStatus } from "../../zerops/taskStatus";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
@@ -28,7 +28,7 @@ import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
-import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceOf, restingWhenFree, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
@@ -618,7 +618,17 @@ export function mateRowReading(input: {
   readonly pose?: MatePoseFacts | undefined;
   /** Its update is restarting it, as its link says (`mateUpdating`). */
   readonly updating?: boolean | undefined;
+  /**
+   * An automated Mate free for its next task (`mateAutomation`): its face rests (`restingWhenFree`)
+   * while its state — a dot, a result unseen — stays what its conversation says.
+   */
+  readonly free?: boolean | undefined;
 }): MateRowView {
+  const read = mateRowReadingOf(input);
+  return input.free === true ? { ...read, face: restingWhenFree(read.face) } : read;
+}
+
+function mateRowReadingOf(input: Parameters<typeof mateRowReading>[0]): MateRowView {
   // Its update restarting it: its row says so, from the moment its link says it until it answers
   // again — never its last words held as if nothing happened, nor that it isn't answering.
   if (input.updating === true) {
@@ -1024,8 +1034,39 @@ export function mateTaskLine(task: {
 /** A task's state after its title, in the words every surface says it in (`taskStatus`). */
 const statusWords = (status: TaskStatus): string => TASK_STATUS_WORDS[status].toLowerCase();
 
-const WAITING_FOR_A_TASK = "Waiting for a task";
+const NO_TASKS_YET = "No tasks yet";
 const WAITING_FOR_A_KEY = "Waiting for an API key";
+
+/** Why HQ stopped a task, after "stopped:" (`HqNavigationMateTask.why`). */
+const STOPPED_WHY: Readonly<Record<NonNullable<MateLastTask["why"]>, string>> = {
+  budget: "budget spent",
+  unanswered: "no answer",
+};
+
+/** An automated Mate's most recent task, once it ended (`HqNavigationMateTask.ended`). */
+export interface MateLastTask {
+  readonly number?: number | undefined;
+  readonly title: string;
+  readonly ended: "merged" | "closed" | "done" | "failed" | "stopped";
+  readonly endedAt?: string | undefined;
+  readonly why?: "budget" | "unanswered" | undefined;
+}
+
+/**
+ * A free automated Mate's line: its last task and how it ended — "Prices per 100 g · merged 3h
+ * ago", "… · stopped: budget spent · 2m ago" — the time where `nowMs` and its end are known.
+ */
+export function lastTaskLine(last: MateLastTask, nowMs: number | undefined): string {
+  const ended = statusWords(last.ended);
+  const why = last.why === undefined ? undefined : STOPPED_WHY[last.why];
+  const ago =
+    nowMs === undefined || last.endedAt === undefined ? null : endedWords(last.endedAt, nowMs);
+  const how =
+    why === undefined
+      ? [ago === null ? ended : `${ended} ${ago}`]
+      : [`${ended}: ${why}`, ...(ago === null ? [] : [ago])];
+  return [mateTaskLine(last), ...how].join(" · ");
+}
 
 /** The pull request a task's change is mirrored to, as a line names it (`HqPullRequest`). */
 export interface MateTaskPullRequest {
@@ -1069,6 +1110,8 @@ export interface MateAutomationLine {
     readonly done?: true | undefined;
     readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
+  /** Free (`task` null), the task it had last, once it ended; absent: it never had one. */
+  readonly last?: MateLastTask | undefined;
   /**
    * Whether its organization holds the API key it runs on (`automatedKeyState`): HQ hands no task
    * while it holds none. Absent, or not read: nothing is said of it.
@@ -1105,27 +1148,38 @@ export function changeLineWords(
  * on a task it asked a person about, that it waits for them — in ink, the question is theirs to
  * answer where the task came from; at rest on a task whose change is open (HQ's row reads it until
  * the change is merged or closed, while the Mate takes other tasks), that task waiting for review —
- * or, where several of its changes wait, how many; at rest with none, that it waits for one — or
- * for the organization's API key, where it holds none. A task whose change is a pull request on
+ * or, where several of its changes wait, how many; free, that it waits for the organization's API
+ * key where it holds none, else its last task and how it ended (`lastTaskLine`), else that it never
+ * had one. A task whose change is a pull request on
  * GitHub names the pull request (`pullRequestWords`): failing checks in ink, since they are its
  * Mate's to fix.
  */
 export function mateAutomatedLine(
   automated: MateAutomationLine,
   state: MateRowState,
-  /**
-   * A row's: at work on a task it says so after the task — "#12 Fix the checkout total · working"
-   * — the time it has worked standing in the row's clock.
-   */
-  options: { readonly saysWorking?: boolean } = {},
+  options: {
+    /**
+     * A row's: at work on a task it says so after the task — "#12 Fix the checkout total ·
+     * working" — the time it has worked standing in the row's clock.
+     */
+    readonly saysWorking?: boolean;
+    /** Now, for how long ago its last task ended; absent, the line says no time. */
+    readonly nowMs?: number | undefined;
+  } = {},
 ): Extract<MateRowSecond, { kind: "task" }> {
   const { task } = automated;
-  if (task === null)
-    return {
-      kind: "task",
-      text: automated.key === "missing" ? WAITING_FOR_A_KEY : WAITING_FOR_A_TASK,
-      on: false,
-    };
+  if (task === null) {
+    const inReview = automated.inReview ?? 0;
+    const text =
+      inReview > 1
+        ? changesInReview(inReview)
+        : automated.key === "missing"
+          ? WAITING_FOR_A_KEY
+          : automated.last === undefined
+            ? NO_TASKS_YET
+            : lastTaskLine(automated.last, options.nowMs);
+    return { kind: "task", text, on: false };
+  }
   const working = state === "working";
   // A task its Mate finished says its pull request at rest, whatever the Mate does meanwhile.
   const pullRequest = pullRequestWords(task.pullRequest, working && task.done !== true);
@@ -1179,7 +1233,9 @@ export function mateAutomation(
               readonly stopping?: true | undefined;
               readonly done?: true | undefined;
               readonly pullRequest?: MateTaskPullRequest | undefined;
-              readonly ended?: string | undefined;
+              readonly ended?: MateLastTask["ended"] | undefined;
+              readonly endedAt?: string | undefined;
+              readonly why?: MateLastTask["why"] | undefined;
             }
           | null
           | undefined;
@@ -1194,6 +1250,7 @@ export function mateAutomation(
   if (mate?.automated !== true) return undefined;
   // A task that ended is HQ's record of the Mate's last one: the Mate is free for the next.
   const task = mate.task?.ended === undefined ? (mate.task ?? null) : null;
+  const ended = mate.task?.ended === undefined ? undefined : mate.task;
   return {
     task:
       task === null
@@ -1216,6 +1273,17 @@ export function mateAutomation(
                   },
                 }),
           },
+    ...(ended?.ended === undefined
+      ? {}
+      : {
+          last: {
+            ...(ended.number === undefined ? {} : { number: ended.number }),
+            title: ended.title,
+            ended: ended.ended,
+            ...(ended.endedAt === undefined ? {} : { endedAt: ended.endedAt }),
+            ...(ended.why === undefined ? {} : { why: ended.why }),
+          },
+        }),
     ...(key === undefined ? {} : { key }),
     ...(inReview === undefined || inReview < 2 ? {} : { inReview }),
   };
@@ -1247,11 +1315,13 @@ export function mateRowSecond(input: {
    * never takes. Absent: an ordinary Mate.
    */
   readonly automated?: MateAutomationLine | undefined;
+  /** Now, for how long ago a free automated Mate's last task ended (`lastTaskLine`). */
+  readonly nowMs?: number | undefined;
 }): MateRowSecond {
   const { view, askLine, change, automated } = input;
   // A row says an automated Mate at work works, its clock how long.
   const automatedRowLine = (line: MateAutomationLine, state: MateRowState) =>
-    mateAutomatedLine(line, state, { saysWorking: true });
+    mateAutomatedLine(line, state, { saysWorking: true, nowMs: input.nowMs });
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
   if (input.finishing) return { kind: "finishing" };

@@ -17,7 +17,7 @@ describe("B: automated Mates in the menu", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // The owner's cardinal sin: a task starting or ending must move nothing in the menu.
     it.effect(
-      "an automated Mate's row names its task as it starts and says it waits as it ends, and nothing in the menu moves",
+      "an automated Mate's row names its task as it starts and how it ended once it ends, and nothing in the menu moves",
       () =>
         Effect.gen(function* () {
           const wire = automatedMatesWire(["Nova"]);
@@ -25,7 +25,7 @@ describe("B: automated Mates in the menu", () => {
           const s = yield* menuScenario([wire.install]);
           yield* s.given.project("Nova", { mate: true, app: "Tea Shop" });
           yield* s.given.project("Ida", { mate: true, app: "Tea Shop" });
-          // The organization keeps its API key: at rest, its automated Mate waits for a task.
+          // The organization keeps its API key: at rest, an automated Mate that never had a task says so.
           const kept = yield* s.drivers.core.call("PUT", "/api/org/ai-keys/nebius", {
             session: s.drivers.owner,
             body: { value: ["nb", "key", "acme", "42"].join("-") },
@@ -37,7 +37,7 @@ describe("B: automated Mates in the menu", () => {
             await resizeMenu(s.page, 435);
           });
           yield* s.menu.grouped("Nova", "Tea Shop");
-          yield* s.menu.text("Nova", "Waiting for a task", "sidebar-mate-task");
+          yield* s.menu.text("Nova", "No tasks yet", "sidebar-mate-task");
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () =>
@@ -85,10 +85,13 @@ describe("B: automated Mates in the menu", () => {
             yield* rows(),
             "ASSERTION: a task starting to wait for a person moves no row of the menu",
           ).toEqual(idle);
-          // The task ends: it waits for its next.
-          wire.set({ task: null, waiting: 2 });
+          // The task ends: its row keeps it, saying how it ended, while it waits for its next.
+          wire.set({
+            task: { number: 12, title: "Fix the checkout total", ended: "merged" },
+            waiting: 2,
+          });
           yield* face("sky:seal");
-          yield* s.menu.text("Nova", "Waiting for a task", "sidebar-mate-task");
+          yield* s.menu.text("Nova", "#12 Fix the checkout total · merged", "sidebar-mate-task");
           expect(yield* rows(), "ASSERTION: a task ending moves no row of the menu").toEqual(idle);
           // Nobody is asked to sign an automated Mate in.
           expect(
