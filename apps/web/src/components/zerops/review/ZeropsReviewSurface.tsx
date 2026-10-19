@@ -754,7 +754,6 @@ export function ReviewReleaseRows({
       {rows.map((row) => {
         // Every change on the stage is the line's to say; a row says only what stands out.
         const mark = row.stage === "on-stage" ? undefined : STAGE_WORDS[row.stage];
-        const numbered = /^(#\d+) (.*)$/su.exec(row.title);
         const cells = (
           <>
             {row.face === undefined ? (
@@ -768,15 +767,7 @@ export function ReviewReleaseRows({
                 tint={row.face.tint}
               />
             )}
-            <span className="rv-relrow-t">
-              {numbered === null ? (
-                row.title
-              ) : (
-                <>
-                  <span className="rv-relrow-n">{numbered[1]}</span> {numbered[2]}
-                </>
-              )}
-            </span>
+            <span className="rv-relrow-t">{row.title}</span>
             {mark === undefined ? (
               <span className="rv-relrow-sub">{row.sub}</span>
             ) : (

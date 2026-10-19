@@ -401,7 +401,7 @@ export type ReleaseStageMark = "on-stage" | "deploying-on-stage" | "failed-on-st
 
 export interface ReleaseChangeRow {
   readonly key: string;
-  /** `#54 Performance tuning…` — the change it landed as, or the commit's own words. */
+  /** The change's title, or the commit's own words: never HQ's number for the change. */
   readonly title: string;
   /** The change it landed as, whose review the row opens; none for a commit nobody reviewed. */
   readonly change: { readonly repository: string; readonly number: number } | undefined;
@@ -414,26 +414,27 @@ export interface ReleaseChangeRow {
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What HQ compared, one row per change: a commit is the change HQ says it landed — in the
- * repository it was compared in, since numbers are per repository — whose Mate wrote it and when;
- * a commit nobody reviewed is its own words. One commit several services take is one row.
+ * What HQ compared, one row per change: a commit is the change HQ says it is — in the repository
+ * it was compared in, since numbers are per repository — whose Mate wrote it and when, as its
+ * newest commit says; a merge on GitHub and the commits it brought in are all that change, one row.
+ * A commit nobody reviewed is its own words. One commit several services take is one row.
  */
 export function releaseChangeRows(input: {
   readonly moved: ReadonlyArray<Moved>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
   const rows = new Map<string, ReleaseChangeRow>();
+  const seen = new Set<string>();
   for (const { repository, commits } of input.moved) {
     for (const commit of commits) {
       const key = commit.sha.toLowerCase();
-      if (rows.has(key)) continue;
       const { change } = commit;
-      rows.set(key, {
+      const entry = change === null ? key : `${repository}#${String(change.number)}`;
+      if (seen.has(key) || rows.has(entry)) continue;
+      seen.add(key);
+      rows.set(entry, {
         key,
-        title:
-          change === null
-            ? commit.subject
-            : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
+        title: change === null ? commit.subject : change.title.replace(LANDED_AS, ""),
         change: change === null ? undefined : { repository, number: change.number },
         mateProjectId: change?.mateProjectId,
         mergedAt: change === null ? undefined : commit.at,

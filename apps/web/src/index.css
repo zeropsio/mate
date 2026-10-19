@@ -12453,10 +12453,6 @@ a.message-file:focus-visible {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.rv-relrow-n {
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
 .rv-relrow-sub {
   display: block;
   overflow: hidden;

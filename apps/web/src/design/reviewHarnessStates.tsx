@@ -523,7 +523,7 @@ const PREVIEWS = [
 const RELEASE_ROWS = [
   {
     key: "a1",
-    title: "#54 Performance tuning across the storefront and backend",
+    title: "Performance tuning across the storefront and backend",
     change: { repository: "appdev", number: 54 },
     mateProjectId: "p-juno",
     mergedAt: minutesAgo(60 * 26),
@@ -533,7 +533,7 @@ const RELEASE_ROWS = [
   },
   {
     key: "b2",
-    title: "#55 Clearer copy on the admin sign-in",
+    title: "Clearer copy on the admin sign-in",
     change: { repository: "appdev", number: 55 },
     mateProjectId: "p-cleo",
     mergedAt: minutesAgo(90),

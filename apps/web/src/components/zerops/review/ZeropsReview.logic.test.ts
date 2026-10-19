@@ -400,6 +400,12 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       readonly mateProjectId: string;
     } | null,
   ) => ({ sha, subject, authorName: "Juno", at: "2026-09-28T09:00:00Z", change });
+  const RAYA = {
+    number: 13,
+    title: "Hide sold out switch remembered across visits",
+    mateProjectId: "p-raya",
+  };
+  const MIRA = { number: 14, title: "Centre the shop", mateProjectId: "p-mira" };
   const moved = (repository: string, commits: ReadonlyArray<ReturnType<typeof commit>>) => ({
     repository,
     services: ["app"],
@@ -435,7 +441,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
     expect(rows).toEqual([
       {
         key: "aaa111",
-        title: "#54 Performance tuning across the storefront",
+        title: "Performance tuning across the storefront",
         change: { repository: "appdev", number: 54 },
         mateProjectId: "p-juno",
         mergedAt: "2026-09-28T09:00:00Z",
@@ -443,7 +449,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       },
       {
         key: "bbb222",
-        title: "#55 Clearer copy on the admin sign-in",
+        title: "Clearer copy on the admin sign-in",
         change: { repository: "appdev", number: 55 },
         mateProjectId: "p-cleo",
         mergedAt: "2026-09-28T09:00:00Z",
@@ -458,6 +464,49 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         stage: "none",
       },
     ]);
+  });
+
+  // GitHub's merge commit and the change's own commits it brought in are all the change's (HQ's
+  // comparison says so); a squash, on GitHub or in Mate, is one commit.
+  it.each([
+    [
+      "a change merged on GitHub with a merge commit goes out once in its release",
+      [
+        commit("m16", "Hide sold out switch remembered across visits (#16)", RAYA),
+        commit("b2", "Remember the switch", RAYA),
+        commit("b1", "Add the switch", RAYA),
+      ],
+    ],
+    [
+      "a change squashed on GitHub goes out once in its release",
+      [commit("s16", "Hide sold out switch remembered across visits (#16)", RAYA)],
+    ],
+    [
+      "a change merged in Mate goes out once in its release",
+      [commit("s13", "Hide sold out switch remembered across visits (#13)", RAYA)],
+    ],
+  ])("%s", (_, commits) => {
+    const rows = releaseChangeRows({
+      moved: [moved("appdev", [commit("c17", "Centre the shop", MIRA), ...commits])],
+      marks: new Map(),
+    });
+    expect(rows.map(({ key, title, change }) => [key, title, change?.number])).toEqual([
+      ["c17", "Centre the shop", 14],
+      [commits[0]!.sha, "Hide sold out switch remembered across visits", 13],
+    ]);
+  });
+
+  it("a release's entries name each change by its title, never HQ's number", () => {
+    const rows = releaseChangeRows({
+      moved: [
+        moved("appdev", [
+          commit("c17", "Centre the shop (#17)", { ...MIRA, title: "Centre the shop (#14)" }),
+          commit("d1", "A person's fix (#3)", null),
+        ]),
+      ],
+      marks: new Map(),
+    });
+    expect(rows.map(({ title }) => title)).toEqual(["Centre the shop", "A person's fix (#3)"]);
   });
 
   it("opens a change in the repository it was compared in: numbers are per repository", () => {
