@@ -13,6 +13,7 @@ import {
   type OrchestrationProject,
   type OrchestrationThreadShell,
   type ServerProvider,
+  type ZeropsAgentAuth,
   ConversationId,
   DEFAULT_MODEL_BY_PROVIDER,
   runId,
@@ -140,6 +141,39 @@ const NOBODY_ASKED = linked(null);
 /** The asker signed Claude in here. */
 const SIGNED: ProjectSigners = { "claude-code": "user-a" };
 
+/** An agent as the agent-auth feed says it: nobody signed in, unless said otherwise. */
+const agentAuth = (
+  agentId: ZeropsAgentAuth["agentId"],
+  overrides: Partial<ZeropsAgentAuth> = {},
+): ZeropsAgentAuth => ({
+  agentId,
+  credPresent: false,
+  flagOAuth: false,
+  flagToken: false,
+  providerAuth: "unknown",
+  state: "not-authorized",
+  ...overrides,
+});
+/** Claude Code signed in through a sign-in on this Mate, whoever's it is (`signers`). */
+const CLAUDE_LOGGED_IN = [
+  agentAuth("claude-code", {
+    credPresent: true,
+    flagOAuth: true,
+    providerAuth: "authenticated",
+    state: "authorized",
+  }),
+  agentAuth("codex"),
+];
+/** Claude Code runs on a token from the env store (`CLAUDE_CODE_OAUTH_TOKEN`): nobody signed it in. */
+const CLAUDE_ENV_TOKEN = [
+  agentAuth("claude-code", {
+    flagToken: true,
+    providerAuth: "authenticated",
+    state: "authorized-token",
+  }),
+  agentAuth("codex"),
+];
+
 interface World {
   /** Where the Mate stands with its HQ. */
   readonly hq: Ref.Ref<HqStanding>;
@@ -147,6 +181,8 @@ interface World {
   readonly automatedModel: Ref.Ref<string>;
   /** Who this server saw sign each login in. */
   readonly signers: Ref.Ref<ProjectSigners>;
+  /** The agents as the agent-auth feed says them. */
+  readonly agents: Ref.Ref<ReadonlyArray<ZeropsAgentAuth>>;
   readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
   readonly variables: Ref.Ref<ReadonlyArray<string>>;
   /** How many times where it stands with HQ was read. */
@@ -190,6 +226,7 @@ const makeWorld = Effect.gen(function* () {
     automatedModel: yield* Ref.make("nebius/zai-org/GLM-5.3"),
     providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
     signers: yield* Ref.make<ProjectSigners>({}),
+    agents: yield* Ref.make<ReadonlyArray<ZeropsAgentAuth>>(CLAUDE_LOGGED_IN),
     // Made by the new press: it always sets the runtimes plan, even an empty one.
     variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
     hqReads: yield* Ref.make(0),
@@ -227,6 +264,7 @@ const fakes = (world: World) =>
     Layer.succeed(ZeropsSetupReads, {
       hq: Ref.update(world.hqReads, (count) => count + 1).pipe(Effect.andThen(Ref.get(world.hq))),
       signers: Ref.get(world.signers),
+      agents: Ref.get(world.agents),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
       processGone: (zcp) =>
@@ -481,6 +519,32 @@ describe("ZeropsSetup: the stand-up", () => {
             kind: "standup",
             startedBy: "user-a",
           });
+        }),
+      );
+    }),
+  );
+
+  it.live("starts once the agent is signed in through the env store", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.agents, [agentAuth("claude-code"), agentAuth("codex")]);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.deepStrictEqual(yield* turnsOf(world), []);
+          // `CLAUDE_CODE_OAUTH_TOKEN` and `ZCP_AGENT_TOKEN_CLAUDE_CODE` in the env store: no
+          // sign-in, so nobody's signer record — a token the project holds runs for its asker.
+          yield* Ref.set(world.agents, CLAUDE_ENV_TOKEN);
+          const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length > 0);
+          assert.strictEqual(turn!.message.text, "Stand up development of the project.");
+          assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
+          assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
+            kind: "standup",
+            startedBy: "user-a",
+          });
+          const steps = (yield* setup.document).steps;
+          assert.strictEqual(steps.find((step) => step.id === "signin")?.state, "done");
+          assert.notStrictEqual(steps.find((step) => step.id === "standup")?.state, "waiting");
         }),
       );
     }),

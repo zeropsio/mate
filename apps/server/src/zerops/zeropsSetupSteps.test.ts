@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { ZeropsAgentAuth } from "@t3tools/contracts";
 
 import {
   STAND_UP_MESSAGE,
@@ -8,7 +9,7 @@ import {
   setupDocument,
   standUpCommandIds,
   standUpDecision,
-  standUpSigners,
+  standUpAgents,
   type SetupFacts,
   type SetupStep,
   type StandUpWait,
@@ -205,17 +206,48 @@ describe("procStartTime", () => {
   )("$title", ({ line, expected }) => assert.strictEqual(procStartTime(line), expected));
 });
 
-describe("standUpSigners", () => {
+describe("standUpAgents", () => {
   const signers = {
     "claude-code": "user-a",
     codex: "user-b",
     "claudeAgent-work": "user-a",
   };
+  const agent = (
+    agentId: ZeropsAgentAuth["agentId"],
+    overrides: Partial<ZeropsAgentAuth> = {},
+  ): ZeropsAgentAuth => ({
+    agentId,
+    credPresent: true,
+    flagOAuth: true,
+    flagToken: false,
+    providerAuth: "authenticated",
+    state: "authorized",
+    ...overrides,
+  });
 
   it("lists the agents a person signed in, never another login or person", () => {
-    assert.deepStrictEqual(standUpSigners(signers, "user-a"), ["claude-code"]);
-    assert.deepStrictEqual(standUpSigners(signers, "user-b"), ["codex"]);
-    assert.deepStrictEqual(standUpSigners(signers, "user-c"), []);
+    const agents = [agent("claude-code"), agent("codex")];
+    assert.deepStrictEqual(standUpAgents(agents, signers, "user-a"), ["claude-code"]);
+    assert.deepStrictEqual(standUpAgents(agents, signers, "user-b"), ["codex"]);
+    assert.deepStrictEqual(standUpAgents(agents, signers, "user-c"), []);
+  });
+
+  it("lists an agent on a token the project holds for anybody, nobody having signed it in", () => {
+    const agents = [
+      agent("claude-code", {
+        credPresent: false,
+        flagOAuth: false,
+        flagToken: true,
+        state: "authorized-token",
+      }),
+      agent("codex", { credPresent: false, flagOAuth: false, state: "not-authorized" }),
+    ];
+    assert.deepStrictEqual(standUpAgents(agents, {}, "user-c"), ["claude-code"]);
+  });
+
+  it("lists no agent whose login no longer works, whoever signed it in", () => {
+    const agents = [agent("claude-code", { providerAuth: "unauthenticated" })];
+    assert.deepStrictEqual(standUpAgents(agents, signers, "user-a"), []);
   });
 });
 
@@ -233,44 +265,44 @@ describe("standUpDecision", () => {
   const cases: ReadonlyArray<[string, Parameters<typeof standUpDecision>[0], string]> = [
     [
       "starts once the asker signed an agent in",
-      { recorded: false, requestedBy: "user-a", signers: ["claude-code"], spoken: false },
+      { recorded: false, requestedBy: "user-a", agents: ["claude-code"], spoken: false },
       "start",
     ],
     [
       "waits for the asker's sign-in",
-      { recorded: false, requestedBy: "user-a", signers: [], spoken: false },
+      { recorded: false, requestedBy: "user-a", agents: [], spoken: false },
       "wait",
     ],
     [
       "waits while nobody asked",
-      { recorded: false, requestedBy: undefined, signers: [], spoken: false },
+      { recorded: false, requestedBy: undefined, agents: [], spoken: false },
       "wait",
     ],
     [
       "never starts twice",
-      { recorded: true, requestedBy: "user-a", signers: ["claude-code"], spoken: false },
+      { recorded: true, requestedBy: "user-a", agents: ["claude-code"], spoken: false },
       "done",
     ],
     [
       "a conversation already spoken in had its stand-up",
-      { recorded: false, requestedBy: "user-a", signers: ["claude-code"], spoken: true },
+      { recorded: false, requestedBy: "user-a", agents: ["claude-code"], spoken: true },
       "spoken",
     ],
     // Mate signs people in to Claude Code and Codex only; an agent outside that sign-in which is
     // ready runs for anybody, the asker included.
     [
       "starts on an agent that needs no sign-in once it is ready",
-      { recorded: false, requestedBy: "user-a", signers: [], ready: "cursor", spoken: false },
+      { recorded: false, requestedBy: "user-a", agents: [], ready: "cursor", spoken: false },
       "start",
     ],
     [
       "still waits for somebody to ask, whatever is ready",
-      { recorded: false, requestedBy: undefined, signers: [], ready: "cursor", spoken: false },
+      { recorded: false, requestedBy: undefined, agents: [], ready: "cursor", spoken: false },
       "wait",
     ],
     [
       "a conversation spoken in on a ready agent had its stand-up",
-      { recorded: false, requestedBy: "user-a", signers: [], ready: "opencode", spoken: true },
+      { recorded: false, requestedBy: "user-a", agents: [], ready: "opencode", spoken: true },
       "spoken",
     ],
   ];
@@ -283,7 +315,7 @@ describe("standUpDecision", () => {
     const decision = standUpDecision({
       recorded: false,
       requestedBy: "user-a",
-      signers: ["codex", "claude-code"],
+      agents: ["codex", "claude-code"],
       spoken: false,
     });
     assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", agentId: "claude-code" });
@@ -293,7 +325,7 @@ describe("standUpDecision", () => {
     const decision = standUpDecision({
       recorded: false,
       requestedBy: "user-a",
-      signers: ["codex"],
+      agents: ["codex"],
       ready: "cursor",
       spoken: false,
     });
@@ -304,7 +336,7 @@ describe("standUpDecision", () => {
     const decision = standUpDecision({
       recorded: false,
       requestedBy: "user-a",
-      signers: [],
+      agents: [],
       ready: "cursor",
       spoken: false,
     });

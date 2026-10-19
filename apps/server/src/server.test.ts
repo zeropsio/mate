@@ -50,6 +50,7 @@ import {
   type DpopPublicJwk,
 } from "@t3tools/shared/dpop";
 import { RELAY_HEALTH_REQUEST_TYP, RELAY_MINT_REQUEST_TYP } from "@t3tools/shared/relayJwt";
+import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { assert, it } from "@effect/vitest";
 import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
@@ -1131,12 +1132,10 @@ const buildAppUnderTest = (options?: {
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
               turnRefusal: ({ agent, subject }) =>
-                Effect.succeed(
-                  ZeropsProjectSignersModule.turnRefusal({ agent, signer: undefined, subject }),
-                ),
+                Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
               loginRefusal: ({ state, token, subject }) =>
                 Effect.succeed(
-                  ZeropsProjectSignersModule.loginTurnRefusal({
+                  loginTurnRefusal({
                     state,
                     token,
                     signer: undefined,

@@ -14,6 +14,7 @@ import {
   type ZeropsAgentId,
   type ZeropsLoginState,
 } from "@t3tools/contracts";
+import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -209,7 +210,7 @@ const admission = (world: World) =>
           turnRefusal: ({ agentId, agent, subject, login }) =>
             Effect.sync(() => world.gateCalls?.push({ agentId, login })).pipe(
               Effect.as(
-                ZeropsProjectSignersModule.turnRefusal({
+                turnRefusal({
                   agent,
                   signer: world.signers?.[agentId],
                   subject,
@@ -219,7 +220,7 @@ const admission = (world: World) =>
           loginRefusal: ({ key, state, token, subject, login }) =>
             Effect.sync(() => world.gateCalls?.push({ agentId: key, login })).pipe(
               Effect.as(
-                ZeropsProjectSignersModule.loginTurnRefusal({
+                loginTurnRefusal({
                   state,
                   token,
                   signer: world.signers?.[key],

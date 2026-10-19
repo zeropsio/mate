@@ -34,6 +34,7 @@ import {
   OrchestrationDispatchCommandError,
   type OrchestrationThreadShell,
   type ServerProvider,
+  type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
   type ConversationAgent,
   wakeId as standUpWakeIdOf,
@@ -81,7 +82,7 @@ import {
   setupDocument,
   standUpCommandIds,
   standUpDecision,
-  standUpSigners,
+  standUpAgents,
   type GitAccess,
   type SetupDocument,
   type StandUpCall,
@@ -108,6 +109,8 @@ export class ZeropsSetupReads extends Context.Service<
     readonly hq: Effect.Effect<HqStanding>;
     /** Who this server saw sign each login in (`ZeropsProjectSigners`). */
     readonly signers: Effect.Effect<ProjectSigners>;
+    /** Claude Code and Codex as the agent-auth feed says them (`ZeropsAgentAuth`). */
+    readonly agents: Effect.Effect<ZeropsAgentAuthSnapshot["agents"]>;
     /** The zcp service's variables as they stand now; `undefined` when unknown. */
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
     /** zcp's status file, parsed as JSON; `undefined` when absent or unreadable. */
@@ -455,7 +458,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         (Option.isSome(mate) &&
           (requestedBy === undefined
             ? Object.keys(signers).length > 0
-            : standUpSigners(signers, requestedBy).length > 0));
+            : standUpAgents(yield* reads.agents, signers, requestedBy).length > 0));
       // The sign-in is known from a stand-up that ran, from HQ's word, or once seen: a step once
       // done stays done.
       const signinKnown = ran || marked || signedInAt !== undefined;
@@ -599,6 +602,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           : allProviders;
         const ready = pickReadyAgentWithoutSignIn(providers);
         const signers = automated ? {} : yield* reads.signers;
+        const agents = automated ? [] : yield* reads.agents;
         const requestedBy =
           resuming === undefined
             ? asker
@@ -606,7 +610,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
                 (userId): userId is string =>
                   userId !== undefined &&
                   userId !== "" &&
-                  (standUpSigners(signers, userId).length > 0 || ready !== undefined),
+                  (standUpAgents(agents, signers, userId).length > 0 || ready !== undefined),
               );
         const read = yield* engineConversation(
           resuming === undefined ? undefined : ConversationId.make(resuming.threadId),
@@ -641,7 +645,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const decision = standUpDecision({
           recorded: false,
           requestedBy,
-          signers: standUpSigners(signers, requestedBy),
+          agents: standUpAgents(agents, signers, requestedBy),
           ready: readyHere?.instanceId,
           spoken: resuming === undefined && spokenIn(main),
         });
@@ -946,6 +950,7 @@ export const liveReadsLayer = Layer.effect(
     return ZeropsSetupReads.of({
       hq: link.standing,
       signers: projectSigners.signers,
+      agents: Effect.map(agentAuth.latest, (snapshot) => snapshot.agents),
       serviceVariables: readServiceVariableKeys(zerops?.envStorePath).pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
       ),

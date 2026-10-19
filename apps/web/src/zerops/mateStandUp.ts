@@ -19,7 +19,7 @@ import {
   zeropsOtherAgentReady,
   type OtherAgentFields,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
+import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
@@ -114,9 +114,10 @@ export function mateStandUpHoldsComposer(input: {
 }
 
 /**
- * Whether one of the Mate's agents is signed in and this person's to run: the server records them
- * as its signer the moment their sign-in succeeds, never while its code is being checked; a token
- * belongs to the project and runs for anybody.
+ * Whether one of the Mate's agents is signed in and this person's to run — the gate the Mate's
+ * server admits the stand-up by (`turnRefusal`): the server records them as its signer the moment
+ * their sign-in succeeds, never while its code is being checked; a token belongs to the project and
+ * runs for anybody.
  */
 export function mateStandUpSignedIn(
   snapshot: ZeropsAgentAuthSnapshot,
@@ -124,11 +125,10 @@ export function mateStandUpSignedIn(
   providers?: ReadonlyArray<OtherAgentFields>,
 ): boolean {
   if (zeropsOtherAgentReady(providers)) return true;
-  return snapshot.agents.some((agent) => {
-    const kind = classifyZeropsAgentAuth(agent).kind;
-    if (kind !== "authorized" && kind !== "registering") return false;
-    return agent.flagToken || agent.authorizedBy?.subject === viewer;
-  });
+  return snapshot.agents.some(
+    (agent) =>
+      turnRefusal({ agent, signer: agent.authorizedBy?.subject, subject: viewer }) === undefined,
+  );
 }
 
 /** Where the person's sign-in stands, for the empty conversation. */
