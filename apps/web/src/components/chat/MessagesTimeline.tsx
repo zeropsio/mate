@@ -157,7 +157,7 @@ import {
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
-  streamedRecordGrowth,
+  carriedRowGrowth,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
@@ -1280,16 +1280,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   >(
     (info) => {
       const previous = measuredRowsRef.current.get(info.itemKey);
-      const record = info.itemData?.kind === "record" ? info.itemData : undefined;
       if (info.itemData !== undefined) measuredRowsRef.current.set(info.itemKey, info.itemData);
-      const grew = insertedHistory.has(info.itemKey)
-        ? previous === undefined
-          ? info.size
-          : Math.max(0, info.size - info.previous)
-        : record?.live &&
-            streamedRecordGrowth(previous?.kind === "record" ? previous : undefined, record)
-          ? Math.max(0, info.size - info.previous)
-          : 0;
+      const grew = carriedRowGrowth({
+        inserted: insertedHistory.has(info.itemKey),
+        previous,
+        next: info.itemData,
+        size: info.size,
+        previousSize: info.previous,
+      });
       remeasurePositionRef.current?.();
       placeFolds();
       if (!followingEndRef.current) return;

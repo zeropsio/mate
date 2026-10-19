@@ -8,6 +8,7 @@ import {
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
+  carriedRowGrowth,
   historicalInsertions,
   livePauseId,
   rowGap,
@@ -4432,6 +4433,82 @@ describe("streamedRecordGrowth", () => {
         },
       ),
     ).toBe(grows);
+  });
+});
+
+describe("carriedRowGrowth", () => {
+  const as = (row: object) => row as unknown as MessagesTimelineRow;
+  const answer = as({ kind: "message", message: { role: "assistant", streaming: false } });
+  const settled = as({ kind: "record", live: false });
+  const streaming = (text: string) =>
+    as({
+      kind: "record",
+      live: true,
+      items: [],
+      slot: {
+        live: [
+          {
+            kind: "note",
+            key: "note",
+            at: at(1),
+            message: {
+              id: MessageId.make("note"),
+              turnId: null,
+              role: "assistant",
+              text,
+              createdAt: at(1),
+              updatedAt: at(1),
+              streaming: true,
+            },
+          },
+        ],
+        record: [],
+        filler: { kind: "thinking" },
+      },
+    });
+  const running = streaming("First");
+  it.each([
+    {
+      title: "a settled answer laying out its picture is carried, never an arrival's glide",
+      row: { inserted: false, previous: answer, next: answer },
+      carried: 244,
+    },
+    {
+      title: "a settled run laying out its lines is carried",
+      row: { inserted: false, previous: settled, next: settled },
+      carried: 244,
+    },
+    {
+      title: "a row's first measurement still arrives by a glide",
+      row: { inserted: false, previous: undefined, next: answer },
+      carried: 0,
+    },
+    {
+      title: "a changed record still arrives by a glide",
+      row: { inserted: false, previous: answer, next: as({ ...answer }) },
+      carried: 0,
+    },
+    {
+      title: "a question entering a live run still arrives by a glide",
+      row: {
+        inserted: false,
+        previous: running,
+        next: as({ ...running, items: [{ kind: "question", key: "question", at: at(2) }] }),
+      },
+      carried: 0,
+    },
+    {
+      title: "a live run's streamed words are carried",
+      row: { inserted: false, previous: running, next: streaming("First, second") },
+      carried: 244,
+    },
+    {
+      title: "history joining above is carried whole on its first measurement",
+      row: { inserted: true, previous: undefined, next: answer },
+      carried: 559,
+    },
+  ])("$title", ({ row, carried }) => {
+    expect(carriedRowGrowth({ ...row, size: 559, previousSize: 315 })).toBe(carried);
   });
 });
 

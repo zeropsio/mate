@@ -1070,6 +1070,33 @@ export function streamedRecordGrowth(
   );
 }
 
+/**
+ * How much of a row's new size the end follower carries at once; the rest of the way to the end
+ * is an arrival's glide. A settled row that grows with its record unchanged is its own layout
+ * settling — its picture's size landing after the conversation stood at its end — never an arrival.
+ */
+export function carriedRowGrowth(row: {
+  readonly inserted: boolean;
+  readonly previous: MessagesTimelineRow | undefined;
+  readonly next: MessagesTimelineRow | undefined;
+  readonly size: number;
+  readonly previousSize: number;
+}): number {
+  const growth = Math.max(0, row.size - row.previousSize);
+  if (row.inserted) return row.previous === undefined ? row.size : growth;
+  if (row.next === undefined) return 0;
+  if (row.next.kind === "record" && row.next.live)
+    return streamedRecordGrowth(
+      row.previous?.kind === "record" ? row.previous : undefined,
+      row.next,
+    )
+      ? growth
+      : 0;
+  return (row.next.kind === "message" || row.next.kind === "record") && row.previous === row.next
+    ? growth
+    : 0;
+}
+
 /** A background row's facts: what ran, how it ended, whose (`background`). */
 export interface BackgroundOpener {
   readonly key: string;
