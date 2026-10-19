@@ -8,7 +8,7 @@ import {
 } from "../../zerops/lastKnownMate.logic";
 import { pullRequestName, type AutomatedKeyState } from "../../zerops/automatedMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
-import { TASK_STATUS_WORDS, endedWords, type TaskStatus } from "../../zerops/taskStatus";
+import { TASK_STATUS_WORDS, type TaskStatus } from "../../zerops/taskStatus";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
@@ -1053,19 +1053,31 @@ export interface MateLastTask {
 }
 
 /**
- * A free automated Mate's line: its last task and how it ended — "Prices per 100 g · merged 3h
- * ago", "… · stopped: budget spent · 2m ago" — the time where `nowMs` and its end are known.
+ * A free automated Mate's line: its last task and how it ended — "#4 Prices per 100 g · merged",
+ * "… · stopped: budget spent". When it ended stands in the row's time slot (`mateRowTime`).
  */
-export function lastTaskLine(last: MateLastTask, nowMs: number | undefined): string {
+export function lastTaskLine(last: MateLastTask): string {
   const ended = statusWords(last.ended);
-  const why = last.why === undefined ? undefined : STOPPED_WHY[last.why];
-  const ago =
-    nowMs === undefined || last.endedAt === undefined ? null : endedWords(last.endedAt, nowMs);
-  const how =
-    why === undefined
-      ? [ago === null ? ended : `${ended} ${ago}`]
-      : [`${ended}: ${why}`, ...(ago === null ? [] : [ago])];
-  return [mateTaskLine(last), ...how].join(" · ");
+  const how = last.why === undefined ? ended : `${ended}: ${STOPPED_WHY[last.why]}`;
+  return `${mateTaskLine(last)} · ${how}`;
+}
+
+/**
+ * When a row dates its Mate, in its time slot: a free automated Mate (`task` null), when its last
+ * task ended — none where it never had one; at work, paused, or any other Mate, its own slot and
+ * its last word's time.
+ */
+export function mateRowTime(input: {
+  readonly slot: MateRowSlot;
+  readonly at: string | undefined;
+  readonly automated: MateAutomationLine | undefined;
+}): { readonly slot: MateRowSlot; readonly at: string | undefined } {
+  const { slot, at, automated } = input;
+  if (automated?.task !== null || slot.kind === "clock" || slot.kind === "paused")
+    return { slot, at };
+  if (automated.last === undefined) return { slot: { kind: "none" }, at: undefined };
+  if (automated.last.endedAt === undefined) return { slot, at };
+  return { slot: { kind: "age" }, at: automated.last.endedAt };
 }
 
 /** The pull request a task's change is mirrored to, as a line names it (`HqPullRequest`). */
@@ -1157,15 +1169,11 @@ export function changeLineWords(
 export function mateAutomatedLine(
   automated: MateAutomationLine,
   state: MateRowState,
-  options: {
-    /**
-     * A row's: at work on a task it says so after the task — "#12 Fix the checkout total ·
-     * working" — the time it has worked standing in the row's clock.
-     */
-    readonly saysWorking?: boolean;
-    /** Now, for how long ago its last task ended; absent, the line says no time. */
-    readonly nowMs?: number | undefined;
-  } = {},
+  /**
+   * A row's: at work on a task it says so after the task — "#12 Fix the checkout total · working"
+   * — the time it has worked standing in the row's clock.
+   */
+  options: { readonly saysWorking?: boolean } = {},
 ): Extract<MateRowSecond, { kind: "task" }> {
   const { task } = automated;
   if (task === null) {
@@ -1177,7 +1185,7 @@ export function mateAutomatedLine(
           ? WAITING_FOR_A_KEY
           : automated.last === undefined
             ? NO_TASKS_YET
-            : lastTaskLine(automated.last, options.nowMs);
+            : lastTaskLine(automated.last);
     return { kind: "task", text, on: false };
   }
   const working = state === "working";
@@ -1315,13 +1323,11 @@ export function mateRowSecond(input: {
    * never takes. Absent: an ordinary Mate.
    */
   readonly automated?: MateAutomationLine | undefined;
-  /** Now, for how long ago a free automated Mate's last task ended (`lastTaskLine`). */
-  readonly nowMs?: number | undefined;
 }): MateRowSecond {
   const { view, askLine, change, automated } = input;
   // A row says an automated Mate at work works, its clock how long.
   const automatedRowLine = (line: MateAutomationLine, state: MateRowState) =>
-    mateAutomatedLine(line, state, { saysWorking: true, nowMs: input.nowMs });
+    mateAutomatedLine(line, state, { saysWorking: true });
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
   if (input.finishing) return { kind: "finishing" };

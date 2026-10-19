@@ -20,6 +20,7 @@ import {
   mateRowPropsEqual,
   mateRowSecond,
   mateAutomation,
+  mateRowTime,
   changeLineWords,
   tasksWaitingWords,
   type MateRowView,
@@ -2131,6 +2132,48 @@ describe("mateAutomation — an automated Mate as its HQ record says it", () => 
   });
 });
 
+describe("mateRowTime — when a row dates its Mate", () => {
+  const ended = "2026-10-17T09:00:00.000Z";
+  const last = { title: "Prices per 100 g", ended: "merged" as const, endedAt: ended };
+  it.each([
+    {
+      case: "a free automated Mate's row dates its last task's end in its time slot",
+      input: {
+        slot: { kind: "age" },
+        at: "2026-10-17T11:00:00.000Z",
+        automated: { task: null, last },
+      },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+    {
+      case: "a free automated Mate with no conversation read yet still dates its last task's end",
+      input: { slot: { kind: "none" }, at: undefined, automated: { task: null, last } },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+    {
+      case: "an automated Mate that never had a task shows no time",
+      input: { slot: { kind: "age" }, at: "2026-10-17T11:00:00.000Z", automated: { task: null } },
+      expected: { slot: { kind: "none" }, at: undefined },
+    },
+    {
+      case: "an automated Mate at work keeps its run's clock",
+      input: {
+        slot: { kind: "clock", since: ended },
+        at: ended,
+        automated: { task: { title: "Prices per 100 g" } },
+      },
+      expected: { slot: { kind: "clock", since: ended }, at: ended },
+    },
+    {
+      case: "any other Mate's row dates its own last word",
+      input: { slot: { kind: "age" }, at: ended, automated: undefined },
+      expected: { slot: { kind: "age" }, at: ended },
+    },
+  ] as const)("$case", ({ input, expected }) => {
+    expect(mateRowTime(input)).toEqual(expected);
+  });
+});
+
 describe("mateRowSecond — an automated Mate's line", () => {
   const view = (
     state: MateRowView["state"],
@@ -2149,7 +2192,6 @@ describe("mateRowSecond — an automated Mate's line", () => {
       waitsOn: undefined,
       change: undefined,
       automated: { task: null },
-      nowMs: Date.parse("2026-10-17T12:00:00Z"),
       ...over,
     });
 
@@ -2172,7 +2214,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
           last: { title: "Prices per 100 g", ended: "merged", endedAt: "2026-10-17T09:00:00Z" },
         },
       },
-      line: { kind: "task", text: "Prices per 100 g · merged 3h ago", on: false },
+      line: { kind: "task", text: "Prices per 100 g · merged", on: false },
     },
     {
       case: "an idle automated Mate's last task from GitHub is named by its issue",
@@ -2197,11 +2239,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
           },
         },
       },
-      line: {
-        kind: "task",
-        text: "Prices per 100 g · stopped: budget spent · 2m ago",
-        on: false,
-      },
+      line: { kind: "task", text: "Prices per 100 g · stopped: budget spent", on: false },
     },
     {
       case: "an automated Mate holding changes in review says how many, not its last task",
