@@ -23,7 +23,7 @@ import {
   releaseDetails,
 } from "./fake.ts";
 
-/** Read the application's actual environment buttons, in declaration order. */
+/** Read the application's actual environment buttons, in the page's order: production, then its stages. */
 export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
   return Effect.promise(async () => {
     await page

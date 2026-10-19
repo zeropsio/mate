@@ -650,6 +650,14 @@ function KnownGroupAside({
   );
 }
 
+/** Production, then every stage — the order the project's card says them in. */
+function productionFirst(
+  slots: ReadonlyArray<EnvironmentSlotRow>,
+): ReadonlyArray<EnvironmentSlotRow> {
+  const production = (slot: EnvironmentSlotRow) => "tier" in slot && slot.tier === "production";
+  return [...slots.filter(production), ...slots.filter((slot) => !production(slot))];
+}
+
 /**
  * A project's page column, drawn — every read already done and handed in: its environments, its
  * repositories and its history, each on the card's ground.
@@ -740,7 +748,7 @@ export function ZeropsGroupPane({
       {slots.length === 0 ? null : (
         <SideSection title="Environments">
           <ul className="flex flex-col">
-            {slots.map((slot) => {
+            {productionFirst(slots).map((slot) => {
               if (slot.kind === "devstage")
                 return (
                   <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>

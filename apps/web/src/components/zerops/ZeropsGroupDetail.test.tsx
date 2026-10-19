@@ -385,6 +385,12 @@ describe("ZeropsGroupPane", () => {
       expect(markup).toContain("Put it live");
     });
 
+    // The project's card says production first, then each stage: its page's column the same.
+    it("lists production before its stages, as the project's card does", () => {
+      const markup = render({ environments: [], slots: slots({}) });
+      expect(markup.indexOf("Put it live")).toBeLessThan(markup.indexOf("Add stage"));
+    });
+
     it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
       const markup = render({
         environments: [],

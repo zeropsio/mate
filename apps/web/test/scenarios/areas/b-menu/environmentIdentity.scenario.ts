@@ -61,9 +61,10 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
   );
   expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/Shop-production`);
   yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
+  // The project page draws production first, then its stages.
   const rows = [
-    { name: "Shop-stage", id: "Shop-stage" },
     { name: "Shop-production", id: "Shop-production" },
+    { name: "Shop-stage", id: "Shop-stage" },
   ];
   yield* environmentRows(
     f.s.page,
@@ -241,7 +242,7 @@ describe("B: environment identity compatibility", () => {
           const a = environmentActions(f);
           yield* f.s.given.signedIn;
           yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
-          yield* environmentRows(f.s.page, ["Shop-stage", "production"]);
+          yield* environmentRows(f.s.page, ["production", "Shop-stage"]);
           yield* openEnvironment(f.s.page, f.appId, "Shop-stage", "independent-preview");
           yield* a.then.text("web");
           const sha = yield* f.merge();
@@ -251,7 +252,7 @@ describe("B: environment identity compatibility", () => {
           expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/independent-preview`);
           expect(f.s.drivers.zerops.requests.get("GET /project/Shop-stage")).toBeGreaterThan(0);
           yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
-          yield* environmentRows(f.s.page, ["Shop-stage", "production"]);
+          yield* environmentRows(f.s.page, ["production", "Shop-stage"]);
           yield* openEnvironment(f.s.page, f.appId, "production", "git-production");
           yield* Effect.promise(() =>
             f.s.page.waitForFunction(
