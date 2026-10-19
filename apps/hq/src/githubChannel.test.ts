@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { statusWords } from "./githubChannel.ts";
+import { answerComment, statusWords } from "./githubChannel.ts";
 
 /** What a person reads: the words with GitHub's mention breakers taken out. */
 const read = (words: string) => words.replaceAll("⁠", "");
@@ -33,6 +33,25 @@ describe("a task's status line on its issue", () => {
         pullRequest: { number: 2, url: "https://github.com/acme/tea-shop/pull/2" },
       }),
       "Merged in #2.",
+    );
+  });
+
+  it("a follow-up's ending names the new commit by its pull request where it has one, else by its change", () => {
+    const pushed = { number: 19, link: "https://mate.zerops.io/c/19" };
+    assert.strictEqual(
+      answerComment({
+        mate: "Fen",
+        words: "Reworked the footer.",
+        pushed: {
+          ...pushed,
+          pullRequest: { number: 21, url: "https://github.com/acme/tea-shop/pull/21" },
+        },
+      }),
+      "**Fen:** Reworked the footer.\n\nNew commit on #21.",
+    );
+    assert.strictEqual(
+      answerComment({ mate: "Fen", words: "Reworked the footer.", pushed }),
+      "**Fen:** Reworked the footer.\n\nNew commit on its change: https://mate.zerops.io/c/19",
     );
   });
 });

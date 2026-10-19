@@ -165,6 +165,11 @@ export const MateTaskReport = Schema.Struct({
   detail: Schema.optionalKey(Schema.String),
   /** What it asks a person, while `waiting`: posted where the task came from. */
   question: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
+  /**
+   * What its agent said last in the run that ended it, once `done`: its answer or what it did,
+   * posted where the task came from. Absent where it said nothing then, and from an older Mate.
+   */
+  answer: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX))),
   /** What its model use cost so far, in US dollars, as the Mate's ledger counts it. */
   spentUsd: Schema.optionalKey(
     Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: TASK_SPENT_MAX })),

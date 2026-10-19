@@ -579,6 +579,60 @@ describe("Discord as a source of tasks", () => {
         }),
     );
 
+    it.effect(
+      "each ending a task's Mate gave words for is a new message in its thread under the status line: its words, as a reply reads, and the new commit its change took, cut to Discord's limit with its code block closed",
+      () =>
+        Effect.gen(function* () {
+          const world = yield* withDiscord;
+          const { appId } = yield* world.ready;
+          const channel = world.registered.get("discord-thread")!;
+          const task = {
+            taskId: "task-1",
+            appId,
+            sourceKey: "discord:1700000000000000001",
+            source: {
+              kind: "discord-thread",
+              server: "Acme",
+              channel: "tea-shop",
+              url: `https://discord.com/channels/${GUILD}/1700000000000000001`,
+              title: "Show me the address",
+              author: "Nova",
+            },
+          } as const;
+          yield* channel.status(task, { kind: "done", mate: "Fen", link: null });
+          yield* channel.answer!(task, {
+            mate: "Fen",
+            words: "It runs at https://appstage.example.",
+          });
+          yield* channel.status(task, {
+            kind: "done",
+            mate: "Fen",
+            link: "https://mate.zerops.io/c/19",
+          });
+          yield* channel.answer!(task, {
+            mate: "Fen",
+            words: `Reworked the footer:\n\`\`\`css\n${"footer { color: navy; }\n".repeat(120)}\`\`\``,
+            pushed: { number: 19, link: "https://mate.zerops.io/c/19" },
+          });
+          const inThread = world.fake.state.seen
+            .filter((request) => request.path.startsWith("/channels/1700000000000000001/messages"))
+            .map((request) => [request.method, (request.body as { content: string }).content]);
+          assert.deepStrictEqual(inThread.slice(0, 3), [
+            ["POST", "Fen finished this."],
+            ["POST", "Fen: It runs at https://appstage.example."],
+            ["PATCH", "Fen finished this: https://mate.zerops.io/c/19"],
+          ]);
+          const [method, cut] = inThread[3]!;
+          assert.strictEqual(method, "POST");
+          assert.isAtMost(cut!.length, 2000);
+          assert.match(cut!, /^Fen: Reworked the footer:\n```css\nfooter/u);
+          assert.match(
+            cut!,
+            /footer \{ color: navy; \}\n```\n…\n\nNew commit on change #19: https:\/\/mate\.zerops\.io\/c\/19$/u,
+          );
+        }),
+    );
+
     it.effect("a task whose thread was deleted in Discord is stopped, saying so", () =>
       Effect.gen(function* () {
         const world = yield* withDiscord;

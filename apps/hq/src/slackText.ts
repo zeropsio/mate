@@ -7,7 +7,14 @@
  */
 import { MATE_TASK_BODY_MAX, MATE_TASK_TITLE_MAX } from "@t3tools/contracts";
 
-import { BUDGET_WAIT, type TaskEnd, type TaskStatus, taskEndWords } from "./taskSources.ts";
+import {
+  BUDGET_WAIT,
+  type TaskAnswer,
+  type TaskEnd,
+  type TaskStatus,
+  cutWords,
+  taskEndWords,
+} from "./taskSources.ts";
 
 /** Slack's markup of what a message names: `<@U1|name>`, `<#C1|name>`, `<!here>`, `<url|label>`. */
 const MARKUP = /<([^<>]*)>/gu;
@@ -88,6 +95,21 @@ export const statusText = (status: TaskStatus): string => {
           ? "Merged."
           : `Merged into main: ${link(status.change)}`;
   }
+};
+
+/** How much of a Mate's words a message in a thread holds: Slack folds longer ones away. */
+const ANSWER_MAX = 4000;
+
+/**
+ * A task's ending, a message of its own in its thread: its Mate's words, as a person's reply
+ * reads, and the commit its change took this time.
+ */
+export const answerText = (answer: TaskAnswer) => {
+  const pushed =
+    answer.pushed === undefined
+      ? ""
+      : `\n\nNew commit on change #${String(answer.pushed.number)}: ${link(answer.pushed.link)}`;
+  return `${escaped(answer.mate)}: ${escaped(cutWords(answer.words, ANSWER_MAX))}${pushed}`;
 };
 
 /** A task's question, put to the person who asked, where Slack tells them of it. */

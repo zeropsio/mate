@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { askOf, statusText, titleOf } from "./slackText.ts";
+import { answerText, askOf, statusText, titleOf } from "./slackText.ts";
 
 describe("an ask from Slack", () => {
   it.each([
@@ -38,6 +38,21 @@ describe("a task's status in its Slack thread", () => {
     assert.strictEqual(
       statusText({ kind: "stopped", mate: null, why: "The Slack thread was deleted." }),
       "Stopped: The Slack thread was deleted.",
+    );
+  });
+
+  it("says a task's ending as its Mate's words, literally, and the new commit its change took", () => {
+    assert.strictEqual(
+      answerText({ mate: "Fen", words: "<!here> runs at <https://appstage.example> & up" }),
+      "Fen: &lt;!here&gt; runs at &lt;https://appstage.example&gt; &amp; up",
+    );
+    assert.strictEqual(
+      answerText({
+        mate: "Fen",
+        words: "Reworked the footer.",
+        pushed: { number: 19, link: "https://mate.zerops.io/c/19" },
+      }),
+      "Fen: Reworked the footer.\n\nNew commit on change #19: <https://mate.zerops.io/c/19>",
     );
   });
 });
