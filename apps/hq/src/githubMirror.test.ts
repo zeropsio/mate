@@ -131,7 +131,17 @@ const view = Effect.sync(
     ({
       orgId: "org",
       freshness: "fresh",
-      members: [],
+      members: [
+        {
+          userId: "owner",
+          clientUserId: "C-owner",
+          name: "owner",
+          kind: "person",
+          status: "ACTIVE",
+          roleCode: "OWNER",
+          canCreateProjects: true,
+        },
+      ],
       projects: [
         {
           id: "nova",
@@ -269,11 +279,11 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     const port = typeof address === "object" && address !== null ? address.port : 0;
     const work = NodePath.join(root, "work");
     yield* over(root, ["clone", `http://127.0.0.1:${String(port)}/git/${appId}/appdev.git`, work]);
-    /** Change 1 of `nova`, open, titled `title`. */
-    const openChange = (title: string) =>
+    /** Change `number` of the Mate `mate`, open, titled `title`. */
+    const openChange = (title: string, number = 1, mate = "nova") =>
       sql`
         INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-        VALUES (${appId}::uuid, 'appdev', 1, 'nova', ${title})`;
+        VALUES (${appId}::uuid, 'appdev', ${number}, ${mate}, ${title})`;
     /** The Mate commits `file` and pushes it to its change 1; the head, once HQ recorded it. */
     const push = (file: string) =>
       recorded(
@@ -284,6 +294,11 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
           yield* over(work, ["push", "origin", "HEAD:refs/heads/mate/nova/1"]);
           return native(work, ["rev-parse", "HEAD"]);
         }),
+      );
+    /** What the owner's comparison `base..head` names: each commit and the change it is. */
+    const compared = (base: string, head: string) =>
+      Effect.map(changes.compare("owner", appId, "appdev", { base, head }), (answer) =>
+        answer.commits.map((commit) => [commit.sha, commit.change?.number ?? null] as const),
       );
     const changeRow = (number: number) =>
       Effect.map(
@@ -333,6 +348,7 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
       recorded,
       openChange,
       push,
+      compared,
       changeRow,
     };
   });
@@ -437,6 +453,78 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
               merged_sha: squash,
               landed_head: merged,
             });
+          }),
+        ),
+    );
+
+    it.effect(
+      "every commit a merge on GitHub brought in is the merged change's in a comparison",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            yield* f.openChange("Add a search box");
+            const first = yield* f.push("search.ts");
+            const head = yield* f.push("search.css");
+            yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), head);
+            const merged = commitIn(f.github, [f.main, head], "merged");
+            native(f.github, ["update-ref", "refs/heads/main", merged]);
+            yield* f.mirror.sync(f.appId, "appdev");
+            assert.deepStrictEqual(yield* f.compared(f.main, merged), [
+              [merged, 1],
+              [head, 1],
+              [first, 1],
+            ]);
+          }),
+        ),
+    );
+
+    it.effect("a change squashed on GitHub is its squash's in a comparison", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          yield* f.openChange("Add a search box");
+          const head = yield* f.push("search.ts");
+          yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), head);
+          const squash = commitIn(f.github, [f.main], "squashed");
+          native(f.github, ["update-ref", "refs/heads/main", squash]);
+          yield* f.mirror.sync(f.appId, "appdev");
+          yield* f.changes.landImported(f.appId, "appdev", 1, squash, head);
+          assert.deepStrictEqual(yield* f.compared(f.main, squash), [[squash, 1]]);
+        }),
+      ),
+    );
+
+    it.effect(
+      "two changes GitHub merged before Mate followed are each merged as their own merge commit",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            yield* f.openChange("Add a search box");
+            const one = yield* f.push("search.ts");
+            yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), one);
+            // Another Mate's change, its branch on GitHub.
+            const two = commitIn(f.github, [f.main], "footer.html");
+            yield* f.openChange("Add a footer", 2, "vega");
+            yield* f.sql`UPDATE hq_change SET head = ${two} WHERE number = 2`;
+            const first = commitIn(f.github, [f.main, one], "merged one");
+            const second = commitIn(f.github, [first, two], "merged two");
+            native(f.github, ["update-ref", "refs/heads/main", second]);
+            yield* f.mirror.sync(f.appId, "appdev");
+            assert.deepStrictEqual(
+              [(yield* f.changeRow(1))?.merged_sha, (yield* f.changeRow(2))?.merged_sha],
+              [first, second],
+            );
+            assert.deepStrictEqual(yield* f.compared(f.main, second), [
+              [second, 2],
+              [two, 2],
+              [first, 1],
+              [one, 1],
+            ]);
           }),
         ),
     );

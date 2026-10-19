@@ -323,7 +323,9 @@ export function movedCommits(input: {
 }
 
 /**
- * How many commits move, each once however many reads of its repository list it. A repository's
+ * How many changes move: a commit HQ names a change by counts as that change, once however many of
+ * its commits move (a merge on GitHub brings the change's own commits in beside it); any other
+ * commit counts once however many reads of its repository list it. A repository's
  * reads that list every commit they count are counted exactly; one cut short counts as HQ counted,
  * and a count HQ stopped at ({@link COMPARE_COUNT_MAX}) is at least that many. Two reads of one
  * repository (services on different commits of it) overlap, and where either is cut short the
@@ -337,7 +339,13 @@ export function movedCount(moved: ReadonlyArray<Moved>): {
   let atLeast = moved.some((read) => read.total >= COMPARE_COUNT_MAX);
   for (const repository of new Set(moved.map((read) => read.repository))) {
     const reads = moved.filter((read) => read.repository === repository);
-    const listed = new Set(reads.flatMap((read) => read.commits.map((commit) => commit.sha))).size;
+    const listed = new Set(
+      reads.flatMap((read) =>
+        read.commits.map((commit) =>
+          commit.change === null ? commit.sha : `#${String(commit.change.number)}`,
+        ),
+      ),
+    ).size;
     if (!reads.some((read) => read.truncated)) count += listed;
     else {
       count += Math.max(listed, ...reads.map((read) => read.total));

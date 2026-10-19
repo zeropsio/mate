@@ -12453,10 +12453,6 @@ a.message-file:focus-visible {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.rv-relrow-n {
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
 .rv-relrow-sub {
   display: block;
   overflow: hidden;
@@ -12625,9 +12621,11 @@ button.rv-relrow:hover .rv-relrow-go {
   height: 15px;
   color: var(--zerops-status-ok);
 }
+/* One row per service: its name, its state, and its deploy's door at the row's end. */
 .rv-where {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
   gap: 4px 14px;
   font-size: 14px;
   line-height: 20px;
@@ -12640,9 +12638,16 @@ button.rv-relrow:hover .rv-relrow-go {
   font-size: 13px;
   color: var(--muted-foreground);
 }
+.rv-where > .rv-where-go {
+  justify-self: end;
+}
+/* What the door opens, under its row, across the whole list. */
+.rv-where > .rv-where-more {
+  grid-column: 1 / -1;
+}
 
-/* The foot, pinned: the buttons, the one button first and ink-filled, then one line of what
-   happens next. */
+/* The foot, pinned to the sheet's bottom: the buttons at its end as every sheet's action bar has
+   them, the one button last and ink-filled, then one line of what happens next. */
 .rv-foot {
   display: flex;
   flex: none;
@@ -12656,6 +12661,7 @@ button.rv-relrow:hover .rv-relrow-go {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 .rv-btns:empty {
@@ -12669,7 +12675,8 @@ button.rv-relrow:hover .rv-relrow-go {
   text-wrap: pretty;
 }
 /* The sheet's steps — a release and a change it carries — fill its height. */
-.rv-viewport > .rv > .rv-steps,
+/* Its steps sit in the review's keyed `contents` wrapper: a descendant, never a child. */
+.rv-viewport > .rv .rv-steps,
 .rv-viewport > .rv .rv-step[data-at="here"] {
   flex: 1 1 auto;
   max-height: none;

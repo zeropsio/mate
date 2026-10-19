@@ -1,4 +1,5 @@
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
+import { releaseReview, type ReleaseOutcome } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -31,6 +32,7 @@ import {
   productionNow,
   productionNowLine,
   releaseFoot,
+  releaseHeading,
   releaseLine,
   sinceWords,
   whySaid,
@@ -400,6 +402,12 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       readonly mateProjectId: string;
     } | null,
   ) => ({ sha, subject, authorName: "Juno", at: "2026-09-28T09:00:00Z", change });
+  const RAYA = {
+    number: 13,
+    title: "Hide sold out switch remembered across visits",
+    mateProjectId: "p-raya",
+  };
+  const MIRA = { number: 14, title: "Centre the shop", mateProjectId: "p-mira" };
   const moved = (repository: string, commits: ReadonlyArray<ReturnType<typeof commit>>) => ({
     repository,
     services: ["app"],
@@ -435,7 +443,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
     expect(rows).toEqual([
       {
         key: "aaa111",
-        title: "#54 Performance tuning across the storefront",
+        title: "Performance tuning across the storefront",
         change: { repository: "appdev", number: 54 },
         mateProjectId: "p-juno",
         mergedAt: "2026-09-28T09:00:00Z",
@@ -443,7 +451,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
       },
       {
         key: "bbb222",
-        title: "#55 Clearer copy on the admin sign-in",
+        title: "Clearer copy on the admin sign-in",
         change: { repository: "appdev", number: 55 },
         mateProjectId: "p-cleo",
         mergedAt: "2026-09-28T09:00:00Z",
@@ -458,6 +466,49 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         stage: "none",
       },
     ]);
+  });
+
+  // GitHub's merge commit and the change's own commits it brought in are all the change's (HQ's
+  // comparison says so); a squash, on GitHub or in Mate, is one commit.
+  it.each([
+    [
+      "a change merged on GitHub with a merge commit goes out once in its release",
+      [
+        commit("m16", "Hide sold out switch remembered across visits (#16)", RAYA),
+        commit("b2", "Remember the switch", RAYA),
+        commit("b1", "Add the switch", RAYA),
+      ],
+    ],
+    [
+      "a change squashed on GitHub goes out once in its release",
+      [commit("s16", "Hide sold out switch remembered across visits (#16)", RAYA)],
+    ],
+    [
+      "a change merged in Mate goes out once in its release",
+      [commit("s13", "Hide sold out switch remembered across visits (#13)", RAYA)],
+    ],
+  ])("%s", (_, commits) => {
+    const rows = releaseChangeRows({
+      moved: [moved("appdev", [commit("c17", "Centre the shop", MIRA), ...commits])],
+      marks: new Map(),
+    });
+    expect(rows.map(({ key, title, change }) => [key, title, change?.number])).toEqual([
+      ["c17", "Centre the shop", 14],
+      [commits[0]!.sha, "Hide sold out switch remembered across visits", 13],
+    ]);
+  });
+
+  it("a release's entries name each change by its title, never HQ's number", () => {
+    const rows = releaseChangeRows({
+      moved: [
+        moved("appdev", [
+          commit("c17", "Centre the shop (#17)", { ...MIRA, title: "Centre the shop (#14)" }),
+          commit("d1", "A person's fix (#3)", null),
+        ]),
+      ],
+      marks: new Map(),
+    });
+    expect(rows.map(({ title }) => title)).toEqual(["Centre the shop", "A person's fix (#3)"]);
   });
 
   it("opens a change in the repository it was compared in: numbers are per repository", () => {
@@ -925,5 +976,73 @@ describe("a change's receipt: each part's preview", () => {
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();
+  });
+});
+
+describe("releaseHeading: a release's head says where it stands once", () => {
+  const NOW = Date.parse("2026-10-19T10:30:00Z");
+  const heading = (outcome: ReleaseOutcome) => {
+    const model = releaseReview({
+      tag: "v0.1.4",
+      gate: { allowed: true },
+      permission: { allowed: true },
+      changes: 1,
+      onStage: { total: 1, running: 1 },
+      services: ["app"],
+      replaces: { kind: "release", tag: "v0.1.3" },
+      outcome,
+      productionMoved: outcome.kind === "failed" ? false : undefined,
+      now: NOW,
+    });
+    return releaseHeading({
+      tag: "v0.1.4",
+      model,
+      line: "1 change, on stage since 10:19.",
+      live: "v0.1.3",
+    });
+  };
+
+  it("a running release says once that it is releasing, with its step and clock", () => {
+    expect(
+      heading({ kind: "releasing", progress: "Putting v0.1.4 live · 8s", clock: "8s" }),
+    ).toEqual({
+      title: "Releasing v0.1.4 to production",
+      meta: undefined,
+      state: "Putting v0.1.4 live · 8s",
+      note: "You can close this. Production's line on the project's card follows it.",
+      foot: "",
+    });
+  });
+
+  it("a released one says it is live, and the way back", () => {
+    expect(heading({ kind: "released", at: "2026-10-19T10:27:00Z" })).toEqual({
+      title: "v0.1.4 is live",
+      meta: undefined,
+      state: "Production runs it · released 3 minutes ago",
+      note: "Roll back to v0.1.3 from production's menu. It gets its own review.",
+      foot: "",
+    });
+  });
+
+  it("a failed one says its cause, its fix beside it", () => {
+    expect(
+      heading({ kind: "failed", detail: "The deploy of app failed", services: ["app"] }),
+    ).toEqual({
+      title: "v0.1.4 didn't go out",
+      meta: undefined,
+      state: undefined,
+      note: "The deploy of app failed.",
+      foot: "",
+    });
+  });
+
+  it("an offered one says what goes out, and under its button what pressing does", () => {
+    expect(heading({ kind: "offered" })).toEqual({
+      title: "Release v0.1.4 to production",
+      meta: "1 change, on stage since 10:19.",
+      state: undefined,
+      note: undefined,
+      foot: "It takes a minute or two. You can roll back to v0.1.3 from production's panel.",
+    });
   });
 });

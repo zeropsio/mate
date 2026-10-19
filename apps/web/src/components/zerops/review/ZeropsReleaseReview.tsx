@@ -79,7 +79,7 @@ import {
   productionBefore,
   productionNow,
   releaseChangeRows,
-  releaseFoot,
+  releaseHeading,
   releaseLine,
   reviewKindLine,
   rollbackListNote,
@@ -631,18 +631,18 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       : undefined,
     live,
   });
+  // Pressed, the head says where it stands once — its title and its step's clock — never the
+  // offer's facts beside it (the owner's 10-19 look: "1 change, on stage… · Releasing v0.1.4").
+  const heading = releaseHeading({
+    tag,
+    model,
+    line,
+    live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
+  });
+  const git = props.git !== undefined;
   return (
     <ZeropsReviewSurface
-      consequence={
-        refused ??
-        (props.git !== undefined
-          ? model.consequence
-          : releaseFoot({
-              state: model.verdict.state,
-              consequence: model.consequence,
-              live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
-            }))
-      }
+      consequence={refused ?? (git ? model.consequence : heading.foot)}
       // Released onto the live app, its foot is the way in: the panel's × closes it, no Close
       // wraps onto a line of its own beside it.
       dismiss={
@@ -667,10 +667,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       }
       kind="release"
       kindLabel={props.name ?? reviewKindLine("release")}
-      // Ready, the line says all of it; else the verdict follows it.
-      meta={
-        props.git !== undefined ? undefined : <span>{ready ? line : line.replace(/\.$/u, "")}</span>
-      }
+      meta={git || heading.meta === undefined ? undefined : <span>{heading.meta}</span>}
       onClose={props.onClose}
       // Released, it ends on the live app: its address the way in, a domain of its own beside it.
       secondary={
@@ -713,11 +710,19 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 model.primary.label === "Replace token" ? props.onReplaceToken! : props.onRelease,
             }
       }
-      title={`Release ${tag} to production`}
+      title={git ? `Release ${tag} to production` : heading.title}
       titleId={props.titleId}
-      verdict={model.verdict}
-      verdictInLine={!ready}
-      whySaid={whySaid(model.verdict, false)}
+      verdict={
+        git
+          ? model.verdict
+          : {
+              ...model.verdict,
+              title: heading.state ?? model.verdict.title,
+              why: heading.note ?? "",
+            }
+      }
+      verdictInLine={git ? !ready : heading.state !== undefined}
+      whySaid={git ? whySaid(model.verdict, false) : heading.note !== undefined}
     >
       {props.git === undefined ? null : (
         <>

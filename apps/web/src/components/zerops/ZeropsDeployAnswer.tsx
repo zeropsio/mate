@@ -56,17 +56,17 @@ function PlatformDeployAnswer({
                     {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
                     {job.service}
                   </b>
-                  <span data-zerops-job-state={job.state}>
-                    {job.standing}
-                    {log === undefined ? null : (
-                      <ZeropsDeployLog
-                        key={log.target.jobId}
-                        projectId={log.projectId}
-                        service={job.service!}
-                        target={log.target}
-                      />
-                    )}
-                  </span>
+                  <span data-zerops-job-state={job.state}>{job.standing}</span>
+                  {log === undefined ? (
+                    <span />
+                  ) : (
+                    <ZeropsDeployLog
+                      key={log.target.jobId}
+                      projectId={log.projectId}
+                      service={job.service!}
+                      target={log.target}
+                    />
+                  )}
                 </Fragment>
               );
             }),
@@ -75,6 +75,7 @@ function PlatformDeployAnswer({
           <Fragment key={service}>
             <b>{service}</b>
             <span>{line}</span>
+            <span />
           </Fragment>
         ))}
       </div>
