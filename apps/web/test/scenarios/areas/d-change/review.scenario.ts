@@ -153,6 +153,54 @@ describe("D: change review, comments and merge", () => {
 
 describe("owner-reported layout regressions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // 2026-10-20, the owner on a narrow window: "these buttons are bit unfortunately positioned".
+    // The row wrapped where it ran out of room, leaving Merge alone under the other two.
+    it.effect(
+      "on a narrow sheet the ask and the one button stay side by side, the quiet word under them",
+      () =>
+        Effect.gen(function* () {
+          const { s, r } = yield* setup;
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.signedIn;
+          yield* r.open;
+          yield* r.mergeEnabled;
+          yield* Effect.promise(() => s.page.setViewport({ width: 400, height: 900 }));
+          yield* sheetSettled(s);
+          const at = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const box = (selector: string) => {
+                const node = [...document.querySelectorAll<HTMLElement>(selector)].find(
+                  (candidate) => candidate.getBoundingClientRect().height > 0,
+                );
+                const rect = node?.getBoundingClientRect();
+                return rect === undefined
+                  ? null
+                  : { top: rect.top, left: rect.left, right: rect.right };
+              };
+              return {
+                quiet: box("[data-review-secondary]"),
+                ask: box("[data-review-ask]"),
+                primary: box("[data-review-primary]"),
+              };
+            }),
+          );
+          expect(at.quiet, "ASSERTION: the quiet word shows").not.toBeNull();
+          expect(at.ask, "ASSERTION: the ask shows").not.toBeNull();
+          expect(at.primary, "ASSERTION: the one button shows").not.toBeNull();
+          expect(
+            Math.abs(at.ask!.top - at.primary!.top),
+            "ASSERTION: the ask and the one button share a row",
+          ).toBeLessThan(1);
+          expect(at.ask!.right, "ASSERTION: the one button comes last").toBeLessThanOrEqual(
+            at.primary!.left,
+          );
+          expect(
+            at.quiet!.top,
+            "ASSERTION: the quiet word never stands above the one button",
+          ).toBeGreaterThanOrEqual(at.primary!.top - 1);
+        }),
+    );
+
     // A run 2 follow-up: Merge's press put words under the title's line and the body under the
     // person's eye dropped 24 px, then the question after a first merge came in above it.
     it.effect("merge leaves the review's body where the person's eye is", () =>

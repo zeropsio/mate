@@ -253,52 +253,64 @@ export function ZeropsReviewSurface({
               answers
             ) : (
               <>
-                {dismiss === undefined || frame === "page" ? null : (
-                  <Button onClick={onClose} variant="ghost">
-                    {dismiss}
-                  </Button>
+                {(dismiss === undefined || frame === "page") && secondary === undefined ? null : (
+                  <div className="rv-btns-quiet">
+                    {dismiss === undefined || frame === "page" ? null : (
+                      <Button onClick={onClose} variant="ghost">
+                        {dismiss}
+                      </Button>
+                    )}
+                    {secondary === undefined ? null : (
+                      <Button
+                        data-review-secondary=""
+                        disabled={!secondary.enabled}
+                        onClick={secondary.onPress}
+                        variant="ghost"
+                      >
+                        {secondary.label}
+                      </Button>
+                    )}
+                  </div>
                 )}
-                {secondary === undefined ? null : (
-                  <Button
-                    data-review-secondary=""
-                    disabled={!secondary.enabled}
-                    onClick={secondary.onPress}
-                    variant="ghost"
-                  >
-                    {secondary.label}
-                  </Button>
-                )}
-                {ask === undefined ? null : (
-                  <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
-                    {ask.label}
-                  </Button>
-                )}
-                {settled === undefined ? null : (
-                  <span className="rv-settled">
-                    <CheckIcon aria-hidden="true" />
-                    {settled}
-                  </span>
-                )}
-                {primary === undefined ? null : (
-                  <Button
-                    data-review-primary=""
-                    data-safe={
-                      primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
-                    }
-                    data-zerops-primary-action={primary.label}
-                    disabled={!primary.enabled || primary.busy === true}
-                    onClick={primary.onPress}
-                  >
-                    {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
-                    {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
-                    {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
-                    {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
-                    {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                      <kbd aria-hidden="true" className="rv-keys">
-                        {PRESS_KEYS}
-                      </kbd>
-                    ) : null}
-                  </Button>
+                {ask === undefined && settled === undefined && primary === undefined ? null : (
+                  <div className="rv-btns-main">
+                    {ask === undefined ? null : (
+                      <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
+                        {ask.label}
+                      </Button>
+                    )}
+                    {settled === undefined ? null : (
+                      <span className="rv-settled">
+                        <CheckIcon aria-hidden="true" />
+                        {settled}
+                      </span>
+                    )}
+                    {primary === undefined ? null : (
+                      <Button
+                        data-review-primary=""
+                        data-safe={
+                          primary.safe && primary.enabled && primary.busy !== true
+                            ? "true"
+                            : "false"
+                        }
+                        data-zerops-primary-action={primary.label}
+                        disabled={!primary.enabled || primary.busy === true}
+                        onClick={primary.onPress}
+                      >
+                        {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
+                        {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
+                        {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
+                        {primary.busy === true
+                          ? `${primary.label}…`
+                          : (primary.text ?? primary.label)}
+                        {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
+                          <kbd aria-hidden="true" className="rv-keys">
+                            {PRESS_KEYS}
+                          </kbd>
+                        ) : null}
+                      </Button>
+                    )}
+                  </div>
                 )}
               </>
             )}
