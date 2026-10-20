@@ -11551,6 +11551,13 @@ a.message-file:focus-visible {
   width: min(520px, calc(100% - 24px));
   max-height: none;
 }
+/* A release is a few lines and its buttons: its sheet hangs from the top as tall as what it says,
+   up to the window's height, and eases to a change's height when one is stepped into
+   (`ZeropsReleaseSteps`). From the press it keeps the height it stood at (`holdSheetHeight`). */
+.rv-viewport > .rv:has(.rv-steps) {
+  bottom: auto;
+  max-height: calc(100dvh - 24px);
+}
 /* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
 .rv[data-ending-style],

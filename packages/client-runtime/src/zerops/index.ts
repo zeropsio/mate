@@ -488,6 +488,7 @@ export {
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
+  releaseWhereWords,
   rollbackOnItsWay,
   type ReleaseFacts,
 } from "./releaseFacts.ts";

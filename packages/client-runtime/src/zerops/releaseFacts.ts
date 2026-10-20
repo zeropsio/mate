@@ -65,10 +65,26 @@ export function releaseFacts(input: {
     contents: input.contents,
     where: input.comparison.map((row) => ({
       service: row.service,
-      line: row.changed ? `gets ${input.tag}` : "stays as it is",
+      line: row.changed ? getsLine(input.tag) : "stays as it is",
     })),
     services: moving.length === 0 ? input.productionServices : moving,
   };
+}
+
+/** A service's line when it gets the release. */
+const getsLine = (tag: string) => `gets ${tag}`;
+
+/**
+ * Where a release goes, in words: one sentence when every service gets it ("Goes to api and
+ * web."), else each service's own line ("api gets v0.2.0.", "web stays as it is.").
+ */
+export function releaseWhereWords(
+  where: ReleaseFacts["where"],
+  tag: string,
+): ReadonlyArray<string> {
+  return where.length > 0 && where.every((entry) => entry.line === getsLine(tag))
+    ? [`Goes to ${serviceNames(where.map((entry) => entry.service))}.`]
+    : where.map((entry) => `${entry.service} ${entry.line}.`);
 }
 
 /**

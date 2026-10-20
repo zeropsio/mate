@@ -252,8 +252,9 @@ describe("the release dialog's press", () => {
     const { container } = await mount(release);
     const field = container.querySelector<TestInput>('input[aria-label="Version"]');
     expect(field?.value).toBe("0.1.5");
-    const suggestion = [...container.querySelectorAll<TestButton>("button")].find((button) =>
-      button.textContent?.includes("Use v1.0.0"),
+    expect(container.textContent).toContain("Your code names v1.0.0.");
+    const suggestion = [...container.querySelectorAll<TestButton>("button")].find(
+      (button) => button.textContent === "Use it",
     );
     expect(suggestion).toBeDefined();
     await act(async () => suggestion!.click());

@@ -171,7 +171,8 @@ describe("ReleaseReviewView", () => {
       nextPatch: "v0.1.57",
     };
     const markup = render({ version });
-    expect(markup).toContain("Use v1.0.0");
+    expect(markup).toContain("Your code names v1.0.0.");
+    expect(markup).toContain("Use it");
     expect(markup).not.toContain("package.json");
   });
 
