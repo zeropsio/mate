@@ -12600,8 +12600,10 @@ button.rv-relrow:hover .rv-relrow-go {
   grid-column: 1 / -1;
 }
 
-/* The foot, pinned to the sheet's bottom: the buttons at its end as every sheet's action bar has
-   them, the one button last and ink-filled, then one line of what happens next. */
+/* The foot, pinned to the sheet's bottom: the quiet words at its start, the ask and the one button
+   together at its end, the one button last and ink-filled, then one line of what happens next. A
+   sheet too narrow for one row keeps the pair on the first line and drops the quiet words under it:
+   the one button never stands alone. */
 .rv-foot {
   display: flex;
   flex: none;
@@ -12613,10 +12615,23 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 .rv-btns {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: wrap-reverse;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
+}
+.rv-btns-quiet,
+.rv-btns-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The quiet words' text stands on the foot's edge, over the line of what happens next: a button's
+   padding and border (3 spacing units) sit outside it. */
+.rv-btns-quiet {
+  margin-inline-start: calc(var(--spacing) * -3);
+}
+.rv-btns-main {
+  margin-inline-start: auto;
 }
 .rv-btns:empty {
   display: none;
