@@ -32,6 +32,7 @@ import {
   releaseStageMarks,
   releaseStep,
   releaseVersionField,
+  releaseWhereWords,
   releaseVersionSuggestions,
   reviewAge,
   rollbackOnItsWay,
@@ -707,7 +708,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
               text: `${model.primary.label} to production`,
               onPress:
-                model.primary.label === "Replace token" ? props.onReplaceToken! : props.onRelease,
+                model.primary.label === "Replace token"
+                  ? props.onReplaceToken!
+                  : (event?: { readonly currentTarget: EventTarget | null }) => {
+                      holdSheetHeight(event?.currentTarget);
+                      props.onRelease();
+                    },
             }
       }
       title={git ? `Release ${tag} to production` : heading.title}
@@ -769,9 +775,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           )}
           {/* Which release each service gets, until HQ answers where it went. */}
           {props.git === undefined && answer === undefined
-            ? props.where.map((entry) => (
-                <p className="rv-note" key={entry.service}>
-                  {entry.service} {entry.line}.
+            ? releaseWhereWords(props.where, tag).map((words) => (
+                <p className="rv-note" key={words}>
+                  {words}
                 </p>
               ))
             : null}
@@ -826,26 +832,39 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             </div>
             <p className="rv-note" id={`${versionId}-help`}>
               {checkedVersion?.error ??
-                `Must be newer than every release. Next patch is ${version.nextPatch}.`}
+                // The next patch, said only while the field holds something else.
+                (`v${version.value}` === version.nextPatch
+                  ? "Must be newer than every release."
+                  : `Must be newer than every release. Next patch is ${version.nextPatch}.`)}
             </p>
             {version.suggestions.map((suggestion) => (
-              <div className="rv-note rv-version-use" key={suggestion.source}>
+              <p className="rv-note rv-version-use" key={suggestion.source}>
+                Your code names {suggestion.tag}.
                 <Button
                   disabled={!offered}
                   onClick={() => version.onChange(suggestion.tag.slice(1))}
                   size="sm"
                   variant="link"
                 >
-                  Use {suggestion.tag}
+                  Use it
                 </Button>
-                <span>The version your code names</span>
-              </div>
+              </p>
             ))}
           </div>
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
   );
+}
+
+/**
+ * From the press, the release's sheet keeps at least the height it stood at: what it says next —
+ * its progress, then Where — never pulls its buttons up under the pointer (the onboarding run: the
+ * foot rose 110 px at the press).
+ */
+function holdSheetHeight(pressed: EventTarget | null | undefined) {
+  const sheet = pressed instanceof HTMLElement ? pressed.closest<HTMLElement>(".rv") : null;
+  if (sheet !== null) sheet.style.minHeight = `${String(sheet.getBoundingClientRect().height)}px`;
 }
 
 /** A roll back's list as HQ compared it: its rows and how many move, or why that is not known. */

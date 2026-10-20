@@ -14,6 +14,7 @@ import {
   releaseStep,
   rollbackOnItsWay,
   type ReleaseFacts,
+  releaseWhereWords,
 } from "./releaseFacts.ts";
 import {
   releaseReview,
@@ -920,5 +921,38 @@ describe("a release on its way says how long", () => {
         clockMs: NOW,
       }),
     ).toEqual({ kind: "releasing", progress, clock });
+  });
+});
+
+describe("where a release goes, in words", () => {
+  it.each([
+    {
+      title: "one service that gets it",
+      tag: "v0.1.1",
+      where: [{ service: "web", line: "gets v0.1.1" }],
+      want: ["Goes to web."],
+    },
+    {
+      title: "every service that gets it, in one sentence",
+      tag: "v0.2.0",
+      where: [
+        { service: "api", line: "gets v0.2.0" },
+        { service: "web", line: "gets v0.2.0" },
+        { service: "worker", line: "gets v0.2.0" },
+      ],
+      want: ["Goes to api, web and worker."],
+    },
+    {
+      title: "a service that stays, each its own line",
+      tag: "v0.2.0",
+      where: [
+        { service: "api", line: "gets v0.2.0" },
+        { service: "web", line: "stays as it is" },
+      ],
+      want: ["api gets v0.2.0.", "web stays as it is."],
+    },
+    { title: "no service, nothing", tag: "v0.1.0", where: [], want: [] },
+  ])("says $title", ({ where, tag, want }) => {
+    expect(releaseWhereWords(where, tag)).toEqual(want);
   });
 });
