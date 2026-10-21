@@ -148,7 +148,6 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     baseBranch: "main",
     line: "appdev #2",
     updatedAt: minutesAgo(4),
-    headBranch: "mate/p-nova/2",
     ...over,
   };
 }
