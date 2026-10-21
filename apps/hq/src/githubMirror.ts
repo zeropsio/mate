@@ -433,6 +433,42 @@ export const githubMirrorLayer = (
           ),
         );
 
+      /** The repositories whose last follow of GitHub's other refs failed: said once, until one works. */
+      const othersFailing = new Set<string>();
+      /**
+       * GitHub's other branches and tags, as they are there now: what it deleted is named. Never
+       * decides the sync: one object git refuses anywhere there fails the whole fetch, every time, and
+       * main, its rules and its merges follow regardless; the next sync tries again.
+       */
+      const followOthers = (git: HqGit, at: Repo, remote: MirrorRemote) => {
+        const key = `${at.appId}/${at.id}`;
+        const context = { appId: at.appId, repo: at.id };
+        return Effect.gen(function* () {
+          const refs = yield* git.followRefs(at, remote);
+          for (const ref of refs.pruned)
+            yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { ...context, ref });
+          yield* leader.write(
+            sql`
+              UPDATE hq_repo_mirror SET followed_refs = ${encodeFollowed(refs)}::jsonb
+              WHERE app_id::text = ${at.appId} AND repo = ${at.id}`,
+          );
+          if (othersFailing.delete(key))
+            yield* Effect.logInfo("GitHub's other branches and tags followed again", context);
+        }).pipe(
+          Effect.catch((error) =>
+            othersFailing.has(key)
+              ? Effect.void
+              : Effect.andThen(
+                  Effect.sync(() => othersFailing.add(key)),
+                  Effect.logWarning("GitHub's other branches and tags not followed", {
+                    ...context,
+                    error,
+                  }),
+                ),
+          ),
+        );
+      };
+
       const sync: GithubMirror["Service"]["sync"] = (appId, repo) =>
         coalesced(
           `${appId}/${repo}`,
@@ -463,19 +499,7 @@ export const githubMirrorLayer = (
                 mate: outcome.mate,
                 github: outcome.github,
               });
-            // GitHub's other branches and tags, as they are there now: what it deleted is named.
-            const refs = yield* git.followRefs(at, remote).pipe(Effect.mapError(fromGit));
-            for (const ref of refs.pruned)
-              yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { appId, repo, ref });
-            yield* leader
-              .write(
-                sql`
-                  UPDATE hq_repo_mirror SET followed_refs = ${encodeFollowed(refs)}::jsonb
-                  WHERE app_id::text = ${appId} AND repo = ${repo}`,
-              )
-              .pipe(
-                Effect.mapError((error) => (error._tag === "NotLeader" ? fromGit(error) : error)),
-              );
+            yield* followOthers(git, at, remote);
             yield* govern(appId, repo);
             return outcome;
           }),

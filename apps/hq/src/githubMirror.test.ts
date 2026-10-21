@@ -12,6 +12,7 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
@@ -88,6 +89,25 @@ const commitIn = (dir: string, parents: ReadonlyArray<string>, file: string) => 
   const blob = native(dir, ["hash-object", "-w", "--stdin"], file);
   const tree = native(dir, ["mktree"], `100644 blob ${blob}\t${file}\n`);
   return native(dir, ["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", file]);
+};
+
+/**
+ * A commit on `dir` whose tree holds a zero-padded mode (`040000`), as early tooling and imports
+ * from other systems wrote them: GitHub keeps it, and git's fsck refuses to take it in.
+ */
+const legacyIn = (dir: string) => {
+  const blob = native(dir, ["hash-object", "-w", "--stdin"], "old");
+  const sub = native(dir, ["mktree"], `100644 blob ${blob}\told\n`);
+  const tree = NodeChildProcess.execFileSync(
+    "git",
+    ["-C", dir, "hash-object", "-t", "tree", "-w", "--literally", "--stdin"],
+    {
+      input: Buffer.concat([Buffer.from("040000 vendor\0"), Buffer.from(sub, "hex")]),
+      encoding: "utf8",
+      env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin", HOME: dir, GIT_CONFIG_NOSYSTEM: "1" },
+    },
+  ).trim();
+  return native(dir, ["commit-tree", tree, "-m", "Imported from SVN"]);
 };
 
 /** `commitIn` as someone on GitHub writes it: a person's name and GitHub's noreply address. */
@@ -1189,6 +1209,72 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
           }
         }),
       ),
+    );
+
+    it.effect(
+      "A GitHub branch HQ cannot take in never stops main's follow, its rules or the merges it brought",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            native(f.github, ["update-ref", "refs/heads/legacy", legacyIn(f.github)]);
+            yield* f.openChange("Add a search box");
+            const head = yield* f.push("search.ts");
+            yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), head);
+            const merged = commitIn(f.github, [f.main, head], "merged");
+            native(f.github, ["update-ref", "refs/heads/main", merged]);
+            assert.deepStrictEqual(yield* f.mirror.sync(f.appId, "appdev"), {
+              kind: "imported",
+              from: f.main,
+              to: merged,
+            });
+            assert.strictEqual(refIn(f.hqDir, "refs/heads/main"), merged);
+            assert.deepStrictEqual(yield* f.changeRow(1), {
+              state: "merged",
+              merged_sha: merged,
+              landed_head: head,
+            });
+            const [row] = yield* f.sql<{ readonly governance: string | null }>`
+              SELECT governance FROM hq_repo_mirror`;
+            assert.strictEqual(row?.governance, "no_ruleset");
+          }),
+        ),
+    );
+
+    it.effect(
+      "A follow of GitHub's other branches that keeps failing is logged once, and once when it follows again",
+      () => {
+        const logged: Array<string> = [];
+        return Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            const legacy = legacyIn(f.github);
+            native(f.github, ["update-ref", "refs/heads/legacy", legacy]);
+            // Main follows every time; the refs beside it fail every time, and are said once.
+            for (const _ of [1, 2, 3]) yield* f.mirror.sync(f.appId, "appdev");
+            assert.strictEqual(refIn(f.github, "refs/heads/main"), f.main);
+            native(f.github, ["update-ref", "-d", "refs/heads/legacy"]);
+            for (const _ of [1, 2]) yield* f.mirror.sync(f.appId, "appdev");
+            assert.strictEqual(refsOf(f.hqDir, "refs/github/"), "refs/github/heads/main");
+            assert.deepStrictEqual(
+              logged.filter((line) => line.includes("GitHub's other branches and tags")),
+              [
+                "GitHub's other branches and tags not followed",
+                "GitHub's other branches and tags followed again",
+              ],
+            );
+          }),
+        ).pipe(
+          Effect.provide(
+            Logger.layer([
+              Logger.make(({ message }) => {
+                logged.push(String(Array.isArray(message) ? message[0] : message));
+              }),
+            ]),
+          ),
+        );
+      },
     );
 
     it.effect("Pushes to GitHub while a follow runs make one more follow, not one each", () =>
