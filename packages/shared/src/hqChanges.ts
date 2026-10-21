@@ -1,8 +1,8 @@
 /**
  * A Mate's changes in HQ (SPEC §3.2a), what replaces a pull request: the wire between HQ, zcp and
  * the client. A change is HQ's record of a Mate's work toward `main` in one repository of its
- * application, on the branch `mate/<Mate's project id>/<number>`; a Mate has at most one open
- * change per repository. HQ checks every body it reads with these schemas; zcp reads this file as
+ * application, on a branch: the one it was opened on, `mate/<Mate's project id>/<number>` where it
+ * named none. A Mate has at most one open change per repository, and a branch is one open change's. HQ checks every body it reads with these schemas; zcp reads this file as
  * the spec.
  *
  * **The Mate's side**, `Authorization: Mate <credential>` (`apps/hq/src/mateCredentials.ts`), always
@@ -14,9 +14,11 @@
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
- *   as the password. A Mate fetches its application's repositories and pushes only to the branch of
- *   its own open change, only forward; nobody deletes a branch and `main` moves only by HQ's merge.
- *   A push refused is refused per ref in git's own report.
+ *   as the password. A Mate fetches its application's repositories and pushes any branch but
+ *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
+ *   whose change was merged or closed until a change is opened on it again (`change_closed`), nor
+ *   under `mate/` but its own change's (`unknown_change`), nor a tag. Nobody deletes a branch and `main` moves only by HQ's merge. A push refused is refused per
+ *   ref in git's own report.
  *
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
@@ -38,7 +40,9 @@
  * **Answers.** A refusal is `{ code, reason }`: `403 forbidden` with a permission's reason
  * (`zeropsPermissions.ts`), `404` `repo_not_found` / `change_not_found` / `attachment_not_found` /
  * `commit_not_found`,
- * `409 conflict` `change_not_open` for a change merged or closed, `400 invalid` for a body these
+ * `409 conflict` `change_not_open` for a change merged or closed, `branch_taken` / `protected_ref`
+ * for a change opened on another open change's branch / on `main`, `mate/…` or a full ref,
+ * `400 invalid` for a body these
  * schemas refuse, `413 too_large`. Only the HQ that leads serves any of it: a standby answers `503
  * not_active` with `Retry-After` (two instances overlap through a deploy), which is "try again",
  * never a refusal; so is `503 zerops_unavailable`.
@@ -118,8 +122,14 @@ export type MergeabilityKind = typeof MergeabilityKind.Type;
 export const JUDGED_PER_MAIN_MOVE = 20;
 
 /**
- * A change as HQ records it. Its branch is `mate/<mateProjectId>/<number>`; `head` is the commit
- * that branch was last pushed to, none until the first push lands. Once merged, `mergedSha` is the
+ * A branch a change is on: its name under `refs/heads/`, as git takes it (`fix-login`, never
+ * `refs/heads/fix-login`); HQ refuses what git would not take.
+ */
+export const ChangeBranchName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255));
+
+/**
+ * A change as HQ records it. `branch` is the branch it is on; `head` is the commit that branch was
+ * last pushed to, none until the first push lands. Once merged, `mergedSha` is the
  * squash on `main` and `landedHead` the head it squashed.
  */
 /** Requirements and results supplied by the repository owner for one exact head. */
@@ -173,6 +183,8 @@ export const HqChange = Schema.Struct({
   number: ChangeNumber,
   /** The Mate's Zerops project. */
   mateProjectId: Schema.String,
+  /** The branch it is on. Absent from an older HQ, whose changes are all on their default. */
+  branch: Schema.optionalKey(ChangeBranchName),
   title: ChangeTitle,
   /** Markdown; empty until the Mate describes the change. */
   body: ChangeBody,
@@ -420,11 +432,19 @@ export type RepoListResponse = typeof RepoListResponse.Type;
 
 /**
  * One repository of the Mate's application as the Mate reads it: the address of the origin its
- * person connected, never the token HQ keeps for it; none before one is connected.
+ * person connected, never the token HQ keeps for it; none before one is connected — HQ alone keeps
+ * the code. `mode` says whose the code is: `github`, mounted through the organization's GitHub app,
+ * is GitHub's — HQ follows it; `follow`, connected with a person's token, is HQ's, the origin an
+ * upstream to fetch from. Absent from an older HQ.
  */
 export const MateRepo = Schema.Struct({
   name: RepoName,
-  origin: Schema.optionalKey(Schema.Struct({ url: HqRemoteUrl })),
+  origin: Schema.optionalKey(
+    Schema.Struct({
+      url: HqRemoteUrl,
+      mode: Schema.optionalKey(Schema.Literals(["github", "follow"])),
+    }),
+  ),
 });
 export type MateRepo = typeof MateRepo.Type;
 
@@ -440,6 +460,13 @@ export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
 export const OpenChangeRequest = Schema.Struct({
   repo: RepoName,
   title: ChangeTitle,
+  /**
+   * The branch a new change is on, pushed already or not yet; `mate/<Mate's project id>/<number>`
+   * where none is named. Refused `branch_taken` while another open change is on it, and
+   * `protected_ref` for `main`, a name under `mate/` (those are HQ's) or under `refs/`. An open
+   * change answered as it is keeps its own.
+   */
+  branch: Schema.optionalKey(ChangeBranchName),
   /** Git's content hash of the candidate tree, before a change branch exists. */
   tree: Schema.optionalKey(Sha),
 });

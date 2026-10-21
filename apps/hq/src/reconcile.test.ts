@@ -381,20 +381,26 @@ describe("a takeover after git moved past HQ's records", () => {
 
     it.effect("numbers a new change past every change branch, recorded or not", () =>
       Effect.gen(function* () {
-        const { call, fake, gitRoot } = yield* startCore(true);
-        yield* untilHealth(call, "active");
-        const owner = yield* sessionFor(call, "door-owner");
-        const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
-        yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+        const first = yield* startCore(true);
+        yield* untilHealth(first.call, "active");
+        const owner = yield* sessionFor(first.call, "door-owner");
+        const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+        yield* first.call("POST", "/api/mate/repos", {
+          headers: ada.auth,
+          body: { name: "appdev" },
+        });
+        yield* first.stop;
         // A branch no record names: a change opened after the records a restore brought back.
-        const appdev = bareAt(NodePath.join(gitRoot, ada.appId, "appdev.git"));
+        const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
         const main = appdev(["rev-parse", "refs/heads/main"]);
         appdev([
           "update-ref",
           "refs/heads/mate/P_GHOST/7",
           commitOn(appdev, main, "ghost.txt", "Ghost"),
         ]);
-        const opened = yield* call("POST", "/api/mate/changes", {
+        const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+        yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+        const opened = yield* next.call("POST", "/api/mate/changes", {
           headers: ada.auth,
           body: { repo: "appdev", title: "Ada's" },
         });

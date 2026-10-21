@@ -231,6 +231,47 @@ describe("migrate", () => {
         ),
     );
 
+    it.effect(
+      "a change opened before changes named their branch is on mate/<Mate>/<number>, and one open change at a time holds a branch",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const all = treeMigrations();
+            yield* migrate(all.filter((file) => file.name < "0081_"));
+            const sql = yield* SqlClient.SqlClient;
+            const app = "00000000-0000-0000-0000-000000000001";
+            yield* sql`INSERT INTO hq_app (id, name, created_by) VALUES (${app}, 'Shop', 'owner')`;
+            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+              VALUES (${app}, 'appdev', 'owner')`;
+            for (const [number, mate, state] of [
+              [1, "P_MATE", "merged"],
+              [2, "P_MATE", "open"],
+              [3, "P_BEA", "open"],
+            ] as const)
+              yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state)
+                VALUES (${app}, 'appdev', ${number}, ${mate}, 'The task', ${state})`;
+            yield* migrate(all);
+            const rows = yield* sql<{ readonly number: number; readonly branch: string }>`
+              SELECT number, branch FROM hq_change ORDER BY number`;
+            assert.deepStrictEqual(
+              rows.map((row) => [row.number, row.branch]),
+              [
+                [1, "mate/P_MATE/1"],
+                [2, "mate/P_MATE/2"],
+                [3, "mate/P_BEA/3"],
+              ],
+            );
+            const open = (number: number, branch: string) =>
+              Effect.exit(sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title,
+                  branch) VALUES (${app}, 'appdev', ${number}, 'P_CY', 'Another', ${branch})`);
+            // A merged change's branch is free again; an open change's is not.
+            assert.strictEqual((yield* open(4, "mate/P_MATE/1"))._tag, "Success");
+            yield* sql`UPDATE hq_change SET state = 'closed' WHERE number = 4`;
+            assert.strictEqual((yield* open(5, "mate/P_MATE/2"))._tag, "Failure");
+          }),
+        ),
+    );
+
     it.effect("leaves none of the migration from main's tables", () =>
       withSql(
         Effect.gen(function* () {

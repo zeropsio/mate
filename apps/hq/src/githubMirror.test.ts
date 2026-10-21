@@ -341,8 +341,8 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     /** Change `number` of the Mate `mate`, open, titled `title`. */
     const openChange = (title: string, number = 1, mate = "nova") =>
       sql`
-        INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-        VALUES (${appId}::uuid, 'appdev', ${number}, ${mate}, ${title})`;
+        INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, branch)
+        VALUES (${appId}::uuid, 'appdev', ${number}, ${mate}, ${title}, ${`mate/${mate}/${String(number)}`})`;
     /** The Mate commits `file` and pushes it to its change 1; the head, once HQ recorded it. */
     const push = (file: string) =>
       recorded(

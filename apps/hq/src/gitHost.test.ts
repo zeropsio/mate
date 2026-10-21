@@ -98,8 +98,9 @@ const hostWithChanges = (
       const number = i + 1;
       const mate = `M${String(number)}`;
       yield* sql`
-        INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-        VALUES (${repo.appId}::uuid, 'appdev', ${number}, ${mate}, 'Mate: appdev')`;
+        INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title)
+        VALUES (${repo.appId}::uuid, 'appdev', ${number}, ${mate}, ${`mate/${mate}/${String(number)}`},
+          'Mate: appdev')`;
       const blob = bare(dir, ["hash-object", "-w", "--stdin"], content);
       const kept = bare(dir, ["ls-tree", main])
         .split("\n")

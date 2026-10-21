@@ -139,7 +139,6 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         line: "appdev #3",
         // Its last push, edit of its words, or comment.
         updatedAt: "2026-10-02T09:30:00.000Z",
-        headBranch: `mate/${VERA}/3`,
         description: undefined,
         commentCount: 0,
         ready: true,
@@ -270,7 +269,6 @@ describe("an application's changes: the menu's rows, and its detail while a surf
           baseBranch: "main",
           line: "appdev #3",
           updatedAt: "2026-10-02T09:30:00.000Z",
-          headBranch: `mate/${VERA}/3`,
           ready: true,
         },
       ],

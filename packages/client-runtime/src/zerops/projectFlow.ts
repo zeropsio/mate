@@ -87,8 +87,6 @@ export interface FlowPullRequest {
   /** `appdev #4`; `#6` on the recipe repository, whose row wears the tag. */
   readonly line: string;
   readonly updatedAt: string | undefined;
-  /** The branch it comes from — `mate/{projectId}/{n}` for a Mate's change in HQ. */
-  readonly headBranch?: string | undefined;
   /**
    * Its description as its author wrote it, Markdown with its pictures; `undefined` where none was
    * written. What a review reads first.
@@ -176,7 +174,6 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
         ? `#${String(change.number)}`
         : `${change.repo} #${String(change.number)}`,
     updatedAt: change.updatedAt,
-    headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     description: change.body.trim().length === 0 ? undefined : change.body,
     commentCount: change.comments ?? undefined,
     ready: change.ready,
@@ -232,7 +229,6 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
         ? `#${String(change.number)}`
         : `${change.repo} #${String(change.number)}`,
     updatedAt: change.updatedAt,
-    headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     ready: change.ready,
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };

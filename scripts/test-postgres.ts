@@ -8,10 +8,46 @@ import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import { acquireProcessLock } from "./test-process-lock.ts";
 
-/** Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases. */
-export const postgresHome =
-  process.env["MATE_TEST_PG_HOME"] ??
-  NodePath.join("/tmp", `mate-test-pg-${process.getuid?.() ?? NodeOS.userInfo().username}`);
+/**
+ * Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases.
+ * macOS's periodic /tmp cleanup deletes files Postgres reads only at startup, so macOS keeps the
+ * cluster in the user's cache directory (outside that cleanup and Time Machine).
+ */
+export function choosePostgresHome(input: {
+  readonly platform: NodeJS.Platform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly homeDirectory: string;
+  readonly user: number | string;
+}): string {
+  const named = input.env["MATE_TEST_PG_HOME"];
+  if (named !== undefined) return named;
+  if (input.platform === "darwin")
+    return NodePath.join(input.homeDirectory, "Library", "Caches", "mate-test-pg");
+  return NodePath.join("/tmp", `mate-test-pg-${input.user}`);
+}
+
+export const postgresHome = choosePostgresHome({
+  // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone test supervisor has no Effect runtime.
+  platform: process.platform,
+  env: process.env,
+  homeDirectory: NodeOS.homedir(),
+  user: process.getuid?.() ?? NodeOS.userInfo().username,
+});
+
+/** A data directory without PG_VERSION cannot start; replace it instead of failing in pg_ctl. */
+export function prepareClusterDirectory(
+  data: string,
+  report: (line: string) => void,
+): "reuse" | "initialise" {
+  if (NodeFS.existsSync(NodePath.join(data, "PG_VERSION"))) return "reuse";
+  if (NodeFS.existsSync(data)) {
+    report(
+      `PostgreSQL test cluster ${data} has no PG_VERSION (likely removed by temporary-file cleanup); re-initialising it.`,
+    );
+    NodeFS.rmSync(data, { recursive: true, force: true });
+  }
+  return "initialise";
+}
 const socketPath = NodePath.join(postgresHome, "supervisor.sock");
 
 /** Serialize server election and idle shutdown, never test execution. The kernel releases on death. */

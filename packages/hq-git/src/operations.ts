@@ -16,6 +16,7 @@ import {
   type Repo,
   type GitEvent,
   type Mergeability,
+  type ChangeBranch,
   type ChangeSnapshot,
 } from "./api.ts";
 import {
@@ -24,6 +25,7 @@ import {
   unfollowRefs as unfollowRemoteRefs,
 } from "./followRefs.ts";
 import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
+import { validRef } from "./rules.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
 const readLimits = {
@@ -182,14 +184,17 @@ export const makeOperations = (
     if (!main) throw new GitError({ operation, reason: "no_main", message: "Main is unborn" });
     return main;
   };
-  const changeRef = (mateId: string, number: number) => {
+  const changeRef = ({ mateId, number, branch }: ChangeBranch) => {
+    const ref = `refs/heads/${branch}`;
     if (
       !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(mateId) ||
       !Number.isSafeInteger(number) ||
-      number < 1
+      number < 1 ||
+      !validRef(ref) ||
+      branch === "main"
     )
       throw error("Invalid change identity");
-    return `refs/heads/mate/${mateId}/${number}`;
+    return ref;
   };
   const resolve = async (dir: string, rev: string, signal: AbortSignal) => {
     // --end-of-options already stops option parsing; a leading dash is never a revision Core means.
@@ -212,13 +217,12 @@ export const makeOperations = (
   const inspect = async (
     dir: string,
     repo: Repo,
-    mateId: string,
-    number: number,
+    { mateId, number, branch }: ChangeBranch,
     main: string,
     head: string,
     signal: AbortSignal,
   ): Promise<Mergeability & { tree?: string }> => {
-    const metadata = await options.lookupChange(repo, mateId, number);
+    const metadata = await options.lookupChange(repo, branch);
     if (
       metadata?.appId === repo.appId &&
       metadata.mateId === mateId &&
@@ -685,10 +689,10 @@ export const makeOperations = (
       if (!validSha(sha)) throw error("Invalid commit");
       return emptyHistory(dir, sha, signal);
     });
-  const fastForwardChange: HqGit["fastForwardChange"] = (repo, mateId, number, sha, expected) =>
+  const fastForwardChange: HqGit["fastForwardChange"] = (repo, change, sha, expected) =>
     inRepo("fastForwardChange", repo, async (dir, signal) => {
       if (!validSha(sha) || !validSha(expected)) throw error("Invalid commit");
-      const ref = changeRef(mateId, number);
+      const ref = changeRef(change);
       await resolve(dir, sha, signal);
       const head = await refHead(dir, ref, signal);
       if (head !== expected) return { kind: "stale" } as const;
@@ -729,15 +733,13 @@ export const makeOperations = (
         reason: /fetch first|non-fast-forward/u.test(line) ? "stale" : "refused",
       } as const;
     }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("pushRef")));
-  const changeHead: HqGit["changeHead"] = (repo, mateId, number) =>
-    inRepo("changeHead", repo, (dir, signal) => refHead(dir, changeRef(mateId, number), signal));
-  const mergeability: HqGit["mergeability"] = (repo, mateId, number, captured) =>
+  const changeHead: HqGit["changeHead"] = (repo, change) =>
+    inRepo("changeHead", repo, (dir, signal) => refHead(dir, changeRef(change), signal));
+  const mergeability: HqGit["mergeability"] = (repo, change, captured) =>
     inRepo("mergeability", repo, async (dir, signal) => {
       const snapshot = checkedSnapshot(captured);
       const head =
-        snapshot === undefined
-          ? await refHead(dir, changeRef(mateId, number), signal)
-          : snapshot.head;
+        snapshot === undefined ? await refHead(dir, changeRef(change), signal) : snapshot.head;
       if (!head) return { kind: "no_change" };
       const main =
         snapshot === undefined ? await bornMain("mergeability", dir, signal) : snapshot.main;
@@ -747,15 +749,7 @@ export const makeOperations = (
           reason: "no_main",
           message: "Main has no commit",
         });
-      const { tree: _tree, ...result } = await inspect(
-        dir,
-        repo,
-        mateId,
-        number,
-        main,
-        head,
-        signal,
-      );
+      const { tree: _tree, ...result } = await inspect(dir, repo, change, main, head, signal);
       return result;
     });
   const squashMerge: HqGit["squashMerge"] = (repo, opts) =>
@@ -785,10 +779,10 @@ export const makeOperations = (
       }
       const main = await refHead(dir, "refs/heads/main", signal);
       if (main !== opts.expectedMain) return { kind: "main_moved" } as const;
-      const head = await refHead(dir, changeRef(opts.mateId, opts.number), signal);
+      const head = await refHead(dir, changeRef(opts), signal);
       if (!head) return { kind: "no_change" } as const;
       if (head !== opts.expectedHead) return { kind: "head_moved" } as const;
-      const result = await inspect(dir, repo, opts.mateId, opts.number, main, head, signal);
+      const result = await inspect(dir, repo, opts, main, head, signal);
       if (result.kind !== "clean") return result;
       // Git reads trailers only from the last paragraph, so the trusted block always ends the message.
       const message = `${opts.message.trimEnd()}\n\n${trailers
@@ -999,7 +993,9 @@ export const makeOperations = (
       return lines.flatMap((line) => {
         const [ref = "", sha = ""] = line.split(" ");
         const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u.exec(ref);
-        return match === null ? [] : [{ mateId: match[1]!, number: Number(match[2]), sha }];
+        return match === null
+          ? []
+          : [{ mateId: match[1]!, number: Number(match[2]), branch: ref.slice(11), sha }];
       });
     });
   const missingCommits: HqGit["missingCommits"] = (repo, shas) =>
@@ -1112,13 +1108,11 @@ export const makeOperations = (
       if (!validSha(sha)) throw error("Invalid commit");
       return text(dir, ["rev-parse", "--verify", `${sha}^{tree}`], signal);
     });
-  const mergeBase: HqGit["mergeBase"] = (repo, mateId, number, captured) =>
+  const mergeBase: HqGit["mergeBase"] = (repo, change, captured) =>
     inRepo("mergeBase", repo, async (dir, signal) => {
       const snapshot = checkedSnapshot(captured);
       const head =
-        snapshot === undefined
-          ? await refHead(dir, changeRef(mateId, number), signal)
-          : snapshot.head;
+        snapshot === undefined ? await refHead(dir, changeRef(change), signal) : snapshot.head;
       const main =
         snapshot === undefined ? await refHead(dir, "refs/heads/main", signal) : snapshot.main;
       if (!head || !main) return null;
@@ -1168,15 +1162,13 @@ export const makeOperations = (
         total: Math.min(counted, readLimits.history),
       };
     });
-  const changeLog: HqGit["changeLog"] = (repo, mateId, number, opts) =>
+  const changeLog: HqGit["changeLog"] = (repo, change, opts) =>
     inRepo("changeLog", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
       if (opts.base !== undefined && !validSha(opts.base)) throw error("Invalid change base");
       const snapshot = checkedSnapshot(opts.snapshot);
       const head =
-        snapshot === undefined
-          ? await refHead(dir, changeRef(mateId, number), signal)
-          : snapshot.head;
+        snapshot === undefined ? await refHead(dir, changeRef(change), signal) : snapshot.head;
       if (!head) return { items: [], truncated: false };
       const main =
         snapshot === undefined ? await refHead(dir, "refs/heads/main", signal) : snapshot.main;
@@ -1200,9 +1192,9 @@ export const makeOperations = (
       const { items, cut } = await summaries(dir, shas.slice(0, limit), signal);
       return { items, truncated: shas.length > limit || cut };
     });
-  const squashNames: HqGit["squashNames"] = (repo, mateId, number) =>
+  const squashNames: HqGit["squashNames"] = (repo, change) =>
     inRepo("squashNames", repo, async (dir, signal) => {
-      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const head = await refHead(dir, changeRef(change), signal);
       if (!head) return { kind: "no_change" } as const;
       const main = await bornMain("squashNames", dir, signal);
       const none = { main, head, files: { items: [], truncated: false } };
@@ -1212,7 +1204,7 @@ export const makeOperations = (
         acceptExitCodes: [1],
       });
       if (onMain.code === 0) return none;
-      const result = await inspect(dir, repo, mateId, number, main, head, signal);
+      const result = await inspect(dir, repo, change, main, head, signal);
       if (result.kind === "empty") return none;
       if (result.kind !== "clean") return result;
       // `-z` alternates the letter and the path, each ended by NUL: never a cut pair.
@@ -1237,11 +1229,11 @@ export const makeOperations = (
         },
       };
     });
-  const changeTrailers: HqGit["changeTrailers"] = (repo, mateId, number, keys) =>
+  const changeTrailers: HqGit["changeTrailers"] = (repo, change, keys) =>
     inRepo("changeTrailers", repo, async (dir, signal) => {
       if (keys.length === 0 || keys.some((key) => !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(key)))
         throw error("Invalid trailer key");
-      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const head = await refHead(dir, changeRef(change), signal);
       if (!head) return [];
       const main = await refHead(dir, "refs/heads/main", signal);
       const range = [head, ...(main ? [`^${main}`] : []), "--"];
@@ -1341,15 +1333,13 @@ export const makeOperations = (
         truncated: message.truncated || files.truncated || items.length > readLimits.entries,
       };
     });
-  const changeDiff: HqGit["changeDiff"] = (repo, mateId, number, opts) =>
+  const changeDiff: HqGit["changeDiff"] = (repo, change, opts) =>
     inRepo("changeDiff", repo, async (dir, signal) => {
       const maxFiles = bound(opts.maxFiles, readLimits.entries);
       const maxBytes = bound(opts.maxBytesPerFile, readLimits.bytes);
       const snapshot = checkedSnapshot(opts.snapshot);
       const head =
-        snapshot === undefined
-          ? await refHead(dir, changeRef(mateId, number), signal)
-          : snapshot.head;
+        snapshot === undefined ? await refHead(dir, changeRef(change), signal) : snapshot.head;
       if (!head) return { items: [], truncated: false };
       const main =
         snapshot === undefined ? await bornMain("changeDiff", dir, signal) : snapshot.main;

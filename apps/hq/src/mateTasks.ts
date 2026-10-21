@@ -309,10 +309,10 @@ interface MessageRow {
   readonly source: MateTaskMessage["from"];
   readonly author: string | null;
   readonly text: string;
-  /** The task's change, where it opened one, and the Mate it is the change of. */
+  /** The task's change, where it opened one, and its branch. */
   readonly change_repo: string | null;
   readonly change_number: number | null;
-  readonly change_mate: string | null;
+  readonly change_branch: string | null;
 }
 /** A message as its Mate is told it, with its task's change: where a follow-up's work starts. */
 const messageFrame = (row: MessageRow) =>
@@ -320,14 +320,10 @@ const messageFrame = (row: MessageRow) =>
     type: "task-message",
     taskId: row.task_id,
     message: { id: row.id, from: row.source, author: row.author, text: row.text },
-    ...(row.change_repo === null || row.change_number === null || row.change_mate === null
+    ...(row.change_repo === null || row.change_number === null || row.change_branch === null
       ? {}
       : {
-          change: {
-            repo: row.change_repo,
-            number: row.change_number,
-            branch: `mate/${row.change_mate}/${String(row.change_number)}`,
-          },
+          change: { repo: row.change_repo, number: row.change_number, branch: row.change_branch },
         }),
   });
 
@@ -432,7 +428,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
           : Effect.map(
               sql<MessageRow>`
                 SELECT m.task_id::text AS task_id, m.id, m.source, m.author, m.text,
-                  t.change_repo, t.change_number, c.mate_project_id AS change_mate
+                  t.change_repo, t.change_number, c.branch AS change_branch
                 FROM hq_task_message m JOIN hq_task t ON t.id = m.task_id
                 LEFT JOIN hq_change c ON c.app_id = t.app_id AND c.repo = t.change_repo
                   AND c.number = t.change_number
@@ -1150,8 +1146,8 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               SELECT t.id, t.mate_project_id, t.change_repo, t.change_number,
                 t.state IN ('working', 'waiting') AS on,
                 ${hears(sql`t`)} AND t.state = 'done' AS follow_up,
-                (SELECT c.mate_project_id FROM hq_change c WHERE c.app_id = t.app_id
-                  AND c.repo = t.change_repo AND c.number = t.change_number) AS change_mate
+                (SELECT c.branch FROM hq_change c WHERE c.app_id = t.app_id
+                  AND c.repo = t.change_repo AND c.number = t.change_number) AS change_branch
               FROM hq_task t
               WHERE t.id::text = ${taskId}
                 AND (SELECT count(*) FROM hq_task_message WHERE task_id::text = ${taskId})
@@ -1163,7 +1159,7 @@ export const mateTasksLayer = (options: MateTasksOptions = {}) =>
               FROM task ON CONFLICT DO NOTHING RETURNING task_id)
             SELECT task.on, task.follow_up, task.mate_project_id, task.id::text AS task_id,
               ${message.id} AS id, ${message.from} AS source, ${message.author}::text AS author,
-              ${message.text} AS text, task.change_repo, task.change_number, task.change_mate
+              ${message.text} AS text, task.change_repo, task.change_number, task.change_branch
             FROM task JOIN kept ON kept.task_id = task.id`);
           if (kept === undefined) return;
           // Told now to a Mate on it, kept for one that has not taken it yet; a follow-up goes

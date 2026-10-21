@@ -563,8 +563,9 @@ export const githubMirrorLayer = (
               readonly head: string | null;
               readonly title: string;
               readonly mate_project_id: string;
+              readonly branch: string;
             }>`
-              SELECT state, head, title, mate_project_id FROM hq_change
+              SELECT state, head, title, mate_project_id, branch FROM hq_change
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
             if (change === undefined || change.state !== "open" || change.head === null)
               return undefined;
@@ -599,7 +600,12 @@ export const githubMirrorLayer = (
             }
             if (theirs !== null && (yield* ancestor(head, theirs))) {
               const moved = yield* git
-                .fastForwardChange(at, change.mate_project_id, number, theirs, head)
+                .fastForwardChange(
+                  at,
+                  { mateId: change.mate_project_id, number, branch: change.branch },
+                  theirs,
+                  head,
+                )
                 .pipe(Effect.mapError(fromGit));
               if (moved.kind !== "moved")
                 return yield* unavailable("busy", "the change's head moved meanwhile");
@@ -705,19 +711,20 @@ export const githubMirrorLayer = (
           const after = typeof payload.after === "string" ? payload.after : "";
           for (const row of yield* mirrored) {
             if (remoteIdentity(row.url)?.path !== named) continue;
-            // A change's branch moved there: someone added commits to its pull request.
-            if (ref.startsWith("refs/heads/mate/")) {
-              const changed = yield* sql<{ readonly number: number }>`
-                SELECT number FROM hq_change_mirror
-                WHERE app_id::text = ${row.app_id} AND repo = ${row.repo}
-                  AND branch = ${ref.slice("refs/heads/".length)}`;
-              for (const { number } of changed)
-                yield* quietly(
-                  "GitHub's push to a change's branch not followed",
-                  { appId: row.app_id, repo: row.repo, number, deliveryId: event.deliveryId },
-                  mirrorChange(row.app_id, row.repo, number, after),
-                );
-            }
+            // A change's branch moved there, as HQ named it: someone added commits to its pull
+            // request.
+            const changed = ref.startsWith("refs/heads/")
+              ? yield* sql<{ readonly number: number }>`
+                  SELECT number FROM hq_change_mirror
+                  WHERE app_id::text = ${row.app_id} AND repo = ${row.repo}
+                    AND branch = ${ref.slice("refs/heads/".length)}`
+              : [];
+            for (const { number } of changed)
+              yield* quietly(
+                "GitHub's push to a change's branch not followed",
+                { appId: row.app_id, repo: row.repo, number, deliveryId: event.deliveryId },
+                mirrorChange(row.app_id, row.repo, number, after),
+              );
             yield* quietly(
               "GitHub's push not followed",
               { appId: row.app_id, repo: row.repo, deliveryId: event.deliveryId },

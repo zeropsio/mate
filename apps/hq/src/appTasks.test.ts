@@ -457,7 +457,7 @@ describe("an application's tasks, what they cost, and the organization's monthly
             "INSERT INTO hq_repo (app_id, name, created_by) SELECT id, 'appdev', 'door-owner' FROM hq_app ON CONFLICT DO NOTHING",
           );
           yield* sql(
-            "INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state) SELECT id, 'appdev', 1, 'P_ROBOT', 'Cart', 'closed' FROM hq_app",
+            "INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, state) SELECT id, 'appdev', 1, 'P_ROBOT', 'mate/P_ROBOT/1', 'Cart', 'closed' FROM hq_app",
           );
           yield* sql("UPDATE hq_task SET change_repo = 'appdev', change_number = 1");
           assert.deepStrictEqual(

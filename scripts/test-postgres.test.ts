@@ -58,3 +58,55 @@ it.each([
     }
   },
 );
+
+it.each([
+  {
+    name: "macOS keeps the shared cluster outside /tmp cleanup",
+    platform: "darwin" as const,
+    env: {},
+    expected: "/Users/dev/Library/Caches/mate-test-pg",
+  },
+  {
+    name: "Linux keeps the shared cluster in /tmp",
+    platform: "linux" as const,
+    env: {},
+    expected: "/tmp/mate-test-pg-501",
+  },
+  {
+    name: "an explicit MATE_TEST_PG_HOME wins on every platform",
+    platform: "darwin" as const,
+    env: { MATE_TEST_PG_HOME: "/work/pg" },
+    expected: "/work/pg",
+  },
+])("$name", async ({ platform, env, expected }) => {
+  const { choosePostgresHome } = await import("./test-postgres.ts");
+  expect(choosePostgresHome({ platform, env, homeDirectory: "/Users/dev", user: 501 })).toBe(
+    expected,
+  );
+});
+
+it("re-initialises a cluster directory whose PG_VERSION is gone and says why", async () => {
+  const { prepareClusterDirectory } = await import("./test-postgres.ts");
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-broken-"));
+  try {
+    const healthy = NodePath.join(home, "healthy");
+    NodeFS.mkdirSync(healthy);
+    NodeFS.writeFileSync(NodePath.join(healthy, "PG_VERSION"), "17\n");
+    const broken = NodePath.join(home, "broken");
+    NodeFS.mkdirSync(NodePath.join(broken, "base"), { recursive: true });
+    const missing = NodePath.join(home, "missing");
+    const notices: string[] = [];
+    const report = (line: string) => notices.push(line);
+
+    expect([healthy, broken, missing].map((data) => prepareClusterDirectory(data, report))).toEqual(
+      ["reuse", "initialise", "initialise"],
+    );
+    expect(NodeFS.existsSync(broken)).toBe(false);
+    expect(NodeFS.existsSync(NodePath.join(healthy, "PG_VERSION"))).toBe(true);
+    expect(notices).toEqual([
+      `PostgreSQL test cluster ${broken} has no PG_VERSION (likely removed by temporary-file cleanup); re-initialising it.`,
+    ]);
+  } finally {
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});

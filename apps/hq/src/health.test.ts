@@ -108,6 +108,7 @@ const getHealth = (
                 pushes,
                 moves: Stream.empty,
                 conflicts: Stream.empty,
+                follow: () => Effect.die("no git"),
               }),
             ),
           ),

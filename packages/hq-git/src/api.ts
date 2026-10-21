@@ -34,8 +34,9 @@ export type RefDecision =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly reason: string };
 /**
- * A change branch is `refs/heads/mate/<mateId>/<number>`, writable only by its mate while open.
- * Change branches are append-only: every repository keeps `receive.denyNonFastForwards`.
+ * The change a branch is bound to, as Core records it: writable only by its Mate while open; once
+ * it is merged or closed, by nobody until another change is opened on the branch. Branches are
+ * append-only: every repository keeps `receive.denyNonFastForwards`.
  */
 export interface Change {
   readonly appId: string;
@@ -44,6 +45,15 @@ export interface Change {
   /** Whether the change still accepts pushes here, i.e. it is neither merged nor closed. */
   readonly open: boolean;
   readonly merged?: boolean;
+}
+/**
+ * A change as git reads it: its branch, a name under `refs/heads/`, and whose it is — its Mate and
+ * number, which its squash's `Mate-Change` trailer names.
+ */
+export interface ChangeBranch {
+  readonly mateId: string;
+  readonly number: number;
+  readonly branch: string;
 }
 
 type Awaitable<A> = A | Promise<A>;
@@ -68,8 +78,12 @@ export interface HqGitOptions {
   readonly authenticate: (request: NodeHttp.IncomingMessage) => Awaitable<Principal | null>;
   /** Core checks app membership for readers/people, and app identity for mates. Also gates pushes. */
   readonly canRead: (principal: Principal, repo: Repo) => Awaitable<boolean>;
-  /** The handler always applies the built-in write rules; Core answers only for change records. */
-  readonly lookupChange: (repo: Repo, mateId: string, number: number) => Promise<Change | null>;
+  /**
+   * The handler always applies the built-in write rules; Core answers only for change records: the
+   * change `branch` (a name under `refs/heads/`) is bound to — its open change, else the last one
+   * opened on it — none where no change was ever opened on it.
+   */
+  readonly lookupChange: (repo: Repo, branch: string) => Promise<Change | null>;
   /**
    * Optional narrowing after the built-in rules allowed every update: one decision per update in
    * command order, and it can only refuse more. Any refusal refuses the whole push before git sees
@@ -126,9 +140,7 @@ export type Mergeability =
   | { readonly kind: "clean" }
   | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
   | { readonly kind: "empty" | "already_merged" | "no_change" | "unrelated" };
-export interface SquashOptions {
-  readonly mateId: string;
-  readonly number: number;
+export interface SquashOptions extends ChangeBranch {
   readonly expectedMain: string;
   /** The change head Core reviewed: a later push refuses the merge as `head_moved`. */
   readonly expectedHead: string;
@@ -256,11 +268,7 @@ export interface HqGit {
   readonly remove: (repo: Repo) => Effect.Effect<void, GitError>;
   /** Core calls this on takeover: converges config and sweeps stale locks, quarantines, scratch. */
   readonly convergeRepo: (repo: Repo) => Effect.Effect<void, GitError>;
-  readonly changeHead: (
-    repo: Repo,
-    mateId: string,
-    number: number,
-  ) => Effect.Effect<string | null, GitError>;
+  readonly changeHead: (repo: Repo, change: ChangeBranch) => Effect.Effect<string | null, GitError>;
   /**
    * `already_merged` when Core's change record says merged, or a `Mate-Change` trailer for the
    * change sits on main's first-parent line past its merge base with the change. A walk past the
@@ -270,8 +278,7 @@ export interface HqGit {
    */
   readonly mergeability: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     snapshot?: ChangeSnapshot,
   ) => Effect.Effect<Mergeability, GitError>;
   /** Mergeability's verdict, then one commit on main by CAS: never a moved main or change head. */
@@ -357,8 +364,7 @@ export interface HqGit {
    */
   readonly fastForwardChange: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     sha: string,
     expected: string,
   ) => Effect.Effect<FastForward, GitError>;
@@ -431,15 +437,13 @@ export interface HqGit {
    */
   readonly tags: (repo: Repo) => Effect.Effect<Bounded<TagRead>, GitError>;
   /**
-   * Every change branch, `refs/heads/mate/<mateId>/<number>`, by its Mate and number. Past the
-   * history ceiling it fails closed (`invalid_config`) rather than answer part.
+   * Every branch named as a change opened without naming one is, `refs/heads/mate/<mateId>/<number>`,
+   * by its Mate and number: what a restore's records may lack. Past the history ceiling it fails
+   * closed (`invalid_config`) rather than answer part.
    */
   readonly changeRefs: (
     repo: Repo,
-  ) => Effect.Effect<
-    ReadonlyArray<{ readonly mateId: string; readonly number: number; readonly sha: string }>,
-    GitError
-  >;
+  ) => Effect.Effect<ReadonlyArray<ChangeBranch & { readonly sha: string }>, GitError>;
   /** Which of `shas` the repository has no commit of: missing, or another kind of object. */
   readonly missingCommits: (
     repo: Repo,
@@ -448,8 +452,7 @@ export interface HqGit {
   /** The change's merge base with main; null without a change head, a main, or shared history. */
   readonly mergeBase: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     snapshot?: ChangeSnapshot,
   ) => Effect.Effect<string | null, GitError>;
   /**
@@ -471,8 +474,7 @@ export interface HqGit {
    */
   readonly changeLog: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     options: { readonly limit: number; readonly base?: string; readonly snapshot?: ChangeSnapshot },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
@@ -485,8 +487,7 @@ export interface HqGit {
    */
   readonly squashNames: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
   ) => Effect.Effect<
     SquashNames | Exclude<Mergeability, { readonly kind: "clean" | "empty" }>,
     GitError
@@ -499,14 +500,12 @@ export interface HqGit {
    */
   readonly changeTrailers: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     keys: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyArray<{ readonly key: string; readonly value: string }>, GitError>;
   readonly changeDiff: (
     repo: Repo,
-    mateId: string,
-    number: number,
+    change: ChangeBranch,
     options: {
       readonly maxFiles: number;
       readonly maxBytesPerFile: number;

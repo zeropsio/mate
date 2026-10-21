@@ -604,8 +604,8 @@ describe("a change's pull request", () => {
           assert.notInclude(own, "it shows [change");
           // Another task of the same Mate delivers to a change of its own, and deploys the preview.
           yield* core.sql`
-            INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, head, receipt)
-            SELECT app_id, repo, 2, mate_project_id, 'Colder tea', ${HEAD_2},
+            INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, head, receipt)
+            SELECT app_id, repo, 2, mate_project_id, 'mate/' || mate_project_id || '/2', 'Colder tea', ${HEAD_2},
               ${JSON.stringify(preview("2026-10-19T01:30:00Z"))}::jsonb
             FROM hq_change WHERE repo = 'web' AND number = 1`;
           const now = yield* bodyOnceIt("the preview another change shows", "it shows [change #2]");

@@ -25,7 +25,7 @@
  *
  * @module reconcile
  */
-import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
+import type { ChangeBranch, GitError, HqGit, Repo } from "@t3tools/hq-git";
 import { HQ_FIRST_COMMIT } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import {
@@ -271,7 +271,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     // A branch with no record, recorded: merged where main holds its squash, else open if it is its
     // Mate's newest, else closed.
     const restoreOrphan = (
-      branch: { readonly mateId: string; readonly number: number; readonly sha: string },
+      branch: ChangeBranch & { readonly sha: string },
       squash: string | null,
     ) =>
       Effect.gen(function* () {
@@ -292,9 +292,10 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
                     number: branch.number,
                   });
             yield* sql`
-              INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head,
-                merged_sha, landed_head, merged_at, closed_at, mergeability, first_code_merge)
+              INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, state,
+                head, merged_sha, landed_head, merged_at, closed_at, mergeability, first_code_merge)
               VALUES (${repo.appId}::uuid, ${repo.id}, ${branch.number}, ${branch.mateId},
+                ${branch.branch},
                 ${`Change ${String(branch.number)} (restored)`}, ${state}, ${branch.sha},
                 ${squash}, ${squash === null ? null : branch.sha},
                 ${squash === null ? null : sql`now()`},

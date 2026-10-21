@@ -14,7 +14,7 @@
  */
 import { rasterContentType, type RasterContentType } from "@t3tools/shared/hqAttachments";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
-import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
+import { type ChangeBranch, type GitError, type HqGit, type Repo, validRef } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   ATTACHMENT_MAX_BYTES,
@@ -98,6 +98,9 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "commit_not_found",
     "not_raster",
     "recipe_too_large",
+    "branch_taken",
+    "protected_ref",
+    "invalid_ref",
   ]),
 }) {}
 
@@ -193,13 +196,15 @@ export class Changes extends Context.Service<
     ) => Effect.Effect<HqRepo, MateError | GitError>;
     /**
      * The open change in `repo` a delivery goes to — its live task's own, else the Mate's own off
-     * any task — or the next number opened with `title`, the task's.
+     * any task — or the next number opened with `title`, the task's, on `branch` (its default where
+     * none is named).
      */
     readonly openChange: (
       projectId: string,
       repo: string,
       title: string,
       tree?: string,
+      branch?: string,
     ) => Effect.Effect<OpenChangeResponse, MateError | GitError>;
     /**
      * The Mate's open change `number` in `repo`, retitled, described, its receipt replaced whole,
@@ -489,6 +494,7 @@ const CHANGE_COLUMNS = [
   "repo",
   "number",
   "mate_project_id",
+  "branch",
   "title",
   "body",
   "state",
@@ -543,6 +549,7 @@ interface ChangeRow {
   readonly repo: string;
   readonly number: number;
   readonly mate_project_id: string;
+  readonly branch: string;
   readonly title: string;
   readonly body: string;
   readonly state: HqChange["state"];
@@ -591,11 +598,22 @@ const commentOf = (row: CommentRow): HqChangeComment => ({
   createdAt: row.created_at,
 });
 
-const changeOf = (row: ChangeRow): HqChange => ({
+/** A change as this HQ records it: always on a branch it names. */
+type RecordedChange = HqChange & { readonly branch: string };
+
+/** The change as git reads it. */
+const branchOf = (change: RecordedChange): ChangeBranch => ({
+  mateId: change.mateProjectId,
+  number: change.number,
+  branch: change.branch,
+});
+
+const changeOf = (row: ChangeRow): RecordedChange => ({
   appId: row.app_id,
   repo: row.repo,
   number: row.number,
   mateProjectId: row.mate_project_id,
+  branch: row.branch,
   title: row.title,
   body: row.body,
   state: row.state,
@@ -824,7 +842,7 @@ export const changesLayer: Layer.Layer<
      * `main` meanwhile, it is tried again from where it went.
      */
     const land = <A = never, E = never, R = never>(
-      change: HqChange,
+      change: RecordedChange,
       expectedHead: string,
       by: object,
       aim: (git: HqGit, at: Repo) => Effect.Effect<Aim<A>, E, R>,
@@ -837,7 +855,7 @@ export const changesLayer: Layer.Layer<
         const mate = change.mateProjectId;
         // Read before the squash, from every commit of the change; a push since moves the head
         // the squash checks.
-        const crew = onceEach(yield* git.changeTrailers(at, mate, number, CREW_TRAILERS));
+        const crew = onceEach(yield* git.changeTrailers(at, branchOf(change), CREW_TRAILERS));
         // The Mate by its project's name in Zerops (D3), as the org's view has it; unnamed while
         // that view cannot be read.
         const name = yield* Effect.orElseSucceed(
@@ -855,8 +873,7 @@ export const changesLayer: Layer.Layer<
           const aimed = yield* aim(git, at);
           if ("stop" in aimed) return aimed;
           return yield* git.squashMerge(at, {
-            mateId: mate,
-            number,
+            ...branchOf(change),
             expectedMain: aimed.main,
             expectedHead,
             message,
@@ -931,7 +948,7 @@ export const changesLayer: Layer.Layer<
       Effect.map(mainOf(git, at), (main) => ({ main: main ?? "" }));
 
     /** In a fenced write, the change locked open: closed without merging, as `by` says. */
-    const closeLocked = (change: HqChange, by: object) =>
+    const closeLocked = (change: RecordedChange, by: object) =>
       Effect.gen(function* () {
         const [row] = yield* sql<ChangeRow>`
           UPDATE hq_change
@@ -964,7 +981,7 @@ export const changesLayer: Layer.Layer<
             const current = yield* openChangeLocked(change.appId, change.repo, number);
             if (current.head !== expectedHead) return yield* refuse("conflict", "head_moved");
             const git = yield* gitHost.git;
-            const head = yield* git.changeHead({ appId, id: repo }, change.mateProjectId, number);
+            const head = yield* git.changeHead({ appId, id: repo }, branchOf(change));
             if (head !== expectedHead) return yield* refuse("conflict", "head_moved");
             return yield* closeLocked(change, by);
           }),
@@ -977,53 +994,55 @@ export const changesLayer: Layer.Layer<
      * never by a guess: names cut short, or a change that does not merge, stop it there. An empty
      * one is closed here; one `main` has the squash of already is recorded by the squash's own way.
      */
-    const recipeAim = (change: HqChange, head: string, facts: Facts) => (git: HqGit, at: Repo) =>
-      Effect.gen(function* () {
-        const mate = change.mateProjectId;
-        const named = yield* git.squashNames(at, mate, change.number);
-        if (!("files" in named)) {
-          return named.kind === "already_merged"
-            ? { main: (yield* mainOf(git, at)) ?? "" }
-            : { stop: named.kind };
-        }
-        // A push since is judged as its own, as it comes.
-        if (named.head !== head) return { stop: "head_moved" };
-        if (named.files.truncated) return { stop: "files_past_bound" };
-        const held = yield* mateHeld(mate);
-        const decision = can(
-          { kind: "core" },
-          "land_recipe",
-          {
-            repo: at.id,
-            author: { projectId: mate, held: held.held, appId: held.appId },
-            appId: at.appId,
-            onlyAdded: named.files.items.every((file) => file.status === "A"),
-            empty: named.files.items.length === 0,
-          },
-          facts,
-        );
-        if (decision.allow) return { main: named.main };
-        if (decision.reason === "recipe_empty") {
-          yield* closeLocked(change, { by: "core", reason: "empty" });
-        }
-        return { stop: decision.reason };
-      });
+    const recipeAim =
+      (change: RecordedChange, head: string, facts: Facts) => (git: HqGit, at: Repo) =>
+        Effect.gen(function* () {
+          const mate = change.mateProjectId;
+          const named = yield* git.squashNames(at, branchOf(change));
+          if (!("files" in named)) {
+            return named.kind === "already_merged"
+              ? { main: (yield* mainOf(git, at)) ?? "" }
+              : { stop: named.kind };
+          }
+          // A push since is judged as its own, as it comes.
+          if (named.head !== head) return { stop: "head_moved" };
+          if (named.files.truncated) return { stop: "files_past_bound" };
+          const held = yield* mateHeld(mate);
+          const decision = can(
+            { kind: "core" },
+            "land_recipe",
+            {
+              repo: at.id,
+              author: { projectId: mate, held: held.held, appId: held.appId },
+              appId: at.appId,
+              onlyAdded: named.files.items.every((file) => file.status === "A"),
+              empty: named.files.items.length === 0,
+            },
+            facts,
+          );
+          if (decision.allow) return { main: named.main };
+          if (decision.reason === "recipe_empty") {
+            yield* closeLocked(change, { by: "core", reason: "empty" });
+          }
+          return { stop: decision.reason };
+        });
 
     /**
      * A pushed change of an application's recipe repository, landed by Core when `can` says so
      * (`recipeAim`); any other waits for a person. A change no longer open, or with nothing pushed,
      * is let be — so judging it again, at a takeover, is judging it once.
      */
-    const judgeRecipe = ({ repo, mateId, number }: PushedChange) =>
+    const judgeRecipe = ({ repo, ...pushed }: PushedChange) =>
       Effect.gen(function* () {
         if (repo.id !== RECIPE_REPO) return;
         const git = yield* gitHost.git;
         const [row] = yield* sql<{ readonly state: string }>`
           SELECT state FROM hq_change
-          WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${number}
-            AND mate_project_id = ${mateId}`;
+          WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${pushed.number}
+            AND mate_project_id = ${pushed.mateId}`;
         if (row?.state !== "open") return;
-        const head = yield* git.changeHead(repo, mateId, number);
+        const number = pushed.number;
+        const head = yield* git.changeHead(repo, pushed);
         if (head === null) return;
         // Read before the lock, never held across Zerops: the landing reads none of the org.
         const facts = yield* roles.view;
@@ -1144,9 +1163,15 @@ export const changesLayer: Layer.Layer<
           const { appId } = yield* mateHeld(projectId);
           return yield* recipeTier(yield* mateFetch(projectId, appId ?? ""), tier);
         }),
-      openChange: (projectId, repo, title, tree) =>
+      openChange: (projectId, repo, title, tree, branch) =>
         Effect.gen(function* () {
           const appId = yield* mateApp(projectId, "open_change");
+          // A branch as git names it under `refs/heads/`: never `main`, never a full ref, never in
+          // the namespace of changes opened without one (`mate/`).
+          if (branch !== undefined && /^(?:main$|mate(?:$|\/)|refs\/)/u.test(branch))
+            return yield* refuse("conflict", "protected_ref");
+          if (branch !== undefined && !validRef(`refs/heads/${branch}`))
+            return yield* refuse("invalid", "invalid_ref");
           const columns = sql.literal(CHANGE_COLUMNS);
           const git = yield* gitHost.git;
           return yield* touched(
@@ -1210,17 +1235,24 @@ export const changesLayer: Layer.Layer<
                   const change = changeOf(open);
                   return { change, created: false, task: yield* onTask(change) };
                 }
-                // Past every change branch too, recorded or not: a branch a restore's records
-                // lack is never a new change's.
-                const branched = (yield* git.changeRefs({ appId, id: repo })).reduce(
-                  (highest, ref) => Math.max(highest, ref.number),
-                  0,
-                );
+                // A branch is one open change's at a time.
+                const taken =
+                  branch === undefined
+                    ? []
+                    : yield* sql`
+                      SELECT 1 FROM hq_change
+                      WHERE app_id = ${appId}::uuid AND repo = ${repo} AND branch = ${branch}
+                        AND state = 'open'`;
+                if (taken.length > 0) return yield* refuse("conflict", "branch_taken");
+                // The repository's next number; a change named no branch is on its default.
                 const [made] = yield* sql<ChangeRow>`
-                INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, task_id)
-                SELECT ${appId}::uuid, ${repo}, GREATEST(COALESCE(MAX(number), 0), ${branched}) + 1,
-                  ${projectId}, ${title}, ${taskId}::uuid
-                FROM hq_change WHERE app_id = ${appId}::uuid AND repo = ${repo}
+                WITH next AS (
+                  SELECT COALESCE(MAX(number), 0) + 1 AS number FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo})
+                INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, task_id, branch)
+                SELECT ${appId}::uuid, ${repo}, number, ${projectId}, ${title}, ${taskId}::uuid,
+                  COALESCE(${branch ?? null}::text, 'mate/' || ${projectId} || '/' || number)
+                FROM next
                 RETURNING ${columns}`;
                 // `INSERT … RETURNING` answers the row it inserted, or fails.
                 const change = changeOf(made!);
@@ -1239,6 +1271,16 @@ export const changesLayer: Layer.Layer<
               "task" in opened && opened.task !== undefined
                 ? PubSub.publish(taskChanged, opened.task)
                 : Effect.void,
+            ),
+            // Opened on a branch pushed before it: the change is at its head from the start.
+            Effect.flatMap((opened) =>
+              !opened.created || opened.change === null
+                ? Effect.succeed(opened)
+                : Effect.gen(function* () {
+                    const change = opened.change;
+                    yield* gitHost.follow({ repo: { appId, id: repo }, ...branchOf(change) });
+                    return { ...opened, change: yield* changeIn(appId, repo, change.number) };
+                  }),
             ),
             // The task is HQ's to know; the Mate's answer stays the wire's.
             Effect.map((opened): OpenChangeResponse => {
@@ -1493,7 +1535,7 @@ export const changesLayer: Layer.Layer<
             return yield* refuse("conflict", "main_moved");
           }
           const snapshot = { head: change.head, main: mainHead };
-          const diff = yield* git.changeDiff(at, mate, number, {
+          const diff = yield* git.changeDiff(at, branchOf(change), {
             maxFiles: 300,
             maxBytesPerFile: 256 * 1024,
             snapshot,
@@ -1506,13 +1548,13 @@ export const changesLayer: Layer.Layer<
               AND mate_project_id = ${mate} AND number < ${number} AND state = 'merged'
               AND landed_head IS NOT NULL
             ORDER BY number DESC LIMIT 1`;
-          const log = yield* git.changeLog(at, mate, number, {
+          const log = yield* git.changeLog(at, branchOf(change), {
             limit: 100,
             snapshot,
             ...(previous?.landed_head == null ? {} : { base: previous.landed_head }),
           });
-          const mergeBase = yield* git.mergeBase(at, mate, number, snapshot);
-          const mergeability = yield* git.mergeability(at, mate, number, snapshot);
+          const mergeBase = yield* git.mergeBase(at, branchOf(change), snapshot);
+          const mergeability = yield* git.mergeability(at, branchOf(change), snapshot);
           // Read in full, the change is judged: its record keeps what was just read.
           const judged = {
             mergeability: mergeability.kind === "no_change" ? "unknown" : mergeability.kind,
