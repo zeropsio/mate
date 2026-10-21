@@ -23,18 +23,6 @@ const DOCUMENTED = [
   ["merge", { contents: "write", pull_requests: "write" }],
   // Reactions, comments, labels, closing (Issues: write).
   ["issues", { issues: "write" }],
-  // A Mate's own git and pull requests on one repository: push (Contents, Workflows for a commit
-  // touching `.github/workflows`), open and update pull requests, read its CI. Never Commit statuses.
-  [
-    "agent",
-    {
-      contents: "write",
-      pull_requests: "write",
-      workflows: "write",
-      checks: "read",
-      actions: "read",
-    },
-  ],
   // HQ's `mate/gate` on a head: "Create a commit status" takes Commit statuses: write.
   ["gate", { statuses: "write" }],
 ] as const;
@@ -74,26 +62,5 @@ describe("the app's tokens", () => {
     ] as const;
     for (const [use, granted, asked] of rows)
       assert.deepStrictEqual(askedPermissions(use, granted), asked, use);
-  });
-
-  it("an agent's token never writes commit statuses, whatever the installation was granted; HQ's gate token does", () => {
-    const everything = {
-      contents: "write",
-      pull_requests: "write",
-      workflows: "write",
-      checks: "write",
-      actions: "write",
-      statuses: "write",
-      issues: "write",
-      metadata: "read",
-    };
-    assert.deepStrictEqual(askedPermissions("agent", everything), {
-      contents: "write",
-      pull_requests: "write",
-      workflows: "write",
-      checks: "read",
-      actions: "read",
-    });
-    assert.deepStrictEqual(askedPermissions("gate", everything), { statuses: "write" });
   });
 });

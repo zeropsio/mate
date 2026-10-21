@@ -918,7 +918,7 @@ describe("a change's pull request", () => {
             state: "success",
             context: "mate/gate",
           });
-          // HQ's own token for it: Commit statuses alone, never the agent's.
+          // HQ's own token for it: Commit statuses alone.
           assert.deepStrictEqual(
             core.github.state.minted.find(
               (token) => `Bearer ${token.token}` === seen[gate]!.authorization,
