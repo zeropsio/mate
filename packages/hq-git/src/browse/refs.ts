@@ -113,7 +113,6 @@ export const listRefs = async (
     const commit = type === "commit" ? true : peeledType === "commit" ? false : null;
     if (named === null || named.kind === "commit" || commit === null) continue;
     if (q !== "" && !named.name.toLowerCase().includes(q)) continue;
-    const change = /^mate\/([^/]+)\/([1-9][0-9]*)$/u.exec(named.name);
     const at = Number(commit ? seconds : peeledSeconds);
     rows.push({
       name: named.name,
@@ -122,9 +121,6 @@ export const listRefs = async (
       kind: named.kind,
       committedAt: new Date(at * 1000).toISOString(),
       subject: (commit ? subject : peeledSubject).slice(0, SUBJECT_LIMIT),
-      ...(named.kind === "change" && change !== null
-        ? { change: { mateId: change[1]!, number: Number(change[2]) } }
-        : {}),
       outsideMate: named.kind === "github-branch" || named.kind === "github-tag",
       rank: ref === "refs/heads/main" ? 0 : 1,
       seconds: at,
