@@ -722,6 +722,33 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  // live gate 2026-10-21 (D2): a way in needs a way out.
+  it("a repository mirrored through the app offers the way back to a token", async () => {
+    const probe = { ok: true as const, remote };
+    const replaceToken = vi.fn(async () => probe);
+    const view = await mount({
+      github: app,
+      actions: { ...actions, replaceToken, viaApp: vi.fn(async () => {}) },
+      repos: [{ ...repos[0]!, remote: { ...remote, via: "app" } }],
+    });
+    try {
+      expect(view.host.textContent).toContain("Mirrors to github.com/acme/api · through Acme Mate");
+      expect(view.buttons()).toContain("Use a token instead");
+      await view.click("Use a token instead");
+      expect(view.host.textContent).not.toContain("Repository URL");
+      const input = labelled(view.host, "Access token");
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
+      const props = Reflect.get(input, key) as {
+        onChange: (event: { target: { value: string } }) => void;
+      };
+      await act(async () => props.onChange({ target: { value: "transient-candidate" } }));
+      await view.click("Verify and keep token");
+      expect(replaceToken).toHaveBeenCalledWith("api", "transient-candidate");
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("paints nothing of a repository until the app is read", async () => {
     const view = await mount({ github: null, actions });
     try {

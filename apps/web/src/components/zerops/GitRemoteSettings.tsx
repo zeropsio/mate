@@ -298,7 +298,7 @@ function Remote({
         result.ok
           ? reviewingAddress
             ? "Address verified. Review it before updating HQ."
-            : remote == null
+            : remote == null || remote.via === "app"
               ? undefined
               : "Token replaced."
           : result.reason,
@@ -388,7 +388,7 @@ function Remote({
           </div>
         )
       ) : null}
-      {remote == null && viaApp !== undefined && permitted && !editing ? (
+      {(remote == null ? viaApp !== undefined : remote.via === "app") && permitted && !editing ? (
         <p className="rv-note">
           <InlineButton aria-expanded={false} onClick={() => setEditing(true)} tone="muted">
             Use a token instead
