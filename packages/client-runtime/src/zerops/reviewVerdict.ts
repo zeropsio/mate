@@ -257,6 +257,8 @@ export interface ChangeReviewInput {
     readonly ready?: boolean | undefined;
     /** HQ's word, once it merged, that it was the application's first merged code change. */
     readonly firstCodeMerge?: boolean | undefined;
+    /** HQ's word, once it merged, that GitHub merged it of a head no person merged in Mate. */
+    readonly landedOutside?: boolean | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -752,7 +754,9 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         state: "merged",
         tone: "done",
         title: `Merged into ${base}`,
-        why: next === undefined ? age : `${age} · ${next}`,
+        why: [pull.landedOutside === true ? "Merged outside Mate" : undefined, age, next]
+          .filter((part) => part !== undefined)
+          .join(" · "),
         fix: undefined,
       },
       consequence,

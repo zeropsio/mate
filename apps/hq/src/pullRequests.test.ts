@@ -6,6 +6,7 @@ import type { HqNavigationApp, HqNavigationProject } from "@t3tools/shared/hqStr
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { ROBOT_TASK_LINK, automatedPool, deliver, issueEvent } from "../test/harness/automated.ts";
@@ -67,6 +68,7 @@ const mirroredPool = Effect.gen(function* () {
               : Effect.succeed({ kind: "same", sha: "f".repeat(40) } as const);
           }),
         follow: () => Effect.void,
+        changes: Stream.empty,
       });
     }),
   );
@@ -916,7 +918,7 @@ describe("a change's pull request", () => {
             state: "success",
             context: "mate/gate",
           });
-          // HQ's own token for it: Commit statuses alone, never the agent's.
+          // HQ's own token for it: Commit statuses alone.
           assert.deepStrictEqual(
             core.github.state.minted.find(
               (token) => `Bearer ${token.token}` === seen[gate]!.authorization,
@@ -929,6 +931,7 @@ describe("a change's pull request", () => {
           const [change] = yield* core.sql<{ landed_outside: boolean }>`
             SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
           assert.strictEqual(change?.landed_outside, false);
+          assert.strictEqual((yield* changeOf(core)).landedOutside, false);
         }),
     );
 
@@ -957,6 +960,14 @@ describe("a change's pull request", () => {
           assert.strictEqual(merged.status, 200);
           assert.deepInclude(merged.body as HqChange, { state: "merged", mergedSha: squash });
           assert.deepStrictEqual(core.github.state.statuses, []);
+          // Nothing asked of GitHub for it: no gate token, no status sent to be refused.
+          assert.deepStrictEqual(
+            [
+              core.github.state.seen.filter((request) => request.path.includes("/statuses/")),
+              core.github.state.minted.filter((token) => "statuses" in (token.permissions ?? {})),
+            ],
+            [[], []],
+          );
           const [change] = yield* core.sql<{ landed_outside: boolean }>`
             SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
           assert.strictEqual(change?.landed_outside, false);
@@ -984,6 +995,8 @@ describe("a change's pull request", () => {
             "SELECT state, landed_outside FROM hq_change WHERE repo = 'web'",
             (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["landed_outside"] === true,
           );
+          // Said to the change's readers as HQ records it.
+          assert.strictEqual((yield* changeOf(core)).landedOutside, true);
           const releases = yield* core.sql`SELECT 1 FROM hq_rollout WHERE cause = 'release'`;
           assert.strictEqual(releases.length, 0);
         }),

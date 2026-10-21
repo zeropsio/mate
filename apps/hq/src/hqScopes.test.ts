@@ -27,6 +27,7 @@ import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
 import { Remotes, remoteForWire, type RemoteRecord } from "./repoRemotes.ts";
+import { GithubMirror } from "./githubMirror.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import {
   Structure,
@@ -77,7 +78,10 @@ const menuChange = {
   mergeability: "conflict",
   ready: false,
 } as const;
-const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Service"]) {
+const fixtureWithRemotes = Effect.fnUntraced(function* (
+  remotes?: Remotes["Service"],
+  mirror?: GithubMirror["Service"],
+) {
   let org = facts;
   let policyReads = 0;
   let policy = { orgId: "ORG", enabled: true, revision: 0 };
@@ -515,7 +519,11 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (remotes?: Remotes["Servi
   const context = yield* Layer.build(
     hqScopesLayer("BUILD", Duration.seconds(30)).pipe(
       Layer.provide(
-        remotes === undefined ? services : Layer.merge(services, Layer.succeed(Remotes, remotes)),
+        Layer.mergeAll(
+          services,
+          remotes === undefined ? Layer.empty : Layer.succeed(Remotes, remotes),
+          mirror === undefined ? Layer.empty : Layer.succeed(GithubMirror, mirror),
+        ),
       ),
     ),
   );
@@ -2212,6 +2220,75 @@ describe("revisioned HQ values", () => {
               value: [{ ...repo, remote: null }],
             },
           );
+        }),
+      ),
+  );
+  it.effect(
+    "a ruleset added or removed on GitHub moves a repository's governance line in its application record",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const governed = yield* PubSub.unbounded<number>();
+          let governance: "governed" | "no_ruleset" = "no_ruleset";
+          const remote: RemoteRecord = {
+            appId: "A",
+            repo: "appdev",
+            url: "https://github.com/acme/tea-shop.git",
+            urlKey: "github.com/acme/tea-shop",
+            host: "github.com",
+            hostRepoId: "501",
+            via: "app",
+            keptBy: "owner",
+            keptAt: "2026-10-14T10:00:00Z",
+            invalidSince: null,
+            expiresAt: null,
+            expiryLabel: "No expiry",
+            credentialState: "kept",
+          };
+          const repo = { name: "appdev", mainHead: null, updatedAt: "2026-10-14T10:00:00Z" };
+          const unused = () => Effect.die("Unexpected remote mutation in a scope read");
+          const f = yield* fixtureWithRemotes(
+            {
+              changes: Stream.empty,
+              get: () => Effect.succeed(remote),
+              listRepos: () =>
+                Effect.sync(() => [{ ...repo, remote: { ...remoteForWire(remote)!, governance } }]),
+              mateRepos: unused,
+              write: unused,
+              receipt: unused,
+              connect: unused,
+              updateAddress: unused,
+              disconnect: unused,
+              forUse: unused,
+              invalidate: unused,
+              ciAccess: unused,
+              tokenOf: unused,
+              connectViaApp: unused,
+            },
+            {
+              repositoryOf: unused,
+              sync: unused,
+              follow: unused,
+              pushChange: unused,
+              changes: Stream.fromPubSub(governed),
+            },
+          );
+          const governanceIn = (output: ScopeOutput) =>
+            (
+              resetOf(output).values.find((value) => value.key === "repos")?.value as
+                | ReadonlyArray<{ readonly remote: { readonly governance: string } }>
+                | undefined
+            )?.[0]?.remote.governance;
+          const client = yield* f.connect("owner");
+          yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);
+          assert.strictEqual(governanceIn(yield* client.take), "no_ruleset");
+          assert.strictEqual((yield* client.take).type, "scope-ready");
+          governance = "governed";
+          yield* PubSub.publish(governed, 1);
+          assert.strictEqual(governanceIn(yield* client.take), "governed");
+          governance = "no_ruleset";
+          yield* PubSub.publish(governed, 2);
+          assert.strictEqual(governanceIn(yield* client.take), "no_ruleset");
         }),
       ),
   );

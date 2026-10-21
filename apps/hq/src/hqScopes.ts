@@ -1,4 +1,5 @@
 import { Remotes } from "./repoRemotes.ts";
+import { GithubMirror } from "./githubMirror.ts";
 import { gitTargetValues } from "./gitTargetReceipts.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- scope incarnations are unique to this Core process.
 import * as NodeCrypto from "node:crypto";
@@ -168,6 +169,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const structure = yield* Structure;
       const changes = yield* Changes;
       const remotes = yield* Effect.serviceOption(Remotes);
+      const mirror = yield* Effect.serviceOption(GithubMirror);
       const releases = yield* Releases;
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
@@ -1142,7 +1144,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
-          (Option.isSome(remotes) ? remotes.value.changes : Stream.empty).pipe(
+          Stream.merge(
+            Option.isSome(remotes) ? remotes.value.changes : Stream.empty,
+            Option.isSome(mirror) ? mirror.value.changes : Stream.empty,
+          ).pipe(
             Stream.map((): Signal => {
               releaseFence.invalidate();
               return { kind: "detail" };

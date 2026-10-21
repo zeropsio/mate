@@ -1,9 +1,10 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import { gitDeliveryOf } from "./gitDelivery.ts";
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import { isRecipeProposal } from "./projectFlow.ts";
+import { flowChange, isRecipeProposal } from "./projectFlow.ts";
 import { recipeReach, type RecipeReach } from "./recipeReach.ts";
 import { RELEASE_CHECKING, RELEASE_NOTHING_NEW_ON_MAIN, type ReleaseGate } from "./release.ts";
 
@@ -210,6 +211,47 @@ describe("changeReview: the verdict comes first (R2)", () => {
     expect(review.verdict).toMatchObject({ title: "Merged into main", why: "Just now" });
     expect(review.consequence).toBe("");
   });
+
+  it.each([
+    ["GitHub merged a head no person merged in Mate", { landedOutside: true }, true],
+    ["a person merged it in Mate", { landedOutside: false }, false],
+    ["an older HQ says nothing", {}, false],
+  ] as const)(
+    "a merged change says when it was merged outside Mate: %s",
+    (_name, over, outside) => {
+      const record: HqChange = {
+        appId: "g1",
+        repo: "appdev",
+        number: 3,
+        mateProjectId: "P_NOVA",
+        title: "Add a search box",
+        body: "",
+        state: "merged",
+        head: "a".repeat(40),
+        mergedSha: "b".repeat(40),
+        landedHead: "a".repeat(40),
+        openedAt: minutesAgo(90),
+        mergedAt: minutesAgo(0),
+        closedAt: null,
+        updatedAt: minutesAgo(0),
+        mergeability: "already_merged",
+        behind: false,
+        ready: true,
+        comments: 0,
+        ...over,
+      };
+      const review = changeReview(
+        change({
+          pull: flowChange(record, "https://hq/"),
+          downstream: { production: false, stage: false },
+        }),
+      );
+      expect(review.verdict).toMatchObject({
+        title: "Merged into main",
+        why: outside ? "Merged outside Mate · Just now" : "Just now",
+      });
+    },
+  );
 
   it.each<[string, Partial<ChangeReviewInput>, string, string]>([
     [

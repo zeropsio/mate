@@ -356,6 +356,16 @@ function Dialogs() {
           repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
         />
       </DialogFrame>
+      <DialogFrame title="Advisory — permissions not approved">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "permission_not_approved" })]}
+        />
+      </DialogFrame>
       <DialogFrame title="Diverged">
         <GitRemoteSettings
           actions={ACTIONS}

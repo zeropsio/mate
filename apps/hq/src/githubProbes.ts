@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import { MATE_GATE } from "./githubAuth.ts";
+import { MATE_GATE, writesGate } from "./githubAuth.ts";
 import {
   GitTransport,
   type HostUnreachable,
@@ -228,8 +228,7 @@ export const governanceOf = (
   appId: number,
   granted: Readonly<Record<string, string>>,
 ): HqRepoGovernance | undefined => {
-  if (granted["statuses"] !== "write" && granted["statuses"] !== "admin")
-    return "permission_not_approved";
+  if (!writesGate(granted)) return "permission_not_approved";
   if (
     rules.status === 403 &&
     Option.getOrUndefined(decodeMessage(rules.body))?.message === PLAN_WITHOUT_RULES

@@ -516,6 +516,7 @@ const CHANGE_COLUMNS = [
   "mergeability",
   "behind",
   "first_code_merge",
+  "landed_outside",
   "receipt",
   // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
   // asks at the head it last described.
@@ -569,6 +570,7 @@ interface ChangeRow {
   readonly mergeability: HqChange["mergeability"];
   readonly behind: boolean;
   readonly first_code_merge: boolean | null;
+  readonly landed_outside: boolean;
   readonly receipt: ChangeReceipt | null;
   readonly ready: boolean;
   readonly comments: number;
@@ -621,6 +623,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   mergeability: row.mergeability,
   behind: row.behind,
   ...(row.first_code_merge === null ? {} : { firstCodeMerge: row.first_code_merge }),
+  ...(row.state === "merged" ? { landedOutside: row.landed_outside } : {}),
   ready: row.ready,
   comments: row.comments,
   ...(row.pull_request === null ? {} : { pullRequest: pullRequestOf(row.pull_request) }),

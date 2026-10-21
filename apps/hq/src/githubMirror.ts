@@ -16,6 +16,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -73,6 +74,8 @@ export class GithubMirror extends Context.Service<
       { readonly branch: string; readonly sha: string } | undefined,
       GithubMirrorUnavailable | SqlError
     >;
+    /** Ticks when a mirrored repository's governance on GitHub changed (`listRepos` reads it). */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/githubMirror") {}
 
@@ -84,6 +87,7 @@ export const githubMirrorAbsentLayer = Layer.succeed(
     sync: () => Effect.fail(new GithubMirrorUnavailable({ reason: "not_mirrored" })),
     pushChange: () => Effect.succeed(undefined),
     follow: () => Effect.void,
+    changes: Stream.empty,
   }),
 );
 
@@ -178,6 +182,7 @@ export const githubMirrorLayer = (
       const tasks = yield* MateTasks;
       const gitUrl = options.gitUrl ?? ((repository) => `https://github.com/${repository}.git`);
       const services = yield* Effect.context<Leader | SqlClient.SqlClient>();
+      const governed = yield* SubscriptionRef.make(0);
 
       /** One mirror operation at a time per repository or change: two pushes never race a lease. */
       const locks = new Map<string, Semaphore.Semaphore>();
@@ -307,15 +312,24 @@ export const githubMirrorLayer = (
 
       /**
        * After an import from `from` to `to`: each open change whose head `to` brought onto `main` —
-       * a merge on GitHub that kept its commits — merged as the merge commit that took its head, or
-       * as its head where `main` moved onto it with no merge commit. One import can bring several.
+       * a merge on GitHub that kept its commits — merged as the merge commit that took its head,
+       * landing the head that merge took (which may be a later push HQ has not heard of); or, where
+       * `main` moved onto it with no merge commit, as the head its pull request says GitHub merged.
+       * One import can bring several.
        */
       const landContained = (git: HqGit, at: Repo, from: string, to: string) =>
         Effect.gen(function* () {
-          const open = yield* sql<{ readonly number: number; readonly head: string }>`
-            SELECT number, head FROM hq_change
-            WHERE app_id::text = ${at.appId} AND repo = ${at.id} AND state = 'open'
-              AND head IS NOT NULL`;
+          const open = yield* sql<{
+            readonly number: number;
+            readonly head: string;
+            readonly pulled: string | null;
+          }>`
+            SELECT c.number, c.head, COALESCE(pr.merged_head, pr.head_sha) AS pulled
+            FROM hq_change c
+            LEFT JOIN hq_pull_request pr
+              ON pr.app_id = c.app_id AND pr.repo = c.repo AND pr.number = c.number
+            WHERE c.app_id::text = ${at.appId} AND c.repo = ${at.id} AND c.state = 'open'
+              AND c.head IS NOT NULL`;
           if (open.length === 0) return;
           const brought = yield* git.range(at, from === "" ? null : from, to, {
             limit: COMPARE_COMMITS_MAX,
@@ -324,11 +338,22 @@ export const githubMirrorLayer = (
             const before = from !== "" && (yield* git.isAncestor(at, change.head, from));
             if (before || !(yield* git.isAncestor(at, change.head, to))) continue;
             // Oldest first: the merge that took the head, not a later one that took it along.
-            const merge = brought.items.findLast((commit) =>
-              commit.parents.slice(1).includes(change.head),
-            );
-            const mergedSha = merge?.sha ?? change.head;
-            yield* changes.landImported(at.appId, at.id, change.number, mergedSha).pipe(
+            let merge: { readonly sha: string; readonly head: string } | undefined;
+            for (const commit of brought.items.toReversed()) {
+              for (const parent of commit.parents.slice(1))
+                if (yield* git.isAncestor(at, change.head, parent)) {
+                  merge = { sha: commit.sha, head: parent };
+                  break;
+                }
+              if (merge !== undefined) break;
+            }
+            const pulled =
+              change.pulled !== null && (yield* git.isAncestor(at, change.pulled, to))
+                ? change.pulled
+                : change.head;
+            const mergedSha = merge?.sha ?? pulled;
+            const mergedHead = merge?.head ?? pulled;
+            yield* changes.landImported(at.appId, at.id, change.number, mergedSha, mergedHead).pipe(
               Effect.catch((error) =>
                 Effect.logWarning("an imported merge's change not recorded merged", {
                   appId: at.appId,
@@ -362,9 +387,12 @@ export const githubMirrorLayer = (
           const rules = yield* transport.rules(remote, followed.branch, token);
           const governance = governanceOf(rules, grant.appId, grant.permissions);
           if (governance === undefined) return;
-          yield* leader.write(sql`
+          const changed = yield* leader.write(sql`
             UPDATE hq_repo_mirror SET governance = ${governance}
-            WHERE app_id::text = ${appId} AND repo = ${repo}`);
+            WHERE app_id::text = ${appId} AND repo = ${repo}
+              AND governance IS DISTINCT FROM ${governance}
+            RETURNING 1`);
+          if (changed.length > 0) yield* SubscriptionRef.update(governed, (n) => n + 1);
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("a mirrored repository's rules not read", { appId, repo, cause }),
@@ -661,6 +689,12 @@ export const githubMirrorLayer = (
           Effect.asVoid,
         );
 
-      return GithubMirror.of({ repositoryOf, sync, pushChange, follow: followLater });
+      return GithubMirror.of({
+        repositoryOf,
+        sync,
+        pushChange,
+        follow: followLater,
+        changes: SubscriptionRef.changes(governed),
+      });
     }),
   );
