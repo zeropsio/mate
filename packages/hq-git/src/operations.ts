@@ -18,7 +18,11 @@ import {
   type Mergeability,
   type ChangeSnapshot,
 } from "./api.ts";
-import { GITHUB_REFS, followRefs as followRemoteRefs } from "./followRefs.ts";
+import {
+  GITHUB_REFS,
+  followRefs as followRemoteRefs,
+  unfollowRefs as unfollowRemoteRefs,
+} from "./followRefs.ts";
 import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
@@ -672,6 +676,8 @@ export const makeOperations = (
       Effect.timeout(Duration.millis(fetchDeadlineMs)),
       Effect.mapError(timedOut("followRefs")),
     );
+  const unfollowRefs: HqGit["unfollowRefs"] = (repo) =>
+    inRepo("unfollowRefs", repo, (dir, signal) => unfollowRemoteRefs(git, dir, signal));
   const isAncestor: HqGit["isAncestor"] = (repo, ancestor, descendant) =>
     inRepo("isAncestor", repo, async (dir, signal) => {
       if (!validSha(ancestor) || !validSha(descendant)) throw error("Invalid commit");
@@ -1493,6 +1499,7 @@ export const makeOperations = (
     remoteHead,
     fetchTip,
     followRefs,
+    unfollowRefs,
     isAncestor,
     fastForwardMain,
     holdsNothing,

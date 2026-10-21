@@ -325,6 +325,8 @@ export interface HqGit {
    * by it, and nothing pushes it back.
    */
   readonly followRefs: (repo: Repo, remote: MirrorRemote) => Effect.Effect<FollowedRefs, GitError>;
+  /** Every branch and tag `followRefs` brought gone: the repository no longer follows GitHub. */
+  readonly unfollowRefs: (repo: Repo) => Effect.Effect<void, GitError>;
   /** Whether `ancestor` is `descendant` or comes before it; false where either is no commit here. */
   readonly isAncestor: (
     repo: Repo,

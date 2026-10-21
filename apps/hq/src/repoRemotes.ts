@@ -25,6 +25,7 @@ import { Changes, type ChangeRefused } from "./changes.ts";
 import type { GitError } from "@t3tools/hq-git";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { DeployKeys } from "./deployKeys.ts";
+import { GitHost } from "./gitHost.ts";
 import { GithubAuth, type GithubTokenUse } from "./githubAuth.ts";
 import { GithubProbes, type ProbeRefused, type VerifiedRemote } from "./githubProbes.ts";
 import { remoteIdentity } from "./gitTransport.ts";
@@ -145,7 +146,10 @@ export class Remotes extends Context.Service<
       userId: string,
       input: ConnectRemote,
     ) => Effect.Effect<RemoteRecord, RemoteConnectError>;
-    readonly disconnect: (userId: string, ref: RemoteRef) => Effect.Effect<void, RemoteError>;
+    readonly disconnect: (
+      userId: string,
+      ref: RemoteRef,
+    ) => Effect.Effect<void, RemoteError | GitError>;
     /**
      * Worker-only credential handoff; the caller captures keptAt before using it. Through the
      * app, a token for `purpose` alone: the branch's git, or that and its CI's reads.
@@ -286,6 +290,7 @@ export const repoRemotesLayer = Layer.effect(
     const probes = yield* GithubProbes;
     const changes = yield* Changes;
     const githubAuth = yield* GithubAuth;
+    const gitHost = yield* GitHost;
     const appUnavailable = (error?: { readonly reason: string }) =>
       new RemoteRefused({
         reason: error?.reason === "replaced" ? "repository_changed" : "app_unavailable",
@@ -700,6 +705,15 @@ export const repoRemotesLayer = Layer.effect(
                 });
               yield* sql`DELETE FROM hq_repo_remote WHERE app_id::text=${ref.appId} AND repo=${ref.repo}`;
             }),
+          ),
+        );
+        // GitHub's branches and tags HQ followed go with the connection; a repository git does not
+        // hold has none. Asked again, a disconnect removes what a failed one left.
+        const git = yield* gitHost.git;
+        yield* git.unfollowRefs({ appId: ref.appId, id: ref.repo }).pipe(
+          Effect.catchIf(
+            (error) => error.reason === "not_found",
+            () => Effect.void,
           ),
         );
       }),

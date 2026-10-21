@@ -50,3 +50,13 @@ export const followRefs = async (
   const after = await held(git, dir, signal);
   return { pruned: [...before].filter((ref) => !after.has(ref)) };
 };
+
+/** Every ref under `refs/github/` gone: the repository no longer follows a remote's refs. */
+export const unfollowRefs = async (git: GitRunner, dir: string, signal: AbortSignal) => {
+  const refs = await held(git, dir, signal);
+  if (refs.size === 0) return;
+  await git.run(["-C", dir, "update-ref", "--stdin"], {
+    signal,
+    input: [...refs].map((ref) => `delete ${ref}\n`).join(""),
+  });
+};
