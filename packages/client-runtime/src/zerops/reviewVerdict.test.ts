@@ -255,8 +255,8 @@ describe("changeReview: the verdict comes first (R2)", () => {
         }),
       );
       expect(review.verdict).toMatchObject({
-        title: "Merged into main",
-        why: outside ? "Merged outside Mate · Just now" : "Just now",
+        title: outside ? "Merged into main outside Mate" : "Merged into main",
+        why: "Just now",
       });
     },
   );

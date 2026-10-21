@@ -761,10 +761,8 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       verdict: {
         state: "merged",
         tone: "done",
-        title: `Merged into ${base}`,
-        why: [pull.landedOutside === true ? "Merged outside Mate" : undefined, age, next]
-          .filter((part) => part !== undefined)
-          .join(" · "),
+        title: `Merged into ${base}${pull.landedOutside === true ? " outside Mate" : ""}`,
+        why: [age, next].filter((part) => part !== undefined).join(" · "),
         fix: undefined,
       },
       consequence,
