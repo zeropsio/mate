@@ -256,7 +256,11 @@ describe("Git browse files", () => {
         expect(commit.body).toMatchObject({ code: "commit_not_found" });
       }),
     );
+  });
+});
 
+describe("person repository browsing (E203)", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
       "reads a branch, directory and file at a pinned commit, without exposing another person's source",
       () =>
