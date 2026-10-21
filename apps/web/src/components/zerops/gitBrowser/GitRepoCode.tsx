@@ -84,7 +84,8 @@ function FileAt({
   search,
   navigate,
   hrefOf,
-}: Pick<GitRepoPageProps, "appId" | "repo" | "search" | "navigate" | "hrefOf"> & {
+  hasView,
+}: Pick<GitRepoPageProps, "appId" | "repo" | "search" | "navigate" | "hrefOf" | "hasView"> & {
   readonly sha: string;
   readonly path: string;
 }) {
@@ -102,13 +103,14 @@ function FileAt({
         search={search}
         navigate={navigate}
         hrefOf={hrefOf}
+        hasView={hasView}
       />
     </>
   );
 }
 
 export function GitRepoCode(props: GitRepoPageProps) {
-  const { appId, repo, search, home, onHomeAgain, navigate, hrefOf } = props;
+  const { appId, repo, search, home, onHomeAgain, navigate, hrefOf, hasView } = props;
   const path = search.path ?? "";
   const kind = search.kind ?? "tree";
   return (
@@ -155,6 +157,7 @@ export function GitRepoCode(props: GitRepoPageProps) {
                       search={search}
                       navigate={navigate}
                       hrefOf={hrefOf}
+                      hasView={hasView}
                     />
                   )}
                 </div>

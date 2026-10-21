@@ -29,7 +29,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { isEditableFocused } from "~/lib/editableFocus";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { useGitRaw } from "~/zerops/useGitRaw";
-import { hasGitView, type GitBrowseSearch } from "./GitBrowseView";
+import type { GitBrowseSearch, GitView } from "./GitBrowseView";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 
 export interface GitFileViewProps {
@@ -42,6 +42,7 @@ export interface GitFileViewProps {
   readonly search: GitBrowseSearch;
   readonly navigate: (search: GitBrowseSearch) => void;
   readonly hrefOf: (search: GitBrowseSearch) => string;
+  readonly hasView: (view: GitView) => boolean;
 }
 
 const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
@@ -114,6 +115,7 @@ export function GitFileView({
   search,
   navigate,
   hrefOf,
+  hasView,
 }: GitFileViewProps) {
   const shape = fileShape(blob);
   const markdown = shape.kind === "text" && isMarkdownPath(blob.path);
@@ -241,7 +243,7 @@ export function GitFileView({
             </Button>
           </>
         ) : null}
-        {hasGitView("commits") ? (
+        {hasView("commits") ? (
           <Button
             variant="ghost"
             size="sm"
@@ -256,7 +258,7 @@ export function GitFileView({
             History
           </Button>
         ) : null}
-        {hasGitView("blame") ? (
+        {hasView("blame") ? (
           <Button
             variant="ghost"
             size="sm"

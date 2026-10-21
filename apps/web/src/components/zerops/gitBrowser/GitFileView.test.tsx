@@ -101,6 +101,7 @@ async function view(file: GitBlob, search: GitBrowseSearch) {
         search={search}
         navigate={navigate}
         hrefOf={hrefOf}
+        hasView={(page) => page === "commits"}
       />,
     ),
   );

@@ -27,6 +27,8 @@ export interface GitRepoPageProps {
   readonly onOpenChange?: ((number: number) => void) | undefined;
   readonly navigate: (search: GitBrowseSearch) => void;
   readonly hrefOf: (search: GitBrowseSearch) => string;
+  /** Whether a page is built yet: a link to one that is not is not offered. */
+  readonly hasView: (view: GitView) => boolean;
 }
 
 /** The page a link names: its `view`; absent, home, or code where it names a path or kind. */
@@ -41,8 +43,7 @@ const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   ),
 };
 
-/** Whether a page is built yet: a link to one that is not is not offered. */
-export const hasGitView = (view: GitView) => VIEWS[view] !== undefined;
+const hasView = (view: GitView) => VIEWS[view] !== undefined;
 
 /** The repository's tabs, each opening its first page and lit on any of them. */
 export const GIT_VIEW_TABS: ReadonlyArray<{
@@ -53,11 +54,13 @@ export const GIT_VIEW_TABS: ReadonlyArray<{
   { label: "History", views: ["commits"] },
 ];
 
-export function GitBrowseView(props: GitRepoPageProps & { readonly view: GitView }) {
+export function GitBrowseView(
+  props: Omit<GitRepoPageProps, "hasView"> & { readonly view: GitView },
+) {
   const View = VIEWS[props.view] ?? VIEWS.home!;
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Opening…</p>}>
-      <View {...props} />
+      <View {...props} hasView={hasView} />
     </Suspense>
   );
 }
