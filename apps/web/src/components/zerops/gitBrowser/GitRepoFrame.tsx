@@ -11,12 +11,12 @@ import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { GitTokenGuide } from "../GitTokenGuide";
 import { ZeropsGitCredentials } from "../ZeropsGitCredentials";
 import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
+import { GitWhen } from "./GitWhen";
 import type { PickerChange } from "./GitRefPicker.logic";
 
 /** How HQ follows GitHub, in one line. */
@@ -26,16 +26,6 @@ const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
     : mirror.syncedAt === null
       ? "Not synced with GitHub yet"
       : `Synced with GitHub ${formatRelativeTimeLabel(mirror.syncedAt)}`;
-
-/** A time in words, its moment in a tooltip. */
-export function GitWhen({ at, children }: { readonly at: string; readonly children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span />}>{children}</TooltipTrigger>
-      <TooltipPopup>{new Date(at).toLocaleString()}</TooltipPopup>
-    </Tooltip>
-  );
-}
 
 /** What the picker's button says the pages read. */
 const readingLabel = (home: GitBrowseState<GitHome>, rev: string | undefined) => {

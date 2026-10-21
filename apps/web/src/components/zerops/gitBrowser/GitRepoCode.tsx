@@ -5,7 +5,7 @@
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { useRepositorySource } from "~/zerops/useRepositorySource";
-import { ZeropsRepositorySource } from "../ZeropsRepositoryBrowser";
+import { ZeropsRepositorySource } from "../ZeropsRepositorySource";
 import type { GitRepoPageProps } from "./GitBrowseView";
 
 export function GitRepoCode({ appId, repo, search, navigate }: GitRepoPageProps) {

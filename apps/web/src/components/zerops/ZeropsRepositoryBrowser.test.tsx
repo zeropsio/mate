@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { RepositorySource } from "@t3tools/shared/hqGit";
-import { ZeropsRepositorySource, ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
+import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
+import { ZeropsRepositorySource } from "./ZeropsRepositorySource";
 
 beforeAll(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 afterAll(() => vi.unstubAllGlobals());

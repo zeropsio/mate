@@ -8,9 +8,9 @@ import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useRepositorySource } from "~/zerops/useRepositorySource";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
-import { ZeropsRepositorySource } from "../ZeropsRepositoryBrowser";
+import { ZeropsRepositorySource } from "../ZeropsRepositorySource";
 import type { GitRepoPageProps } from "./GitBrowseView";
-import { GitWhen } from "./GitRepoFrame";
+import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
