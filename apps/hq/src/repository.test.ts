@@ -87,6 +87,56 @@ describe("person repository browsing (E203)", () => {
           );
         }),
     );
+    it.effect(
+      "A path opens as what it is at the commit, whatever kind its link names, and a path the commit does not hold is refused as not found",
+      () =>
+        Effect.gen(function* () {
+          const { call, gitHost } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const app = yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } });
+          const appId = (app.body as { id: string }).id;
+          const git = yield* gitHost.opened(Duration.seconds(3));
+          const made = yield* git.commitFiles({ appId, id: "group" }, "refs/heads/main", {
+            expectedHead: (yield* git.branches({ appId, id: "group" })).items[0]!.sha,
+            message: "Examples",
+            author: { name: "A", email: "a@example.test" },
+            files: { "examples/a.ts": "export const a = 1;\n" },
+          });
+          const sha = "sha" in made ? made.sha : "";
+          const read = (path: string, kind: "tree" | "file") =>
+            call(
+              "GET",
+              `/api/apps/${appId}/repos/group/source?${new URLSearchParams({ rev: sha, path, kind })}`,
+              { session: owner },
+            );
+          // A README's `[Examples](examples)` names the folder as a file.
+          for (const kind of ["file", "tree"] as const) {
+            const folder = yield* read("examples", kind);
+            assert.strictEqual(folder.status, 200, kind);
+            const body = folder.body as { kind: string; entries: Array<{ path: string }> };
+            assert.deepStrictEqual(
+              [body.kind, body.entries.map((entry) => entry.path)],
+              ["tree", ["a.ts"]],
+              kind,
+            );
+            const file = yield* read("examples/a.ts", kind);
+            assert.strictEqual(file.status, 200, kind);
+            assert.deepStrictEqual(
+              [(file.body as { kind: string }).kind, (file.body as { content: string }).content],
+              ["file", "export const a = 1;\n"],
+              kind,
+            );
+            const missing = yield* read("wiki", kind);
+            assert.strictEqual(missing.status, 404, kind);
+            assert.deepStrictEqual(
+              missing.body,
+              { code: "path_not_found", reason: "path_not_found" },
+              kind,
+            );
+          }
+        }),
+    );
     it.effect("distinguishes an empty repository from a missing repository or revision", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);

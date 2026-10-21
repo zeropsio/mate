@@ -297,6 +297,7 @@ const CHANGE_STATUS = {
   change_not_found: 404,
   attachment_not_found: 404,
   commit_not_found: 404,
+  path_not_found: 404,
   conflict: 409,
   invalid: 400,
   too_large: 413,

@@ -154,6 +154,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",
+  path_not_found: "This commit has no such file or folder.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
   // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).

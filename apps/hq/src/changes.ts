@@ -89,6 +89,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_not_found",
     "attachment_not_found",
     "commit_not_found",
+    "path_not_found",
     "conflict",
     "invalid",
     "too_large",
@@ -102,6 +103,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_not_found",
     "attachment_not_found",
     "commit_not_found",
+    "path_not_found",
     "not_raster",
     "recipe_too_large",
     "branch_taken",
@@ -1520,7 +1522,11 @@ export const changesLayer: Layer.Layer<
             return yield* refuse("commit_not_found", "commit_not_found");
           }
           const commit = { sha: revision };
-          if (query.kind === "file") {
+          // The path as it is at the commit, whatever kind its link names: a README's
+          // `[docs](docs)` names a folder as a file. Nothing there is an earned negative.
+          const found = yield* git.browse.pathKind(target, commit.sha, query.path);
+          if (found === null) return yield* refuse("path_not_found", "path_not_found");
+          if (found === "file") {
             const file = yield* git.file(target, commit.sha, query.path, SOURCE_FILE_MAX_BYTES);
             return {
               ...common,

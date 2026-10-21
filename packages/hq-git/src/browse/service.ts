@@ -12,6 +12,7 @@ import type { InRepo } from "../operations.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
 import { grepAt, type GrepLimits, type GrepRequest, type GrepResult } from "./grep.ts";
 import { listPaths, type PathList } from "./paths.ts";
+import { pathKind, type PathKind } from "./pathKind.ts";
 import { findReadme, type Readme } from "./readme.ts";
 import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } from "./refs.ts";
 import { resolveRevision, type Resolved } from "./resolve.ts";
@@ -19,6 +20,7 @@ import { resolveRevision, type Resolved } from "./resolve.ts";
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
 export type { GrepLimits, GrepMatch, GrepRequest, GrepResult } from "./grep.ts";
 export type { PathList } from "./paths.ts";
+export type { PathKind } from "./pathKind.ts";
 export type { Readme } from "./readme.ts";
 export type { RefCounts, RefItem, RefsPage, RefsRequest } from "./refs.ts";
 export type { RefKind, Resolved } from "./resolve.ts";
@@ -57,6 +59,12 @@ export interface HqGitBrowse {
     limits: GrepLimits,
     until: AbortSignal,
   ) => Effect.Effect<GrepResult, GitError>;
+  /** What `path` is at the commit `sha`: a file, a folder, or none where it holds nothing there. */
+  readonly pathKind: (
+    repo: Repo,
+    sha: string,
+    path: string,
+  ) => Effect.Effect<PathKind | null, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -76,4 +84,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.grep", repo, (dir, signal) =>
       grepAt(git, dir, sha, request, limits, signal, until),
     ),
+  pathKind: (repo, sha, path) =>
+    inRepo("browse.pathKind", repo, (dir, signal) => pathKind(git, dir, sha, path, signal)),
 });
