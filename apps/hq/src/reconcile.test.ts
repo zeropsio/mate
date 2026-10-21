@@ -410,6 +410,43 @@ describe("a takeover after git moved past HQ's records", () => {
         );
       }),
     );
+
+    it.effect(
+      "recovers an open change on a branch it named, merged on main, as landed at that branch's head",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          yield* first.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: "Fix the login", branch: "fix-login" },
+          });
+          yield* first.stop;
+          // Git moved main to the change's squash; its merged record never landed.
+          const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const head = commitOn(appdev, main, "login.ts", "Login");
+          appdev(["update-ref", "refs/heads/fix-login", head]);
+          const squash = commitOn(appdev, main, "login.ts", "Login (#1)\n\nMate-Change: P_MATE/1");
+          appdev(["update-ref", "refs/heads/main", squash, main]);
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT state, head, merged_sha AS merged, landed_head AS landed FROM hq_change`,
+              () => true,
+            ),
+            [{ state: "merged", head, merged: squash, landed: head }],
+          );
+        }),
+    );
   });
 });
 

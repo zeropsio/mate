@@ -181,6 +181,9 @@ interface ChangeRow {
   readonly number: number;
   readonly mate_project_id: string;
   readonly state: string;
+  /** The branch it is bound to: `mate/<mateId>/<number>`, or the one its Mate named. */
+  readonly branch: string;
+  readonly head: string | null;
   /** The task it was opened on: each task's change stays open beside its Mate's others. */
   readonly task_id: string | null;
 }
@@ -250,7 +253,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
   Effect.gen(function* () {
     const branches = yield* git.changeRefs(repo);
     const records = yield* sql<ChangeRow>`
-      SELECT number, mate_project_id, state, task_id::text AS task_id FROM hq_change
+      SELECT number, mate_project_id, state, branch, head, task_id::text AS task_id FROM hq_change
       WHERE app_id::text = ${repo.appId} AND repo = ${repo.id}`;
     const known = new Set(records.map((row) => row.number));
     const orphans = branches.filter((branch) => !known.has(branch.number));
@@ -264,7 +267,6 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     );
     const squashOf = (mateId: string, number: number) =>
       squashes.get(`${mateId}/${String(number)}`) ?? null;
-    const headOf = new Map(branches.map((branch) => [branch.number, branch.sha]));
     // Of each Mate's open changes on no task, its newest stays open; a task's change is its own,
     // open beside its Mate's others.
     const newest = new Map<string, number>();
@@ -335,7 +337,13 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
         continue;
       }
       const squash = squashOf(row!.mate_project_id, row!.number)!;
-      const head = headOf.get(row!.number) ?? null;
+      // Landed at its branch's head, else at the head its record holds.
+      const head =
+        (yield* git.changeHead(repo, {
+          mateId: row!.mate_project_id,
+          number: row!.number,
+          branch: row!.branch,
+        })) ?? row!.head;
       yield* leader.write(
         Effect.gen(function* () {
           const first = yield* firstCodeMergeOf(sql, {
