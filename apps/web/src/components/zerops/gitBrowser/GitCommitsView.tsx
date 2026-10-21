@@ -18,7 +18,9 @@ import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { changeTitle, type PickerChange } from "./GitRefPicker.logic";
 import { GitWhen } from "./GitWhen";
 
-const ROW_HEIGHT = 56;
+const ROW_HEIGHT = 55;
+const DAY_HEIGHT = 32;
+const END_HEIGHT = 48;
 const DAY = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const dayOf = (at: string) => `Commits on ${DAY.format(new Date(at))}`;
 
@@ -171,6 +173,10 @@ function ListEnd({
   );
 }
 
+/** A short list's own height, so its box ends where its rows do. */
+const listHeight = (rows: ReadonlyArray<HistoryRow>) =>
+  rows.reduce((sum, row) => sum + (row.kind === "day" ? DAY_HEIGHT : ROW_HEIGHT), END_HEIGHT);
+
 function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   const { appId, repo, sha, search, repository } = props;
   const path = search.path ?? "";
@@ -205,9 +211,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   );
   const renderRow = (row: HistoryRow) =>
     row.kind === "day" ? (
-      <h3 className="bg-background px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
-        {row.day}
-      </h3>
+      <h3 className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">{row.day}</h3>
     ) : (
       <CommitRow {...props} item={row.item} changes={changes} />
     );
@@ -227,7 +231,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
           estimatedItemSize={ROW_HEIGHT}
           drawDistance={ROW_HEIGHT * 10}
           // The list scrolls in its own box below the frame; a short list is only as tall as itself.
-          style={{ height: `min(70dvh, ${Math.max(rows.length, 1) * ROW_HEIGHT + 72}px)` }}
+          style={{ height: `min(70dvh, ${listHeight(rows)}px)` }}
           ListFooterComponent={
             <ListEnd
               last={views.at(-1)}
