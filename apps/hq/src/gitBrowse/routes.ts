@@ -24,6 +24,9 @@ import { blobRead } from "./blob.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
 import { rawRead } from "./raw.ts";
+import { grepRead } from "./grep.ts";
+import { browseHeavyLayer } from "./heavy.ts";
+import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
 import { BrowseRefused } from "./refused.ts";
 import { treeRead } from "./tree.ts";
@@ -182,6 +185,11 @@ const BROWSE_READS = [
   route(treeRead),
   route(blobRead),
   route(rawRead),
+  route(pathsRead),
+  route(grepRead),
 ] as const;
 
-export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS);
+/** The reads share one heavy-read allowance per HQ. */
+export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS).pipe(
+  HttpRouter.provideRequest(browseHeavyLayer),
+);

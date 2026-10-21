@@ -11,6 +11,8 @@ import { blobRead } from "./blob.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
 import { rawRead } from "./raw.ts";
+import { grepRead } from "./grep.ts";
+import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
 import { treeRead } from "./tree.ts";
 
@@ -21,6 +23,8 @@ export const GIT_BROWSE_READS = {
   tree: treeRead,
   blob: blobRead,
   raw: rawRead,
+  paths: pathsRead,
+  grep: grepRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;

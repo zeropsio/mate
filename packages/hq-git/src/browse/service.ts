@@ -11,6 +11,8 @@ import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
 import { readBlob, type BlobRead } from "./blob.ts";
+import { grepAt, type GrepLimits, type GrepRequest, type GrepResult } from "./grep.ts";
+import { listPaths, type PathList } from "./paths.ts";
 import { findReadme, type Readme } from "./readme.ts";
 import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } from "./refs.ts";
 import { resolveRevision, type Resolved } from "./resolve.ts";
@@ -18,6 +20,8 @@ import { listTree, type TreeRead } from "./tree.ts";
 
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
 export type { BlobRead } from "./blob.ts";
+export type { GrepLimits, GrepMatch, GrepRequest, GrepResult } from "./grep.ts";
+export type { PathList } from "./paths.ts";
 export type { Readme } from "./readme.ts";
 export type { RefCounts, RefItem, RefsPage, RefsRequest } from "./refs.ts";
 export type { RefKind, Resolved } from "./resolve.ts";
@@ -51,6 +55,23 @@ export interface HqGitBrowse {
     path: string,
     options: { readonly maxBytes: number; readonly refuseOver?: number },
   ) => Effect.Effect<BlobRead, GitError>;
+  /** Every file path at a commit, the first `max`; none where the repository has no such commit. */
+  readonly paths: (
+    repo: Repo,
+    sha: string,
+    max: number,
+  ) => Effect.Effect<PathList | null, GitError>;
+  /**
+   * The lines at a commit's text files that match, within `limits`; at `until`'s abort, what it
+   * found until then.
+   */
+  readonly grep: (
+    repo: Repo,
+    sha: string,
+    request: GrepRequest,
+    limits: GrepLimits,
+    until: AbortSignal,
+  ) => Effect.Effect<GrepResult, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -68,4 +89,10 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.tree", repo, (dir, signal) => listTree(git, dir, sha, path, signal)),
   blob: (repo, sha, path, options) =>
     inRepo("browse.blob", repo, (dir, signal) => readBlob(git, dir, sha, path, options, signal)),
+  paths: (repo, sha, max) =>
+    inRepo("browse.paths", repo, (dir, signal) => listPaths(git, dir, sha, max, signal)),
+  grep: (repo, sha, request, limits, until) =>
+    inRepo("browse.grep", repo, (dir, signal) =>
+      grepAt(git, dir, sha, request, limits, signal, until),
+    ),
 });

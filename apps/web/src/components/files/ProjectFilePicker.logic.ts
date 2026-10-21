@@ -36,6 +36,24 @@ function findMatchIndices(value: string, query: string): number[] | null {
   return null;
 }
 
+/** A typed file query as the server normalizes it: lowercased, no leading `@./`, no spaces. */
+export function normalizeFileQuery(rawQuery: string): string {
+  return normalizeSearchQuery(rawQuery, {
+    trimLeadingPattern: /^[@./]+/,
+  }).replaceAll(/\s/g, "");
+}
+
+/** A path as a picker row, with where a normalized query falls in its name and path. */
+export function filePickerMatch(path: string, query: string): ProjectFilePickerMatch {
+  const name = fileName(path);
+  return {
+    name,
+    nameMatchIndices: findMatchIndices(name, query) ?? [],
+    path,
+    pathMatchIndices: findMatchIndices(path, query) ?? [],
+  };
+}
+
 /**
  * Maps server search results to picker rows. Server ordering is preserved —
  * ranking already happened there; this pass only filters to files and
@@ -49,23 +67,13 @@ export function getProjectFilePickerMatches(
 ): ProjectFilePickerMatch[] {
   if (limit <= 0) return [];
 
-  const query = normalizeSearchQuery(rawQuery, {
-    trimLeadingPattern: /^[@./]+/,
-  }).replaceAll(/\s/g, "");
+  const query = normalizeFileQuery(rawQuery);
   const matches: ProjectFilePickerMatch[] = [];
 
   for (const entry of entries) {
     if (entry.kind !== "file") continue;
 
-    const name = fileName(entry.path);
-    const nameMatchIndices = findMatchIndices(name, query);
-    const pathMatchIndices = findMatchIndices(entry.path, query);
-    matches.push({
-      name,
-      nameMatchIndices: nameMatchIndices ?? [],
-      path: entry.path,
-      pathMatchIndices: pathMatchIndices ?? [],
-    });
+    matches.push(filePickerMatch(entry.path, query));
     if (matches.length >= limit) break;
   }
 
