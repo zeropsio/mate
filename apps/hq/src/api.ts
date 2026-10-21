@@ -508,6 +508,11 @@ export const failure = (error: {
       return Effect.succeed(json({ code: "too_large" }, 413));
     case "TooManyRequests":
       return Effect.succeed(json({ code: "too_many_requests" }, 429));
+    // The Git browser's heavy reads (`gitBrowse/heavy.ts`): full now, free again soon.
+    case "BrowseBusy":
+      return Effect.succeed(unavailable("busy"));
+    case "PatternRefused":
+      return Effect.succeed(json({ code: "invalid", reason: "invalid_pattern" }, 400));
     case "SchemaError":
     case "HttpServerError":
       return Effect.succeed(json({ code: "invalid" }, 400));
