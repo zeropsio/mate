@@ -172,6 +172,12 @@ describe("file view", () => {
     expect(held.copied.at(-1)).toBe("src/a.ts");
   });
 
+  it("History opens the file's commits on the page's branch", async () => {
+    await view(blob(), { rev: "main", view: "code", path: "src/a.ts", kind: "file" });
+    await press("History");
+    expect(navigate).toHaveBeenLastCalledWith({ rev: "main", view: "commits", path: "src/a.ts" });
+  });
+
   it("A markdown file opens rendered and offers its source", async () => {
     await view(blob({ path: "docs/guide.md", content: "# Guide\n\nRead [setup](./setup.md)." }), {
       path: "docs/guide.md",
