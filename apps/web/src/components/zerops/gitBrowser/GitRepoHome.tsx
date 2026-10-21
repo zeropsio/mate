@@ -178,7 +178,9 @@ export function GitRepoHome(props: GitRepoPageProps) {
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm text-status-failed" role="alert">
-            {home.state === "refused" && home.reason === "commit_not_found"
+            {home.state === "refused" &&
+            // A revision HQ cannot read as one (empty, or read as an option) names no commit either.
+            (home.reason === "commit_not_found" || home.reason === "invalid")
               ? "This branch, tag or commit is not in the repository."
               : home.words}
           </p>

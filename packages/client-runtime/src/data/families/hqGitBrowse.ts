@@ -22,8 +22,11 @@ export interface GitBrowseKey<R extends GitBrowseRead = GitBrowseRead> {
   readonly params: GitBrowseParams<R>;
 }
 
-export const gitBrowseId = ({ orgId, appId, repo, read, params }: GitBrowseKey): string =>
-  JSON.stringify([orgId, appId, repo, read, gitBrowseSearch(read, params).toString()]);
+export const gitBrowseId = ({ orgId, appId, repo, read, params }: GitBrowseKey): string => {
+  // Parameters HQ refuses still name one read: its refusal is shown where it was asked.
+  const search = gitBrowseSearch(read, params);
+  return JSON.stringify([orgId, appId, repo, read, search?.toString() ?? { refused: params }]);
+};
 export const gitBrowseScope = (key: GitBrowseKey): ScopeKey =>
   `hq:${key.orgId}:git-browse:${gitBrowseId(key)}`;
 /** The read's own connection: where a failed read that is tried again keeps its fault. */

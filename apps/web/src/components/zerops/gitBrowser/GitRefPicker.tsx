@@ -4,7 +4,7 @@
  * as the person types. A typed commit id is offered as a commit. `w` opens it.
  */
 import type { GitRefKind } from "@t3tools/shared/hqGitBrowse/common";
-import type { GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
+import { REFS_QUERY_MAX, type GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Badge } from "~/components/ui/badge";
@@ -146,6 +146,7 @@ export function GitRefPicker({
           aria-label={`Find a ${list === "branch" ? "branch" : "tag"} or commit`}
           placeholder={list === "branch" ? "Find a branch" : "Find a tag"}
           value={typed}
+          maxLength={REFS_QUERY_MAX}
           onChange={(event) => setTyped(event.target.value)}
         />
         <ComboboxEmpty>

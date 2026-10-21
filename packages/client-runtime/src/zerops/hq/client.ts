@@ -1580,13 +1580,20 @@ export function makeHqApi(input: {
       repo: string,
       params: GitBrowseParams<R>,
       signal?: AbortSignal,
-    ) =>
-      decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
-        await authorized(
-          gitBrowsePath(read, appId, repo, params),
-          signal === undefined ? {} : { signal },
-        ),
-      ),
+    ) => {
+      const path = gitBrowsePath(read, appId, repo, params);
+      // What HQ refuses as invalid is refused here, as HQ words it, and never sent.
+      if (path === null)
+        throw new HqError({
+          kind: "refused",
+          code: "invalid",
+          status: 400,
+          message: hqRefusalWords({ code: "invalid", reason: undefined }),
+        });
+      return decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
+        await authorized(path, signal === undefined ? {} : { signal }),
+      );
+    },
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
     release: (appId, request) =>

@@ -329,6 +329,20 @@ it("Source refusal withholds changes and HTTPS even before offers catch up", asy
     [...detail().querySelectorAll("button")].map((button) => button.textContent),
   ).not.toContain("Clone");
 });
+it.each([
+  { reason: "commit_not_found", words: "HQ has no such commit." },
+  // An empty revision, or one read as an option, refused before it is sent.
+  { reason: "invalid", words: "HQ refused this (invalid)." },
+])(
+  "A link to a revision HQ refuses as $reason says it is not in the repository, in place",
+  async ({ reason, words }) => {
+    fixture.home = { state: "refused", reason, words };
+    await open();
+    expect(detail().textContent).toContain("This branch, tag or commit is not in the repository.");
+    expect(detail().textContent).not.toContain(words);
+    expect(detail().textContent).toContain("Open changes");
+  },
+);
 it("Clone with HTTPS opens the existing credentials for this project and repository", async () => {
   await open();
   expect(page()).not.toContain("Credentials for");
