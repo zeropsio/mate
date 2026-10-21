@@ -314,7 +314,8 @@ export class Changes extends Context.Service<
      * commit `mergedSha` HQ's `main` already holds (`githubMirror.ts` imported it): what a squash
      * here records, with `main` left as the import moved it. One merged already stays as it is.
      * `mergedHead` is the head GitHub merged, landed as it — a push since is not merged; the
-     * change's head now where none is known.
+     * change's head now where none is known. A head no person merged in Mate (`hq_gate`) landed
+     * outside Mate (`landed_outside`).
      */
     readonly landImported: (
       appId: string,
@@ -1700,10 +1701,15 @@ export const changesLayer: Layer.Layer<
                 if (!(yield* git.onMain(at, mergedSha)))
                   return yield* refuse("commit_not_found", "commit_not_found");
                 const first = yield* firstCodeMergeOf(sql, { appId, repo, number });
+                // A head no person merged in Mate (`hq_gate`) landed outside Mate.
                 const [merged] = yield* sql<ChangeRow>`
                   UPDATE hq_change
                   SET state = 'merged', merged_sha = ${mergedSha},
                       landed_head = COALESCE(${mergedHead ?? null}, head),
+                      landed_outside = NOT EXISTS (
+                        SELECT 1 FROM hq_gate g
+                        WHERE g.app_id = hq_change.app_id AND g.repo = hq_change.repo
+                          AND g.sha = COALESCE(${mergedHead ?? null}, hq_change.head)),
                       merged_at = now(), updated_at = now(),
                       mergeability = 'already_merged', behind = false,
                       first_code_merge = ${first}::boolean

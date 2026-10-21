@@ -67,6 +67,12 @@ export const GITHUB_TOKEN_USES = {
 } as const;
 export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
 
+/**
+ * The commit status HQ writes `success` on a head a person merged in Mate, with its `gate` token. A
+ * ruleset requiring it from the organization's app lets GitHub merge only such heads.
+ */
+export const MATE_GATE = "mate/gate";
+
 const LEVELS = ["read", "write", "admin"] as const;
 
 /**

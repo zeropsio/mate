@@ -50,7 +50,7 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { HQ_MARK, marked, quieted } from "./githubChannel.ts";
-import { GithubAuth } from "./githubAuth.ts";
+import { GithubAuth, MATE_GATE } from "./githubAuth.ts";
 import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
@@ -453,7 +453,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
         appId: string,
         repo: string,
         repository: string,
-        use: "pullRequests" | "merge" = "pullRequests",
+        use: "pullRequests" | "merge" | "gate" = "pullRequests",
       ) =>
         Effect.gen(function* () {
           const remote = remoteIdentity(`https://github.com/${repository}`);
@@ -1123,6 +1123,32 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           return user.id;
         }).pipe(Effect.orElseSucceed(() => undefined));
 
+      /**
+       * `mate/gate = success` on `sha`, as the app: a ruleset requiring it from the app lets nothing
+       * else satisfy it. An installation that has not approved writing statuses gets none, and its
+       * merge goes on: its repository is advisory, never refused for it.
+       */
+      const gateOnGithub = (row: PullRow, sha: string, link: string) =>
+        Effect.gen(function* () {
+          const gate = yield* asApp(row.app_id, row.repo, row.github_repo, "gate");
+          if (gate === undefined) return;
+          const status = yield* github.setStatus(gate.remote, gate.token, sha, {
+            state: "success",
+            context: MATE_GATE,
+            description: "Approved in Mate",
+            targetUrl: link,
+          });
+          if (status !== 201)
+            yield* Effect.logWarning("mate/gate not written on GitHub", {
+              pull: row.pr_number,
+              status,
+            });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("mate/gate not written on GitHub", { pull: row.pr_number, cause }),
+          ),
+        );
+
       const mergeOnGithub = (
         userId: string,
         row: PullRow,
@@ -1162,6 +1188,16 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               ? { login: undefined }
               : sectionOf(appId, repo, number, row.github_repo, facts);
           const id = login === undefined ? undefined : yield* userIdOf(app, login);
+          // The person merges this head in Mate: recorded, then said on GitHub before its merge.
+          yield* leader.write(sql`
+            INSERT INTO hq_gate (app_id, repo, sha, by)
+            VALUES (${appId}::uuid, ${repo}, ${expectedHead}, ${userId})
+            ON CONFLICT (app_id, repo, sha) DO UPDATE SET by = excluded.by, at = now()`);
+          yield* gateOnGithub(
+            row,
+            expectedHead,
+            `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(appId, repo, number)}`,
+          );
           const merged = yield* github
             .mergePull(app.remote, app.token, row.pr_number, {
               sha: expectedHead,
