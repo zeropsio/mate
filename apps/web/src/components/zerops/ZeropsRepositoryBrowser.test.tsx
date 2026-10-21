@@ -307,6 +307,45 @@ describe("repository README", () => {
     },
   );
 
+  it("An image of the repository is drawn from the commit's bytes, at most twenty a document", async () => {
+    held.views.home = knownHome({
+      path: "docs/README.md",
+      content: [
+        "![logo](./logo.png)",
+        ...Array.from({ length: 20 }, (_, i) => `![shot ${i + 2}](../shots/${i + 2}.png)`),
+        "![far](https://cdn.example.test/far.png)",
+      ].join("\n\n"),
+    });
+    held.views.raw = {
+      state: "known",
+      busy: false,
+      failed: false,
+      answer: new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }),
+    };
+    const { host, close } = await browser();
+    try {
+      const readme = host.querySelector('section[aria-label="README"]')!;
+      const images = [...readme.querySelectorAll("img")];
+      expect(images).toHaveLength(20);
+      expect(images.every((img) => img.src.startsWith("blob:"))).toBe(true);
+      expect(images[0]!.alt).toBe("logo");
+      const raws = held.asked.filter((asked) => asked.read === "raw").map((a) => a.params);
+      expect(raws).toContainEqual({ sha, path: "docs/logo.png" });
+      expect(raws).toContainEqual({ sha, path: "shots/2.png" });
+      expect(raws).not.toContainEqual({ sha, path: "shots/21.png" });
+      // Past twenty, an image of the repository opens its file; one outside it is only a link.
+      const [extra, far] = [...readme.querySelectorAll("a")];
+      expect(extra!.textContent).toBe("shot 21");
+      expect(new URL(extra!.href).searchParams.get("path")).toBe("shots/21.png");
+      expect([far!.textContent, far!.getAttribute("href")]).toEqual([
+        "far",
+        "https://cdn.example.test/far.png",
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
   it("An image outside the repository is shown as a link and never loaded", async () => {
     held.views.home = knownHome({
       path: "README.md",

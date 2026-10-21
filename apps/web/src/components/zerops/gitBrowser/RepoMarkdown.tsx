@@ -90,7 +90,12 @@ function rehypeImagesAsLinks() {
           const at = readmeLink(src, "");
           if (at.kind === "repo" && at.target.kind === "file") {
             kept++;
-            return { type: "element", tagName: "img", properties: { dataRepoImage: src, alt } };
+            return {
+              type: "element",
+              tagName: "img",
+              properties: { dataRepoImage: src, alt },
+              children: [],
+            };
           }
         }
         return inLink || src === ""

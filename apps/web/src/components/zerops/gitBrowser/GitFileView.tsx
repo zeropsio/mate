@@ -44,6 +44,8 @@ export interface GitFileViewProps {
   readonly hrefOf: (search: GitBrowseSearch) => string;
 }
 
+const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
+
 const copied = (title: string) => toastManager.add({ type: "success", title });
 const notCopied = (error: unknown) =>
   toastManager.add({
@@ -189,7 +191,7 @@ export function GitFileView({
       <div className="flex flex-wrap items-center gap-2">
         <span className="me-auto text-xs text-muted-foreground">
           {shape.kind === "text"
-            ? `${lineCount(shape.content)} lines · ${fileSize(blob.size)}`
+            ? `${lines(lineCount(shape.content))} · ${fileSize(blob.size)}`
             : fileSize(blob.size)}
         </span>
         {markdown ? (

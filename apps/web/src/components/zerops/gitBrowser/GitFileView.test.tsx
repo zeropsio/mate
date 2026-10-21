@@ -119,6 +119,8 @@ describe("file view", () => {
     expect(held.reveal.at(-1)).toEqual({ path: "src/a.ts", line: 12 });
     expect(held.file?.selectedLines).toEqual({ start: 12, end: 12 });
     expect(host.textContent).toContain("40 lines · 120 bytes");
+    await view(blob({ content: "one\n", size: 4 }), { path: "src/a.ts", kind: "file" });
+    expect(host.textContent).toContain("1 line · 4 bytes");
     // A range reveals its first line and marks every line of it.
     await act(async () => root.unmount());
     root = createRoot(host);
