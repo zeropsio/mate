@@ -71,17 +71,17 @@ export function mirrorGateLine(
     case undefined:
       return undefined;
     case "governed":
-      return `Governed — GitHub merges into main only what was approved in Mate: mate/gate from ${source}`;
+      return `Main is protected by Mate. Nothing reaches main on GitHub without Mate's approval: mate/gate from ${source}.`;
     // An app made before it asked for statuses has none to approve until its owner adds them.
     case "permission_not_approved":
-      return `Advisory — ${id === undefined ? name : `${name} (${id})`} can't set mate/gate yet. On GitHub, its owner adds Commit statuses: write and Workflows: write to its permissions where they're missing, then an organization owner approves them.`;
+      return `Main is not protected. ${id === undefined ? name : `${name} (${id})`} can't set mate/gate yet. On GitHub, its owner adds Commit statuses: write and Workflows: write to its permissions where they're missing, then an organization owner approves them.`;
     // Also a ruleset that requires mate/gate but lets anyone push to main.
     case "no_ruleset":
-      return `Advisory — anyone who can write on GitHub merges into main without Mate. In a ruleset on main, turn on "Require a pull request before merging" with 0 approvals, and require the check mate/gate from ${source}.`;
+      return `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from ${source}.`;
     case "gate_not_required":
-      return `Advisory — main's ruleset doesn't require the check mate/gate. Require it from ${source}.`;
+      return `Main is not protected. Its ruleset doesn't require Mate's approval. Require the check mate/gate from ${source}.`;
     case "gate_not_pinned":
-      return `Advisory — anyone can set mate/gate. Require it from ${source} so only Mate can.`;
+      return `Main is not protected. The mate/gate check its ruleset requires isn't tied to Mate's app, so anyone can set it. Require it from ${source} so only Mate can.`;
   }
 }
 

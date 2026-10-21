@@ -748,9 +748,8 @@ it("a repository mirrored through the app says whether GitHub governs its main, 
     />,
   );
   expect(html).toContain("Mirrors to github.com/acme/api · through Acme Mate");
-  expect(html).toContain(
-    "Advisory — anyone can set mate/gate. Require it from app ID 123456 so only Mate can.",
-  );
+  expect(html).toContain("Main is not protected. The mate/gate check its ruleset requires");
+  expect(html).toContain("Require it from app ID 123456 so only Mate can.");
 });
 
 it("a diverged mirror says nothing moves until both mains match, never that it mirrors", () => {
