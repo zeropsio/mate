@@ -46,11 +46,11 @@ export const allowRefUpdate = async (
       ? refuse("protected_ref")
       : { allowed: true };
   }
-  // A Mate names its own branches: none another Mate's open change is on, none a change settled,
-  // and in HQ's namespace only its own change's.
+  // A Mate names its own branches: none another Mate's open change is on, and in HQ's namespace
+  // only its own open change's. A settled change leaves its named branch to whoever pushes next.
   const change = await lookupChange(repo, branch);
   if (change === null) return allocated(branch) ? refuse("unknown_change") : { allowed: true };
   if (change.open)
     return change.mateId === principal.mateId ? { allowed: true } : refuse("not_your_ref");
-  return refuse("change_closed");
+  return allocated(branch) ? refuse("change_closed") : { allowed: true };
 };
