@@ -752,6 +752,36 @@ it("a repository mirrored through the app says whether GitHub governs its main, 
   expect(html).toContain("Require it from app ID 123456 so only Mate can.");
 });
 
+// live gate 2026-10-21 (D3): a ruleset added on GitHub reads as protected up to a minute later.
+it.each([
+  { governance: "no_ruleset", hint: true },
+  { governance: "governed", hint: true },
+  { governance: undefined, hint: false },
+] as const)(
+  "says Mate checks GitHub's rules every minute, under whether main is protected: $governance",
+  ({ governance, hint }) => {
+    const html = renderToStaticMarkup(
+      <GitRemoteSettings
+        appId="shop"
+        appName="Shop"
+        github={{
+          kind: "connected",
+          name: "Acme Mate",
+          repositories: ["acme/api"],
+          installUrl: "https://github.com/apps/acme-mate/installations/new",
+        }}
+        repos={[
+          {
+            ...repos[0]!,
+            remote: { ...remote, via: "app", ...(governance === undefined ? {} : { governance }) },
+          },
+        ]}
+      />,
+    );
+    expect(html.includes("Mate checks GitHub&#x27;s rules every minute.")).toBe(hint);
+  },
+);
+
 it("a diverged mirror says nothing moves until both mains match, never that it mirrors", () => {
   const html = renderToStaticMarkup(
     <GitRemoteSettings
