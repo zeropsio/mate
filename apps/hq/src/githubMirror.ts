@@ -339,7 +339,7 @@ export const githubMirrorLayer = (
             if (before || !(yield* git.isAncestor(at, change.head, to))) continue;
             // Oldest first: the merge that took the head, not a later one that took it along.
             let merge: { readonly sha: string; readonly head: string } | undefined;
-            for (const commit of [...brought.items].reverse()) {
+            for (const commit of brought.items.toReversed()) {
               for (const parent of commit.parents.slice(1))
                 if (yield* git.isAncestor(at, change.head, parent)) {
                   merge = { sha: commit.sha, head: parent };
