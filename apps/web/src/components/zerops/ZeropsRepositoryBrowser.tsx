@@ -51,10 +51,13 @@ export function ZeropsRepositoryBrowser({
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
         <p className="text-sm text-muted-foreground" role="alert">
-          {accessReason ??
-            (allowed === undefined
-              ? "Your access to this repository has not been verified."
-              : "You do not have access to this repository.")}
+          {allowed === true
+            ? // HQ said no after the offers said yes.
+              "You no longer have access to this repository."
+            : (accessReason ??
+              (allowed === undefined
+                ? "Your access to this repository has not been verified."
+                : "You do not have access to this repository."))}
         </p>
       </section>
     );

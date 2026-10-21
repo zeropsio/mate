@@ -19,8 +19,13 @@ export function GitRepoCode({ appId, repo, search, navigate }: GitRepoPageProps)
     },
     true,
   );
+  // A link out of what was read names the commit it was read at, never the branch that may move.
+  const rev =
+    source.state === "known" && source.source.revision !== null
+      ? source.source.revision
+      : search.rev;
   const open = (next: { readonly path: string; readonly kind: "tree" | "file" }) =>
-    navigate({ ...(search.rev === undefined ? {} : { rev: search.rev }), view: "code", ...next });
+    navigate({ ...(rev === undefined ? {} : { rev }), view: "code", ...next });
   return (
     <Card variant="flat">
       <div className="flex min-w-0 flex-col gap-3 p-4">

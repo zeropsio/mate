@@ -70,12 +70,11 @@ function OpenChanges({
 function HomeAt({
   appId,
   repo,
-  search,
   home,
   sha,
   navigate,
   hrefOf,
-}: Pick<GitRepoPageProps, "appId" | "repo" | "search" | "navigate" | "hrefOf"> & {
+}: Pick<GitRepoPageProps, "appId" | "repo" | "navigate" | "hrefOf"> & {
   readonly home: GitHome;
   readonly sha: string;
 }) {
@@ -96,15 +95,25 @@ function HomeAt({
           <span>{count(about.tagCount, "tag", "tags")}</span>
         </div>
       </Card>
-      <section aria-label="Files" className="flex min-w-0 flex-col gap-2">
+      <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
         <Card variant="flat">
           <div className="flex min-w-0 flex-col gap-3 p-4">
+            {source.state === "known" && source.failed ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-status-failed" role="alert">
+                  HQ could not read this repository again. Showing the last read source.
+                </p>
+                <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
+                  Read again
+                </Button>
+              </div>
+            ) : null}
             {source.state === "known" ? (
               <ZeropsRepositorySource
                 source={source.source}
                 onOpen={(path, kind) =>
                   navigate({
-                    ...(search.rev === undefined ? {} : { rev: search.rev }),
+                    rev: sha,
                     view: "code",
                     path,
                     kind,
