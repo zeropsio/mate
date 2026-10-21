@@ -68,6 +68,11 @@ afterEach(async () => {
   held.again = [];
 });
 
+const unreadSource = {
+  source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false },
+  again: () => {},
+} as const;
+
 async function page(search: GitBrowseSearch, navigate = vi.fn<(to: GitBrowseSearch) => void>()) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -79,6 +84,7 @@ async function page(search: GitBrowseSearch, navigate = vi.fn<(to: GitBrowseSear
     search,
     home,
     onHomeAgain: () => {},
+    source: unreadSource,
     navigate,
     hrefOf: (to) => `/git?${new URLSearchParams({ appId: "app", repo: "shop", ...to })}`,
   };
@@ -237,6 +243,7 @@ describe("Git browser search page", () => {
           search={{ rev: "v1" }}
           home={home}
           onHomeAgain={() => {}}
+          source={unreadSource}
           navigate={navigate}
           hrefOf={() => "/git"}
         />,
