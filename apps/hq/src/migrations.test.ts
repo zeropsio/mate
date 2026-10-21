@@ -180,6 +180,57 @@ describe("migrate", () => {
         ),
     );
 
+    it.effect(
+      "a change GitHub merged before HQ recorded what a person merged in Mate reads merged outside Mate, and one merged in Mate does not",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const all = treeMigrations();
+            const before = (prefix: string) =>
+              all.findIndex((file) => file.name.startsWith(prefix));
+            yield* migrate(all.slice(0, before("0076_")));
+            const sql = yield* SqlClient.SqlClient;
+            const app = "00000000-0000-0000-0000-000000000001";
+            yield* sql`INSERT INTO hq_app (id, name, created_by) VALUES (${app}, 'Shop', 'owner')`;
+            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+              VALUES (${app}, 'appdev', 'owner')`;
+            const change = (number: number, state: string, by: Record<string, string> | null) =>
+              Effect.gen(function* () {
+                const head = String(number).repeat(40);
+                yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title,
+                    state, head, landed_head)
+                  VALUES (${app}, 'appdev', ${number}, 'P_MATE', 'The task', ${state}, ${head},
+                    ${state === "merged" ? head : null})`;
+                if (by !== null)
+                  yield* sql`INSERT INTO hq_git_event (kind, app_id, repo, number, data)
+                    VALUES ('merged', ${app}, 'appdev', ${number},
+                      ${JSON.stringify({ mergedSha: head, landedHead: head, ...by })}::jsonb)`;
+              });
+            // Merged on GitHub, merged in Mate, and still open — all before 0076.
+            yield* change(1, "merged", { by: "github" });
+            yield* change(2, "merged", { userId: "owner" });
+            yield* change(3, "open", null);
+            yield* migrate(all.slice(0, before("0078_")));
+            // Merged on GitHub after 0076, of a head a person merged in Mate.
+            yield* change(4, "merged", { by: "github" });
+            yield* sql`INSERT INTO hq_gate (app_id, repo, sha, by)
+              VALUES (${app}, 'appdev', ${"4".repeat(40)}, 'owner')`;
+            yield* migrate(all);
+            const rows = yield* sql<{ readonly number: number; readonly outside: boolean }>`
+              SELECT number, landed_outside AS outside FROM hq_change ORDER BY number`;
+            assert.deepStrictEqual(
+              rows.map((row) => [row.number, row.outside]),
+              [
+                [1, true],
+                [2, false],
+                [3, false],
+                [4, false],
+              ],
+            );
+          }),
+        ),
+    );
+
     it.effect("leaves none of the migration from main's tables", () =>
       withSql(
         Effect.gen(function* () {
