@@ -1579,8 +1579,10 @@ it.live.each([
       await Effect.runPromise(Effect.flip(git.followRefs(repo, remote)));
       const [stale] = await partialPacks(dir);
       expect(stale).toBeDefined();
-      const past = new Date(Date.now() - 2 * 60 * 1000);
-      await NodeFSP.utimes(NodePath.join(dir, "objects", "pack", stale!), past, past);
+      // Two minutes older than it was written: past any fetch's deadline.
+      const path = NodePath.join(dir, "objects", "pack", stale!);
+      const past = (await NodeFSP.stat(path)).mtimeMs / 1000 - 2 * 60;
+      await NodeFSP.utimes(path, past, past);
       await Effect.runPromise(Effect.exit(next(git, remote)));
       expect(await partialPacks(dir)).not.toContain(stale);
     }),
