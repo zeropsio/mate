@@ -19,6 +19,8 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, knock, principal } from "../api.ts";
+import { commitRead } from "./commit.ts";
+import { commitFileRead } from "./commitFile.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
 import { refsRead } from "./refs.ts";
@@ -117,6 +119,12 @@ const route = <Q extends Schema.Decoder<unknown>, E extends { readonly _tag: str
 };
 
 /** One line per read. */
-const BROWSE_READS = [route(homeRead), route(refsRead), route(logRead)] as const;
+const BROWSE_READS = [
+  route(homeRead),
+  route(refsRead),
+  route(logRead),
+  route(commitRead),
+  route(commitFileRead),
+] as const;
 
 export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS);
