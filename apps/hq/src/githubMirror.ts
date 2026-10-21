@@ -201,7 +201,11 @@ export const githubMirrorLayer = (
           }
           return Semaphore.withPermits(lock, 1)(effect);
         });
-      /** The sync of a repository that waits for the one running: whoever asks meanwhile joins it. */
+      const layerScope = yield* Effect.scope;
+      /**
+       * The sync of a repository that waits for the one running: whoever asks meanwhile joins it.
+       * It runs on its own, so one asker that stops waiting stops none of the others.
+       */
       const waiting = new Map<
         string,
         Deferred.Deferred<MirrorSync, GithubMirrorUnavailable | SqlError>
@@ -220,6 +224,8 @@ export const githubMirrorLayer = (
           });
           return serialized(key, Effect.andThen(started, effect)).pipe(
             Effect.onExit((exit) => Effect.andThen(started, Deferred.done(outcome, exit))),
+            Effect.forkIn(layerScope),
+            Effect.andThen(Deferred.await(outcome)),
           );
         });
 
@@ -742,7 +748,6 @@ export const githubMirrorLayer = (
         sweep.pipe(Effect.repeat(Schedule.spaced(options.sweepEvery ?? Duration.minutes(1)))),
       );
 
-      const layerScope = yield* Effect.scope;
       const followLater = (appId: string, repo: string) =>
         quietly("a mirrored repository not followed", { appId, repo }, sync(appId, repo)).pipe(
           Effect.forkIn(layerScope),

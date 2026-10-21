@@ -11,6 +11,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
@@ -213,6 +214,8 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
         Record<string, string>
       >,
       rules: { status: 200, headers: {}, body: "[]" } as HostReply,
+      /** While set, the app's token comes only once it completes: a follow that takes its time. */
+      hold: undefined as Deferred.Deferred<void> | undefined,
     };
     const told: Array<{ readonly taskId: string; readonly message: unknown }> = [];
     const context = yield* Layer.build(
@@ -228,9 +231,12 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
                   auth.asked.push(repository);
                   if (id !== undefined && id !== auth.id)
                     return Effect.fail(new GithubAuthUnavailable({ reason: "replaced" }));
-                  return Effect.succeed(
+                  const token = Effect.succeed(
                     auth.installed && repository === REPOSITORY ? Redacted.make(TOKEN) : undefined,
                   );
+                  return auth.hold === undefined
+                    ? token
+                    : Effect.andThen(Deferred.await(auth.hold), token);
                 }),
               issue: () => Effect.succeed(undefined),
               grantOf: (repository) =>
@@ -1276,6 +1282,37 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
       },
     );
 
+    it.effect("A follow one asker stops waiting for still answers those who joined it", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const hold = yield* Deferred.make<void>();
+          f.auth.hold = hold;
+          const asked = f.auth.asked.length;
+          const running = yield* Effect.forkChild(f.mirror.sync(f.appId, "appdev"));
+          yield* Effect.sync(() => f.auth.asked.length).pipe(
+            Effect.filterOrFail((n) => n > asked),
+            Effect.retry(Schedule.spaced(Duration.millis(10))),
+            Effect.timeout(Duration.seconds(10)),
+          );
+          // One waits for the follow running; one more joins it, and the first stops waiting.
+          const waiter = yield* Effect.forkChild(f.mirror.sync(f.appId, "appdev"));
+          yield* Effect.yieldNow;
+          const joiner = yield* Effect.forkChild(f.mirror.sync(f.appId, "appdev"));
+          yield* Effect.yieldNow;
+          yield* Fiber.interrupt(waiter);
+          f.auth.hold = undefined;
+          yield* Deferred.succeed(hold, undefined);
+          assert.deepStrictEqual(yield* Fiber.join(running), { kind: "same", sha: f.main });
+          assert.deepStrictEqual(yield* Fiber.join(joiner).pipe(Effect.timeout("10 seconds")), {
+            kind: "same",
+            sha: f.main,
+          });
+        }),
+      ),
+    );
+
     it.effect("Pushes to GitHub while a follow runs make one more follow, not one each", () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1284,11 +1321,25 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
           const before = f.auth.asked.length;
           yield* f.mirror.sync(f.appId, "appdev");
           const once = f.auth.asked.length - before;
-          const outcomes = yield* Effect.forEach(
-            Array.from({ length: 5 }),
-            () => f.mirror.sync(f.appId, "appdev"),
-            { concurrency: "unbounded" },
+          // A follow running, held where it asks for the app's token, while five pushes come.
+          const hold = yield* Deferred.make<void>();
+          f.auth.hold = hold;
+          const running = yield* Effect.forkChild(f.mirror.sync(f.appId, "appdev"));
+          yield* Effect.sync(() => f.auth.asked.length).pipe(
+            Effect.filterOrFail((n) => n > before + once),
+            Effect.retry(Schedule.spaced(Duration.millis(10))),
+            Effect.timeout(Duration.seconds(10)),
           );
+          const pushes = yield* Effect.forkChild(
+            Effect.forEach(Array.from({ length: 5 }), () => f.mirror.sync(f.appId, "appdev"), {
+              concurrency: "unbounded",
+            }),
+          );
+          yield* Effect.yieldNow;
+          f.auth.hold = undefined;
+          yield* Deferred.succeed(hold, undefined);
+          yield* Fiber.join(running);
+          const outcomes = yield* Fiber.join(pushes);
           assert.strictEqual(f.auth.asked.length - before - once, 2 * once);
           assert.deepStrictEqual(
             outcomes,
