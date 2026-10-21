@@ -107,6 +107,26 @@ export function productionRuns(input: {
   return runs;
 }
 
+/**
+ * What a Git production runs, by repository: the commit HQ last pushed from it, or nothing where it
+ * pushed none — or `undefined` while the environment's pushes are not read, as a push not read yet
+ * would read as running nothing.
+ */
+export function gitProductionRuns(input: {
+  readonly repositories: Iterable<string>;
+  /** HQ's last confirmed push of each repository (`GitDelivery.lastPushed`); `undefined` while unread. */
+  readonly lastPushed: ReadonlyMap<string, string> | undefined;
+}): ReadonlyMap<string, ProductionRun> | undefined {
+  const { lastPushed } = input;
+  if (lastPushed === undefined) return undefined;
+  return new Map(
+    [...input.repositories].map((repo): [string, ProductionRun] => {
+      const sha = lastPushed.get(repo);
+      return [repo, sha === undefined ? { kind: "nothing" } : { kind: "commit", sha }];
+    }),
+  );
+}
+
 /** `read` among `reads`: one per repository and pair of commits, however many services take it. */
 function ask(reads: Array<CompareRead>, read: CompareRead): void {
   const index = reads.findIndex(

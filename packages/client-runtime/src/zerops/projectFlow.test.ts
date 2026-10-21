@@ -1030,6 +1030,17 @@ describe("waitingForProduction: how many changes wait for production once one me
   ])("$name", ({ listed, change, liveSince, count }) => {
     expect(waitingForProduction({ listed, change, liveSince })).toBe(count);
   });
+
+  // live gate 2026-10-21 (D6): the count read "27", then "1" a second later.
+  it("says no count while what the release carries is not compared yet", () => {
+    expect(
+      waitingForProduction({
+        listed: undefined,
+        change: merged("2026-10-03T09:26:00Z"),
+        liveSince: "2026-10-03T07:40:00Z",
+      }),
+    ).toBeUndefined();
+  });
 });
 
 // D7: a change asks for review once its Mate described it at its head, and never while its Mate

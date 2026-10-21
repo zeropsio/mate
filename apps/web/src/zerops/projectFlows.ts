@@ -16,7 +16,7 @@ import {
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import {
   flowReleaseOf,
-  type ProductionRun,
+  gitProductionRuns,
   movedCommits,
   productionRuns,
   projectNameInApp,
@@ -539,12 +539,11 @@ export function useProjectFlows(
       const git = gitLive.get(groupId);
       if (git !== undefined && repos !== undefined && records !== undefined) {
         const candidate = releaseCandidate({ target: git.attachment.target, repos }).candidate;
-        const running = new Map<string, ProductionRun>(
-          [...candidate.keys()].map((repo) => {
-            const sha = git.delivery?.lastPushed.get(repo);
-            return [repo, sha === undefined ? { kind: "nothing" } : { kind: "commit", sha }];
-          }),
-        );
+        const running = gitProductionRuns({
+          repositories: candidate.keys(),
+          lastPushed: git.delivery?.lastPushed,
+        });
+        if (running === undefined) continue;
         plans.set(groupId, {
           ...releaseReads({
             productionRepositories: new Map([...candidate.keys()].map((repo) => [repo, repo])),

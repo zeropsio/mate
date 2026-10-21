@@ -14,6 +14,7 @@ import {
 import {
   carriedReads,
   compareReadKey,
+  gitProductionRuns,
   movedCommits,
   movedCount,
   releaseReads,
@@ -583,6 +584,25 @@ describe("what each production service runs, as a comparison starts from it", ()
         deploys: new Map(),
         releases: [],
       }),
+    ).toBeUndefined();
+  });
+
+  it("a Git production runs the commit HQ last pushed from each repository, and nothing where it pushed none", () => {
+    expect(
+      gitProductionRuns({ repositories: ["api", "web"], lastPushed: new Map([["api", API]]) }),
+    ).toEqual(
+      new Map([
+        ["api", runs(API)],
+        ["web", NOTHING],
+      ]),
+    );
+  });
+
+  // live gate 2026-10-21 (D6): a merged change read "27 changes now wait for production", then
+  // "1 change" a second later — main compared from nothing before the environment's pushes were read.
+  it("knows nothing of a Git production while its pushes are not read, never that it runs nothing", () => {
+    expect(
+      gitProductionRuns({ repositories: ["api", "web"], lastPushed: undefined }),
     ).toBeUndefined();
   });
 });

@@ -625,15 +625,18 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
  * carries (`listed`, `releaseContentsCommits`), and the change itself where that does not list it
  * yet — HQ compares `main` again after a merge, and until it has, the change just merged waits no
  * less (t8 A22: "1 change now waits for production"). A change merged before the release
- * production runs is in production already; one not merged waits for nothing.
+ * production runs is in production already; one not merged waits for nothing. No count while the
+ * release is not compared yet (`listed` undefined): a count from no answer would change under the
+ * person's eyes.
  */
 export function waitingForProduction(input: {
-  readonly listed: ReadonlyArray<{ readonly sha: string }>;
+  readonly listed: ReadonlyArray<{ readonly sha: string }> | undefined;
   readonly change: Pick<FlowPullRequest, "merged" | "mergedAt" | "mergeCommitSha">;
   /** When the release production runs was tagged; `undefined` where it runs none. */
   readonly liveSince: string | undefined;
-}): number {
+}): number | undefined {
   const { change, listed, liveSince } = input;
+  if (listed === undefined) return undefined;
   const merge = change.mergeCommitSha?.toLowerCase();
   const listsIt = merge !== undefined && listed.some(({ sha }) => sha.toLowerCase() === merge);
   const sinceLive =

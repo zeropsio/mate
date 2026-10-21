@@ -78,6 +78,8 @@ export interface ZeropsReleaseOffer {
    * Nothing until all of it is known — the gate holds Release until then.
    */
   readonly contents: ReadonlyArray<Moved>;
+  /** Whether HQ's comparison is in: until then `contents` is empty for want of an answer. */
+  readonly contentsKnown: boolean;
   /** Production's services whose commit cannot be told: what goes live on them is not said. */
   readonly untold: ReadonlyArray<string>;
   /**
@@ -485,6 +487,7 @@ function projectFlow(
       production: gitTarget ? (delivery?.lastPushed ?? NOTHING_TO_LIST) : sides.production,
     }),
     contents: live.moved.state === "known" ? live.moved.moved : [],
+    contentsKnown: live.moved.state === "known",
     suggestion: "",
   };
   const ownerGate: ReleaseGate =
@@ -587,6 +590,7 @@ function projectFlow(
             entries: [],
             ...deploy,
             contents: [],
+            contentsKnown: false,
             untold: [],
             runs: undefined,
             repositories: undefined,

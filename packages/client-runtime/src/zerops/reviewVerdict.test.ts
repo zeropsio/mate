@@ -195,6 +195,14 @@ describe("changeReview: the verdict comes first (R2)", () => {
         why: "Just now · 1 change now waits for production",
       },
     ],
+    [
+      "merged before the release is compared: no count of what waits",
+      {
+        pull: pull({ merged: true, mergedAt: minutesAgo(0) }),
+        waiting: { count: undefined, live: "v0.1.0" },
+      },
+      { state: "merged", tone: "done", title: "Merged into main", why: "Just now" },
+    ],
   ])("%s", (_name, over, expected) => {
     expect(changeReview(change(over)).verdict).toMatchObject(expected);
   });

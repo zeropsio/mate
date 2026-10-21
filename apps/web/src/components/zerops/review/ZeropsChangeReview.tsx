@@ -432,15 +432,15 @@ function ChangeReviewData({
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={
-        flow === undefined
-          ? 0
-          : flow.releasesKnown
-            ? waitingForProduction({
-                listed: releaseContentsCommits(flow.release.contents),
-                change: pull,
-                liveSince: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
-              })
-            : releaseContentsCommits(flow.release.contents).length
+        flow === undefined || !flow.releasesKnown
+          ? undefined
+          : waitingForProduction({
+              listed: flow.release.contentsKnown
+                ? releaseContentsCommits(flow.release.contents)
+                : undefined,
+              change: pull,
+              liveSince: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
+            })
       }
     />
   );
@@ -487,8 +487,8 @@ export interface ChangeReviewViewProps {
    * change's merge reaches.
    */
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
-  /** How many changes wait for production, as the flow last read it. */
-  readonly waitingForProduction: number;
+  /** How many changes wait for production, as the flow compared it; `undefined` until it has. */
+  readonly waitingForProduction: number | undefined;
   /** Whether the application holds a production in any state (`ReviewQuestion`). */
   readonly productionHeld?: boolean | undefined;
   /** The environments the one question after a first merge may offer. */
@@ -559,7 +559,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     waiting: {
       // Until HQ's stream brings it merged, the change just merged is not among what waits yet.
       count:
-        press.kind === "done" && !pull.merged
+        press.kind === "done" && !pull.merged && props.waitingForProduction !== undefined
           ? props.waitingForProduction + 1
           : props.waitingForProduction,
       live: props.live,
