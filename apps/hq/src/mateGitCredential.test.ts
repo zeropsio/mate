@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import {
@@ -14,23 +15,25 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 
 /**
  * The application `Tea Shop`'s repository `web` mounted on GitHub's `acme/tea-shop` through the
- * organization's app, its automated Mate `P_ROBOT` enrolled in it.
+ * organization's app, its automated Mate `P_ROBOT` enrolled in it; HQ's view of the org at most
+ * `viewTtl` old.
  */
-const mountedPool = Effect.gen(function* () {
-  const core = yield* automatedPool();
-  yield* throughOrgApp(core, "tea-shop-mate");
-  /** What the Mate holding `auth` is answered for `path` on `host`, as zcp's helper asks. */
-  const credential = (path: string, auth = core.robot.auth, host = "github.com") =>
-    core.call(
-      "GET",
-      `/api/mate/git-credential?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`,
-      { headers: auth },
-    );
-  /** The permissions and repositories GitHub minted the token `password` with. */
-  const mintedAs = (password: unknown) =>
-    core.github.state.minted.find((minted) => minted.token === password);
-  return { ...core, credential, mintedAs };
-});
+const mountedPool = (viewTtl?: Duration.Duration) =>
+  Effect.gen(function* () {
+    const core = yield* automatedPool(viewTtl === undefined ? {} : { viewTtl });
+    yield* throughOrgApp(core, "tea-shop-mate");
+    /** What the Mate holding `auth` is answered for `path` on `host`, as zcp's helper asks. */
+    const credential = (path: string, auth = core.robot.auth, host = "github.com") =>
+      core.call(
+        "GET",
+        `/api/mate/git-credential?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path)}`,
+        { headers: auth },
+      );
+    /** The permissions and repositories GitHub minted the token `password` with. */
+    const mintedAs = (password: unknown) =>
+      core.github.state.minted.find((minted) => minted.token === password);
+    return { ...core, credential, mintedAs };
+  });
 
 type Answer = { readonly username: string; readonly password: string; readonly expiresAt: string };
 
@@ -40,7 +43,7 @@ describe("a Mate's agent's git credential", () => {
       "a Mate's agent gets a one-hour token for its mounted repository that cannot write commit statuses",
       () =>
         Effect.gen(function* () {
-          const core = yield* mountedPool;
+          const core = yield* mountedPool();
           const before = yield* Clock.currentTimeMillis;
           const answered = yield* core.credential("acme/tea-shop.git");
           assert.strictEqual(answered.status, 200);
@@ -69,7 +72,7 @@ describe("a Mate's agent's git credential", () => {
 
     it.effect("each ask mints its own token, which HQ keeps nowhere", () =>
       Effect.gen(function* () {
-        const core = yield* mountedPool;
+        const core = yield* mountedPool();
         const first = (yield* core.credential("acme/tea-shop.git")).body as Answer;
         // zcp's helper may name the repository as git spells it: any case, `.git` or none.
         const second = (yield* core.credential("Acme/Tea-Shop")).body as Answer;
@@ -85,7 +88,7 @@ describe("a Mate's agent's git credential", () => {
       "a Mate's agent gets only a read token for a repository its application follows without pushing to it",
       () =>
         Effect.gen(function* () {
-          const core = yield* mountedPool;
+          const core = yield* mountedPool();
           core.github.state.installations
             .get(7001)!
             .repositories.push({ id: 502, full_name: "acme/tea-docs" });
@@ -107,7 +110,7 @@ describe("a Mate's agent's git credential", () => {
       "a Mate's agent gets no token for a repository its application does not mount, and never a person's",
       () =>
         Effect.gen(function* () {
-          const core = yield* mountedPool;
+          const core = yield* mountedPool();
           // Followed with a person's token, on a repository the organization's app does not reach.
           yield* connectedRepo(core, core.appId, "docs", "acme/tea-docs");
           // Mounted, but by another application.
@@ -142,7 +145,7 @@ describe("a Mate's agent's git credential", () => {
 
     it.effect("a Mate in no application gets no token", () =>
       Effect.gen(function* () {
-        const core = yield* mountedPool;
+        const core = yield* mountedPool();
         addProject(core.fake, "P_LONE");
         const lone = yield* mateLinked(core, core.owner, "P_LONE");
         const answered = yield* core.credential("acme/tea-shop", lone.auth);
@@ -155,7 +158,8 @@ describe("a Mate's agent's git credential", () => {
 
     it.effect("a Mate whose project access is gone gets no token", () =>
       Effect.gen(function* () {
-        const core = yield* mountedPool;
+        // HQ's view of the org is read after the access went.
+        const core = yield* mountedPool(Duration.zero);
         core.fake.projects.splice(
           core.fake.projects.findIndex((project) => project.id === "P_ROBOT"),
           1,
@@ -176,9 +180,20 @@ describe("a Mate's agent's git credential", () => {
       }),
     );
 
+    it.effect("a Mate's git credential answers without waiting on a fresh Zerops read", () =>
+      Effect.gen(function* () {
+        const core = yield* mountedPool();
+        // Zerops stops answering after HQ read its view of the org, under 30 s ago.
+        core.fake.down = true;
+        const answered = yield* core.credential("acme/tea-shop");
+        assert.strictEqual(answered.status, 200);
+        assert.isDefined(core.mintedAs((answered.body as Answer).password));
+      }),
+    );
+
     it.effect("a repository the organization's app no longer reaches gets no token", () =>
       Effect.gen(function* () {
-        const core = yield* mountedPool;
+        const core = yield* mountedPool();
         core.github.state.installations.delete(7001);
         const answered = yield* core.credential("acme/tea-shop");
         assert.deepStrictEqual(
@@ -190,7 +205,7 @@ describe("a Mate's agent's git credential", () => {
 
     it.effect("a Mate's agent asking while GitHub does not answer is told to try again", () =>
       Effect.gen(function* () {
-        const core = yield* mountedPool;
+        const core = yield* mountedPool();
         core.github.state.mintStatus = 502;
         const answered = yield* core.credential("acme/tea-shop");
         assert.strictEqual(answered.status, 503);

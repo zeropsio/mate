@@ -495,7 +495,8 @@ export const repoRemotesLayer = Layer.effect(
     const remotes: Remotes["Service"] = Remotes.of({
       changes: SubscriptionRef.changes(ticks),
       mateCredential: Effect.fn("Remotes.mateCredential")(function* (projectId, host, path) {
-        const appId = yield* changes.mateApp(projectId, "open_change", true).pipe(
+        // The view decides: git asks on each fetch and push, and its token lives an hour regardless.
+        const appId = yield* changes.mateApp(projectId, "open_change").pipe(
           Effect.catchTags({
             ChangeRefused: () => Effect.fail(new MateCredentialRefused({ reason: "no_access" })),
           }),
