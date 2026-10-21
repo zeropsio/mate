@@ -1192,6 +1192,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               : sectionOf(appId, repo, number, row.github_repo, facts);
           const id = login === undefined ? undefined : yield* userIdOf(app, login);
           // The person merges this head in Mate: recorded, then said on GitHub before its merge.
+          // `hq_gate` records the Zerops person's press, whatever GitHub answers: that is the rule.
           yield* leader.write(sql`
             INSERT INTO hq_gate (app_id, repo, sha, by)
             VALUES (${appId}::uuid, ${repo}, ${expectedHead}, ${userId})
