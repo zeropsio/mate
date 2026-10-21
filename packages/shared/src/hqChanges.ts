@@ -267,6 +267,23 @@ export const HqRemoteIdentity = Schema.Struct({
 });
 export type HqRemoteIdentity = typeof HqRemoteIdentity.Type;
 
+/**
+ * Whether GitHub lets only what Mate approved reach a repository's default branch: `governed` — an
+ * active ruleset there requires a pull request and the status `mate/gate` from this HQ's GitHub app,
+ * which HQ writes only on a head a person merged in Mate — else advisory, by its first missing
+ * step: the app's installation has not approved writing statuses, no ruleset requires a pull
+ * request, `mate/gate` is not required, or it is required from any source. Who may bypass the
+ * ruleset is GitHub's and unread.
+ */
+export const HqRepoGovernance = Schema.Literals([
+  "governed",
+  "permission_not_approved",
+  "no_ruleset",
+  "gate_not_required",
+  "gate_not_pinned",
+]);
+export type HqRepoGovernance = typeof HqRepoGovernance.Type;
+
 /** Safe custody evidence, never the sealed or plaintext credential. */
 export const HqRepoRemote = Schema.Struct({
   ...HqRemoteIdentity.fields,
@@ -284,6 +301,8 @@ export const HqRepoRemote = Schema.Struct({
    * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
    */
   divergedSince: Schema.optionalKey(HqTargetTimestamp),
+  /** Through the app only, as the mirror last read GitHub's rules; absent before it has. */
+  governance: Schema.optionalKey(HqRepoGovernance),
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 

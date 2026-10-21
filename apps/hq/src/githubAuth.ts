@@ -116,6 +116,18 @@ export class GithubAuth extends Context.Service<
       use: GithubTokenUse,
       id?: string,
     ) => Effect.Effect<Redacted.Redacted | undefined, GithubAuthUnavailable>;
+    /**
+     * The app's id on GitHub and what the installation reaching `repository` was granted, as
+     * `tokenFor` finds it; `undefined` while HQ has no app or the app does not reach it.
+     */
+    readonly grantOf: (
+      repository: string,
+      id?: string,
+    ) => Effect.Effect<
+      | { readonly appId: number; readonly permissions: Readonly<Record<string, string>> }
+      | undefined,
+      GithubAuthUnavailable
+    >;
     /** The app's bot, or `undefined` while HQ has no app. */
     readonly bot: Effect.Effect<GithubBot | undefined, GithubAuthUnavailable>;
   }
@@ -126,6 +138,7 @@ export const githubAuthAbsentLayer = Layer.succeed(
   GithubAuth,
   GithubAuth.of({
     tokenFor: () => Effect.succeed(undefined),
+    grantOf: () => Effect.succeed(undefined),
     bot: Effect.succeed(undefined),
   }),
 );

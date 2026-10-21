@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
-import { GithubProbes, ProbeRefused, githubProbesLayer } from "./githubProbes.ts";
+import { GithubProbes, ProbeRefused, githubProbesLayer, governanceOf } from "./githubProbes.ts";
 import {
   GitTransport,
   gitTransportLayer,
@@ -499,4 +499,87 @@ describe("the token test's CI rows", () => {
         );
       }),
   );
+});
+
+describe("a repository mirrored through the app is governed or advisory", () => {
+  const APP = 42;
+  const GRANTED = {
+    contents: "write",
+    pull_requests: "write",
+    statuses: "write",
+    metadata: "read",
+  };
+  const reply = (body: unknown, status = 200): HostReply => ({
+    status,
+    headers: {},
+    body: JSON.stringify(body),
+  });
+  const PR = {
+    type: "pull_request",
+    ruleset_id: 1,
+    parameters: { required_approving_review_count: 0 },
+  };
+  const gate = (...checks: ReadonlyArray<{ context: string; integration_id?: number }>) => ({
+    type: "required_status_checks",
+    ruleset_id: 1,
+    parameters: { strict_required_status_checks_policy: false, required_status_checks: checks },
+  });
+  it.each([
+    [
+      "An active ruleset requiring a pull request and mate/gate from this HQ's app governs it.",
+      reply([PR, gate({ context: "ci" }, { context: "mate/gate", integration_id: APP })]),
+      GRANTED,
+      "governed",
+    ],
+    [
+      "An installation that has not approved writing statuses leaves it advisory, whatever its rules.",
+      reply([PR, gate({ context: "mate/gate", integration_id: APP })]),
+      { ...GRANTED, statuses: "read" },
+      "permission_not_approved",
+    ],
+    [
+      "No rules on the default branch leave it advisory: no ruleset.",
+      reply([]),
+      GRANTED,
+      "no_ruleset",
+    ],
+    [
+      "A ruleset that requires no pull request leaves it advisory: no ruleset.",
+      reply([gate({ context: "mate/gate", integration_id: APP })]),
+      GRANTED,
+      "no_ruleset",
+    ],
+    [
+      "A plan without rulesets leaves it advisory: no ruleset.",
+      reply({ message: planRestriction }, 403),
+      GRANTED,
+      "no_ruleset",
+    ],
+    [
+      "Rules that do not require mate/gate leave it advisory: not required.",
+      reply([PR, gate({ context: "ci" })]),
+      GRANTED,
+      "gate_not_required",
+    ],
+    [
+      "mate/gate required from any source leaves it advisory: not pinned to this app.",
+      reply([PR, gate({ context: "mate/gate" })]),
+      GRANTED,
+      "gate_not_pinned",
+    ],
+    [
+      "mate/gate pinned to another app leaves it advisory: not pinned to this app.",
+      reply([PR, gate({ context: "mate/gate", integration_id: 15368 })]),
+      GRANTED,
+      "gate_not_pinned",
+    ],
+    [
+      "Rules GitHub did not answer say nothing.",
+      reply({ message: "Server Error" }, 502),
+      GRANTED,
+      undefined,
+    ],
+  ] as const)("%s", (_, rules, granted, expected) => {
+    assert.strictEqual(governanceOf(rules, APP, granted), expected);
+  });
 });

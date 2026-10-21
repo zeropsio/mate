@@ -27,6 +27,7 @@ import { GithubAuth, GithubAuthUnavailable } from "./githubAuth.ts";
 import { GithubEvents, githubEventsLayer } from "./githubEvents.ts";
 import { GithubMirror, changeBranch, changesToPush, githubMirrorLayer } from "./githubMirror.ts";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { GitTransport, type HostReply } from "./gitTransport.ts";
 import { MateTasks } from "./mateTasks.ts";
 import { Roles, type OrgView } from "./roles.ts";
 import { rolloutsLayer } from "./rollouts.ts";
@@ -34,6 +35,8 @@ import { rolloutsLayer } from "./rollouts.ts";
 const AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
 const REPOSITORY = "acme/tea-shop";
 const TOKEN = ["app", "installation", "fixture"].join("-");
+/** The organization's app's id on GitHub: what a ruleset pins `mate/gate` to. */
+const APP_ID = 42;
 
 /** `git <args>` in `dir` with no ambient configuration; its output. */
 const native = (dir: string, args: ReadonlyArray<string>, input = "") =>
@@ -181,7 +184,16 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     native(root, ["init", "--bare", "-b", "main", github]);
     // GitHub's repository of that name, by its id: the one connected until it is deleted and made
     // again under the same name.
-    const auth = { installed: true, asked: [] as Array<string>, id: "501" };
+    const auth = {
+      installed: true,
+      asked: [] as Array<string>,
+      id: "501",
+      /** What the installation was granted, and the default branch's rules GitHub answers. */
+      granted: { contents: "write", statuses: "write", metadata: "read" } as Readonly<
+        Record<string, string>
+      >,
+      rules: { status: 200, headers: {}, body: "[]" } as HostReply,
+    };
     const told: Array<{ readonly taskId: string; readonly message: unknown }> = [];
     const context = yield* Layer.build(
       githubMirrorLayer({ gitUrl: () => github, sweepEvery }).pipe(
@@ -200,7 +212,27 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
                     auth.installed && repository === REPOSITORY ? Redacted.make(TOKEN) : undefined,
                   );
                 }),
+              grantOf: (repository) =>
+                Effect.sync(() =>
+                  auth.installed && repository === REPOSITORY
+                    ? { appId: APP_ID, permissions: auth.granted }
+                    : undefined,
+                ),
               bot: Effect.succeed({ login: "acme-mate[bot]", userId: 1 }),
+            }),
+          ),
+        ),
+        Layer.provide(
+          Layer.succeed(
+            GitTransport,
+            GitTransport.of({
+              metadata: () => Effect.die("not the mirror's"),
+              receivePack: () => Effect.die("not the mirror's"),
+              rules: (remote, branch) =>
+                remote.path === REPOSITORY && branch === "main"
+                  ? Effect.sync(() => auth.rules)
+                  : Effect.die(`rules of ${remote.path} ${branch}`),
+              read: () => Effect.die("not the mirror's"),
             }),
           ),
         ),
@@ -649,6 +681,52 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             });
             assert.strictEqual(refIn(f.hqDir, "refs/heads/main"), theirs);
             assert.strictEqual(refIn(f.github, "refs/heads/main"), theirs);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a mirrored repository is governed once its default branch requires mate/gate from this HQ's app, and advisory with why until then",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            const governance = (rules: unknown) =>
+              Effect.gen(function* () {
+                f.auth.rules = { status: 200, headers: {}, body: JSON.stringify(rules) };
+                yield* f.mirror.sync(f.appId, "appdev");
+                const [row] = yield* f.sql<{ readonly governance: string | null }>`
+                  SELECT governance FROM hq_repo_mirror`;
+                return row?.governance;
+              });
+            const required = (integration?: number) => ({
+              type: "required_status_checks",
+              parameters: {
+                required_status_checks: [
+                  {
+                    context: "mate/gate",
+                    ...(integration === undefined ? {} : { integration_id: integration }),
+                  },
+                ],
+              },
+            });
+            const review = { type: "pull_request" };
+            assert.strictEqual(yield* governance([]), "no_ruleset");
+            assert.strictEqual(yield* governance([review]), "gate_not_required");
+            assert.strictEqual(yield* governance([review, required()]), "gate_not_pinned");
+            assert.strictEqual(yield* governance([review, required(APP_ID)]), "governed");
+            // Its admin has not approved writing statuses: advisory, whatever its rules say.
+            f.auth.granted = { contents: "write", statuses: "read", metadata: "read" };
+            assert.strictEqual(
+              yield* governance([review, required(APP_ID)]),
+              "permission_not_approved",
+            );
+            // GitHub's answer saying nothing keeps what was read last.
+            f.auth.rules = { status: 502, headers: {}, body: "{}" };
+            yield* f.mirror.sync(f.appId, "appdev");
+            const [kept] = yield* f.sql<{ readonly governance: string | null }>`
+              SELECT governance FROM hq_repo_mirror`;
+            assert.strictEqual(kept?.governance, "permission_not_approved");
           }),
         ),
     );
