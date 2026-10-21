@@ -26,8 +26,12 @@ export interface HqGitBrowse {
   readonly resolve: (repo: Repo, rev: string | undefined) => Effect.Effect<Resolved, GitError>;
   readonly refs: (repo: Repo, request: RefsRequest) => Effect.Effect<RefsPage, GitError>;
   readonly refCounts: (repo: Repo) => Effect.Effect<RefCounts, GitError>;
-  /** The README at a commit; none where the repository has none there. */
-  readonly readme: (repo: Repo, sha: string) => Effect.Effect<Readme | null, GitError>;
+  /** The README at a commit, its first `maxBytes`; none where the repository has none there. */
+  readonly readme: (
+    repo: Repo,
+    sha: string,
+    maxBytes: number,
+  ) => Effect.Effect<Readme | null, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -37,6 +41,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.refs", repo, (dir, signal) => listRefs(git, dir, request, signal)),
   refCounts: (repo) =>
     inRepo("browse.refCounts", repo, (dir, signal) => countRefs(git, dir, signal)),
-  readme: (repo, sha) =>
-    inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, signal)),
+  readme: (repo, sha, maxBytes) =>
+    inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, maxBytes, signal)),
 });

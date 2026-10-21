@@ -89,7 +89,7 @@ describe("git browse reads", () => {
       });
       // The branch moves after the page resolved it: the page's reads still read its commit.
       await write(git, { "README.md": "second" }, first);
-      expect((await value(git.browse.readme(repo, first)))?.content).toBe("first");
+      expect((await value(git.browse.readme(repo, first, 256 * 1024)))?.content).toBe("first");
       for (const [rev, ref] of [
         [undefined, { name: "main", kind: "branch" }],
         ["refs/heads/main", { name: "main", kind: "branch" }],
@@ -219,23 +219,23 @@ describe("git browse reads", () => {
   it.live("A README in .github wins over one at the root, and one at the root over docs", () =>
     fixture(async (git) => {
       const docs = await write(git, { "docs/readme.MD": "docs", "src/a.ts": "a" }, null);
-      expect(await value(git.browse.readme(repo, docs))).toEqual({
+      expect(await value(git.browse.readme(repo, docs, 256 * 1024))).toEqual({
         path: "docs/readme.MD",
         content: "docs",
         truncated: false,
       });
       const root = await write(git, { "README.txt": "root text", "Readme.md": "root" }, docs);
-      expect(await value(git.browse.readme(repo, root))).toMatchObject({
+      expect(await value(git.browse.readme(repo, root, 256 * 1024))).toMatchObject({
         path: "Readme.md",
         content: "root",
       });
       const github = await write(git, { ".github/README.md": "github" }, root);
-      expect(await value(git.browse.readme(repo, github))).toMatchObject({
+      expect(await value(git.browse.readme(repo, github, 256 * 1024))).toMatchObject({
         path: ".github/README.md",
         content: "github",
       });
       const big = await write(git, { ".github/README.md": "x".repeat(300 * 1024) }, github);
-      const cut = await value(git.browse.readme(repo, big));
+      const cut = await value(git.browse.readme(repo, big, 256 * 1024));
       expect(cut?.truncated).toBe(true);
       expect(cut?.content.length).toBe(256 * 1024);
       const none = await write(
@@ -248,7 +248,7 @@ describe("git browse reads", () => {
         },
         big,
       );
-      expect(await value(git.browse.readme(repo, none))).toBeNull();
+      expect(await value(git.browse.readme(repo, none, 256 * 1024))).toBeNull();
     }),
   );
 });

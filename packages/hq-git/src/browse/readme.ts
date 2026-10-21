@@ -7,8 +7,6 @@
 import { GitError } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 
-/** README bytes shown; the rest is said to be cut. */
-export const README_MAX_BYTES = 256 * 1024;
 const NAMES = ["readme", "readme.md", "readme.markdown", "readme.txt"];
 const FOLDERS = [".github", "", "docs"];
 
@@ -41,6 +39,7 @@ export const findReadme = async (
   git: GitRunner,
   dir: string,
   sha: string,
+  maxBytes: number,
   signal: AbortSignal,
 ): Promise<Readme | null> => {
   if (!/^[0-9a-f]{40}$/u.test(sha))
@@ -67,7 +66,8 @@ export const findReadme = async (
     const blob = await git.prefix(
       ["-C", dir, "cat-file", "blob", found.sha],
       signal,
-      README_MAX_BYTES,
+      // Never more than a file read takes.
+      Math.min(Math.max(1, Math.floor(maxBytes)), 1024 * 1024),
     );
     return {
       path: folder === "" ? found.name : `${folder}/${found.name}`,
