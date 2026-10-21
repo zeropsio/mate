@@ -292,8 +292,13 @@ export interface ChangeReviewInput {
    * lacks, and HQ offers the person (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
    */
   readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
-  /** Once merged: how many changes wait for production now, and what production runs. */
-  readonly waiting?: { readonly count: number; readonly live: string | undefined } | undefined;
+  /**
+   * Once merged: how many changes wait for production now (`undefined` until the release is
+   * compared), and what production runs.
+   */
+  readonly waiting?:
+    | { readonly count: number | undefined; readonly live: string | undefined }
+    | undefined;
   /**
    * The flow's release gate, shared with the release review. A recipe change is never released —
    * a release tags the code in the service repositories.
@@ -728,15 +733,18 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         ? "Just now"
         : (reviewAge(pull.mergedAt, input.now) ?? "Just now");
     const nothing = releaseNothingReason(input.release);
-    const waiting = nothing === undefined ? (input.waiting?.count ?? 0) : 0;
+    const waiting = nothing === undefined ? input.waiting?.count : 0;
     const recipe = pull.kind === "recipe";
     const next = recipe
       ? recipeNext(input.recipe, base)
-      : input.downstream.production && waiting > 0
-        ? `${count(waiting, "change now waits", "changes now wait")} for production`
-        : input.downstream.stage
-          ? "the stage picks it up"
-          : undefined;
+      : input.downstream.production && waiting === undefined
+        ? // Said once the release is compared, never a count that changes under the person's eyes.
+          undefined
+        : input.downstream.production && waiting !== undefined && waiting > 0
+          ? `${count(waiting, "change now waits", "changes now wait")} for production`
+          : input.downstream.stage
+            ? "the stage picks it up"
+            : undefined;
     const live = input.waiting?.live;
     const consequence = recipe
       ? recipeSentence(input.recipe)
@@ -753,10 +761,8 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       verdict: {
         state: "merged",
         tone: "done",
-        title: `Merged into ${base}`,
-        why: [pull.landedOutside === true ? "Merged outside Mate" : undefined, age, next]
-          .filter((part) => part !== undefined)
-          .join(" · "),
+        title: `Merged into ${base}${pull.landedOutside === true ? " outside Mate" : ""}`,
+        why: [age, next].filter((part) => part !== undefined).join(" · "),
         fix: undefined,
       },
       consequence,

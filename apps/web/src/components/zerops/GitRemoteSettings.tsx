@@ -237,13 +237,12 @@ function Remote({
     actions?.reviewAddress !== undefined &&
     actions.updateAddress !== undefined &&
     !editing;
-  const canDisconnect =
-    remote != null &&
-    dependencies.length === 0 &&
-    allowed("disconnect_remote") &&
-    actions?.disconnect !== undefined &&
-    !editing;
+  const disconnectOffered =
+    remote != null && allowed("disconnect_remote") && actions?.disconnect !== undefined && !editing;
+  const canDisconnect = disconnectOffered && dependencies.length === 0;
   const showDisconnect = canDisconnect && !disconnecting;
+  // What keeps Disconnect away, said where Disconnect would stand.
+  const disconnectBlocked = disconnectOffered && dependencies.length > 0;
   const review =
     verifiedAddress === undefined || actions?.updateAddress === undefined
       ? actions?.addressReview
@@ -298,7 +297,7 @@ function Remote({
         result.ok
           ? reviewingAddress
             ? "Address verified. Review it before updating HQ."
-            : remote == null
+            : remote == null || remote.via === "app"
               ? undefined
               : "Token replaced."
           : result.reason,
@@ -340,9 +339,12 @@ function Remote({
           {saving ? "Saving…" : mirrorStateLine(remote, github, now)}
         </p>
         {gate === undefined ? null : (
-          <p className="rv-note" data-zerops-mirror-gate="">
-            {gate}
-          </p>
+          <>
+            <p className="rv-note" data-zerops-mirror-gate="">
+              {gate}
+            </p>
+            <p className="rv-note">Mate checks GitHub's rules every minute.</p>
+          </>
         )}
       </div>
       {remote == null && viaApp !== undefined && app !== null && !editing ? (
@@ -385,7 +387,7 @@ function Remote({
           </div>
         )
       ) : null}
-      {remote == null && viaApp !== undefined && permitted && !editing ? (
+      {(remote == null ? viaApp !== undefined : remote.via === "app") && permitted && !editing ? (
         <p className="rv-note">
           <InlineButton aria-expanded={false} onClick={() => setEditing(true)} tone="muted">
             Use a token instead
@@ -403,7 +405,7 @@ function Remote({
           to mirror without a token.
         </p>
       ) : null}
-      {showReplace || showReview || showDisconnect ? (
+      {showReplace || showReview || showDisconnect || disconnectBlocked ? (
         // A mirrored repository's actions in one row; Disconnect apart, at its end.
         <div className="flex flex-wrap items-center gap-2">
           {showReplace ? (
@@ -446,6 +448,12 @@ function Remote({
             >
               Disconnect
             </Button>
+          ) : null}
+          {disconnectBlocked ? (
+            <p className="rv-note ms-auto">
+              {gitRemoteLabel(remote.url)} is used by {dependencies.join(", ")}. Remove those Git
+              environments first to disconnect.
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -524,12 +532,6 @@ function Remote({
             ) : null}
           </div>
         </div>
-      ) : null}
-      {remote != null && dependencies.length > 0 ? (
-        <p className="rv-note">
-          {gitRemoteLabel(remote.url)} is used by {dependencies.join(", ")}. Remove those Git
-          environments first.
-        </p>
       ) : null}
       {canDisconnect && actions?.disconnect !== undefined ? (
         disconnecting ? (

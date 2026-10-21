@@ -722,6 +722,58 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  // live gate 2026-10-21 (D2): a way in needs a way out.
+  it("a repository mirrored through the app offers the way back to a token", async () => {
+    const probe = { ok: true as const, remote };
+    const replaceToken = vi.fn(async () => probe);
+    const view = await mount({
+      github: app,
+      actions: { ...actions, replaceToken, viaApp: vi.fn(async () => {}) },
+      repos: [{ ...repos[0]!, remote: { ...remote, via: "app" } }],
+    });
+    try {
+      expect(view.host.textContent).toContain("Mirrors to github.com/acme/api · through Acme Mate");
+      expect(view.buttons()).toContain("Use a token instead");
+      await view.click("Use a token instead");
+      expect(view.host.textContent).not.toContain("Repository URL");
+      const input = labelled(view.host, "Access token");
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
+      const props = Reflect.get(input, key) as {
+        onChange: (event: { target: { value: string } }) => void;
+      };
+      await act(async () => props.onChange({ target: { value: "transient-candidate" } }));
+      await view.click("Verify and keep token");
+      expect(replaceToken).toHaveBeenCalledWith("api", "transient-candidate");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  // live gate 2026-10-21 (D1): the line read as a precondition of the switch, and stood alone after it.
+  it.each([
+    { name: "in Disconnect's place, where HQ offers Disconnect", can: offers, shown: true },
+    {
+      name: "nowhere, where HQ offers no Disconnect",
+      can: { connect_remote: { allow: true }, replace_remote_token: { allow: true } },
+      shown: false,
+    },
+  ])("names the Git environments that keep a remote $name", async ({ can, shown }) => {
+    const view = await mount({
+      github: app,
+      can,
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      repos,
+      environments: [{ name: "Production", target: { kind: "git" } }],
+    });
+    try {
+      expect(view.buttons()).toContain("Use Acme Mate instead");
+      expect(view.host.textContent?.includes("Remove those Git environments first")).toBe(shown);
+      expect(view.buttons()).not.toContain("Disconnect");
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("paints nothing of a repository until the app is read", async () => {
     const view = await mount({ github: null, actions });
     try {
@@ -751,6 +803,36 @@ it("a repository mirrored through the app says whether GitHub governs its main, 
   expect(html).toContain("Main is not protected. The mate/gate check its ruleset requires");
   expect(html).toContain("Require it from app ID 123456 so only Mate can.");
 });
+
+// live gate 2026-10-21 (D3): a ruleset added on GitHub reads as protected up to a minute later.
+it.each([
+  { governance: "no_ruleset", hint: true },
+  { governance: "governed", hint: true },
+  { governance: undefined, hint: false },
+] as const)(
+  "says Mate checks GitHub's rules every minute, under whether main is protected: $governance",
+  ({ governance, hint }) => {
+    const html = renderToStaticMarkup(
+      <GitRemoteSettings
+        appId="shop"
+        appName="Shop"
+        github={{
+          kind: "connected",
+          name: "Acme Mate",
+          repositories: ["acme/api"],
+          installUrl: "https://github.com/apps/acme-mate/installations/new",
+        }}
+        repos={[
+          {
+            ...repos[0]!,
+            remote: { ...remote, via: "app", ...(governance === undefined ? {} : { governance }) },
+          },
+        ]}
+      />,
+    );
+    expect(html.includes("Mate checks GitHub&#x27;s rules every minute.")).toBe(hint);
+  },
+);
 
 it("a diverged mirror says nothing moves until both mains match, never that it mirrors", () => {
   const html = renderToStaticMarkup(
