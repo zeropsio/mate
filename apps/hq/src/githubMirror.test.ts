@@ -489,6 +489,54 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
         ),
     );
 
+    for (const { how, blessed, outside } of [
+      { how: "merge", blessed: "older", outside: true },
+      { how: "merge", blessed: "merged", outside: false },
+      { how: "fast-forward", blessed: "older", outside: true },
+      { how: "fast-forward", blessed: "merged", outside: false },
+    ] as const) {
+      it.effect(
+        `a GitHub ${how} of a head pushed there after HQ's is judged by the head GitHub merged: a person merged ${blessed === "merged" ? "it" : "only the older head"} in Mate, so it lands ${outside ? "outside" : "in"} Mate`,
+        () =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const f = yield* mirrored();
+              yield* f.mirror.sync(f.appId, "appdev");
+              yield* f.openChange("Add a search box");
+              const older = yield* f.push("search.ts");
+              yield* until(() => refIn(f.github, "refs/heads/mate/1-add-a-search-box"), older);
+              yield* f.sql`
+                INSERT INTO hq_pull_request (app_id, repo, number, github_repo, pr_number, url,
+                  head_sha)
+                VALUES (${f.appId}::uuid, 'appdev', 1, ${REPOSITORY}, 9,
+                  'https://github.com/acme/tea-shop/pull/9', ${older})`;
+              // Pushed to the change's branch on GitHub; HQ has not heard of it.
+              const later = commitIn(f.github, [older], "search.css");
+              yield* f.sql`
+                UPDATE hq_pull_request SET head_sha = ${later} WHERE number = 1`;
+              yield* f.sql`
+                INSERT INTO hq_gate (app_id, repo, sha, by)
+                VALUES (${f.appId}::uuid, 'appdev', ${blessed === "merged" ? later : older},
+                  'owner')`;
+              const main = how === "merge" ? commitIn(f.github, [f.main, later], "merged") : later;
+              native(f.github, ["update-ref", "refs/heads/main", main]);
+              yield* f.mirror.sync(f.appId, "appdev");
+              const [row] = yield* f.sql<{
+                readonly merged_sha: string;
+                readonly landed_head: string;
+                readonly landed_outside: boolean;
+              }>`
+                SELECT merged_sha, landed_head, landed_outside FROM hq_change WHERE number = 1`;
+              assert.deepStrictEqual(row, {
+                merged_sha: main,
+                landed_head: later,
+                landed_outside: outside,
+              });
+            }),
+          ),
+      );
+    }
+
     it.effect(
       "every commit a merge on GitHub brought in is the merged change's in a comparison",
       () =>
