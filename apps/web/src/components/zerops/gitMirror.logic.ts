@@ -14,6 +14,8 @@ export type GitMirrorApp =
       readonly kind: "connected";
       /** The app's name: "Acme Mate". */
       readonly name: string;
+      /** Its id on GitHub, which a ruleset pins `mate/gate` to; absent from an older HQ. */
+      readonly appId?: number;
       /** The repositories it reaches, by `owner/name`. */
       readonly repositories: ReadonlyArray<string>;
       readonly installUrl: string;
@@ -49,6 +51,35 @@ export function mirrorStateLine(
   if (remote.expiresAt == null) return `Mirrors to ${label} · with a token`;
   const expired = Date.parse(remote.expiresAt) <= now;
   return `Mirrors to ${label} · with a token that ${expired ? "expired" : "expires"} ${day(remote.expiresAt)}`;
+}
+
+/**
+ * Whether GitHub lets only what was approved in Mate reach the repository's main, through the app
+ * only: governed, or advisory with the step that makes it governed — naming the app's id a ruleset
+ * requires `mate/gate` from. Nothing before HQ read it, and nothing more once the app is gone.
+ */
+export function mirrorGateLine(
+  remote: RepoListEntry["remote"],
+  app: GitMirrorApp,
+): string | undefined {
+  if (remote?.via !== "app" || remote.invalidSince !== null || app.kind === "none") return;
+  const name = app.kind === "connected" ? app.name : "the organization's GitHub app";
+  const source =
+    app.kind === "connected" && app.appId !== undefined ? `app ID ${String(app.appId)}` : name;
+  switch (remote.governance) {
+    case undefined:
+      return undefined;
+    case "governed":
+      return "Governed — GitHub merges into main only what was approved in Mate";
+    case "permission_not_approved":
+      return `Advisory — ${name} can't set mate/gate yet. Approve its new permissions on GitHub.`;
+    case "no_ruleset":
+      return `Advisory — anyone who can write on GitHub merges into main without Mate. Add a ruleset on main that requires review and the check mate/gate from ${source}.`;
+    case "gate_not_required":
+      return `Advisory — main's ruleset doesn't require the check mate/gate. Require it from ${source}.`;
+    case "gate_not_pinned":
+      return `Advisory — anyone can set mate/gate. Require it from ${source} so only Mate can.`;
+  }
 }
 
 /** What mirroring does, above repositories none of which mirrors yet. */

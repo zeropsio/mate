@@ -45,6 +45,7 @@ export function GitMirrorDialog({
         ? {
             kind: "connected",
             name: githubAppName(app.held),
+            ...(app.held.appId === undefined ? {} : { appId: app.held.appId }),
             repositories: appRepositories(app.held),
             installUrl: app.held.installUrl,
           }

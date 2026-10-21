@@ -732,6 +732,27 @@ describe("mirroring through the organization's GitHub app", () => {
   });
 });
 
+it("a repository mirrored through the app says whether GitHub governs its main, naming the app id a ruleset requires", () => {
+  const html = renderToStaticMarkup(
+    <GitRemoteSettings
+      appId="shop"
+      appName="Shop"
+      github={{
+        kind: "connected",
+        name: "Acme Mate",
+        appId: 123456,
+        repositories: ["acme/tea-shop"],
+        installUrl: "https://github.com/apps/acme-mate/installations/new",
+      }}
+      repos={[{ ...repos[0]!, remote: { ...remote, via: "app", governance: "gate_not_pinned" } }]}
+    />,
+  );
+  expect(html).toContain("Mirrors to github.com/acme/api · through Acme Mate");
+  expect(html).toContain(
+    "Advisory — anyone can set mate/gate. Require it from app ID 123456 so only Mate can.",
+  );
+});
+
 it("a diverged mirror says nothing moves until both mains match, never that it mirrors", () => {
   const html = renderToStaticMarkup(
     <GitRemoteSettings

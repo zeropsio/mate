@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mirrorLeadLine, mirrorStateLine } from "./gitMirror.logic";
+import { mirrorGateLine, mirrorLeadLine, mirrorStateLine } from "./gitMirror.logic";
 
 const NOW = Date.parse("2026-10-18T09:00:00Z");
 const remote = {
@@ -71,5 +71,68 @@ describe("the mirror dialog's lead line", () => {
     expect(mirrorLeadLine({ kind: "none" })).toBe(
       "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
     );
+  });
+});
+
+describe("whether GitHub lets only what was approved in Mate reach a repository's main", () => {
+  const viaApp = { ...remote, via: "app" } as const;
+  const withId = { ...app, appId: 123456 } as const;
+  it.each([
+    {
+      case: "a governed repository says so",
+      remote: { ...viaApp, governance: "governed" },
+      app: withId,
+      says: "Governed — GitHub merges into main only what was approved in Mate",
+    },
+    {
+      case: "an installation that has not approved writing statuses is advisory and asks for the approval",
+      remote: { ...viaApp, governance: "permission_not_approved" },
+      app: withId,
+      says: "Advisory — Acme Mate can't set mate/gate yet. Approve its new permissions on GitHub.",
+    },
+    {
+      case: "a repository without a ruleset is advisory and names the app id to require",
+      remote: { ...viaApp, governance: "no_ruleset" },
+      app: withId,
+      says: "Advisory — anyone who can write on GitHub merges into main without Mate. Add a ruleset on main that requires review and the check mate/gate from app ID 123456.",
+    },
+    {
+      case: "a ruleset that does not require mate/gate is advisory",
+      remote: { ...viaApp, governance: "gate_not_required" },
+      app: withId,
+      says: "Advisory — main's ruleset doesn't require the check mate/gate. Require it from app ID 123456.",
+    },
+    {
+      case: "mate/gate required from any source is advisory",
+      remote: { ...viaApp, governance: "gate_not_pinned" },
+      app: withId,
+      says: "Advisory — anyone can set mate/gate. Require it from app ID 123456 so only Mate can.",
+    },
+    {
+      case: "an HQ that does not say its app's id names the app",
+      remote: { ...viaApp, governance: "gate_not_pinned" },
+      app,
+      says: "Advisory — anyone can set mate/gate. Require it from Acme Mate so only Mate can.",
+    },
+    {
+      case: "a mirror through the app not read yet says nothing",
+      remote: viaApp,
+      app: withId,
+      says: undefined,
+    },
+    {
+      case: "a mirror with a token says nothing",
+      remote: { ...remote, governance: "governed" },
+      app: withId,
+      says: undefined,
+    },
+    {
+      case: "a mirror through an app that is gone says nothing more",
+      remote: { ...viaApp, governance: "governed", invalidSince: "2026-10-15T08:00:00Z" },
+      app: withId,
+      says: undefined,
+    },
+  ] as const)("$case", ({ remote: given, app: reading, says }) => {
+    expect(mirrorGateLine(given, reading)).toBe(says);
   });
 });
