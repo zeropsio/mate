@@ -12,15 +12,10 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { Button } from "../../ui/button";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
-import { GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
+import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
 import { GitWhen } from "./GitWhen";
 
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const STATUS_LETTER: Record<GitCommit["files"][number]["status"], string> = {
-  added: "A",
-  modified: "M",
-  deleted: "D",
-};
 
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -51,8 +46,6 @@ function PageLink({
   );
 }
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** The commit's message and people, and the files it changed, each a jump to its diff. */
 export function GitCommitSummary({
   commit,
@@ -65,8 +58,6 @@ export function GitCommitSummary({
   readonly onJump: (path: string) => void;
 }) {
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "commit id" });
-  const additions = commit.files.reduce((sum, file) => sum + file.additions, 0);
-  const deletions = commit.files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-4">
       <header className="flex min-w-0 flex-col gap-2">
@@ -134,45 +125,12 @@ export function GitCommitSummary({
           </p>
         ) : null}
       </header>
-      <section aria-label="Changed files" className="flex min-w-0 flex-col gap-1">
-        <p className="text-xs text-muted-foreground">
-          {commit.filesTruncated
-            ? `Showing ${count(commit.files.length, "file", "files")} of ${commit.totalFiles} changed`
-            : `${count(commit.totalFiles, "file", "files")} changed`}
-          {additions > 0 ? (
-            <span className="ml-2 font-mono text-diff-addition-foreground">+{additions}</span>
-          ) : null}
-          {deletions > 0 ? (
-            <span className="ml-1 font-mono text-diff-deletion-foreground">−{deletions}</span>
-          ) : null}
-        </p>
-        <ul className="flex min-w-0 flex-col">
-          {commit.files.map((file) => (
-            <li key={file.path}>
-              <button
-                className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => onJump(file.path)}
-                type="button"
-              >
-                <span className="w-3 shrink-0 font-mono text-muted-foreground">
-                  {STATUS_LETTER[file.status]}
-                </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-foreground">
-                  {file.path}
-                </span>
-                {file.binary ? (
-                  <span className="text-muted-foreground">Binary file</span>
-                ) : (
-                  <span className="shrink-0 font-mono">
-                    <span className="text-diff-addition-foreground">+{file.additions}</span>{" "}
-                    <span className="text-diff-deletion-foreground">−{file.deletions}</span>
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <GitChangedFiles
+        files={commit.files}
+        filesTruncated={commit.filesTruncated}
+        onJump={onJump}
+        totalFiles={commit.totalFiles}
+      />
     </div>
   );
 }

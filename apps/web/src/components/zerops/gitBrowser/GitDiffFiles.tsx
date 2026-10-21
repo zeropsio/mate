@@ -67,6 +67,69 @@ export const fileNote = (
   return { kind: "load", label: "Reading the diff…", busy: true };
 };
 
+const STATUS_LETTER: Record<GitCommitFile["status"], string> = {
+  added: "A",
+  modified: "M",
+  deleted: "D",
+};
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Every file the diff changed with its counts, each a jump to its diff below. */
+export function GitChangedFiles({
+  files,
+  totalFiles,
+  filesTruncated,
+  onJump,
+}: {
+  readonly files: ReadonlyArray<GitCommitFile>;
+  readonly totalFiles: number;
+  readonly filesTruncated: boolean;
+  readonly onJump: (path: string) => void;
+}) {
+  const additions = files.reduce((sum, file) => sum + file.additions, 0);
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
+  return (
+    <section aria-label="Changed files" className="flex min-w-0 flex-col gap-1">
+      <p className="text-xs text-muted-foreground">
+        {filesTruncated
+          ? `Showing ${count(files.length, "file", "files")} of ${totalFiles} changed`
+          : `${count(totalFiles, "file", "files")} changed`}
+        {additions > 0 ? (
+          <span className="ml-2 font-mono text-diff-addition-foreground">+{additions}</span>
+        ) : null}
+        {deletions > 0 ? (
+          <span className="ml-1 font-mono text-diff-deletion-foreground">−{deletions}</span>
+        ) : null}
+      </p>
+      <ul className="flex min-w-0 flex-col">
+        {files.map((file) => (
+          <li key={file.path}>
+            <button
+              className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => onJump(file.path)}
+              type="button"
+            >
+              <span className="w-3 shrink-0 font-mono text-muted-foreground">
+                {STATUS_LETTER[file.status]}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-foreground">{file.path}</span>
+              {file.binary ? (
+                <span className="text-muted-foreground">Binary file</span>
+              ) : (
+                <span className="shrink-0 font-mono">
+                  <span className="text-diff-addition-foreground">+{file.additions}</span>{" "}
+                  <span className="text-diff-deletion-foreground">−{file.deletions}</span>
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function GitDiffFiles({
   sha,
   files,

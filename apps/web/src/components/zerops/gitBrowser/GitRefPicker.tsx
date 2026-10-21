@@ -36,6 +36,8 @@ export function GitRefPicker({
   changes,
   mounted,
   onPick,
+  title = "Branch or tag",
+  shortcut = true,
 }: {
   readonly appId: string;
   readonly repo: string;
@@ -46,6 +48,10 @@ export function GitRefPicker({
   /** Mounted from GitHub: what HQ does not follow yet is on GitHub. */
   readonly mounted: boolean;
   readonly onPick: (rev: string) => void;
+  /** What the button is called, where a page has more than one. */
+  readonly title?: string;
+  /** `w` opens it: only the frame's picker answers it. */
+  readonly shortcut?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<ListKind>(
@@ -73,6 +79,7 @@ export function GitRefPicker({
   );
 
   useEffect(() => {
+    if (!shortcut) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "w" || event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.defaultPrevented || isEditableFocused(event.target)) return;
@@ -81,7 +88,7 @@ export function GitRefPicker({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [shortcut]);
 
   const items = useMemo(
     () =>
@@ -123,7 +130,7 @@ export function GitRefPicker({
         if (row !== undefined) pick(row);
       }}
     >
-      <ComboboxTrigger render={<Button variant="secondary" size="sm" />} aria-label="Branch or tag">
+      <ComboboxTrigger render={<Button variant="secondary" size="sm" />} aria-label={title}>
         <GitBranchIcon aria-hidden="true" />
         <span className="max-w-64 truncate">{label}</span>
         <ChevronDownIcon aria-hidden="true" />

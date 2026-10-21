@@ -43,6 +43,9 @@ const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   commit: lazy(() =>
     import("./GitCommitView").then((module) => ({ default: module.GitCommitView })),
   ),
+  compare: lazy(() =>
+    import("./GitCompareView").then((module) => ({ default: module.GitCompareView })),
+  ),
   search: lazy(() =>
     import("./GitSearchView").then((module) => ({ default: module.GitSearchView })),
   ),
@@ -55,6 +58,7 @@ export const GIT_VIEW_TABS: ReadonlyArray<{
 }> = [
   { label: "Code", views: ["home", "code"] },
   { label: "History", views: ["commits", "commit"] },
+  { label: "Compare", views: ["compare"] },
   { label: "Search", views: ["search"] },
 ];
 
