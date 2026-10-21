@@ -140,9 +140,14 @@ export class Changes extends Context.Service<
   {
     /**
      * The application the Mate of `projectId` does `verb` in: the one HQ holds it in, as `can`
-     * decides it over the org as a write is decided (`roles.ts` `confirmingRefusal`).
+     * decides it over the org as a write is decided (`roles.ts` `confirmingRefusal`); `fresh`, over
+     * roles read after it was asked (`decidedFresh`), for what HQ hands on and cannot take back.
      */
-    readonly mateApp: (projectId: string, verb: MateVerb) => Effect.Effect<string, MateError>;
+    readonly mateApp: (
+      projectId: string,
+      verb: MateVerb,
+      fresh?: boolean,
+    ) => Effect.Effect<string, MateError>;
     /**
      * The application the Mate of `projectId` fetches a repository of `repoAppId` in, as `can`'s
      * `fetch_repo` decides it over the org's view (`roles.ts` `view`).
@@ -692,8 +697,8 @@ export const changesLayer: Layer.Layer<
 
     const mate = (projectId: string) => ({ kind: "mate", projectId }) as const;
 
-    const mateApp = (projectId: string, verb: MateVerb) =>
-      confirmingRefusal(
+    const mateApp = (projectId: string, verb: MateVerb, fresh = false) =>
+      (fresh ? decidedFresh : confirmingRefusal)(
         Effect.gen(function* () {
           const target = yield* mateHeld(projectId);
           return yield* enforced(

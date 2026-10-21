@@ -2185,6 +2185,7 @@ describe("revisioned HQ values", () => {
             ciAccess: unused,
             tokenOf: unused,
             connectViaApp: unused,
+            mateCredential: unused,
           });
           const client = yield* f.connect("owner");
           yield* client.subscribe([{ scope: { kind: "app-detail", appId: "A" } }]);
@@ -2264,6 +2265,7 @@ describe("revisioned HQ values", () => {
               ciAccess: unused,
               tokenOf: unused,
               connectViaApp: unused,
+              mateCredential: unused,
             },
             {
               repositoryOf: unused,

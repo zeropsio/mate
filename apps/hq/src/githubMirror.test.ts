@@ -212,6 +212,7 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
                     auth.installed && repository === REPOSITORY ? Redacted.make(TOKEN) : undefined,
                   );
                 }),
+              issue: () => Effect.succeed(undefined),
               grantOf: (repository) =>
                 Effect.sync(() =>
                   auth.installed && repository === REPOSITORY
