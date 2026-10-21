@@ -734,7 +734,8 @@ export const gitHostLayer = (options: {
           Effect.gen(function* () {
             const layer = yield* git;
             const head = yield* layer.changeHead(repo, change);
-            if (head === null) return;
+            // A branch with nothing beyond main holds no work yet: its next push moves the change.
+            if (head === null || (yield* layer.onMain(repo, head))) return;
             yield* moved(layer, repo, change, null, head, { opened: true });
             yield* tick;
           }),

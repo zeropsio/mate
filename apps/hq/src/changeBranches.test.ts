@@ -220,6 +220,27 @@ describe("a change is a branch", () => {
     );
 
     it.effect(
+      "a change opened on a branch with nothing beyond main has no head until work is pushed there",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          const git = yield* gitClient;
+          const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          const opened = (yield* ada.open("Fix the login", "fix-login")).body as {
+            readonly change: Body;
+          };
+          assert.deepStrictEqual([opened.change["state"], opened.change["head"]], ["open", null]);
+          yield* work.commit("login.ts");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          yield* recorded(url, 1, yield* work.head);
+        }),
+    );
+
+    it.effect(
       "a change is refused a branch another open change is on, and main, HQ's mate/ or a tag as its branch",
       () =>
         Effect.gen(function* () {
