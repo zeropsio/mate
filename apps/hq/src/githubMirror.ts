@@ -16,7 +16,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -145,12 +144,6 @@ export interface GithubMirrorOptions {
    */
   readonly sweepEvery?: Duration.Duration;
 }
-
-const encodeFollowed = Schema.encodeSync(
-  Schema.fromJsonString(
-    Schema.Struct({ fetched: Schema.Number, pruned: Schema.Array(Schema.String) }),
-  ),
-);
 
 const unavailable = (reason: GithubMirrorUnavailable["reason"], detail?: string) =>
   new GithubMirrorUnavailable({ reason, ...(detail === undefined ? {} : { detail }) });
@@ -447,11 +440,6 @@ export const githubMirrorLayer = (
           const refs = yield* git.followRefs(at, remote);
           for (const ref of refs.pruned)
             yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { ...context, ref });
-          yield* leader.write(
-            sql`
-              UPDATE hq_repo_mirror SET followed_refs = ${encodeFollowed(refs)}::jsonb
-              WHERE app_id::text = ${at.appId} AND repo = ${at.id}`,
-          );
           if (othersFailing.delete(key))
             yield* Effect.logInfo("GitHub's other branches and tags followed again", context);
         }).pipe(

@@ -181,9 +181,8 @@ export interface MirrorRemote {
   readonly url: string;
   readonly token: Redacted.Redacted;
 }
-/** What following a mirror's branches and tags did: how many came or moved, which went (full refs). */
+/** What following a mirror's branches and tags did: which went (full refs). */
 export interface FollowedRefs {
-  readonly fetched: number;
   readonly pruned: ReadonlyArray<string>;
 }
 export type MirrorPush =

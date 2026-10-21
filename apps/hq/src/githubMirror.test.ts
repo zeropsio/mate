@@ -409,14 +409,6 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
 /** `refs` of `dir`, by name, one per line. */
 const refsOf = (dir: string, ...patterns: ReadonlyArray<string>) =>
   native(dir, ["for-each-ref", "--format=%(refname)", ...patterns]);
-/** What the repository's row says its last follow of GitHub's branches and tags did. */
-const followed = (f: Effect.Success<ReturnType<typeof mirrored>>) =>
-  Effect.map(
-    f.sql<{ readonly followed_refs: unknown }>`
-      SELECT followed_refs FROM hq_repo_mirror
-      WHERE app_id::text = ${f.appId} AND repo = 'appdev'`,
-    (rows) => rows[0]?.followed_refs,
-  );
 
 describe("a repository mirrored to GitHub through the organization's app", () => {
   it("a change's branch on GitHub is its number and its title's words, at most 40 characters", () => {
@@ -1084,13 +1076,13 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             assert.deepStrictEqual(yield* files("refs/github/heads/main"), ["index.html"]);
             // Mate's own branches and tags are only its own: no tag of GitHub's follows into them.
             assert.strictEqual(refsOf(f.hqDir, "refs/heads/", "refs/tags/"), "refs/heads/main");
-            assert.deepStrictEqual(yield* followed(f), { fetched: 3, pruned: [] });
           }),
         ),
     );
 
-    it.effect("A branch deleted on GitHub disappears from HQ's copy and the sync names it", () =>
-      Effect.scoped(
+    it.effect("A branch deleted on GitHub disappears from HQ's copy and the sync names it", () => {
+      const named: Array<unknown> = [];
+      return Effect.scoped(
         Effect.gen(function* () {
           const f = yield* mirrored();
           yield* f.mirror.sync(f.appId, "appdev");
@@ -1103,13 +1095,20 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
           native(f.github, ["tag", "-d", "preview"]);
           yield* f.mirror.sync(f.appId, "appdev");
           assert.strictEqual(refsOf(f.hqDir, "refs/github/"), "refs/github/heads/main");
-          assert.deepStrictEqual(yield* followed(f), {
-            fetched: 0,
-            pruned: ["refs/github/heads/feature", "refs/github/tags/preview"],
-          });
+          assert.deepStrictEqual(named, ["refs/github/heads/feature", "refs/github/tags/preview"]);
         }),
-      ),
-    );
+      ).pipe(
+        Effect.provide(
+          Logger.layer([
+            Logger.make(({ message }) => {
+              const [said, context] = Array.isArray(message) ? message : [message];
+              if (said === "a ref deleted on GitHub left HQ's copy")
+                named.push((context as { readonly ref: string }).ref);
+            }),
+          ]),
+        ),
+      );
+    });
 
     it.effect("A force-pushed GitHub branch is followed while main still only fast-forwards", () =>
       Effect.scoped(

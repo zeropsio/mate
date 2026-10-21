@@ -10,16 +10,11 @@ import type { GitRunner } from "./git.ts";
 export const GITHUB_REFS = "refs/github/";
 
 const held = async (git: GitRunner, dir: string, signal: AbortSignal) =>
-  new Map(
-    (
-      await git.run(["-C", dir, "for-each-ref", "--format=%(refname) %(objectname)", GITHUB_REFS], {
-        signal,
-      })
-    )
+  new Set(
+    (await git.run(["-C", dir, "for-each-ref", "--format=%(refname)", GITHUB_REFS], { signal }))
       .toString()
       .split("\n")
-      .filter(Boolean)
-      .map((line) => line.split(" ") as [string, string]),
+      .filter(Boolean),
   );
 
 /**
@@ -53,8 +48,5 @@ export const followRefs = async (
     signal,
   );
   const after = await held(git, dir, signal);
-  return {
-    fetched: [...after].filter(([ref, sha]) => before.get(ref) !== sha).length,
-    pruned: [...before.keys()].filter((ref) => !after.has(ref)),
-  };
+  return { pruned: [...before].filter((ref) => !after.has(ref)) };
 };
