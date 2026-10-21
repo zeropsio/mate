@@ -9,10 +9,12 @@ import type * as Effect from "effect/Effect";
 import type { GitError, Repo } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
+import { listLog, type LogPage, type LogRequest } from "./log.ts";
 import { findReadme, type Readme } from "./readme.ts";
 import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } from "./refs.ts";
 import { resolveRevision, type Resolved } from "./resolve.ts";
 
+export type { LogItem, LogPage, LogRequest } from "./log.ts";
 export type { Readme } from "./readme.ts";
 export type { RefCounts, RefItem, RefsPage, RefsRequest } from "./refs.ts";
 export type { RefKind, Resolved } from "./resolve.ts";
@@ -32,6 +34,8 @@ export interface HqGitBrowse {
     sha: string,
     maxBytes: number,
   ) => Effect.Effect<Readme | null, GitError>;
+  /** A page of the commits reachable from `sha`, or of those that touched a path; none where the commit is absent. */
+  readonly log: (repo: Repo, request: LogRequest) => Effect.Effect<LogPage | null, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -43,4 +47,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.refCounts", repo, (dir, signal) => countRefs(git, dir, signal)),
   readme: (repo, sha, maxBytes) =>
     inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, maxBytes, signal)),
+  log: (repo, request) =>
+    inRepo("browse.log", repo, (dir, signal) => listLog(git, dir, request, signal)),
 });
