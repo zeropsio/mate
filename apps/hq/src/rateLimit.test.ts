@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import {
+  BROWSE_LIMIT,
   DoorRateLimit,
   PERSON_ADDRESS_LIMIT,
   PERSON_LIMIT,
@@ -34,6 +35,7 @@ describe("doorRateLimitLayer", () => {
       refill: "1 second",
     },
     { name: "a person", limit: PERSON_LIMIT, burst: 20, refill: "3 seconds" },
+    { name: "a person's Git browse reads", limit: BROWSE_LIMIT, burst: 600, refill: "200 millis" },
   ] as const)(
     "lets $name take its bucket at once, then one more a step",
     ({ limit, burst, refill }) =>

@@ -1,8 +1,9 @@
 /**
  * The Git browser's reads, `GET /api/apps/:appId/repos/:repo/browse/<read>`: the only HTTP path to
  * a repository's content beside git itself. Each read is a module of this folder and one line in
- * {@link BROWSE_READS}; every one knocks the person's door, checks the person's access before any
- * git runs (`access.ts`), and ends at its deadline, its git stopped with it.
+ * {@link BROWSE_READS}; every one takes from the person's browse bucket (`rateLimit.ts`), checks
+ * the person's access before any git runs (`access.ts`), and ends at its deadline, its git stopped
+ * with it.
  *
  * An answer pinned to a commit never changes, so it says so and answers a matching
  * `If-None-Match` with `304`; an answer about refs (`home`, `refs`) is never cached.
@@ -18,7 +19,8 @@ import * as Schema from "effect/Schema";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
-import { handle, knock, principal } from "../api.ts";
+import { handle, principal } from "../api.ts";
+import { BROWSE_LIMIT, DoorRateLimit, TooManyRequests } from "../rateLimit.ts";
 import { grepRead } from "./grep.ts";
 import { browseHeavyLayer } from "./heavy.ts";
 import { homeRead } from "./home.ts";
@@ -90,8 +92,10 @@ const route = <Q extends Schema.Decoder<unknown>, E extends { readonly _tag: str
     `/api/apps/:appId/repos/:repo/browse/${read.read}`,
     handle(
       Effect.gen(function* () {
-        yield* knock("person");
         const { userId } = yield* principal;
+        // The person's own bucket: signing in's, per address, stays signing in's alone.
+        if (!(yield* (yield* DoorRateLimit).take(`browse ${userId}`, BROWSE_LIMIT)))
+          return yield* new TooManyRequests();
         const params = yield* HttpRouter.params;
         const repo = yield* decodeRepoName(params["repo"]);
         const request = yield* HttpServerRequest.HttpServerRequest;
