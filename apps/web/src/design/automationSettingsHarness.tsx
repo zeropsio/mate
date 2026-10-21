@@ -336,7 +336,7 @@ function Dialogs() {
           repos={[repo("appdev", { ...REMOTE, via: "token" })]}
         />
       </DialogFrame>
-      <DialogFrame title="Governed">
+      <DialogFrame title="Main protected">
         <GitRemoteSettings
           actions={ACTIONS}
           appId="tea-shop"
@@ -346,7 +346,7 @@ function Dialogs() {
           repos={[repo("appdev", { ...REMOTE, via: "app", governance: "governed" })]}
         />
       </DialogFrame>
-      <DialogFrame title="Advisory">
+      <DialogFrame title="Main not protected">
         <GitRemoteSettings
           actions={ACTIONS}
           appId="tea-shop"
@@ -356,7 +356,7 @@ function Dialogs() {
           repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
         />
       </DialogFrame>
-      <DialogFrame title="Advisory — permissions not approved">
+      <DialogFrame title="Main not protected — permissions not approved">
         <GitRemoteSettings
           actions={ACTIONS}
           appId="tea-shop"
