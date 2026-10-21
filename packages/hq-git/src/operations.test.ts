@@ -420,6 +420,36 @@ describe("a repository's backup", () => {
       await expect(value(git.restore(copy, file))).rejects.toHaveProperty("reason", "exists");
     }),
   );
+  it.live.each([
+    { mate: "main and GitHub's branches and tags", main: true },
+    { mate: "only GitHub's branches and tags", main: false },
+  ])(
+    "A bundle of a repository holding $mate carries none of GitHub's, nor what only they hold",
+    ({ main }) =>
+      fixture(async (git, dir) => {
+        const ours = main ? await write(git, { "a.txt": "a\n" }, null) : null;
+        const github = NodePath.join(dir, "github.git");
+        await native(dir, ["init", "--bare", github]);
+        const blob = await native(github, ["hash-object", "-w", "--stdin"], "theirs");
+        const tree = await native(github, ["mktree"], `100644 blob ${blob}\ttheirs.txt\n`);
+        const theirs = await native(github, ["commit-tree", tree, "-m", "Theirs"]);
+        await native(github, ["update-ref", "refs/heads/feature", theirs]);
+        await native(github, ["tag", "v1.0.0", theirs]);
+        await value(git.followRefs(repo, { url: github, token: Redacted.make("mirror-fixture") }));
+        expect(await native(dir, ["rev-parse", "refs/github/heads/feature"])).toBe(theirs);
+        const file = NodePath.join(NodePath.dirname(NodePath.dirname(dir)), "repo.bundle");
+        const bundled = await value(git.bundle(repo, file));
+        expect(bundled.refs).toEqual(ours === null ? [] : [{ ref: "refs/heads/main", sha: ours }]);
+        if (ours === null) return;
+        const copy = { appId: "app", id: "copy" };
+        await value(git.restore(copy, file));
+        const copied = NodePath.join(NodePath.dirname(dir), "copy.git");
+        expect(await native(copied, ["for-each-ref", "--format=%(refname)"])).toBe(
+          "refs/heads/main",
+        );
+        await expect(native(copied, ["cat-file", "-e", theirs])).rejects.toThrow();
+      }),
+  );
   it.live("bundles nothing of a repository with no ref, and makes it again empty", () =>
     fixture(async (git, dir) => {
       const file = NodePath.join(NodePath.dirname(NodePath.dirname(dir)), "empty.bundle");

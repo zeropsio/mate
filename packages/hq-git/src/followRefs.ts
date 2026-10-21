@@ -4,9 +4,10 @@ import type { GitRunner } from "./git.ts";
 
 /**
  * Where a mirror's branches and tags live in HQ's copy: beside Mate's own `refs/heads` and
- * `refs/tags`, never in them, so no name collides with Mate's and nothing pushes them out.
+ * `refs/tags`, never in them, so no name collides with Mate's and nothing pushes them out. HQ's
+ * own read data, fetched again from GitHub at will: never bundled, advertised or pushed.
  */
-const GITHUB_REFS = "refs/github/";
+export const GITHUB_REFS = "refs/github/";
 
 const held = async (git: GitRunner, dir: string, signal: AbortSignal) =>
   new Map(

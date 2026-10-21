@@ -18,7 +18,7 @@ import {
   type Mergeability,
   type ChangeSnapshot,
 } from "./api.ts";
-import { followRefs as followRemoteRefs } from "./followRefs.ts";
+import { GITHUB_REFS, followRefs as followRemoteRefs } from "./followRefs.ts";
 import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
@@ -946,9 +946,18 @@ export const makeOperations = (
     });
   const bundle: HqGit["bundle"] = (repo, file) =>
     inRepo("bundle", repo, async (dir, signal) => {
-      if (!(await text(dir, ["for-each-ref", "--count=1", "--format=%(refname)"], signal)))
-        return { refs: [] };
-      await run(dir, ["bundle", "create", "--quiet", file, "--all"], signal);
+      // GitHub's branches and tags are fetched again from GitHub, never made again from a bundle.
+      const own = await text(
+        dir,
+        ["for-each-ref", "--count=1", "--format=%(refname)", `--exclude=${GITHUB_REFS}`],
+        signal,
+      );
+      if (!own) return { refs: [] };
+      await run(
+        dir,
+        ["bundle", "create", "--quiet", file, `--exclude=${GITHUB_REFS}*`, "--all"],
+        signal,
+      );
       // What the bundle itself holds: the refs a restore makes again.
       const heads = await text(dir, ["bundle", "list-heads", file], signal);
       return {

@@ -412,8 +412,9 @@ export interface HqGit {
    */
   readonly onMain: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
   /**
-   * The repository whole, as one git bundle written to `file`: every ref and every object they
-   * reach, with the refs it holds. A repository with no ref writes no file and names none.
+   * The repository whole, as one git bundle written to `file`: every ref but GitHub's under
+   * `refs/github/` (fetched again from GitHub), every object they reach, with the refs it holds. A
+   * repository with no such ref writes no file and names none.
    */
   readonly bundle: (
     repo: Repo,
