@@ -266,6 +266,34 @@ describe("a change is a branch", () => {
     );
 
     it.effect(
+      "an opening that names no branch is refused while its Mate's open change is on a branch it named",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          assert.strictEqual((yield* ada.open("Fix the login", "fix-login")).status, 200);
+          const answers = [];
+          // Released zcp names none and pushes mate/<Mate>/<number>; mono-git names one.
+          for (const branch of [undefined, "fix-signup"]) {
+            const answer = yield* ada.open("Fix it", branch);
+            const body = answer.body as Body & { readonly change?: Body };
+            answers.push([
+              answer.status,
+              body["reason"] ?? null,
+              body["created"] ?? null,
+              body.change?.["branch"] ?? null,
+            ]);
+          }
+          assert.deepStrictEqual(answers, [
+            [409, "change_on_branch", null, null],
+            [200, null, false, "fix-login"],
+          ]);
+        }),
+    );
+
+    it.effect(
       "a change is refused a branch another open change is on, and main, HQ's mate/ or a tag as its branch",
       () =>
         Effect.gen(function* () {
