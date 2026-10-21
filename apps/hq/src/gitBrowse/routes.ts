@@ -19,8 +19,11 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, knock, principal } from "../api.ts";
+import { grepRead } from "./grep.ts";
+import { browseHeavyLayer } from "./heavy.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
+import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
 
 export interface BrowseAnswer {
@@ -117,6 +120,15 @@ const route = <Q extends Schema.Decoder<unknown>, E extends { readonly _tag: str
 };
 
 /** One line per read. */
-const BROWSE_READS = [route(homeRead), route(refsRead), route(logRead)] as const;
+const BROWSE_READS = [
+  route(homeRead),
+  route(refsRead),
+  route(logRead),
+  route(pathsRead),
+  route(grepRead),
+] as const;
 
-export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS);
+/** The reads share one heavy-read allowance per HQ. */
+export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS).pipe(
+  HttpRouter.provideRequest(browseHeavyLayer),
+);
