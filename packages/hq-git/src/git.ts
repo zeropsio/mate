@@ -6,6 +6,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as Redacted from "effect/Redacted";
 import { GitError } from "./api.ts";
+import { GITHUB_REFS } from "./followRefs.ts";
 
 const failed = (operation: string, message: string) =>
   new GitError({ operation, reason: "git_failed", message });
@@ -245,6 +246,7 @@ const settings = `
  autogc = false
 [transfer]
  fsckObjects = true
+ hideRefs = ${GITHUB_REFS}
 [gc]
  auto = 0
 [protocol]
