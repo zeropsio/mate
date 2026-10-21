@@ -20,7 +20,12 @@ import {
 } from "~/components/ui/select";
 import { OutLink } from "../settings/automationParts";
 import { gitRemoteLabel } from "./GitDeliveryStatus";
-import { mirrorLeadLine, mirrorStateLine, type GitMirrorApp } from "./gitMirror.logic";
+import {
+  mirrorGateLine,
+  mirrorLeadLine,
+  mirrorStateLine,
+  type GitMirrorApp,
+} from "./gitMirror.logic";
 
 /** Optional actions are supplied by the account's operations, never a component's host client. */
 export interface GitRemoteActions {
@@ -318,6 +323,7 @@ function Remote({
     }
   };
   const saving = remote == null && (awaitingRecord || (busy && !editing));
+  const gate = saving ? undefined : mirrorGateLine(remote, github);
   // The token form: plain where the app is not there to mirror through, else behind its disclosure.
   const tokenForm =
     editing || (remote == null && permitted && viaApp === undefined && app === null);
@@ -333,6 +339,11 @@ function Remote({
         <p className="rv-note" data-zerops-mirror-state="">
           {saving ? "Saving…" : mirrorStateLine(remote, github, now)}
         </p>
+        {gate === undefined ? null : (
+          <p className="rv-note" data-zerops-mirror-gate="">
+            {gate}
+          </p>
+        )}
       </div>
       {remote == null && viaApp !== undefined && app !== null && !editing ? (
         app.repositories.length === 0 ? (

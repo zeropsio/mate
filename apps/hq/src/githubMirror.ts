@@ -22,8 +22,9 @@ import type { SqlError } from "effect/sql/SqlError";
 import { Changes } from "./changes.ts";
 import { GithubAuth } from "./githubAuth.ts";
 import { GithubEvents } from "./githubEvents.ts";
+import { governanceOf } from "./githubProbes.ts";
 import { GitHost, holdingRepo, mainOf } from "./gitHost.ts";
-import { remoteIdentity } from "./gitTransport.ts";
+import { GitTransport, remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateTasks } from "./mateTasks.ts";
 
@@ -155,7 +156,14 @@ export const githubMirrorLayer = (
 ): Layer.Layer<
   GithubMirror,
   never,
-  GitHost | GithubAuth | GithubEvents | Changes | MateTasks | Leader | SqlClient.SqlClient
+  | GitHost
+  | GithubAuth
+  | GithubEvents
+  | GitTransport
+  | Changes
+  | MateTasks
+  | Leader
+  | SqlClient.SqlClient
 > =>
   Layer.effect(
     GithubMirror,
@@ -165,6 +173,7 @@ export const githubMirrorLayer = (
       const gitHost = yield* GitHost;
       const auth = yield* GithubAuth;
       const events = yield* GithubEvents;
+      const transport = yield* GitTransport;
       const changes = yield* Changes;
       const tasks = yield* MateTasks;
       const gitUrl = options.gitUrl ?? ((repository) => `https://github.com/${repository}.git`);
@@ -332,6 +341,36 @@ export const githubMirrorLayer = (
           }
         });
 
+      /**
+       * Whether GitHub lets only what Mate approved reach the default branch HQ follows, as its
+       * rules and the app's grant read now (`governanceOf`), kept on the repository's row; an
+       * answer that says nothing keeps the last.
+       */
+      const govern = (appId: string, repo: string) =>
+        Effect.gen(function* () {
+          const connected = yield* connectedOf(appId, repo);
+          const [followed] = yield* sql<{ readonly branch: string }>`
+            SELECT branch FROM hq_repo_mirror WHERE app_id::text = ${appId} AND repo = ${repo}`;
+          const remote =
+            connected === undefined
+              ? undefined
+              : remoteIdentity(`https://github.com/${connected.repository}`);
+          if (connected?.id == null || remote === undefined || followed === undefined) return;
+          const grant = yield* auth.grantOf(connected.repository, connected.id);
+          const token = yield* auth.tokenFor(connected.repository, "reach", connected.id);
+          if (grant === undefined || token === undefined) return;
+          const rules = yield* transport.rules(remote, followed.branch, token);
+          const governance = governanceOf(rules, grant.appId, grant.permissions);
+          if (governance === undefined) return;
+          yield* leader.write(sql`
+            UPDATE hq_repo_mirror SET governance = ${governance}
+            WHERE app_id::text = ${appId} AND repo = ${repo}`);
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a mirrored repository's rules not read", { appId, repo, cause }),
+          ),
+        );
+
       const sync: GithubMirror["Service"]["sync"] = (appId, repo) =>
         serialized(
           `${appId}/${repo}`,
@@ -362,6 +401,7 @@ export const githubMirrorLayer = (
                 mate: outcome.mate,
                 github: outcome.github,
               });
+            yield* govern(appId, repo);
             return outcome;
           }),
         );

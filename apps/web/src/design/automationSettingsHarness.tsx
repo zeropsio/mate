@@ -255,6 +255,7 @@ const APP: GitMirrorApp = {
   name: "Acme Mate",
   repositories: ["acme/api", "acme/tea-shop", "acme/web"],
   installUrl: CONNECTED.installUrl,
+  appId: 123456,
 };
 const OFFERS = {
   connect_remote: { allow: true },
@@ -333,6 +334,26 @@ function Dialogs() {
           can={OFFERS}
           github={APP}
           repos={[repo("appdev", { ...REMOTE, via: "token" })]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Governed">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "governed" })]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Advisory">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
         />
       </DialogFrame>
       <DialogFrame title="Diverged">

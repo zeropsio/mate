@@ -333,6 +333,18 @@ export class GithubIssues extends Context.Service<
       },
       HostUnreachable
     >;
+    /** The commit status `context` on `sha` set to `state`; GitHub's answer's status. */
+    readonly setStatus: (
+      remote: RemoteIdentity,
+      token: Redacted.Redacted,
+      sha: string,
+      status: {
+        readonly state: "success";
+        readonly context: string;
+        readonly description: string;
+        readonly targetUrl: string;
+      },
+    ) => Effect.Effect<number, HostUnreachable>;
     /** `logins` made assignees of the issue or pull request `number`; its status. */
     readonly assign: (
       remote: RemoteIdentity,
@@ -553,6 +565,16 @@ export const githubIssuesLayer = (api?: string) =>
                   : undefined,
               message: Option.getOrUndefined(decodeMessage(reply.body))?.message,
             }),
+          ),
+        setStatus: (remote, token, sha, status) =>
+          Effect.map(
+            send("POST", `${repo(remote)}/statuses/${encodeURIComponent(sha)}`, token, {
+              state: status.state,
+              context: status.context,
+              description: status.description,
+              target_url: status.targetUrl,
+            }),
+            (reply) => reply.status,
           ),
         assign: (remote, token, number, logins) =>
           Effect.map(

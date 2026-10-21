@@ -1,4 +1,8 @@
-import { type HqTokenCiAccess, tokenExpiryLabel } from "@t3tools/shared/hqChanges";
+import {
+  type HqRepoGovernance,
+  type HqTokenCiAccess,
+  tokenExpiryLabel,
+} from "@t3tools/shared/hqChanges";
 import { HqGitProbeRefusalReason } from "@t3tools/shared/hqGitTargets";
 /** Read-only capability evidence. User role fields are never token permission proof. */
 import * as Clock from "effect/Clock";
@@ -9,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import { MATE_GATE } from "./githubAuth.ts";
 import {
   GitTransport,
   type HostUnreachable,
@@ -107,9 +112,31 @@ const Metadata = Schema.Struct({
   allow_auto_merge: Schema.optionalKey(Schema.Boolean),
 });
 const decodeMetadata = Schema.decodeUnknownOption(Schema.fromJsonString(Metadata));
+/** The active rules GitHub applies to a branch, from every ruleset (`GET …/rules/branches/<b>`). */
 const decodeRules = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Array(Schema.Struct({ type: Schema.String }))),
+  Schema.fromJsonString(
+    Schema.Array(
+      Schema.Struct({
+        type: Schema.String,
+        parameters: Schema.optionalKey(
+          Schema.Struct({
+            required_status_checks: Schema.optionalKey(
+              Schema.Array(
+                Schema.Struct({
+                  context: Schema.String,
+                  integration_id: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+                }),
+              ),
+            ),
+          }),
+        ),
+      }),
+    ),
+  ),
 );
+/** GitHub's answer for a branch's rules on a plan that has none. */
+const PLAN_WITHOUT_RULES =
+  "Upgrade to GitHub Pro or make this repository public to enable this feature.";
 const decodeMessage = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ message: Schema.String })),
 );
@@ -187,6 +214,37 @@ const advertisementValid = (body: string) => {
     offset += length;
   }
   return false;
+};
+
+/**
+ * Whether the default branch's rules (`rules`, GitHub's answer for it) let only what Mate approved
+ * reach it (`HqRepoGovernance`): governed where the installation (`granted`) may write statuses and
+ * an active ruleset requires a pull request and `mate/gate` from the app `appId`; else the first
+ * missing step. Bypass actors are not readable without administration, so they are never read.
+ * `undefined` where GitHub's answer says nothing.
+ */
+export const governanceOf = (
+  rules: HostReply,
+  appId: number,
+  granted: Readonly<Record<string, string>>,
+): HqRepoGovernance | undefined => {
+  if (granted["statuses"] !== "write" && granted["statuses"] !== "admin")
+    return "permission_not_approved";
+  if (
+    rules.status === 403 &&
+    Option.getOrUndefined(decodeMessage(rules.body))?.message === PLAN_WITHOUT_RULES
+  )
+    return "no_ruleset";
+  const read = rules.status === 200 ? Option.getOrUndefined(decodeRules(rules.body)) : undefined;
+  if (read === undefined) return undefined;
+  if (!read.some((rule) => rule.type === "pull_request")) return "no_ruleset";
+  const gates = read
+    .flatMap((rule) =>
+      rule.type === "required_status_checks" ? (rule.parameters?.required_status_checks ?? []) : [],
+    )
+    .filter((check) => check.context === MATE_GATE);
+  if (gates.length === 0) return "gate_not_required";
+  return gates.some((check) => check.integration_id === appId) ? "governed" : "gate_not_pinned";
 };
 
 export const githubProbesLayer = Layer.effect(
@@ -292,8 +350,7 @@ export const githubProbesLayer = Layer.effect(
         // GitHub explicitly disables rules on this plan; permission failures remain unknown.
         if (
           rules.status === 403 &&
-          Option.getOrUndefined(decodeMessage(rules.body))?.message ===
-            "Upgrade to GitHub Pro or make this repository public to enable this feature."
+          Option.getOrUndefined(decodeMessage(rules.body))?.message === PLAN_WITHOUT_RULES
         ) {
           branchRules = "none_on_plan";
         } else {

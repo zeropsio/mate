@@ -76,9 +76,11 @@ export const GITHUB_APP_PATH = "/api/github/app";
 export const GITHUB_APP_WEBHOOK_PATH = `${GITHUB_APP_PATH}/webhook`;
 
 /**
- * What the app may do on a repository it is installed on: push branches, open and merge pull
- * requests, comment, react and label on issues, read checks, statuses and workflow runs. Nothing of
- * the organization and no administration, so a repository's admin may install it too.
+ * What the app may do on a repository it is installed on: push branches (workflow files too), open
+ * and merge pull requests, comment, react and label on issues, read checks and workflow runs, and
+ * write commit statuses — `mate/gate`, HQ's word that a person merged a head in Mate. Nothing of the
+ * organization and no administration, so a repository's admin may install it too. An installation
+ * made before keeps what it was granted until its admin approves the rest on GitHub.
  */
 export const GITHUB_APP_PERMISSIONS = {
   contents: "write",
@@ -86,8 +88,9 @@ export const GITHUB_APP_PERMISSIONS = {
   issues: "write",
   metadata: "read",
   checks: "read",
-  statuses: "read",
+  statuses: "write",
   actions: "read",
+  workflows: "write",
 } as const;
 
 /**
@@ -662,33 +665,52 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
           return again.row === undefined ? undefined : { app, row: again.row, repo: again.repo };
         });
 
+      /** The installation reaching `repository`, and what the organization granted it. */
+      const granting = (repository: string, id?: string) =>
+        Effect.gen(function* () {
+          const reached = yield* reach(repository, id);
+          if (reached === undefined) return undefined;
+          if (id !== undefined && String(reached.repo.id) !== id)
+            return yield* new GithubAuthUnavailable({ reason: "replaced" });
+          if (reached.row.suspended)
+            return yield* new GithubAuthUnavailable({ reason: "suspended" });
+          const installation = Number(reached.row.id);
+          // Kept before HQ read what the organization granted: read once, then kept with it.
+          const granted =
+            reached.row.permissions ??
+            (yield* refreshInstallation(reached.app, installation).pipe(
+              Effect.andThen(
+                installations.pipe(
+                  Effect.mapError(() => new GithubAuthUnavailable({ reason: "unreachable" })),
+                ),
+              ),
+              Effect.map((rows) => rows.find((row) => row.id === reached.row.id)?.permissions),
+            ));
+          if (granted === undefined || granted === null)
+            return yield* new GithubAuthUnavailable({ reason: "not_installed" });
+          return { ...reached, installation, granted };
+        });
+
       const auth = GithubAuth.of({
         tokenFor: (repository, use, id) =>
           Effect.gen(function* () {
-            const reached = yield* reach(repository, id);
-            if (reached === undefined) return undefined;
-            if (id !== undefined && String(reached.repo.id) !== id)
-              return yield* new GithubAuthUnavailable({ reason: "replaced" });
-            if (reached.row.suspended)
-              return yield* new GithubAuthUnavailable({ reason: "suspended" });
-            const installation = Number(reached.row.id);
-            // Kept before HQ read what the organization granted: read once, then kept with it.
-            const granted =
-              reached.row.permissions ??
-              (yield* refreshInstallation(reached.app, installation).pipe(
-                Effect.andThen(
-                  installations.pipe(
-                    Effect.mapError(() => new GithubAuthUnavailable({ reason: "unreachable" })),
-                  ),
-                ),
-                Effect.map((rows) => rows.find((row) => row.id === reached.row.id)?.permissions),
-              ));
-            if (granted === undefined || granted === null)
-              return yield* new GithubAuthUnavailable({ reason: "not_installed" });
-            const permissions = askedPermissions(use, granted);
+            const grant = yield* granting(repository, id);
+            if (grant === undefined) return undefined;
+            const permissions = askedPermissions(use, grant.granted);
             if (permissions === undefined) return undefined;
-            return yield* repositoryToken(reached.app, installation, reached.repo.id, permissions);
+            return yield* repositoryToken(
+              grant.app,
+              grant.installation,
+              grant.repo.id,
+              permissions,
+            );
           }),
+        grantOf: (repository, id) =>
+          Effect.map(granting(repository, id), (grant) =>
+            grant === undefined
+              ? undefined
+              : { appId: grant.app.githubId, permissions: grant.granted },
+          ),
         bot: Effect.gen(function* () {
           const app = yield* madeOrUnavailable;
           if (app === undefined) return undefined;
@@ -769,6 +791,7 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
         return {
           state: "connected",
           slug: app.slug,
+          appId: app.githubId,
           botLogin: `${app.slug}[bot]`,
           owner: app.owner,
           appUrl: app.htmlUrl,

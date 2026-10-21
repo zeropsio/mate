@@ -173,8 +173,9 @@ describe("the organization's GitHub app", () => {
             issues: "write",
             metadata: "read",
             checks: "read",
-            statuses: "read",
+            statuses: "write",
             actions: "read",
+            workflows: "write",
           });
           assert.deepStrictEqual(manifest["default_permissions"], GITHUB_APP_PERMISSIONS);
           assert.deepStrictEqual(manifest["default_events"], [...GITHUB_APP_EVENTS]);
@@ -226,6 +227,8 @@ describe("the organization's GitHub app", () => {
           assert.deepStrictEqual(yield* viewOf(core), {
             state: "connected",
             slug: "tea-shop-mate",
+            // What a ruleset pins `mate/gate` to: the app GitHub made.
+            appId: core.github.state.app.id,
             botLogin: "tea-shop-mate[bot]",
             owner: "acme",
             appUrl: "https://github.com/apps/tea-shop-mate",

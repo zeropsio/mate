@@ -51,8 +51,27 @@ export const GITHUB_TOKEN_USES = {
   merge: { contents: "write", pull_requests: "write" },
   /** Its issues the bot answers on: reactions, comments, labels, closing. */
   issues: { issues: "write" },
+  /**
+   * A Mate's own work on the repository: its branches and pull requests, and what its CI says of
+   * them. Never Commit statuses: `mate/gate` is HQ's word, never the agent's.
+   */
+  agent: {
+    contents: "write",
+    pull_requests: "write",
+    workflows: "write",
+    checks: "read",
+    actions: "read",
+  },
+  /** HQ's `mate/gate` on a head a person merges in Mate (`pullRequests.ts`). */
+  gate: { statuses: "write" },
 } as const;
 export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
+
+/**
+ * The commit status HQ writes `success` on a head a person merged in Mate, with its `gate` token. A
+ * ruleset requiring it from the organization's app lets GitHub merge only such heads.
+ */
+export const MATE_GATE = "mate/gate";
 
 const LEVELS = ["read", "write", "admin"] as const;
 
@@ -97,6 +116,18 @@ export class GithubAuth extends Context.Service<
       use: GithubTokenUse,
       id?: string,
     ) => Effect.Effect<Redacted.Redacted | undefined, GithubAuthUnavailable>;
+    /**
+     * The app's id on GitHub and what the installation reaching `repository` was granted, as
+     * `tokenFor` finds it; `undefined` while HQ has no app or the app does not reach it.
+     */
+    readonly grantOf: (
+      repository: string,
+      id?: string,
+    ) => Effect.Effect<
+      | { readonly appId: number; readonly permissions: Readonly<Record<string, string>> }
+      | undefined,
+      GithubAuthUnavailable
+    >;
     /** The app's bot, or `undefined` while HQ has no app. */
     readonly bot: Effect.Effect<GithubBot | undefined, GithubAuthUnavailable>;
   }
@@ -107,6 +138,7 @@ export const githubAuthAbsentLayer = Layer.succeed(
   GithubAuth,
   GithubAuth.of({
     tokenFor: () => Effect.succeed(undefined),
+    grantOf: () => Effect.succeed(undefined),
     bot: Effect.succeed(undefined),
   }),
 );

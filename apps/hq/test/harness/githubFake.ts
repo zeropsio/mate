@@ -45,8 +45,9 @@ const GRANTED = {
   issues: "write",
   metadata: "read",
   checks: "read",
-  statuses: "read",
+  statuses: "write",
   actions: "read",
+  workflows: "write",
 };
 const LEVEL: Readonly<Record<string, number>> = { read: 1, write: 2, admin: 3 };
 
@@ -155,6 +156,13 @@ export const githubFake = Effect.gen(function* () {
     },
     /** Each issue's state; open unless closed. */
     issues: new Map<number, "open" | "closed">(),
+    /** The commit statuses written, in order, by commit. */
+    statuses: [] as Array<{
+      readonly sha: string;
+      readonly state: string;
+      readonly context: string;
+      readonly description?: string;
+    }>,
     /** Each commit's check runs, by sha. */
     checkRuns: new Map<
       string,
@@ -393,6 +401,25 @@ export const githubFake = Effect.gen(function* () {
               if (issueAt !== null && request.method === "PATCH") {
                 state.issues.set(Number(issueAt[1]), "closed");
                 return answer(200, {});
+              }
+              // A commit status takes a token GitHub gave Commit statuses: write.
+              const statusAt = /\/statuses\/([^/]+)$/u.exec(bare);
+              if (request.method === "POST" && statusAt !== null) {
+                const minted = state.minted.find((token) => token.token === bearer);
+                const installation =
+                  minted === undefined ? undefined : state.installations.get(minted.installation);
+                const may = (minted?.permissions ?? installation?.permissions ?? GRANTED)[
+                  "statuses"
+                ];
+                if (may !== "write")
+                  return answer(403, { message: "Resource not accessible by integration" });
+                const body = JSON.parse(text) as {
+                  state: string;
+                  context: string;
+                  description?: string;
+                };
+                state.statuses.push({ sha: decodeURIComponent(statusAt[1]!), ...body });
+                return answer(201, { id: state.statuses.length, ...body });
               }
               const runsAt = /\/commits\/([^/]+)\/check-runs$/u.exec(bare);
               if (request.method === "GET" && runsAt !== null)

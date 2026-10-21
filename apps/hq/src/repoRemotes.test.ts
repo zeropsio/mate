@@ -850,6 +850,26 @@ describe("repository credential custody", () => {
       ),
     );
     it.effect(
+      "A repository mirrored through the app says whether GitHub governs its main, and one mirrored with a token never does",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { remotes, sql } = yield* fixture;
+            yield* remotes.connect("custodian", input);
+            yield* sql`INSERT INTO hq_repo_mirror(app_id,repo,branch,governance)
+              VALUES (${APP}::uuid,'web','main','gate_not_pinned')`;
+            const viaToken = yield* remotes.listRepos("custodian", APP);
+            assert.isUndefined(viaToken.find((repo) => repo.name === "web")?.remote?.governance);
+            yield* sql`UPDATE hq_repo_remote SET via = 'app', sealed = NULL, key_id = NULL WHERE repo = 'web'`;
+            const viaApp = yield* remotes.listRepos("custodian", APP);
+            assert.strictEqual(
+              viaApp.find((repo) => repo.name === "web")?.remote?.governance,
+              "gate_not_pinned",
+            );
+          }),
+        ),
+    );
+    it.effect(
       "Decision L2b: disconnect refuses stage or production dependencies and deletes only HQ's seal and metadata, never host refs or tokens.",
       () =>
         Effect.scoped(

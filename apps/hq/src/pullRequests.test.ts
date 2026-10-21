@@ -891,6 +891,153 @@ describe("a change's pull request", () => {
     );
 
     it.effect(
+      "Merge in Mate writes mate/gate = success as the app on the head the person saw before GitHub merges it, records who, and the change lands in Mate",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(merged.status, 200);
+          const seen = core.github.state.seen;
+          const gate = seen.findIndex(
+            (request) =>
+              request.method === "POST" && request.path === `/repos/acme/tea-shop/statuses/${HEAD}`,
+          );
+          const merge = seen.findIndex(
+            (request) => request.method === "PUT" && request.path === `${PULL}/merge`,
+          );
+          assert.isAtLeast(gate, 0);
+          assert.isBelow(gate, merge);
+          assert.deepInclude(seen[gate]!.body as object, {
+            state: "success",
+            context: "mate/gate",
+          });
+          // HQ's own token for it: Commit statuses alone, never the agent's.
+          assert.deepStrictEqual(
+            core.github.state.minted.find(
+              (token) => `Bearer ${token.token}` === seen[gate]!.authorization,
+            )?.permissions,
+            { statuses: "write" },
+          );
+          const [blessed] = yield* core.sql<{ sha: string; by: string }>`
+            SELECT sha, by FROM hq_gate`;
+          assert.deepStrictEqual(blessed, { sha: HEAD, by: "owner" });
+          const [change] = yield* core.sql<{ landed_outside: boolean }>`
+            SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
+          assert.strictEqual(change?.landed_outside, false);
+        }),
+    );
+
+    it.effect(
+      "an installation that has not approved writing commit statuses still merges in Mate, without mate/gate, and the change lands in Mate",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          const before = {
+            contents: "write",
+            pull_requests: "write",
+            issues: "write",
+            metadata: "read",
+            checks: "read",
+            statuses: "read",
+            actions: "read",
+          };
+          core.github.state.installations.get(7001)!.permissions = before;
+          yield* core.sql`UPDATE hq_github_installation SET permissions = ${JSON.stringify(before)}::jsonb`;
+          yield* opened(core);
+          const squash = yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(merged.status, 200);
+          assert.deepInclude(merged.body as HqChange, { state: "merged", mergedSha: squash });
+          assert.deepStrictEqual(core.github.state.statuses, []);
+          const [change] = yield* core.sql<{ landed_outside: boolean }>`
+            SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
+          assert.strictEqual(change?.landed_outside, false);
+        }),
+    );
+
+    it.effect(
+      "a GitHub merge of a head HQ never blessed lands outside Mate and is not auto-released",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* opened(core);
+          const squash = yield* squashOnMain(core);
+          yield* core.dispatch("pull_request", {
+            action: "closed",
+            pull_request: {
+              number: 2,
+              merged: true,
+              merge_commit_sha: squash,
+              head: { sha: HEAD },
+            },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT state, landed_outside FROM hq_change WHERE repo = 'web'",
+            (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["landed_outside"] === true,
+          );
+          const releases = yield* core.sql`SELECT 1 FROM hq_rollout WHERE cause = 'release'`;
+          assert.strictEqual(releases.length, 0);
+        }),
+    );
+
+    /**
+     * A person presses Merge in Mate at `HEAD`, GitHub refuses HQ's merge (its own rule wants a
+     * review), and someone merges the pull request on GitHub later at `landedHead`: whether the
+     * change landed outside Mate.
+     */
+    const mergedOnGithubAfterPress = (landedHead: string) =>
+      Effect.gen(function* () {
+        const core = yield* mirroredPool;
+        yield* opened(core);
+        const squash = yield* squashOnMain(core);
+        core.github.state.merge = {
+          status: 405,
+          message: "At least 1 approving review is required by reviewers with write access.",
+        };
+        const refused = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+          session: core.owner,
+          body: { expectedHead: HEAD },
+        });
+        assert.strictEqual(refused.status, 409);
+        yield* core.dispatch("pull_request", {
+          action: "closed",
+          pull_request: {
+            number: 2,
+            merged: true,
+            merge_commit_sha: squash,
+            head: { sha: landedHead },
+          },
+        });
+        const [row] = yield* rowsWhere(
+          core.url,
+          "SELECT state, landed_outside FROM hq_change WHERE repo = 'web'",
+          (rows) => rows[0]?.["state"] === "merged",
+        );
+        return row!["landed_outside"];
+      });
+
+    it.effect("a GitHub merge of the head a person merged in Mate lands in Mate", () =>
+      Effect.map(mergedOnGithubAfterPress(HEAD), (outside) => assert.strictEqual(outside, false)),
+    );
+
+    it.effect(
+      "a GitHub merge of a head pushed after a person merged in Mate lands outside Mate",
+      () =>
+        Effect.map(mergedOnGithubAfterPress(HEAD_2), (outside) =>
+          assert.strictEqual(outside, true),
+        ),
+    );
+
+    it.effect(
       "a pull request closed unmerged on GitHub closes its change and ends its task stopped",
       () =>
         Effect.gen(function* () {

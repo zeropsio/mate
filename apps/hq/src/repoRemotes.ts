@@ -3,6 +3,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { HqGitTargetIntent, HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
 import {
+  HqRepoGovernance,
   RepoName,
   tokenExpiryLabel,
   type HqRepoRemote,
@@ -15,6 +16,7 @@ import { keepGitReceipt, readGitReceipt, GitRequestRefused } from "./gitTargetRe
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -29,6 +31,9 @@ import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, decidedFresh } from "./roles.ts";
+
+/** A mirror's kept governance, read only as one HQ still says. */
+const decodeGovernance = Schema.decodeUnknownOption(HqRepoGovernance);
 
 export interface RemoteRef {
   readonly appId: string;
@@ -454,24 +459,35 @@ export const repoRemotesLayer = Layer.effect(
       changes: SubscriptionRef.changes(ticks),
       listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
         const repos = yield* changes.listRepos(userId, appId);
-        // A mirror whose histories diverged says since when (`githubMirror.ts`).
-        const diverged = new Map(
-          (yield* sql<{ readonly repo: string; readonly since: string }>`
-            SELECT repo, to_char(diverged_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS since
-            FROM hq_repo_mirror WHERE app_id::text=${appId} AND diverged_since IS NOT NULL`).map(
-            (row) => [row.repo, row.since] as const,
+        // A mirror says since when its histories diverged, and through the app whether GitHub
+        // lets only what Mate approved reach its default branch (`githubMirror.ts`).
+        const mirrors = new Map(
+          (yield* sql<{
+            readonly repo: string;
+            readonly since: string | null;
+            readonly governance: string | null;
+          }>`
+            SELECT repo, governance,
+              to_char(diverged_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS since
+            FROM hq_repo_mirror WHERE app_id::text=${appId}`).map(
+            (row) => [row.repo, row] as const,
           ),
         );
         return yield* Effect.forEach(repos, (repo) =>
           Effect.map(remotes.get({ appId, repo: repo.name }), (row) => {
             const remote = row === undefined ? null : remoteForWire(row);
-            const since = diverged.get(repo.name);
+            const mirror = mirrors.get(repo.name);
+            const governance = Option.getOrUndefined(decodeGovernance(mirror?.governance));
             return {
               ...repo,
               remote:
-                remote === null || since === undefined
+                remote === null
                   ? remote
-                  : { ...remote, divergedSince: since },
+                  : {
+                      ...remote,
+                      ...(mirror?.since == null ? {} : { divergedSince: mirror.since }),
+                      ...(remote.via !== "app" || governance === undefined ? {} : { governance }),
+                    },
             };
           }),
         );

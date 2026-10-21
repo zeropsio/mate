@@ -204,7 +204,11 @@ const services = (options: CoreOptions) => {
   // it tells a task's Mate what people added to its change on GitHub.
   const mirror =
     options.githubMirror ??
-    githubMirrorLayer().pipe(Layer.provide(githubApp), Layer.provide(tasks));
+    githubMirrorLayer().pipe(
+      Layer.provide(githubApp),
+      Layer.provide(tasks),
+      Layer.provide(gitTransportLayer.pipe(Layer.provide(NodeHttpClient.layerNodeHttp))),
+    );
   const sources = Layer.mergeAll(
     door,
     appTasksLayer.pipe(Layer.provide(door)),
