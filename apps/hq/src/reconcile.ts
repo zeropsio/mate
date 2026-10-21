@@ -10,7 +10,8 @@
  *   them: the caller holds the lead. A recorded repository naming nothing, git lacking it, is a
  *   creation an older build cut short, recording before making (H1): `catchUp` makes it.
  * - **What git holds beyond the records is recorded** (`catchUp`): a repository of a known
- *   application without its row; a change whose squash is on `main`, merged; a change branch
+ *   application without its row; a change whose squash is on `main`, merged (from the squash alone
+ *   when git holds no `mate/` branch of it); a change branch
  *   without its record, a change again — off any task a Mate opens a number only while none of its
  *   own is open, so of a Mate's open changes on no task in a repository only the newest stays open,
  *   the rest closed, superseded; each task's change stays open beside them (an automated Mate holds
@@ -18,7 +19,9 @@
  *   `reconciled`. The heads and `main` themselves follow in the takeover (`gitHost.ts`), as at every
  *   takeover.
  *
- * Afterwards no change branch is without its record, and a new change's number passes them all.
+ * Afterwards no change branch or squash on `main` is without its record, and a new change's number
+ * passes them all. A change its Mate opened on a branch it named after the records were taken, and
+ * that is not merged, is lost: nothing in git binds a branch to a change.
  *
  * Neither looks into a repository the takeover quarantined (`withheld`, `gitHost.ts`): git cannot be
  * read there until it converges, and the next takeover judges it.
@@ -258,13 +261,23 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     const known = new Set(records.map((row) => row.number));
     const orphans = branches.filter((branch) => !known.has(branch.number));
     const open = records.filter((row) => row.state === "open");
-    if (orphans.length === 0 && open.length === 0) return;
     const squashes = yield* squashesOnMain(git, repo).pipe(
       Effect.catchIf(
         (error) => error.reason === "no_main" || error.reason === "not_found",
         () => Effect.succeed(new Map<string, string>()),
       ),
     );
+    // Merged on a branch its Mate named, after the records were taken: git binds no branch to it,
+    // so it is recorded from its squash alone, under the name HQ gives a change.
+    const branched = new Set(orphans.map((branch) => branch.number));
+    const squashedOnly = [...squashes.keys()].flatMap((key) => {
+      const mateId = key.slice(0, key.lastIndexOf("/"));
+      const number = Number(key.slice(key.lastIndexOf("/") + 1));
+      return known.has(number) || branched.has(number)
+        ? []
+        : [{ mateId, number, branch: `mate/${key}`, sha: null }];
+    });
+    if (orphans.length === 0 && open.length === 0 && squashedOnly.length === 0) return;
     const squashOf = (mateId: string, number: number) =>
       squashes.get(`${mateId}/${String(number)}`) ?? null;
     // Of each Mate's open changes on no task, its newest stays open; a task's change is its own,
@@ -273,7 +286,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     // A branch with no record, recorded: merged where main holds its squash, else open if it is its
     // Mate's newest, else closed.
     const restoreOrphan = (
-      branch: ChangeBranch & { readonly sha: string },
+      branch: ChangeBranch & { readonly sha: string | null },
       squash: string | null,
     ) =>
       Effect.gen(function* () {
@@ -330,6 +343,11 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
       ...orphans
         .filter((branch) => squashOf(branch.mateId, branch.number) !== null)
         .map((branch) => ({ at: mergedAt(branch.mateId, branch.number), row: undefined, branch })),
+      ...squashedOnly.map((branch) => ({
+        at: mergedAt(branch.mateId, branch.number),
+        row: undefined,
+        branch,
+      })),
     ].toSorted((one, other) => one.at - other.at);
     for (const { row, branch } of recoveries) {
       if (branch !== undefined) {
