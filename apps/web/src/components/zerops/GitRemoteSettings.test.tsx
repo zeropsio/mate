@@ -749,6 +749,31 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  // live gate 2026-10-21 (D1): the line read as a precondition of the switch, and stood alone after it.
+  it.each([
+    { name: "in Disconnect's place, where HQ offers Disconnect", can: offers, shown: true },
+    {
+      name: "nowhere, where HQ offers no Disconnect",
+      can: { connect_remote: { allow: true }, replace_remote_token: { allow: true } },
+      shown: false,
+    },
+  ])("names the Git environments that keep a remote $name", async ({ can, shown }) => {
+    const view = await mount({
+      github: app,
+      can,
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      repos,
+      environments: [{ name: "Production", target: { kind: "git" } }],
+    });
+    try {
+      expect(view.buttons()).toContain("Use Acme Mate instead");
+      expect(view.host.textContent?.includes("Remove those Git environments first")).toBe(shown);
+      expect(view.buttons()).not.toContain("Disconnect");
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("paints nothing of a repository until the app is read", async () => {
     const view = await mount({ github: null, actions });
     try {

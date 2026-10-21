@@ -269,6 +269,10 @@ const ACTIONS = {
   disconnect: async () => {},
   viaApp: async () => {},
 };
+const GIT_ENVIRONMENTS = [
+  { name: "tea-shop-production", target: { kind: "git" } },
+  { name: "tea-shop-stage", target: { kind: "git" } },
+];
 const repo = (name: string, remote: unknown) =>
   ({ name, mainHead: null, updatedAt: null, remote }) as never;
 
@@ -334,6 +338,28 @@ function Dialogs() {
           can={OFFERS}
           github={APP}
           repos={[repo("appdev", { ...REMOTE, via: "token" })]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Mirrored with a token, Git environments use it">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          environments={GIT_ENVIRONMENTS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "token" })]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Mirrored through the app, Git environments use it">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          environments={GIT_ENVIRONMENTS}
+          github={APP}
+          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
         />
       </DialogFrame>
       <DialogFrame title="Main protected">
