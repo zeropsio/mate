@@ -1576,21 +1576,21 @@ it.live.each([
   ({ next }) =>
     fixture(async (git, dir) => {
       const remote = await refusedSideBranch(dir);
-      await Effect.runPromise(Effect.flip(git.followRefs(repo, remote)));
+      await value(Effect.flip(git.followRefs(repo, remote)));
       const [stale] = await partialPacks(dir);
       expect(stale).toBeDefined();
       // Two minutes older than it was written: past any fetch's deadline.
       const path = NodePath.join(dir, "objects", "pack", stale!);
       const past = (await NodeFSP.stat(path)).mtimeMs / 1000 - 2 * 60;
       await NodeFSP.utimes(path, past, past);
-      await Effect.runPromise(Effect.exit(next(git, remote)));
+      await value(Effect.exit(next(git, remote)));
       expect(await partialPacks(dir)).not.toContain(stale);
     }),
 );
 it.live("A partial pack a fetch may still be writing is kept", () =>
   fixture(async (git, dir) => {
     const remote = await refusedSideBranch(dir);
-    await Effect.runPromise(Effect.flip(git.followRefs(repo, remote)));
+    await value(Effect.flip(git.followRefs(repo, remote)));
     const fresh = await partialPacks(dir);
     expect(fresh).toHaveLength(1);
     await value(git.convergeRepo(repo));
