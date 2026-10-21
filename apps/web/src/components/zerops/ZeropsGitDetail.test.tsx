@@ -11,6 +11,7 @@ type Search = GitSearch;
 const fixture = vi.hoisted(() => ({
   search: {} as Search,
   home: {} as unknown,
+  homeAgain: vi.fn(),
   refs: [] as Array<unknown>,
   source: {} as ReturnType<typeof useRepositorySource>["source"],
   again: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("~/zerops/useRepositorySource", () => ({
   useRepositorySource: () => ({ source: fixture.source, again: fixture.again }),
 }));
 vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: () => ({ view: fixture.home, again: () => undefined }),
+  useGitBrowse: () => ({ view: fixture.home, again: fixture.homeAgain }),
   useGitBrowseReads: () => ({ views: fixture.refs, again: () => undefined }),
 }));
 vi.mock("./ZeropsGitCredentials", () => ({
@@ -340,6 +341,17 @@ it.each([
     expect(detail().textContent).toContain("This branch, tag or commit is not in the repository.");
     expect(detail().textContent).not.toContain(words);
     expect(detail().textContent).toContain("Open changes");
+  },
+);
+it.each([false, true])(
+  "A repository's home is read again on Read again, and says when that read failed (failed: %s)",
+  async (failed) => {
+    fixture.home = { ...(fixture.home as object), busy: false, failed };
+    fixture.homeAgain.mockClear();
+    await open();
+    expect(detail().textContent?.includes("HQ could not read this again.")).toBe(failed);
+    await press("Read again", detail());
+    expect(fixture.homeAgain).toHaveBeenCalledTimes(1);
   },
 );
 it("Clone with HTTPS opens the existing credentials for this project and repository", async () => {

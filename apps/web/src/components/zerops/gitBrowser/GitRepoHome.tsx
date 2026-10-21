@@ -3,6 +3,7 @@
  * it is, its top folder, and its README — every part read at that one commit.
  */
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
+import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -66,15 +67,39 @@ function OpenChanges({
   );
 }
 
+/** A home read moves with its ref: read again on the person's ask, said when that read failed. */
+function HomeAgain({
+  home,
+  onHomeAgain,
+}: {
+  readonly home: { readonly busy: boolean; readonly failed: boolean };
+  readonly onHomeAgain: () => void;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-3">
+      {home.failed ? (
+        <span className="text-status-failed" role="alert">
+          HQ could not read this again. Showing the last read.
+        </span>
+      ) : null}
+      <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
+        Read again
+      </Button>
+    </span>
+  );
+}
+
 function HomeAt({
   home,
   sha,
+  again: homeAgain,
   source: { source, again },
   navigate,
   hrefOf,
 }: Pick<GitRepoPageProps, "source" | "navigate" | "hrefOf"> & {
   readonly home: GitHome;
   readonly sha: string;
+  readonly again: ReactNode;
 }) {
   // The frame reads the top folder at the very commit the home read resolved (`pageSource`), so a
   // branch moving between the two reads cannot pair one commit's README with another's files.
@@ -87,6 +112,7 @@ function HomeAt({
           <GitWhen at={about.updatedAt}>Updated {formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
           <span>{count(about.branchCount, "branch", "branches")}</span>
           <span>{count(about.tagCount, "tag", "tags")}</span>
+          {homeAgain}
         </div>
       </Card>
       <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
@@ -161,9 +187,17 @@ export function GitRepoHome(props: GitRepoPageProps) {
       <OpenChanges {...props} />
       {home.state === "known" ? (
         home.answer.sha === null ? (
-          <p className="text-sm text-muted-foreground">No commits on this branch yet.</p>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <p>No commits on this branch yet.</p>
+            <HomeAgain home={home} onHomeAgain={onHomeAgain} />
+          </div>
         ) : (
-          <HomeAt {...props} home={home.answer} sha={home.answer.sha} />
+          <HomeAt
+            {...props}
+            home={home.answer}
+            sha={home.answer.sha}
+            again={<HomeAgain home={home} onHomeAgain={onHomeAgain} />}
+          />
         )
       ) : home.state === "withheld" ? null : home.state === "unread" ? (
         <p className="text-sm text-muted-foreground" role="status">
