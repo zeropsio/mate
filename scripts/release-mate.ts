@@ -101,9 +101,10 @@ interface PublishedRelease {
   readonly prerelease: boolean;
 }
 
-const github = <T>(repo: string, endpoint: string): T =>
+// `jq` keeps only the fields read here: a full page of releases outgrows execFileSync's buffer.
+const github = <T>(repo: string, endpoint: string, jq?: string): T =>
   JSON.parse(
-    NodeChildProcess.execFileSync("gh-mate", ["api", endpoint], {
+    NodeChildProcess.execFileSync("gh-mate", ["api", endpoint, ...(jq ? ["--jq", jq] : [])], {
       cwd: repo,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
@@ -241,6 +242,7 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     const batch = github<PublishedRelease[]>(
       repo,
       `repos/${REPOSITORY}/releases?per_page=100&page=${page}`,
+      "[.[] | {tag_name, draft, prerelease}]",
     );
     releases.push(
       ...batch.filter(
