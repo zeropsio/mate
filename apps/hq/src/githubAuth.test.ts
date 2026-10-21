@@ -25,6 +25,22 @@ const DOCUMENTED = [
   ["issues", { issues: "write" }],
   // HQ's `mate/gate` on a head: "Create a commit status" takes Commit statuses: write.
   ["gate", { statuses: "write" }],
+  // A Mate's agent on its mounted repository: push (Contents, Workflows for a commit touching
+  // `.github/workflows`), open and update pull requests, read its CI and the repository itself.
+  // Never Commit statuses.
+  [
+    "agent",
+    {
+      contents: "write",
+      pull_requests: "write",
+      workflows: "write",
+      checks: "read",
+      actions: "read",
+      metadata: "read",
+    },
+  ],
+  // A Mate's agent fetching a repository its application follows and never pushes to.
+  ["upstream", { contents: "read", metadata: "read" }],
 ] as const;
 
 describe("the app's tokens", () => {
@@ -62,5 +78,32 @@ describe("the app's tokens", () => {
     ] as const;
     for (const [use, granted, asked] of rows)
       assert.deepStrictEqual(askedPermissions(use, granted), asked, use);
+  });
+
+  it("an agent's token never writes commit statuses, whatever the installation was granted; HQ's gate token does", () => {
+    const everything = {
+      contents: "admin",
+      pull_requests: "admin",
+      workflows: "admin",
+      checks: "admin",
+      actions: "admin",
+      statuses: "admin",
+      issues: "admin",
+      administration: "admin",
+      metadata: "read",
+    };
+    assert.deepStrictEqual(askedPermissions("agent", everything), {
+      contents: "write",
+      pull_requests: "write",
+      workflows: "write",
+      checks: "read",
+      actions: "read",
+      metadata: "read",
+    });
+    assert.deepStrictEqual(askedPermissions("upstream", everything), {
+      contents: "read",
+      metadata: "read",
+    });
+    assert.deepStrictEqual(askedPermissions("gate", everything), { statuses: "write" });
   });
 });

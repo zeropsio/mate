@@ -99,6 +99,8 @@ export const githubFake = Effect.gen(function* () {
     installations: new Map<number, FakeInstallation>(),
     /** How long an installation token GitHub mints lives. */
     tokenLifeMs: 60 * 60_000,
+    /** The status a token's minting answers: 201, else GitHub failing as it does in an outage. */
+    mintStatus: 201,
     /**
      * The installation tokens minted, in order, with the installation each is of and the
      * repositories and permissions HQ asked it for: neither asked, all the installation's.
@@ -248,6 +250,8 @@ export const githubFake = Effect.gen(function* () {
                     permissions: found.permissions ?? GRANTED,
                   });
                 if (request.method === "POST") {
+                  if (state.mintStatus !== 201)
+                    return reply(state.mintStatus, { message: "Server Error" });
                   if (found.suspended === true)
                     return reply(403, { message: "This installation has been suspended" });
                   const token = ["ghs", "fake", String(state.minted.length + 1)].join("_");

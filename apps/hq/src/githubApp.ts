@@ -19,8 +19,9 @@
  *   a byte is parsed; answered at once and worked after. Installations and their repositories
  *   keep HQ's rows; every event goes on to whoever listens for it (`GithubEvents`).
  * - Acting as it (`GithubAuth`): a token for one repository the app reaches and one use's
- *   permissions, minted with the app's JWT and kept until five minutes before GitHub expires it;
- *   only listing what an installation reaches takes the whole installation's. A repository HQ does
+ *   permissions, minted with the app's JWT and kept until five minutes before GitHub expires it,
+ *   except one handed on (`issue`), minted for its call and kept nowhere; only listing what an
+ *   installation reaches takes the whole installation's. A repository HQ does
  *   not know the app reaches is looked for again at most once a minute per account.
  *
  * Forgotten, HQ keeps nothing of the app, and the remotes reached through it are invalid from then
@@ -491,35 +492,37 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
       const jwtOf = (app: MadeApp) =>
         Effect.map(Clock.currentTimeMillis, (now) => appJwt(app.githubId, app.pem, now));
 
-      /**
-       * A token of the installation `id` GitHub mints as `asked` (none: the whole installation's),
-       * kept under `key` until shortly before it expires.
-       */
+      /** A token of the installation `id` GitHub mints now as `asked` (none: the whole installation's). */
+      const minted = (app: MadeApp, id: number, asked?: object) =>
+        Effect.gen(function* () {
+          const reply = yield* send(
+            "POST",
+            `/app/installations/${String(id)}/access_tokens`,
+            { jwt: yield* jwtOf(app) },
+            asked,
+          );
+          if (reply.status === 403)
+            return yield* new GithubAuthUnavailable({
+              reason: /suspend/iu.test(reply.body) ? "suspended" : "refused",
+            });
+          if (reply.status === 404)
+            return yield* new GithubAuthUnavailable({ reason: "not_installed" });
+          if (reply.status === 401) return yield* new GithubAuthUnavailable({ reason: "refused" });
+          const read = reply.status === 201 ? decodeAccessToken(reply.body) : Option.none();
+          if (Option.isNone(read))
+            return yield* new GithubAuthUnavailable({ reason: "unreachable" });
+          return { token: Redacted.make(read.value.token), expiresAt: read.value.expires_at };
+        });
+
+      /** `minted`, kept under `key` until shortly before it expires. */
       const mint = (app: MadeApp, id: number, key: string, asked?: object) =>
         minting.withPermits(1)(
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
             const held = tokens.get(id)?.get(key);
             if (held !== undefined && now < held.until) return held.token;
-            const reply = yield* send(
-              "POST",
-              `/app/installations/${String(id)}/access_tokens`,
-              { jwt: yield* jwtOf(app) },
-              asked,
-            );
-            if (reply.status === 403)
-              return yield* new GithubAuthUnavailable({
-                reason: /suspend/iu.test(reply.body) ? "suspended" : "refused",
-              });
-            if (reply.status === 404)
-              return yield* new GithubAuthUnavailable({ reason: "not_installed" });
-            if (reply.status === 401)
-              return yield* new GithubAuthUnavailable({ reason: "refused" });
-            const read = reply.status === 201 ? decodeAccessToken(reply.body) : Option.none();
-            if (Option.isNone(read))
-              return yield* new GithubAuthUnavailable({ reason: "unreachable" });
-            const token = Redacted.make(read.value.token);
-            const expires = Date.parse(read.value.expires_at);
+            const { token, expiresAt } = yield* minted(app, id, asked);
+            const expires = Date.parse(expiresAt);
             const kept = tokens.get(id) ?? new Map<string, HeldToken>();
             tokens.set(id, kept);
             kept.set(key, {
@@ -535,17 +538,14 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
       /** The whole installation's token: only for listing the repositories it reaches. */
       const installationToken = (app: MadeApp, id: number) => mint(app, id, "*");
 
-      /** A token of the installation `id` for `repositoryId` alone, with `permissions`. */
-      const repositoryToken = (
-        app: MadeApp,
-        id: number,
+      /** What a token of the installation `id` for `repositoryId` alone, with `permissions`, asks. */
+      const forRepository = (
         repositoryId: number,
         permissions: Readonly<Record<string, string>>,
-      ) =>
-        mint(app, id, `${String(repositoryId)}:${encodeJson(permissions)}`, {
-          repository_ids: [repositoryId],
-          permissions,
-        });
+      ) => ({
+        repository_ids: [repositoryId],
+        permissions,
+      });
 
       const installations = sql<InstallationRow>`
         SELECT id::text AS id, account, account_type, repository_selection, suspended, permissions,
@@ -698,11 +698,23 @@ export const githubAppLayer = (options: { readonly hqProjectId: string; readonly
             if (grant === undefined) return undefined;
             const permissions = askedPermissions(use, grant.granted);
             if (permissions === undefined) return undefined;
-            return yield* repositoryToken(
+            return yield* mint(
               grant.app,
               grant.installation,
-              grant.repo.id,
-              permissions,
+              `${String(grant.repo.id)}:${encodeJson(permissions)}`,
+              forRepository(grant.repo.id, permissions),
+            );
+          }),
+        issue: (repository, use, id) =>
+          Effect.gen(function* () {
+            const grant = yield* granting(repository, id);
+            if (grant === undefined) return undefined;
+            const permissions = askedPermissions(use, grant.granted);
+            if (permissions === undefined) return undefined;
+            return yield* minted(
+              grant.app,
+              grant.installation,
+              forRepository(grant.repo.id, permissions),
             );
           }),
         grantOf: (repository, id) =>

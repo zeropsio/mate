@@ -53,6 +53,21 @@ export const GITHUB_TOKEN_USES = {
   issues: { issues: "write" },
   /** HQ's `mate/gate` on a head a person merges in Mate (`pullRequests.ts`). */
   gate: { statuses: "write" },
+  /**
+   * A Mate's agent on its application's repository mounted through the app: its branches and
+   * pull requests, and what its CI says of them. Never Commit statuses: `mate/gate` is HQ's word,
+   * never the agent's.
+   */
+  agent: {
+    contents: "write",
+    pull_requests: "write",
+    workflows: "write",
+    checks: "read",
+    actions: "read",
+    metadata: "read",
+  },
+  /** A Mate's agent fetching a repository its application follows and never pushes to. */
+  upstream: { contents: "read", metadata: "read" },
 } as const;
 export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
 
@@ -110,6 +125,18 @@ export class GithubAuth extends Context.Service<
       id?: string,
     ) => Effect.Effect<Redacted.Redacted | undefined, GithubAuthUnavailable>;
     /**
+     * As `tokenFor`, but minted for this call alone and kept nowhere, with when GitHub expires it:
+     * what HQ hands on to another holder.
+     */
+    readonly issue: (
+      repository: string,
+      use: GithubTokenUse,
+      id?: string,
+    ) => Effect.Effect<
+      { readonly token: Redacted.Redacted; readonly expiresAt: string } | undefined,
+      GithubAuthUnavailable
+    >;
+    /**
      * The app's id on GitHub and what the installation reaching `repository` was granted, as
      * `tokenFor` finds it; `undefined` while HQ has no app or the app does not reach it.
      */
@@ -131,6 +158,7 @@ export const githubAuthAbsentLayer = Layer.succeed(
   GithubAuth,
   GithubAuth.of({
     tokenFor: () => Effect.succeed(undefined),
+    issue: () => Effect.succeed(undefined),
     grantOf: () => Effect.succeed(undefined),
     bot: Effect.succeed(undefined),
   }),

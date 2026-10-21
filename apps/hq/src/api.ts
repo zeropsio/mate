@@ -1,6 +1,6 @@
 import { HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { gitTargetWrite, gitTargetReceipt } from "./gitTargetsApi.ts";
-import { Remotes, RemoteRefused } from "./repoRemotes.ts";
+import { MateCredentialRefused, Remotes, RemoteRefused } from "./repoRemotes.ts";
 import { ProbeRefused } from "./githubProbes.ts";
 import { GitEnvironmentRefused } from "./gitEnvironments.ts";
 import { GitRequestRefused } from "./gitTargetReceipts.ts";
@@ -71,6 +71,11 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   /api/mate/changes/:repo/:n/attachments`, a raster picture of at most 20 MiB → `{ id, path }`; and git
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
+ * - A Mate's agent's git on GitHub (zcp's `zcp hq git-credential`, `repoRemotes.ts`
+ *   `mateCredential`): `GET /api/mate/git-credential?host=<host>&path=<owner>/<repo>[.git]` →
+ *   `{ username: "x-access-token", password, expiresAt }`, a token minted for that call alone;
+ *   refused `404 not_mounted`, `403 no_access`, `409 app_not_installed`, `503` while GitHub does
+ *   not answer.
  * - A person's side of the changes: `GET /api/apps/:appId/repos` → `{ repos }`, its repositories;
  *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
@@ -278,6 +283,12 @@ const MATE_STATUS = {
   not_this_projects_mate: 409,
 } as const;
 
+const MATE_CREDENTIAL_STATUS = {
+  not_mounted: 404,
+  no_access: 403,
+  app_not_installed: 409,
+} as const;
+
 const CHANGE_STATUS = {
   forbidden: 403,
   project_not_found: 404,
@@ -320,6 +331,7 @@ const isMateRefused = Schema.is(MateRefused);
 const isChiefRefused = Schema.is(ChiefRefused);
 const isGitError = Schema.is(GitError);
 const isRemoteRefused = Schema.is(RemoteRefused);
+const isMateCredentialRefused = Schema.is(MateCredentialRefused);
 const isProbeRefused = Schema.is(ProbeRefused);
 const isGitEnvironmentRefused = Schema.is(GitEnvironmentRefused);
 const isGitRequestRefused = Schema.is(GitRequestRefused);
@@ -366,6 +378,15 @@ export const failure = (error: {
             ? 400
             : 409,
       ),
+    );
+  if (isMateCredentialRefused(error))
+    return Effect.succeed(
+      error.reason === "github_unavailable"
+        ? unavailable("github_unavailable")
+        : json(
+            { code: "git_credential_refused", reason: error.reason },
+            MATE_CREDENTIAL_STATUS[error.reason],
+          ),
     );
   if (isProbeRefused(error))
     return Effect.succeed(
@@ -580,6 +601,11 @@ export const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request
 const decodeRepositoryQuery = Schema.decodeUnknownEffect(RepositoryQuery);
 const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
 const decodeChangeDetailQuery = Schema.decodeUnknownEffect(ChangeDetailQuery);
+
+/** The repository a Mate's agent asks a git credential for, as git's helper names it. */
+const decodeGitCredentialQuery = Schema.decodeUnknownEffect(
+  Schema.Struct({ host: Schema.String, path: Schema.String }),
+);
 
 /** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
 const decodeRecipeTier = Schema.decodeUnknownEffect(RecipeTier);
@@ -1114,6 +1140,27 @@ const routes = (
           const appId = (yield* HttpRouter.params)["appId"] ?? "";
           const tier = yield* recipeTierOf;
           return json(yield* (yield* Changes).readRecipe(userId, appId, tier), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/git-credential",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
+            .searchParams;
+          const { host, path } = yield* decodeGitCredentialQuery(Object.fromEntries(search));
+          const given = yield* (yield* Remotes).mateCredential(projectId, host, path);
+          return HttpServerResponse.jsonUnsafe(
+            {
+              username: given.username,
+              password: Redacted.value(given.password),
+              expiresAt: given.expiresAt,
+            },
+            { status: 200, headers: { "cache-control": "no-store" } },
+          );
         }),
       ),
     ),

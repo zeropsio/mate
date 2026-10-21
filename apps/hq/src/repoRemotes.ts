@@ -31,6 +31,7 @@ import { remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { can } from "./permissions.ts";
 import { Roles, decidedFresh } from "./roles.ts";
+import type { ZeropsError } from "./zerops/api.ts";
 
 /** A mirror's kept governance, read only as one HQ still says. */
 const decodeGovernance = Schema.decodeUnknownOption(HqRepoGovernance);
@@ -87,6 +88,29 @@ export class RemoteRefused extends Schema.TaggedError<RemoteRefused>()("RemoteRe
   override get message() {
     return remoteRefusalWords(this);
   }
+}
+/**
+ * Why a Mate's agent gets no credential for a repository (`Remotes.mateCredential`):
+ * `not_mounted`, its application mounts no such repository; `no_access`, the Mate does not work in
+ * its application now; `app_not_installed`, the organization's app no longer reaches it;
+ * `github_unavailable`, GitHub did not answer.
+ */
+export class MateCredentialRefused extends Schema.TaggedError<MateCredentialRefused>()(
+  "MateCredentialRefused",
+  {
+    reason: Schema.Literals([
+      "not_mounted",
+      "no_access",
+      "app_not_installed",
+      "github_unavailable",
+    ]),
+  },
+) {}
+/** A git credential a Mate's agent presents to GitHub for one repository, until `expiresAt`. */
+export interface MateCredential {
+  readonly username: "x-access-token";
+  readonly password: Redacted.Redacted;
+  readonly expiresAt: string;
 }
 export type RemoteError = RemoteRefused | ProbeRefused | SqlError | NotLeader;
 export type RemoteConnectError = RemoteError | ChangeRefused | GitError;
@@ -168,6 +192,19 @@ export class Remotes extends Context.Service<
       },
       RemoteError
     >;
+    /**
+     * The credential the Mate of `projectId`'s agent fetches and pushes `path` (`owner/name`) on
+     * `host` with, while its application mounts that repository and the Mate works in it, as HQ
+     * decides the Mate's push to its own git, over roles read for this ask. Mounted through the organization's app: the app's
+     * token for that repository alone, for the `agent`'s use. Followed by another remote: a
+     * read-only token, only where the app reaches the repository; a person's kept token is never
+     * handed on. Minted for this call, kept nowhere.
+     */
+    readonly mateCredential: (
+      projectId: string,
+      host: string,
+      path: string,
+    ) => Effect.Effect<MateCredential, MateCredentialRefused | SqlError | NotLeader | ZeropsError>;
     /**
      * The repository's remote made the GitHub repository `repository` (as the app's installation
      * lists it), reached through the organization's GitHub app: no token kept. A remote of
@@ -457,6 +494,43 @@ export const repoRemotesLayer = Layer.effect(
     });
     const remotes: Remotes["Service"] = Remotes.of({
       changes: SubscriptionRef.changes(ticks),
+      mateCredential: Effect.fn("Remotes.mateCredential")(function* (projectId, host, path) {
+        const appId = yield* changes.mateApp(projectId, "open_change", true).pipe(
+          Effect.catchTags({
+            ChangeRefused: () => Effect.fail(new MateCredentialRefused({ reason: "no_access" })),
+          }),
+        );
+        const notMounted = new MateCredentialRefused({ reason: "not_mounted" });
+        const identity = remoteIdentity(`https://${host}/${path}`);
+        if (identity?.kind !== "github") return yield* notMounted;
+        const [row] = yield* sql<RemoteRow>`SELECT ${sql.literal(COLUMNS)} FROM hq_repo_remote
+          WHERE app_id::text=${appId} AND url_key=${identity.key}`;
+        if (row === undefined) return yield* notMounted;
+        const mounted = row.via === "app";
+        const issued =
+          mounted && row.invalid_since === null
+            ? githubAuth.issue(identity.path, "agent", row.host_repo_id ?? undefined)
+            : !mounted && identity.host === "github.com"
+              ? githubAuth.issue(identity.path, "upstream")
+              : Effect.succeed(undefined);
+        const given = yield* issued.pipe(
+          Effect.catchTags({
+            GithubAuthUnavailable: (error) =>
+              error.reason === "unreachable"
+                ? Effect.fail(new MateCredentialRefused({ reason: "github_unavailable" }))
+                : Effect.succeed(undefined),
+          }),
+        );
+        if (given === undefined)
+          return yield* mounted
+            ? new MateCredentialRefused({ reason: "app_not_installed" })
+            : notMounted;
+        return {
+          username: "x-access-token" as const,
+          password: given.token,
+          expiresAt: given.expiresAt,
+        };
+      }),
       listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
         const repos = yield* changes.listRepos(userId, appId);
         // A mirror says since when its histories diverged, and through the app whether GitHub
