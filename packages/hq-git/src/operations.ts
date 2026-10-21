@@ -19,7 +19,7 @@ import {
   type ChangeSnapshot,
 } from "./api.ts";
 import { followRefs as followRemoteRefs } from "./followRefs.ts";
-import { GitRunner, terminate } from "./git.ts";
+import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
 const readLimits = {
@@ -642,6 +642,7 @@ export const makeOperations = (
       const url = mirrorUrl(remote.url);
       const tip = await remoteTip(dir, remote, await branchRef(dir, branch, signal), signal);
       if (tip === null) return null;
+      await sweepPartialPacks(dir);
       await git.remoteAskpass(
         [
           "-C",
@@ -659,11 +660,18 @@ export const makeOperations = (
       );
       await resolve(dir, tip, signal);
       return tip;
-    }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("fetchTip")));
+    }).pipe(
+      Effect.timeout(Duration.millis(fetchDeadlineMs)),
+      Effect.mapError(timedOut("fetchTip")),
+    );
   const followRefs: HqGit["followRefs"] = (repo, remote) =>
-    inRepo("followRefs", repo, (dir, signal) =>
-      followRemoteRefs(git, dir, mirrorUrl(remote.url), remote.token, signal),
-    ).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("followRefs")));
+    inRepo("followRefs", repo, async (dir, signal) => {
+      await sweepPartialPacks(dir);
+      return followRemoteRefs(git, dir, mirrorUrl(remote.url), remote.token, signal);
+    }).pipe(
+      Effect.timeout(Duration.millis(fetchDeadlineMs)),
+      Effect.mapError(timedOut("followRefs")),
+    );
   const isAncestor: HqGit["isAncestor"] = (repo, ancestor, descendant) =>
     inRepo("isAncestor", repo, async (dir, signal) => {
       if (!validSha(ancestor) || !validSha(descendant)) throw error("Invalid commit");

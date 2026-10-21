@@ -13,7 +13,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { makeHqGit } from "./index.ts";
-import type { HqGit, GitEvent, HqGitOptions, GitError } from "./api.ts";
+import type { HqGit, GitEvent, HqGitOptions, GitError, MirrorRemote } from "./api.ts";
 
 const repo = { appId: "app", id: "repo" };
 const author = { name: "Core", email: "core@example.test" };
@@ -42,7 +42,7 @@ const fixture = (
       yield* Effect.promise(() => run(git, NodePath.join(root, "app/repo.git"), events));
     }),
   );
-const native = (dir: string, args: string[], input?: string) =>
+const native = (dir: string, args: string[], input?: string | Buffer) =>
   new Promise<string>((resolve, reject) => {
     const child = NodeChildProcess.execFile(
       "git",
@@ -1501,6 +1501,68 @@ it.live("A fetched GitHub branch does not make an untouched seed look touched", 
       kind: "adopted",
       sha: tip,
     });
+  }),
+);
+/**
+ * A GitHub stand-in whose main is clean and whose side branch holds a tree git's fsck refuses (a
+ * zero-padded mode): following every ref fails there each time, as a fetch the deadline stopped.
+ */
+const refusedSideBranch = async (dir: string) => {
+  const github = NodePath.join(dir, "github.git");
+  await native(dir, ["init", "--bare", github]);
+  const empty = await native(github, ["mktree"], "");
+  await native(github, [
+    "update-ref",
+    "refs/heads/main",
+    await native(github, ["commit-tree", empty, "-m", "Main"]),
+  ]);
+  const blob = await native(github, ["hash-object", "-w", "--stdin"], "old");
+  const sub = await native(github, ["mktree"], `100644 blob ${blob}\told\n`);
+  const tree = await native(
+    github,
+    ["hash-object", "-t", "tree", "-w", "--literally", "--stdin"],
+    Buffer.concat([Buffer.from("040000 vendor\0"), Buffer.from(sub, "hex")]),
+  );
+  const legacy = await native(github, ["commit-tree", tree, "-m", "Imported from SVN"]);
+  await native(github, ["update-ref", "refs/heads/legacy", legacy]);
+  return { url: github, token: Redacted.make("mirror-fixture") };
+};
+const partialPacks = async (dir: string) =>
+  (await NodeFSP.readdir(NodePath.join(dir, "objects", "pack"))).filter((name) =>
+    name.startsWith("tmp_"),
+  );
+it.live.each([
+  {
+    by: "the next follow of GitHub's refs",
+    next: (git: HqGit, remote: MirrorRemote) => git.followRefs(repo, remote),
+  },
+  {
+    by: "the next fetch of GitHub's main",
+    next: (git: HqGit, remote: MirrorRemote) => git.fetchTip(repo, remote, "main"),
+  },
+  { by: "HQ's sweep on takeover", next: (git: HqGit) => git.convergeRepo(repo) },
+])(
+  "A partial pack a fetch from GitHub left behind is removed by $by once no fetch can still be writing it",
+  ({ next }) =>
+    fixture(async (git, dir) => {
+      const remote = await refusedSideBranch(dir);
+      await Effect.runPromise(Effect.flip(git.followRefs(repo, remote)));
+      const [stale] = await partialPacks(dir);
+      expect(stale).toBeDefined();
+      const past = new Date(Date.now() - 2 * 60 * 1000);
+      await NodeFSP.utimes(NodePath.join(dir, "objects", "pack", stale!), past, past);
+      await Effect.runPromise(Effect.exit(next(git, remote)));
+      expect(await partialPacks(dir)).not.toContain(stale);
+    }),
+);
+it.live("A partial pack a fetch may still be writing is kept", () =>
+  fixture(async (git, dir) => {
+    const remote = await refusedSideBranch(dir);
+    await Effect.runPromise(Effect.flip(git.followRefs(repo, remote)));
+    const fresh = await partialPacks(dir);
+    expect(fresh).toHaveLength(1);
+    await value(git.convergeRepo(repo));
+    expect(await partialPacks(dir)).toEqual(fresh);
   }),
 );
 it.live.each(["remote", "main"] as const)(
