@@ -1476,6 +1476,33 @@ it.live.each([
       expect(await native(dir, ["rev-parse", "main^{tree}"])).toBe(tree);
     }),
 );
+it.live("A fetched GitHub branch does not make an untouched seed look touched", () =>
+  fixture(async (git, dir) => {
+    const seed = await write(git, {}, null);
+    const github = NodePath.join(dir, "github.git");
+    await native(dir, ["init", "--bare", github]);
+    const mirror = { url: github, token: Redacted.make("mirror-fixture") };
+    // GitHub took HQ's seed once, and someone branched from it there.
+    await value(git.pushRef(repo, mirror, "feature", seed, null));
+    const tree = await native(github, ["mktree"], "");
+    const work = await native(github, ["commit-tree", tree, "-p", seed, "-m", "Work"]);
+    await native(github, ["update-ref", "refs/heads/feature", work]);
+    await value(git.followRefs(repo, mirror));
+    expect(await native(dir, ["rev-parse", "refs/github/heads/feature"])).toBe(work);
+    const remote = NodePath.join(dir, "remote.git");
+    await native(dir, ["init", "--bare", remote]);
+    const blob = await native(remote, ["hash-object", "-w", "--stdin"], "remote");
+    const theirs = await native(remote, ["mktree"], `100644 blob ${blob}\tremote\n`);
+    const tip = await native(remote, ["commit-tree", theirs, "-m", "Remote"]);
+    await native(remote, ["update-ref", "refs/heads/main", tip]);
+    const source = { url: remote, token: Redacted.make("test"), branch: "main" };
+    const preview = await value(git.previewAdoption(repo, source));
+    expect(await value(git.acceptAdoption(repo, source, preview, author, false))).toEqual({
+      kind: "adopted",
+      sha: tip,
+    });
+  }),
+);
 it.live.each(["remote", "main"] as const)(
   "Decision L3a: a moved %s refuses the displayed adoption without moving main",
   (changed) =>
