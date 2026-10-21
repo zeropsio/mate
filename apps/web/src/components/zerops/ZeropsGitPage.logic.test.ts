@@ -3,7 +3,11 @@
  * may read has its repositories and its changes known, a read that failed named beside whatever
  * was read, and an application whose changes HQ's rule keeps from them left out.
  */
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  gitOverviewPresentation,
+  type FlowPullRequest,
+  type GitOverviewView,
+} from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import { gitPageState, type GitPageApp } from "./ZeropsGitPage.logic";
@@ -77,6 +81,24 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
     ],
   ] as const)("waits visibly while %s", (_case, over) => {
     expect(state({ apps: [app()], ...over })).toEqual({ kind: "unread", failure: null });
+  });
+
+  // Every repository HQ lists (`app-detail`'s `repos`: each `hq_repo` row) has a row, changes or none.
+  it("A repository with no changes is still listed under All repositories", () => {
+    const cases: ReadonlyArray<Partial<GitPageApp>> = [
+      { changes: [] },
+      { changes: [OPEN] },
+      { changes: [], merged: [{ ...OPEN, merged: true }] },
+    ];
+    for (const over of cases) {
+      const said = state({ apps: [app(over)] });
+      const rows = (view: GitOverviewView) =>
+        gitOverviewPresentation(said.kind === "read" ? said.apps : [], view).rows.map(
+          (row) => row.name,
+        );
+      expect(rows("all")).toEqual(["appdev", "group"]);
+      expect(rows("open")).not.toContain("group");
+    }
   });
 
   it("keeps repository facts while that application's changes are still unread", () => {
