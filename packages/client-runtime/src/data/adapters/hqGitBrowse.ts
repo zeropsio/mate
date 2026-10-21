@@ -11,17 +11,29 @@ import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
 import { GIT_BROWSE_READS } from "../../zerops/gitBrowse/reads.ts";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
-import { gitBrowseId, gitBrowseScope, type GitBrowseKey } from "../families/hqGitBrowse.ts";
+import {
+  gitBrowseId,
+  gitBrowseLink,
+  gitBrowseScope,
+  type GitBrowseKey,
+} from "../families/hqGitBrowse.ts";
 import type { LinkKey } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 
-/** HQ's no as definitive, its sign-in or access no as a denial; anything else passes. */
+/** What a person is told when HQ already runs as many searches as it takes. */
+const GIT_BROWSE_BUSY = "HQ is busy with other searches. Read again in a moment.";
+
+/**
+ * HQ's no as definitive, its sign-in or access no as a denial; anything else passes, HQ's busy
+ * heavy reads said as busy.
+ */
 export function gitBrowseFailure(cause: unknown): StreamFault {
   const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";
   if (cause instanceof HqError) {
+    if (cause.code === "busy") return { outcome: "transient", message: GIT_BROWSE_BUSY };
     if (cause.code === "forbidden" || cause.code === "session_required")
       return { outcome: "authoritative-denial", message, code: cause.code };
     if (cause.kind === "refused")
@@ -48,7 +60,7 @@ export function makeGitBrowseReads(store: AccountStore, api: Pick<HqApi, "gitBro
     if (held !== undefined) held.count++;
     else {
       const scope = gitBrowseScope(identity);
-      const key: LinkKey = `hq:git-browse-${encodeURIComponent(id)}`;
+      const key = gitBrowseLink(identity);
       const prior = store.state().facts.get(`hqGitBrowse:${id}`)?.revision;
       let sequence = prior?.kind === "mate-link" ? prior.sequence : 0;
       const signal = (target: LinkKey | typeof scope, event: StreamEvent) =>

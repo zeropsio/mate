@@ -5,7 +5,8 @@
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
+import { isEditableFocused } from "~/lib/editableFocus";
 import type { GitSearch } from "~/routes/git";
 
 export type GitView = NonNullable<GitSearch["view"]>;
@@ -42,6 +43,9 @@ const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   commit: lazy(() =>
     import("./GitCommitView").then((module) => ({ default: module.GitCommitView })),
   ),
+  search: lazy(() =>
+    import("./GitSearchView").then((module) => ({ default: module.GitSearchView })),
+  ),
 };
 
 /** The repository's tabs, each opening its first page and lit on any of them. */
@@ -51,10 +55,24 @@ export const GIT_VIEW_TABS: ReadonlyArray<{
 }> = [
   { label: "Code", views: ["home", "code"] },
   { label: "History", views: ["commits", "commit"] },
+  { label: "Search", views: ["search"] },
 ];
 
 export function GitBrowseView(props: GitRepoPageProps & { readonly view: GitView }) {
   const View = VIEWS[props.view] ?? VIEWS.home!;
+  const { navigate } = props;
+  const { rev } = props.search;
+  // `t` finds a file by name, from any page of the repository.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "t" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.defaultPrevented || isEditableFocused(event.target)) return;
+      event.preventDefault();
+      navigate({ ...(rev === undefined ? {} : { rev }), view: "search", scope: "name" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate, rev]);
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Opening…</p>}>
       <View {...props} />

@@ -7,8 +7,10 @@
  */
 import * as Schema from "effect/Schema";
 import { commitFileRead, commitRead } from "./commit.ts";
+import { grepRead } from "./grep.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
+import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
 
 export const GIT_BROWSE_READS = {
@@ -17,6 +19,8 @@ export const GIT_BROWSE_READS = {
   log: logRead,
   commit: commitRead,
   "commit-file": commitFileRead,
+  paths: pathsRead,
+  grep: grepRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;

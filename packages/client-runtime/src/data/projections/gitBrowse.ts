@@ -3,7 +3,12 @@
  * known (kept through a failed read again), failed, or refused with HQ's reason.
  */
 import type { GitBrowseRead, GitBrowseValue } from "../../zerops/gitBrowse/reads.ts";
-import { gitBrowseId, gitBrowseScope, type GitBrowseKey } from "../families/hqGitBrowse.ts";
+import {
+  gitBrowseId,
+  gitBrowseLink,
+  gitBrowseScope,
+  type GitBrowseKey,
+} from "../families/hqGitBrowse.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -30,15 +35,13 @@ export const gitBrowse: Projection<
     const stream = read.stream(gitBrowseScope(key));
     if (key.allowed !== true || fact.kind === "withheld") return { state: "withheld" };
     const busy = stream.phase === "connecting" || stream.phase === "baselining";
+    // A refusal reaches the scope; a failure tried again (HQ busy, unreachable) stays on the link.
+    const fault = stream.fault ?? read.stream(gitBrowseLink(key)).fault;
     if (fact.kind === "known")
-      return { state: "known", answer: fact.value, busy, failed: stream.fault !== null };
-    if (stream.fault?.outcome === "definitive-refusal")
-      return {
-        state: "refused",
-        reason: stream.fault.code ?? "refused",
-        words: stream.fault.message,
-      };
-    if (stream.fault !== null) return { state: "failed", words: stream.fault.message };
+      return { state: "known", answer: fact.value, busy, failed: fault !== null };
+    if (fault?.outcome === "definitive-refusal")
+      return { state: "refused", reason: fault.code ?? "refused", words: fault.message };
+    if (fault !== null) return { state: "failed", words: fault.message };
     return { state: "unread", busy };
   },
   equals: sameValue,
