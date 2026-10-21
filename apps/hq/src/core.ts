@@ -46,6 +46,7 @@ import { githubChannelLayer } from "./githubChannel.ts";
 import { githubGateLayer } from "./githubGate.ts";
 import { githubAppLayer } from "./githubApp.ts";
 import { githubAppRoutes } from "./githubAppRoutes.ts";
+import { gitBrowseRoutes } from "./gitBrowse/routes.ts";
 import { githubEventsLayer } from "./githubEvents.ts";
 import { type GithubMirror, githubMirrorLayer } from "./githubMirror.ts";
 import { type PullRequestsOptions, pullRequestsLayer } from "./pullRequests.ts";
@@ -141,6 +142,7 @@ const routes = (options: CoreOptions) =>
     discordRoutes,
     slackRoutes,
     githubAppRoutes,
+    gitBrowseRoutes,
     apiRoutes({
       build: options.build,
       hqProjectId: options.hqProjectId,

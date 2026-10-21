@@ -76,6 +76,13 @@ import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import {
+  GIT_BROWSE_READS,
+  gitBrowsePath,
+  type GitBrowseParams,
+  type GitBrowseRead,
+  type GitBrowseValue,
+} from "../gitBrowse/reads.ts";
 
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
@@ -512,6 +519,14 @@ export interface HqApi {
     query: RepositoryQuery,
     signal?: AbortSignal,
   ) => Promise<RepositorySource>;
+  /** One of the Git browser's reads (`zerops/gitBrowse/reads.ts`), after the person's read rule. */
+  readonly gitBrowse: <R extends GitBrowseRead>(
+    read: R,
+    appId: string,
+    repo: string,
+    params: GitBrowseParams<R>,
+    signal?: AbortSignal,
+  ) => Promise<GitBrowseValue<R>>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (
     link: ChangeLink,
@@ -1556,6 +1571,19 @@ export function makeHqApi(input: {
       decoded(RepositorySource)(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
+          signal === undefined ? {} : { signal },
+        ),
+      ),
+    gitBrowse: async <R extends GitBrowseRead>(
+      read: R,
+      appId: string,
+      repo: string,
+      params: GitBrowseParams<R>,
+      signal?: AbortSignal,
+    ) =>
+      decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
+        await authorized(
+          gitBrowsePath(read, appId, repo, params),
           signal === undefined ? {} : { signal },
         ),
       ),

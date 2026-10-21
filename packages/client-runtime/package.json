@@ -183,6 +183,10 @@
       "types": "./src/zerops/index.ts",
       "default": "./src/zerops/index.ts"
     },
+    "./zerops/gitBrowse/*": {
+      "types": "./src/zerops/gitBrowse/*.ts",
+      "default": "./src/zerops/gitBrowse/*.ts"
+    },
     "./zerops/agentSignIn": {
       "types": "./src/zerops/agentSignIn.ts",
       "default": "./src/zerops/agentSignIn.ts"

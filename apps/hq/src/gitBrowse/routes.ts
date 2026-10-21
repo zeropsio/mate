@@ -1,0 +1,121 @@
+/**
+ * The Git browser's reads, `GET /api/apps/:appId/repos/:repo/browse/<read>`: the only HTTP path to
+ * a repository's content beside git itself. Each read is a module of this folder and one line in
+ * {@link BROWSE_READS}; every one knocks the person's door, checks the person's access before any
+ * git runs (`access.ts`), and ends at its deadline, its git stopped with it.
+ *
+ * An answer pinned to a commit never changes, so it says so and answers a matching
+ * `If-None-Match` with `304`; an answer about refs (`home`, `refs`) is never cached.
+ *
+ * @module gitBrowse/routes
+ */
+import { GitError } from "@t3tools/hq-git";
+import { RepoName } from "@t3tools/shared/hqChanges";
+import type * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import { handle, knock, principal } from "../api.ts";
+import { homeRead } from "./home.ts";
+import { refsRead } from "./refs.ts";
+
+export interface BrowseAnswer {
+  readonly body: unknown;
+  /** The commit the answer is wholly about; none for one that moves with a ref. */
+  readonly pinned: { readonly sha: string } | null;
+}
+
+/** What a read is asked: by whom, of which repository, and its query as decoded. */
+export interface BrowseInput<Q> {
+  readonly userId: string;
+  readonly appId: string;
+  readonly repo: string;
+  readonly query: Q;
+}
+
+/** A read: its path segment, its query (decoded from the URL's search), deadline and answer. */
+interface BrowseRead<Q extends Schema.Decoder<unknown>, E, R> {
+  readonly read: string;
+  readonly query: Q;
+  readonly deadline: Duration.Duration;
+  readonly answer: (input: BrowseInput<Q["Type"]>) => Effect.Effect<BrowseAnswer, E, R>;
+}
+
+const IMMUTABLE = "private, max-age=31536000, immutable";
+
+/** FNV-1a of a read's parameters: an entity tag only tells two queries apart. */
+const hashOf = (text: string) => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
+
+/** The response an answer gets, cached or not by what it is pinned to. */
+export const browseResponse = (
+  request: { readonly headers: Readonly<Record<string, string | undefined>> },
+  read: string,
+  params: URLSearchParams,
+  answer: BrowseAnswer,
+) => {
+  if (answer.pinned === null)
+    return HttpServerResponse.jsonUnsafe(answer.body, {
+      status: 200,
+      headers: { "cache-control": "no-store" },
+    });
+  const canonical = new URLSearchParams(
+    [...params].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+  const etag = `"${read}:${answer.pinned.sha}:${hashOf(canonical.toString())}"`;
+  const headers = { "cache-control": IMMUTABLE, etag };
+  return request.headers["if-none-match"] === etag
+    ? HttpServerResponse.empty({ status: 304, headers })
+    : HttpServerResponse.jsonUnsafe(answer.body, { status: 200, headers });
+};
+
+const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
+
+const route = <Q extends Schema.Decoder<unknown>, E extends { readonly _tag: string }, R>(
+  read: BrowseRead<Q, E, R>,
+) => {
+  const decodeQuery = Schema.decodeUnknownEffect(read.query);
+  return HttpRouter.add(
+    "GET",
+    `/api/apps/:appId/repos/:repo/browse/${read.read}`,
+    handle(
+      Effect.gen(function* () {
+        yield* knock("person");
+        const { userId } = yield* principal;
+        const params = yield* HttpRouter.params;
+        const repo = yield* decodeRepoName(params["repo"]);
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const search = new URL(request.url, "http://hq").searchParams;
+        const query = yield* decodeQuery(Object.fromEntries(search));
+        const answer = yield* read
+          .answer({ userId, appId: params["appId"] ?? "", repo, query })
+          .pipe(
+            // Interrupted at its deadline, the read's signal stops its git with it.
+            Effect.timeoutOrElse({
+              duration: read.deadline,
+              orElse: () =>
+                Effect.fail(
+                  new GitError({
+                    operation: `browse.${read.read}`,
+                    reason: "git_failed",
+                    message: "The read did not finish in time",
+                  }),
+                ),
+            }),
+          );
+        return browseResponse(request, read.read, search, answer);
+      }),
+    ),
+  );
+};
+
+/** One line per read. */
+const BROWSE_READS = [route(homeRead), route(refsRead)] as const;
+
+export const gitBrowseRoutes = Layer.mergeAll(...BROWSE_READS);

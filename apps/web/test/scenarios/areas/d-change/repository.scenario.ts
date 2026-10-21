@@ -24,16 +24,17 @@ describe("Git repository detail", () => {
             expect(await s.page.$eval(`${browser} nav`, (node) => node.textContent)).toContain(
               "Git / Shop / appdev",
             );
-            await s.page.waitForSelector(`${browser} select`);
-            expect(await s.page.$eval(`${browser} details`, (node) => node.open)).toBe(false);
-            await s.page.select(`${browser} select`, "refs/heads/mate/Ada/1");
+            const clone = '[data-slot="popover-popup"]';
+            expect(await s.page.$(clone)).toBeNull();
+            await s.page.locator(`${browser} ::-p-aria(Branch or tag)`).click();
+            await s.page.locator('[role="option"] ::-p-text(mate/Ada/1)').click();
             await s.page.locator(`${browser} ::-p-text(summary.txt)`).wait();
-            await s.page.locator(`${browser} summary`).click();
-            await s.page.locator(`${browser} ::-p-text(No Git password yet.)`).wait();
-            expect(await s.page.$eval(`${browser} details`, (node) => node.textContent)).toContain(
-              "git clone",
-            );
-            await s.page.locator(`${browser} summary`).click();
+            expect(new URL(s.page.url()).searchParams.get("rev")).toBe("mate/Ada/1");
+            await s.page.locator(`${browser} ::-p-aria(Clone[role="button"])`).click();
+            await s.page.locator(`${clone} ::-p-text(No Git password yet.)`).wait();
+            expect(await s.page.$eval(clone, (node) => node.textContent)).toContain("git clone");
+            await s.page.keyboard.press("Escape");
+            await s.page.waitForSelector(clone, { hidden: true });
             await s.page.locator(`${browser} ::-p-text(summary.txt)`).click();
             await s.page.locator(`${browser} ::-p-text(Order total: 42)`).wait();
             expect(new URL(s.page.url()).searchParams.get("rev")).toMatch(/^[a-f0-9]{40}$/u);

@@ -2,9 +2,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import type { ComponentProps } from "react";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { RepositorySource } from "@t3tools/shared/hqGit";
-import { ZeropsRepositorySource, ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
+import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
+import { ZeropsRepositorySource } from "./ZeropsRepositorySource";
 
 beforeAll(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 afterAll(() => vi.unstubAllGlobals());
@@ -54,11 +56,23 @@ describe("repository source view", () => {
   });
 });
 
+const held = vi.hoisted(() => ({
+  source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false } as unknown,
+  sourceAsked: [] as Array<unknown>,
+  home: { state: "unread", busy: false } as unknown,
+}));
 vi.mock("~/zerops/useRepositorySource", () => ({
-  useRepositorySource: () => ({
-    source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false },
-    again: () => undefined,
-  }),
+  useRepositorySource: (input: { readonly query: unknown }) => {
+    held.sourceAsked.push(input.query);
+    return { source: held.source, again: () => undefined };
+  },
+}));
+vi.mock("~/zerops/useGitBrowse", () => ({
+  useGitBrowse: () => ({ view: held.home, again: () => undefined }),
+  useGitBrowseReads: () => ({ views: [], again: () => undefined }),
+}));
+vi.mock("./ZeropsGitCredentials", () => ({
+  ZeropsGitCredentials: () => <p>Clone address</p>,
 }));
 it("names unverified repository access without offering an inert Read again", () => {
   const html = renderToStaticMarkup(
@@ -76,7 +90,12 @@ it("names unverified repository access without offering an inert Read again", ()
   expect(html).not.toContain("Read again");
 });
 
-async function browser(repo = "appdev", project = "Shop & Tools") {
+async function browser(
+  repo = "appdev",
+  project = "Shop & Tools",
+  query: ComponentProps<typeof ZeropsRepositoryBrowser>["query"] = {},
+  onNavigate: ComponentProps<typeof ZeropsRepositoryBrowser>["onNavigate"] = () => {},
+) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -87,21 +106,33 @@ async function browser(repo = "appdev", project = "Shop & Tools") {
         project={project}
         repo={repo}
         allowed={true}
-        query={{ path: "", kind: "tree" }}
-        onNavigate={() => {}}
+        query={query}
+        onNavigate={onNavigate}
         onBack={() => {}}
       />,
     ),
   );
+  // Each page is its own chunk: wait for the one the link names.
+  await act(async () => {
+    await Promise.all([import("./gitBrowser/GitRepoHome"), import("./gitBrowser/GitRepoCode")]);
+  });
   return {
-    host,
+    // The Clone popover opens in a portal, outside the page's own element.
+    host: document.body,
     close: async () => {
       await act(async () => root.unmount());
       host.remove();
     },
   };
 }
+async function openClone(host: HTMLElement) {
+  const clone = [...host.querySelectorAll("button")].find((b) => b.textContent === "Clone");
+  expect(clone, "the repository header offers Clone").toBeDefined();
+  await act(async () => clone!.click());
+}
 async function enter(host: HTMLElement, url: string) {
+  if (host.querySelector('input[aria-label="Repository HTTPS URL"]') === null)
+    await openClone(host);
   const input = host.querySelector<HTMLInputElement>('input[aria-label="Repository HTTPS URL"]');
   expect(input, "Code repository offers HTTPS token guidance").not.toBeNull();
   await act(async () => {
@@ -173,10 +204,150 @@ it.each([
 it("keeps token guidance out of the recipe repository", async () => {
   const { host, close } = await browser("group");
   try {
+    await openClone(host);
     expect(host.querySelector('input[aria-label="Repository HTTPS URL"]')).toBeNull();
     expect(host.textContent).toContain("Clone with HTTPS");
     expect(host.textContent).toContain("Open changes");
   } finally {
     await close();
   }
+});
+
+const sha = "d".repeat(40);
+const knownHome = (readme: { readonly path: string; readonly content: string } | null) => ({
+  state: "known",
+  busy: false,
+  failed: false,
+  answer: {
+    sha,
+    ref: { name: "main", kind: "branch" },
+    about: {
+      remote: null,
+      mirror: null,
+      updatedAt: "2026-10-21T00:00:00.000Z",
+      branchCount: 1,
+      tagCount: 0,
+    },
+    readme: readme === null ? null : { ...readme, truncated: false },
+  },
+});
+afterEach(() => {
+  held.home = { state: "unread", busy: false };
+  held.source = { state: "unread", words: "Waiting for HQ…", alert: false, busy: false };
+  held.sourceAsked = [];
+});
+
+describe("repository frame", () => {
+  it("Clone and the token guide open from the repository header", async () => {
+    const { host, close } = await browser();
+    try {
+      expect(host.textContent).not.toContain("Clone with HTTPS");
+      expect(host.querySelector('input[aria-label="Repository HTTPS URL"]')).toBeNull();
+      await openClone(host);
+      expect(host.textContent).toContain("Clone with HTTPS");
+      expect(host.textContent).toContain("Clone address");
+      expect(host.querySelector('input[aria-label="Repository HTTPS URL"]')).not.toBeNull();
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([
+    [
+      { rev: "v1", path: "src/a.ts", kind: "file" as const },
+      {
+        ...common,
+        kind: "file" as const,
+        path: "src/a.ts",
+        content: "export const a = 1;",
+        binary: false,
+      },
+      "export const a = 1;",
+    ],
+    [
+      { rev: "v1", path: "src", kind: "tree" as const },
+      {
+        ...common,
+        kind: "tree" as const,
+        path: "src",
+        entries: [{ path: "a.ts", type: "blob" as const, mode: "100644", sha: "c".repeat(40) }],
+      },
+      "a.ts",
+    ],
+  ])(
+    "A link with rev, path and kind still opens the same file or folder: %j",
+    async (query, source, shown) => {
+      held.source = { state: "known", source, busy: false, failed: false };
+      const { host, close } = await browser("appdev", "Shop", query);
+      try {
+        expect(held.sourceAsked.at(-1)).toEqual(query);
+        expect(host.textContent).toContain(shown);
+      } finally {
+        await close();
+      }
+    },
+  );
+});
+
+describe("repository README", () => {
+  it("Raw HTML in a README is sanitized", async () => {
+    held.home = knownHome({
+      path: "README.md",
+      content:
+        '# Shop\n\n<script>window.hit = 1</script><b onclick="window.hit = 2">bold</b> <a href="javascript:alert(1)">bad</a> <iframe src="https://example.test"></iframe>',
+    });
+    const { host, close } = await browser();
+    try {
+      const readme = host.querySelector('section[aria-label="README"]')!;
+      expect(readme.querySelector("h1")?.textContent).toBe("Shop");
+      expect(readme.querySelector("b")?.textContent).toBe("bold");
+      expect(readme.querySelector("script, iframe, [onclick]")).toBeNull();
+      expect(readme.innerHTML).not.toContain("javascript:");
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([
+    ["../docs/setup.md", { path: "docs/setup.md", kind: "file" }],
+    ["/src/", { path: "src", kind: "tree" }],
+    ["./CONTRIBUTING.md#start", { path: ".github/CONTRIBUTING.md", kind: "file" }],
+  ])(
+    "A README link to a repository path opens that path at the same commit: %s",
+    async (href, target) => {
+      held.home = knownHome({ path: ".github/README.md", content: `[open](${href})` });
+      const onNavigate = vi.fn();
+      const { host, close } = await browser("appdev", "Shop", { rev: "main" }, onNavigate);
+      try {
+        const link = host.querySelector<HTMLAnchorElement>('section[aria-label="README"] a')!;
+        expect(new URL(link.href).searchParams.get("rev")).toBe(sha);
+        await act(async () => link.click());
+        expect(onNavigate).toHaveBeenCalledWith({ rev: sha, view: "code", ...target });
+      } finally {
+        await close();
+      }
+    },
+  );
+
+  it("An image outside the repository is shown as a link and never loaded", async () => {
+    held.home = knownHome({
+      path: "README.md",
+      content:
+        '![logo](https://cdn.example.test/logo.png)\n\n<img src="https://tracker.example.test/p.gif" alt="pixel">\n\n[![build](https://ci.example.test/badge.svg)](https://ci.example.test/)',
+    });
+    const { host, close } = await browser();
+    try {
+      const readme = host.querySelector('section[aria-label="README"]')!;
+      expect(readme.querySelector("img, picture, source")).toBeNull();
+      expect(
+        [...readme.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]),
+      ).toEqual([
+        ["logo", "https://cdn.example.test/logo.png"],
+        ["pixel", "https://tracker.example.test/p.gif"],
+        ["build", "https://ci.example.test/"],
+      ]);
+    } finally {
+      await close();
+    }
+  });
 });

@@ -2,13 +2,16 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { RepositoryQuery, RepositorySource } from "@t3tools/shared/hqGit";
+import type { RepositorySource } from "@t3tools/shared/hqGit";
+import type { GitSearch } from "~/routes/git";
 import type { useRepositorySource } from "~/zerops/useRepositorySource";
 import { ZeropsGitPage } from "./ZeropsGitPage";
 
-type Search = Partial<RepositoryQuery> & { appId?: string; repo?: string };
+type Search = GitSearch;
 const fixture = vi.hoisted(() => ({
   search: {} as Search,
+  home: {} as unknown,
+  refs: [] as Array<unknown>,
   source: {} as ReturnType<typeof useRepositorySource>["source"],
   again: vi.fn(),
   allowed: true as boolean | undefined,
@@ -21,6 +24,10 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("~/zerops/useRepositorySource", () => ({
   useRepositorySource: () => ({ source: fixture.source, again: fixture.again }),
+}));
+vi.mock("~/zerops/useGitBrowse", () => ({
+  useGitBrowse: () => ({ view: fixture.home, again: () => undefined }),
+  useGitBrowseReads: () => ({ views: fixture.refs, again: () => undefined }),
 }));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: ({ appId, repo }: { appId: string; repo: string }) => (
@@ -106,6 +113,24 @@ const value: RepositorySource = {
   ],
   entries: [{ path: "src", type: "tree", mode: "040000", sha: "c".repeat(40) }],
 };
+const sha = "a".repeat(40);
+const ref = (name: string) => ({
+  name,
+  ref: `refs/heads/${name}`,
+  sha,
+  kind: "branch",
+  committedAt: "2026-10-09T00:00:00.000Z",
+  subject: "Subject",
+  outsideMate: false,
+});
+const refsPage = (next: string | null) => [
+  {
+    state: "known",
+    answer: { items: [ref("main"), ref("feature")], next, total: 2 },
+    busy: false,
+    failed: false,
+  },
+];
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
@@ -113,6 +138,24 @@ beforeEach(() => {
   fixture.allowed = true;
   fixture.failure = undefined;
   fixture.source = { state: "known", source: value, busy: false, failed: false };
+  fixture.home = {
+    state: "known",
+    answer: {
+      sha,
+      ref: { name: "main", kind: "branch" },
+      about: {
+        remote: null,
+        mirror: null,
+        updatedAt: "2026-10-09T00:00:00.000Z",
+        branchCount: 2,
+        tagCount: 0,
+      },
+      readme: null,
+    },
+    busy: false,
+    failed: false,
+  };
+  fixture.refs = refsPage(null);
   fixture.again.mockClear();
   fixture.navigate
     .mockReset()
@@ -128,7 +171,15 @@ afterEach(async () => {
   await act(() => root.unmount());
   host.remove();
 });
-const draw = () => act(() => root.render(<ZeropsGitPage />));
+const draw = async () => {
+  await act(() => root.render(<ZeropsGitPage />));
+  // Each repository page is its own chunk: wait for the one the link names.
+  await act(async () => {
+    await Promise.all([import("./gitBrowser/GitRepoHome"), import("./gitBrowser/GitRepoCode")]);
+  });
+};
+/** Popovers open in a portal, outside the page's own element. */
+const page = () => document.body.textContent ?? "";
 const detail = () => host.querySelector('[data-zerops-surface="repository-browser"]')!;
 async function press(words: string, within: ParentNode = host) {
   const node = [...within.querySelectorAll<HTMLElement>("button, a")].find(
@@ -152,19 +203,21 @@ it("Opening source keeps the project and repository visible", async () => {
   expect(detail().textContent).toContain("Open changes");
   expect(detail().textContent).toContain("Add a due date");
   expect(detail().textContent).not.toContain("Other repository change");
-  expect(detail().querySelector("details")?.open).toBe(false);
-  expect(detail().textContent).toContain("Source");
+  expect(page()).not.toContain("Credentials for");
+  expect(detail().querySelector('[aria-label="Source"]')).not.toBeNull();
   await press("src", detail());
   expect(fixture.search).toEqual({
     appId: "shop",
     repo: "appdev",
     rev: "a".repeat(40),
+    view: "code",
     path: "src",
     kind: "tree",
   });
   expect(detail().textContent).toContain("Shop");
   await press("Up one folder", detail());
   expect(fixture.search.path).toBe("");
+  await press("Code", detail());
   await press("Review", detail());
   expect(fixture.navigate).toHaveBeenLastCalledWith({
     to: "/change/$groupId/$repository/$number",
@@ -180,22 +233,18 @@ it("Branch selection resets the path without switching the Mate’s checkout", a
     rev: "a".repeat(40),
   };
   await draw();
-  const select = detail().querySelector("select")!;
-  await act(() => {
-    select.value = "refs/heads/feature";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await press("main", detail());
+  const feature = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.textContent === "feature",
+  );
+  expect(feature, "the picker lists the feature branch").toBeDefined();
+  await act(() => feature!.click());
+  await draw();
   expect(fixture.navigate).toHaveBeenCalledExactlyOnceWith({
     to: "/git",
-    search: expect.any(Function),
+    search: { appId: "shop", repo: "appdev", rev: "feature" },
   });
-  expect(fixture.search).toEqual({
-    appId: "shop",
-    repo: "appdev",
-    rev: "refs/heads/feature",
-    path: "",
-    kind: "tree",
-  });
+  expect(fixture.search).toEqual({ appId: "shop", repo: "appdev", rev: "feature" });
   expect(detail().textContent).toContain("Browsing source does not switch a Mate’s checkout.");
 });
 it("Returning from source restores the selected overview", async () => {
@@ -221,12 +270,15 @@ it("Failed and limited reads never look complete", async () => {
     failed: true,
   };
   fixture.failure = "HQ is unavailable.";
+  fixture.refs = refsPage("0.1.refs/heads/feature");
   await open();
   expect(detail().textContent).toContain("Showing the last read source.");
   expect(detail().textContent).toContain("Showing the last read changes.");
-  expect(detail().textContent).toContain("Only the first branches");
   expect(detail().textContent).toContain("Only the first entries");
-  expect(detail().textContent).toContain("Clone with HTTPS");
+  await press("Clone", detail());
+  expect(page()).toContain("Clone with HTTPS");
+  await press("main", detail());
+  expect(page()).toContain("Show more");
   await press("Read again", detail().querySelector('[aria-label="Source"]')!);
   expect(fixture.again).toHaveBeenCalledOnce();
   fixture.source = {
@@ -256,7 +308,8 @@ it.each([
     expect(detail().textContent).toContain("Shop");
     expect(detail().textContent).toContain("Add a due date");
     expect(detail().textContent).toContain(words);
-    expect(detail().textContent).toContain("Clone with HTTPS");
+    await press("Clone", detail());
+    expect(page()).toContain("Clone with HTTPS");
     expect(detail().textContent).not.toContain("No files here.");
   },
 );
@@ -268,24 +321,19 @@ it("Source refusal withholds changes and HTTPS even before offers catch up", asy
     alert: true,
     busy: false,
   };
+  fixture.home = { state: "withheld" };
   await open();
   expect(detail().textContent).toContain("You no longer have access");
   expect(detail().textContent).not.toContain("Add a due date");
-  expect(detail().querySelector("details")).toBeNull();
+  expect(
+    [...detail().querySelectorAll("button")].map((button) => button.textContent),
+  ).not.toContain("Clone");
 });
 it("Clone with HTTPS opens the existing credentials for this project and repository", async () => {
   await open();
-  const clone = detail().querySelector("details")!;
-  expect(clone.open).toBe(false);
-  expect(clone.textContent).not.toContain("Credentials for");
-  await act(() => {
-    clone.open = true;
-    clone.dispatchEvent(new Event("toggle"));
-  });
-  expect(clone.textContent).toContain("Credentials for shop/appdev");
-  await act(() => {
-    clone.open = false;
-    clone.dispatchEvent(new Event("toggle"));
-  });
-  expect(clone.textContent).not.toContain("Credentials for");
+  expect(page()).not.toContain("Credentials for");
+  await press("Clone", detail());
+  expect(page()).toContain("Credentials for shop/appdev");
+  await press("Clone", detail());
+  expect(page()).not.toContain("Credentials for");
 });

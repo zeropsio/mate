@@ -56,7 +56,8 @@ import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize from "rehype-sanitize";
+import { MARKDOWN_SANITIZE_SCHEMA } from "./markdownSanitizeSchema";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { bareUrlLabel } from "../markdown-bare-urls";
@@ -322,21 +323,6 @@ function rehypeNormalizeWindowsImageSrc() {
   };
 }
 
-const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    "*": (defaultSchema.attributes?.["*"] ?? []).filter((attribute) => attribute !== "title"),
-    code: [...(defaultSchema.attributes?.code ?? []), "dataCodeMeta", "dataInlineCode"],
-    blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "dataAlert"],
-  },
-  protocols: {
-    ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "file"],
-    src: [...(defaultSchema.protocols?.src ?? []), "file"],
-  },
-} satisfies Parameters<typeof rehypeSanitize>[0];
-
 const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
   remarkGithubAlerts,
@@ -358,7 +344,7 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypePreserveBareAnchorPlaceholders,
   rehypeRaw,
   rehypeNormalizeWindowsImageSrc,
-  [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
+  [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 function extractFenceLanguage(className: string | undefined): string {

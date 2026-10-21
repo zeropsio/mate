@@ -455,6 +455,9 @@ export {
 } from "./projections/hqAutoUpdatePolicy.ts";
 export { repositorySource } from "./projections/repositorySource.ts";
 export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
+export { gitBrowse, type GitBrowseView } from "./projections/gitBrowse.ts";
+export { makeGitBrowseReads } from "./adapters/hqGitBrowse.ts";
+export { type GitBrowseKey } from "./families/hqGitBrowse.ts";
 
 export { workspaceReading, type WorkspaceReading } from "./projections/mateWorkspace.ts";
 export { makeWorkspaceReads, makeWorkspaceWire } from "./adapters/mateWorkspace.ts";

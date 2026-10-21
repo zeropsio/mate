@@ -318,6 +318,12 @@ describe("gitHost", () => {
           [refused.reason, refused.message],
           ["unavailable", status.quarantined[0]!.reason],
         );
+        // The Git browser's reads are withheld with the rest.
+        const browsed = yield* Effect.flip(git.browse.resolve(web, undefined));
+        assert.deepStrictEqual(
+          [browsed.reason, browsed.message],
+          ["unavailable", status.quarantined[0]!.reason],
+        );
         NodeFS.rmdirSync(config);
         NodeFS.writeFileSync(config, good);
         // Git opens again around it: each try asks for the layer anew, as every caller does.

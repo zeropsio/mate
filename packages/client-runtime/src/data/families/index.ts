@@ -41,6 +41,7 @@ import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
 import { mateMcpServersFamily } from "./mateMcpServers.ts";
 import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
 import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { hqGitBrowseFamily } from "./hqGitBrowse.ts";
 import { mateActionRequestFamily } from "./mateActionRequest.ts";
 import { MATE_FEED_FAMILIES } from "./mateFeeds.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
@@ -167,6 +168,7 @@ export const FAMILIES = defineFamilies([
   mateVcsRefsFamily,
 
   hqRepositorySourceFamily,
+  hqGitBrowseFamily,
   hqAutoUpdatePolicyFamily,
   mateSetupFamily,
   ...Object.values(MATE_FEED_FAMILIES),

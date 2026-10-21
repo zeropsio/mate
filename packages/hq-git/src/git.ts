@@ -196,6 +196,36 @@ export class GitRunner {
     return (await this.exec(args, options)).stdout;
   }
 
+  /** Collects a prefix, then stops the process instead of reading a huge blob or patch into memory. */
+  async prefix(
+    args: string[],
+    signal: AbortSignal,
+    max: number,
+  ): Promise<{ readonly bytes: Buffer; readonly truncated: boolean }> {
+    const process = this.start(args, { signal });
+    process.child.stdin.end();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let truncated = false;
+    try {
+      for await (const chunk of process.child.stdout) {
+        const bytes = Buffer.from(chunk as Uint8Array);
+        const remaining = max - size;
+        chunks.push(bytes.subarray(0, Math.max(0, remaining)));
+        size += bytes.length;
+        if (size > max) {
+          truncated = true;
+          break;
+        }
+      }
+      if (!truncated) await process.done;
+      return { bytes: Buffer.concat(chunks), truncated };
+    } finally {
+      terminate(process.child);
+      await process.done.catch(() => {});
+    }
+  }
+
   /** Like run, and reports which accepted exit code git ended with. */
   async exec(
     args: string[],

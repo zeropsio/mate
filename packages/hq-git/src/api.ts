@@ -4,6 +4,7 @@ import type * as NodeStream from "node:stream";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as Redacted from "effect/Redacted";
+import type { HqGitBrowse } from "./browse/service.ts";
 
 export type Principal =
   | { readonly kind: "mate"; readonly mateId: string; readonly appId: string }
@@ -515,4 +516,6 @@ export interface HqGit {
   /** Stream belongs to the consumer: destroy it on cancellation; layer scope also stops git. */
   readonly archive: (repo: Repo, sha: string) => Effect.Effect<NodeStream.Readable, GitError>;
   readonly handler: NodeHttp.RequestListener;
+  /** What a person's Git browser reads (`browse/service.ts`). */
+  readonly browse: HqGitBrowse;
 }
