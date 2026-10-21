@@ -381,18 +381,14 @@ export function ZeropsGitPage() {
           onReadChanges={readAgain}
           onOpenChange={(number) => openChange(search.appId!, search.repo!, number)}
           repo={search.repo}
-          query={{
-            ...(search.rev === undefined ? {} : { rev: search.rev }),
-            path: search.path ?? "",
-            kind: search.kind ?? "tree",
-          }}
+          query={search}
           onBack={() => {
             void navigate({ to: "/git", search: {} });
           }}
           onNavigate={(query) => {
             void navigate({
               to: "/git",
-              search: (previous) => ({ ...previous, ...query }),
+              search: { appId: search.appId!, repo: search.repo!, ...query },
             });
           }}
         />

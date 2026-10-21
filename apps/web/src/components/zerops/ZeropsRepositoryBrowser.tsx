@@ -1,13 +1,11 @@
 import { FileIcon, FolderIcon } from "lucide-react";
-import { Card } from "../ui/card";
-import { useState } from "react";
+import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
-import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
-import { GitTokenGuide } from "./GitTokenGuide";
-import { ZeropsGitCredentials } from "./ZeropsGitCredentials";
-import type { RepositorySource, RepositoryQuery } from "@t3tools/shared/hqGit";
-import { Button, InlineButton } from "~/components/ui/button";
-import { useRepositorySource } from "~/zerops/useRepositorySource";
+import type { RepositorySource } from "@t3tools/shared/hqGit";
+import { appBasePath } from "~/basePath";
+import { useGitBrowse } from "~/zerops/useGitBrowse";
+import { GitBrowseView, gitView, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
+import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 
 export function ZeropsRepositorySource({
   source,
@@ -90,6 +88,10 @@ export function ZeropsRepositorySource({
   );
 }
 
+/**
+ * A repository in the Git browser: its frame and the page its link names, read only while the
+ * person's access to the application is verified.
+ */
 export function ZeropsRepositoryBrowser({
   appId,
   project,
@@ -113,34 +115,26 @@ export function ZeropsRepositoryBrowser({
   readonly allowed: boolean | undefined;
   readonly accessReason?: string | undefined;
   readonly repo: string;
-  readonly query: RepositoryQuery;
-  readonly onNavigate: (query: RepositoryQuery) => void;
+  readonly query: GitBrowseSearch;
+  /** Opens another page of this repository: the whole link, never merged into the last one. */
+  readonly onNavigate: (search: GitBrowseSearch) => void;
   readonly onBack: () => void;
 }) {
-  const [cloneOpen, setCloneOpen] = useState(false);
-  const { source, again } = useRepositorySource({ appId, repo, query }, allowed);
-  const heading = (
-    <>
-      <nav className="flex min-w-0 flex-wrap items-center gap-2 text-sm" aria-label="Repository">
-        <InlineButton onClick={onBack}>Git</InlineButton>
-        <span className="text-muted-foreground"> / {project} / </span>
-        <span className="break-all font-medium text-foreground">{repo}</span>
-        {repo === "group" ? <span className="text-xs text-muted-foreground">Setup</span> : null}
-      </nav>
-      <div>
-        <h1 className="text-xl font-medium text-foreground">{repo}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {project}’s {repo === "group" ? "setup repository" : "repository"}
-        </p>
-      </div>
-    </>
+  const { rev } = query;
+  const home = useGitBrowse(
+    { appId, repo, read: "home", params: rev === undefined ? {} : { rev } },
+    allowed,
   );
-  if (allowed !== true || source.state === "withheld") {
+  const changes = useMemo(
+    () => (repository?.changes ?? []).map(({ pull }) => pull),
+    [repository?.changes],
+  );
+  if (allowed !== true || home.view.state === "withheld") {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
-        {heading}
+        <GitRepoHeading project={project} repo={repo} onBack={onBack} />
         <p className="text-sm text-muted-foreground" role="alert">
-          {(source.state === "withheld" ? source.words : accessReason) ??
+          {accessReason ??
             (allowed === undefined
               ? "Your access to this repository has not been verified."
               : "You do not have access to this repository.")}
@@ -148,154 +142,38 @@ export function ZeropsRepositoryBrowser({
       </section>
     );
   }
-  const value = source.state === "known" ? source.source : undefined;
+  const view = gitView(query);
+  const hrefOf = (search: GitBrowseSearch) =>
+    `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...search })}`;
   return (
     <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
-      {heading}
-      <section aria-label="Open changes" className="flex flex-col gap-2">
-        <h2 className="text-base font-medium text-foreground">Open changes</h2>
-        {changesFailure === undefined ? null : (
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-status-failed" role="alert">
-              {changesFailure}
-            </p>
-            <Button variant="ghost" size="sm" onClick={onReadChanges}>
-              Read again
-            </Button>
-          </div>
-        )}
-        {repository === undefined || repository.coverage === "unread" ? (
-          <p className="text-sm text-muted-foreground">Changes not read yet.</p>
-        ) : repository.coverage === "failed" ? (
-          <p className="text-sm text-muted-foreground">Showing the last read changes.</p>
-        ) : null}
-        {repository !== undefined && repository.changes.length > 0 ? (
-          <Card variant="flat">
-            <div className="divide-y divide-border px-4 py-1">
-              {repository.changes.map((change) => (
-                <ZeropsGitChangeRow
-                  key={change.pull.number}
-                  change={change}
-                  project={project}
-                  repo={repo}
-                  onOpen={
-                    onOpenChange === undefined ? undefined : () => onOpenChange(change.pull.number)
-                  }
-                />
-              ))}
-            </div>
-          </Card>
-        ) : repository?.coverage === "complete" ? (
-          <p className="text-sm text-muted-foreground">No open changes.</p>
-        ) : null}
-      </section>
-      <Card variant="flat">
-        <details className="px-4 py-3" onToggle={(event) => setCloneOpen(event.currentTarget.open)}>
-          <summary className="cursor-pointer text-sm font-medium text-foreground">
-            Clone with HTTPS
-          </summary>
-          <div className="pt-3">
-            {cloneOpen ? <ZeropsGitCredentials appId={appId} repo={repo} /> : null}
-          </div>
-        </details>
-      </Card>
-      {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
-      <section aria-label="Source" className="flex min-w-0 flex-col gap-3">
-        <div>
-          <h2 className="text-base font-medium text-foreground">Source</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Browsing source does not switch a Mate’s checkout.
-          </p>
-        </div>
-        <Card variant="flat">
-          <div className="flex min-w-0 flex-col gap-3 p-4">
-            {source.state !== "known" ? (
-              <>
-                <p
-                  className="text-sm text-muted-foreground"
-                  role={source.alert ? "alert" : "status"}
-                >
-                  {source.state === "reading" ? "Reading source…" : source.words}
-                </p>
-                <div>
-                  <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
-                    Read again
-                  </Button>
-                </div>
-              </>
-            ) : null}
-            {value === undefined ? null : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    Branch
-                    <select
-                      className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
-                      value={
-                        value.branches.find((branch) => branch.ref === query.rev)?.ref ??
-                        value.branches.find((branch) => branch.sha === value.revision)?.ref ??
-                        ""
-                      }
-                      onChange={(event) =>
-                        onNavigate({ rev: event.target.value, path: "", kind: "tree" })
-                      }
-                    >
-                      <option value="" disabled>
-                        Commit {value.revision?.slice(0, 7) ?? "unborn"}
-                      </option>
-                      {value.branches.map((branch) => (
-                        <option key={branch.ref} value={branch.ref}>
-                          {branch.ref.replace(/^refs\/heads\//u, "")}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">
-                    {query.path || "/"}
-                    {value?.revision ? ` · ${value.revision.slice(0, 7)}` : ""}
-                  </span>
-                  <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
-                    {source.busy ? "Reading source…" : "Read again"}
-                  </Button>
-                </div>
-                {query.path !== "" ? (
-                  <div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        onNavigate({
-                          ...(value?.revision ? { rev: value.revision } : {}),
-                          path: query.path.split("/").slice(0, -1).join("/"),
-                          kind: "tree",
-                        })
-                      }
-                    >
-                      Up one folder
-                    </Button>
-                  </div>
-                ) : null}
-                {source.state === "known" && source.failed ? (
-                  <p className="text-sm text-status-failed" role="alert">
-                    HQ could not read this repository again. Showing the last read source.
-                  </p>
-                ) : null}
-                {value.branchesTruncated ? (
-                  <p className="text-sm text-muted-foreground">
-                    Only the first branches are listed. Clone to see them all.
-                  </p>
-                ) : null}
-                <ZeropsRepositorySource
-                  source={value}
-                  onOpen={(path, kind) =>
-                    onNavigate({ ...(value.revision ? { rev: value.revision } : {}), path, kind })
-                  }
-                />
-              </>
-            )}
-          </div>
-        </Card>
-      </section>
+      <GitRepoFrame
+        appId={appId}
+        repo={repo}
+        project={project}
+        rev={rev}
+        view={view}
+        home={home.view}
+        changes={changes}
+        onBack={onBack}
+        onPick={(next) => onNavigate({ rev: next })}
+        onTab={(next) => onNavigate({ ...(rev === undefined ? {} : { rev }), view: next })}
+      />
+      <GitBrowseView
+        view={view}
+        appId={appId}
+        repo={repo}
+        project={project}
+        search={query}
+        home={home.view}
+        onHomeAgain={home.again}
+        repository={repository}
+        changesFailure={changesFailure}
+        onReadChanges={onReadChanges}
+        onOpenChange={onOpenChange}
+        navigate={onNavigate}
+        hrefOf={hrefOf}
+      />
     </section>
   );
 }
