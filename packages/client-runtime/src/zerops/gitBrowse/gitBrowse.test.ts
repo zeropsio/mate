@@ -58,7 +58,7 @@ describe("Git browse reads", () => {
     const release = reader.demand(key);
     const second = reader.demand(key);
     await known;
-    expect(registry.get(projected)).toMatchObject({ state: "known", value: home });
+    expect(registry.get(projected)).toMatchObject({ state: "known", answer: home });
     expect(asked).toEqual(["/api/apps/app/repos/repo/browse/home?rev=main"]);
     release();
     second();

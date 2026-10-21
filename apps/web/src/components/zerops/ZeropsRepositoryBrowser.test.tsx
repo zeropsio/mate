@@ -218,7 +218,7 @@ const knownHome = (readme: { readonly path: string; readonly content: string } |
   state: "known",
   busy: false,
   failed: false,
-  value: {
+  answer: {
     sha,
     ref: { name: "main", kind: "branch" },
     about: {

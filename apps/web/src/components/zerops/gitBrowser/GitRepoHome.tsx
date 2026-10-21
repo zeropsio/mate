@@ -157,10 +157,10 @@ export function GitRepoHome(props: GitRepoPageProps) {
     <div className="flex min-w-0 flex-col gap-4">
       <OpenChanges {...props} />
       {home.state === "known" ? (
-        home.value.sha === null ? (
+        home.answer.sha === null ? (
           <p className="text-sm text-muted-foreground">No commits on this branch yet.</p>
         ) : (
-          <HomeAt {...props} home={home.value} sha={home.value.sha} />
+          <HomeAt {...props} home={home.answer} sha={home.answer.sha} />
         )
       ) : home.state === "withheld" ? null : home.state === "unread" ? (
         <p className="text-sm text-muted-foreground" role="status">

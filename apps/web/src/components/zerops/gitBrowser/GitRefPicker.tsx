@@ -86,7 +86,7 @@ export function GitRefPicker({
   const items = useMemo(
     () =>
       views.flatMap((view): ReadonlyArray<GitRefItem> =>
-        view.state === "known" ? view.value.items : [],
+        view.state === "known" ? view.answer.items : [],
       ),
     [views],
   );
@@ -98,7 +98,7 @@ export function GitRefPicker({
   const byValue = useMemo(() => new Map(rows.map((row) => [row.value, row])), [rows]);
   const indexOf = useMemo(() => new Map(rows.map((row, at) => [row.value, at])), [rows]);
   const last = views.at(-1);
-  const next = last?.state === "known" ? last.value.next : null;
+  const next = last?.state === "known" ? last.answer.next : null;
   const trouble = views.find((view) => view.state === "failed" || view.state === "refused");
   const reading = views.some(
     (view) => view.state === "unread" || (view.state === "known" && view.busy),

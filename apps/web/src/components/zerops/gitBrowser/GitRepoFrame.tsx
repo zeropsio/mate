@@ -30,9 +30,9 @@ const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
 /** What the picker's button says the pages read. */
 const readingLabel = (home: GitBrowseState<GitHome>, rev: string | undefined) => {
   if (home.state !== "known") return rev ?? "main";
-  return home.value.ref.kind === "commit" && home.value.sha !== null
-    ? `Commit ${home.value.sha.slice(0, 7)}`
-    : home.value.ref.name;
+  return home.answer.ref.kind === "commit" && home.answer.sha !== null
+    ? `Commit ${home.answer.sha.slice(0, 7)}`
+    : home.answer.ref.name;
 };
 
 function ClonePopover({
@@ -115,7 +115,7 @@ export function GitRepoFrame({
   readonly onPick: (rev: string) => void;
   readonly onTab: (view: GitView) => void;
 }) {
-  const about = home.state === "known" ? home.value.about : null;
+  const about = home.state === "known" ? home.answer.about : null;
   // A tab opens its first page; which one is lit follows the page shown.
   const active = GIT_VIEW_TABS.find((tab) => tab.views.includes(view)) ?? GIT_VIEW_TABS[0]!;
   return (
@@ -160,7 +160,7 @@ export function GitRepoFrame({
           appId={appId}
           repo={repo}
           label={readingLabel(home, rev)}
-          kind={home.state === "known" ? home.value.ref.kind : null}
+          kind={home.state === "known" ? home.answer.ref.kind : null}
           changes={changes}
           mounted={about?.remote != null}
           onPick={onPick}

@@ -10,7 +10,12 @@ import { sameValue } from "./equal.ts";
 export type GitBrowseView<V = GitBrowseValue> =
   | { readonly state: "withheld" }
   | { readonly state: "unread"; readonly busy: boolean }
-  | { readonly state: "known"; readonly value: V; readonly busy: boolean; readonly failed: boolean }
+  | {
+      readonly state: "known";
+      readonly answer: V;
+      readonly busy: boolean;
+      readonly failed: boolean;
+    }
   | { readonly state: "failed"; readonly words: string }
   | { readonly state: "refused"; readonly reason: string; readonly words: string };
 
@@ -26,7 +31,7 @@ export const gitBrowse: Projection<
     if (key.allowed !== true || fact.kind === "withheld") return { state: "withheld" };
     const busy = stream.phase === "connecting" || stream.phase === "baselining";
     if (fact.kind === "known")
-      return { state: "known", value: fact.value, busy, failed: stream.fault !== null };
+      return { state: "known", answer: fact.value, busy, failed: stream.fault !== null };
     if (stream.fault?.outcome === "definitive-refusal")
       return {
         state: "refused",
