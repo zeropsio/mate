@@ -1,19 +1,26 @@
 /**
  * The Git browser's reads, one line each: what each asks (its query, encoded into the URL's search
  * parameters) and what it answers. `HqApi.gitBrowse`, the `hqGitBrowse` family and the web hook
- * read this table, so a new read touches none of them.
+ * read this table, so a new read touches none of them. A read of `bytes` answers a `Blob` through
+ * `HqApi.gitBrowseBytes`; every other one JSON through `HqApi.gitBrowse`.
  *
  * @module zerops/gitBrowse/reads
  */
 import * as Schema from "effect/Schema";
+import { blobRead } from "./blob.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
+import { rawRead } from "./raw.ts";
 import { refsRead } from "./refs.ts";
+import { treeRead } from "./tree.ts";
 
 export const GIT_BROWSE_READS = {
   home: homeRead,
   refs: refsRead,
   log: logRead,
+  tree: treeRead,
+  blob: blobRead,
+  raw: rawRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;

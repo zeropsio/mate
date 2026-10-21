@@ -2,9 +2,8 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { RepositorySource } from "@t3tools/shared/hqGit";
+import type { GitTree } from "@t3tools/shared/hqGitBrowse/tree";
 import type { GitSearch } from "~/routes/git";
-import type { useRepositorySource } from "~/zerops/useRepositorySource";
 import { ZeropsGitPage } from "./ZeropsGitPage";
 
 type Search = GitSearch;
@@ -12,7 +11,9 @@ const fixture = vi.hoisted(() => ({
   search: {} as Search,
   home: {} as unknown,
   refs: [] as Array<unknown>,
-  source: {} as ReturnType<typeof useRepositorySource>["source"],
+  /** The page's folder read and file read. */
+  tree: {} as unknown,
+  blob: { state: "unread", busy: false } as unknown,
   again: vi.fn(),
   allowed: true as boolean | undefined,
   failure: undefined as string | undefined,
@@ -22,13 +23,22 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => fixture.search,
   useNavigate: () => fixture.navigate,
 }));
-vi.mock("~/zerops/useRepositorySource", () => ({
-  useRepositorySource: () => ({ source: fixture.source, again: fixture.again }),
-}));
 vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: () => ({ view: fixture.home, again: () => undefined }),
+  useGitBrowse: ({ read }: { read: string }) =>
+    read === "home"
+      ? { view: fixture.home, again: () => undefined }
+      : {
+          view:
+            read === "tree"
+              ? fixture.tree
+              : read === "blob"
+                ? fixture.blob
+                : { state: "unread", busy: false },
+          again: fixture.again,
+        },
   useGitBrowseReads: () => ({ views: fixture.refs, again: () => undefined }),
 }));
+vi.mock("./gitBrowser/GitTreeSidebar", () => ({ GitTreeSidebar: () => null }));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: ({ appId, repo }: { appId: string; repo: string }) => (
     <div>
@@ -101,17 +111,9 @@ vi.mock("~/zerops/projectFlows", () => ({
     ]),
   }),
 }));
-const value: RepositorySource = {
-  kind: "tree",
-  revision: "a".repeat(40),
-  path: "",
+const value: GitTree = {
   truncated: false,
-  branchesTruncated: false,
-  branches: [
-    { ref: "refs/heads/main", sha: "a".repeat(40) },
-    { ref: "refs/heads/feature", sha: "b".repeat(40) },
-  ],
-  entries: [{ path: "src", type: "tree", mode: "040000", sha: "c".repeat(40) }],
+  entries: [{ name: "src", path: "src", type: "folder", mode: "040000", sha: "c".repeat(40) }],
 };
 const sha = "a".repeat(40);
 const ref = (name: string) => ({
@@ -137,7 +139,8 @@ beforeEach(() => {
   fixture.search = {};
   fixture.allowed = true;
   fixture.failure = undefined;
-  fixture.source = { state: "known", source: value, busy: false, failed: false };
+  fixture.tree = { state: "known", answer: value, busy: false, failed: false };
+  fixture.blob = { state: "unread", busy: false };
   fixture.home = {
     state: "known",
     answer: {
@@ -215,7 +218,7 @@ it("Opening source keeps the project and repository visible", async () => {
     kind: "tree",
   });
   expect(detail().textContent).toContain("Shop");
-  await press("Up one folder", detail());
+  await press("appdev", detail().querySelector('nav[aria-label="Path"]')!);
   expect(fixture.search.path).toBe("");
   await press("Code", detail());
   await press("Review", detail());
@@ -263,9 +266,9 @@ it("Returning from source restores the selected overview", async () => {
   expect(host.querySelector('[data-zerops-git-repository="group"]')).not.toBeNull();
 });
 it("Failed and limited reads never look complete", async () => {
-  fixture.source = {
+  fixture.tree = {
     state: "known",
-    source: { ...value, truncated: true, branchesTruncated: true },
+    answer: { ...value, truncated: true },
     busy: false,
     failed: true,
   };
@@ -281,9 +284,15 @@ it("Failed and limited reads never look complete", async () => {
   expect(page()).toContain("Show more");
   await press("Read again", detail().querySelector('[aria-label="Source"]')!);
   expect(fixture.again).toHaveBeenCalledOnce();
-  fixture.source = {
+  fixture.home = {
     state: "known",
-    source: { ...value, revision: null, branches: [], entries: [] },
+    answer: { ...(fixture.home as { answer: object }).answer, sha: null, readme: null },
+    busy: false,
+    failed: false,
+  };
+  fixture.tree = {
+    state: "known",
+    answer: { entries: [], truncated: false },
     busy: false,
     failed: false,
   };
@@ -298,12 +307,10 @@ it.each([
 ] as const)(
   "Repository context and clone remain reachable when source is %s",
   async (state, words, alert) => {
-    fixture.source = {
-      state,
-      words: state === "reading" ? "Reading…" : words,
-      alert,
-      busy: state === "reading",
-    };
+    fixture.tree =
+      state === "failed" && alert
+        ? { state, words }
+        : { state: "unread", busy: state === "reading" };
     await open();
     expect(detail().textContent).toContain("Shop");
     expect(detail().textContent).toContain("Add a due date");
@@ -315,12 +322,7 @@ it.each([
 );
 
 it("Source refusal withholds changes and HTTPS even before offers catch up", async () => {
-  fixture.source = {
-    state: "withheld",
-    words: "You no longer have access to this repository.",
-    alert: true,
-    busy: false,
-  };
+  fixture.tree = { state: "withheld" };
   fixture.home = { state: "withheld" };
   await open();
   expect(detail().textContent).toContain("You no longer have access");

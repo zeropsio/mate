@@ -41,6 +41,9 @@ const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   ),
 };
 
+/** Whether a page is built yet: a link to one that is not is not offered. */
+export const hasGitView = (view: GitView) => VIEWS[view] !== undefined;
+
 /** The repository's tabs, each opening its first page and lit on any of them. */
 export const GIT_VIEW_TABS: ReadonlyArray<{
   readonly label: string;

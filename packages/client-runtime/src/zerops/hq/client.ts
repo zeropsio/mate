@@ -34,13 +34,8 @@ import {
   type AttachmentLink,
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
-import {
-  GitCredential,
-  GitCredentialList,
-  type GitCredentialRecord,
-  RepositorySource,
-  type RepositoryQuery,
-} from "@t3tools/shared/hqGit";
+import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
+import type { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
@@ -83,6 +78,7 @@ import {
   type GitBrowseRead,
   type GitBrowseValue,
 } from "../gitBrowse/reads.ts";
+import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
@@ -512,13 +508,6 @@ export interface HqApi {
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
-  /** Source content pinned to a commit; uses the same person read rule as changes. */
-  readonly repositorySource: (
-    appId: string,
-    repo: string,
-    query: RepositoryQuery,
-    signal?: AbortSignal,
-  ) => Promise<RepositorySource>;
   /** One of the Git browser's reads (`zerops/gitBrowse/reads.ts`), after the person's read rule. */
   readonly gitBrowse: <R extends GitBrowseRead>(
     read: R,
@@ -527,6 +516,16 @@ export interface HqApi {
     params: GitBrowseParams<R>,
     signal?: AbortSignal,
   ) => Promise<GitBrowseValue<R>>;
+  /**
+   * A file's bytes (`raw`), held as an image, plain text or an octet stream whatever HQ sends,
+   * so opening them runs nothing.
+   */
+  readonly gitBrowseBytes: (
+    appId: string,
+    repo: string,
+    params: GitRawQuery,
+    signal?: AbortSignal,
+  ) => Promise<Blob>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (
     link: ChangeLink,
@@ -1567,13 +1566,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    repositorySource: async (appId, repo, query, signal) =>
-      decoded(RepositorySource)(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
-          signal === undefined ? {} : { signal },
-        ),
-      ),
     gitBrowse: async <R extends GitBrowseRead>(
       read: R,
       appId: string,
@@ -1587,6 +1579,24 @@ export function makeHqApi(input: {
           signal === undefined ? {} : { signal },
         ),
       ),
+    gitBrowseBytes: async (appId, repo, params, signal) => {
+      const response = await authorized(
+        gitBrowsePath("raw", appId, repo, params),
+        signal === undefined ? {} : { signal },
+      );
+      let bytes: ArrayBuffer;
+      try {
+        bytes = await response.arrayBuffer();
+      } catch {
+        // Cut on its way, like a call that never arrived.
+        throw new HqError({
+          kind: "unavailable",
+          code: "network",
+          message: "HQ could not be reached.",
+        });
+      }
+      return new Blob([bytes], { type: heldType(response.headers.get("content-type")) });
+    },
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
     release: (appId, request) =>

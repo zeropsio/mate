@@ -453,8 +453,6 @@ export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
-export { repositorySource } from "./projections/repositorySource.ts";
-export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
 export { gitBrowse, type GitBrowseView } from "./projections/gitBrowse.ts";
 export { makeGitBrowseReads } from "./adapters/hqGitBrowse.ts";
 export { type GitBrowseKey } from "./families/hqGitBrowse.ts";

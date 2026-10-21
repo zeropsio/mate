@@ -276,7 +276,6 @@ export const HQ_CLIENT_VERBS = [
   "gitCredentials",
   "issueGitCredential",
   "revokeGitCredential",
-  "repositorySource",
   "change",
   "commentOnChange",
   "mergeChange",
