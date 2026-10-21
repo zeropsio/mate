@@ -1553,8 +1553,6 @@
         "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitWhen.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitCommitsView.tsx",
-        "apps/web/src/components/zerops/gitBrowser/GitCommitView.tsx",
-        "apps/web/src/components/zerops/gitBrowser/GitDiffFiles.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitSearchView.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitFileFinder.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitFileFinder.logic.ts",

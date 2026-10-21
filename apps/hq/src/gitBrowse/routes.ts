@@ -19,8 +19,6 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, knock, principal } from "../api.ts";
-import { commitRead } from "./commit.ts";
-import { commitFileRead } from "./commitFile.ts";
 import { grepRead } from "./grep.ts";
 import { browseHeavyLayer } from "./heavy.ts";
 import { homeRead } from "./home.ts";
@@ -126,8 +124,6 @@ const BROWSE_READS = [
   route(homeRead),
   route(refsRead),
   route(logRead),
-  route(commitRead),
-  route(commitFileRead),
   route(pathsRead),
   route(grepRead),
 ] as const;
