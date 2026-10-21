@@ -41,21 +41,26 @@ export interface GitRepoPageProps {
 export const gitView = (search: Pick<GitSearch, "view" | "path" | "kind">): GitView =>
   search.view ?? (search.path !== undefined || search.kind !== undefined ? "code" : "home");
 
-/** The source read a page draws: home's top folder at the commit it resolved, code's path. */
+/**
+ * The source read a page draws: home's top folder at the commit it resolved, code's path; none for
+ * a page that reads no source. A view without a page draws home.
+ */
 export const pageSource = (
   view: GitView,
   search: GitBrowseSearch,
   home: GitBrowseState<GitHome>,
-): RepositoryTarget["query"] | null =>
-  view === "code"
-    ? {
-        ...(search.rev === undefined ? {} : { rev: search.rev }),
-        path: search.path ?? "",
-        kind: search.kind ?? "tree",
-      }
-    : home.state === "known" && home.answer.sha !== null
-      ? { rev: home.answer.sha, path: "", kind: "tree" }
-      : null;
+): RepositoryTarget["query"] | null => {
+  const page = VIEWS[view] === undefined ? "home" : view;
+  if (page === "code")
+    return {
+      ...(search.rev === undefined ? {} : { rev: search.rev }),
+      path: search.path ?? "",
+      kind: search.kind ?? "tree",
+    };
+  return page === "home" && home.state === "known" && home.answer.sha !== null
+    ? { rev: home.answer.sha, path: "", kind: "tree" }
+    : null;
+};
 
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   home: lazy(() => import("./GitRepoHome").then((module) => ({ default: module.GitRepoHome }))),

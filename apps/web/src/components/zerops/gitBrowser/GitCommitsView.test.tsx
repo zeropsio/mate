@@ -99,6 +99,10 @@ async function history(
         search={search}
         home={home}
         onHomeAgain={() => {}}
+        source={{
+          source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false },
+          again: () => {},
+        }}
         repository={more.repository}
         onOpenChange={more.onOpenChange}
         navigate={more.navigate ?? (() => {})}
