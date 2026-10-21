@@ -88,6 +88,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
                 fault: {
                   outcome: "definitive-refusal",
                   message: link.fault?.message ?? "The connection was refused.",
+                  ...(link.fault?.code === undefined ? {} : { code: link.fault.code }),
                 },
               },
             });
