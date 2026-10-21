@@ -2,7 +2,8 @@
  * A repository HQ mirrors to GitHub through the organization's app: GitHub's default branch is
  * upstream. HQ pushes its `main` to an empty repository, fast-forwards its own `main` to GitHub's
  * after a merge there, and pushes each open change's head to a branch of its own on GitHub, from
- * which `pullRequests.ts` keeps the change's pull request.
+ * which `pullRequests.ts` keeps the change's pull request. GitHub's branches and tags follow into
+ * HQ's copy under `refs/github/`, as GitHub has them; nothing there goes back.
  *
  * @module githubMirror
  */
@@ -10,10 +11,12 @@ import type { GitError, HqGit, MirrorRemote, Repo } from "@t3tools/hq-git";
 import { COMPARE_COMMITS_MAX } from "@t3tools/shared/hqChanges";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -52,7 +55,11 @@ export class GithubMirror extends Context.Service<
       appId: string,
       repo: string,
     ) => Effect.Effect<string | undefined, SqlError>;
-    /** Follow GitHub's default branch (see {@link MirrorSync}). */
+    /**
+     * Follow GitHub's default branch (see {@link MirrorSync}), then its other branches and tags
+     * into `refs/github/`. Syncs of one repository coalesce: one runs, one waits, and whoever asks
+     * meanwhile takes the waiting one's outcome.
+     */
     readonly sync: (
       appId: string,
       repo: string,
@@ -139,6 +146,12 @@ export interface GithubMirrorOptions {
   readonly sweepEvery?: Duration.Duration;
 }
 
+const encodeFollowed = Schema.encodeSync(
+  Schema.fromJsonString(
+    Schema.Struct({ fetched: Schema.Number, pruned: Schema.Array(Schema.String) }),
+  ),
+);
+
 const unavailable = (reason: GithubMirrorUnavailable["reason"], detail?: string) =>
   new GithubMirrorUnavailable({ reason, ...(detail === undefined ? {} : { detail }) });
 
@@ -151,7 +164,7 @@ const fromGit = (error: GitError | NotLeader) =>
 /**
  * The mirror: through the organization's GitHub app, a repository's `main` follows GitHub's default
  * branch and its open changes' heads reach their branches there. It follows on every move of HQ's
- * git (`GitHost.moves`), on GitHub's pushes to the default branch (`GithubEvents`), and every
+ * git (`GitHost.moves`), on GitHub's pushes to any branch or tag (`GithubEvents`), and every
  * `sweepEvery`; a failure is logged and tried again on the next of these, never failing the push
  * or merge that asked for it.
  */
@@ -194,6 +207,27 @@ export const githubMirrorLayer = (
             locks.set(key, lock);
           }
           return Semaphore.withPermits(lock, 1)(effect);
+        });
+      /** The sync of a repository that waits for the one running: whoever asks meanwhile joins it. */
+      const waiting = new Map<
+        string,
+        Deferred.Deferred<MirrorSync, GithubMirrorUnavailable | SqlError>
+      >();
+      const coalesced = (
+        key: string,
+        effect: Effect.Effect<MirrorSync, GithubMirrorUnavailable | SqlError>,
+      ) =>
+        Effect.suspend(() => {
+          const queued = waiting.get(key);
+          if (queued !== undefined) return Deferred.await(queued);
+          const outcome = Deferred.makeUnsafe<MirrorSync, GithubMirrorUnavailable | SqlError>();
+          waiting.set(key, outcome);
+          const started = Effect.sync(() => {
+            if (waiting.get(key) === outcome) waiting.delete(key);
+          });
+          return serialized(key, Effect.andThen(started, effect)).pipe(
+            Effect.onExit((exit) => Effect.andThen(started, Deferred.done(outcome, exit))),
+          );
         });
 
       /** The connected GitHub repository: `owner/name`, and its id there as it was connected. */
@@ -400,7 +434,7 @@ export const githubMirrorLayer = (
         );
 
       const sync: GithubMirror["Service"]["sync"] = (appId, repo) =>
-        serialized(
+        coalesced(
           `${appId}/${repo}`,
           Effect.gen(function* () {
             const remote = yield* remoteFor(appId, repo);
@@ -429,6 +463,19 @@ export const githubMirrorLayer = (
                 mate: outcome.mate,
                 github: outcome.github,
               });
+            // GitHub's other branches and tags, as they are there now: what it deleted is named.
+            const refs = yield* git.followRefs(at, remote).pipe(Effect.mapError(fromGit));
+            for (const ref of refs.pruned)
+              yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { appId, repo, ref });
+            yield* leader
+              .write(
+                sql`
+                  UPDATE hq_repo_mirror SET followed_refs = ${encodeFollowed(refs)}::jsonb
+                  WHERE app_id::text = ${appId} AND repo = ${repo}`,
+              )
+              .pipe(
+                Effect.mapError((error) => (error._tag === "NotLeader" ? fromGit(error) : error)),
+              );
             yield* govern(appId, repo);
             return outcome;
           }),
@@ -619,7 +666,8 @@ export const githubMirrorLayer = (
         ),
       );
 
-      // GitHub's push to a mirrored repository's default branch: a merge or a push there.
+      // GitHub's push to a mirrored repository, to any branch or tag, made or deleted: a merge or a
+      // push to the default branch moves Mate's main, and every one follows GitHub's other refs.
       yield* events.on("push", (event) =>
         Effect.gen(function* () {
           const payload = event.payload as {
@@ -627,20 +675,24 @@ export const githubMirrorLayer = (
             readonly after?: unknown;
             readonly repository?: { readonly default_branch?: unknown };
           };
-          const defaultBranch = payload.repository?.default_branch;
-          if (event.repository === undefined || typeof defaultBranch !== "string") return;
+          const ref = payload.ref;
+          if (
+            event.repository === undefined ||
+            typeof payload.repository?.default_branch !== "string" ||
+            typeof ref !== "string" ||
+            !/^refs\/(?:heads|tags)\//u.test(ref)
+          )
+            return;
           const named = event.repository.toLowerCase();
-          if (payload.ref !== `refs/heads/${defaultBranch}`) {
+          const after = typeof payload.after === "string" ? payload.after : "";
+          for (const row of yield* mirrored) {
+            if (remoteIdentity(row.url)?.path !== named) continue;
             // A change's branch moved there: someone added commits to its pull request.
-            if (typeof payload.ref !== "string" || !payload.ref.startsWith("refs/heads/mate/"))
-              return;
-            const after = typeof payload.after === "string" ? payload.after : "";
-            for (const row of yield* mirrored) {
-              if (remoteIdentity(row.url)?.path !== named) continue;
+            if (ref.startsWith("refs/heads/mate/")) {
               const changed = yield* sql<{ readonly number: number }>`
                 SELECT number FROM hq_change_mirror
                 WHERE app_id::text = ${row.app_id} AND repo = ${row.repo}
-                  AND branch = ${payload.ref.slice("refs/heads/".length)}`;
+                  AND branch = ${ref.slice("refs/heads/".length)}`;
               for (const { number } of changed)
                 yield* quietly(
                   "GitHub's push to a change's branch not followed",
@@ -648,10 +700,6 @@ export const githubMirrorLayer = (
                   mirrorChange(row.app_id, row.repo, number, after),
                 );
             }
-            return;
-          }
-          for (const row of yield* mirrored) {
-            if (remoteIdentity(row.url)?.path !== named) continue;
             yield* quietly(
               "GitHub's push not followed",
               { appId: row.app_id, repo: row.repo, deliveryId: event.deliveryId },
