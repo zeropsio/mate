@@ -16,6 +16,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -73,6 +74,8 @@ export class GithubMirror extends Context.Service<
       { readonly branch: string; readonly sha: string } | undefined,
       GithubMirrorUnavailable | SqlError
     >;
+    /** Ticks when a mirrored repository's governance on GitHub changed (`listRepos` reads it). */
+    readonly changes: Stream.Stream<number>;
   }
 >()("@t3tools/hq/githubMirror") {}
 
@@ -84,6 +87,7 @@ export const githubMirrorAbsentLayer = Layer.succeed(
     sync: () => Effect.fail(new GithubMirrorUnavailable({ reason: "not_mirrored" })),
     pushChange: () => Effect.succeed(undefined),
     follow: () => Effect.void,
+    changes: Stream.empty,
   }),
 );
 
@@ -178,6 +182,7 @@ export const githubMirrorLayer = (
       const tasks = yield* MateTasks;
       const gitUrl = options.gitUrl ?? ((repository) => `https://github.com/${repository}.git`);
       const services = yield* Effect.context<Leader | SqlClient.SqlClient>();
+      const governed = yield* SubscriptionRef.make(0);
 
       /** One mirror operation at a time per repository or change: two pushes never race a lease. */
       const locks = new Map<string, Semaphore.Semaphore>();
@@ -382,9 +387,12 @@ export const githubMirrorLayer = (
           const rules = yield* transport.rules(remote, followed.branch, token);
           const governance = governanceOf(rules, grant.appId, grant.permissions);
           if (governance === undefined) return;
-          yield* leader.write(sql`
+          const changed = yield* leader.write(sql`
             UPDATE hq_repo_mirror SET governance = ${governance}
-            WHERE app_id::text = ${appId} AND repo = ${repo}`);
+            WHERE app_id::text = ${appId} AND repo = ${repo}
+              AND governance IS DISTINCT FROM ${governance}
+            RETURNING 1`);
+          if (changed.length > 0) yield* SubscriptionRef.update(governed, (n) => n + 1);
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("a mirrored repository's rules not read", { appId, repo, cause }),
@@ -681,6 +689,12 @@ export const githubMirrorLayer = (
           Effect.asVoid,
         );
 
-      return GithubMirror.of({ repositoryOf, sync, pushChange, follow: followLater });
+      return GithubMirror.of({
+        repositoryOf,
+        sync,
+        pushChange,
+        follow: followLater,
+        changes: SubscriptionRef.changes(governed),
+      });
     }),
   );

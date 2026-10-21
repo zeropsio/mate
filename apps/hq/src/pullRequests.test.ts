@@ -6,6 +6,7 @@ import type { HqNavigationApp, HqNavigationProject } from "@t3tools/shared/hqStr
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { ROBOT_TASK_LINK, automatedPool, deliver, issueEvent } from "../test/harness/automated.ts";
@@ -67,6 +68,7 @@ const mirroredPool = Effect.gen(function* () {
               : Effect.succeed({ kind: "same", sha: "f".repeat(40) } as const);
           }),
         follow: () => Effect.void,
+        changes: Stream.empty,
       });
     }),
   );

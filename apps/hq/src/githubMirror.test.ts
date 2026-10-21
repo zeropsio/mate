@@ -779,6 +779,39 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
         ),
     );
 
+    it.effect(
+      "a ruleset added or removed on GitHub tells a repository's readers once, and a sweep that finds it as it was tells them nothing",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            // What a reader subscribing now is given first: the latest tick.
+            const tick = Effect.map(Stream.runHead(f.mirror.changes), Option.getOrThrow);
+            const told = (rules: unknown) =>
+              Effect.gen(function* () {
+                f.auth.rules = { status: 200, headers: {}, body: JSON.stringify(rules) };
+                const before = yield* tick;
+                yield* f.mirror.sync(f.appId, "appdev");
+                return (yield* tick) - before;
+              });
+            const pinned = [
+              { type: "pull_request" },
+              {
+                type: "required_status_checks",
+                parameters: {
+                  required_status_checks: [{ context: "mate/gate", integration_id: APP_ID }],
+                },
+              },
+            ];
+            yield* told([]);
+            assert.deepStrictEqual(
+              [yield* told(pinned), yield* told(pinned), yield* told([]), yield* told([])],
+              [1, 0, 1, 0],
+            );
+          }),
+        ),
+    );
+
     it.effect("diverged histories move nothing, and the repository says since when", () =>
       Effect.scoped(
         Effect.gen(function* () {
