@@ -220,6 +220,31 @@ describe("a change is a branch", () => {
     );
 
     it.effect(
+      "a change opened again takes the head of the branch pushed before it, when its first opening recorded none",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          const git = yield* gitClient;
+          const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          yield* work.commit("login.ts");
+          const head = yield* work.head;
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          assert.strictEqual((yield* ada.open("Fix the login", "fix-login")).status, 200);
+          // The first opening's read of the branch failed after the change was recorded.
+          yield* rowsWhere(url, "UPDATE hq_change SET head = NULL RETURNING 1", () => true);
+          const again = (yield* ada.open("Fix the login", "fix-login")).body as {
+            readonly created: boolean;
+            readonly change: Body;
+          };
+          assert.deepStrictEqual([again.created, again.change["head"]], [false, head]);
+          yield* recorded(url, 1, head);
+        }),
+    );
+
+    it.effect(
       "a change opened on a branch with nothing beyond main has no head until work is pushed there",
       () =>
         Effect.gen(function* () {

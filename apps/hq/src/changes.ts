@@ -1286,9 +1286,10 @@ export const changesLayer: Layer.Layer<
                 ? PubSub.publish(taskChanged, opened.task)
                 : Effect.void,
             ),
-            // Opened on a branch pushed before it: the change is at its head from the start.
+            // Opened on a branch pushed before it: the change is at its head from the start. Its
+            // head read again while none is recorded, as an opening whose read failed is retried.
             Effect.flatMap((opened) =>
-              !opened.created || opened.change === null
+              opened.change === null || opened.change.head !== null
                 ? Effect.succeed(opened)
                 : Effect.gen(function* () {
                     const change = opened.change;
