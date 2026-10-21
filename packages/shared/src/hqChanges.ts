@@ -420,11 +420,19 @@ export type RepoListResponse = typeof RepoListResponse.Type;
 
 /**
  * One repository of the Mate's application as the Mate reads it: the address of the origin its
- * person connected, never the token HQ keeps for it; none before one is connected.
+ * person connected, never the token HQ keeps for it; none before one is connected — HQ alone keeps
+ * the code. `mode` says whose the code is: `github`, mounted through the organization's GitHub app,
+ * is GitHub's — HQ follows it; `follow`, connected with a person's token, is HQ's, the origin an
+ * upstream to fetch from. Absent from an older HQ.
  */
 export const MateRepo = Schema.Struct({
   name: RepoName,
-  origin: Schema.optionalKey(Schema.Struct({ url: HqRemoteUrl })),
+  origin: Schema.optionalKey(
+    Schema.Struct({
+      url: HqRemoteUrl,
+      mode: Schema.optionalKey(Schema.Literals(["github", "follow"])),
+    }),
+  ),
 });
 export type MateRepo = typeof MateRepo.Type;
 
