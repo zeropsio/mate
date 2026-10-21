@@ -1,7 +1,7 @@
 /**
  * What GitHub tells the organization's app (`githubApp.ts` checks its webhook's signature), handed
  * to whoever listens for that event: the intake for issues and their comments, the pull requests
- * for reviews, checks and merges, the mirror for pushes to a default branch. A listener's failure
+ * for reviews, checks and merges, the mirror for pushes to any branch or tag. A listener's failure
  * is logged and never stops the others.
  *
  * @module githubEvents

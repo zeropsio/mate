@@ -181,6 +181,11 @@ export interface MirrorRemote {
   readonly url: string;
   readonly token: Redacted.Redacted;
 }
+/** What following a mirror's branches and tags did: how many came or moved, which went (full refs). */
+export interface FollowedRefs {
+  readonly fetched: number;
+  readonly pruned: ReadonlyArray<string>;
+}
 export type MirrorPush =
   | { readonly kind: "pushed" }
   /** The remote refused, or its ref is no longer the one expected (`stale`); nothing moved. */
@@ -315,6 +320,12 @@ export interface HqGit {
     remote: MirrorRemote,
     branch: string,
   ) => Effect.Effect<string | null, GitError>;
+  /**
+   * Every branch and tag of the remote, as it is there now, under `refs/github/heads/*` and
+   * `refs/github/tags/*`: moved however it moved, gone where it is gone. Mate's own refs never move
+   * by it, and nothing pushes it back.
+   */
+  readonly followRefs: (repo: Repo, remote: MirrorRemote) => Effect.Effect<FollowedRefs, GitError>;
   /** Whether `ancestor` is `descendant` or comes before it; false where either is no commit here. */
   readonly isAncestor: (
     repo: Repo,

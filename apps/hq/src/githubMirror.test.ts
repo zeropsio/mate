@@ -386,6 +386,18 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     };
   });
 
+/** `refs` of `dir`, by name, one per line. */
+const refsOf = (dir: string, ...patterns: ReadonlyArray<string>) =>
+  native(dir, ["for-each-ref", "--format=%(refname)", ...patterns]);
+/** What the repository's row says its last follow of GitHub's branches and tags did. */
+const followed = (f: Effect.Success<ReturnType<typeof mirrored>>) =>
+  Effect.map(
+    f.sql<{ readonly followed_refs: unknown }>`
+      SELECT followed_refs FROM hq_repo_mirror
+      WHERE app_id::text = ${f.appId} AND repo = 'appdev'`,
+    (rows) => rows[0]?.followed_refs,
+  );
+
 describe("a repository mirrored to GitHub through the organization's app", () => {
   it("a change's branch on GitHub is its number and its title's words, at most 40 characters", () => {
     assert.strictEqual(changeBranch(1, "Add a search box"), "mate/1-add-a-search-box");
@@ -1028,6 +1040,175 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
           yield* f.sql`UPDATE hq_repo_remote SET via = 'token'`;
           assert.strictEqual(yield* f.mirror.repositoryOf(f.appId, "appdev"), undefined);
           assert.strictEqual(refIn(f.github, "refs/heads/main"), null);
+        }),
+      ),
+    );
+
+    it.effect(
+      "A mounted repository's GitHub branches and tags become readable from HQ's copy",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            const feature = commitIn(f.github, [f.main], "feature.ts");
+            native(f.github, ["update-ref", "refs/heads/feature", feature]);
+            native(f.github, ["tag", "-a", "v1.0.0", "-m", "First release", feature]);
+            native(f.github, ["tag", "v0.9.0", f.main]);
+            yield* f.mirror.sync(f.appId, "appdev");
+            const files = (rev: string) =>
+              Effect.map(f.git.tree(f.repo, rev, ""), (tree) => tree.items.map((e) => e.path));
+            assert.deepStrictEqual(yield* files("refs/github/heads/feature"), ["feature.ts"]);
+            assert.deepStrictEqual(yield* files("refs/github/tags/v1.0.0"), ["feature.ts"]);
+            assert.deepStrictEqual(yield* files("refs/github/tags/v0.9.0"), ["index.html"]);
+            assert.deepStrictEqual(yield* files("refs/github/heads/main"), ["index.html"]);
+            // Mate's own branches and tags are only its own: no tag of GitHub's follows into them.
+            assert.strictEqual(refsOf(f.hqDir, "refs/heads/", "refs/tags/"), "refs/heads/main");
+            assert.deepStrictEqual(yield* followed(f), { fetched: 3, pruned: [] });
+          }),
+        ),
+    );
+
+    it.effect("A branch deleted on GitHub disappears from HQ's copy and the sync names it", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const feature = commitIn(f.github, [f.main], "feature.ts");
+          native(f.github, ["update-ref", "refs/heads/feature", feature]);
+          native(f.github, ["tag", "preview", feature]);
+          yield* f.mirror.sync(f.appId, "appdev");
+          assert.strictEqual(refIn(f.hqDir, "refs/github/heads/feature"), feature);
+          native(f.github, ["update-ref", "-d", "refs/heads/feature"]);
+          native(f.github, ["tag", "-d", "preview"]);
+          yield* f.mirror.sync(f.appId, "appdev");
+          assert.strictEqual(refsOf(f.hqDir, "refs/github/"), "refs/github/heads/main");
+          assert.deepStrictEqual(yield* followed(f), {
+            fetched: 0,
+            pruned: ["refs/github/heads/feature", "refs/github/tags/preview"],
+          });
+        }),
+      ),
+    );
+
+    it.effect("A force-pushed GitHub branch is followed while main still only fast-forwards", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const feature = commitIn(f.github, [f.main], "feature.ts");
+          native(f.github, ["update-ref", "refs/heads/feature", feature]);
+          yield* f.mirror.sync(f.appId, "appdev");
+          // Both rewritten on GitHub: the branch beside its old tip, main with another history.
+          const rewritten = commitIn(f.github, [f.main], "rewritten.ts");
+          native(f.github, ["update-ref", "refs/heads/feature", rewritten]);
+          const elsewhere = commitIn(f.github, [], "elsewhere.ts");
+          native(f.github, ["update-ref", "refs/heads/main", elsewhere]);
+          assert.deepStrictEqual(yield* f.mirror.sync(f.appId, "appdev"), {
+            kind: "diverged",
+            mate: f.main,
+            github: elsewhere,
+          });
+          assert.strictEqual(refIn(f.hqDir, "refs/heads/main"), f.main);
+          assert.strictEqual(refIn(f.hqDir, "refs/github/heads/feature"), rewritten);
+          assert.strictEqual(refIn(f.hqDir, "refs/github/heads/main"), elsewhere);
+        }),
+      ),
+    );
+
+    it.effect("Nothing fetched from GitHub is pushed back to GitHub", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const feature = commitIn(f.github, [f.main], "feature.ts");
+          native(f.github, ["update-ref", "refs/heads/feature", feature]);
+          native(f.github, ["tag", "v1.0.0", feature]);
+          yield* f.mirror.sync(f.appId, "appdev");
+          assert.strictEqual(refIn(f.hqDir, "refs/github/tags/v1.0.0"), feature);
+          // Mate's main moves on: the follow pushes it, and only it.
+          const next = commitIn(f.hqDir, [f.main], "next.ts");
+          native(f.hqDir, ["update-ref", "refs/heads/main", next]);
+          assert.deepStrictEqual(yield* f.mirror.sync(f.appId, "appdev"), {
+            kind: "pushed",
+            sha: next,
+          });
+          yield* f.openChange("Add a search box");
+          yield* f.push("search.ts");
+          yield* f.mirror.pushChange(f.appId, "appdev", 1);
+          assert.strictEqual(
+            refsOf(f.github),
+            [
+              "refs/heads/feature",
+              "refs/heads/main",
+              "refs/heads/mate/1-add-a-search-box",
+              "refs/tags/v1.0.0",
+            ].join("\n"),
+          );
+          assert.strictEqual(refIn(f.github, "refs/heads/feature"), feature);
+        }),
+      ),
+    );
+
+    it.effect("A push to a non-default GitHub branch starts a follow", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const feature = commitIn(f.github, [f.main], "feature.ts");
+          const pushed = (ref: string, deleted = false) =>
+            f.events.dispatch({
+              name: "push",
+              deliveryId: `delivery-${ref}-${String(deleted)}`,
+              repository: "Acme/Tea-Shop",
+              payload: { ref, deleted, repository: { default_branch: "main" } },
+            });
+          for (const { ref, deleted, push, then } of [
+            {
+              ref: "refs/heads/feature",
+              deleted: false,
+              push: ["update-ref", "refs/heads/feature", feature],
+              then: "refs/github/heads/feature\nrefs/github/heads/main",
+            },
+            {
+              ref: "refs/tags/v1.0.0",
+              deleted: false,
+              push: ["tag", "v1.0.0", feature],
+              then: "refs/github/heads/feature\nrefs/github/heads/main\nrefs/github/tags/v1.0.0",
+            },
+            {
+              ref: "refs/heads/feature",
+              deleted: true,
+              push: ["update-ref", "-d", "refs/heads/feature"],
+              then: "refs/github/heads/main\nrefs/github/tags/v1.0.0",
+            },
+          ]) {
+            native(f.github, push);
+            yield* pushed(ref, deleted);
+            assert.strictEqual(refsOf(f.hqDir, "refs/github/"), then);
+          }
+        }),
+      ),
+    );
+
+    it.effect("Pushes to GitHub while a follow runs make one more follow, not one each", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const f = yield* mirrored();
+          yield* f.mirror.sync(f.appId, "appdev");
+          const before = f.auth.asked.length;
+          yield* f.mirror.sync(f.appId, "appdev");
+          const once = f.auth.asked.length - before;
+          const outcomes = yield* Effect.forEach(
+            Array.from({ length: 5 }),
+            () => f.mirror.sync(f.appId, "appdev"),
+            { concurrency: "unbounded" },
+          );
+          assert.strictEqual(f.auth.asked.length - before - once, 2 * once);
+          assert.deepStrictEqual(
+            outcomes,
+            Array.from({ length: 5 }, () => ({ kind: "same", sha: f.main })),
+          );
         }),
       ),
     );

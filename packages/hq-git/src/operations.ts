@@ -18,6 +18,7 @@ import {
   type Mergeability,
   type ChangeSnapshot,
 } from "./api.ts";
+import { followRefs as followRemoteRefs } from "./followRefs.ts";
 import { GitRunner, terminate } from "./git.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
@@ -494,10 +495,24 @@ export const makeOperations = (
       });
       if (ancestor.code === 0) return { kind: "unchanged" } as const;
       // An untouched seed nothing else holds gives way: the remote's history gains no HQ commit.
+      // Only Mate's own branches and tags hold it; a GitHub branch under `refs/github/` does not.
       const untouched =
         projected.seed &&
         !recorded &&
-        (await text(dir, ["for-each-ref", "--contains", main, "--format=%(refname)"], signal))
+        (
+          await text(
+            dir,
+            [
+              "for-each-ref",
+              "--contains",
+              main,
+              "--format=%(refname)",
+              "refs/heads/",
+              "refs/tags/",
+            ],
+            signal,
+          )
+        )
           .split("\n")
           .every((ref) => ref === "" || ref === "refs/heads/main");
       const sha = untouched
@@ -645,6 +660,10 @@ export const makeOperations = (
       await resolve(dir, tip, signal);
       return tip;
     }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("fetchTip")));
+  const followRefs: HqGit["followRefs"] = (repo, remote) =>
+    inRepo("followRefs", repo, (dir, signal) =>
+      followRemoteRefs(git, dir, mirrorUrl(remote.url), remote.token, signal),
+    ).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("followRefs")));
   const isAncestor: HqGit["isAncestor"] = (repo, ancestor, descendant) =>
     inRepo("isAncestor", repo, async (dir, signal) => {
       if (!validSha(ancestor) || !validSha(descendant)) throw error("Invalid commit");
@@ -1456,6 +1475,7 @@ export const makeOperations = (
     acceptAdoption,
     remoteHead,
     fetchTip,
+    followRefs,
     isAncestor,
     fastForwardMain,
     holdsNothing,
