@@ -5,7 +5,7 @@ import {
   type GitBrowseRead,
   type GitBrowseValue,
 } from "../../zerops/gitBrowse/reads.ts";
-import type { ScopeKey } from "../model.ts";
+import type { LinkKey, ScopeKey } from "../model.ts";
 import type { FamilySpec } from "./spec.ts";
 
 declare module "../model.ts" {
@@ -26,6 +26,9 @@ export const gitBrowseId = ({ orgId, appId, repo, read, params }: GitBrowseKey):
   JSON.stringify([orgId, appId, repo, read, gitBrowseSearch(read, params).toString()]);
 export const gitBrowseScope = (key: GitBrowseKey): ScopeKey =>
   `hq:${key.orgId}:git-browse:${gitBrowseId(key)}`;
+/** The read's own connection: where a failed read that is tried again keeps its fault. */
+export const gitBrowseLink = (key: GitBrowseKey): LinkKey =>
+  `hq:git-browse-${encodeURIComponent(gitBrowseId(key))}`;
 
 export const hqGitBrowseFamily: FamilySpec<"hqGitBrowse"> = {
   family: "hqGitBrowse",
