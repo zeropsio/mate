@@ -611,11 +611,13 @@ export const gitHostLayer = (options: {
         ),
       );
 
-      /** `git` refusing every operation on a quarantined repository. */
-      const guarded = (git: HqGit): HqGit =>
+      /** `git` refusing every operation on a quarantined repository, its browse reads too. */
+      const guarded = <T extends object>(git: T): T =>
         new Proxy(git, {
           get: (target, property, receiver) => {
             const value: unknown = Reflect.get(target, property, receiver);
+            if (property === "browse" && typeof value === "object" && value !== null)
+              return guarded(value);
             if (typeof value !== "function" || property === "handler") return value;
             const call = value as (...all: Array<unknown>) => Effect.Effect<unknown>;
             return (...args: Array<unknown>) => {

@@ -131,6 +131,10 @@
       "types": "./src/hqGit.ts",
       "import": "./src/hqGit.ts"
     },
+    "./hqGitBrowse/*": {
+      "types": "./src/hqGitBrowse/*.ts",
+      "import": "./src/hqGitBrowse/*.ts"
+    },
     "./hqChanges": {
       "types": "./src/hqChanges.ts",
       "import": "./src/hqChanges.ts"
