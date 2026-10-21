@@ -45,7 +45,8 @@ One word for each thing:
   Commits fold.
 - **PR #n** — only for the GitHub pull request a change is mirrored to, linked to it ("PR #2 on GitHub"); Mate's
   own object stays a **change**.
-- **release** — "Putting {version} live", "{service} gets {version}". No commit hash stands on a surface.
+- **release** — "Putting {version} live", "{service} gets {version}". No commit hash names a release.
+  In the Git browser a commit's 7-character id may stand beside its subject, as a link, never alone.
 - **setup**, **setup files** — never recipe or import files.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says

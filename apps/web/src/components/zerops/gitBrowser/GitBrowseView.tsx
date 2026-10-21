@@ -36,13 +36,19 @@ export const gitView = (search: Pick<GitSearch, "view" | "path" | "kind">): GitV
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   home: lazy(() => import("./GitRepoHome").then((module) => ({ default: module.GitRepoHome }))),
   code: lazy(() => import("./GitRepoCode").then((module) => ({ default: module.GitRepoCode }))),
+  commits: lazy(() =>
+    import("./GitCommitsView").then((module) => ({ default: module.GitCommitsView })),
+  ),
 };
 
 /** The repository's tabs, each opening its first page and lit on any of them. */
 export const GIT_VIEW_TABS: ReadonlyArray<{
   readonly label: string;
   readonly views: ReadonlyArray<GitView>;
-}> = [{ label: "Code", views: ["home", "code"] }];
+}> = [
+  { label: "Code", views: ["home", "code"] },
+  { label: "History", views: ["commits"] },
+];
 
 export function GitBrowseView(props: GitRepoPageProps & { readonly view: GitView }) {
   const View = VIEWS[props.view] ?? VIEWS.home!;

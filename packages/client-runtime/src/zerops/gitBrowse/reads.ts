@@ -7,11 +7,13 @@
  */
 import * as Schema from "effect/Schema";
 import { homeRead } from "./home.ts";
+import { logRead } from "./log.ts";
 import { refsRead } from "./refs.ts";
 
 export const GIT_BROWSE_READS = {
   home: homeRead,
   refs: refsRead,
+  log: logRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;
