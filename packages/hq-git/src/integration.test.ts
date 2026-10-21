@@ -338,6 +338,41 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 
+  it.live.each([
+    {
+      to: "a Mate's fetch",
+      read: () => checked(dir, ["ls-remote", url()], "mate"),
+    },
+    {
+      to: "a person's fetch over protocol v0",
+      read: () => checked(dir, ["-c", "protocol.version=0", "ls-remote", url()], "reader"),
+    },
+    {
+      to: "a Mate's push",
+      read: async () =>
+        (
+          await raw("/git/app/repo.git/info/refs?service=git-receive-pack", {
+            headers: { "X-Principal": "mate" },
+          })
+        ).body,
+    },
+  ])("HQ's git never shows GitHub's branches and tags to $to", ({ read }) =>
+    fixture(
+      Effect.gen(function* () {
+        const { clone, sha } = yield* prepare();
+        for (const ref of ["refs/github/heads/feature", "refs/github/tags/v1.0.0"])
+          yield* Effect.promise(() => checked(repoDir(), ["update-ref", ref, sha]));
+        const shown = yield* Effect.promise(read);
+        expect(shown).toContain("refs/heads/main");
+        expect(shown).not.toContain("refs/github/");
+        const fetched = yield* Effect.promise(() =>
+          run(clone, ["fetch", url(), "refs/github/heads/feature"], "mate"),
+        );
+        expect(fetched.code).not.toBe(0);
+      }),
+    ),
+  );
+
   it.live("applies the built-in rules even when Core's authorize allows everything", () =>
     fixture(
       Effect.gen(function* () {

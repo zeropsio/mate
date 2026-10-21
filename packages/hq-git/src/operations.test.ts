@@ -13,7 +13,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { makeHqGit } from "./index.ts";
-import type { HqGit, GitEvent, HqGitOptions, GitError } from "./api.ts";
+import type { HqGit, GitEvent, HqGitOptions, GitError, MirrorRemote } from "./api.ts";
 
 const repo = { appId: "app", id: "repo" };
 const author = { name: "Core", email: "core@example.test" };
@@ -42,7 +42,7 @@ const fixture = (
       yield* Effect.promise(() => run(git, NodePath.join(root, "app/repo.git"), events));
     }),
   );
-const native = (dir: string, args: string[], input?: string) =>
+const native = (dir: string, args: string[], input?: string | Buffer) =>
   new Promise<string>((resolve, reject) => {
     const child = NodeChildProcess.execFile(
       "git",
@@ -419,6 +419,36 @@ describe("a repository's backup", () => {
       expect(await native(copied, ["config", "receive.denyNonFastForwards"])).toBe("true");
       await expect(value(git.restore(copy, file))).rejects.toHaveProperty("reason", "exists");
     }),
+  );
+  it.live.each([
+    { mate: "main and GitHub's branches and tags", main: true },
+    { mate: "only GitHub's branches and tags", main: false },
+  ])(
+    "A bundle of a repository holding $mate carries none of GitHub's, nor what only they hold",
+    ({ main }) =>
+      fixture(async (git, dir) => {
+        const ours = main ? await write(git, { "a.txt": "a\n" }, null) : null;
+        const github = NodePath.join(dir, "github.git");
+        await native(dir, ["init", "--bare", github]);
+        const blob = await native(github, ["hash-object", "-w", "--stdin"], "theirs");
+        const tree = await native(github, ["mktree"], `100644 blob ${blob}\ttheirs.txt\n`);
+        const theirs = await native(github, ["commit-tree", tree, "-m", "Theirs"]);
+        await native(github, ["update-ref", "refs/heads/feature", theirs]);
+        await native(github, ["tag", "v1.0.0", theirs]);
+        await value(git.followRefs(repo, { url: github, token: Redacted.make("mirror-fixture") }));
+        expect(await native(dir, ["rev-parse", "refs/github/heads/feature"])).toBe(theirs);
+        const file = NodePath.join(NodePath.dirname(NodePath.dirname(dir)), "repo.bundle");
+        const bundled = await value(git.bundle(repo, file));
+        expect(bundled.refs).toEqual(ours === null ? [] : [{ ref: "refs/heads/main", sha: ours }]);
+        if (ours === null) return;
+        const copy = { appId: "app", id: "copy" };
+        await value(git.restore(copy, file));
+        const copied = NodePath.join(NodePath.dirname(dir), "copy.git");
+        expect(await native(copied, ["for-each-ref", "--format=%(refname)"])).toBe(
+          "refs/heads/main",
+        );
+        await expect(native(copied, ["cat-file", "-e", theirs])).rejects.toThrow();
+      }),
   );
   it.live("bundles nothing of a repository with no ref, and makes it again empty", () =>
     fixture(async (git, dir) => {
@@ -1501,6 +1531,70 @@ it.live("A fetched GitHub branch does not make an untouched seed look touched", 
       kind: "adopted",
       sha: tip,
     });
+  }),
+);
+/**
+ * A GitHub stand-in whose main is clean and whose side branch holds a tree git's fsck refuses (a
+ * zero-padded mode): following every ref fails there each time, as a fetch the deadline stopped.
+ */
+const refusedSideBranch = async (dir: string) => {
+  const github = NodePath.join(dir, "github.git");
+  await native(dir, ["init", "--bare", github]);
+  const empty = await native(github, ["mktree"], "");
+  await native(github, [
+    "update-ref",
+    "refs/heads/main",
+    await native(github, ["commit-tree", empty, "-m", "Main"]),
+  ]);
+  const blob = await native(github, ["hash-object", "-w", "--stdin"], "old");
+  const sub = await native(github, ["mktree"], `100644 blob ${blob}\told\n`);
+  const tree = await native(
+    github,
+    ["hash-object", "-t", "tree", "-w", "--literally", "--stdin"],
+    Buffer.concat([Buffer.from("040000 vendor\0"), Buffer.from(sub, "hex")]),
+  );
+  const legacy = await native(github, ["commit-tree", tree, "-m", "Imported from SVN"]);
+  await native(github, ["update-ref", "refs/heads/legacy", legacy]);
+  return { url: github, token: Redacted.make("mirror-fixture") };
+};
+const partialPacks = async (dir: string) =>
+  (await NodeFSP.readdir(NodePath.join(dir, "objects", "pack"))).filter((name) =>
+    name.startsWith("tmp_"),
+  );
+it.live.each([
+  {
+    by: "the next follow of GitHub's refs",
+    next: (git: HqGit, remote: MirrorRemote) => git.followRefs(repo, remote),
+  },
+  {
+    by: "the next fetch of GitHub's main",
+    next: (git: HqGit, remote: MirrorRemote) => git.fetchTip(repo, remote, "main"),
+  },
+  { by: "HQ's sweep on takeover", next: (git: HqGit) => git.convergeRepo(repo) },
+])(
+  "A partial pack a fetch from GitHub left behind is removed by $by once no fetch can still be writing it",
+  ({ next }) =>
+    fixture(async (git, dir) => {
+      const remote = await refusedSideBranch(dir);
+      await value(Effect.flip(git.followRefs(repo, remote)));
+      const [stale] = await partialPacks(dir);
+      expect(stale).toBeDefined();
+      // Two minutes older than it was written: past any fetch's deadline.
+      const path = NodePath.join(dir, "objects", "pack", stale!);
+      const past = (await NodeFSP.stat(path)).mtimeMs / 1000 - 2 * 60;
+      await NodeFSP.utimes(path, past, past);
+      await value(Effect.exit(next(git, remote)));
+      expect(await partialPacks(dir)).not.toContain(stale);
+    }),
+);
+it.live("A partial pack a fetch may still be writing is kept", () =>
+  fixture(async (git, dir) => {
+    const remote = await refusedSideBranch(dir);
+    await value(Effect.flip(git.followRefs(repo, remote)));
+    const fresh = await partialPacks(dir);
+    expect(fresh).toHaveLength(1);
+    await value(git.convergeRepo(repo));
+    expect(await partialPacks(dir)).toEqual(fresh);
   }),
 );
 it.live.each(["remote", "main"] as const)(

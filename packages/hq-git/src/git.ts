@@ -6,6 +6,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as Redacted from "effect/Redacted";
 import { GitError } from "./api.ts";
+import { GITHUB_REFS } from "./followRefs.ts";
 
 const failed = (operation: string, message: string) =>
   new GitError({ operation, reason: "git_failed", message });
@@ -245,6 +246,7 @@ const settings = `
  autogc = false
 [transfer]
  fsckObjects = true
+ hideRefs = ${GITHUB_REFS}
 [gc]
  auto = 0
 [protocol]
@@ -321,8 +323,27 @@ export const scratch = (name: string) => /^\.(?:index|archive|config)-/.test(nam
 const names = (path: string, recursive = false) =>
   NodeFSP.readdir(path, { recursive }).catch(() => [] as string[]);
 
+/** How long a fetch from a remote may run before it is stopped. */
+export const fetchDeadlineMs = 60 * 1000;
+
+/**
+ * Packs a fetch stopped or refused mid-transfer left in `objects/pack`, untouched for longer than
+ * any fetch may run: nothing still writes them, and nothing else ever removes them (`gc.auto = 0`).
+ */
+export const sweepPartialPacks = async (dir: string): Promise<void> => {
+  const pack = NodePath.join(dir, "objects", "pack");
+  for (const name of await names(pack)) {
+    if (!name.startsWith("tmp_")) continue;
+    const path = NodePath.join(pack, name);
+    const stat = await NodeFSP.lstat(path).catch(() => null);
+    if (stat && Date.now() - stat.mtimeMs > fetchDeadlineMs)
+      await NodeFSP.rm(path, { force: true });
+  }
+};
+
 /** Debris of a git killed mid-write: locks, quarantines and scratch untouched for an hour. */
 export const sweep = async (dir: string): Promise<void> => {
+  await sweepPartialPacks(dir);
   const candidates = [
     ...(await names(dir)).filter((name) => name.endsWith(".lock") || scratch(name)),
     ...(await names(NodePath.join(dir, "refs"), true))

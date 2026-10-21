@@ -181,9 +181,8 @@ export interface MirrorRemote {
   readonly url: string;
   readonly token: Redacted.Redacted;
 }
-/** What following a mirror's branches and tags did: how many came or moved, which went (full refs). */
+/** What following a mirror's branches and tags did: which went (full refs). */
 export interface FollowedRefs {
-  readonly fetched: number;
   readonly pruned: ReadonlyArray<string>;
 }
 export type MirrorPush =
@@ -326,6 +325,8 @@ export interface HqGit {
    * by it, and nothing pushes it back.
    */
   readonly followRefs: (repo: Repo, remote: MirrorRemote) => Effect.Effect<FollowedRefs, GitError>;
+  /** Every branch and tag `followRefs` brought gone: the repository no longer follows GitHub. */
+  readonly unfollowRefs: (repo: Repo) => Effect.Effect<void, GitError>;
   /** Whether `ancestor` is `descendant` or comes before it; false where either is no commit here. */
   readonly isAncestor: (
     repo: Repo,
@@ -412,8 +413,9 @@ export interface HqGit {
    */
   readonly onMain: (repo: Repo, sha: string) => Effect.Effect<boolean, GitError>;
   /**
-   * The repository whole, as one git bundle written to `file`: every ref and every object they
-   * reach, with the refs it holds. A repository with no ref writes no file and names none.
+   * The repository whole, as one git bundle written to `file`: every ref but GitHub's under
+   * `refs/github/` (fetched again from GitHub), every object they reach, with the refs it holds. A
+   * repository with no such ref writes no file and names none.
    */
   readonly bundle: (
     repo: Repo,

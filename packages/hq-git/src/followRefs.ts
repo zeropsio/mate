@@ -4,21 +4,17 @@ import type { GitRunner } from "./git.ts";
 
 /**
  * Where a mirror's branches and tags live in HQ's copy: beside Mate's own `refs/heads` and
- * `refs/tags`, never in them, so no name collides with Mate's and nothing pushes them out.
+ * `refs/tags`, never in them, so no name collides with Mate's and nothing pushes them out. HQ's
+ * own read data, fetched again from GitHub at will: never bundled, advertised or pushed.
  */
-const GITHUB_REFS = "refs/github/";
+export const GITHUB_REFS = "refs/github/";
 
 const held = async (git: GitRunner, dir: string, signal: AbortSignal) =>
-  new Map(
-    (
-      await git.run(["-C", dir, "for-each-ref", "--format=%(refname) %(objectname)", GITHUB_REFS], {
-        signal,
-      })
-    )
+  new Set(
+    (await git.run(["-C", dir, "for-each-ref", "--format=%(refname)", GITHUB_REFS], { signal }))
       .toString()
       .split("\n")
-      .filter(Boolean)
-      .map((line) => line.split(" ") as [string, string]),
+      .filter(Boolean),
   );
 
 /**
@@ -52,8 +48,15 @@ export const followRefs = async (
     signal,
   );
   const after = await held(git, dir, signal);
-  return {
-    fetched: [...after].filter(([ref, sha]) => before.get(ref) !== sha).length,
-    pruned: [...before.keys()].filter((ref) => !after.has(ref)),
-  };
+  return { pruned: [...before].filter((ref) => !after.has(ref)) };
+};
+
+/** Every ref under `refs/github/` gone: the repository no longer follows a remote's refs. */
+export const unfollowRefs = async (git: GitRunner, dir: string, signal: AbortSignal) => {
+  const refs = await held(git, dir, signal);
+  if (refs.size === 0) return;
+  await git.run(["-C", dir, "update-ref", "--stdin"], {
+    signal,
+    input: [...refs].map((ref) => `delete ${ref}\n`).join(""),
+  });
 };

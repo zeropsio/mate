@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- local HTTP host; database is the real custody consumer.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeHttp from "node:http";
+import * as NodePath from "node:path";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
@@ -831,6 +833,51 @@ describe("repository credential custody", () => {
             assert.strictEqual(disconnected.find((repo) => repo.name === "web")?.remote, null);
           }),
         ),
+    );
+    it.effect("Disconnecting a repository removes GitHub's branches and tags from HQ's copy", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { remotes, git } = yield* fixture;
+          yield* remotes.connect("custodian", input);
+          const repo = { appId: APP, id: "web" };
+          yield* git.create(repo);
+          // GitHub's repository: a branch and a tag HQ followed into its copy.
+          const github = NodePath.join(yield* tempDir("hq-github-"), "github.git");
+          const run = (...args: ReadonlyArray<string>) =>
+            NodeChildProcess.execFileSync("git", args, {
+              encoding: "utf8",
+              env: {
+                PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+                GIT_CONFIG_NOSYSTEM: "1",
+                GIT_CONFIG_GLOBAL: "/dev/null",
+                GIT_AUTHOR_NAME: "Nova",
+                GIT_AUTHOR_EMAIL: "nova@mate.test",
+                GIT_COMMITTER_NAME: "Nova",
+                GIT_COMMITTER_EMAIL: "nova@mate.test",
+              },
+            }).trim();
+          run("init", "--bare", "-q", github);
+          const tree = run("-C", github, "mktree");
+          const feature = run("-C", github, "commit-tree", tree, "-m", "Feature");
+          run("-C", github, "update-ref", "refs/heads/feature", feature);
+          run("-C", github, "tag", "v1.0.0", feature);
+          yield* git.followRefs(repo, { url: github, token: Redacted.make("fixture") });
+          const read = (ref: string) =>
+            git.tree(repo, ref, "").pipe(
+              Effect.as("read"),
+              Effect.catch(() => Effect.succeed("gone")),
+            );
+          assert.deepStrictEqual(
+            [yield* read("refs/github/heads/feature"), yield* read("refs/github/tags/v1.0.0")],
+            ["read", "read"],
+          );
+          yield* remotes.disconnect("custodian", REF);
+          assert.deepStrictEqual(
+            [yield* read("refs/github/heads/feature"), yield* read("refs/github/tags/v1.0.0")],
+            ["gone", "gone"],
+          );
+        }),
+      ),
     );
     it.effect("A repository whose mirror diverged from GitHub's says since when", () =>
       Effect.scoped(

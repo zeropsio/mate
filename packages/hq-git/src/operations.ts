@@ -18,8 +18,12 @@ import {
   type Mergeability,
   type ChangeSnapshot,
 } from "./api.ts";
-import { followRefs as followRemoteRefs } from "./followRefs.ts";
-import { GitRunner, terminate } from "./git.ts";
+import {
+  GITHUB_REFS,
+  followRefs as followRemoteRefs,
+  unfollowRefs as unfollowRemoteRefs,
+} from "./followRefs.ts";
+import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
 const readLimits = {
@@ -642,6 +646,7 @@ export const makeOperations = (
       const url = mirrorUrl(remote.url);
       const tip = await remoteTip(dir, remote, await branchRef(dir, branch, signal), signal);
       if (tip === null) return null;
+      await sweepPartialPacks(dir);
       await git.remoteAskpass(
         [
           "-C",
@@ -659,11 +664,20 @@ export const makeOperations = (
       );
       await resolve(dir, tip, signal);
       return tip;
-    }).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("fetchTip")));
+    }).pipe(
+      Effect.timeout(Duration.millis(fetchDeadlineMs)),
+      Effect.mapError(timedOut("fetchTip")),
+    );
   const followRefs: HqGit["followRefs"] = (repo, remote) =>
-    inRepo("followRefs", repo, (dir, signal) =>
-      followRemoteRefs(git, dir, mirrorUrl(remote.url), remote.token, signal),
-    ).pipe(Effect.timeout(Duration.seconds(60)), Effect.mapError(timedOut("followRefs")));
+    inRepo("followRefs", repo, async (dir, signal) => {
+      await sweepPartialPacks(dir);
+      return followRemoteRefs(git, dir, mirrorUrl(remote.url), remote.token, signal);
+    }).pipe(
+      Effect.timeout(Duration.millis(fetchDeadlineMs)),
+      Effect.mapError(timedOut("followRefs")),
+    );
+  const unfollowRefs: HqGit["unfollowRefs"] = (repo) =>
+    inRepo("unfollowRefs", repo, (dir, signal) => unfollowRemoteRefs(git, dir, signal));
   const isAncestor: HqGit["isAncestor"] = (repo, ancestor, descendant) =>
     inRepo("isAncestor", repo, async (dir, signal) => {
       if (!validSha(ancestor) || !validSha(descendant)) throw error("Invalid commit");
@@ -938,9 +952,18 @@ export const makeOperations = (
     });
   const bundle: HqGit["bundle"] = (repo, file) =>
     inRepo("bundle", repo, async (dir, signal) => {
-      if (!(await text(dir, ["for-each-ref", "--count=1", "--format=%(refname)"], signal)))
-        return { refs: [] };
-      await run(dir, ["bundle", "create", "--quiet", file, "--all"], signal);
+      // GitHub's branches and tags are fetched again from GitHub, never made again from a bundle.
+      const own = await text(
+        dir,
+        ["for-each-ref", "--count=1", "--format=%(refname)", `--exclude=${GITHUB_REFS}`],
+        signal,
+      );
+      if (!own) return { refs: [] };
+      await run(
+        dir,
+        ["bundle", "create", "--quiet", file, `--exclude=${GITHUB_REFS}*`, "--all"],
+        signal,
+      );
       // What the bundle itself holds: the refs a restore makes again.
       const heads = await text(dir, ["bundle", "list-heads", file], signal);
       return {
@@ -1476,6 +1499,7 @@ export const makeOperations = (
     remoteHead,
     fetchTip,
     followRefs,
+    unfollowRefs,
     isAncestor,
     fastForwardMain,
     holdsNothing,

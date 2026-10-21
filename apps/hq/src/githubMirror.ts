@@ -16,7 +16,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -146,12 +145,6 @@ export interface GithubMirrorOptions {
   readonly sweepEvery?: Duration.Duration;
 }
 
-const encodeFollowed = Schema.encodeSync(
-  Schema.fromJsonString(
-    Schema.Struct({ fetched: Schema.Number, pruned: Schema.Array(Schema.String) }),
-  ),
-);
-
 const unavailable = (reason: GithubMirrorUnavailable["reason"], detail?: string) =>
   new GithubMirrorUnavailable({ reason, ...(detail === undefined ? {} : { detail }) });
 
@@ -208,7 +201,11 @@ export const githubMirrorLayer = (
           }
           return Semaphore.withPermits(lock, 1)(effect);
         });
-      /** The sync of a repository that waits for the one running: whoever asks meanwhile joins it. */
+      const layerScope = yield* Effect.scope;
+      /**
+       * The sync of a repository that waits for the one running: whoever asks meanwhile joins it.
+       * It runs on its own, so one asker that stops waiting stops none of the others.
+       */
       const waiting = new Map<
         string,
         Deferred.Deferred<MirrorSync, GithubMirrorUnavailable | SqlError>
@@ -227,6 +224,8 @@ export const githubMirrorLayer = (
           });
           return serialized(key, Effect.andThen(started, effect)).pipe(
             Effect.onExit((exit) => Effect.andThen(started, Deferred.done(outcome, exit))),
+            Effect.forkIn(layerScope),
+            Effect.andThen(Deferred.await(outcome)),
           );
         });
 
@@ -433,6 +432,37 @@ export const githubMirrorLayer = (
           ),
         );
 
+      /** The repositories whose last follow of GitHub's other refs failed: said once, until one works. */
+      const othersFailing = new Set<string>();
+      /**
+       * GitHub's other branches and tags, as they are there now: what it deleted is named. Never
+       * decides the sync: one object git refuses anywhere there fails the whole fetch, every time, and
+       * main, its rules and its merges follow regardless; the next sync tries again.
+       */
+      const followOthers = (git: HqGit, at: Repo, remote: MirrorRemote) => {
+        const key = `${at.appId}/${at.id}`;
+        const context = { appId: at.appId, repo: at.id };
+        return Effect.gen(function* () {
+          const refs = yield* git.followRefs(at, remote);
+          for (const ref of refs.pruned)
+            yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { ...context, ref });
+          if (othersFailing.delete(key))
+            yield* Effect.logInfo("GitHub's other branches and tags followed again", context);
+        }).pipe(
+          Effect.catch((error) =>
+            othersFailing.has(key)
+              ? Effect.void
+              : Effect.andThen(
+                  Effect.sync(() => othersFailing.add(key)),
+                  Effect.logWarning("GitHub's other branches and tags not followed", {
+                    ...context,
+                    error,
+                  }),
+                ),
+          ),
+        );
+      };
+
       const sync: GithubMirror["Service"]["sync"] = (appId, repo) =>
         coalesced(
           `${appId}/${repo}`,
@@ -463,19 +493,7 @@ export const githubMirrorLayer = (
                 mate: outcome.mate,
                 github: outcome.github,
               });
-            // GitHub's other branches and tags, as they are there now: what it deleted is named.
-            const refs = yield* git.followRefs(at, remote).pipe(Effect.mapError(fromGit));
-            for (const ref of refs.pruned)
-              yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { appId, repo, ref });
-            yield* leader
-              .write(
-                sql`
-                  UPDATE hq_repo_mirror SET followed_refs = ${encodeFollowed(refs)}::jsonb
-                  WHERE app_id::text = ${appId} AND repo = ${repo}`,
-              )
-              .pipe(
-                Effect.mapError((error) => (error._tag === "NotLeader" ? fromGit(error) : error)),
-              );
+            yield* followOthers(git, at, remote);
             yield* govern(appId, repo);
             return outcome;
           }),
@@ -730,7 +748,6 @@ export const githubMirrorLayer = (
         sweep.pipe(Effect.repeat(Schedule.spaced(options.sweepEvery ?? Duration.minutes(1)))),
       );
 
-      const layerScope = yield* Effect.scope;
       const followLater = (appId: string, repo: string) =>
         quietly("a mirrored repository not followed", { appId, repo }, sync(appId, repo)).pipe(
           Effect.forkIn(layerScope),

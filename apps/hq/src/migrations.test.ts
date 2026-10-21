@@ -247,6 +247,21 @@ describe("migrate", () => {
       ),
     );
     it.effect(
+      "A mirrored repository's row keeps no record of GitHub's other branches and tags",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            yield* migrate(treeMigrations());
+            const sql = yield* SqlClient.SqlClient;
+            const rows = yield* sql<{ readonly name: string }>`
+            SELECT column_name AS name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'hq_repo_mirror'
+              AND column_name = 'followed_refs'`;
+            assert.deepStrictEqual(rows, []);
+          }),
+        ),
+    );
+    it.effect(
       "Git target expansion preserves Zerops records, project bindings and legacy storage.",
       () =>
         withSql(
