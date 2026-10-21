@@ -6,6 +6,8 @@
  * @module zerops/gitBrowse/reads
  */
 import * as Schema from "effect/Schema";
+import { commitFileRead, commitRead } from "./commit.ts";
+import { compareFileRead, compareRead } from "./compare.ts";
 import { grepRead } from "./grep.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
@@ -16,6 +18,10 @@ export const GIT_BROWSE_READS = {
   home: homeRead,
   refs: refsRead,
   log: logRead,
+  commit: commitRead,
+  "commit-file": commitFileRead,
+  compare: compareRead,
+  "compare-file": compareFileRead,
   paths: pathsRead,
   grep: grepRead,
 } as const;
