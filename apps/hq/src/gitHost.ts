@@ -169,7 +169,8 @@ export class GitHost extends Context.Service<
     readonly conflicts: Stream.Stream<MainConflict>;
     /**
      * A change just opened on a branch pushed before it: its head recorded and judged, and told as
-     * a push of it is (`pushes`, `moves`). A branch with nothing on it waits for its push.
+     * a push of it is (`pushes`, `moves`). A branch absent, or with nothing beyond main, waits for
+     * its push.
      */
     readonly follow: (change: PushedChange) => Effect.Effect<void, NotLeader | GitError | SqlError>;
   }
