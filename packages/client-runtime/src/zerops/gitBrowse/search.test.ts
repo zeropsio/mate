@@ -35,7 +35,7 @@ describe("Git browser search reads", () => {
   it("A search HQ answers busy says HQ is busy and is read again on the person's ask", async () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    const asked: Array<string> = [];
+    const asked: Array<string | null> = [];
     const found: GitGrep = {
       matches: [{ path: "a.ts", line: 1, text: "tea", ranges: [{ start: 0, end: 3 }] }],
       truncated: false,
