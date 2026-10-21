@@ -50,7 +50,7 @@ import type { SqlError } from "effect/sql/SqlError";
 
 import { ChangeRefused, Changes } from "./changes.ts";
 import { HQ_MARK, marked, quieted } from "./githubChannel.ts";
-import { GithubAuth, MATE_GATE } from "./githubAuth.ts";
+import { GithubAuth, MATE_GATE, writesGate } from "./githubAuth.ts";
 import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
@@ -1125,11 +1125,14 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
 
       /**
        * `mate/gate = success` on `sha`, as the app: a ruleset requiring it from the app lets nothing
-       * else satisfy it. An installation that has not approved writing statuses gets none, and its
-       * merge goes on: its repository is advisory, never refused for it.
+       * else satisfy it. An installation that has not approved writing statuses is asked nothing for
+       * it — no token, no status — and its merge goes on: its repository is advisory, never refused
+       * for it.
        */
       const gateOnGithub = (row: PullRow, sha: string, link: string) =>
         Effect.gen(function* () {
+          const grant = yield* auth.grantOf(row.github_repo);
+          if (grant === undefined || !writesGate(grant.permissions)) return;
           const gate = yield* asApp(row.app_id, row.repo, row.github_repo, "gate");
           if (gate === undefined) return;
           const status = yield* github.setStatus(gate.remote, gate.token, sha, {

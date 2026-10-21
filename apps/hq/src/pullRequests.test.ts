@@ -959,6 +959,14 @@ describe("a change's pull request", () => {
           assert.strictEqual(merged.status, 200);
           assert.deepInclude(merged.body as HqChange, { state: "merged", mergedSha: squash });
           assert.deepStrictEqual(core.github.state.statuses, []);
+          // Nothing asked of GitHub for it: no gate token, no status sent to be refused.
+          assert.deepStrictEqual(
+            [
+              core.github.state.seen.filter((request) => request.path.includes("/statuses/")),
+              core.github.state.minted.filter((token) => "statuses" in (token.permissions ?? {})),
+            ],
+            [[], []],
+          );
           const [change] = yield* core.sql<{ landed_outside: boolean }>`
             SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
           assert.strictEqual(change?.landed_outside, false);

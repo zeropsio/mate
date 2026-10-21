@@ -73,6 +73,10 @@ export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
  */
 export const MATE_GATE = "mate/gate";
 
+/** Whether an installation `granted` this may write `mate/gate`: Commit statuses, write or more. */
+export const writesGate = (granted: Readonly<Record<string, string>>) =>
+  granted["statuses"] === "write" || granted["statuses"] === "admin";
+
 const LEVELS = ["read", "write", "admin"] as const;
 
 /**
