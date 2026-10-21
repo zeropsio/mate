@@ -132,6 +132,17 @@ type Attempt = <A>(
   operation: string,
   run: (signal: AbortSignal) => Promise<A>,
 ) => Effect.Effect<A, GitError>;
+/** A read or write inside one held repository: `not_found` for one the layer does not hold. */
+export const repoReader =
+  (locate: (repo: Repo) => Promise<string | null>, attempt: Attempt) =>
+  <A>(operation: string, repo: Repo, run: (dir: string, signal: AbortSignal) => Promise<A>) =>
+    attempt(operation, async (signal) => {
+      const dir = await locate(repo);
+      if (!dir)
+        throw new GitError({ operation, reason: "not_found", message: "Repository not found" });
+      return run(dir, signal);
+    });
+export type InRepo = ReturnType<typeof repoReader>;
 export const makeOperations = (
   git: GitRunner,
   locate: (repo: Repo) => Promise<string | null>,
@@ -140,17 +151,7 @@ export const makeOperations = (
   emit: (event: GitEvent) => void,
 ) => {
   const refLockTimeoutMs = options.refLockTimeoutMs ?? 5000;
-  const inRepo = <A>(
-    operation: string,
-    repo: Repo,
-    run: (dir: string, signal: AbortSignal) => Promise<A>,
-  ) =>
-    attempt(operation, async (signal) => {
-      const dir = await locate(repo);
-      if (!dir)
-        throw new GitError({ operation, reason: "not_found", message: "Repository not found" });
-      return run(dir, signal);
-    });
+  const inRepo = repoReader(locate, attempt);
   const run = (
     dir: string,
     args: string[],
@@ -196,31 +197,8 @@ export const makeOperations = (
       throw error("Invalid revision");
     return text(dir, ["rev-parse", "--verify", "--end-of-options", `${rev}^{commit}`], signal);
   };
-  // Collect a prefix, then stop the process instead of reading a huge blob or patch into memory.
-  const prefix = async (dir: string, args: string[], signal: AbortSignal, max: number) => {
-    const process = git.start(["-C", dir, ...args], { signal });
-    process.child.stdin.end();
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let truncated = false;
-    try {
-      for await (const chunk of process.child.stdout) {
-        const bytes = Buffer.from(chunk as Uint8Array);
-        const remaining = max - size;
-        chunks.push(bytes.subarray(0, Math.max(0, remaining)));
-        size += bytes.length;
-        if (size > max) {
-          truncated = true;
-          break;
-        }
-      }
-      if (!truncated) await process.done;
-      return { bytes: Buffer.concat(chunks), truncated };
-    } finally {
-      terminate(process.child);
-      await process.done.catch(() => {});
-    }
-  };
+  const prefix = (dir: string, args: string[], signal: AbortSignal, max: number) =>
+    git.prefix(["-C", dir, ...args], signal, max);
   const records = async (dir: string, args: string[], signal: AbortSignal, delimiter = "\0") => {
     const result = await prefix(dir, args, signal, readLimits.bytes);
     const parts = result.bytes.toString().split(delimiter);

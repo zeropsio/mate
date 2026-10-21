@@ -7,7 +7,8 @@ import * as Schema from "effect/Schema";
 import { GitError, type HqGit, type HqGitOptions, type Repo } from "./api.ts";
 import { GitRunner, converge, scratch, sweep } from "./git.ts";
 import { makeHandler } from "./http.ts";
-import { eventPort, makeOperations } from "./operations.ts";
+import { makeHqGitBrowse } from "./browse/service.ts";
+import { eventPort, makeOperations, repoReader } from "./operations.ts";
 
 const validId = (id: string) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id);
 const isGitError = Schema.is(GitError);
@@ -196,6 +197,7 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       remove,
       convergeRepo,
       handler,
+      browse: makeHqGitBrowse(runner, repoReader(locate, attempt)),
       ...operations,
     };
   });
