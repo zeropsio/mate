@@ -987,6 +987,11 @@ export const REVIEW_STATES: ReadonlyArray<{
   { id: "merged-now", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
   {
+    id: "merged-outside",
+    label: "Merged outside Mate",
+    node: <Change over={{ ...MERGED_NOW, landedOutside: true }} />,
+  },
+  {
     id: "first-merge-both",
     label: "The first code merge, no environment yet: where should it run? (stage and production)",
     node: (

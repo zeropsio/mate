@@ -199,6 +199,11 @@ export const HqChange = Schema.Struct({
    */
   firstCodeMerge: Schema.optionalKey(Schema.Boolean),
   /**
+   * On a merged change: whether GitHub merged a head no person merged in Mate — merged outside
+   * Mate. Absent for a change not merged, and from an older HQ.
+   */
+  landedOutside: Schema.optionalKey(Schema.Boolean),
+  /**
    * Whether it asks for review: the Mate described it at its head. A draft — before its first
    * description, and again after a push the description has not caught up with — stays readable
    * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.

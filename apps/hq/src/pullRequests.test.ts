@@ -931,6 +931,7 @@ describe("a change's pull request", () => {
           const [change] = yield* core.sql<{ landed_outside: boolean }>`
             SELECT landed_outside FROM hq_change WHERE repo = 'web'`;
           assert.strictEqual(change?.landed_outside, false);
+          assert.strictEqual((yield* changeOf(core)).landedOutside, false);
         }),
     );
 
@@ -994,6 +995,8 @@ describe("a change's pull request", () => {
             "SELECT state, landed_outside FROM hq_change WHERE repo = 'web'",
             (rows) => rows[0]?.["state"] === "merged" && rows[0]?.["landed_outside"] === true,
           );
+          // Said to the change's readers as HQ records it.
+          assert.strictEqual((yield* changeOf(core)).landedOutside, true);
           const releases = yield* core.sql`SELECT 1 FROM hq_rollout WHERE cause = 'release'`;
           assert.strictEqual(releases.length, 0);
         }),
