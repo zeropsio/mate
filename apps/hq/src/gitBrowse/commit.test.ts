@@ -38,8 +38,8 @@ describe("Git browse commit routes", () => {
           "Count to three\n\nThe second line is a number now.",
         );
         yield* sql`
-          INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, merged_sha)
-          VALUES (${appId}::uuid, 'group', 4, 'P_ROBOT', 'Count to three', 'merged', ${sha})`;
+          INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, state, merged_sha)
+          VALUES (${appId}::uuid, 'group', 4, 'P_ROBOT', 'mate/P_ROBOT/4', 'Count to three', 'merged', ${sha})`;
 
         const path = `/api/apps/${appId}/repos/group/browse/commit?sha=${sha}`;
         const read = yield* call("GET", path, { session: owner });
