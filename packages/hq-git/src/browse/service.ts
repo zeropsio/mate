@@ -10,14 +10,18 @@ import type { GitError, Repo } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
+import { readBlob, type BlobRead } from "./blob.ts";
 import { findReadme, type Readme } from "./readme.ts";
 import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } from "./refs.ts";
 import { resolveRevision, type Resolved } from "./resolve.ts";
+import { listTree, type TreeRead } from "./tree.ts";
 
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
+export type { BlobRead } from "./blob.ts";
 export type { Readme } from "./readme.ts";
 export type { RefCounts, RefItem, RefsPage, RefsRequest } from "./refs.ts";
 export type { RefKind, Resolved } from "./resolve.ts";
+export type { FolderEntry, FolderEntryType, TreeRead } from "./tree.ts";
 
 export interface HqGitBrowse {
   /**
@@ -36,6 +40,17 @@ export interface HqGitBrowse {
   ) => Effect.Effect<Readme | null, GitError>;
   /** A page of the commits reachable from `sha`, or of those that touched a path; none where the commit is absent. */
   readonly log: (repo: Repo, request: LogRequest) => Effect.Effect<LogPage | null, GitError>;
+  /** A folder of a commit: folders first, then files, each by name; at most 1,000 entries. */
+  readonly tree: (repo: Repo, sha: string, path: string) => Effect.Effect<TreeRead, GitError>;
+  /**
+   * A file of a commit, its first `maxBytes`; none of it past `refuseOver`, only its size.
+   */
+  readonly blob: (
+    repo: Repo,
+    sha: string,
+    path: string,
+    options: { readonly maxBytes: number; readonly refuseOver?: number },
+  ) => Effect.Effect<BlobRead, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -49,4 +64,8 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, maxBytes, signal)),
   log: (repo, request) =>
     inRepo("browse.log", repo, (dir, signal) => listLog(git, dir, request, signal)),
+  tree: (repo, sha, path) =>
+    inRepo("browse.tree", repo, (dir, signal) => listTree(git, dir, sha, path, signal)),
+  blob: (repo, sha, path, options) =>
+    inRepo("browse.blob", repo, (dir, signal) => readBlob(git, dir, sha, path, options, signal)),
 });

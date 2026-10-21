@@ -33,3 +33,20 @@ export const GitRevision = Schema.String.check(
       : undefined,
   ),
 );
+
+/** A path inside a commit: `""` its top folder; never `.`, `..`, an empty segment or a backslash. */
+export const GitPath = Schema.String.check(
+  Schema.isMaxLength(4096),
+  Schema.makeFilter((path: string) =>
+    path.includes("\0") ||
+    path.includes("\\") ||
+    (path !== "" && path.split("/").some((part) => part === "" || part === "." || part === ".."))
+      ? "Expected a repository-relative path"
+      : undefined,
+  ),
+);
+
+/** A file's bytes the browser shows; past them it shows these and says it stops. */
+export const SOURCE_FILE_MAX_BYTES = 256 * 1024;
+/** A file's bytes the browser reads at all (raw, download, an image); past them HQ refuses. */
+export const RAW_MAX_BYTES = 1024 * 1024;
