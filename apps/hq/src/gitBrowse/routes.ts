@@ -10,7 +10,6 @@
  *
  * @module gitBrowse/routes
  */
-import { GitError } from "@t3tools/hq-git";
 import { RepoName } from "@t3tools/shared/hqChanges";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -50,7 +49,16 @@ interface BrowseRead<Q extends Schema.Decoder<unknown>, E, R> {
   readonly answer: (input: BrowseInput<Q["Type"]>) => Effect.Effect<BrowseAnswer, E, R>;
 }
 
+/**
+ * A pinned answer never changes, but who may read it does: the browser keeps it per session token
+ * (`Vary: Authorization`), so another account on the same browser asks HQ, and is checked, again.
+ */
 const IMMUTABLE = "private, max-age=31536000, immutable";
+
+/** A read past its deadline: read again later; slow git is no fault of HQ's to log as one. */
+export class BrowseDeadline extends Schema.TaggedError<BrowseDeadline>()("BrowseDeadline", {
+  read: Schema.String,
+}) {}
 
 /** FNV-1a of a read's parameters: an entity tag only tells two queries apart. */
 const hashOf = (text: string) => {
@@ -75,7 +83,7 @@ export const browseResponse = (
     [...params].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
   );
   const etag = `"${read}:${answer.pinned.sha}:${hashOf(canonical.toString())}"`;
-  const headers = { "cache-control": IMMUTABLE, etag };
+  const headers = { "cache-control": IMMUTABLE, etag, vary: "Authorization" };
   return request.headers["if-none-match"] === etag
     ? HttpServerResponse.empty({ status: 304, headers })
     : HttpServerResponse.jsonUnsafe(answer.body, { status: 200, headers });
@@ -107,14 +115,7 @@ const route = <Q extends Schema.Decoder<unknown>, E extends { readonly _tag: str
             // Interrupted at its deadline, the read's signal stops its git with it.
             Effect.timeoutOrElse({
               duration: read.deadline,
-              orElse: () =>
-                Effect.fail(
-                  new GitError({
-                    operation: `browse.${read.read}`,
-                    reason: "git_failed",
-                    message: "The read did not finish in time",
-                  }),
-                ),
+              orElse: () => Effect.fail(new BrowseDeadline({ read: read.read })),
             }),
           );
         return browseResponse(request, read.read, search, answer);

@@ -170,6 +170,8 @@ describe("Git browse routes", () => {
             first.headers["cache-control"],
             "private, max-age=31536000, immutable",
           );
+          // Kept per session: another account on the same browser is checked by HQ again.
+          assert.strictEqual(first.headers["vary"], "Authorization");
           const etag = first.headers["etag"]!;
           expect(etag).toMatch(new RegExp(`^"tree:${sha}:[0-9a-f]{8}"$`));
           // The same query in another order is the same answer; another path is another one.
