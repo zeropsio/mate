@@ -173,8 +173,9 @@ describe("the organization's GitHub app", () => {
             issues: "write",
             metadata: "read",
             checks: "read",
-            statuses: "read",
+            statuses: "write",
             actions: "read",
+            workflows: "write",
           });
           assert.deepStrictEqual(manifest["default_permissions"], GITHUB_APP_PERMISSIONS);
           assert.deepStrictEqual(manifest["default_events"], [...GITHUB_APP_EVENTS]);

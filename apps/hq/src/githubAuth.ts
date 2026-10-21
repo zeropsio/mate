@@ -51,6 +51,19 @@ export const GITHUB_TOKEN_USES = {
   merge: { contents: "write", pull_requests: "write" },
   /** Its issues the bot answers on: reactions, comments, labels, closing. */
   issues: { issues: "write" },
+  /**
+   * A Mate's own work on the repository: its branches and pull requests, and what its CI says of
+   * them. Never Commit statuses: `mate/gate` is HQ's word, never the agent's.
+   */
+  agent: {
+    contents: "write",
+    pull_requests: "write",
+    workflows: "write",
+    checks: "read",
+    actions: "read",
+  },
+  /** HQ's `mate/gate` on a head a person merges in Mate (`pullRequests.ts`). */
+  gate: { statuses: "write" },
 } as const;
 export type GithubTokenUse = keyof typeof GITHUB_TOKEN_USES;
 

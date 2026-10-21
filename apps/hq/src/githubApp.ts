@@ -76,9 +76,11 @@ export const GITHUB_APP_PATH = "/api/github/app";
 export const GITHUB_APP_WEBHOOK_PATH = `${GITHUB_APP_PATH}/webhook`;
 
 /**
- * What the app may do on a repository it is installed on: push branches, open and merge pull
- * requests, comment, react and label on issues, read checks, statuses and workflow runs. Nothing of
- * the organization and no administration, so a repository's admin may install it too.
+ * What the app may do on a repository it is installed on: push branches (workflow files too), open
+ * and merge pull requests, comment, react and label on issues, read checks and workflow runs, and
+ * write commit statuses — `mate/gate`, HQ's word that a person merged a head in Mate. Nothing of the
+ * organization and no administration, so a repository's admin may install it too. An installation
+ * made before keeps what it was granted until its admin approves the rest on GitHub.
  */
 export const GITHUB_APP_PERMISSIONS = {
   contents: "write",
@@ -86,8 +88,9 @@ export const GITHUB_APP_PERMISSIONS = {
   issues: "write",
   metadata: "read",
   checks: "read",
-  statuses: "read",
+  statuses: "write",
   actions: "read",
+  workflows: "write",
 } as const;
 
 /**

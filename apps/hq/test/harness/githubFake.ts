@@ -45,8 +45,9 @@ const GRANTED = {
   issues: "write",
   metadata: "read",
   checks: "read",
-  statuses: "read",
+  statuses: "write",
   actions: "read",
+  workflows: "write",
 };
 const LEVEL: Readonly<Record<string, number>> = { read: 1, write: 2, admin: 3 };
 
