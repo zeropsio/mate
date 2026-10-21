@@ -10,6 +10,7 @@ const update: RefUpdate = {
   ref: "refs/heads/mate/alice/1",
 };
 const change: Change = { appId: "app", mateId: "alice", number: 1, open: true };
+/** The decision on `patch`, the branch bound to `record` (the change Core answers for it). */
 const decide = (
   principal: Principal = mate,
   patch: Partial<RefUpdate> = {},
@@ -56,27 +57,50 @@ describe("default write rules", () => {
     }
   });
 
-  it("asks the async change port with the repository, mate, and parsed number", async () => {
-    const asked: Array<[Repo, string, number]> = [];
+  it("asks the async change port with the repository and the pushed branch", async () => {
+    const asked: Array<[Repo, string]> = [];
     const decision = await allowRefUpdate(
       mate,
       repo,
-      { ...update, ref: "refs/heads/mate/alice/42" },
-      async (target, mateId, number) => {
-        asked.push([target, mateId, number]);
+      { ...update, ref: "refs/heads/fix/login" },
+      async (target, branch) => {
+        asked.push([target, branch]);
         // @effect-diagnostics-next-line globalTimers:off
         await new Promise((resolve) => setTimeout(resolve, 1));
-        return { appId: "app", mateId, number, open: true };
+        return { ...change, number: 42 };
       },
     );
     expect(decision).toEqual({ allowed: true });
-    expect(asked).toEqual([[repo, "alice", 42]]);
+    expect(asked).toEqual([[repo, "fix/login"]]);
+  });
+
+  it.each([
+    ["a branch no change was opened on", { ref: "refs/heads/fix-login" }, null],
+    ["its open change's branch, named by it", { ref: "refs/heads/fix-login" }, change],
+  ] satisfies Array<[string, Partial<RefUpdate>, Change | null]>)(
+    "allows a Mate to push %s",
+    async (_name, patch, record) => {
+      expect(await decide(mate, patch, record)).toEqual({ allowed: true });
+    },
+  );
+
+  it("refuses a person the branch a Mate's open change is on, and leaves it theirs once settled", async () => {
+    const person: Principal = { kind: "person", userId: "user", appId: "app" };
+    const ref = { ref: "refs/heads/fix-login" };
+    expect(await decide(person, ref, change)).toEqual({ allowed: false, reason: "protected_ref" });
+    expect(await decide(person, ref, { ...change, open: false })).toEqual({ allowed: true });
   });
 
   it.each([
     ["reader", { kind: "reader", userId: "user" }, {}, change, "read_only"],
     ["other app", { ...mate, appId: "other" }, {}, change, "not_your_ref"],
-    ["other mate", mate, { ref: "refs/heads/mate/bob/1" }, change, "not_your_ref"],
+    [
+      "other mate",
+      mate,
+      { ref: "refs/heads/fix-login" },
+      { ...change, mateId: "bob" },
+      "not_your_ref",
+    ],
     ["main", mate, { ref: "refs/heads/main" }, change, "not_your_ref"],
     ["tag", mate, { ref: "refs/tags/v1" }, change, "not_your_ref"],
     ["deletion", mate, { newSha: "0".repeat(40) }, change, "deletion"],
@@ -89,12 +113,9 @@ describe("default write rules", () => {
     ],
     ["core deletion", { kind: "core" }, { newSha: "0".repeat(64) }, change, "deletion"],
     ["unknown", mate, {}, null, "unknown_change"],
-    ["wrong owner", mate, {}, { ...change, mateId: "bob" }, "unknown_change"],
-    ["wrong app", mate, {}, { ...change, appId: "other" }, "unknown_change"],
-    ["wrong number", mate, {}, { ...change, number: 2 }, "unknown_change"],
     ["closed", mate, {}, { ...change, open: false }, "change_closed"],
-    ["zero number", mate, { ref: "refs/heads/mate/alice/0" }, change, "not_your_ref"],
-    ["noncanonical number", mate, { ref: "refs/heads/mate/alice/01" }, change, "not_your_ref"],
+    ["another Mate's closed", mate, {}, { ...change, mateId: "bob", open: false }, "change_closed"],
+    ["notes", mate, { ref: "refs/notes/review" }, null, "not_your_ref"],
   ] satisfies Array<[string, Principal, Partial<RefUpdate>, Change | null, string]>)(
     "refuses %s",
     async (_name, principal, patch, record, reason) => {

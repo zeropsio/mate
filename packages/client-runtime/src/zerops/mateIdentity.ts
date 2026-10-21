@@ -4,8 +4,9 @@
  *
  * Main's zcp registered a Mate's bot in Gitea as `mate-{projectId}` and worked
  * on `mate/{login}` (gitea-mate `mate.go`, main's zcp `gitea_repo.go`). Against
- * HQ, zcp works on `mate/{projectId}` and pushes each change to
- * `mate/{projectId}/{number}` (zcp `hqMateBranch`, `hq.Client.ChangeBranch`), and
+ * HQ, zcp works on `mate/{projectId}` and pushes each change to the branch HQ
+ * stores for it — `mate/{projectId}/{number}` unless zcp named another when it
+ * opened the change (zcp `hqMateBranch`, `hq.Client.ChangeBranch`), and
  * a Mate migrated from main still carries `mate/mate-{projectId}` until zcp moves
  * it. Those shapes are the only place a Mate's project id leaks into somebody
  * else's namespace, and four modules have to turn them back into a Mate — whose

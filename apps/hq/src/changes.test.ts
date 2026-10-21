@@ -227,7 +227,7 @@ describe("a Mate's changes in HQ", () => {
     );
 
     it.effect(
-      "a Mate opens one change per repository, and pushes only to that change's branch",
+      "a Mate opens one change per repository, and pushes to neither main nor another Mate's change",
       () =>
         Effect.gen(function* () {
           const { call, fake, origin } = yield* startCore(true);
@@ -251,6 +251,7 @@ describe("a Mate's changes in HQ", () => {
             repo: "appdev",
             number: 1,
             mateProjectId: "P_MATE",
+            branch: "mate/P_MATE/1",
             title: "Mate: appdev",
             body: "",
             state: "open",
@@ -301,7 +302,7 @@ describe("a Mate's changes in HQ", () => {
           const work = NodePath.join(git.dir, "work");
           yield* git.checked(["commit", "--allow-empty", "-m", "Add a login page"], work);
           yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
-          for (const ref of ["mate/P_MATE/2", "main", "mate/P_MATE2/2", "elsewhere"]) {
+          for (const ref of ["mate/P_MATE/2", "main", "mate/P_MATE2/2"]) {
             const push = yield* git.run(["push", "origin", `HEAD:refs/heads/${ref}`], work);
             assert.notStrictEqual(push.code, 0, `a push to ${ref} landed`);
           }

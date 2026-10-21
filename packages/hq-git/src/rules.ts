@@ -1,6 +1,7 @@
 import type { HqGitOptions, Principal, RefDecision, RefUpdate, Repo } from "./api.ts";
 
-const validRef = (ref: string) =>
+/** Whether git takes `ref` as a full ref name. */
+export const validRef = (ref: string) =>
   !Array.from(ref).some(
     (char) => char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127 || "~^:?*[\\".includes(char),
   ) &&
@@ -10,6 +11,8 @@ const validRef = (ref: string) =>
   ref.split("/").length >= 2 &&
   ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 const refuse = (reason: string): RefDecision => ({ allowed: false, reason });
+/** HQ's namespace: the branch of a change opened without naming one, `mate/<mateId>/<number>`. */
+const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
 
 /** Built-in policy the handler applies to every update; Core's port only answers change records. */
 export const allowRefUpdate = async (
@@ -32,27 +35,22 @@ export const allowRefUpdate = async (
       return refuse("tag_immutable");
     return { allowed: true };
   }
+  if (!update.ref.startsWith("refs/heads/") || update.ref === "refs/heads/main")
+    return refuse(principal.kind === "person" ? "protected_ref" : "not_your_ref");
+  const branch = update.ref.slice("refs/heads/".length);
   if (principal.kind === "person") {
-    // HQ owns main, tags and the allocated Mate change namespace. People own topic branches.
-    return update.ref.startsWith("refs/heads/") &&
-      update.ref !== "refs/heads/main" &&
-      update.ref !== "refs/heads/mate" &&
-      !update.ref.startsWith("refs/heads/mate/")
-      ? { allowed: true }
-      : refuse("protected_ref");
+    // HQ owns main, tags and the namespace of changes opened without a branch; a branch an open
+    // change is on is its Mate's. People own every other branch.
+    if (allocated(branch)) return refuse("protected_ref");
+    return (await lookupChange(repo, branch))?.open === true
+      ? refuse("protected_ref")
+      : { allowed: true };
   }
-  const match = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/.exec(update.ref);
-  if (!match || match[1] !== principal.mateId) return refuse("not_your_ref");
-  const number = Number(match[2]);
-  if (!Number.isSafeInteger(number)) return refuse("not_your_ref");
-  const change = await lookupChange(repo, principal.mateId, number);
-  if (
-    !change ||
-    change.appId !== repo.appId ||
-    change.mateId !== principal.mateId ||
-    change.number !== number
-  ) {
-    return refuse("unknown_change");
-  }
-  return change.open ? { allowed: true } : refuse("change_closed");
+  // A Mate names its own branches: none another Mate's open change is on, none a change settled,
+  // and in HQ's namespace only its own change's.
+  const change = await lookupChange(repo, branch);
+  if (change === null) return allocated(branch) ? refuse("unknown_change") : { allowed: true };
+  if (change.open)
+    return change.mateId === principal.mateId ? { allowed: true } : refuse("not_your_ref");
+  return refuse("change_closed");
 };

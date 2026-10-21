@@ -17,6 +17,8 @@ import type { HqGit, GitEvent, HqGitOptions, GitError, MirrorRemote } from "./ap
 
 const repo = { appId: "app", id: "repo" };
 const author = { name: "Core", email: "core@example.test" };
+/** Alice's change `number`, on the branch a change opened without naming one is on. */
+const alice = (number: number) => ({ mateId: "alice", number, branch: `mate/alice/${number}` });
 const fixture = (
   run: (git: HqGit, dir: string, events: GitEvent[]) => Promise<void>,
   overrides: Partial<HqGitOptions> = {},
@@ -97,10 +99,9 @@ const merge = async (
 ) =>
   value(
     git.squashMerge(repo, {
-      mateId: "alice",
-      number,
+      ...alice(number),
       expectedMain: main,
-      expectedHead: head ?? (await value(git.changeHead(repo, "alice", number))) ?? "0".repeat(40),
+      expectedHead: head ?? (await value(git.changeHead(repo, alice(number)))) ?? "0".repeat(40),
       message,
       trailers: { "Crew-Assignment": "trusted" },
       author,
@@ -113,10 +114,10 @@ describe("git operations", () => {
     () =>
       fixture(async (git, dir, events) => {
         const main = await write(git, { "base.txt": "base\n" }, null);
-        expect(await value(git.changeHead(repo, "alice", 1))).toBeNull();
+        expect(await value(git.changeHead(repo, alice(1)))).toBeNull();
         const head = await branch(git, dir, main, { "new.txt": "new\n" });
-        expect(await value(git.changeHead(repo, "alice", 1))).toBe(head);
-        expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "clean" });
+        expect(await value(git.changeHead(repo, alice(1)))).toBe(head);
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "clean" });
         const result = await merge(git, main);
         expect(result).toHaveProperty("merged");
         if (!("merged" in result)) throw new Error("merge refused");
@@ -131,7 +132,7 @@ describe("git operations", () => {
         );
         const deleted = await write(git, { "new.txt": null }, result.merged);
         expect(await merge(git, deleted)).toEqual({ kind: "already_merged" });
-        expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "already_merged" });
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "already_merged" });
         expect(await native(dir, ["ls-tree", "-r", "--name-only", "main"])).toBe("base.txt");
         await vi.waitFor(() =>
           expect(events.map((e) => e.kind)).toEqual(["main_moved", "main_moved", "main_moved"]),
@@ -159,8 +160,7 @@ describe("git operations", () => {
       const head = await branch(git, dir, main, { "new.txt": "new" });
       const result = await value(
         git.squashMerge(repo, {
-          mateId: "alice",
-          number: 1,
+          ...alice(1),
           expectedMain: main,
           expectedHead: head,
           message: "Add a page (#1)",
@@ -234,7 +234,7 @@ describe("git operations", () => {
         ),
       ).rejects.toHaveProperty("reason", "invalid_config");
       expect(await native(dir, ["rev-parse", "main"])).toBe(main);
-      expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "clean" });
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "clean" });
     }),
   );
   it.live("merges exactly the change head Core reviewed", () =>
@@ -264,7 +264,7 @@ describe("git operations", () => {
       await native(dir, ["fast-import", "--quiet"], stream);
       const main = await native(dir, ["rev-parse", "main"]);
       await branch(git, dir, main, { "new.txt": "new" });
-      expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "clean" });
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "clean" });
     }),
   );
   it.live("refuses a change whose history is unrelated to main", () =>
@@ -272,21 +272,21 @@ describe("git operations", () => {
       const main = await write(git, { base: "base" }, null);
       const root = await write(git, { other: "other" }, null, "refs/heads/core/other");
       await native(dir, ["update-ref", "refs/heads/mate/alice/1", root]);
-      expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "unrelated" });
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "unrelated" });
       expect(await merge(git, main)).toEqual({ kind: "unrelated" });
     }),
   );
   it.live("reports a missing main, not a missing change, while main is unborn", () =>
     fixture(async (git, dir) => {
-      expect(await value(git.mergeability(repo, "alice", 1))).toEqual({ kind: "no_change" });
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "no_change" });
       const head = await write(git, { file: "x" }, null, "refs/heads/core/start");
       await native(dir, ["update-ref", "refs/heads/mate/alice/1", head]);
-      await expect(value(git.mergeability(repo, "alice", 1))).rejects.toHaveProperty(
+      await expect(value(git.mergeability(repo, alice(1)))).rejects.toHaveProperty(
         "reason",
         "no_main",
       );
       await expect(
-        value(git.changeDiff(repo, "alice", 1, { maxFiles: 1, maxBytesPerFile: 1 })),
+        value(git.changeDiff(repo, alice(1), { maxFiles: 1, maxBytesPerFile: 1 })),
       ).rejects.toHaveProperty("reason", "no_main");
     }),
   );
@@ -306,7 +306,7 @@ describe("git operations", () => {
           : original.call(this, args, options);
       });
       try {
-        expect(await value(git.mergeability(repo, "alice", 1))).toEqual({
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({
           kind: "conflict",
           paths: [],
         });
@@ -329,7 +329,7 @@ describe("git operations", () => {
       const moved = await write(git, { file: "core\n" }, main);
       expect(await merge(git, main)).toEqual({ kind: "main_moved" });
       expect(await merge(git, moved)).toEqual({ kind: "conflict", paths: ["file"] });
-      expect(await value(git.mergeability(repo, "alice", 1))).toEqual({
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({
         kind: "conflict",
         paths: ["file"],
       });
@@ -457,7 +457,7 @@ describe("a repository's backup", () => {
       await expect(NodeFSP.stat(file)).rejects.toThrow();
       const copy = { appId: "app", id: "copy" };
       await value(git.restore(copy, null));
-      expect(await value(git.changeHead(copy, "alice", 1))).toBeNull();
+      expect(await value(git.changeHead(copy, alice(1)))).toBeNull();
     }),
   );
   it.live("lists tags by their commit, message and date", () =>
@@ -480,8 +480,8 @@ describe("a repository's backup", () => {
       await native(dir, ["update-ref", "refs/heads/mate/bob/12", one]);
       await native(dir, ["update-ref", "refs/heads/core/build", one]);
       expect(await value(git.changeRefs(repo))).toEqual([
-        { mateId: "alice", number: 1, sha: one },
-        { mateId: "bob", number: 12, sha: one },
+        { ...alice(1), sha: one },
+        { mateId: "bob", number: 12, branch: "mate/bob/12", sha: one },
       ]);
     }),
   );
@@ -575,7 +575,7 @@ describe("what lies between two commits", () => {
 describe("a change's own history", () => {
   it.live("names what squashing the change does to main now, against the main and head read", () =>
     fixture(async (git, dir) => {
-      expect(await value(git.squashNames(repo, "alice", 1))).toEqual({ kind: "no_change" });
+      expect(await value(git.squashNames(repo, alice(1)))).toEqual({ kind: "no_change" });
       const main = await write(
         git,
         { "kept.txt": "kept\n", "edited.txt": "one\n", "gone.txt": "x\n" },
@@ -588,7 +588,7 @@ describe("a change's own history", () => {
       });
       // main moving on is no part of the change.
       const moved = await write(git, { "later.txt": "later\n" }, main);
-      const names = await value(git.squashNames(repo, "alice", 1));
+      const names = await value(git.squashNames(repo, alice(1)));
       expect(names).toEqual({
         main: moved,
         head,
@@ -615,24 +615,24 @@ describe("a change's own history", () => {
         await branch(git, dir, main, { "same.txt": "other\n" }, 3);
         // A sibling's merge adds the same file first.
         const moved = await write(git, { "same.txt": "same\n", "sibling.txt": "sibling\n" }, main);
-        expect(await value(git.squashNames(repo, "alice", 1))).toEqual({
+        expect(await value(git.squashNames(repo, alice(1)))).toEqual({
           main: moved,
           head: both,
           files: { items: [{ path: "own.txt", status: "A" }], truncated: false },
         });
-        expect(await value(git.squashNames(repo, "alice", 2))).toMatchObject({
+        expect(await value(git.squashNames(repo, alice(2)))).toMatchObject({
           main: moved,
           files: { items: [], truncated: false },
         });
         // A change main has already, its head on main itself, would do nothing either.
         await native(dir, ["update-ref", "refs/heads/mate/alice/4", main]);
-        expect(await value(git.squashNames(repo, "alice", 4))).toEqual({
+        expect(await value(git.squashNames(repo, alice(4)))).toEqual({
           main: moved,
           head: main,
           files: { items: [], truncated: false },
         });
         // Added otherwise, it does not merge: git's verdict, no names.
-        expect(await value(git.squashNames(repo, "alice", 3))).toEqual({
+        expect(await value(git.squashNames(repo, alice(3)))).toEqual({
           kind: "conflict",
           paths: ["same.txt"],
         });
@@ -653,7 +653,7 @@ describe("a change's own history", () => {
       );
       const head = await native(dir, ["commit-tree", tree, "-p", main], "many");
       await native(dir, ["update-ref", "refs/heads/mate/alice/1", head]);
-      const names = await value(git.squashNames(repo, "alice", 1));
+      const names = await value(git.squashNames(repo, alice(1)));
       expect(names).toMatchObject({ files: { truncated: true } });
       expect("files" in names && names.files.items).toHaveLength(1000);
     }),
@@ -707,7 +707,7 @@ describe("a change's own history", () => {
         await write(git, { base: "moved\n" }, main);
 
         const trailers = await value(
-          git.changeTrailers(repo, "alice", 1, ["Crew-Lane", "Crew-Assignment"]),
+          git.changeTrailers(repo, alice(1), ["Crew-Lane", "Crew-Assignment"]),
         );
         const of = (key: string) =>
           trailers.filter((entry) => entry.key === key).map((entry) => entry.value);
@@ -717,7 +717,7 @@ describe("a change's own history", () => {
         ]);
         expect(of("Crew-Lane")).toEqual([...Array(150).fill("ada"), "bo"]);
         expect(trailers).toHaveLength(302);
-        expect(await value(git.changeTrailers(repo, "alice", 2, ["Crew-Lane"]))).toEqual([]);
+        expect(await value(git.changeTrailers(repo, alice(2), ["Crew-Lane"]))).toEqual([]);
       }),
   );
 
@@ -729,7 +729,7 @@ describe("a change's own history", () => {
       await native(dir, ["update-ref", "refs/heads/core/build", landed]);
       const next = await write(git, { "b.txt": "b\n" }, landed, "refs/heads/core/build");
       await native(dir, ["update-ref", "refs/heads/mate/alice/2", next]);
-      const log = await value(git.changeLog(repo, "alice", 2, { limit: 100, base: landed }));
+      const log = await value(git.changeLog(repo, alice(2), { limit: 100, base: landed }));
       expect(log.items.map((c) => c.sha)).toEqual([next]);
       expect(log.truncated).toBe(false);
     }),
@@ -748,18 +748,18 @@ describe("a change's own history", () => {
         ]);
         await native(dir, ["update-ref", "refs/heads/mate/alice/2", lone]);
         expect(
-          (await value(git.changeLog(repo, "alice", 2, { limit: 10 }))).items.map((c) => c.sha),
+          (await value(git.changeLog(repo, alice(2), { limit: 10 }))).items.map((c) => c.sha),
         ).toEqual([lone]);
-        expect(await value(git.mergeBase(repo, "alice", 2))).toBeNull();
+        expect(await value(git.mergeBase(repo, alice(2)))).toBeNull();
 
         const main = await write(git, { "base.txt": "base\n" }, null);
-        expect(await value(git.mergeBase(repo, "alice", 1))).toBeNull();
-        expect(await value(git.changeLog(repo, "alice", 1, { limit: 10 }))).toEqual({
+        expect(await value(git.mergeBase(repo, alice(1)))).toBeNull();
+        expect(await value(git.changeLog(repo, alice(1), { limit: 10 }))).toEqual({
           items: [],
           truncated: false,
         });
         const first = await branch(git, dir, main, { "a.txt": "a\n" });
-        expect(await value(git.mergeBase(repo, "alice", 1))).toBe(main);
+        expect(await value(git.mergeBase(repo, alice(1)))).toBe(main);
         // main moves on, and the change takes it in with a merge before its next commit.
         const moved = await write(git, { "base.txt": "base 2\n" }, main);
         const tree = await native(dir, ["merge-tree", "--write-tree", first, moved]);
@@ -778,8 +778,8 @@ describe("a change's own history", () => {
         await native(dir, ["update-ref", "refs/heads/mate/alice/1", second]);
         await native(dir, ["update-ref", "-d", "refs/heads/core/build"]);
 
-        expect(await value(git.mergeBase(repo, "alice", 1))).toBe(moved);
-        const log = await value(git.changeLog(repo, "alice", 1, { limit: 10 }));
+        expect(await value(git.mergeBase(repo, alice(1)))).toBe(moved);
+        const log = await value(git.changeLog(repo, alice(1), { limit: 10 }));
         expect(log.items.map((commit) => commit.sha)).toEqual([second, merged, first]);
         // Messages as stored: `commit-tree -m` ends its with a newline.
         expect(log.items.map((commit) => commit.message)).toEqual([
@@ -793,7 +793,7 @@ describe("a change's own history", () => {
             /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)$/u,
           );
         }
-        const capped = await value(git.changeLog(repo, "alice", 1, { limit: 1 }));
+        const capped = await value(git.changeLog(repo, alice(1), { limit: 1 }));
         expect([capped.items.map((commit) => commit.sha), capped.truncated]).toEqual([
           [second],
           true,
@@ -909,16 +909,16 @@ describe("reads, tags, archive and ports", () => {
       expect(next.truncated).toBe(false);
       await branch(git, dir, binary, { base: "changed\n", second: "second\n" });
       const diff = await value(
-        git.changeDiff(repo, "alice", 1, { maxFiles: 10, maxBytesPerFile: 10000 }),
+        git.changeDiff(repo, alice(1), { maxFiles: 10, maxBytesPerFile: 10000 }),
       );
       expect(diff.truncated).toBe(false);
       expect(diff.items[0]?.hunks).toContain("@@ -1 +1 @@\n-original\n+changed");
       expect(diff.items[0]).toMatchObject({ path: "base", added: 1, deleted: 1, binary: false });
       expect(
-        await value(git.changeDiff(repo, "alice", 1, { maxFiles: 1, maxBytesPerFile: 10 })),
+        await value(git.changeDiff(repo, alice(1), { maxFiles: 1, maxBytesPerFile: 10 })),
       ).toMatchObject({ truncated: true, items: [{ truncated: true }] });
       expect(
-        await value(git.changeDiff(repo, "alice", 99, { maxFiles: 1, maxBytesPerFile: 10 })),
+        await value(git.changeDiff(repo, alice(99), { maxFiles: 1, maxBytesPerFile: 10 })),
       ).toEqual({ items: [], truncated: false });
     }),
   );
@@ -930,17 +930,17 @@ describe("reads, tags, archive and ports", () => {
       await branch(git, dir, head, { later: "unreviewed\n" });
       await write(git, { base: "moved\n" }, main);
       const diff = await value(
-        git.changeDiff(repo, "alice", 1, {
+        git.changeDiff(repo, alice(1), {
           maxFiles: 10,
           maxBytesPerFile: 10000,
           snapshot,
         }),
       );
       expect(diff.items.map((file) => file.path)).toEqual(["first"]);
-      const log = await value(git.changeLog(repo, "alice", 1, { limit: 100, snapshot }));
+      const log = await value(git.changeLog(repo, alice(1), { limit: 100, snapshot }));
       expect(log.items.map((commit) => commit.sha)).toEqual([head]);
-      expect(await value(git.mergeBase(repo, "alice", 1, snapshot))).toBe(main);
-      expect(await value(git.mergeability(repo, "alice", 1, snapshot))).toEqual({ kind: "clean" });
+      expect(await value(git.mergeBase(repo, alice(1), snapshot))).toBe(main);
+      expect(await value(git.mergeability(repo, alice(1), snapshot))).toEqual({ kind: "clean" });
     }),
   );
   it.live("stops reading a change diff at a total byte ceiling across files", () =>
@@ -958,7 +958,7 @@ describe("reads, tags, archive and ports", () => {
       const spy = vi.spyOn(GitRunner.prototype, "start");
       try {
         const diff = await value(
-          git.changeDiff(repo, "alice", 1, { maxFiles: 1000, maxBytesPerFile: 1024 * 1024 }),
+          git.changeDiff(repo, alice(1), { maxFiles: 1000, maxBytesPerFile: 1024 * 1024 }),
         );
         expect(diff.truncated).toBe(true);
         expect(diff.items).toHaveLength(12);
@@ -1824,14 +1824,14 @@ describe("a mirror on another host", () => {
       const theirs = await commitThere(path, head, "suggestion");
       await native(path, ["update-ref", "refs/heads/mate/1-work", theirs]);
       expect(await value(git.fetchTip(repo, remote, "mate/1-work"))).toBe(theirs);
-      expect(await value(git.fastForwardChange(repo, "alice", 1, theirs, main))).toEqual({
+      expect(await value(git.fastForwardChange(repo, alice(1), theirs, main))).toEqual({
         kind: "stale",
       });
-      expect(await value(git.fastForwardChange(repo, "alice", 1, main, head))).toEqual({
+      expect(await value(git.fastForwardChange(repo, alice(1), main, head))).toEqual({
         kind: "not_fast_forward",
       });
       const before = events.length;
-      expect(await value(git.fastForwardChange(repo, "alice", 1, theirs, head))).toEqual({
+      expect(await value(git.fastForwardChange(repo, alice(1), theirs, head))).toEqual({
         kind: "moved",
       });
       expect(await native(dir, ["rev-parse", "refs/heads/mate/alice/1"])).toBe(theirs);

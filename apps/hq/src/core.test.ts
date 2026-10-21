@@ -40,6 +40,7 @@ describe("the drain", () => {
           pushes: yield* Queue.unbounded<PushedChange>(),
           moves: Stream.empty,
           conflicts: Stream.empty,
+          follow: () => Effect.die("no git"),
         }),
         Layer.succeed(LiveSockets, {
           track: () => Effect.void,
