@@ -7,7 +7,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
-import { lifecycleLock, postgresHome } from "./test-postgres.ts";
+import { lifecycleLock, postgresHome, prepareClusterDirectory } from "./test-postgres.ts";
 
 const pgBinDir = (() => {
   const named = process.env["MATE_PG_BIN"];
@@ -55,7 +55,7 @@ const freePort = () =>
   });
 
 async function guardPostgres() {
-  if (!NodeFS.existsSync(data))
+  if (prepareClusterDirectory(data, (line) => process.stderr.write(`${line}\n`)) === "initialise")
     run("initdb", [
       "-D",
       data,
