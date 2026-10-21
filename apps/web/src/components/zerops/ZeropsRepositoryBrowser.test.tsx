@@ -62,8 +62,8 @@ const held = vi.hoisted(() => ({
   home: { state: "unread", busy: false } as unknown,
 }));
 vi.mock("~/zerops/useRepositorySource", () => ({
-  useRepositorySource: (input: { readonly query: unknown }) => {
-    held.sourceAsked.push(input.query);
+  useRepositorySource: (input: { readonly query: unknown } | null) => {
+    if (input !== null) held.sourceAsked.push(input.query);
     return { source: held.source, again: () => undefined };
   },
 }));

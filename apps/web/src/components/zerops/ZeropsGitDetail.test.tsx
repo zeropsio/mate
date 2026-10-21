@@ -321,7 +321,6 @@ it("Source refusal withholds changes and HTTPS even before offers catch up", asy
     alert: true,
     busy: false,
   };
-  fixture.home = { state: "withheld" };
   await open();
   expect(detail().textContent).toContain("You no longer have access");
   expect(detail().textContent).not.toContain("Add a due date");

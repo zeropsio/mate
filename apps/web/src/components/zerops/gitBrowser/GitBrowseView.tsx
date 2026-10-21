@@ -4,10 +4,12 @@
  */
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
+import type { RepositoryTarget } from "@t3tools/client-runtime/zerops/hq";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { isEditableFocused } from "~/lib/editableFocus";
 import type { GitSearch } from "~/routes/git";
+import type { useRepositorySource } from "~/zerops/useRepositorySource";
 
 export type GitView = NonNullable<GitSearch["view"]>;
 /** A link inside one repository: everything `/git` carries but which repository it is. */
@@ -22,6 +24,11 @@ export interface GitRepoPageProps {
   /** The home read the frame holds: the commit the page's ref names now. */
   readonly home: GitBrowseState<GitHome>;
   readonly onHomeAgain: () => void;
+  /**
+   * The source read the page draws ({@link pageSource}), held by the frame: its refusal withholds
+   * the whole repository, never only the listing.
+   */
+  readonly source: ReturnType<typeof useRepositorySource>;
   readonly repository?: GitOverviewRepository | undefined;
   readonly changesFailure?: string | undefined;
   readonly onReadChanges?: (() => void) | undefined;
@@ -33,6 +40,22 @@ export interface GitRepoPageProps {
 /** The page a link names: its `view`; absent, home, or code where it names a path or kind. */
 export const gitView = (search: Pick<GitSearch, "view" | "path" | "kind">): GitView =>
   search.view ?? (search.path !== undefined || search.kind !== undefined ? "code" : "home");
+
+/** The source read a page draws: home's top folder at the commit it resolved, code's path. */
+export const pageSource = (
+  view: GitView,
+  search: GitBrowseSearch,
+  home: GitBrowseState<GitHome>,
+): RepositoryTarget["query"] | null =>
+  view === "code"
+    ? {
+        ...(search.rev === undefined ? {} : { rev: search.rev }),
+        path: search.path ?? "",
+        kind: search.kind ?? "tree",
+      }
+    : home.state === "known" && home.answer.sha !== null
+      ? { rev: home.answer.sha, path: "", kind: "tree" }
+      : null;
 
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   home: lazy(() => import("./GitRepoHome").then((module) => ({ default: module.GitRepoHome }))),

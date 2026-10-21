@@ -2,7 +2,13 @@ import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { GitBrowseView, gitView, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
+import { useRepositorySource } from "~/zerops/useRepositorySource";
+import {
+  GitBrowseView,
+  gitView,
+  pageSource,
+  type GitBrowseSearch,
+} from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 
 /**
@@ -42,11 +48,18 @@ export function ZeropsRepositoryBrowser({
     { appId, repo, read: "home", params: rev === undefined ? {} : { rev } },
     allowed,
   );
+  const view = gitView(query);
+  const sourceQuery = pageSource(view, query, home.view);
+  const source = useRepositorySource(
+    sourceQuery === null ? null : { appId, repo, query: sourceQuery },
+    allowed,
+  );
   const changes = useMemo(
     () => (repository?.changes ?? []).map(({ pull }) => pull),
     [repository?.changes],
   );
-  if (allowed !== true || home.view.state === "withheld") {
+  // Any read HQ refused for this repository withholds all of it, before the offers catch up.
+  if (allowed !== true || home.view.state === "withheld" || source.source.state === "withheld") {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
@@ -62,7 +75,6 @@ export function ZeropsRepositoryBrowser({
       </section>
     );
   }
-  const view = gitView(query);
   const hrefOf = (search: GitBrowseSearch) =>
     `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...search })}`;
   return (
@@ -87,6 +99,7 @@ export function ZeropsRepositoryBrowser({
         search={query}
         home={home.view}
         onHomeAgain={home.again}
+        source={source}
         repository={repository}
         changesFailure={changesFailure}
         onReadChanges={onReadChanges}

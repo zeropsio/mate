@@ -6,7 +6,6 @@ import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { useRepositorySource } from "~/zerops/useRepositorySource";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
 import { ZeropsRepositorySource } from "../ZeropsRepositorySource";
 import type { GitRepoPageProps } from "./GitBrowseView";
@@ -68,22 +67,17 @@ function OpenChanges({
 }
 
 function HomeAt({
-  appId,
-  repo,
   home,
   sha,
+  source: { source, again },
   navigate,
   hrefOf,
-}: Pick<GitRepoPageProps, "appId" | "repo" | "navigate" | "hrefOf"> & {
+}: Pick<GitRepoPageProps, "source" | "navigate" | "hrefOf"> & {
   readonly home: GitHome;
   readonly sha: string;
 }) {
-  // The top folder at the very commit the home read resolved, so a branch moving between the two
-  // reads cannot pair one commit's README with another's files.
-  const { source, again } = useRepositorySource(
-    { appId, repo, query: { rev: sha, path: "", kind: "tree" } },
-    true,
-  );
+  // The frame reads the top folder at the very commit the home read resolved (`pageSource`), so a
+  // branch moving between the two reads cannot pair one commit's README with another's files.
   const atCommit = (target: RepoPathTarget) => ({ rev: sha, view: "code" as const, ...target });
   const { about, readme } = home;
   return (

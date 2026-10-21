@@ -35,20 +35,27 @@ function readerFor(store: AccountStore, api: HqApi) {
   }
   return reader;
 }
-export function useRepositorySource(input: RepositoryTarget, allowed: boolean | undefined) {
+/** One source read of a repository, or none where the page reads no source yet. */
+export function useRepositorySource(input: RepositoryTarget | null, allowed: boolean | undefined) {
   const hq = useOfficialHq();
   const store = useAccountStoreForAdapters();
-  const {
-    appId,
-    repo,
-    query: { rev, path, kind },
-  } = input;
+  const appId = input?.appId;
+  const repo = input?.repo;
+  const rev = input?.query.rev;
+  const path = input?.query.path;
+  const kind = input?.query.kind;
   const orgId = useAccountOrgId();
   const target = useMemo(
-    () => ({ appId, repo, query: { ...(rev === undefined ? {} : { rev }), path, kind } }),
+    () =>
+      appId === undefined || repo === undefined || path === undefined || kind === undefined
+        ? null
+        : { appId, repo, query: { ...(rev === undefined ? {} : { rev }), path, kind } },
     [appId, repo, rev, path, kind],
   );
-  const key = useMemo(() => (orgId === null ? null : { orgId, target }), [orgId, target]);
+  const key = useMemo(
+    () => (orgId === null || target === null ? null : { orgId, target }),
+    [orgId, target],
+  );
   const reader = store === null || hq === null ? null : readerFor(store, hq.api);
   const source = useAtomValue(
     store === null || key === null

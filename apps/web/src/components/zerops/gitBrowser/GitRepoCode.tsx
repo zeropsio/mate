@@ -4,21 +4,11 @@
  */
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
-import { useRepositorySource } from "~/zerops/useRepositorySource";
 import { ZeropsRepositorySource } from "../ZeropsRepositorySource";
 import type { GitRepoPageProps } from "./GitBrowseView";
 
-export function GitRepoCode({ appId, repo, search, navigate }: GitRepoPageProps) {
+export function GitRepoCode({ search, source: { source, again }, navigate }: GitRepoPageProps) {
   const path = search.path ?? "";
-  const kind = search.kind ?? "tree";
-  const { source, again } = useRepositorySource(
-    {
-      appId,
-      repo,
-      query: { ...(search.rev === undefined ? {} : { rev: search.rev }), path, kind },
-    },
-    true,
-  );
   // A link out of what was read names the commit it was read at, never the branch that may move.
   const rev =
     source.state === "known" && source.source.revision !== null
