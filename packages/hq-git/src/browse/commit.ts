@@ -25,7 +25,7 @@ export interface CommitRead extends Diff {
 }
 
 /** The commit `sha` is, verified; none where the repository holds no such commit. */
-const verified = async (git: GitRunner, dir: string, sha: string, signal: AbortSignal) => {
+export const verified = async (git: GitRunner, dir: string, sha: string, signal: AbortSignal) => {
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(sha)) return null;
   const found = await git.exec(
     ["-C", dir, "rev-parse", "--verify", "--quiet", "--end-of-options", `${sha}^{commit}`],

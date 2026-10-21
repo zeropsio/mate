@@ -21,6 +21,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, knock, principal } from "../api.ts";
 import { commitRead } from "./commit.ts";
 import { commitFileRead } from "./commitFile.ts";
+import { compareFileRead, compareRead } from "./compare.ts";
 import { grepRead } from "./grep.ts";
 import { browseHeavyLayer } from "./heavy.ts";
 import { homeRead } from "./home.ts";
@@ -128,6 +129,8 @@ const BROWSE_READS = [
   route(logRead),
   route(commitRead),
   route(commitFileRead),
+  route(compareRead),
+  route(compareFileRead),
   route(pathsRead),
   route(grepRead),
 ] as const;
