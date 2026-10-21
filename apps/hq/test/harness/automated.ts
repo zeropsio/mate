@@ -325,6 +325,8 @@ export const automatedPool = (
     readonly robotName?: string;
     /** How often HQ looks at every open change's pull request. */
     readonly pullRequestsEvery?: Duration.Duration;
+    /** How old a view of the org HQ serves; 30 s by default. */
+    readonly viewTtl?: Duration.Duration;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -338,6 +340,7 @@ export const automatedPool = (
       githubApi: github.url,
       ...(given.scheduleEvery === undefined ? {} : { scheduleEvery: given.scheduleEvery }),
       ...(given.githubMirror === undefined ? {} : { githubMirror: given.githubMirror }),
+      ...(given.viewTtl === undefined ? {} : { viewTtl: given.viewTtl }),
       ...(given.pullRequestsEvery === undefined
         ? {}
         : { pullRequests: { sweepEvery: given.pullRequestsEvery } }),
