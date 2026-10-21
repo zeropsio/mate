@@ -1,3 +1,4 @@
+import { defaultStringifySearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
@@ -75,8 +76,9 @@ export function ZeropsRepositoryBrowser({
       </section>
     );
   }
+  // The router's own stringifier: a path such as `2024` or `true` reads back as the same string.
   const hrefOf = (search: GitBrowseSearch) =>
-    `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...search })}`;
+    `${appBasePath()}/git${defaultStringifySearch({ appId, repo, ...search })}`;
   return (
     <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
       <GitRepoFrame

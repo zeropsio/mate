@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { defaultParseSearch } from "@tanstack/react-router";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -312,6 +313,8 @@ describe("repository README", () => {
     ["../docs/setup.md", { path: "docs/setup.md", kind: "file" }],
     ["/src/", { path: "src", kind: "tree" }],
     ["./CONTRIBUTING.md#start", { path: ".github/CONTRIBUTING.md", kind: "file" }],
+    // A name the router would read as a number, opened in a new tab.
+    ["../2024", { path: "2024", kind: "file" }],
   ])(
     "A README link to a repository path opens that path at the same commit: %s",
     async (href, target) => {
@@ -321,6 +324,7 @@ describe("repository README", () => {
       try {
         const link = host.querySelector<HTMLAnchorElement>('section[aria-label="README"] a')!;
         expect(new URL(link.href).searchParams.get("rev")).toBe(sha);
+        expect(defaultParseSearch(new URL(link.href).search)).toMatchObject(target);
         await act(async () => link.click());
         expect(onNavigate).toHaveBeenCalledWith({ rev: sha, view: "code", ...target });
       } finally {
