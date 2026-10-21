@@ -166,9 +166,11 @@ export function GitFileFinder({
                   <span className="shrink-0 text-muted-foreground">
                     <Marked value={row.name} indices={row.nameMatchIndices} />
                   </span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
-                    <Marked value={row.path} indices={row.pathMatchIndices} />
-                  </span>
+                  {row.path === row.name ? null : (
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      <Marked value={row.path} indices={row.pathMatchIndices} />
+                    </span>
+                  )}
                 </GitPageLink>
               </li>
             ))}

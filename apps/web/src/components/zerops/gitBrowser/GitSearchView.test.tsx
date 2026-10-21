@@ -18,16 +18,21 @@ const held = vi.hoisted(() => ({
   asked: [] as Array<{ read: string; params: unknown; allowed: unknown }>,
   again: [] as Array<string>,
 }));
-vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: (request: { read: string; params: unknown }, allowed: unknown) => {
-    held.asked.push({ read: request.read, params: request.params, allowed });
-    return {
-      view: held.views[request.read] ?? { state: "unread", busy: false },
-      again: () => held.again.push(request.read),
-    };
-  },
-  useGitBrowseReads: () => ({ views: [], again: () => undefined }),
-}));
+vi.mock("~/zerops/useGitBrowse", async () => {
+  // A read's identity encodes its query as the real hook does, so a query HQ refuses throws here too.
+  const { gitBrowseSearch } = await import("@t3tools/client-runtime/zerops/gitBrowse/reads");
+  return {
+    useGitBrowse: (request: { read: "grep"; params: never }, allowed: unknown) => {
+      gitBrowseSearch(request.read, request.params);
+      held.asked.push({ read: request.read, params: request.params, allowed });
+      return {
+        view: held.views[request.read] ?? { state: "unread", busy: false },
+        again: () => held.again.push(request.read),
+      };
+    },
+    useGitBrowseReads: () => ({ views: [], again: () => undefined }),
+  };
+});
 
 const home: GitBrowseView<GitHome> = {
   state: "known",
@@ -134,7 +139,7 @@ describe("Git browser search page", () => {
       deadlineHit: true,
     });
     const { host } = await page({ view: "search", scope: "content", q: "tea" });
-    expect(text(host)).toContain("1 matching lines in 1 file");
+    expect(text(host)).toContain("1 matching line in 1 file");
     expect(text(host)).toContain("The search stopped after 10 seconds. Narrow it to a folder.");
     await act(async () => button(host, "Read again")!.click());
     expect(held.again).toEqual(["grep"]);
@@ -175,11 +180,16 @@ describe("Git browser search page", () => {
     held.views["grep"] = { state: "refused", reason: "invalid", words: "HQ refused this." };
     const { host } = await page({ view: "search", scope: "content", q: "tea(", mode: "regex" });
     expect(text(host)).toContain("Git cannot read this regular expression.");
+    expect(button(host, "Read again")).toBeUndefined();
     await unmount?.();
     held.asked = [];
     const blank = await page({ view: "search", scope: "content" });
-    expect(held.asked.find((ask) => ask.read === "grep")?.allowed).toBeUndefined();
+    expect(held.asked.filter((ask) => ask.read === "grep")).toEqual([]);
     expect(text(blank.host)).toContain("Binary files are not searched.");
+    await unmount?.();
+    const short = await page({ view: "search", scope: "content", q: "t" });
+    expect(held.asked.filter((ask) => ask.read === "grep")).toEqual([]);
+    expect(text(short.host)).toContain("Type at least 2 characters to search.");
   });
 
   it("The finder narrows every path at the commit as a name is typed and says when it sees only the first 25,000", async () => {
