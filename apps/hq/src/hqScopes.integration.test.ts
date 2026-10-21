@@ -316,13 +316,13 @@ describe("HQ scoped socket", () => {
                   VALUES (${appId}::uuid, ${"appdev"}, ${"owner"})`;
                 const head = "a".repeat(40);
                 yield* core.sql`INSERT INTO hq_change
-                  (app_id, repo, number, mate_project_id, title, body, head, ready_head, mergeability)
-                  VALUES (${appId}::uuid, ${"appdev"}, ${1}, ${projectId},
+                  (app_id, repo, number, mate_project_id, branch, title, body, head, ready_head, mergeability)
+                  VALUES (${appId}::uuid, ${"appdev"}, ${1}, ${projectId}, ${`mate/${projectId}/1`},
                     ${"Menu change " + index}, ${"private description ".repeat(500)},
                     ${head}, ${head}, ${"clean"})`;
                 yield* core.sql`INSERT INTO hq_change
-                  (app_id, repo, number, mate_project_id, title, state)
-                  VALUES (${appId}::uuid, ${"appdev"}, ${2}, ${projectId},
+                  (app_id, repo, number, mate_project_id, branch, title, state)
+                  VALUES (${appId}::uuid, ${"appdev"}, ${2}, ${projectId}, ${`mate/${projectId}/2`},
                     ${"settled private title"}, ${"closed"})`;
                 assert.strictEqual(
                   (yield* core.call("POST", "/api/mates", {

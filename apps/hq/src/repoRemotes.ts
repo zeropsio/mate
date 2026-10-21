@@ -680,7 +680,17 @@ export const repoRemotesLayer = Layer.effect(
         return yield* Effect.forEach(repos, ({ name }) =>
           Effect.map(remotes.get({ appId, repo: name }), (row) => {
             const remote = row === undefined ? null : remoteForWire(row);
-            return remote === null ? { name } : { name, origin: { url: remote.url } };
+            // Through the organization's app GitHub keeps the code (`githubMirror.ts` follows
+            // it); with a person's token HQ keeps it, GitHub an upstream.
+            return remote === null
+              ? { name }
+              : {
+                  name,
+                  origin: {
+                    url: remote.url,
+                    mode: remote.via === "app" ? ("github" as const) : ("follow" as const),
+                  },
+                };
           }),
         );
       }),

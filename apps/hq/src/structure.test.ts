@@ -2474,9 +2474,9 @@ describe("structure", () => {
             .projects[0]!.mate;
           yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
               VALUES (${source.id}::uuid, 'appdev', 'owner')`;
-          yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head)
-              VALUES (${source.id}::uuid, 'appdev', 1, 'P_MATE', 'Open work', 'open', ${"a".repeat(40)}),
-                     (${source.id}::uuid, 'appdev', 2, 'P_MATE', 'Merged work', 'merged', ${"b".repeat(40)})`;
+          yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, state, head)
+              VALUES (${source.id}::uuid, 'appdev', 1, 'P_MATE', 'mate/P_MATE/1', 'Open work', 'open', ${"a".repeat(40)}),
+                     (${source.id}::uuid, 'appdev', 2, 'P_MATE', 'mate/P_MATE/2', 'Merged work', 'merged', ${"b".repeat(40)})`;
           const history = sql`SELECT app_id::text, repo, number, mate_project_id, state, head
               FROM hq_change ORDER BY number`;
           const beforeHistory = yield* history;
@@ -3467,8 +3467,8 @@ describe("structure", () => {
                   Effect.andThen(
                     repo(appId, "group"),
                     sql`
-                      INSERT INTO hq_change (app_id, repo, number, mate_project_id, title)
-                      VALUES (${appId}::uuid, 'group', 1, 'P_OTHER', 'A recipe')`,
+                      INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title)
+                      VALUES (${appId}::uuid, 'group', 1, 'P_OTHER', 'mate/P_OTHER/1', 'A recipe')`,
                   ),
                 ),
                 holding(

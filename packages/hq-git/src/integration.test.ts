@@ -205,8 +205,11 @@ const setup = (overrides: Partial<HqGitOptions>) =>
       },
       canRead: (principal, repo) =>
         !denyRead && (principal.kind !== "mate" || principal.appId === repo.appId),
-      lookupChange: async (repo, mateId, number) =>
-        number === 1 ? { appId: repo.appId, mateId, number, open: true } : null,
+      // Alice's open change 1 and Bob's.
+      lookupChange: async (repo, branch) =>
+        (["alice", "bob"] as const)
+          .map((mateId) => ({ appId: repo.appId, mateId, number: 1, open: true }))
+          .find((change) => branch === `mate/${change.mateId}/1`) ?? null,
       // Core allows everything here: the built-in rules must still refuse.
       authorize: (_principal, _repo, updates) => {
         decisions++;

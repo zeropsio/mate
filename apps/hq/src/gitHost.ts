@@ -16,8 +16,8 @@
  * judges nothing in it, `/health` lists it, and it is tried again every `quarantineRetry` — once it
  * converges, git opens again and the takeover judges it with the rest.
  *
- * Every ref the layer writes reaches the durable log through its events: a change branch's push
- * moves the change's head, `main` moving moves the repository's. Each also judges again whether a
+ * Every ref the layer writes reaches the durable log through its events: a push of the branch an
+ * open change is on moves the change's head, `main` moving moves the repository's. Each also judges again whether a
  * change merges: a push its own change, a move of `main` the repository's open ones.
  *
  * @module gitHost
@@ -27,6 +27,7 @@ import type * as NodeHttp from "node:http";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import {
+  type ChangeBranch,
   type GitEvent,
   GitError,
   type GitService,
@@ -52,6 +53,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import type { SqlError } from "effect/sql/SqlError";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqChanges";
@@ -61,11 +63,9 @@ import { Leader, NotLeader } from "./leader.ts";
 import { catchUp, missing } from "./reconcile.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
 
-/** A change whose branch moved: its repository, its Mate, its number. */
-export interface PushedChange {
+/** A change whose branch moved: its repository, its Mate, its number, its branch. */
+export interface PushedChange extends ChangeBranch {
   readonly repo: Repo;
-  readonly mateId: string;
-  readonly number: number;
 }
 
 /**
@@ -166,10 +166,13 @@ export class GitHost extends Context.Service<
      * once its record says so: told again on every move while it conflicts.
      */
     readonly conflicts: Stream.Stream<MainConflict>;
+    /**
+     * A change just opened on a branch pushed before it: its head recorded and judged, and told as
+     * a push of it is (`pushes`, `moves`). A branch with nothing on it waits for its push.
+     */
+    readonly follow: (change: PushedChange) => Effect.Effect<void, NotLeader | GitError | SqlError>;
   }
 >()("@t3tools/hq/gitHost") {}
-
-const CHANGE_REF = /^refs\/heads\/mate\/([^/]+)\/([1-9][0-9]*)$/u;
 
 /** Where the layer serves the repositories: its default, `/git/<appId>/<repo>.git`. */
 const GIT_PREFIX = "/git";
@@ -220,15 +223,15 @@ const UNJUDGED: Judged = { mergeability: "unknown", behind: false };
  * read at one change head and one `main`. A change with nothing pushed, or one git cannot judge, is
  * `unknown`.
  */
-export const judge = (git: HqGit, repo: Repo, mateId: string, number: number) =>
+export const judge = (git: HqGit, repo: Repo, change: ChangeBranch) =>
   Effect.gen(function* () {
-    const head = yield* git.changeHead(repo, mateId, number);
+    const head = yield* git.changeHead(repo, change);
     const main = yield* mainOf(git, repo);
     if (head === null || main === null) return UNJUDGED;
     const snapshot = { head, main };
-    const mergeability = yield* git.mergeability(repo, mateId, number, snapshot);
+    const mergeability = yield* git.mergeability(repo, change, snapshot);
     if (mergeability.kind === "no_change") return UNJUDGED;
-    const base = yield* git.mergeBase(repo, mateId, number, snapshot);
+    const base = yield* git.mergeBase(repo, change, snapshot);
     const judged: Judged = {
       mergeability: mergeability.kind,
       behind: base !== null && base !== main,
@@ -272,7 +275,7 @@ export const gitHostLayer = (options: {
        */
       const pushed = (
         repo: Repo,
-        change: { readonly mateId: string; readonly number: number },
+        change: ChangeBranch,
         old: string | null,
         head: string,
         judged: Judged,
@@ -287,16 +290,48 @@ export const gitHostLayer = (options: {
               AND mate_project_id = ${change.mateId}
             RETURNING 1`;
           if (moved.length > 0) {
-            const ref = `refs/heads/mate/${change.mateId}/${String(change.number)}`;
+            const ref = `refs/heads/${change.branch}`;
             yield* event(repo, "pushed", change.number, { ref, old, new: head, ...data });
           }
         });
 
-      /** The change a ref is the branch of, if it is one. */
-      const changeOfRef = (ref: string) => {
-        const match = CHANGE_REF.exec(ref);
-        return match === null ? undefined : { mateId: match[1] ?? "", number: Number(match[2]) };
-      };
+      /** The open change `ref` is the branch of, if one is. */
+      const changeOfRef = (repo: Repo, ref: string) =>
+        ref.startsWith("refs/heads/")
+          ? Effect.map(
+              sql<{ readonly number: number; readonly mate_project_id: string }>`
+                SELECT number, mate_project_id FROM hq_change
+                WHERE app_id::text = ${repo.appId} AND repo = ${repo.id}
+                  AND branch = ${ref.slice("refs/heads/".length)} AND state = 'open'`,
+              ([row]): ChangeBranch | undefined =>
+                row === undefined
+                  ? undefined
+                  : {
+                      mateId: row.mate_project_id,
+                      number: row.number,
+                      branch: ref.slice("refs/heads/".length),
+                    },
+            )
+          : Effect.succeed(undefined);
+
+      /**
+       * The change's branch now at `head`, from `old`: judged, its record following, and told to
+       * the content's judge (`pushes`) and every follower (`moves`).
+       */
+      const moved = (
+        git: HqGit,
+        repo: Repo,
+        change: ChangeBranch,
+        old: string | null,
+        head: string,
+        data: object,
+      ) =>
+        Effect.gen(function* () {
+          const verdict = yield* judge(git, repo, change);
+          yield* leader.write(pushed(repo, change, old, head, verdict, data));
+          yield* Queue.offer(pushes, { repo, ...change });
+          yield* PubSub.publish(moves, { kind: "change", repo, ...change });
+        });
 
       /**
        * After `main` moved: the repository's newest {@link JUDGED_PER_MAIN_MOVE} open changes judged
@@ -308,16 +343,21 @@ export const gitHostLayer = (options: {
           const open = yield* sql<{
             readonly number: number;
             readonly mate_project_id: string;
+            readonly branch: string;
             readonly task_id: string | null;
           }>`
-            SELECT number, mate_project_id, task_id::text AS task_id FROM hq_change
+            SELECT number, mate_project_id, branch, task_id::text AS task_id FROM hq_change
             WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND state = 'open'
             ORDER BY number DESC`;
           let others = 0;
           const judged = yield* Effect.forEach(open, (row) =>
             row.task_id === null && others++ >= JUDGED_PER_MAIN_MOVE
               ? Effect.succeed({ row, verdict: UNJUDGED })
-              : judge(git, repo, row.mate_project_id, row.number).pipe(
+              : judge(git, repo, {
+                  mateId: row.mate_project_id,
+                  number: row.number,
+                  branch: row.branch,
+                }).pipe(
                   Effect.timeoutOrElse({
                     duration: JUDGED_WITHIN,
                     orElse: () => Effect.succeed(UNJUDGED),
@@ -384,14 +424,9 @@ export const gitHostLayer = (options: {
         Effect.gen(function* () {
           if (event.kind === "pushed") {
             for (const update of event.updates) {
-              const change = changeOfRef(update.ref);
+              const change = yield* changeOfRef(event.repo, update.ref);
               if (change === undefined) continue;
-              const verdict = yield* judge(git, event.repo, change.mateId, change.number);
-              yield* leader.write(
-                pushed(event.repo, change, update.oldSha, update.newSha, verdict, {}),
-              );
-              yield* Queue.offer(pushes, { repo: event.repo, ...change });
-              yield* PubSub.publish(moves, { kind: "change", repo: event.repo, ...change });
+              yield* moved(git, event.repo, change, update.oldSha, update.newSha, {});
             }
           } else if (event.kind === "main_moved") {
             yield* leader.write(mainMoved(event.repo, event.old, event.new, event.by));
@@ -453,20 +488,19 @@ export const gitHostLayer = (options: {
             readonly repo: string;
             readonly number: number;
             readonly mate_project_id: string;
+            readonly branch: string;
             readonly head: string | null;
           }>`
-            SELECT app_id::text AS app_id, repo, number, mate_project_id, head
+            SELECT app_id::text AS app_id, repo, number, mate_project_id, branch, head
             FROM hq_change WHERE state = 'open'`;
           for (const row of open) {
             const repo = { appId: row.app_id, id: row.repo };
             if (aside.has(keyOf(repo))) continue;
-            const head = yield* git
-              .changeHead(repo, row.mate_project_id, row.number)
-              .pipe(Effect.option);
+            const change = { mateId: row.mate_project_id, number: row.number, branch: row.branch };
+            const head = yield* git.changeHead(repo, change).pipe(Effect.option);
             if (Option.isNone(head) || head.value === null) continue;
-            const change = { mateId: row.mate_project_id, number: row.number };
             if (head.value !== row.head) {
-              const verdict = yield* judge(git, repo, change.mateId, change.number);
+              const verdict = yield* judge(git, repo, change);
               yield* leader.write(
                 pushed(repo, change, row.head, head.value, verdict, { reconciled: true }),
               );
@@ -505,25 +539,27 @@ export const gitHostLayer = (options: {
               const mayRead = readers.get(principal);
               return mayRead === undefined ? false : run(mayRead(repo));
             },
-            lookupChange: (repo, _mateId, number) =>
+            lookupChange: (repo, branch) =>
               run(
                 Effect.map(
-                  sql<{ readonly mate_project_id: string; readonly state: string }>`
-                    SELECT mate_project_id, state FROM hq_change
-                    WHERE app_id::text = ${repo.appId} AND repo = ${repo.id}
-                      AND number = ${number}`,
-                  (rows) => {
-                    const row = rows[0];
-                    return row === undefined
+                  sql<{
+                    readonly number: number;
+                    readonly mate_project_id: string;
+                    readonly state: string;
+                  }>`
+                    SELECT number, mate_project_id, state FROM hq_change
+                    WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND branch = ${branch}
+                    ORDER BY state = 'open' DESC, number DESC LIMIT 1`,
+                  ([row]) =>
+                    row === undefined
                       ? null
                       : {
                           appId: repo.appId,
                           mateId: row.mate_project_id,
-                          number,
+                          number: row.number,
                           open: row.state === "open",
                           merged: row.state === "merged",
-                        };
-                  },
+                        },
                 ),
               ),
             onEvent: (event) =>
@@ -694,6 +730,14 @@ export const gitHostLayer = (options: {
         pushes,
         moves: Stream.fromPubSub(moves),
         conflicts: Stream.fromPubSub(conflicts),
+        follow: ({ repo, ...change }) =>
+          Effect.gen(function* () {
+            const layer = yield* git;
+            const head = yield* layer.changeHead(repo, change);
+            if (head === null) return;
+            yield* moved(layer, repo, change, null, head, { opened: true });
+            yield* tick;
+          }),
       });
     }),
   );

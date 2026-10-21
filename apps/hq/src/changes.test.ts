@@ -227,7 +227,7 @@ describe("a Mate's changes in HQ", () => {
     );
 
     it.effect(
-      "a Mate opens one change per repository, and pushes only to that change's branch",
+      "a Mate opens one change per repository, and pushes to neither main nor another Mate's change",
       () =>
         Effect.gen(function* () {
           const { call, fake, origin } = yield* startCore(true);
@@ -251,6 +251,7 @@ describe("a Mate's changes in HQ", () => {
             repo: "appdev",
             number: 1,
             mateProjectId: "P_MATE",
+            branch: "mate/P_MATE/1",
             title: "Mate: appdev",
             body: "",
             state: "open",
@@ -301,7 +302,7 @@ describe("a Mate's changes in HQ", () => {
           const work = NodePath.join(git.dir, "work");
           yield* git.checked(["commit", "--allow-empty", "-m", "Add a login page"], work);
           yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
-          for (const ref of ["mate/P_MATE/2", "main", "mate/P_MATE2/2", "elsewhere"]) {
+          for (const ref of ["mate/P_MATE/2", "main", "mate/P_MATE2/2"]) {
             const push = yield* git.run(["push", "origin", `HEAD:refs/heads/${ref}`], work);
             assert.notStrictEqual(push.code, 0, `a push to ${ref} landed`);
           }
@@ -1035,7 +1036,7 @@ describe("a Mate's changes in HQ", () => {
         yield* connectedOrigin(url, appId, "appdev", "https://github.com/acme/app");
         const answer = yield* self;
         assert.deepStrictEqual((answer as { readonly repos: unknown }).repos, [
-          { name: "appdev", origin: { url: "https://github.com/acme/app" } },
+          { name: "appdev", origin: { url: "https://github.com/acme/app", mode: "follow" } },
           { name: "group" },
           { name: "web" },
         ]);
@@ -1048,6 +1049,38 @@ describe("a Mate's changes in HQ", () => {
           (answer as { readonly repos: unknown }).repos,
         );
       }),
+    );
+
+    it.effect(
+      "a Mate reads whether GitHub is its repository's origin or an upstream beside the code HQ keeps",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, auth } = yield* mateWithChange(call, fake, owner);
+          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "web" } });
+          // Mounted through the organization's GitHub app, and connected with a person's token.
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_repo_remote (app_id,repo,url,url_key,host,host_repo_id,kept_by,kept_at,via)
+             VALUES ('${appId}'::uuid,'appdev','https://github.com/acme/app','github.com/acme/app',
+                     'github.com','1','owner',now(),'app')
+             RETURNING 1`,
+            () => true,
+          );
+          yield* connectedOrigin(url, appId, "web", "https://github.com/acme/web");
+          const answer = (yield* call("GET", "/api/mate/self", { headers: auth })).body;
+          assert.deepStrictEqual((answer as { readonly repos: unknown }).repos, [
+            { name: "appdev", origin: { url: "https://github.com/acme/app", mode: "github" } },
+            { name: "group" },
+            { name: "web", origin: { url: "https://github.com/acme/web", mode: "follow" } },
+          ]);
+          assert.deepStrictEqual(
+            (yield* Schema.decodeUnknownEffect(MateState)(answer)).repos,
+            (answer as { readonly repos: unknown }).repos,
+          );
+        }),
     );
 
     it.effect("a Mate never sees another application's origin", () =>
@@ -1067,11 +1100,11 @@ describe("a Mate's changes in HQ", () => {
             (answer) => answer.body as Record<string, unknown>,
           );
         assert.deepStrictEqual((yield* seen(shop.auth))["repos"], [
-          { name: "appdev", origin: { url: "https://github.com/acme/shop" } },
+          { name: "appdev", origin: { url: "https://github.com/acme/shop", mode: "follow" } },
           { name: "group" },
         ]);
         assert.deepStrictEqual((yield* seen(other.auth))["repos"], [
-          { name: "appdev", origin: { url: "https://github.com/acme/other" } },
+          { name: "appdev", origin: { url: "https://github.com/acme/other", mode: "follow" } },
           { name: "group" },
         ]);
       }),
