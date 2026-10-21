@@ -144,7 +144,7 @@ export function GitRefPicker({
         </div>
         <ComboboxSearchInput
           aria-label={`Find a ${list === "branch" ? "branch" : "tag"} or commit`}
-          placeholder={`Find a ${list === "branch" ? "branch" : "tag"} or type a commit id`}
+          placeholder={list === "branch" ? "Find a branch" : "Find a tag"}
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
         />
