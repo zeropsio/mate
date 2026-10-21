@@ -38,14 +38,10 @@ export const allowRefUpdate = async (
   if (!update.ref.startsWith("refs/heads/") || update.ref === "refs/heads/main")
     return refuse(principal.kind === "person" ? "protected_ref" : "not_your_ref");
   const branch = update.ref.slice("refs/heads/".length);
-  if (principal.kind === "person") {
-    // HQ owns main, tags and the namespace of changes opened without a branch; a branch an open
-    // change is on is its Mate's. People own every other branch.
-    if (allocated(branch)) return refuse("protected_ref");
-    return (await lookupChange(repo, branch))?.open === true
-      ? refuse("protected_ref")
-      : { allowed: true };
-  }
+  // HQ owns main, tags and the namespace of changes opened without a branch. People own every
+  // other branch, one a Mate's change is on too: they work on it beside the Mate.
+  if (principal.kind === "person")
+    return allocated(branch) ? refuse("protected_ref") : { allowed: true };
   // A Mate names its own branches: none another Mate's open change is on, and in HQ's namespace
   // only its own open change's. A settled change leaves its named branch to whoever pushes next.
   const change = await lookupChange(repo, branch);

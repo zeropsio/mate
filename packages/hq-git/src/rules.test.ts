@@ -94,12 +94,18 @@ describe("default write rules", () => {
     },
   );
 
-  it("refuses a person the branch a Mate's open change is on, and leaves it theirs once settled", async () => {
-    const person: Principal = { kind: "person", userId: "user", appId: "app" };
-    const ref = { ref: "refs/heads/fix-login" };
-    expect(await decide(person, ref, change)).toEqual({ allowed: false, reason: "protected_ref" });
-    expect(await decide(person, ref, { ...change, open: false })).toEqual({ allowed: true });
-  });
+  it.each([
+    ["open", change],
+    ["settled", { ...change, open: false }],
+  ] satisfies Array<[string, Change]>)(
+    "lets a person push the branch a Mate's %s change is on, as they work on it beside the Mate",
+    async (_state, record) => {
+      const person: Principal = { kind: "person", userId: "user", appId: "app" };
+      expect(await decide(person, { ref: "refs/heads/fix-login" }, record)).toEqual({
+        allowed: true,
+      });
+    },
+  );
 
   it.each([
     ["reader", { kind: "reader", userId: "user" }, {}, change, "read_only"],
