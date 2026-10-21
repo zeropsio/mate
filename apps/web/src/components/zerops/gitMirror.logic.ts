@@ -55,8 +55,8 @@ export function mirrorStateLine(
 
 /**
  * Whether GitHub lets only what was approved in Mate reach the repository's main, through the app
- * only: governed, or advisory with the step that makes it governed — naming the app's id a ruleset
- * requires `mate/gate` from. Nothing before HQ read it, and nothing more once the app is gone.
+ * only: governed, or advisory with the step that makes it governed — each naming the app's id a
+ * ruleset requires `mate/gate` from. Nothing before HQ read it, and nothing more once the app is gone.
  */
 export function mirrorGateLine(
   remote: RepoListEntry["remote"],
@@ -64,17 +64,20 @@ export function mirrorGateLine(
 ): string | undefined {
   if (remote?.via !== "app" || remote.invalidSince !== null || app.kind === "none") return;
   const name = app.kind === "connected" ? app.name : "the organization's GitHub app";
-  const source =
-    app.kind === "connected" && app.appId !== undefined ? `app ID ${String(app.appId)}` : name;
+  const id =
+    app.kind === "connected" && app.appId !== undefined ? `app ID ${String(app.appId)}` : undefined;
+  const source = id ?? name;
   switch (remote.governance) {
     case undefined:
       return undefined;
     case "governed":
-      return "Governed — GitHub merges into main only what was approved in Mate";
+      return `Governed — GitHub merges into main only what was approved in Mate: mate/gate from ${source}`;
+    // An app made before it asked for statuses has none to approve until its owner adds them.
     case "permission_not_approved":
-      return `Advisory — ${name} can't set mate/gate yet. Approve its new permissions on GitHub.`;
+      return `Advisory — ${id === undefined ? name : `${name} (${id})`} can't set mate/gate yet. On GitHub, its owner adds Commit statuses: write and Workflows: write to its permissions where they're missing, then an organization owner approves them.`;
+    // Also a ruleset that requires mate/gate but lets anyone push to main.
     case "no_ruleset":
-      return `Advisory — anyone who can write on GitHub merges into main without Mate. Add a ruleset on main that requires review and the check mate/gate from ${source}.`;
+      return `Advisory — anyone who can write on GitHub merges into main without Mate. In a ruleset on main, turn on "Require a pull request before merging" with 0 approvals, and require the check mate/gate from ${source}.`;
     case "gate_not_required":
       return `Advisory — main's ruleset doesn't require the check mate/gate. Require it from ${source}.`;
     case "gate_not_pinned":

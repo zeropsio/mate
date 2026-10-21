@@ -82,19 +82,25 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
       case: "a governed repository says so",
       remote: { ...viaApp, governance: "governed" },
       app: withId,
-      says: "Governed — GitHub merges into main only what was approved in Mate",
+      says: "Governed — GitHub merges into main only what was approved in Mate: mate/gate from app ID 123456",
     },
     {
       case: "an installation that has not approved writing statuses is advisory and asks for the approval",
       remote: { ...viaApp, governance: "permission_not_approved" },
       app: withId,
-      says: "Advisory — Acme Mate can't set mate/gate yet. Approve its new permissions on GitHub.",
+      says: "Advisory — Acme Mate (app ID 123456) can't set mate/gate yet. On GitHub, its owner adds Commit statuses: write and Workflows: write to its permissions where they're missing, then an organization owner approves them.",
     },
     {
       case: "a repository without a ruleset is advisory and names the app id to require",
       remote: { ...viaApp, governance: "no_ruleset" },
       app: withId,
-      says: "Advisory — anyone who can write on GitHub merges into main without Mate. Add a ruleset on main that requires review and the check mate/gate from app ID 123456.",
+      says: 'Advisory — anyone who can write on GitHub merges into main without Mate. In a ruleset on main, turn on "Require a pull request before merging" with 0 approvals, and require the check mate/gate from app ID 123456.',
+    },
+    {
+      case: "a ruleset that requires mate/gate but lets anyone push to main is told to require a pull request in it",
+      remote: { ...viaApp, governance: "no_ruleset" },
+      app: withId,
+      says: 'Advisory — anyone who can write on GitHub merges into main without Mate. In a ruleset on main, turn on "Require a pull request before merging" with 0 approvals, and require the check mate/gate from app ID 123456.',
     },
     {
       case: "a ruleset that does not require mate/gate is advisory",
