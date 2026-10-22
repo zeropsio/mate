@@ -154,6 +154,7 @@ function hqOf(answer: () => Promise<unknown>) {
     addService: call("addService"),
     mergeChange: call("mergeChange"),
     closeChange: call("closeChange"),
+    handChange: call("handChange"),
     setChief: call("setChief"),
     decideProposal: call("decideProposal"),
   } satisfies HqWrites;
@@ -216,6 +217,7 @@ const ADD_SERVICE = {
 } as const;
 const MERGE = { kind: "merge-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
 const CLOSE = { kind: "close-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
+const HAND = { kind: "hand-change", orgId: ORG, link: LINK, mateProjectId: "bea" } as const;
 
 describe("a flow's writes, executed by HQ", () => {
   it.effect.each([
@@ -274,6 +276,18 @@ describe("a flow's writes, executed by HQ", () => {
       result: undefined,
       before: (store: AccountStore) => detail(store, "changes", [change("open")]),
       after: (store: AccountStore) => detail(store, "changes", [change("closed")]),
+    },
+    {
+      name: "a change handed to another Mate",
+      intent: HAND,
+      answer: { ...change("open"), mateProjectId: "bea" },
+      call: ["handChange", LINK, "bea"],
+      operationId: "web#7",
+      result: undefined,
+      before: (store: AccountStore) =>
+        detail(store, "changes", [{ ...change("open"), mateGone: true }]),
+      after: (store: AccountStore) =>
+        detail(store, "changes", [{ ...change("open"), mateProjectId: "bea" }]),
     },
   ])(
     "$name is accepted with HQ's answer, and ends once HQ's records show it",

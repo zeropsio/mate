@@ -1,6 +1,6 @@
 /**
- * The verbs that move an application's flow — release, roll back, merge, close, run a deploy again,
- * add a service — each the account's operation, which the organization's official HQ executes as
+ * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
+ * run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
  * the person (`flowWrites.ts`). A verb stays pending from its press until HQ's records show its
  * end, or HQ's link can no longer follow it: a second press meanwhile is answered that the first is
  * on its way, and nothing is sent twice. What HQ refused is said where the verbs are, until the
@@ -62,6 +62,12 @@ export interface FlowVerbs {
     groupId: string,
     change: { readonly repository: string; readonly number: number },
     expectedHead: string | null,
+  ) => Promise<FlowVerbOutcome>;
+  /** A change whose Mate is gone handed to `mateProjectId`, another Mate of its application. */
+  readonly hand: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
+    mateProjectId: string,
   ) => Promise<FlowVerbOutcome>;
   /**
    * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha`, asked again;
@@ -251,6 +257,22 @@ export function useFlowVerbs(): FlowVerbs {
     [run],
   );
 
+  const hand = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+      mateProjectId: string,
+    ): Promise<FlowVerbOutcome> => {
+      const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
+      return run(
+        { kind: "hand", groupId, ...change },
+        (orgId) => ({ kind: "hand-change", orgId, link, mateProjectId }),
+        false,
+      );
+    },
+    [run],
+  );
+
   const redeploy = useCallback(
     (
       flow: ZeropsProjectFlow,
@@ -304,7 +326,7 @@ export function useFlowVerbs(): FlowVerbs {
   );
 
   return useMemo(
-    () => ({ pending, trouble, release, rollBack, merge, close, redeploy, addService }),
-    [addService, close, merge, pending, redeploy, release, rollBack, trouble],
+    () => ({ pending, trouble, release, rollBack, merge, close, hand, redeploy, addService }),
+    [addService, close, hand, merge, pending, redeploy, release, rollBack, trouble],
   );
 }
