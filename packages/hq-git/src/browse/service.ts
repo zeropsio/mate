@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - an archive streams from git as a Node stream.
 /**
  * What a person's Git browser reads of a repository, beside the layer's own operations: each read
  * one module of this folder, each run inside the held repository (`repoReader`), each stopped
@@ -5,11 +6,13 @@
  *
  * @module browse/service
  */
+import type * as NodeStream from "node:stream";
 import type * as Effect from "effect/Effect";
 import type { GitError, Repo } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
 import { readBlame, type BlameRead } from "./blame.ts";
+import { archiveAt, type ArchiveFormat } from "./archive.ts";
 import { readCommit, readCommitFile, type CommitRead } from "./commit.ts";
 import { readCompare, readCompareFile, type CompareRead } from "./compare.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
@@ -22,6 +25,7 @@ import { resolveRevision, type Resolved } from "./resolve.ts";
 import { listTree, type TreeRead } from "./tree.ts";
 
 export type { BlameCommit, BlameRange, BlameRead } from "./blame.ts";
+export type { ArchiveFormat } from "./archive.ts";
 export type { CompareRead } from "./compare.ts";
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
 export type { BlobRead } from "./blob.ts";
@@ -105,6 +109,15 @@ export interface HqGitBrowse {
     path: string,
     maxBytes: number,
   ) => Effect.Effect<BlameRead, GitError>;
+  /**
+   * A commit's files as one archive, streamed; its git runs until the stream ends or is let go.
+   * None where the repository has no such commit.
+   */
+  readonly archive: (
+    repo: Repo,
+    sha: string,
+    format: ArchiveFormat,
+  ) => Effect.Effect<NodeStream.Readable | null, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -140,4 +153,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     ),
   blame: (repo, sha, path, maxBytes) =>
     inRepo("browse.blame", repo, (dir, signal) => readBlame(git, dir, sha, path, maxBytes, signal)),
+  archive: (repo, sha, format) =>
+    inRepo("browse.archive", repo, (dir, signal) => archiveAt(git, dir, sha, format, signal)),
 });

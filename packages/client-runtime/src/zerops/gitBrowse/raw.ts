@@ -6,13 +6,13 @@
  * @module zerops/gitBrowse/raw
  */
 import * as Schema from "effect/Schema";
-import { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
+import { GitRawQuery, RAW_MAX_BYTES } from "@t3tools/shared/hqGitBrowse/blob";
 
 export const rawRead = {
   query: GitRawQuery,
   value: Schema.instanceOf(Blob),
   moving: false,
-  bytes: true,
+  bytes: { limit: RAW_MAX_BYTES },
 } as const;
 
 const IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

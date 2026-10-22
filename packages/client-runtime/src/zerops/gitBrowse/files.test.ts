@@ -314,7 +314,7 @@ describe("HQ source client", () => {
                 headers: sent === null ? {} : { "content-type": sent },
               }),
       });
-      const blob = await api.gitBrowseBytes("app", "code", { sha, path: "a.html" });
+      const blob = await api.gitBrowseBytes("raw", "app", "code", { sha, path: "a.html" });
       expect(blob.type).toBe(held);
       expect(heldType(sent)).toBe(held);
       expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([60, 98, 62]);

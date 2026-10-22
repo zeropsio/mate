@@ -35,7 +35,6 @@ import {
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
 import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
-import type { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
@@ -74,10 +73,12 @@ import * as Schema from "effect/Schema";
 import {
   GIT_BROWSE_READS,
   gitBrowsePath,
+  type GitBrowseBytesRead,
   type GitBrowseParams,
   type GitBrowseRead,
   type GitBrowseValue,
 } from "../gitBrowse/reads.ts";
+import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation } from "../api.ts";
@@ -520,13 +521,15 @@ export interface HqApi {
     signal?: AbortSignal,
   ) => Promise<GitBrowseValue<R>>;
   /**
-   * A file's bytes (`raw`), held as an image, plain text or an octet stream whatever HQ sends,
-   * so opening them runs nothing.
+   * The bytes of a read that answers bytes (`raw`, `archive`), held as an image, plain text or
+   * an octet stream whatever HQ sends, so opening them runs nothing. Past the read's `limit` the
+   * read stops, refused `too_large`.
    */
-  readonly gitBrowseBytes: (
+  readonly gitBrowseBytes: <R extends GitBrowseBytesRead>(
+    read: R,
     appId: string,
     repo: string,
-    params: GitRawQuery,
+    params: GitBrowseParams<R>,
     signal?: AbortSignal,
   ) => Promise<Blob>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
@@ -1625,15 +1628,34 @@ export function makeHqApi(input: {
           signal === undefined ? {} : { signal },
         ),
       ),
-    gitBrowseBytes: async (appId, repo, params, signal) => {
+    gitBrowseBytes: async (read, appId, repo, params, signal) => {
       const response = await authorized(
-        browsePathOrRefuse("raw", appId, repo, params),
+        browsePathOrRefuse(read, appId, repo, params),
         signal === undefined ? {} : { signal },
       );
-      let bytes: ArrayBuffer;
+      const { limit } = GIT_BROWSE_READS[read].bytes;
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      let size = 0;
+      const reader = response.body?.getReader();
       try {
-        bytes = await response.arrayBuffer();
-      } catch {
+        for (;;) {
+          const next = await reader?.read();
+          if (next === undefined || next.done) break;
+          size += next.value.byteLength;
+          if (size > limit) {
+            // Nothing past the limit is read: letting the body go stops HQ's stream with it.
+            void reader?.cancel().catch(() => {});
+            throw new HqError({
+              kind: "refused",
+              code: "too_large",
+              status: 413,
+              message: `It is larger than ${fileSize(limit)}. Clone the repository instead.`,
+            });
+          }
+          chunks.push(next.value);
+        }
+      } catch (error) {
+        if (error instanceof HqError) throw error;
         // Cut on its way, like a call that never arrived.
         throw new HqError({
           kind: "unavailable",
@@ -1641,7 +1663,7 @@ export function makeHqApi(input: {
           message: "HQ could not be reached.",
         });
       }
-      return new Blob([bytes], { type: heldType(response.headers.get("content-type")) });
+      return new Blob(chunks, { type: heldType(response.headers.get("content-type")) });
     },
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
