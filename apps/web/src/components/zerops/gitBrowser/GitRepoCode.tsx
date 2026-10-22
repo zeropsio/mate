@@ -3,31 +3,17 @@
  * the folder tree beside it, where it is, and its entries or its text. Every read and every link
  * out names that one commit.
  */
-import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import type { ReactNode } from "react";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
-import { GitAtCommit, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
+import { GitAtCommit, GitNotRead } from "./GitAtCommit";
 import { GitDirectoryList } from "./GitDirectoryList";
 import { GitFileView } from "./GitFileView";
 import { GitPathCrumbs } from "./GitPathCrumbs";
 import { GitTreeSidebar } from "./GitTreeSidebar";
 import type { RepoPathTarget } from "./RepoMarkdown";
-
-/** What a read of the page's folder or file draws before its answer, or when it has none. */
-function NotRead({
-  view,
-  onAgain,
-}: {
-  readonly view: Exclude<GitBrowseState, { readonly state: "known" }>;
-  readonly onAgain: () => void;
-}) {
-  if (view.state === "withheld") return null;
-  if (view.state === "unread") return <GitReading busy={view.busy} words="Reading source…" />;
-  return <GitReadTrouble words={troubleWords(view)} onAgain={onAgain} />;
-}
 
 /** The last answer kept through a failed read again, said with Read again. */
 function Stale({ onAgain }: { readonly onAgain: () => void }) {
@@ -59,7 +45,10 @@ function Folder({
   readonly hrefOf: (target: RepoPathTarget) => string;
 }) {
   const { view, again } = useGitBrowse({ appId, repo, read: "tree", params: { sha, path } }, true);
-  if (view.state !== "known") return <NotRead view={view} onAgain={again} />;
+  if (view.state !== "known")
+    return (
+      <GitNotRead view={view} reading="Reading source…" at={{ appId, repo }} onAgain={again} />
+    );
   const target = (entry: { readonly path: string; readonly type: string }): RepoPathTarget => ({
     path: entry.path,
     kind: entry.type === "folder" ? "tree" : "file",
@@ -95,7 +84,10 @@ function FileAt({
 }) {
   const { view, again } = useGitBrowse({ appId, repo, read: "blob", params: { sha, path } }, true);
   if (view.state === "refused" && view.reason === "not_a_file") return folder;
-  if (view.state !== "known") return <NotRead view={view} onAgain={again} />;
+  if (view.state !== "known")
+    return (
+      <GitNotRead view={view} reading="Reading source…" at={{ appId, repo }} onAgain={again} />
+    );
   return (
     <>
       {view.failed ? <Stale onAgain={again} /> : null}
@@ -119,7 +111,7 @@ export function GitRepoCode(props: GitRepoPageProps) {
   const path = search.path ?? "";
   const kind = search.kind ?? "tree";
   return (
-    <GitAtCommit home={home} onHomeAgain={onHomeAgain}>
+    <GitAtCommit at={{ appId, repo }} home={home} onHomeAgain={onHomeAgain}>
       {(_home, sha) => {
         // A link out of what was read names the commit it was read at, never the branch.
         const at = (target: RepoPathTarget): GitBrowseSearch => ({

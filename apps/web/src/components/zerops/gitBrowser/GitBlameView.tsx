@@ -7,7 +7,6 @@
 import type { SelectedLineRange } from "@pierre/diffs";
 import { VirtualizedFile } from "@pierre/diffs";
 import { File, Virtualizer } from "@pierre/diffs/react";
-import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import { BLAME_AGES, blameAges, noBlame } from "@t3tools/client-runtime/zerops/gitBrowse/blame";
 import { fileSize, lineCount } from "@t3tools/client-runtime/zerops/gitBrowse/blob";
 import { linesParam, parseLines } from "@t3tools/client-runtime/zerops/gitBrowse/lineRange";
@@ -30,7 +29,7 @@ import { isEditableFocused } from "~/lib/editableFocus";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { GitAtCommit, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
+import { GitAtCommit, GitNotRead } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitPageLink } from "./GitFileFinder";
 import { GitPathCrumbs } from "./GitPathCrumbs";
@@ -284,21 +283,6 @@ function BlameFile({
   );
 }
 
-/** A read not answered: still reading, waiting for HQ, or why it stopped. */
-function NotRead({
-  view,
-  words,
-  onAgain,
-}: {
-  readonly view: Exclude<GitBrowseState, { readonly state: "known" }>;
-  readonly words: string;
-  readonly onAgain: () => void;
-}) {
-  if (view.state === "withheld") return null;
-  if (view.state === "unread") return <GitReading busy={view.busy} words={words} />;
-  return <GitReadTrouble words={troubleWords(view)} onAgain={onAgain} />;
-}
-
 function BlameAt({
   appId,
   repo,
@@ -347,7 +331,14 @@ function BlameAt({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   if (file.view.state !== "known")
-    return <NotRead view={file.view} words="Reading source…" onAgain={file.again} />;
+    return (
+      <GitNotRead
+        view={file.view}
+        reading="Reading source…"
+        at={{ appId, repo }}
+        onAgain={file.again}
+      />
+    );
   const { answer } = file.view;
   const onLines = (range: SelectedLineRange | null) =>
     navigate({
@@ -392,7 +383,12 @@ function BlameAt({
       {why !== null ? (
         <p className="text-sm text-muted-foreground">{why}</p>
       ) : blame.view.state !== "known" ? (
-        <NotRead view={blame.view} words="Reading blame…" onAgain={blame.again} />
+        <GitNotRead
+          view={blame.view}
+          reading="Reading blame…"
+          at={{ appId, repo }}
+          onAgain={blame.again}
+        />
       ) : (
         <BlameFile
           key={`${sha}:${path}`}
@@ -414,7 +410,7 @@ export function GitBlameView(props: GitRepoPageProps) {
   const { appId, repo, search, home, onHomeAgain, navigate, hrefOf, hasView, onOpenChange } = props;
   const path = search.path ?? "";
   return (
-    <GitAtCommit home={home} onHomeAgain={onHomeAgain}>
+    <GitAtCommit at={{ appId, repo }} home={home} onHomeAgain={onHomeAgain}>
       {(_home, sha) => {
         // A link out of what was read names the commit it was read at, never the branch.
         const at = (target: RepoPathTarget): GitBrowseSearch => ({

@@ -178,6 +178,35 @@ it("withholds retained content when the source refuses access, and forgets it wh
   reader.close();
   registry.dispose();
 });
+it.each([
+  ["forbidden", "tree", { sha, path: "" }],
+  ["forbidden", "log", { rev: sha }],
+  ["forbidden", "paths", { sha }],
+  ["session_required", "blob", { sha, path: "a" }],
+] as const)(
+  "A read HQ denies (%s) before it ever answered is withheld, as an answered one is: %s",
+  async (code, read, params) => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const reader = makeGitBrowseReads(store, {
+      ...bytes,
+      gitBrowse: async () => {
+        throw new HqError({ kind: "refused", code, status: 403, message: "No access." });
+      },
+    });
+    const key = { ...target, read, params } as never;
+    const projected = store.data.project(gitBrowse, { ...(key as object), allowed: true } as never);
+    const unmount = registry.mount(projected);
+    const settled = waitFor(store, () => registry.get(projected).state !== "unread");
+    const release = reader.demand(key);
+    await settled;
+    expect(registry.get(projected)).toEqual({ state: "withheld" });
+    release();
+    unmount();
+    reader.close();
+    registry.dispose();
+  },
+);
 it("withholds cached source synchronously when the current grant is denied or unread", async () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);

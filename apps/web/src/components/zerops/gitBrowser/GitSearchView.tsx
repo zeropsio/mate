@@ -22,6 +22,7 @@ import { Toggle as GroupToggle, ToggleGroup } from "~/components/ui/toggle-group
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
+import { GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitFileFinder, GitPageLink } from "./GitFileFinder";
 
@@ -165,26 +166,23 @@ function ContentResults({
         </div>
       ) : null}
     </>
-  ) : view.state !== "failed" && view.state !== "refused" ? (
+  ) : view.state === "unread" ? (
     slow ? (
       <p className="text-sm text-muted-foreground" role="status">
         Searching…
       </p>
     ) : null
-  ) : (
-    <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-status-failed" role="alert">
-        {unreadable
+  ) : view.state === "known" ? null : (
+    <GitReadStopped
+      view={view}
+      words={
+        unreadable
           ? "Git cannot read this regular expression. Check it, or search for the text as written."
-          : view.words}
-      </p>
-      {/* The same expression reads the same way again. */}
-      {unreadable ? null : (
-        <Button variant="ghost" size="sm" onClick={again}>
-          Read again
-        </Button>
-      )}
-    </div>
+          : undefined
+      }
+      at={{ appId, repo }}
+      onAgain={again}
+    />
   );
 }
 
@@ -364,23 +362,14 @@ export function GitSearchView(props: GitRepoPageProps) {
             hrefOf={hrefOf}
           />
         )
-      ) : home.state === "withheld" ? null : home.state === "unread" ? (
+      ) : home.state === "unread" ? (
         slow ? (
           <p className="text-sm text-muted-foreground" role="status">
             Reading the repository…
           </p>
         ) : null
       ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-status-failed" role="alert">
-            {home.state === "refused" && home.reason === "commit_not_found"
-              ? "This branch, tag or commit is not in the repository."
-              : home.words}
-          </p>
-          <Button variant="ghost" size="sm" onClick={onHomeAgain}>
-            Read again
-          </Button>
-        </div>
+        <GitReadStopped view={home} at={{ appId, repo }} onAgain={onHomeAgain} />
       )}
     </div>
   );

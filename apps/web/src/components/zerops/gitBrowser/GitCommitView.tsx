@@ -11,6 +11,8 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { Button } from "../../ui/button";
+import { GitReadStopped } from "./GitAtCommit";
+import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
 import { GitWhen } from "./GitWhen";
@@ -157,7 +159,8 @@ function CommitPage({
       return read === undefined ? [] : [[path, read] as const];
     }),
   );
-  if (view.state !== "known") return <PageState view={view} onAgain={again} what="commit" />;
+  if (view.state !== "known")
+    return <PageState at={{ appId, repo }} view={view} onAgain={again} what="commit" />;
   const commit = view.answer;
   return (
     <GitDiffFiles
@@ -181,36 +184,24 @@ function CommitPage({
 }
 
 function PageState({
+  at,
   view,
   onAgain,
   what,
 }: {
+  readonly at: GitRepoAt;
   readonly view: GitBrowseView<unknown>;
   readonly onAgain: () => void;
   readonly what: string;
 }) {
   if (view.state === "known") return null;
-  const words =
-    view.state === "failed" || view.state === "refused"
-      ? view.words
-      : view.state === "withheld"
-        ? "You do not have access to this repository."
-        : `Reading the ${what}…`;
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <p
-        className="text-sm text-muted-foreground"
-        role={view.state === "failed" || view.state === "refused" ? "alert" : "status"}
-      >
-        {words}
+  if (view.state === "unread")
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        Reading the {what}…
       </p>
-      {view.state === "failed" ? (
-        <Button onClick={onAgain} size="sm" variant="ghost">
-          Read again
-        </Button>
-      ) : null}
-    </div>
-  );
+    );
+  return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
 }
 
 export function GitCommitView({
@@ -230,7 +221,8 @@ export function GitCommitView({
       : home.state === "known"
         ? home.answer.sha
         : undefined;
-  if (sha === undefined) return <PageState view={home} onAgain={onHomeAgain} what="commit" />;
+  if (sha === undefined)
+    return <PageState at={{ appId, repo }} view={home} onAgain={onHomeAgain} what="commit" />;
   if (sha === null)
     return <p className="text-sm text-muted-foreground">No commits on this branch yet</p>;
   return (

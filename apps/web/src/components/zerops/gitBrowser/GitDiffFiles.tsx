@@ -18,6 +18,7 @@ import { fnv1a32, resolveDiffThemeName } from "~/lib/diffPresentation";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import { DIFF_HEADER_HEIGHT, StyledDiffCodeView } from "../../diffs/StyledDiffCodeView";
 import { Button } from "../../ui/button";
+import { troubleWords } from "./GitAtCommit";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 
 /** A file's hunks the page left for later, as their own read stands. */
@@ -62,8 +63,9 @@ export const fileNote = (
     return later.answer.hunks === null
       ? { kind: "words", words: "Too long to read here." }
       : { kind: "none" };
-  if (later.state === "failed" || later.state === "refused")
-    return { kind: "load", label: "Read again", busy: false };
+  if (later.state === "failed") return { kind: "load", label: "Read again", busy: false };
+  // Refused or denied, reading it again reads the same no.
+  if (later.state !== "unread") return { kind: "words", words: troubleWords(later), alert: true };
   return { kind: "load", label: "Reading the diff…", busy: true };
 };
 
@@ -256,7 +258,12 @@ export function GitDiffFiles({
         return (
           <span className="flex items-center gap-2 font-mono text-xs">
             {note.kind === "words" ? (
-              <span className="font-sans text-muted-foreground">{note.words}</span>
+              <span
+                className="font-sans text-muted-foreground"
+                role={note.alert === true ? "alert" : undefined}
+              >
+                {note.words}
+              </span>
             ) : null}
             {note.kind === "load" ? (
               <Button

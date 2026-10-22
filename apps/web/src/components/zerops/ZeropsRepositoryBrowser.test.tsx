@@ -42,6 +42,11 @@ vi.mock("@pierre/diffs/react", () => ({
 vi.mock("~/components/DiffWorkerPoolProvider", () => ({
   DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
 }));
+vi.mock("@legendapp/list/react", () => ({
+  LegendList: (props: { readonly ListFooterComponent?: ReactNode }) => (
+    <div>{props.ListFooterComponent}</div>
+  ),
+}));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: () => <p>Clone address</p>,
 }));
@@ -410,4 +415,163 @@ describe("repository README", () => {
       await close();
     }
   });
+});
+
+describe("a read HQ does not answer", () => {
+  const refused = (reason: string) => ({
+    state: "refused",
+    reason,
+    words: `HQ refused it (${reason}).`,
+  });
+  const knownBlob = {
+    state: "known",
+    busy: false,
+    failed: false,
+    answer: {
+      path: "a.ts",
+      blobSha: "b".repeat(40),
+      size: 19,
+      binary: false,
+      content: "export const a = 1;",
+      truncated: false,
+    },
+  };
+  /** Each page, the link that opens it, the read it draws, and what else it needs answered. */
+  const PAGES = [
+    { page: "a folder", query: { path: "src", kind: "tree" as const }, read: "tree" },
+    { page: "a file", query: { path: "a.ts", kind: "file" as const }, read: "blob" },
+    { page: "history", query: { view: "commits" as const }, read: "log" },
+    { page: "a commit", query: { rev: "e".repeat(40), view: "commit" as const }, read: "commit" },
+    {
+      page: "content search",
+      query: { view: "search" as const, scope: "content" as const, q: "tea" },
+      read: "grep",
+    },
+    {
+      page: "the file finder",
+      query: { view: "search" as const, scope: "name" as const },
+      read: "paths",
+    },
+    {
+      page: "blame",
+      query: { view: "blame" as const, path: "a.ts" },
+      read: "blame",
+      also: { blob: knownBlob },
+    },
+    {
+      page: "compare",
+      query: { view: "compare" as const, base: "main", head: "dev" },
+      read: "compare",
+    },
+    {
+      page: "an archive",
+      query: {},
+      read: "archive",
+      also: {
+        tree: {
+          state: "known",
+          busy: false,
+          failed: false,
+          answer: { entries: [], truncated: false },
+        },
+      },
+      within: 'section[aria-label="Download"]',
+    },
+  ];
+  // What the person is told and offered: HQ's own refusals in the page's words.
+  const REFUSED: Record<string, { readonly reason: string; readonly words: string }> = {
+    tree: { reason: "path_not_found", words: "This commit holds nothing at this path." },
+    blob: { reason: "path_not_found", words: "This commit holds nothing at this path." },
+    log: {
+      reason: "commit_not_found",
+      words: "This branch, tag or commit is not in the repository.",
+    },
+    commit: { reason: "too_large", words: "HQ refused it (too_large)." },
+    grep: { reason: "too_large", words: "HQ refused it (too_large)." },
+    paths: { reason: "too_large", words: "HQ refused it (too_large)." },
+    blame: { reason: "too_large", words: "HQ refused it (too_large)." },
+    compare: {
+      reason: "commit_not_found",
+      words: "This branch, tag or commit is not in the repository.",
+    },
+    archive: { reason: "too_large", words: "HQ refused it (too_large)." },
+  };
+  const CASES = PAGES.flatMap(({ page, query, read, also, within }) => [
+    {
+      within,
+      page,
+      outcome: "refused",
+      query,
+      views: { ...also, [read]: refused(REFUSED[read]!.reason) },
+      words: REFUSED[read]!.words,
+      // The commit is fixed: reading it again reads the same no; the repository is the way on.
+      way: read === "archive" ? null : "Back to the repository",
+    },
+    {
+      within,
+      page,
+      outcome: "denied",
+      query,
+      views: { ...also, [read]: { state: "withheld" } },
+      words: "You no longer have access to this repository.",
+      // A read the frame holds withholds the whole repository; Git is its way back.
+      way: read === "tree" || read === "blob" ? "Git" : "Back to Git",
+    },
+    {
+      within,
+      page,
+      outcome: "not reached",
+      query,
+      views: { ...also, [read]: { state: "failed", words: "HQ could not be reached." } },
+      words: "HQ could not be reached.",
+      way: "Read again",
+    },
+  ]);
+
+  it.each(CASES)(
+    "A page whose read HQ $outcome says why and offers the way on: $page",
+    async ({ query, views, words, way, within }) => {
+      held.views = { home: knownHome(null), ...views };
+      const { host, close } = await browser("appdev", "Shop", query);
+      try {
+        await act(async () => {
+          await Promise.all(
+            [
+              "GitCommitsView",
+              "GitCommitView",
+              "GitCompareView",
+              "GitSearchView",
+              "GitBlameView",
+            ].map((page) => import(`./gitBrowser/${page}.tsx`)),
+          );
+        });
+        if (within !== undefined) {
+          await openClone(host);
+          const zip = [...host.querySelectorAll("button")].find(
+            (b) => b.textContent === "Download ZIP",
+          );
+          await act(async () => zip!.click());
+        }
+        const shown = within === undefined ? host : host.querySelector<HTMLElement>(within)!;
+        const alerts = [...shown.querySelectorAll('[role="alert"]')].map(
+          (alert) => alert.textContent,
+        );
+        expect(alerts).toContain(words);
+        expect(shown.textContent).not.toMatch(/Reading|Searching|Waiting for HQ/);
+        const offered = [...shown.querySelectorAll("a, button")].map(
+          (control) => control.textContent,
+        );
+        if (way !== null) expect(offered).toContain(way);
+        if (way !== "Read again") expect(offered).not.toContain("Read again");
+        if (way === "Back to the repository")
+          expect(
+            [...shown.querySelectorAll("a")]
+              .find((a) => a.textContent === way)
+              ?.getAttribute("href"),
+          ).toBe("/git?appId=app&repo=appdev");
+      } finally {
+        await close();
+      }
+    },
+  );
 });

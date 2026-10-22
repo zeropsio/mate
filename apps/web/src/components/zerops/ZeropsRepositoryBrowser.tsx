@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { NO_LONGER_ALLOWED } from "./gitBrowser/GitAtCommit";
 import { GitBrowseView, gitView, pageRead, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 
@@ -62,7 +63,7 @@ export function ZeropsRepositoryBrowser({
         <p className="text-sm text-muted-foreground" role="alert">
           {allowed === true
             ? // HQ said no after the offers said yes.
-              "You no longer have access to this repository."
+              NO_LONGER_ALLOWED
             : (accessReason ??
               (allowed === undefined
                 ? "Your access to this repository has not been verified."
