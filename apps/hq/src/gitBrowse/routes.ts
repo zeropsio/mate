@@ -97,6 +97,7 @@ const bytesResponse = (
   const headers: Record<string, string> = {
     "cache-control": IMMUTABLE,
     etag,
+    vary: "Authorization",
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; sandbox",
     ...(answer.download === null

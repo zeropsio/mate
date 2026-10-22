@@ -205,6 +205,8 @@ describe("Git browse files", () => {
           image.headers.get("cache-control"),
           "private, max-age=31536000, immutable",
         );
+        // Kept per session token: another account on the same browser is checked again.
+        assert.strictEqual(image.headers.get("vary"), "Authorization");
       }),
     );
 
