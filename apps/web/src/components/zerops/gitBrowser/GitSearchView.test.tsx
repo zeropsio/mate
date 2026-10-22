@@ -193,6 +193,59 @@ describe("Git browser search page", () => {
     expect(text(short.host)).toContain("Type at least 2 characters to search.");
   });
 
+  it.each([
+    { path: "/src", mode: "text" },
+    { path: "../src", mode: "text" },
+    { path: "/src", mode: "regex" },
+    { path: "src/../..", mode: "regex" },
+  ] as const)(
+    "A folder outside the repository ($path, searched as $mode) is said so and never searched",
+    async ({ path, mode }) => {
+      const { host } = await page({
+        view: "search",
+        scope: "content",
+        q: "tea",
+        path,
+        ...(mode === "regex" ? { mode } : {}),
+      });
+      expect(held.asked.filter((ask) => ask.read === "grep")).toEqual([]);
+      expect(text(host)).toContain(
+        "This folder is outside the repository. Name it from the top, like src/app.",
+      );
+      expect(text(host)).not.toContain("Type at least");
+      expect(text(host)).not.toContain("regular expression.");
+    },
+  );
+
+  it("A folder typed with ./ or a closing slash searches that folder", async () => {
+    for (const typed of ["./src/", "src/", " src "]) {
+      const { host, navigate } = await page({ view: "search", scope: "content" });
+      const input = (label: string) =>
+        host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+      const type = (label: string, value: string) => {
+        const field = input(label);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          field,
+          value,
+        );
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      await act(async () => {
+        type("Text to search for", "tea");
+        type("In folder", typed);
+      });
+      await act(async () => button(host, "Search")!.click());
+      expect(navigate, typed).toHaveBeenLastCalledWith({
+        view: "search",
+        scope: "content",
+        q: "tea",
+        path: "src",
+      });
+      await unmount?.();
+      unmount = null;
+    }
+  });
+
   it("The finder narrows every path at the commit as a name is typed and says when it sees only the first 25,000", async () => {
     const answer: GitPaths = {
       paths: ["README.md", "src/deep/menu.txt", "src/tea.ts"],

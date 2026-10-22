@@ -4,6 +4,7 @@
  */
 import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import { grepFiles } from "@t3tools/client-runtime/zerops/gitBrowse/grep";
+import { GitPath } from "@t3tools/shared/hqGitBrowse/common";
 import {
   GREP_MATCH_LIMIT,
   GREP_QUERY_MIN,
@@ -29,6 +30,14 @@ const RESULTS_PAGE = 100;
 
 /** A read exists only for a query HQ accepts: its identity encodes the query. */
 const isGrepQuery = Schema.is(GitGrepQuery);
+const isGitPath = Schema.is(GitPath);
+
+/** The folder as typed, named from the repository's top: `./src/` is `src`. */
+const typedFolderPath = (typed: string) =>
+  typed
+    .trim()
+    .replace(/^(?:\.\/)+/u, "")
+    .replace(/\/+$/u, "");
 
 const SCOPES = [
   { value: "name", label: "File name" },
@@ -213,6 +222,8 @@ function ContentSearch({
     ...(caseSensitive ? { case: "1" as const } : {}),
   };
   const asked = isGrepQuery(params);
+  // A folder git would refuse is the asker's to fix, in either mode: never asked of HQ.
+  const outside = !isGitPath(folder);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <form
@@ -222,7 +233,8 @@ function ContentSearch({
           event.preventDefault();
           const next = typed.trim();
           setTooShort(next.length < GREP_QUERY_MIN);
-          if (next.length >= GREP_QUERY_MIN) ask({ q: next, regex, folder: typedFolder.trim() });
+          if (next.length >= GREP_QUERY_MIN)
+            ask({ q: next, regex, folder: typedFolderPath(typedFolder) });
         }}
       >
         <div className="min-w-64 flex-1">
@@ -274,12 +286,16 @@ function ContentSearch({
           Search
         </Button>
       </form>
-      {tooShort || (!asked && q !== "") ? (
+      {tooShort || (!asked && q !== "" && !outside) ? (
         <p className="text-sm text-muted-foreground" role="status">
           Type at least {GREP_QUERY_MIN} characters to search.
         </p>
       ) : null}
-      {!asked ? (
+      {outside ? (
+        <p className="text-sm text-status-failed" role="alert">
+          This folder is outside the repository. Name it from the top, like src/app.
+        </p>
+      ) : !asked ? (
         <p className="text-sm text-muted-foreground">
           Search every text file at this commit. Binary files are not searched.
         </p>
