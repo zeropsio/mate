@@ -30,6 +30,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { isEditableFocused } from "~/lib/editableFocus";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { useGitRaw } from "~/zerops/useGitRaw";
+import { troubleWords } from "./GitAtCommit";
 import type { GitBrowseSearch, GitView } from "./GitBrowseView";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 
@@ -277,11 +278,11 @@ export function GitFileView({
           </Button>
         ) : null}
       </div>
-      {raw.view.state === "failed" || raw.view.state === "refused" ? (
+      {!wantRaw || raw.view.state === "known" || raw.view.state === "unread" ? null : (
         <p className="text-sm text-status-failed" role="alert">
-          {raw.view.words}
+          {troubleWords(raw.view)}
         </p>
-      ) : null}
+      )}
       {shape.kind === "image" ? (
         raw.url !== null && raw.type?.startsWith("image/") ? (
           <img className="max-w-full self-start" src={raw.url} alt={blob.path} />

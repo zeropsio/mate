@@ -53,7 +53,7 @@ export const gitFileLink = (
 });
 
 /** The link's address, as the router writes it, so a new tab opens the same page. */
-export const gitHref = (link: GitLink): string =>
+export const gitHref = (link: GitSearch): string =>
   `${appBasePath()}/git${defaultStringifySearch(link)}`;
 
 /** What a dialog does as one of its links leaves it for the browser: closes itself. */
@@ -62,8 +62,8 @@ export const LeaveForGitContext = createContext<(() => void) | null>(null);
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
-/** An anchor's `href` and `onClick` for a link into the browser. */
-export function useGitLinkProps(link: GitLink): {
+/** An anchor's `href` and `onClick` for a link into the browser, or to Git where it names none. */
+export function useGitLinkProps(link: GitSearch): {
   readonly href: string;
   readonly onClick: (event: MouseEvent) => void;
 } {
@@ -86,7 +86,7 @@ export function GitBrowserLink({
   tone,
   children,
 }: {
-  readonly to: GitLink;
+  readonly to: GitSearch;
   readonly tone?: "default" | "muted";
   readonly children: ReactNode;
 }) {

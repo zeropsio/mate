@@ -25,6 +25,8 @@ vi.mock("@tanstack/react-router", async (actual) => ({
     .defaultStringifySearch,
   useSearch: () => fixture.search,
   useNavigate: () => fixture.navigate,
+  // A link's address opens in a new tab without the router; its click is the router's.
+  useRouter: () => undefined,
 }));
 vi.mock("~/zerops/useGitBrowse", () => {
   const viewOf = (read: string) =>

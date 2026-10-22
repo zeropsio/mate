@@ -12,6 +12,7 @@ import { Input } from "~/components/ui/input";
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
+import { GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch } from "./GitBrowseView";
 import { FINDER_PAGE, finderMatches } from "./GitFileFinder.logic";
 
@@ -107,10 +108,7 @@ export function GitFileFinder({
   const { view, again } = useGitBrowse({ appId, repo, read: "paths", params: { sha } }, true);
   const paths = view.state === "known" ? view.answer.paths : null;
   // "Reading" only once a read outlasts the usual wait.
-  const slow = useHeldFor(
-    view.state === "unread" || view.state === "withheld",
-    STILL_READING_HOLD_MS,
-  );
+  const slow = useHeldFor(view.state === "unread", STILL_READING_HOLD_MS);
   const found = useMemo(
     () => (paths === null ? null : finderMatches(paths, query, count)),
     [paths, query, count],
@@ -176,21 +174,14 @@ export function GitFileFinder({
             ))}
           </ul>
         )
-      ) : view.state !== "failed" && view.state !== "refused" ? (
+      ) : view.state === "unread" ? (
         slow ? (
           <p className="text-sm text-muted-foreground" role="status">
             Reading the files…
           </p>
         ) : null
-      ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-status-failed" role="alert">
-            {view.words}
-          </p>
-          <Button variant="ghost" size="sm" onClick={again}>
-            Read again
-          </Button>
-        </div>
+      ) : view.state === "known" ? null : (
+        <GitReadStopped view={view} at={{ appId, repo }} onAgain={again} />
       )}
       {found?.more ? (
         <div>

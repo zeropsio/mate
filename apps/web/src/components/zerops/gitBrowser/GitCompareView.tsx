@@ -11,6 +11,8 @@ import { useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitReadStopped } from "./GitAtCommit";
+import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitRepoPageProps } from "./GitBrowseView";
 import { CommitRow } from "./GitCommitsView";
 import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
@@ -94,31 +96,22 @@ function CompareFiles({
 }
 
 function CompareState({
+  at,
   view,
   onAgain,
 }: {
+  readonly at: GitRepoAt;
   readonly view: GitBrowseState<GitCompare>;
   readonly onAgain: () => void;
 }) {
-  if (view.state === "known" || view.state === "withheld") return null;
+  if (view.state === "known") return null;
   if (view.state === "unread")
     return (
       <p className="text-sm text-muted-foreground" role="status">
         Reading the compare…
       </p>
     );
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-status-failed" role="alert">
-        {view.state === "refused" && view.reason === "commit_not_found"
-          ? "This branch, tag or commit is not in the repository."
-          : view.words}
-      </p>
-      <Button variant="ghost" size="sm" onClick={onAgain}>
-        Read again
-      </Button>
-    </div>
-  );
+  return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
 }
 
 /** What a picker's button says: the side's name as the compare read it, or as it was asked. */
@@ -181,7 +174,7 @@ export function GitCompareView(props: GitRepoPageProps) {
         </Button>
       </div>
       {known === undefined ? (
-        <CompareState view={view} onAgain={again} />
+        <CompareState at={{ appId, repo }} view={view} onAgain={again} />
       ) : known.mergeBase === null || compareSummary(known).nothing ? (
         <GitCompareSummary {...props} changes={changes} compare={known} onJump={() => {}} />
       ) : (

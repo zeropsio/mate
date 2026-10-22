@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
+import { GitReadStopped } from "./GitAtCommit";
 
 const FORMATS: ReadonlyArray<{ readonly format: GitArchiveFormat; readonly label: string }> = [
   { format: "zip", label: "Download ZIP" },
@@ -110,18 +111,10 @@ export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) 
             Reading the archive…
           </p>
         ) : null
-      ) : view.state === "failed" || view.state === "refused" ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs text-status-failed" role="alert">
-            {view.words}
-          </p>
-          {view.state === "failed" ? (
-            <Button variant="ghost" size="sm" onClick={again}>
-              Read again
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      ) : view.state === "known" || view.state === "unread" ? null : (
+        // Its refusal says what to do instead; the page it was asked on stays.
+        <GitReadStopped view={view} at={null} onAgain={again} />
+      )}
     </section>
   );
 }

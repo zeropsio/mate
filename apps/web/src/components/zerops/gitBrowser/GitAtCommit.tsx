@@ -6,6 +6,7 @@ import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/da
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
+import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 
 /** A read not answered yet: reading, or waiting for HQ before it can. */
 export function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
@@ -16,26 +17,6 @@ export function GitReading({ busy, words }: { readonly busy: boolean; readonly w
   );
 }
 
-/** Why a read stopped, and Read again. */
-export function GitReadTrouble({
-  words,
-  onAgain,
-}: {
-  readonly words: string;
-  readonly onAgain: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-status-failed" role="alert">
-        {words}
-      </p>
-      <Button variant="ghost" size="sm" onClick={onAgain}>
-        Read again
-      </Button>
-    </div>
-  );
-}
-
 const NO_COMMIT = "This branch, tag or commit is not in the repository.";
 
 const REFUSALS: Readonly<Record<string, string>> = {
@@ -43,9 +24,73 @@ const REFUSALS: Readonly<Record<string, string>> = {
   path_not_found: "This commit holds nothing at this path.",
 };
 
+/** What a repository says once HQ denies a read the offers allowed. */
+export const NO_LONGER_ALLOWED = "You no longer have access to this repository.";
+
+/** A read that ended in no answer. */
+export type GitReadStop = Extract<
+  GitBrowseState<unknown>,
+  { readonly state: "withheld" | "failed" | "refused" }
+>;
+
 /** A read that ended in no answer, in the person's words. */
-export const troubleWords = (view: { readonly words: string; readonly reason?: string }) =>
-  (view.reason === undefined ? undefined : REFUSALS[view.reason]) ?? view.words;
+export const troubleWords = (view: GitReadStop) =>
+  view.state === "withheld"
+    ? NO_LONGER_ALLOWED
+    : ((view.state === "refused" ? REFUSALS[view.reason] : undefined) ?? view.words);
+
+/**
+ * Why a read ended in no answer, and the way on: Read again where HQ may answer next time; where
+ * it refused, back to the repository; where it denied access, back to Git.
+ */
+export function GitReadStopped({
+  view,
+  words,
+  at,
+  onAgain,
+}: {
+  readonly view: GitReadStop;
+  /** The page's own words for this end, where it has them. */
+  readonly words?: string | undefined;
+  /** The repository a refusal leads back to; none where the page is already its way back. */
+  readonly at: GitRepoAt | null;
+  readonly onAgain: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <p className="text-status-failed" role="alert">
+        {words ?? troubleWords(view)}
+      </p>
+      {view.state === "failed" ? (
+        <Button variant="ghost" size="sm" onClick={onAgain}>
+          Read again
+        </Button>
+      ) : view.state === "withheld" ? (
+        <GitBrowserLink to={{}}>Back to Git</GitBrowserLink>
+      ) : at === null ? null : (
+        <GitBrowserLink to={{ appId: at.appId, repo: at.repo }}>
+          Back to the repository
+        </GitBrowserLink>
+      )}
+    </div>
+  );
+}
+
+/** A read not answered: still reading, waiting for HQ, or why it ended. */
+export function GitNotRead({
+  view,
+  reading,
+  at,
+  onAgain,
+}: {
+  readonly view: Exclude<GitBrowseState<unknown>, { readonly state: "known" }>;
+  readonly reading: string;
+  readonly at: GitRepoAt | null;
+  readonly onAgain: () => void;
+}) {
+  if (view.state === "unread") return <GitReading busy={view.busy} words={reading} />;
+  return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
+}
 
 /** A home read moves with its ref: read again on the person's ask, said when that read failed. */
 export function GitHomeAgain({
@@ -71,10 +116,12 @@ export function GitHomeAgain({
 
 /** The page at the commit the frame's home read resolved, or what that read says instead. */
 export function GitAtCommit({
+  at,
   home,
   onHomeAgain,
   children,
 }: {
+  readonly at: GitRepoAt;
   readonly home: GitBrowseState<GitHome>;
   readonly onHomeAgain: () => void;
   readonly children: (home: GitHome, sha: string) => ReactNode;
@@ -88,7 +135,6 @@ export function GitAtCommit({
     ) : (
       children(home.answer, home.answer.sha)
     );
-  if (home.state === "withheld") return null;
   if (home.state === "unread")
     return (
       <p className="text-sm text-muted-foreground" role="status">
@@ -96,11 +142,11 @@ export function GitAtCommit({
       </p>
     );
   return (
-    <GitReadTrouble
-      words={
-        // A revision HQ cannot read as one (empty, or read as an option) names no commit either.
-        home.state === "refused" && home.reason === "invalid" ? NO_COMMIT : troubleWords(home)
-      }
+    <GitReadStopped
+      view={home}
+      // A revision HQ cannot read as one (empty, or read as an option) names no commit either.
+      words={home.state === "refused" && home.reason === "invalid" ? NO_COMMIT : undefined}
+      at={at}
       onAgain={onHomeAgain}
     />
   );

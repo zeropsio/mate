@@ -23,6 +23,7 @@ import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { isEditableFocused } from "~/lib/editableFocus";
 import { useDebouncedValue } from "~/state/queries";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitReadStopped, type GitReadStop } from "./GitAtCommit";
 import { pickerSections, type PickerChange, type PickerRow } from "./GitRefPicker.logic";
 
 const FILTER_DEBOUNCE_MS = 200;
@@ -108,7 +109,9 @@ export function GitRefPicker({
   const indexOf = useMemo(() => new Map(rows.map((row, at) => [row.value, at])), [rows]);
   const last = views.at(-1);
   const next = last?.state === "known" ? last.answer.next : null;
-  const trouble = views.find((view) => view.state === "failed" || view.state === "refused");
+  const trouble = open
+    ? views.find((view): view is GitReadStop => view.state !== "known" && view.state !== "unread")
+    : undefined;
   const reading = views.some(
     (view) => view.state === "unread" || (view.state === "known" && view.busy),
   );
@@ -202,13 +205,8 @@ export function GitRefPicker({
           </div>
         )}
         {trouble !== undefined ? (
-          <div className="flex items-center gap-2 px-3 pb-2">
-            <p className="text-xs text-status-failed" role="alert">
-              {trouble.state === "failed" || trouble.state === "refused" ? trouble.words : null}
-            </p>
-            <Button variant="ghost" size="sm" onClick={again}>
-              Read again
-            </Button>
+          <div className="px-3 pb-2">
+            <GitReadStopped view={trouble} at={null} onAgain={again} />
           </div>
         ) : null}
         <ComboboxStatus>

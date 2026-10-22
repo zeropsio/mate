@@ -10,7 +10,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
 import type { GitRepoPageProps } from "./GitBrowseView";
-import { GitAtCommit, GitHomeAgain, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
+import { GitAtCommit, GitHomeAgain, GitNotRead } from "./GitAtCommit";
 import { GitDirectoryList } from "./GitDirectoryList";
 import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
@@ -126,10 +126,13 @@ function HomeAt({
                 hrefOf={(entry) => hrefOf(atCommit(entryTarget(entry)))}
                 onOpen={(entry) => navigate(atCommit(entryTarget(entry)))}
               />
-            ) : top.state === "withheld" ? null : top.state === "unread" ? (
-              <GitReading busy={top.busy} words="Reading source…" />
             ) : (
-              <GitReadTrouble words={troubleWords(top)} onAgain={again} />
+              <GitNotRead
+                view={top}
+                reading="Reading source…"
+                at={{ appId, repo }}
+                onAgain={again}
+              />
             )}
           </div>
         </Card>
@@ -162,11 +165,11 @@ function HomeAt({
 }
 
 export function GitRepoHome(props: GitRepoPageProps) {
-  const { home, onHomeAgain } = props;
+  const { appId, repo, home, onHomeAgain } = props;
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <OpenChanges {...props} />
-      <GitAtCommit home={home} onHomeAgain={onHomeAgain}>
+      <GitAtCommit at={{ appId, repo }} home={home} onHomeAgain={onHomeAgain}>
         {(answer, sha) => (
           <HomeAt
             {...props}

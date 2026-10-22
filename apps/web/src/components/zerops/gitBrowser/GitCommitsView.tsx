@@ -14,6 +14,8 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitReadStopped } from "./GitAtCommit";
+import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { changeTitle, type PickerChange } from "./GitRefPicker.logic";
 import { GitWhen } from "./GitWhen";
@@ -119,17 +121,19 @@ export function CommitRow({
 
 /** How the list ends: still reading, a page that failed, more to show, or why it stops where it does. */
 function ListEnd({
+  at,
   last,
   path,
   onMore,
   onAgain,
 }: {
+  readonly at: GitRepoAt;
   readonly last: GitBrowseState<GitLog> | undefined;
   readonly path: string;
   readonly onMore: (cursor: string) => void;
   readonly onAgain: () => void;
 }) {
-  if (last === undefined || last.state === "withheld") return null;
+  if (last === undefined) return null;
   if (last.state === "unread")
     return (
       <p className="px-4 py-3 text-sm text-muted-foreground" role="status">
@@ -138,15 +142,8 @@ function ListEnd({
     );
   if (last.state !== "known")
     return (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <p className="text-sm text-status-failed" role="alert">
-          {last.state === "refused" && last.reason === "commit_not_found"
-            ? "This branch, tag or commit is not in the repository."
-            : last.words}
-        </p>
-        <Button variant="ghost" size="sm" onClick={onAgain}>
-          Read again
-        </Button>
+      <div className="px-4 py-3">
+        <GitReadStopped view={last} at={at} onAgain={onAgain} />
       </div>
     );
   const page = last.answer;
@@ -235,6 +232,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
           style={{ height: `min(70dvh, ${listHeight(rows)}px)` }}
           ListFooterComponent={
             <ListEnd
+              at={{ appId, repo }}
               last={views.at(-1)}
               path={path}
               onAgain={again}
@@ -255,7 +253,6 @@ export function GitCommitsView(props: GitRepoPageProps) {
     ) : (
       <HistoryAt {...props} sha={home.answer.sha} />
     );
-  if (home.state === "withheld") return null;
   if (home.state === "unread")
     return (
       <p className="text-sm text-muted-foreground" role="status">
@@ -263,15 +260,10 @@ export function GitCommitsView(props: GitRepoPageProps) {
       </p>
     );
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-status-failed" role="alert">
-        {home.state === "refused" && home.reason === "commit_not_found"
-          ? "This branch, tag or commit is not in the repository."
-          : home.words}
-      </p>
-      <Button variant="ghost" size="sm" onClick={onHomeAgain}>
-        Read again
-      </Button>
-    </div>
+    <GitReadStopped
+      view={home}
+      at={{ appId: props.appId, repo: props.repo }}
+      onAgain={onHomeAgain}
+    />
   );
 }
