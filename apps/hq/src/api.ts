@@ -17,7 +17,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
  * - `DELETE /api/session`: revokes the presented session.
  * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
- *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
+ *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it; `?with=code`, its
+ *   code, changes, releases and history too, its environments unlinked, once no Mate is on it
+ *   (`409 conflict` `app_has_mate`).
  * - Every event that asks for deploys answers, beside its own, `deploys`: where each job it asked
  *   for stands once HQ submitted it (`@t3tools/shared/hqDeploys`, `deploys.ts`); a deploy that did
  *   not go through never undoes the event.
@@ -1371,7 +1373,12 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["id"] ?? "";
-              yield* (yield* Structure).deleteApp(userId, appId);
+              const withCode =
+                new URL(
+                  (yield* HttpServerRequest.HttpServerRequest).url,
+                  "http://hq",
+                ).searchParams.get("with") === "code";
+              yield* (yield* Structure).deleteApp(userId, appId, { withCode });
               // Its repositories go after it; should they not now, they are only on disk, unnamed.
               yield* (yield* Changes)
                 .removeAppRepos(appId)
