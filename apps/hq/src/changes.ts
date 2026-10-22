@@ -107,6 +107,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "not_raster",
     "recipe_too_large",
     "branch_taken",
+    "change_on_branch",
     "protected_ref",
     "invalid_ref",
   ]),
@@ -1249,6 +1250,11 @@ export const changesLayer: Layer.Layer<
                   AND ${taskId === null ? sql`task_id IS NULL` : sql`task_id::text = ${taskId}`}`;
                 if (open !== undefined) {
                   const change = changeOf(open);
+                  // An opener naming no branch (released zcp) pushes `mate/<Mate>/<number>`, which
+                  // a change on a branch its Mate named never takes: answered, it would push there
+                  // and open again for good.
+                  if (branch === undefined && !change.branch.startsWith("mate/"))
+                    return yield* refuse("conflict", "change_on_branch");
                   return { change, created: false, task: yield* onTask(change) };
                 }
                 // A branch is one open change's at a time.
@@ -1288,9 +1294,10 @@ export const changesLayer: Layer.Layer<
                 ? PubSub.publish(taskChanged, opened.task)
                 : Effect.void,
             ),
-            // Opened on a branch pushed before it: the change is at its head from the start.
+            // Opened on a branch pushed before it: the change is at its head from the start. Its
+            // head read again while none is recorded, as an opening whose read failed is retried.
             Effect.flatMap((opened) =>
-              !opened.created || opened.change === null
+              opened.change === null || opened.change.head !== null
                 ? Effect.succeed(opened)
                 : Effect.gen(function* () {
                     const change = opened.change;

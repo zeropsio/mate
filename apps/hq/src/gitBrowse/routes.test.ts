@@ -1,6 +1,8 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import { gitClient } from "../../test/harness/gitClient.ts";
+import { mateInApp, remoteOf } from "../../test/harness/mates.ts";
 import { sessionFor, startCore, untilHealth } from "../../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../../test/harness/tempPostgres.ts";
 import { browseResponse } from "./routes.ts";
@@ -117,6 +119,44 @@ describe("Git browse routes", () => {
           assert.isAtLeast(reads, 600);
         }),
       60_000,
+    );
+
+    it.effect("A change's branch is marked as that change's branch", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin } = yield* startCore(true, { viewTtl: Duration.zero });
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+        yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+        yield* call("POST", "/api/mate/changes", {
+          headers: ada.auth,
+          body: { repo: "appdev", title: "Fix the login", branch: "fix-login" },
+        });
+        const git = yield* gitClient;
+        yield* git.checked(["clone", remoteOf(origin, ada.credential, ada.appId, "appdev"), "ada"]);
+        const work = `${git.dir}/ada`;
+        yield* git.checked(["commit", "-q", "--allow-empty", "-m", "Login"], work);
+        // The change's branch, and a branch no change is on.
+        for (const ref of ["fix-login", "topic"])
+          yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/${ref}`], work);
+        const browse = (path: string) =>
+          call("GET", `/api/apps/${ada.appId}/repos/appdev/browse/${path}`, { session: owner });
+        const refs = (yield* browse("refs?kind=branch")).body as {
+          readonly items: ReadonlyArray<Record<string, unknown>>;
+        };
+        assert.deepStrictEqual(
+          refs.items
+            .map(({ name, kind, change }) => ({ name, kind, change }))
+            .toSorted((one, other) => String(one.name).localeCompare(String(other.name))),
+          [
+            { name: "fix-login", kind: "change", change: { mateId: "P_MATE", number: 1 } },
+            { name: "main", kind: "branch", change: undefined },
+            { name: "topic", kind: "branch", change: undefined },
+          ],
+        );
+        const home = (yield* browse("home?rev=fix-login")).body as { readonly ref: unknown };
+        assert.deepStrictEqual(home.ref, { name: "fix-login", kind: "change" });
+      }),
     );
 
     it.effect("An empty repository reads as having no commits yet", () =>

@@ -20,6 +20,9 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, principal } from "../api.ts";
 import { BROWSE_LIMIT, DoorRateLimit, TooManyRequests } from "../rateLimit.ts";
+import { commitRead } from "./commit.ts";
+import { commitFileRead } from "./commitFile.ts";
+import { compareFileRead, compareRead } from "./compare.ts";
 import { grepRead } from "./grep.ts";
 import { browseHeavyLayer } from "./heavy.ts";
 import { homeRead } from "./home.ts";
@@ -129,6 +132,10 @@ const BROWSE_READS = [
   route(homeRead),
   route(refsRead),
   route(logRead),
+  route(commitRead),
+  route(commitFileRead),
+  route(compareRead),
+  route(compareFileRead),
   route(pathsRead),
   route(grepRead),
 ] as const;

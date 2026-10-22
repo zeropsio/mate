@@ -12,7 +12,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HqRepoGovernance } from "@t3tools/shared/hqChanges";
 import { GitHomeQuery, README_MAX_BYTES, type GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { ChangeRefused } from "../changes.ts";
-import { GitHost } from "../gitHost.ts";
+import { GitHost, changesOnBranches } from "../gitHost.ts";
 import { remoteIdentity } from "../gitTransport.ts";
 import { browseAccess } from "./access.ts";
 import type { BrowseInput } from "./routes.ts";
@@ -75,7 +75,11 @@ export const homeRead = {
           ? { sha: null, ref: { name: "main", kind: "branch" }, about, readme: null }
           : {
               sha: resolved.sha,
-              ref: resolved.ref,
+              ref:
+                resolved.ref.kind === "branch" &&
+                (yield* changesOnBranches(held.repo, [resolved.ref.name])).has(resolved.ref.name)
+                  ? { ...resolved.ref, kind: "change" }
+                  : resolved.ref,
               about,
               readme: yield* git.browse.readme(held.repo, resolved.sha, README_MAX_BYTES),
             };

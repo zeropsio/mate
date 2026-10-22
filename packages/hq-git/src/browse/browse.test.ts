@@ -190,32 +190,29 @@ describe("git browse reads", () => {
     }),
   );
 
-  it.live("A change's branch is marked as that change's branch", () =>
-    fixture(async (git, dir) => {
-      await commitAt(dir, "refs/heads/main", 1_000, "Main");
-      await commitAt(dir, "refs/heads/mate/P_MATE/7", 2_000, "Add login");
-      await commitAt(dir, "refs/github/heads/release", 3_000, "From GitHub");
-      const page = await value(git.browse.refs(repo, { kind: "branch" }));
-      expect(
-        page.items.map(({ name, kind, change, outsideMate }) => ({
-          name,
-          kind,
-          change,
-          outsideMate,
-        })),
-      ).toEqual([
-        { name: "main", kind: "branch", change: undefined, outsideMate: false },
-        { name: "release", kind: "github-branch", change: undefined, outsideMate: true },
-        {
-          name: "mate/P_MATE/7",
-          kind: "change",
-          change: { mateId: "P_MATE", number: 7 },
-          outsideMate: false,
-        },
-      ]);
-      const resolved = await value(git.browse.resolve(repo, "mate/P_MATE/7"));
-      expect(resolved.kind === "commit" && resolved.ref.kind).toBe("change");
-    }),
+  it.live(
+    "A branch is listed by its name alone, a change's left to Core to mark, and GitHub's as outside Mate",
+    () =>
+      fixture(async (git, dir) => {
+        await commitAt(dir, "refs/heads/main", 1_000, "Main");
+        await commitAt(dir, "refs/heads/mate/P_MATE/7", 2_000, "Add login");
+        await commitAt(dir, "refs/github/heads/release", 3_000, "From GitHub");
+        const page = await value(git.browse.refs(repo, { kind: "branch" }));
+        expect(
+          page.items.map(({ name, kind, change, outsideMate }) => ({
+            name,
+            kind,
+            change,
+            outsideMate,
+          })),
+        ).toEqual([
+          { name: "main", kind: "branch", change: undefined, outsideMate: false },
+          { name: "release", kind: "github-branch", change: undefined, outsideMate: true },
+          { name: "mate/P_MATE/7", kind: "branch", change: undefined, outsideMate: false },
+        ]);
+        const resolved = await value(git.browse.resolve(repo, "mate/P_MATE/7"));
+        expect(resolved.kind === "commit" && resolved.ref.kind).toBe("branch");
+      }),
   );
 
   it.live("A README in .github wins over one at the root, and one at the root over docs", () =>
