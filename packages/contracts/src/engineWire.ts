@@ -463,8 +463,9 @@ export const EngineAnswer = forwardCompatibleUnion({
       outcome: Schema.Literals(["saved", "declined"]),
     }),
     /**
-     * An origin asked of the person (an `origin` request): how it ended, never a token — the
-     * person's client connected it in HQ itself. Nothing else it carries decodes.
+     * An origin asked of the person (an `origin` request): where they keep the code, never a
+     * token — `connected`, on GitHub, mounted in HQ by the person's client itself; `declined`, in
+     * Mate, GitHub only followed. Nothing else it carries decodes.
      */
     Schema.Struct({
       kind: Schema.Literal("origin"),

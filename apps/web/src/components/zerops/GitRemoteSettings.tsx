@@ -21,6 +21,7 @@ import {
 import { OutLink } from "../settings/automationParts";
 import { gitRemoteLabel } from "./GitDeliveryStatus";
 import {
+  githubName,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
@@ -87,17 +88,6 @@ export function GitRemoteLines({
 }
 
 export type { GitMirrorApp } from "./gitMirror.logic";
-
-/** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
-function githubName(url: string): string | null {
-  const address = new URL(url);
-  if (address.hostname !== "github.com") return null;
-  const [owner, name] = address.pathname
-    .replace(/^\/+|\/+$/gu, "")
-    .replace(/\.git$/u, "")
-    .split("/");
-  return owner && name ? `${owner}/${name}` : null;
-}
 
 const NO_ENVIRONMENTS: ReadonlyArray<never> = [];
 /** GitHub's page for a new fine-grained token, before the repository's URL names its owner. */

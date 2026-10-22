@@ -1,7 +1,7 @@
 /**
  * What the Git environment sheet reads and writes for one application, as HQ streams it: the
  * environment names it holds, its repositories, HQ's offers and the account's coordinator. The
- * projects page's Add stage / Add production and an origin ask's Connect open the same sheet on it.
+ * projects page's Add stage / Add production open the sheet on it.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";

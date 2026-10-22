@@ -36,19 +36,6 @@ export interface GitEnvironmentFormProps {
   readonly offered: { readonly add: boolean; readonly connect: boolean; readonly replace: boolean };
   /** HQ’s own reason this person cannot add a Git environment. */
   readonly unavailableReason?: string | undefined;
-  /**
-   * What an origin ask fills in (`OriginGitSheet`): the repository's address, the HQ repository
-   * its Mate will wire, the branch, and whether the form opens at the branch — the repository
-   * already connected.
-   */
-  readonly prefill?:
-    | {
-        readonly address: string;
-        readonly repo: string;
-        readonly branch?: string | undefined;
-        readonly atBranch?: boolean | undefined;
-      }
-    | undefined;
   readonly onBack?: () => void;
   readonly onCancel: () => void;
   readonly onAdded: (name: string) => void;
@@ -63,7 +50,6 @@ export function GitEnvironmentForm({
   setup,
   offered,
   unavailableReason,
-  prefill,
   onBack,
   onCancel,
   onAdded,
@@ -71,13 +57,9 @@ export function GitEnvironmentForm({
   const name =
     takenNames === undefined ? undefined : deriveEnvironmentName(defaultName, tier, takenNames);
   const id = useId();
-  const [step, setStep] = useState<"repository" | "token" | "branch">(
-    prefill?.atBranch === true ? "branch" : "repository",
-  );
-  const [address, setAddress] = useState(prefill?.address ?? "");
-  const [branch, setBranch] = useState(
-    prefill?.branch ?? (tier === "production" ? "main" : "staging"),
-  );
+  const [step, setStep] = useState<"repository" | "token" | "branch">("repository");
+  const [address, setAddress] = useState("");
+  const [branch, setBranch] = useState(tier === "production" ? "main" : "staging");
   const [readBranch, setReadBranch] = useState(branch);
   const [preview, setPreview] = useState<{
     key: string;
@@ -96,7 +78,7 @@ export function GitEnvironmentForm({
       mounted.current = false;
     };
   }, []);
-  const repository = gitSetupRepository(repos, address, groupName, prefill?.repo);
+  const repository = gitSetupRepository(repos, address, groupName);
   const remote = repository?.existing?.remote;
   const connected = repository?.connected === true;
   const previewKey =

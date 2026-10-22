@@ -669,9 +669,9 @@ function vaultAskActivity(
 export const ORIGIN_ASK_ACTIVITY_KIND = "origin.requested";
 
 /**
- * What the card for an origin asked of the person reads: where the agent would deliver finished
- * work back to, the HQ repository it names, and how the ask stands — open, connected or declined
- * (who and when), or closed some other way. Never a token: the engine holds none.
+ * What the card for an origin asked of the person reads: the repository the agent asks about, the
+ * HQ repository it names, and how the ask stands — open, kept on GitHub (`connected`) or in Mate
+ * (`declined`), who and when, or closed some other way. Never a token: the engine holds none.
  */
 export interface OriginAskActivityPayload {
   readonly requestId: string;

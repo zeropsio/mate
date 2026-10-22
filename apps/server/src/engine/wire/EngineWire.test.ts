@@ -1150,8 +1150,14 @@ describe("an origin the Mate asks the person to connect", () => {
   );
 
   it.effect.each([
-    ["connected", "answered", `Origin request for ${URL}: connected as appdev.`],
-    ["declined", "declined", `Origin request for ${URL}: declined.`],
+    // The words zcp's zerops_origin names: kept on GitHub or kept in Mate; a released zcp reads
+    // connected (take the code from HQ) or not connected (fetch the origin itself).
+    ["connected", "answered", `Origin request for ${URL}: kept on GitHub, connected as appdev.`],
+    [
+      "declined",
+      "declined",
+      `Origin request for ${URL}: kept in Mate and only followed, not connected.`,
+    ],
   ] as const)(
     "The agent hears connected or declined for its origin ask, never a token (%s)",
     ([outcome, state, line]) =>
