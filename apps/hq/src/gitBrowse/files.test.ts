@@ -4,6 +4,10 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { GitBlameQuery } from "@t3tools/shared/hqGitBrowse/blame";
+import { GitBlobQuery, GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
+import { GitLogQuery } from "@t3tools/shared/hqGitBrowse/log";
 import { sessionFor, startCore, untilHealth } from "../../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../../test/harness/tempPostgres.ts";
 
@@ -68,6 +72,38 @@ const commitBeside = (dir: string, sha: string, name: string, content: string) =
     `${listed}${listed === "" ? "" : "\n"}100644 blob ${blob}\t${name}\n`,
   );
   const commit = git(["commit-tree", tree, "-p", sha, "-m", "Beside"]);
+  git(["update-ref", "refs/heads/main", commit, sha]);
+  return commit;
+};
+
+/** `main` moved to a commit of `sha`'s files and one more whose name is the bytes `name`. */
+const commitNamedBytes = (dir: string, sha: string, name: Uint8Array, content: string) => {
+  const git = (args: ReadonlyArray<string>, input?: Uint8Array | string) =>
+    NodeChildProcess.execFileSync("git", ["-C", dir, ...args], {
+      input,
+      env: {
+        PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_AUTHOR_NAME: author.name,
+        GIT_AUTHOR_EMAIL: author.email,
+        GIT_COMMITTER_NAME: author.name,
+        GIT_COMMITTER_EMAIL: author.email,
+      },
+    });
+  const blob = git(["hash-object", "-w", "--stdin"], content).toString().trim();
+  const tree = git(
+    ["mktree", "-z"],
+    Buffer.concat([
+      git(["ls-tree", "-z", sha]),
+      Buffer.from(`100644 blob ${blob}\t`),
+      name,
+      Buffer.from([0]),
+    ]),
+  )
+    .toString()
+    .trim();
+  const commit = git(["commit-tree", tree, "-p", sha, "-m", "Latin-1"]).toString().trim();
   git(["update-ref", "refs/heads/main", commit, sha]);
   return commit;
 };
@@ -355,6 +391,45 @@ describe("person repository browsing (E203)", () => {
           404,
         );
       }),
+    );
+    it.effect(
+      "A file whose name is not UTF-8 lists, opens, downloads, and shows its history and blame",
+      () =>
+        Effect.gen(function* () {
+          const { sha, browse, dir } = yield* shopWith({ "a.txt": "a" });
+          const latin = commitNamedBytes(dir, sha, Buffer.from("caf\xe9.txt", "latin1"), "one\n");
+          // The path the folder lists, sent back as the client's query writes it.
+          const asked = <Q>(query: Schema.Codec<Q, Record<string, string>>, value: Q) =>
+            Schema.encodeSync(query)(value);
+          const root = yield* browse("tree", { sha: latin, path: "" });
+          const path = (root.body as Tree).entries.find((entry) =>
+            entry.name.startsWith("caf"),
+          )?.path;
+          assert.strictEqual(path, "caf\udce9.txt");
+          const file = yield* browse("blob", asked(GitBlobQuery, { sha: latin, path: path! }));
+          assert.strictEqual(file.status, 200);
+          assert.strictEqual((file.body as Blob).content, "one\n");
+          const download = yield* browse(
+            "raw",
+            asked(GitRawQuery, { sha: latin, path: path!, download: "1" }),
+          );
+          assert.strictEqual(download.status, 200);
+          assert.strictEqual(
+            download.headers.get("content-disposition"),
+            "attachment; filename*=UTF-8''caf%EF%BF%BD.txt",
+          );
+          assert.strictEqual(download.body, "one\n");
+          const history = yield* browse("log", asked(GitLogQuery, { sha: latin, path: path! }));
+          expect(
+            (history.body as { items: ReadonlyArray<{ sha: string }> }).items.map(
+              (item) => item.sha,
+            ),
+          ).toEqual([latin]);
+          const blame = yield* browse("blame", asked(GitBlameQuery, { sha: latin, path: path! }));
+          expect((blame.body as { ranges: unknown }).ranges).toEqual([
+            { start: 1, count: 1, commit: latin },
+          ]);
+        }),
     );
   });
 });

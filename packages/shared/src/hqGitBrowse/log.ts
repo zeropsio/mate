@@ -7,30 +7,19 @@
  */
 import * as Schema from "effect/Schema";
 import { Sha } from "../hqChanges.ts";
+import { GitPath } from "./common.ts";
 
 /** Commits a page holds at most. */
 export const LOG_PAGE_LIMIT = 100;
 /** Commits a list reads at most, all its pages together. */
 export const LOG_HISTORY_LIMIT = 10_000;
 
-/** A repository-relative path: `a/b`, never absolute, `.`, `..` or empty segments. */
-const LogPath = Schema.String.check(
-  Schema.isMaxLength(4096),
-  Schema.makeFilter((path: string) =>
-    path.includes("\0") ||
-    path.includes("\\") ||
-    (path !== "" && path.split("/").some((part) => part === "" || part === "." || part === ".."))
-      ? "Expected a repository-relative path"
-      : undefined,
-  ),
-);
-
 /** `<tip>:<offset>`: where the next page starts, in the list the first page started at `tip`. */
 const LogCursor = Schema.String.check(Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64}):\d{1,5}$/u));
 
 export const GitLogQuery = Schema.Struct({
   sha: Sha,
-  path: Schema.optionalKey(LogPath),
+  path: Schema.optionalKey(GitPath),
   cursor: Schema.optionalKey(LogCursor),
   limit: Schema.optionalKey(
     Schema.FiniteFromString.check(

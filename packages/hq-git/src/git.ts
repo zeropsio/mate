@@ -7,6 +7,7 @@ import * as NodePath from "node:path";
 import * as Redacted from "effect/Redacted";
 import { GitError } from "./api.ts";
 import { GITHUB_REFS } from "./followRefs.ts";
+import { holdsRawBytes, pathBytes } from "./pathText.ts";
 
 const failed = (operation: string, message: string) =>
   new GitError({ operation, reason: "git_failed", message });
@@ -68,7 +69,25 @@ export class GitRunner {
 
   start(args: string[], options: RunOptions = {}): GitProcess {
     if (this.closed) throw failed("git", "Layer scope is closed");
-    const child = NodeChildProcess.spawn("git", [...overrides, ...args], {
+    // Node writes argv as UTF-8: a last argument naming bytes that are not (`pathText`) reaches
+    // git through stdin and a shell that `exec`s it, so git keeps this process and its exit code.
+    const last = args.at(-1);
+    const raw = last !== undefined && holdsRawBytes(last);
+    if (args.slice(0, -1).some(holdsRawBytes) || (raw && options.input !== undefined))
+      throw failed("git", "Only a last argument without input can name raw bytes");
+    const [command, argv] = raw
+      ? [
+          "/bin/sh",
+          [
+            "-c",
+            'last=$(cat; echo .); exec git "$@" "${last%.}"',
+            "git",
+            ...overrides,
+            ...args.slice(0, -1),
+          ],
+        ]
+      : ["git", [...overrides, ...args]];
+    const child = NodeChildProcess.spawn(command, argv, {
       env: {
         PATH: "/usr/bin:/bin:/usr/local/bin",
         HOME: this.home,
@@ -89,6 +108,7 @@ export class GitRunner {
     child.stderr.resume();
     // Git may answer early without consuming the rest of a bad pack.
     child.stdin.on("error", () => {});
+    if (raw) child.stdin.end(pathBytes(last));
     const abort = () => terminate(child);
     options.signal?.addEventListener("abort", abort, { once: true });
     if (options.signal?.aborted) abort();

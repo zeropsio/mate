@@ -8,6 +8,7 @@
 import * as DateTime from "effect/DateTime";
 import type { GitRunner } from "../git.ts";
 import { lookupPath } from "./object.ts";
+import { pathText } from "../pathText.ts";
 
 export interface BlameRange {
   readonly start: number;
@@ -67,7 +68,7 @@ export const unquotePath = (written: string) => {
       i += 1;
     }
   }
-  return new TextDecoder().decode(new Uint8Array(bytes));
+  return pathText(new Uint8Array(bytes));
 };
 
 const LINE_HEADER = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) \d+ (\d+)(?: (\d+))?$/u;

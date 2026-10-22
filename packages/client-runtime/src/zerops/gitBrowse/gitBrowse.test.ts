@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
 import { AtomRegistry } from "effect/reactivity";
+import { GitBlobQuery } from "@t3tools/shared/hqGitBrowse/blob";
+import { GitCommitFileQuery } from "@t3tools/shared/hqGitBrowse/commit";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
 import { makeAccountStore } from "../../data/store.ts";
@@ -231,6 +234,17 @@ describe("Git browse reads", () => {
       "/api/apps/app%20id/repos/repo/browse/refs?kind=branch&limit=50&q=fix",
     );
     expect(gitBrowsePath("home", "app", "repo", {})).toBe("/api/apps/app/repos/repo/browse/home?");
+  });
+
+  it.each([
+    ["blob", "caf\udce9.txt"],
+    ["commit-file", "dir\\caf\udce9 \\x41.txt"],
+    ["commit-file", "café.txt"],
+  ] as const)("A %s read asks HQ for the exact path a listing named: %j", (read, path) => {
+    const address = gitBrowsePath(read, "app", "repo", { sha: "a".repeat(40), path });
+    const search = new URL(address!, "http://hq").searchParams;
+    const query = read === "blob" ? GitBlobQuery : GitCommitFileQuery;
+    expect(Schema.decodeUnknownSync(query)(Object.fromEntries(search)).path).toBe(path);
   });
 });
 

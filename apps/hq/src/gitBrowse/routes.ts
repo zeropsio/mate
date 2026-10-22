@@ -105,7 +105,9 @@ const INERT = {
   "x-content-type-options": "nosniff",
   "content-security-policy": "default-src 'none'; sandbox",
 };
-const attachment = (name: string) => `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+// A name of bytes that are not UTF-8 (`pathText`) is downloaded as the text it shows.
+const attachment = (name: string) =>
+  `attachment; filename*=UTF-8''${encodeURIComponent(name.replace(/[\uD800-\uDFFF]/gu, "\uFFFD"))}`;
 
 /** A file's bytes: nothing in them runs, and a download carries the file's name. */
 const bytesResponse = (
