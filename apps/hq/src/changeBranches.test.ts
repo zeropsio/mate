@@ -220,6 +220,80 @@ describe("a change is a branch", () => {
     );
 
     it.effect(
+      "a change opened again takes the head of the branch pushed before it, when its first opening recorded none",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          const git = yield* gitClient;
+          const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          yield* work.commit("login.ts");
+          const head = yield* work.head;
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          assert.strictEqual((yield* ada.open("Fix the login", "fix-login")).status, 200);
+          // The first opening's read of the branch failed after the change was recorded.
+          yield* rowsWhere(url, "UPDATE hq_change SET head = NULL RETURNING 1", () => true);
+          const again = (yield* ada.open("Fix the login", "fix-login")).body as {
+            readonly created: boolean;
+            readonly change: Body;
+          };
+          assert.deepStrictEqual([again.created, again.change["head"]], [false, head]);
+          yield* recorded(url, 1, head);
+        }),
+    );
+
+    it.effect(
+      "a change opened on a branch with nothing beyond main has no head until work is pushed there",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          const git = yield* gitClient;
+          const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          const opened = (yield* ada.open("Fix the login", "fix-login")).body as {
+            readonly change: Body;
+          };
+          assert.deepStrictEqual([opened.change["state"], opened.change["head"]], ["open", null]);
+          yield* work.commit("login.ts");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+          yield* recorded(url, 1, yield* work.head);
+        }),
+    );
+
+    it.effect(
+      "an opening that names no branch is refused while its Mate's open change is on a branch it named",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          assert.strictEqual((yield* ada.open("Fix the login", "fix-login")).status, 200);
+          const answers = [];
+          // Released zcp names none and pushes mate/<Mate>/<number>; mono-git names one.
+          for (const branch of [undefined, "fix-signup"]) {
+            const answer = yield* ada.open("Fix it", branch);
+            const body = answer.body as Body & { readonly change?: Body };
+            answers.push([
+              answer.status,
+              body["reason"] ?? null,
+              body["created"] ?? null,
+              body.change?.["branch"] ?? null,
+            ]);
+          }
+          assert.deepStrictEqual(answers, [
+            [409, "change_on_branch", null, null],
+            [200, null, false, "fix-login"],
+          ]);
+        }),
+    );
+
+    it.effect(
       "a change is refused a branch another open change is on, and main, HQ's mate/ or a tag as its branch",
       () =>
         Effect.gen(function* () {

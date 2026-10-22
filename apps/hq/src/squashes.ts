@@ -11,10 +11,18 @@ import * as Effect from "effect/Effect";
 
 const TRAILER = /^Mate-Change: (\S+\/[1-9][0-9]*)$/u;
 
-/** Among `main`'s latest commits, the squash of each change, by `<mateId>/<number>`; none past them. */
+/**
+ * Among `main`'s latest commits, the squash of each change, by `<mateId>/<number>`; none past them,
+ * and none while `main` is unborn.
+ */
 export const squashesOnMain = (git: HqGit, repo: Repo) =>
-  Effect.map(git.log(repo, "refs/heads/main", { limit: 100 }), (log) => {
+  Effect.gen(function* () {
     const found = new Map<string, string>();
+    const main = (yield* git.branches(repo)).items.find(
+      (branch) => branch.ref === "refs/heads/main",
+    );
+    if (main === undefined) return found;
+    const log = yield* git.log(repo, main.sha, { limit: 100 });
     for (const commit of log.items) {
       // Git reads trailers only from the last paragraph, as the git layer writes them there.
       const trailers =

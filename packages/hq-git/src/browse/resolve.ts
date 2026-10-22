@@ -16,19 +16,14 @@ const NAMESPACES = [
 
 export type RefKind = "branch" | "tag" | "change" | "github-branch" | "github-tag" | "commit";
 
-/** A ref by its full name: the kind a person reads it as, and the name the picker shows. */
+/**
+ * A ref by its full name: the kind a person reads it as, and the name the picker shows. A branch a
+ * change is bound to is Core's to mark (`change`), from its record, never from the name.
+ */
 export const refOf = (ref: string): { readonly name: string; readonly kind: RefKind } | null => {
   const namespace = NAMESPACES.find(({ prefix }) => ref.startsWith(prefix));
   if (namespace === undefined) return null;
-  const name = ref.slice(namespace.prefix.length);
-  return {
-    name,
-    kind:
-      namespace.kind === "branch" &&
-      /^mate\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/[1-9][0-9]*$/u.test(name)
-        ? "change"
-        : namespace.kind,
-  };
+  return { name: ref.slice(namespace.prefix.length), kind: namespace.kind };
 };
 
 export type Resolved =

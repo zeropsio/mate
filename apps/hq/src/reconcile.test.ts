@@ -410,6 +410,88 @@ describe("a takeover after git moved past HQ's records", () => {
         );
       }),
     );
+
+    it.effect(
+      "records a change merged whose squash main holds without its branch or record, and numbers the next past it",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          yield* first.stop;
+          // After the records were taken, change 3 was opened on fix-login and merged: main holds
+          // its squash, and nothing in git binds fix-login to it.
+          const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          appdev([
+            "update-ref",
+            "refs/heads/fix-login",
+            commitOn(appdev, main, "login.ts", "Login"),
+          ]);
+          const squash = commitOn(appdev, main, "login.ts", "Login (#3)\n\nMate-Change: P_MATE/3");
+          appdev(["update-ref", "refs/heads/main", squash, main]);
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT number, mate_project_id AS mate, state, merged_sha AS merged FROM hq_change`,
+              () => true,
+            ),
+            [{ number: 3, mate: "P_MATE", state: "merged", merged: squash }],
+          );
+          const opened = yield* next.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: "Ada's next", branch: "fix-signup" },
+          });
+          assert.strictEqual(
+            (opened.body as { readonly change: { readonly number: number } }).change.number,
+            4,
+          );
+        }),
+    );
+
+    it.effect(
+      "recovers an open change on a branch it named, merged on main, as landed at that branch's head",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          yield* first.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: "Fix the login", branch: "fix-login" },
+          });
+          yield* first.stop;
+          // Git moved main to the change's squash; its merged record never landed.
+          const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const head = commitOn(appdev, main, "login.ts", "Login");
+          appdev(["update-ref", "refs/heads/fix-login", head]);
+          const squash = commitOn(appdev, main, "login.ts", "Login (#1)\n\nMate-Change: P_MATE/1");
+          appdev(["update-ref", "refs/heads/main", squash, main]);
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT state, head, merged_sha AS merged, landed_head AS landed FROM hq_change`,
+              () => true,
+            ),
+            [{ state: "merged", head, merged: squash, landed: head }],
+          );
+        }),
+    );
   });
 });
 

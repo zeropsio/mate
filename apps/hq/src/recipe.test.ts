@@ -344,6 +344,31 @@ describe("an application's recipe in HQ", () => {
         }),
     );
 
+    it.effect(
+      "a recipe change opened on a branch with nothing beyond main stays open and lands what is pushed there",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+          yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: RECIPE_REPO } });
+          const git = yield* gitClient;
+          const group = yield* groupCheckout(git, origin, credential, appId, "group");
+          // Pushed before its first commit, as `git push -u origin recipe-tiers` does.
+          yield* git.checked(["push", "-q", "origin", "HEAD:refs/heads/recipe-tiers"], group.work);
+          const opened = yield* call("POST", "/api/mate/changes", {
+            headers: auth,
+            body: { repo: RECIPE_REPO, title: RECIPE_PROPOSAL_TITLE, branch: "recipe-tiers" },
+          });
+          const change = (opened.body as { readonly change: Record<string, unknown> }).change;
+          assert.deepStrictEqual([change["state"], change["head"]], ["open", null]);
+          yield* group.write({ [AI_AGENT]: TIER }, "The group's import files");
+          yield* git.checked(["push", "-q", "origin", "HEAD:refs/heads/recipe-tiers"], group.work);
+          yield* stateBecomes(call, owner, appId, change["number"] as number, "merged");
+        }),
+    );
+
     it.effect("an empty recipe change is closed by Core", () =>
       Effect.gen(function* () {
         const { call, fake, origin, url } = yield* startCore(true);

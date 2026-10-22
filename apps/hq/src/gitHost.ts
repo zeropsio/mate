@@ -27,6 +27,7 @@ import type * as NodeHttp from "node:http";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import {
+  type Change,
   type ChangeBranch,
   type GitEvent,
   GitError,
@@ -168,7 +169,8 @@ export class GitHost extends Context.Service<
     readonly conflicts: Stream.Stream<MainConflict>;
     /**
      * A change just opened on a branch pushed before it: its head recorded and judged, and told as
-     * a push of it is (`pushes`, `moves`). A branch with nothing on it waits for its push.
+     * a push of it is (`pushes`, `moves`). A branch absent, or with nothing beyond main, waits for
+     * its push.
      */
     readonly follow: (change: PushedChange) => Effect.Effect<void, NotLeader | GitError | SqlError>;
   }
@@ -183,6 +185,35 @@ export const mainOf = (git: HqGit, repo: Repo) =>
     git.branches(repo),
     (branches) => branches.items.find((branch) => branch.ref === "refs/heads/main")?.sha ?? null,
   );
+
+/**
+ * The change each of `branches` (names under `refs/heads/`) is bound to — its open change, else the
+ * last one opened on it — by its stored branch: what a push to it and the Git browser read it as.
+ */
+export const changesOnBranches = (repo: Repo, branches: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const found = new Map<string, Change>();
+    if (branches.length === 0) return found;
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{
+      readonly branch: string;
+      readonly number: number;
+      readonly mate_project_id: string;
+      readonly state: string;
+    }>`
+      SELECT DISTINCT ON (branch) branch, number, mate_project_id, state FROM hq_change
+      WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND ${sql.in("branch", branches)}
+      ORDER BY branch, state = 'open' DESC, number DESC`;
+    for (const row of rows)
+      found.set(row.branch, {
+        appId: repo.appId,
+        mateId: row.mate_project_id,
+        number: row.number,
+        open: row.state === "open",
+        merged: row.state === "merged",
+      });
+    return found;
+  });
 
 /** Same row lock as change merges and remote edits; acceptance rereads its tips inside it. */
 export const holdingRepo = <A, E, R>(repo: Repo, effect: Effect.Effect<A, E, R>) =>
@@ -541,26 +572,7 @@ export const gitHostLayer = (options: {
             },
             lookupChange: (repo, branch) =>
               run(
-                Effect.map(
-                  sql<{
-                    readonly number: number;
-                    readonly mate_project_id: string;
-                    readonly state: string;
-                  }>`
-                    SELECT number, mate_project_id, state FROM hq_change
-                    WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND branch = ${branch}
-                    ORDER BY state = 'open' DESC, number DESC LIMIT 1`,
-                  ([row]) =>
-                    row === undefined
-                      ? null
-                      : {
-                          appId: repo.appId,
-                          mateId: row.mate_project_id,
-                          number: row.number,
-                          open: row.state === "open",
-                          merged: row.state === "merged",
-                        },
-                ),
+                Effect.map(changesOnBranches(repo, [branch]), (found) => found.get(branch) ?? null),
               ),
             onEvent: (event) =>
               opened.git === undefined ? undefined : run(record(opened.git, event)),
@@ -734,7 +746,8 @@ export const gitHostLayer = (options: {
           Effect.gen(function* () {
             const layer = yield* git;
             const head = yield* layer.changeHead(repo, change);
-            if (head === null) return;
+            // A branch with nothing beyond main holds no work yet: its next push moves the change.
+            if (head === null || (yield* layer.onMain(repo, head))) return;
             yield* moved(layer, repo, change, null, head, { opened: true });
             yield* tick;
           }),

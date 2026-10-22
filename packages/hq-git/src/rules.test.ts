@@ -77,6 +77,16 @@ describe("default write rules", () => {
   it.each([
     ["a branch no change was opened on", { ref: "refs/heads/fix-login" }, null],
     ["its open change's branch, named by it", { ref: "refs/heads/fix-login" }, change],
+    [
+      "a branch it named whose change settled",
+      { ref: "refs/heads/fix-login" },
+      { ...change, open: false },
+    ],
+    [
+      "a branch another Mate's settled change was on",
+      { ref: "refs/heads/fix-login" },
+      { ...change, mateId: "bob", open: false },
+    ],
   ] satisfies Array<[string, Partial<RefUpdate>, Change | null]>)(
     "allows a Mate to push %s",
     async (_name, patch, record) => {
