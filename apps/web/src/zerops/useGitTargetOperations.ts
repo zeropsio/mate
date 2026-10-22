@@ -58,6 +58,12 @@ export function useGitTargetOperations(appId: string) {
                 options,
               );
             },
+            unfollow: async (repo: string) => {
+              await operations.run(
+                { kind: "stop-following-github-repository", orgId: scope.orgId, appId, repo },
+                options,
+              );
+            },
             updateAddress: async (repo: string, url: string) => {
               await operations.run(
                 { kind: "update-git-remote-address", ...scope, repo, url },

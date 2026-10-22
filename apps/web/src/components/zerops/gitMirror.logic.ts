@@ -42,13 +42,19 @@ function remoteLabel(url: string): string {
 
 const day = (iso: string) => iso.slice(0, 10);
 
-/** A repository's line under its name: why nothing moves, where it mirrors to and how, or that it does not. */
+/**
+ * A repository's line under its name: why nothing moves, where it mirrors to and how, the GitHub
+ * repository it follows while Mate keeps its code, or that it does none.
+ */
 export function mirrorStateLine(
-  remote: RepoListEntry["remote"],
+  { remote, follows }: Pick<RepoListEntry, "remote" | "follows">,
   app: GitMirrorApp,
   now: number,
 ): string {
-  if (remote == null) return "Not mirrored";
+  if (remote == null)
+    return follows === undefined
+      ? "Not mirrored"
+      : `Follows ${remoteLabel(follows)} · Mate keeps the code`;
   if (remote.divergedSince !== undefined)
     return `GitHub's main and Mate's main differ since ${day(remote.divergedSince)} — nothing moves until they match`;
   const label = remoteLabel(remote.url);

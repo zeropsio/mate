@@ -37,6 +37,8 @@ export interface GitRemoteActions {
   readonly updateAddress?: (repo: string, url: string) => Promise<void>;
   /** Mirrors to a repository the organization's GitHub app reaches (`owner/name`), no token. */
   readonly viaApp?: (repo: string, repository: string) => Promise<void>;
+  /** Its Mates no longer fetch the GitHub repository it follows; HQ alone keeps its code. */
+  readonly unfollow?: (repo: string) => Promise<void>;
   readonly addressReview?: {
     readonly repo: string;
     readonly verified: Extract<HqRemoteProbe, { readonly ok: true }>;
@@ -211,6 +213,15 @@ function Remote({
       ? actions.viaApp
       : undefined;
   const pick = chosen ?? app?.repositories[0] ?? null;
+  // Followed only: the way out is connecting it on GitHub through the app, or no longer following.
+  const follows = remote == null ? repo.follows : undefined;
+  const followedName = follows === undefined ? null : githubName(follows);
+  const connectFollowed =
+    viaApp !== undefined && followedName !== null && app !== null
+      ? app.repositories.find((name) => name.toLowerCase() === followedName.toLowerCase())
+      : undefined;
+  const unfollow =
+    follows !== undefined && allowed("connect_remote") ? actions?.unfollow : undefined;
   const tokenRemote = remote != null && remote.via !== "app";
   const sameRepository = tokenRemote && app !== null ? githubName(remote.url) : null;
   const switchable =
@@ -247,6 +258,22 @@ function Remote({
     review.verified.remote.repositoryId === remote.repositoryId &&
     new URL(remote.url).host === "github.com" &&
     new URL(review.verified.remote.url).host === "github.com";
+  const stopFollowing = async () => {
+    if (unfollow === undefined || busy) return;
+    setBusy(true);
+    setAnswer(undefined);
+    try {
+      await unfollow(repo.name);
+    } catch (cause) {
+      setAnswer(
+        cause instanceof OperationStopped
+          ? cause.message
+          : "HQ couldn't confirm it stopped following. Check it before trying again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   const mirrorViaApp = async (repository: string) => {
     if (viaApp === undefined || busy) return;
     setBusy(true);
@@ -326,7 +353,7 @@ function Remote({
       <div>
         <p className="rv-words">{repo.name}</p>
         <p className="rv-note" data-zerops-mirror-state="">
-          {saving ? "Saving…" : mirrorStateLine(remote, github, now)}
+          {saving ? "Saving…" : mirrorStateLine(repo, github, now)}
         </p>
         {gate === undefined ? null : (
           <>
@@ -337,7 +364,31 @@ function Remote({
           </>
         )}
       </div>
-      {remote == null && viaApp !== undefined && app !== null && !editing ? (
+      {connectFollowed !== undefined || unfollow !== undefined ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {connectFollowed !== undefined && !editing ? (
+            <Button disabled={busy} size="sm" onClick={() => void mirrorViaApp(connectFollowed)}>
+              Connect on GitHub
+            </Button>
+          ) : null}
+          {unfollow !== undefined ? (
+            <Button
+              className="ms-auto"
+              disabled={busy}
+              size="sm"
+              variant="ghost"
+              onClick={() => void stopFollowing()}
+            >
+              Stop following
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {remote == null &&
+      connectFollowed === undefined &&
+      viaApp !== undefined &&
+      app !== null &&
+      !editing ? (
         app.repositories.length === 0 ? (
           <p className="rv-note">
             {app.name} reaches no repository yet.{" "}
