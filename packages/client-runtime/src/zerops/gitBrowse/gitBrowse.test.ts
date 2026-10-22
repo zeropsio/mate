@@ -181,6 +181,46 @@ describe("Git browse reads", () => {
     },
   );
 
+  it.each([
+    {
+      name: "A search",
+      read: "grep",
+      params: { sha: home.sha!, q: "tea" },
+      words: "HQ is busy with other searches. Read again in a moment.",
+    },
+    {
+      name: "A blame",
+      read: "blame",
+      params: { sha: home.sha!, path: "src/a.ts" },
+      words: "HQ is too busy to read this blame now. Read again in a moment.",
+    },
+    {
+      name: "An archive",
+      read: "archive",
+      params: { sha: home.sha!, format: "zip" },
+      words: "HQ is too busy to make this archive now. Read again in a moment.",
+    },
+  ] as const)(
+    "$name HQ is too busy for says so in its own words",
+    async ({ read, params, words }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const busy = async (): Promise<never> => {
+        throw new HqError({ kind: "unavailable", code: "busy", status: 503, message: "Busy." });
+      };
+      const reader = makeGitBrowseReads(store, { gitBrowse: busy, gitBrowseBytes: busy });
+      const asked = { orgId: "org", appId: "app", repo: "repo", read, params } as GitBrowseKey;
+      const projected = store.data.project(gitBrowse, { ...asked, allowed: true });
+      const failed = waitFor(store, () => registry.get(projected).state === "failed");
+      const release = reader.demand(asked);
+      await failed;
+      expect(registry.get(projected)).toEqual({ state: "failed", words });
+      release();
+      reader.close();
+      registry.dispose();
+    },
+  );
+
   it("A read's address keeps one order of its parameters", () => {
     expect(gitBrowsePath("refs", "app id", "repo", { limit: 50, q: "fix", kind: "branch" })).toBe(
       "/api/apps/app%20id/repos/repo/browse/refs?kind=branch&limit=50&q=fix",

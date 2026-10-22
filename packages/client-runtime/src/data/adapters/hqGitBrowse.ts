@@ -13,6 +13,7 @@ import {
   GIT_BROWSE_READS,
   type GitBrowseBytesRead,
   type GitBrowseParams,
+  type GitBrowseRead,
   type GitBrowseValue,
 } from "../../zerops/gitBrowse/reads.ts";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
@@ -28,24 +29,31 @@ import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 
-/** What a person is told when HQ already runs as many searches as it takes. */
-const GIT_BROWSE_BUSY = "HQ is busy with other searches. Read again in a moment.";
+/** What a person is told when HQ already runs as many heavy reads as it takes, by the read. */
+const GIT_BROWSE_BUSY: Partial<Record<GitBrowseRead, string>> = {
+  grep: "HQ is busy with other searches. Read again in a moment.",
+  blame: "HQ is too busy to read this blame now. Read again in a moment.",
+  archive: "HQ is too busy to make this archive now. Read again in a moment.",
+};
 
 /**
  * HQ's no as definitive, its sign-in or access no as a denial; anything else passes, HQ's busy
- * heavy reads said as busy.
+ * heavy reads said as busy in the read's own words.
  */
-export function gitBrowseFailure(cause: unknown): StreamFault {
-  const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";
-  if (cause instanceof HqError) {
-    if (cause.code === "busy") return { outcome: "transient", message: GIT_BROWSE_BUSY };
-    if (cause.code === "forbidden" || cause.code === "session_required")
-      return { outcome: "authoritative-denial", message, code: cause.code };
-    if (cause.kind === "refused")
-      return { outcome: "definitive-refusal", message, code: cause.code };
-  }
-  return { outcome: "transient", message };
-}
+export const gitBrowseFailure =
+  (read: GitBrowseRead) =>
+  (cause: unknown): StreamFault => {
+    const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";
+    if (cause instanceof HqError) {
+      if (cause.code === "busy")
+        return { outcome: "transient", message: GIT_BROWSE_BUSY[read] ?? message };
+      if (cause.code === "forbidden" || cause.code === "session_required")
+        return { outcome: "authoritative-denial", message, code: cause.code };
+      if (cause.kind === "refused")
+        return { outcome: "definitive-refusal", message, code: cause.code };
+    }
+    return { outcome: "transient", message };
+  };
 
 interface Held {
   count: number;
@@ -121,7 +129,7 @@ export function makeGitBrowseReads(
                       const answer = yield* Effect.result(
                         Effect.tryPromise({
                           try: (abort) => answerOf(api, identity, abort),
-                          catch: gitBrowseFailure,
+                          catch: gitBrowseFailure(identity.read),
                         }),
                       );
                       if (closed || active.get(id) !== made) return yield* Effect.never;
