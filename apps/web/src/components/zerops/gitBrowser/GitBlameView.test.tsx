@@ -205,6 +205,9 @@ describe("blame page", () => {
     );
     expect(held.asked.filter((ask) => ask.read === "blame" && ask.allowed)).toEqual([]);
     expect(rows()).toEqual([]);
+    // A cut file's text counts no lines.
+    expect(host.textContent).toContain("300 KiB");
+    expect(host.textContent).not.toMatch(/\d+ lines? ·/u);
     held.views = { blob: known(blob({ binary: true, content: null })) };
     await view();
     expect(host.textContent).toContain("Only text files have blame.");
@@ -216,12 +219,12 @@ describe("blame page", () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "b" }));
     });
-    expect(navigate).toHaveBeenLastCalledWith({
-      rev: sha,
-      view: "code",
-      path: "src/b.ts",
-      kind: "file",
-      lines: "L2",
-    });
+    const file = { rev: sha, view: "code", path: "src/b.ts", kind: "file", lines: "L2" };
+    expect(navigate).toHaveBeenLastCalledWith(file);
+    navigate.mockReset();
+    const pressed = [...host.querySelectorAll("button")].find((b) => b.textContent === "Blame")!;
+    expect(pressed.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => pressed.click());
+    expect(navigate).toHaveBeenLastCalledWith(file);
   });
 });

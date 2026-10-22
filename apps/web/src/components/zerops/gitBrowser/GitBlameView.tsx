@@ -23,6 +23,7 @@ import {
 } from "~/components/files/useFileLineReveal";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useTheme } from "~/hooks/useTheme";
 import { isEditableFocused } from "~/lib/editableFocus";
@@ -50,6 +51,8 @@ const AGE_SHADES: Readonly<Record<number, string>> = {
 const OVERSCAN_PX = 1200;
 /** The drawn lines move in steps this large: scrolling within one draws nothing anew. */
 const WINDOW_STEP_LINES = 50;
+
+const lines = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
 
 /** Where the file draws its lines: the first one's top, and each line's height. */
 interface LineMetrics {
@@ -357,13 +360,19 @@ function BlameAt({
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="me-auto text-xs text-muted-foreground">
-          {answer.content === null
+          {answer.content === null || why !== null
             ? fileSize(answer.size)
-            : `${lineCount(answer.content)} lines · ${fileSize(answer.size)}`}
+            : `${lines(lineCount(answer.content))} · ${fileSize(answer.size)}`}
         </span>
-        <Button variant="ghost" size="sm" onClick={() => navigate(code)}>
-          Code
-        </Button>
+        <Toggle
+          className="shrink-0"
+          variant="ghost"
+          size="sm"
+          pressed
+          onPressedChange={() => navigate(code)}
+        >
+          Blame
+        </Toggle>
         {hasView("commits") ? (
           <Button
             variant="ghost"
