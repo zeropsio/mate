@@ -44,6 +44,7 @@ import {
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 interface AssignDialogProps {
@@ -160,9 +161,10 @@ const mock = vi.hoisted(() => ({
   deleteDialog: {
     current: null as {
       readonly onOpenChange: (open: boolean) => void;
-      readonly onConfirm: () => void;
+      readonly onConfirm: (alsoApplication?: boolean) => void;
       readonly error: string | null;
       readonly cleanup?: boolean;
+      readonly application?: { readonly name: string };
     } | null,
   },
   /** The kinds of the account's cells the hook asked for. */
@@ -220,6 +222,7 @@ vi.mock("./ZeropsAccountData", () => ({
       deletions: [],
     };
   },
+  useAccountOrgId: () => null,
   useAccountDataOptional: () =>
     mock.noAccountData
       ? null
@@ -2030,6 +2033,67 @@ describe("useMateActions — Delete Mate takes its key with it", () => {
     });
     await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
     expect(mock.deletedTokens).toEqual(retired);
+  });
+});
+
+// Karel 2026-10-22 (app-lifecycle.md): the last Mate's Delete asks whether its project goes too.
+describe("useMateActions — the last Mate's Delete", () => {
+  const STAGE = {
+    ...mate("Docs stage"),
+    project: {
+      ...mate("Docs stage").project,
+      id: "acme-docs-stage",
+      tagList: [],
+      hq: { appId: "acme", appName: "Acme Docs", kind: "stage", mate: null },
+    },
+    service: undefined,
+  } as unknown as ZeropsCandidatePresentation;
+
+  it.each([
+    {
+      case: "the last Mate deleting its project too opens the project's Delete, confirmed, once the Mate is gone",
+      listed: [FEN, STAGE],
+      also: true,
+      asked: "Acme Docs",
+      opened: {
+        confirmed: true,
+        target: {
+          appId: "acme",
+          name: "Acme Docs",
+          stages: [{ projectId: "acme-docs-stage", name: "Docs stage" }],
+          productions: [],
+        },
+      },
+    },
+    {
+      case: "the last Mate keeping its project deletes only the Mate",
+      listed: [FEN, STAGE],
+      also: false,
+      asked: "Acme Docs",
+      opened: null,
+    },
+    {
+      case: "a Mate with a colleague in its project is not asked",
+      listed: [FEN, QUINN],
+      also: true,
+      asked: undefined,
+      opened: null,
+    },
+  ])("$case", async ({ listed, also, asked, opened }) => {
+    useDeleteApplicationDialog.getState().close();
+    mock.listing.current = { ...(mock.listing.current as object), value: listed };
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "delete")!
+        .onSelect();
+    });
+    expect(mock.deleteDialog.current?.application?.name).toBe(asked);
+    await act(async () => {
+      mock.deleteDialog.current!.onConfirm(also);
+    });
+    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(useDeleteApplicationDialog.getState().request).toEqual(opened));
   });
 });
 
