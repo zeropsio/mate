@@ -12,7 +12,7 @@ export const validRef = (ref: string) =>
   ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 const refuse = (reason: string): RefDecision => ({ allowed: false, reason });
 /** HQ's namespace: the branch of a change opened without naming one, `mate/<mateId>/<number>`. */
-const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
+export const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
 
 /** Built-in policy the handler applies to every update; Core's port only answers change records. */
 export const allowRefUpdate = async (

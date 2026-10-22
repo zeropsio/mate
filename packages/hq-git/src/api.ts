@@ -194,9 +194,11 @@ export interface MirrorRemote {
   readonly url: string;
   readonly token: Redacted.Redacted;
 }
-/** What following a mirror's branches and tags did: which went (full refs). */
+/** What following a mirror's branches and tags did: which went (full refs), and where each branch is. */
 export interface FollowedRefs {
   readonly pruned: ReadonlyArray<string>;
+  /** Every branch the remote has now, by its name under `refs/heads/` there, at its tip. */
+  readonly heads: ReadonlyMap<string, string>;
 }
 export type MirrorPush =
   | { readonly kind: "pushed" }
@@ -360,13 +362,14 @@ export interface HqGit {
   /**
    * The change's branch moved forward to `sha` by CAS from `expected` — commits added on top of it
    * elsewhere (its pull request's branch on GitHub), fetched already — emitting `pushed` as a push
-   * of it does; never backwards or sideways.
+   * of it does; never backwards or sideways. `expected` null: the branch is not in HQ's copy yet
+   * (kept on GitHub), and is made at `sha`.
    */
   readonly fastForwardChange: (
     repo: Repo,
     change: ChangeBranch,
     sha: string,
-    expected: string,
+    expected: string | null,
   ) => Effect.Effect<FastForward, GitError>;
   /**
    * `sha` pushed to the remote's `refs/heads/<branch>`, leased against `expected` (null: the branch

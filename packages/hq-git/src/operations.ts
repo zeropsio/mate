@@ -691,15 +691,18 @@ export const makeOperations = (
     });
   const fastForwardChange: HqGit["fastForwardChange"] = (repo, change, sha, expected) =>
     inRepo("fastForwardChange", repo, async (dir, signal) => {
-      if (!validSha(sha) || !validSha(expected)) throw error("Invalid commit");
+      if (!validSha(sha) || (expected !== null && !validSha(expected)))
+        throw error("Invalid commit");
       const ref = changeRef(change);
       await resolve(dir, sha, signal);
       const head = await refHead(dir, ref, signal);
       if (head !== expected) return { kind: "stale" } as const;
       if (head === sha) return { kind: "moved" } as const;
-      if (!(await ancestorIn(dir, head, sha, signal))) return { kind: "not_fast_forward" } as const;
+      if (head !== null && !(await ancestorIn(dir, head, sha, signal)))
+        return { kind: "not_fast_forward" } as const;
       if (!(await cas(dir, ref, sha, head, signal))) return { kind: "stale" } as const;
-      emit({ kind: "pushed", repo, updates: [{ ref, oldSha: head, newSha: sha }] });
+      const oldSha = head ?? "0".repeat(sha.length);
+      emit({ kind: "pushed", repo, updates: [{ ref, oldSha, newSha: sha }] });
       return { kind: "moved" } as const;
     });
   const pushRef: HqGit["pushRef"] = (repo, remote, branch, sha, expected) =>
