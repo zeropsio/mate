@@ -16,7 +16,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { fnv1a32, resolveDiffThemeName } from "~/lib/diffPresentation";
 import { getRenderablePatch } from "~/lib/diffRendering";
-import { StyledDiffCodeView } from "../../diffs/StyledDiffCodeView";
+import { DIFF_HEADER_HEIGHT, StyledDiffCodeView } from "../../diffs/StyledDiffCodeView";
 import { Button } from "../../ui/button";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 
@@ -191,7 +191,8 @@ export function GitDiffFiles({
   return (
     <StyledDiffCodeView
       viewerRef={viewer}
-      {...(className ? { className } : {})}
+      // The list's own height is the room its end leaves (`cqh`).
+      className={className ? `[container-type:size] ${className}` : "[container-type:size]"}
       unsafeCSSExtra={COUNTS_FROM_THE_COMMIT}
       items={items}
       options={{
@@ -226,6 +227,11 @@ export function GitDiffFiles({
             </ToggleGroup>
           </div>
         </>
+      )}
+      // A jump puts a file at the top only if the list scrolls that far: the files after it may
+      // be shorter than the view, so the list ends with room to bring its last header up.
+      renderCodeViewFooter={() => (
+        <div aria-hidden style={{ height: `calc(100cqh - ${DIFF_HEADER_HEIGHT}px)` }} />
       )}
       renderHeaderPrefix={(item) => {
         const isFolded = item.collapsed === true;

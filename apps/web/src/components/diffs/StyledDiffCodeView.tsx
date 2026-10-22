@@ -260,6 +260,9 @@ const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 }
 `;
 
+/** A file header's height, as the viewer lays the list out. */
+export const DIFF_HEADER_HEIGHT = 32;
+
 export type StyledDiffCodeViewOptions<LAnnotation> = Omit<
   NonNullable<CodeViewProps<LAnnotation>["options"]>,
   "unsafeCSS" | "itemMetrics" | "layout"
@@ -304,7 +307,7 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
             ? `${DIFF_VIEW_UNSAFE_CSS}\n${unsafeCSSExtra}`
             : DIFF_VIEW_UNSAFE_CSS,
           itemMetrics: {
-            diffHeaderHeight: 32,
+            diffHeaderHeight: DIFF_HEADER_HEIGHT,
             hunkSeparatorHeight: 24,
             // Pierre uses its general file spacing as a fallback in expanded-file layout paths.
             // Keep it zero alongside the explicit paddingTop or expanding the first file can
