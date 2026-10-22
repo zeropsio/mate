@@ -350,7 +350,12 @@ function ChangeReviewData({
       (pull.description === undefined && run.reading && !runGaveUp),
   );
   const project = useGroupName(target.groupId);
-  const previews = useMatePreviews(pull.mateProjectId, flow?.mateTier);
+  // A recipe change is no pair's code: it offers every preview.
+  const previews = useMatePreviews(
+    pull.mateProjectId,
+    flow?.mateTier,
+    pull.kind === "recipe" ? undefined : pull.repository,
+  );
 
   return (
     <ChangeReviewView
