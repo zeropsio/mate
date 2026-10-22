@@ -253,6 +253,19 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
 }
 
 /**
+ * Whether a scope's last release forgets what it observed: a detail family's own scope, unless
+ * its family keeps it, or a sampled family's freshness answers a new demand from it.
+ */
+export function forgottenOnRelease(scope: ScopeKey): boolean {
+  const listing = bySuffix.get(scope.split(":")[2] ?? "");
+  if (listing?.detail !== null || listing.spec.scope.demand !== "detail") return false;
+  const { spec } = listing;
+  return (
+    spec.scope.released !== "kept" && (spec.sampled === undefined || spec.sampled.freshMs === 0)
+  );
+}
+
+/**
  * How a stream is observed: a sampled family's scope is read, never pushed to — on a cadence, or
  * once where time never ages it; the rest realtime.
  */

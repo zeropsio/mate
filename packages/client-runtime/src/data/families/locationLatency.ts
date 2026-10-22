@@ -20,6 +20,8 @@ export const locationLatencyFamily: FamilySpec<"locationLatency"> = {
     leaving: "removed",
     demand: "detail",
     mode: "once",
+    // A measured or failed sample answers a remount: it is never taken again.
+    released: "kept",
   },
 };
 export const locationLatencyId = (

@@ -60,8 +60,10 @@ describe("HQ repository source", () => {
     expect(
       registry.get(store.data.project(gitBrowse, { ...target, allowed: undefined })),
     ).toMatchObject({ state: "withheld" });
-    release();
+    // Pinned to a commit, it is never read again while held; released, it returns to unknown.
     const releaseAgain = reader.demand(target);
+    release();
+    expect(registry.get(projected)).toMatchObject({ state: "known", answer: value });
     expect(reads).toBe(1);
     releaseAgain();
     reader.close();

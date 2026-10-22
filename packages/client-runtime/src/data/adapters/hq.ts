@@ -196,8 +196,15 @@ export function hqNavigationLink(options: {
     demanded: (scope, demanded) =>
       Effect.runSync(
         Effect.map(Clock.currentTimeMillis, (now) => {
-          for (const fed of fedBy(scope))
-            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "demand", demanded } });
+          if (!demanded) store.dispatch({ kind: "release", scopes: fedBy(scope), now });
+          else
+            for (const fed of fedBy(scope))
+              store.dispatch({
+                kind: "stream",
+                key: fed,
+                now,
+                event: { kind: "demand", demanded },
+              });
         }),
       ),
   });

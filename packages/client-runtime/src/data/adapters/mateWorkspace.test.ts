@@ -206,9 +206,13 @@ describe("workspace owner reads and saves", () => {
       store,
       wire(() => Effect.succeed(value(""))),
     );
+    // A screen holds the read: released, it returns to unknown.
+    const held = reads.demand("file", file);
     const result = await reads.sample("file", file);
     expect(result).toMatchObject({ _tag: "Success", value: value("") });
     expect(readsOfState(store.state()).coverage(workspaceScope("file", file))).toBe("complete");
+    held();
+    expect(readsOfState(store.state()).coverage(workspaceScope("file", file))).toBe("unknown");
     reads.close();
     registry.dispose();
   });

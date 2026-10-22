@@ -285,12 +285,19 @@ export function makeDatabaseReads({
         rows: [row],
       });
   };
-  const cancel = (scope: ScopeKey) => {
+  /** Ends a scope's read; `released`, its last holder let it go. */
+  const cancel = (scope: ScopeKey, released = false) => {
     const active = attempts.get(scope);
     active?.cancelRetry?.();
     attempts.delete(scope);
     active?.abort.abort();
-    signal(scope, { kind: "demand", demanded: false });
+    if (released)
+      store.dispatch({
+        kind: "release",
+        scopes: [scope],
+        now: Effect.runSync(Clock.currentTimeMillis),
+      });
+    else signal(scope, { kind: "demand", demanded: false });
   };
   const denyEnvironment = (environmentId: EnvironmentId, fault: StreamFault) => {
     for (const [key] of store.state().facts) {
@@ -578,7 +585,7 @@ export function makeDatabaseReads({
       if (remaining > 0) catalogHolders.set(environmentId, remaining);
       else {
         catalogHolders.delete(environmentId);
-        cancel(databaseScope(environmentId, { kind: "catalog" }));
+        cancel(databaseScope(environmentId, { kind: "catalog" }), true);
       }
     };
   };
@@ -605,7 +612,7 @@ export function makeDatabaseReads({
     );
   const release: DatabaseReads["release"] = (environmentId, slot) => {
     for (const scope of attempts.keys())
-      if (scope.startsWith(databaseScope(environmentId, slot, ""))) cancel(scope);
+      if (scope.startsWith(databaseScope(environmentId, slot, ""))) cancel(scope, true);
   };
   return {
     read,

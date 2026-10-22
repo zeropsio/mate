@@ -7,6 +7,11 @@ import { historyScope, runningScope } from "./families/process.ts";
 import { projectsScope } from "./families/project.ts";
 import { factOf, indexOf } from "./reducer.ts";
 import { processValue } from "./__fixtures__/account.ts";
+import { forgottenOnRelease } from "./families/index.ts";
+import { gitBrowseScope } from "./families/hqGitBrowse.ts";
+import { hqAppDetailScope } from "./families/hqAppDetail.ts";
+import { membersScope } from "./families/organizationMembers.ts";
+import { engineConversationScopes } from "./families/mateEngine.ts";
 
 const ORG = "org";
 const scope = runningScope(ORG);
@@ -748,5 +753,46 @@ describe("reduceAccount", () => {
         expect(supersedes(current, incoming, "baseline")).toBe(baseline);
       },
     );
+  });
+});
+
+describe("a last release", () => {
+  it.each([
+    {
+      name: "a Git browser read",
+      scope: gitBrowseScope({
+        orgId: ORG,
+        appId: "app",
+        repo: "shop",
+        read: "tree",
+        params: { sha: "a".repeat(40), path: "" },
+      }),
+      forgotten: true,
+    },
+    { name: "an application's detail", scope: hqAppDetailScope(ORG, "app"), forgotten: true },
+    { name: "navigation", scope: scope, forgotten: false },
+    {
+      name: "a sampled read still fresh for a new demand",
+      scope: membersScope(ORG),
+      forgotten: false,
+    },
+    {
+      name: "a family that keeps it for its return",
+      scope: engineConversationScopes({ environmentId: "mate", conversationId: "t" }).conversation,
+      forgotten: false,
+    },
+  ])(
+    "returns released detail to unknown, never navigation or what a family keeps: $name",
+    ({ scope: released, forgotten }) => {
+      expect(forgottenOnRelease(released)).toBe(forgotten);
+    },
+  );
+
+  it("lets a navigation scope's demand go and keeps what it observed", () => {
+    const held = apply(attached(), [commit(["p1"], [row("p1", 1)])]);
+    const next = reduceAccount(held, { kind: "release", scopes: [scope], now: 0 });
+    expect(streamOf(next.state, scope)).toMatchObject({ demanded: false, phase: "paused" });
+    expect(factOf(next.state, "process", "p1")?.content.kind).toBe("value");
+    expect(next.state.memberships.get(scope)?.members.get("p1")).toBe("member");
   });
 });

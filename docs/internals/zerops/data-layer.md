@@ -30,7 +30,9 @@ its observations before disposing their state.
 
 Share account-wide observations. Hold detail only while a consumer or an accepted operation
 needs it; share demand and release it at the last holder. Forgetting returns released detail to
-unknown; it never claims deletion. Use the source's realtime
+unknown; it never claims deletion. The last release forgets detail unless its family declares it
+kept for reuse (a return, a remount, a sampled freshness); the account's end forgets the rest.
+Losing a link is not a release. Use the source's realtime
 contract where available. A sampled source declares its demand and freshness policy centrally;
 components never add independent fetch, polling or recovery loops.
 

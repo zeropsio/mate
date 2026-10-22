@@ -196,10 +196,9 @@ export function createAccountConversationAtoms<R, E>(
       get.addFinalizer(() => {
         active = false;
         store.dispatch({
-          kind: "stream",
-          key: scope,
+          kind: "release",
+          scopes: [scope],
           now: Effect.runSync(Clock.currentTimeMillis),
-          event: { kind: "demand", demanded: false },
         });
       });
       return store;
