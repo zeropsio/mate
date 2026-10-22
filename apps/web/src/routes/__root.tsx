@@ -50,7 +50,6 @@ import { PutLiveHost } from "../components/zerops/PutLiveHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
-import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
 import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
 import { Button } from "../components/ui/button";
 import {
@@ -338,8 +337,8 @@ function SignedInRootRouteView() {
           </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
-            same way for every "New project"; a place's addresses, wherever a door opens them; a
-            project's Delete; Put it live, its sheet and its runs.
+            same way for every "New project"; a place's addresses, wherever a door opens them; Put it
+            live, its sheet and its runs.
             None behind the organization's gate. */}
           {hqGate.kind === "open" ? (
             <>
@@ -347,7 +346,6 @@ function SignedInRootRouteView() {
               <ZeropsNewProjectHost />
               <ChiefSetupHost />
               <AddressesSheetHost />
-              <ZeropsDeleteApplicationHost />
               <PutLiveHost />
             </>
           ) : null}

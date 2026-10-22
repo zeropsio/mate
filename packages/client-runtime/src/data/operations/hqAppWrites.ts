@@ -12,8 +12,6 @@ declare module "../model.ts" {
     readonly "delete-app": {
       readonly orgId: string;
       readonly appId: string;
-      /** The person's dialog listed the application's code: it goes too (HQ `?with=code`). */
-      readonly withCode?: boolean;
     };
   }
 }

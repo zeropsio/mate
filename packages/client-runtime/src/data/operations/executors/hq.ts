@@ -700,7 +700,7 @@ export function makeHqExecutor(ports: {
             try: () =>
               intent.kind === "rename-app"
                 ? api.renameApp(intent.appId, intent.name)
-                : api.deleteApp(intent.appId, { withCode: intent.withCode === true }),
+                : api.deleteApp(intent.appId),
             catch: faultOf,
           });
           return {

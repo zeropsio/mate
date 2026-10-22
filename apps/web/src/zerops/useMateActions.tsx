@@ -90,14 +90,6 @@ import {
 } from "../components/zerops/ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
 import {
-  applicationDeletionTarget,
-  applicationHoldings,
-  deleteApplicationWords,
-  type DeleteApplicationTarget,
-} from "../components/zerops/ZeropsDeleteApplicationDialog.logic";
-import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
-import { useHqAppDetail } from "./useHqAppDetail";
-import {
   deleteMateOffered,
   deleteMateServiceCount,
   deleteMateVerb,
@@ -391,31 +383,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  /**
-   * The project a Mate's Delete may delete too (app-lifecycle.md): its own, where it is the last
-   * Mate listed or coming in it and the person may delete the project.
-   */
-  const lastMateApplication = useCallback(
-    (candidate: ZeropsCandidatePresentation): DeleteApplicationTarget | undefined => {
-      if (orgOffer("delete_app").kind !== "allowed") return undefined;
-      const { groupId } = readZeropsMembership(candidate.project);
-      const entry = groupTree.groups.find(({ group }) => group.groupId === groupId);
-      if (entry === undefined || entry.group.pending.some((member) => member.kind === "mate"))
-        return undefined;
-      const mates = entry.environments.filter(({ item }) => hasMate(item));
-      if (mates.length !== 1 || mates[0]!.item.project.id !== candidate.project.id)
-        return undefined;
-      return applicationDeletionTarget({
-        groupId: entry.group.groupId,
-        name: entry.group.name,
-        environments: entry.environments.map(({ role, item }) => ({
-          role,
-          project: item.project,
-        })),
-      });
-    },
-    [groupTree.groups, orgOffer],
-  );
   /**
    * Where a Mate may be moved, as HQ answered when the move opened (`moveTo`) and as it offers its
    * leaving (`detach`): each application listed, a new one, or none.
@@ -1123,8 +1090,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       cleanup?: {
         readonly preparedRequestId: string;
       },
-      /** Its project, which the person chose to delete too: its own Delete runs once it is gone. */
-      alsoApplication?: DeleteApplicationTarget,
     ) => {
       if (activeOrganization === null) return;
       if (writing.current.has(candidate.key)) return;
@@ -1249,10 +1214,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             setPress(UNPRESSED);
             replyToDialog(null);
             leaveDeleted(candidate);
-            if (alsoApplication !== undefined)
-              useDeleteApplicationDialog
-                .getState()
-                .open({ target: alsoApplication, confirmed: true });
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -1552,12 +1513,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     choiceRead.current.attempt += 1;
     setDialog(null);
   }, [setDialog]);
-  // The last Mate's Delete holds its project's detail: what deleting the project too would take.
-  const deletingApplication =
-    dialog?.kind === "delete" && dialog.cleanup === undefined
-      ? lastMateApplication(dialog.candidate)
-      : undefined;
-  const deletingApplicationDetail = useHqAppDetail(deletingApplication?.appId ?? null);
   const dialogs = (
     <>
       {dialog?.kind === "redeploy" ? (
@@ -1699,28 +1654,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "delete" ? (
         <ZeropsDeleteMateDialog
-          application={
-            deletingApplication === undefined
-              ? undefined
-              : {
-                  name: deletingApplication.name,
-                  words: deleteApplicationWords(
-                    deletingApplication,
-                    applicationHoldings(deletingApplicationDetail),
-                  ),
-                }
-          }
           error={press.error}
           cleanup={dialog.cleanup !== undefined}
           key={`delete:${dialog.candidate.key}`}
           name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
-          onConfirm={(alsoApplication) => {
-            deleteMate(
-              dialog.candidate,
-              dialog.cleanup,
-              alsoApplication ? deletingApplication : undefined,
-            );
+          onConfirm={() => {
+            deleteMate(dialog.candidate, dialog.cleanup);
           }}
           onOpenChange={(open) => {
             if (!open) close();

@@ -139,8 +139,6 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   app_not_found: "That project is gone from HQ.",
   app_not_empty:
     "This project is no longer empty: a Mate, an environment or a change is in it now.",
-  app_has_mate:
-    "A Mate still works on this project. Delete it first, or try again in a minute if it was just deleted.",
   mate_not_found: "HQ has no such Mate.",
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",

@@ -636,52 +636,6 @@ describe("HQ API", () => {
       }),
     );
 
-    it.effect(
-      "deletes an application with its code when asked with=code: its repositories leave the disk and its name is free",
-      () =>
-        Effect.gen(function* () {
-          const { call, gitRoot, sql } = yield* startCore(true);
-          yield* untilHealth(call, "active");
-          const session = yield* sessionFor(call, "door-owner");
-          const made = (name: string) =>
-            Effect.map(
-              call("POST", "/api/apps", { session, body: { name } }),
-              (answer) => (answer.body as { readonly id: string }).id,
-            );
-          const shop = yield* made("Shop");
-          const team = yield* made("Team");
-          yield* call("POST", `/api/apps/${team}/projects`, {
-            session,
-            body: { projectId: "P_MATE", kind: "mate", mate: { face: "face-3" } },
-          });
-          yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
-            VALUES (${shop}::uuid, 'appdev', 'core')`;
-          yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, branch, title, head)
-            VALUES (${shop}::uuid, 'appdev', 1, 'P_GONE', 'mate/P_GONE/1', 'Open work', ${"a".repeat(40)})`;
-          const onDisk = () => Effect.promise(() => NodeFSP.readdir(gitRoot));
-          assert.include(yield* onDisk(), shop);
-
-          const answers = yield* Effect.all([
-            call("DELETE", `/api/apps/${shop}`, { session }),
-            call("DELETE", `/api/apps/${team}?with=code`, { session }),
-            call("DELETE", `/api/apps/${shop}?with=code`, { session }),
-          ]);
-          assert.deepStrictEqual(
-            answers.map((answer) => {
-              const body = answer.body as { readonly reason?: string } | null;
-              return [answer.status, body?.reason];
-            }),
-            [
-              [409, "app_not_empty"],
-              [409, "app_has_mate"],
-              [204, undefined],
-            ],
-          );
-          assert.notInclude(yield* onDisk(), shop);
-          assert.strictEqual((yield* made("Shop")).length > 0, true);
-        }),
-    );
-
     it.effect("attaches an environment named as asked, and refuses a name main refused", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);

@@ -47,30 +47,6 @@ describe("HQ application verbs", () => {
       }),
   );
 
-  it.effect("delete-app with its code asks HQ to delete the code too", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const calls: unknown[] = [];
-      const api = {
-        deleteApp: async (...args: unknown[]) => {
-          calls.push(args);
-        },
-      } as unknown as HqWrites;
-      let made = 0;
-      const operations = makeOperations({
-        store,
-        makeId: () => `request-${String((made += 1))}`,
-        executors: { hq: makeHqExecutor({ apiOf: () => api, zerops }) },
-      });
-      yield* operations.submit({ kind: "delete-app", orgId, appId, withCode: true });
-      yield* operations.submit({ kind: "delete-app", orgId, appId: "empty" });
-      expect(calls).toEqual([
-        [appId, { withCode: true }],
-        ["empty", { withCode: false }],
-      ]);
-    }),
-  );
-
   it.effect.each([
     {
       name: "refusal",

@@ -68,11 +68,6 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
       "conflict",
       "This project is no longer empty: a Mate, an environment or a change is in it now.",
     ],
-    [
-      "app_has_mate",
-      "conflict",
-      "A Mate still works on this project. Delete it first, or try again in a minute if it was just deleted.",
-    ],
     ["held_changed", "conflict", "Somebody changed this project in HQ meanwhile. Try again."],
     ["name_length", "invalid", "A name has 1 to 100 characters."],
     // D3: a Mate's face is all HQ records of it.
