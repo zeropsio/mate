@@ -425,3 +425,89 @@ it("a failed rollback comparison offers Compare again", () => {
     renderRollback({ leaving: { state: "failed", reason: "HQ did not answer.", again: () => {} } }),
   ).toContain("Compare again");
 });
+
+describe("a release's code in the Git browser", () => {
+  const SHA = "7e1c0d2".padEnd(40, "0");
+  const API = "5b8a903".padEnd(40, "0");
+  /** Every link into the Git browser: its words and its address. */
+  const gitLinks = (markup: string) => {
+    const document = new Window().document;
+    document.body.innerHTML = markup;
+    return [...document.querySelectorAll("a")]
+      .filter((link) => link.getAttribute("href")?.startsWith("/git?") === true)
+      .map((link) => [link.textContent?.replace(/\s+/gu, " ").trim(), link.getAttribute("href")]);
+  };
+  const unreviewed = {
+    key: SHA,
+    title: "Bump the VAT table",
+    change: undefined,
+    commit: { repository: "app", sha: SHA },
+    mateProjectId: undefined,
+    mergedAt: undefined,
+    stage: "none" as const,
+    sub: "",
+  };
+  const opened = [["Bump the VAT table", `/git?appId=shop&repo=app&rev=${SHA}&view=commit`]];
+
+  it("a commit nobody reviewed opens its own page from what goes out", () => {
+    expect(gitLinks(render({ appId: "shop", onOpenChange: () => {}, rows: [unreviewed] }))).toEqual(
+      opened,
+    );
+  });
+
+  it("a commit nobody reviewed opens its own page from what a roll back moves", () => {
+    const list = { state: "known", rows: [unreviewed], count: 1, atLeast: false } as const;
+    expect(
+      gitLinks(renderRollback({ appId: "shop", onOpenChange: () => {}, comingBack: list })),
+    ).toEqual(opened);
+  });
+
+  it.each([
+    [
+      "one service",
+      [{ service: "app", repository: "app", sha: SHA }],
+      [["Browse files", `/git?appId=shop&repo=app&rev=${SHA}&view=code`]],
+    ],
+    [
+      "several, each by its name",
+      [
+        { service: "api", repository: "api", sha: API },
+        { service: "app", repository: "app", sha: SHA },
+      ],
+      [
+        ["api", `/git?appId=shop&repo=api&rev=${API}&view=code`],
+        ["app", `/git?appId=shop&repo=app&rev=${SHA}&view=code`],
+      ],
+    ],
+  ] as const)(
+    "Production now browses the code production runs, never naming its hash: %s",
+    (_case, productionCode, links) => {
+      const markup = render({ appId: "shop", productionCode });
+      expect(gitLinks(markup)).toEqual(links);
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      expect(document.body.textContent).not.toContain("7e1c0d2");
+    },
+  );
+
+  it("a roll back browses the code each service goes back to", () => {
+    const markup = renderRollback({
+      appId: "shop",
+      where: [
+        { service: "app", line: "goes back to 7e1c0d2", code: { repository: "app", sha: SHA } },
+      ],
+    });
+    expect(gitLinks(markup)).toEqual([
+      ["Browse files", `/git?appId=shop&repo=app&rev=${SHA}&view=code`],
+    ]);
+  });
+
+  it("links nothing into the browser where it does not know the project's application", () => {
+    const markup = render({
+      rows: [unreviewed],
+      onOpenChange: () => {},
+      productionCode: [{ service: "app", repository: "app", sha: SHA }],
+    });
+    expect(gitLinks(markup)).toEqual([]);
+  });
+});

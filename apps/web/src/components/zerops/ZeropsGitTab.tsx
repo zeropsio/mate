@@ -349,6 +349,7 @@ function KnownGitTab({
           ))}
       {openCommit === null || environmentId === undefined || threadRef === null ? null : (
         <ZeropsGitCommitChanges
+          appId={props.appId}
           commit={openCommit}
           composerDraftTarget={threadRef}
           environmentId={environmentId}

@@ -16,6 +16,7 @@ import {
   keyStaysInReview,
   pressesPrimary,
   changeReadVerdict,
+  productionCode,
   releaseChangeRows,
   remarkFold,
   reviewDescription,
@@ -464,6 +465,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         mateProjectId: undefined,
         mergedAt: undefined,
         stage: "none",
+        commit: { repository: "appdev", sha: "ccc333" },
       },
     ]);
   });
@@ -1044,5 +1046,46 @@ describe("releaseHeading: a release's head says where it stands once", () => {
       note: undefined,
       foot: "It takes a minute or two. You can roll back to v0.1.3 from production's panel.",
     });
+  });
+});
+
+describe("productionCode: the code production runs, to browse before a release replaces it", () => {
+  const repositories = new Map([
+    ["app", "app"],
+    ["api", "api"],
+  ]);
+  it.each([
+    [
+      "each service running a whole commit, by name",
+      new Map([
+        ["app", { kind: "commit", sha: "a1" }],
+        ["api", { kind: "commit", sha: "b2" }],
+      ] as const),
+      repositories,
+      [
+        { service: "api", repository: "api", sha: "b2" },
+        { service: "app", repository: "app", sha: "a1" },
+      ],
+    ],
+    [
+      "a service running nothing, or what no commit names, has none",
+      new Map([
+        ["app", { kind: "nothing" }],
+        ["api", { kind: "untold" }],
+      ] as const),
+      repositories,
+      [],
+    ],
+    [
+      "a service building from no known repository has none",
+      new Map([["worker", { kind: "commit", sha: "c3" }]] as const),
+      repositories,
+      [],
+    ],
+    // `useProjectFlows` never compares a production the grant withholds: its runs stay unknown.
+    ["a production the grant withholds names no commit", undefined, repositories, []],
+    ["nothing while its repositories are not known", new Map(), undefined, []],
+  ])("%s", (_, runs, repos, expected) => {
+    expect(productionCode({ runs, repositories: repos })).toEqual(expected);
   });
 });

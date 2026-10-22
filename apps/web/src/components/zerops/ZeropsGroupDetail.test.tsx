@@ -60,7 +60,9 @@ import {
   ZeropsRuntimeStops,
   devstagesOf,
   runtimeStopsOf,
+  stopRepository,
 } from "./ZeropsGroupDetail";
+import { markupDom } from "../../../test/markupDom";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -1162,6 +1164,33 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(markup).not.toContain('data-zerops-surface="stop-service-drift"');
+  });
+});
+
+describe("ZeropsStopPane — a stop the grant withholds", () => {
+  const SHOWN = `/git?appId=shop&repo=appdev&rev=${fullSha("a1")}&view=commit`;
+  it.each([
+    ["a stop the grant shows opens each commit it ran in the Git browser", null, [SHOWN]],
+    [
+      "a stop the grant withholds names no commit and links none into the Git browser",
+      CHECKING,
+      [],
+    ],
+  ] as const)("%s", (_, withheld, links) => {
+    const repository = stopRepository(withheld, { versionRepository: "appdev" });
+    const markup = renderStop({
+      tier: "stage",
+      // The page lists no service of a withheld stop either.
+      services: withheld === null ? [service("api", "a1", undefined)] : [],
+      repository: repository ?? null,
+      history: { kind: "read", commits: [hqCommit("a1", "Key the cache", "theo")], total: 1 },
+    });
+    const page = markupDom(markup);
+    const hrefs = [...page.querySelectorAll("a")]
+      .map((link) => link.getAttribute("href") ?? "")
+      .filter((href) => href.startsWith("/git?"));
+    expect(hrefs).toEqual(links);
+    expect(page.body.textContent?.includes(fullSha("a1").slice(0, 7))).toBe(withheld === null);
   });
 });
 

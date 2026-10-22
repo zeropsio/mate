@@ -66,7 +66,11 @@ vi.mock("~/components/ChatMarkdown", async () => {
       </div>
     );
   }
-  return { default: ChatMarkdown, MarkdownPictureContext };
+  return {
+    default: ChatMarkdown,
+    MarkdownPictureContext,
+    MarkdownFileContext: React.createContext(null),
+  };
 });
 
 const HQ = "https://hq.example.test";

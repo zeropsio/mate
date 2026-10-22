@@ -56,7 +56,7 @@ import {
 function ChangeReviewView(props: ChangeReviewViewProps) {
   return (
     <RegistryContext value={HARNESS_PICTURE_REGISTRY}>
-      <ProjectedChangeReviewView {...props} />
+      <ProjectedChangeReviewView appId="beviro" {...props} />
     </RegistryContext>
   );
 }
@@ -592,13 +592,36 @@ function Rollback({
       services={["app", "api"]}
       tag="v0.1.55"
       untold={untold}
+      appId="beviro"
       where={[
-        { service: "app", line: "goes back to 7e1c0d2" },
-        { service: "api", line: "goes back to 7e1c0d2" },
+        {
+          service: "app",
+          line: "goes back to 7e1c0d2",
+          code: { repository: "appdev", sha: SEVEN_E },
+        },
+        {
+          service: "api",
+          line: "goes back to 7e1c0d2",
+          code: { repository: "apidev", sha: SEVEN_E },
+        },
       ]}
     />
   );
 }
+
+const SEVEN_E = "7e1c0d2".padEnd(40, "0");
+
+/** A commit someone pushed to `main` themselves: no change, no review; it opens in the Git browser. */
+const UNREVIEWED_ROW = {
+  key: "c3",
+  title: "Bump the VAT table",
+  change: undefined,
+  commit: { repository: "appdev", sha: "c3".padEnd(40, "0") },
+  mateProjectId: undefined,
+  mergedAt: undefined,
+  stage: "on-stage" as const,
+  sub: "",
+};
 
 const WHERE = [
   { service: "app", line: "redeploys from 3fa9c21" },
@@ -658,6 +681,11 @@ function Release({
       }}
       untold={[]}
       where={WHERE}
+      appId="beviro"
+      productionCode={[
+        { service: "api", repository: "apidev", sha: SEVEN_E },
+        { service: "app", repository: "appdev", sha: SEVEN_E },
+      ]}
       {...over}
     />
   );
@@ -1227,6 +1255,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   { id: "release", label: "A release", node: <Release /> },
+  {
+    id: "release-unreviewed",
+    label: "A release carrying a commit nobody reviewed, opening in the Git browser",
+    node: <Release onOpenChange={noop} over={{ rows: [...RELEASE_ROWS, UNREVIEWED_ROW] }} />,
+  },
   {
     id: "release-first",
     label: "The first release: its version in words, Change behind it",

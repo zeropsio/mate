@@ -1355,6 +1355,25 @@ export const MarkdownPictureContext = React.createContext<
   ((picture: MarkdownPicture) => ReactNode) | null
 >(null);
 
+/** A file a text names, drawn as a link by a host that can open it ({@link MarkdownFileContext}). */
+export interface MarkdownFileElsewhere {
+  /** Its path in the workspace the text's `cwd` names. */
+  readonly path: string;
+  readonly line: number | undefined;
+  /** The file's chip, the link's content. */
+  readonly chip: ReactNode;
+  readonly className: string;
+  readonly copyMarkdown: string;
+}
+
+/**
+ * Opens a file a text names where there is no chat to open it in: a change's description, on its
+ * review, opens it in the Git browser at the change's head. Absent, such a mention opens nothing.
+ */
+export const MarkdownFileContext = React.createContext<
+  ((file: MarkdownFileElsewhere) => ReactNode) | null
+>(null);
+
 /** The picture clicked, among every picture of the text it stands in. */
 function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePreview) => void) {
   const clicked = button.querySelector("img");
@@ -1661,6 +1680,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   revealLabel,
   className,
 }: MarkdownFileLinkProps) {
+  const openElsewhere = use(MarkdownFileContext);
   const handleOpenInEditor = useCallback(() => {
     if (!onOpen) {
       return;
@@ -1853,6 +1873,15 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
 
   const canOpenInEditor = onOpen !== undefined;
   const canOpenInPanel = threadRef !== undefined && Boolean(workspaceRelativePath);
+  if (openElsewhere !== null && threadRef === undefined && workspaceRelativePath) {
+    return openElsewhere({
+      path: workspaceRelativePath,
+      line,
+      chip: <FileTagChipContent path={iconPath} label={label} theme={theme} selectable />,
+      className: cn(CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, className),
+      copyMarkdown,
+    });
+  }
   const hasPrimaryAction = hasMarkdownFilePrimaryAction({
     canOpenInEditor,
     canOpenInPanel,

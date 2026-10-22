@@ -12442,20 +12442,22 @@ a.message-file:focus-visible {
 .rv-rel[data-opens] .rv-relrow {
   grid-template-columns: 22px minmax(0, 1fr) auto 14px;
 }
-button.rv-relrow {
+:is(button, a).rv-relrow {
   width: 100%;
+  color: inherit;
+  text-decoration: none;
   text-align: left;
   cursor: pointer;
   outline: none;
   transition: background-color 150ms ease;
 }
-button.rv-relrow:hover {
+:is(button, a).rv-relrow:hover {
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
-button.rv-relrow:active {
+:is(button, a).rv-relrow:active {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
-button.rv-relrow:focus-visible {
+:is(button, a).rv-relrow:focus-visible {
   box-shadow: inset 0 0 0 2px var(--ring);
 }
 .rv-relrow-go {
@@ -12468,19 +12470,19 @@ button.rv-relrow:focus-visible {
     color 150ms ease,
     translate 200ms var(--ease-out-strong);
 }
-button.rv-relrow:hover .rv-relrow-go {
+:is(button, a).rv-relrow:hover .rv-relrow-go {
   color: var(--foreground);
   opacity: 1;
   translate: 2px 0;
 }
 @media (prefers-reduced-motion: no-preference) {
-  button.rv-relrow:hover [data-mate-face-look] {
+  :is(button, a).rv-relrow:hover [data-mate-face-look] {
     translate: 0 -5%;
   }
-  button.rv-relrow [data-mate-face-hop] {
+  :is(button, a).rv-relrow [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
   }
-  button.rv-relrow:active [data-mate-face-hop] {
+  :is(button, a).rv-relrow:active [data-mate-face-hop] {
     scale: 0.92;
     transition-duration: 90ms;
   }

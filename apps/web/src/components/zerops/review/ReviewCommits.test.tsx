@@ -47,6 +47,25 @@ describe("a change's commits in its review", () => {
     expect(markup).toContain(`<span>${String(count)}</span>`);
   });
 
+  it("opens each commit's page in the Git browser from its id", () => {
+    const markup = renderToStaticMarkup(
+      <ReviewCommits
+        at={{ appId: "shop", repo: "app" }}
+        commits={commits(2)}
+        now={NOW}
+        onRetry={undefined}
+      />,
+    );
+    const links = [...markupDom(markup).querySelectorAll("li a")].map((link) => [
+      link.textContent,
+      link.getAttribute("href"),
+    ]);
+    expect(links).toEqual([
+      ["0000000", `/git?appId=shop&repo=app&rev=0000000${"a".repeat(33)}&view=commit`],
+      ["0000001", `/git?appId=shop&repo=app&rev=0000001${"a".repeat(33)}&view=commit`],
+    ]);
+  });
+
   it("says they could not be read, with Try again where it can try", () => {
     const failed = { kind: "failed", reason: "HQ is not answering right now." } as const;
     expect(html(failed, () => {})).toContain(">Try again</button>");

@@ -8,6 +8,14 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { Fragment } from "react";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
+import { GitBrowserLink, type GitLink } from "./gitBrowser/GitBrowserLink";
+
+/** A service's planned deploy, in words, and the code it goes live with where that is known. */
+export interface DeployWhereRow {
+  readonly service: string;
+  readonly line: string;
+  readonly code?: GitLink | undefined;
+}
 
 export function ZeropsDeployAnswer(props: {
   readonly git?:
@@ -21,7 +29,7 @@ export function ZeropsDeployAnswer(props: {
     | undefined;
   readonly answer?: HqDeployAnswer | undefined;
   readonly showEnvironment?: boolean | undefined;
-  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+  readonly rows?: ReadonlyArray<DeployWhereRow> | undefined;
 }) {
   if (props.git !== undefined)
     return <GitDeliveryStatus environment={props.git.environment} delivery={props.git.delivery} />;
@@ -34,7 +42,7 @@ function PlatformDeployAnswer({
 }: {
   readonly answer?: HqDeployAnswer | undefined;
   readonly showEnvironment?: boolean | undefined;
-  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+  readonly rows?: ReadonlyArray<DeployWhereRow> | undefined;
 }) {
   const { answer, logs } = useDeployAnswerFollowing(asked);
   const said = answer === undefined ? undefined : deployAnswerSaid(answer);
@@ -71,11 +79,17 @@ function PlatformDeployAnswer({
               );
             }),
         )}
-        {fallback.map(({ service, line }) => (
+        {fallback.map(({ service, line, code }) => (
           <Fragment key={service}>
             <b>{service}</b>
             <span>{line}</span>
-            <span />
+            {code === undefined ? (
+              <span />
+            ) : (
+              <span>
+                <GitBrowserLink to={code}>Browse files</GitBrowserLink>
+              </span>
+            )}
           </Fragment>
         ))}
       </div>

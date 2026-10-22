@@ -37,8 +37,14 @@ import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
 
+import {
+  GitBrowserLink,
+  gitCommitLink,
+  useGitLinkProps,
+  type GitLink,
+} from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
-import { ZeropsDeployAnswer } from "../ZeropsDeployAnswer";
+import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
   diffFold,
@@ -90,6 +96,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly meta?: ReactNode;
   /** After the meta: where else it lives — the pull request it is on GitHub, linked. */
   readonly elsewhere?: ReactNode;
+  /** After that: its code in the Git browser, linked. */
+  readonly code?: ReactNode;
   /** The line's last words, after the verdict's: "✓ checks passed". */
   readonly status?: ReactNode;
   readonly verdict: ReviewVerdict;
@@ -137,6 +145,7 @@ export function ZeropsReviewSurface({
   titleId,
   meta,
   elsewhere,
+  code,
   status,
   verdict,
   verdictInLine = true,
@@ -159,6 +168,7 @@ export function ZeropsReviewSurface({
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
     line.push({ key: "elsewhere", node: elsewhere });
+  if (code !== undefined && code !== null) line.push({ key: "code", node: code });
   if (verdictInLine) {
     line.push({
       key: "verdict",
@@ -532,16 +542,20 @@ export type ReviewDiffState =
 
 /**
  * The files it changes, 36 px each with a status letter, the folder dimmed and the +/−; a file
- * opens its diff in place (R4). A row holds the list's place while it is read.
+ * opens its diff in place (R4), and under it the whole file in the Git browser, where the change
+ * still has it. A row holds the list's place while it is read.
  */
 export function ReviewFiles({
   files,
   failed,
   diffOf,
+  fileAt,
   onRetry,
   initiallyOpen,
 }: {
   readonly files: ReadonlyArray<ReviewFileRow> | undefined;
+  /** Where a file is read whole in the Git browser; absent, a diff is all there is. */
+  readonly fileAt?: ((path: string) => GitLink) | undefined;
   /** Why the files could not be read, where they could not. */
   readonly failed?: string | undefined;
   readonly diffOf: (path: string) => ReviewDiffState;
@@ -582,6 +596,8 @@ export function ReviewFiles({
             letter={letter}
             name={name}
             onRetry={onRetry}
+            // A file the change deletes is in none of its commits any more.
+            open={letter === "D" ? undefined : fileAt?.(file.path)}
             onToggle={() => {
               setOpen((current) => {
                 const next = new Set(current);
@@ -604,10 +620,12 @@ function FileRow({
   letter,
   expanded,
   diff,
+  open,
   onToggle,
   onRetry,
 }: {
   readonly file: ReviewFileRow;
+  readonly open: GitLink | undefined;
   readonly dir: string;
   readonly name: string;
   readonly letter: string;
@@ -636,7 +654,7 @@ function FileRow({
         </span>
       </button>
       {diff === undefined ? null : (
-        <ReviewDiff diff={diff} onRetry={onRetry} previousPath={file.previousPath} />
+        <ReviewDiff diff={diff} onRetry={onRetry} open={open} previousPath={file.previousPath} />
       )}
     </>
   );
@@ -644,22 +662,32 @@ function FileRow({
 
 /**
  * One file's diff: hunk headers, numbers, + green and − red; a long line wraps under its code,
- * so nothing ever scrolls sideways. What is too long to show here says so.
+ * so nothing ever scrolls sideways. What is too long to show here says so. Under it, *Open file*
+ * reads the whole file in the Git browser — one press away however little the diff can show.
  */
 export function ReviewDiff({
   diff,
   previousPath,
+  open,
   onRetry,
 }: {
   readonly diff: ReviewDiffState;
   readonly previousPath?: string | undefined;
+  readonly open?: GitLink | undefined;
   readonly onRetry?: (() => void) | undefined;
 }) {
   const [all, setAll] = useState(false);
+  const opener =
+    open === undefined ? null : (
+      <p className="rv-diff-note">
+        <GitBrowserLink to={open}>Open file</GitBrowserLink>
+      </p>
+    );
   if (diff.kind === "reading") {
     return (
       <div className="rv-diff">
         <p className="rv-diff-note">Reading the diff…</p>
+        {opener}
       </div>
     );
   }
@@ -667,6 +695,7 @@ export function ReviewDiff({
     return (
       <div className="rv-diff">
         <ReviewFailed onRetry={onRetry} reason={diff.reason} what="The diff couldn't be read." />
+        {opener}
       </div>
     );
   }
@@ -675,6 +704,7 @@ export function ReviewDiff({
     return (
       <div className="rv-diff">
         <p className="rv-diff-note">Too long to read here.</p>
+        {opener}
       </div>
     );
   }
@@ -688,6 +718,7 @@ export function ReviewDiff({
     return (
       <div className="rv-diff">
         <p className="rv-diff-note">{note}</p>
+        {opener}
       </div>
     );
   }
@@ -733,6 +764,7 @@ export function ReviewDiff({
         </Button>
       ) : null}
       {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
+      {opener}
     </div>
   );
 }
@@ -752,14 +784,17 @@ export type ReviewReleaseRow = ReleaseChangeRow & {
 /**
  * What goes out: one row per change, its Mate's face, and whether stage ran it. A row that is a
  * change opens its review (`onOpen`), the whole row, with a › at its end; a commit nobody
- * reviewed has no review to open.
+ * reviewed has no review to open: it opens its own page in the Git browser, where the
+ * application (`appId`) is known.
  */
 export function ReviewReleaseRows({
   rows,
   onOpen,
+  appId,
 }: {
   readonly rows: ReadonlyArray<ReviewReleaseRow>;
   readonly onOpen?: ((row: ReviewReleaseRow) => void) | undefined;
+  readonly appId?: string | undefined;
 }) {
   return (
     <div className="rv-rel" data-opens={onOpen === undefined ? undefined : ""}>
@@ -797,10 +832,18 @@ export function ReviewReleaseRows({
           );
         }
         if (row.change === undefined) {
-          return (
+          return appId === undefined || row.commit === undefined ? (
             <div className="rv-relrow" key={row.key}>
               {cells}
             </div>
+          ) : (
+            <ReleaseCommitRow
+              key={row.key}
+              rowKey={row.key}
+              to={gitCommitLink({ appId, repo: row.commit.repository }, row.commit.sha)}
+            >
+              {cells}
+            </ReleaseCommitRow>
           );
         }
         return (
@@ -822,12 +865,30 @@ export function ReviewReleaseRows({
   );
 }
 
+/** A commit nobody reviewed, the whole row a link to its page in the Git browser. */
+function ReleaseCommitRow({
+  rowKey,
+  to,
+  children,
+}: {
+  readonly rowKey: string;
+  readonly to: GitLink;
+  readonly children: ReactNode;
+}) {
+  return (
+    <a className="rv-relrow" data-release-row={rowKey} {...useGitLinkProps(to)}>
+      {children}
+      <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />
+    </a>
+  );
+}
+
 /** Where it goes: the planned deploy, replaced by HQ's answer after the press. */
 export function ReviewWhere({
   rows,
   answer,
 }: {
-  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+  readonly rows?: ReadonlyArray<DeployWhereRow> | undefined;
   readonly answer?: HqDeployAnswer | undefined;
 }) {
   return <ZeropsDeployAnswer answer={answer} rows={rows} />;

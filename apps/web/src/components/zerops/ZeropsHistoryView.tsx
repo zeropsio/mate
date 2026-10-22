@@ -3,7 +3,8 @@
  *
  * HQ answers it (`useRepositoryHistory`): every commit up to `main`'s head, newest first and bounded,
  * each naming the change of HQ's that landed it. A commit a change landed opens that change's
- * review; one none did — a person's, a recipe's — is a line, and nothing more.
+ * review; one none did — a person's, a recipe's — is a line. Every commit's id opens its page in
+ * the Git browser.
  *
  * Mounted by the group's page, the stop's own, and a release row that says what it carried.
  *
@@ -31,6 +32,7 @@ import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { Badge } from "~/components/ui/badge";
+import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 
 /** What to call the things a history row names. */
 export interface HistoryNames {
@@ -38,6 +40,8 @@ export interface HistoryNames {
 }
 
 export interface ZeropsHistoryRequest {
+  /** The application the repository is HQ's of: where its commits open in the Git browser. */
+  readonly appId: string;
   /** The repository, as the recipe names it — never guessed from a hostname. */
   readonly repo: string;
   /** `environment name → the whole sha it runs`. */
@@ -89,6 +93,7 @@ export function ZeropsHistoryView({
       <ul className="flex flex-col" data-zerops-surface="zerops-history">
         {entries.map((entry, index) => (
           <HistoryRow
+            at={{ appId: request.appId, repo: request.repo }}
             entry={entry}
             first={index === 0}
             here={here}
@@ -108,6 +113,7 @@ export function ZeropsHistoryView({
 }
 
 function HistoryRow({
+  at,
   entry,
   first,
   here,
@@ -116,6 +122,7 @@ function HistoryRow({
   now,
   onOpenChange,
 }: {
+  readonly at: GitRepoAt;
   readonly entry: HistoryEntry;
   readonly first: boolean;
   readonly here: string | undefined;
@@ -203,7 +210,9 @@ function HistoryRow({
             ),
           )}
           <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
-            {entry.shortSha}
+            <GitBrowserLink to={gitCommitLink(at, entry.sha)} tone="muted">
+              {entry.shortSha}
+            </GitBrowserLink>
           </span>
         </span>
         {runsHere ? (

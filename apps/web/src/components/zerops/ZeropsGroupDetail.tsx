@@ -987,6 +987,17 @@ function ZeropsUnresolvedStopDetailPage({
   );
 }
 
+/**
+ * The repository a stop's page reads its history from: none where the grant withholds the stop,
+ * so its page names no commit of it and links none into the Git browser.
+ */
+export function stopRepository(
+  withheld: string | null,
+  stop: { readonly versionRepository: string | undefined } | undefined,
+): string | undefined {
+  return withheld === null ? stop?.versionRepository : undefined;
+}
+
 function ZeropsProjectStopDetailPage({
   groupId,
   projectId,
@@ -1018,7 +1029,7 @@ function ZeropsProjectStopDetailPage({
   // repository and commit address.
   const { withheldNotice, shown } = useWithheldStops(flow?.environments);
   const withheld = withheldNotice(projectId);
-  const repo = withheld === null ? stop?.versionRepository : undefined;
+  const repo = stopRepository(withheld, stop);
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const stage = stop?.tier === "stage";
   const production = stop?.tier === "production";
@@ -1800,7 +1811,7 @@ export function ZeropsStopPane({
                   history={history}
                   names={names}
                   onOpenChange={onOpenChange}
-                  request={{ repo, deployed }}
+                  request={{ appId: groupId, repo, deployed }}
                   tags={tags}
                 />
               )}

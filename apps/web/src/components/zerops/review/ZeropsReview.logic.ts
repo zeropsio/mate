@@ -13,6 +13,7 @@ import {
   type GroupFlowAddress,
   linksChange,
   type Moved,
+  type ProductionRun,
   RELEASE_TAKES,
   type ReleaseReviewModel,
   type ReviewPrimary,
@@ -357,6 +358,22 @@ export function diffFold(input: {
   };
 }
 
+/**
+ * Where a change's code opens in the Git browser: an open change's files at its head; a merged
+ * one's commit on `main`, the page that says what it added there, its files read at that commit.
+ * None where HQ named neither.
+ */
+export function changeCode(pull: {
+  readonly merged: boolean;
+  readonly headSha?: string | undefined;
+  readonly mergeCommitSha?: string | undefined;
+}): { readonly sha: string; readonly view: "code" | "commit"; readonly words: string } | undefined {
+  if (pull.merged && pull.mergeCommitSha !== undefined)
+    return { sha: pull.mergeCommitSha, view: "commit", words: "Commit on main" };
+  if (pull.headSha === undefined) return undefined;
+  return { sha: pull.headSha, view: "code", words: "Browse files" };
+}
+
 /** The status letter in a file row's 16 px box. */
 export function changeFileLetter(status: string): "A" | "M" | "D" | "R" | "C" {
   switch (status) {
@@ -406,6 +423,8 @@ export interface ReleaseChangeRow {
   readonly title: string;
   /** The change it landed as, whose review the row opens; none for a commit nobody reviewed. */
   readonly change: { readonly repository: string; readonly number: number } | undefined;
+  /** A commit nobody reviewed: its own page in the Git browser is what the row opens. */
+  readonly commit?: { readonly repository: string; readonly sha: string } | undefined;
   readonly mateProjectId: string | undefined;
   readonly mergedAt: string | undefined;
   readonly stage: ReleaseStageMark;
@@ -437,6 +456,7 @@ export function releaseChangeRows(input: {
         key,
         title: change === null ? commit.subject : change.title.replace(LANDED_AS, ""),
         change: change === null ? undefined : { repository, number: change.number },
+        ...(change === null ? { commit: { repository, sha: commit.sha } } : {}),
         mateProjectId: change?.mateProjectId,
         mergedAt: change === null ? undefined : commit.at,
         stage: input.marks.get(key) ?? "none",
@@ -773,6 +793,29 @@ export function productionNowLine(input: {
   const since = input.since === undefined ? "" : ` since ${input.since}`;
   const at = input.host === undefined ? "" : ` at ${input.host}`;
   return `Runs ${input.live}${since}${at}.`;
+}
+
+/**
+ * The code production runs, per service, where it runs one whole commit of a repository it builds
+ * from: what a person can read before a release replaces it. A service running nothing, or what no
+ * commit names, has none; so has every service while what production runs is not known — as for a
+ * production the grant withholds, which is never compared (`useProjectFlows`).
+ */
+export function productionCode(input: {
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+  /** The repository each production service builds from, by hostname. */
+  readonly repositories: ReadonlyMap<string, string> | undefined;
+}): ReadonlyArray<{ readonly service: string; readonly repository: string; readonly sha: string }> {
+  const { runs, repositories } = input;
+  if (runs === undefined || repositories === undefined) return [];
+  return [...runs]
+    .flatMap(([service, run]) => {
+      const repository = repositories.get(service);
+      return run.kind === "commit" && repository !== undefined
+        ? [{ service, repository, sha: run.sha }]
+        : [];
+    })
+    .toSorted((left, right) => left.service.localeCompare(right.service));
 }
 
 /**
