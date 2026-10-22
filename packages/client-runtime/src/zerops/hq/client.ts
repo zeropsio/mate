@@ -353,8 +353,11 @@ export interface HqApi {
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
-  /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
-  readonly deleteApp: (appId: string) => Promise<void>;
+  /**
+   * Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`).
+   * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
+   */
+  readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
   /**
@@ -1331,9 +1334,14 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId))?.name === name,
       ),
-    deleteApp: (appId) =>
+    deleteApp: (appId, options) =>
       confirmedDone(
-        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, true),
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
+            { method: "DELETE" },
+            true,
+          ),
         async () => (await appOf(appId)) === undefined,
       ),
     createMate: (mate) =>
