@@ -52,12 +52,14 @@ const mirroredPool = Effect.gen(function* () {
         pushChange: (appId, repo, number) =>
           Effect.gen(function* () {
             mirrored.pushes.push(number);
-            const [row] = yield* sql<{ readonly head: string | null }>`
-              SELECT head FROM hq_change
+            const [row] = yield* sql<{ readonly head: string | null; readonly branch: string }>`
+              SELECT head, branch FROM hq_change
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
-            return row?.head == null
-              ? undefined
-              : { branch: `mate/${String(number)}-hotter-tea`, sha: row.head };
+            // A change on a branch its Mate named is that branch on GitHub.
+            if (row?.head == null) return undefined;
+            return row.branch.startsWith("mate/")
+              ? { branch: `mate/${String(number)}-hotter-tea`, sha: row.head }
+              : { branch: row.branch, sha: row.head };
           }).pipe(Effect.orDie),
         // HQ's main holds GitHub's squash already (`githubMergeOnMain`): following it moves nothing.
         sync: () =>
@@ -129,9 +131,15 @@ type Pool = Effect.Success<typeof mirroredPool>;
 /**
  * The robot on issue 1, its change `web` 1 described at `head`; the task. `reopened`: the task
  * ended done with nothing delivered, and a person's message in its conversation put its Mate back
- * on it before it delivered.
+ * on it before it delivered. `branch`: the branch the Mate opened it on, where it named one.
  */
-const describedChange = (core: Pool, head = HEAD, described = true, reopened = false) =>
+const describedChange = (
+  core: Pool,
+  head = HEAD,
+  described = true,
+  reopened = false,
+  branch?: string,
+) =>
   Effect.gen(function* () {
     yield* core.call("POST", "/api/mate/repos", {
       headers: core.robot.auth,
@@ -163,7 +171,7 @@ const describedChange = (core: Pool, head = HEAD, described = true, reopened = f
     }
     yield* core.call("POST", "/api/mate/changes", {
       headers: core.robot.auth,
-      body: { repo: "web", title: "Hotter tea" },
+      body: { repo: "web", title: "Hotter tea", ...(branch === undefined ? {} : { branch }) },
     });
     yield* core.sql`UPDATE hq_change SET head = ${head} WHERE repo = 'web' AND number = 1`;
     if (!described) return task;
@@ -776,6 +784,97 @@ describe("a change's pull request", () => {
             "SELECT pr_number FROM hq_pull_request",
             (rows) => rows[0]?.["pr_number"] === 9,
           );
+        }),
+    );
+
+    it.effect(
+      "a change its Mate opened on a branch it named opens its pull request from that branch, as the app",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* describedChange(core, HEAD, true, false, "fix-x");
+          const [made] = yield* asked(core, "POST", "/repos/acme/tea-shop/pulls");
+          assert.strictEqual((made!.body as { head: string }).head, "fix-x");
+          assert.isTrue(core.asTheApp(made!.authorization));
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number, head_sha FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 2 && rows[0]?.["head_sha"] === HEAD,
+          );
+        }),
+    );
+
+    it.effect(
+      "the open pull request on a named change's branch, whoever opened it from the repository itself, is the change's: HQ says its part in it, and Merge in Mate writes mate/gate and merges it",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Fix x",
+            body: "Nova's words.",
+            head: "fix-x",
+            state: "open",
+            merged: false,
+            author: "nova",
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core, HEAD, true, false, "fix-x");
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 9,
+          );
+          const [edited] = yield* asked(core, "PATCH", "/repos/acme/tea-shop/pulls/9");
+          const body = (edited!.body as { body: string }).body;
+          assert.include(body, "Nova's words.");
+          assert.include(body, "Boils the water twice.");
+          yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: HEAD },
+          });
+          assert.strictEqual(merged.status, 200);
+          const seen = core.github.state.seen;
+          const gate = seen.findIndex(
+            (request) =>
+              request.method === "POST" && request.path === `/repos/acme/tea-shop/statuses/${HEAD}`,
+          );
+          const merge = seen.findIndex(
+            (request) =>
+              request.method === "PUT" && request.path === "/repos/acme/tea-shop/pulls/9/merge",
+          );
+          assert.isAtLeast(gate, 0);
+          assert.isBelow(gate, merge);
+          assert.deepInclude(seen[gate]!.body as object, {
+            state: "success",
+            context: "mate/gate",
+          });
+          assert.deepInclude(merged.body as HqChange, { state: "merged" });
+        }),
+    );
+
+    it.effect(
+      "a pull request from a fork's branch of the same name is never taken for a named change's own",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          core.github.state.pulls.set(9, {
+            title: "Not the Mate's",
+            body: "",
+            head: "fix-x",
+            state: "open",
+            merged: false,
+            author: "zoe",
+            headRepoId: 777,
+          });
+          core.github.state.pullNumber = 10;
+          yield* describedChange(core, HEAD, true, false, "fix-x");
+          yield* core.github.seenWhere("the branch's pull requests read", (seen) =>
+            seen.some((request) => request.method === "GET" && request.path.includes("/pulls?")),
+          );
+          // What HQ does with what it read happens at once; nothing may follow it.
+          yield* Effect.sleep(Duration.millis(300));
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_pull_request", (rows) => rows.length === 0);
         }),
     );
 
