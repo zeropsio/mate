@@ -9,7 +9,6 @@ import type * as Effect from "effect/Effect";
 import type { GitError, Repo } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
-import { readCommit, readCommitFile, type CommitRead } from "./commit.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
 import { grepAt, type GrepLimits, type GrepRequest, type GrepResult } from "./grep.ts";
 import { listPaths, type PathList } from "./paths.ts";
@@ -41,14 +40,6 @@ export interface HqGitBrowse {
   ) => Effect.Effect<Readme | null, GitError>;
   /** A page of the commits reachable from `sha`, or of those that touched a path; none where the commit is absent. */
   readonly log: (repo: Repo, request: LogRequest) => Effect.Effect<LogPage | null, GitError>;
-  /** A commit and what it changed against its first parent; none where there is no such commit. */
-  readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead | null, GitError>;
-  /** One file's hunks in a commit, read on request; none where there is no such commit. */
-  readonly commitFile: (
-    repo: Repo,
-    sha: string,
-    path: string,
-  ) => Effect.Effect<{ readonly hunks: string | null } | null, GitError>;
   /** Every file path at a commit, the first `max`; none where the repository has no such commit. */
   readonly paths: (
     repo: Repo,
@@ -79,10 +70,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, maxBytes, signal)),
   log: (repo, request) =>
     inRepo("browse.log", repo, (dir, signal) => listLog(git, dir, request, signal)),
-  commit: (repo, sha) =>
-    inRepo("browse.commit", repo, (dir, signal) => readCommit(git, dir, sha, signal)),
-  commitFile: (repo, sha, path) =>
-    inRepo("browse.commitFile", repo, (dir, signal) => readCommitFile(git, dir, sha, path, signal)),
   paths: (repo, sha, max) =>
     inRepo("browse.paths", repo, (dir, signal) => listPaths(git, dir, sha, max, signal)),
   grep: (repo, sha, request, limits, until) =>
