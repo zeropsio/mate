@@ -107,6 +107,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "app_name_taken",
     "app_not_found",
     "app_not_empty",
+    "app_has_mate",
     "project_still_exists",
     "key_still_exists",
     "mate_not_found",
@@ -427,9 +428,17 @@ export class Structure extends Context.Service<
     /**
      * An application deleted, with what HQ keeps of its recipe repository — only one that holds
      * nothing: no project, no change, no release, no repository but its recipe's (`app_not_empty`).
-     * Its repositories on disk are the caller's to remove, after it.
+     * `withCode`, the person's dialog listed its code: its repositories, changes, releases and
+     * history go too, and its stage's and production's records — never their projects, which
+     * HQ leaves to the person (app-lifecycle.md) — refused only while a Mate is on it
+     * (`app_has_mate`): it works on that code. Its repositories on disk are the caller's to
+     * remove, after it.
      */
-    readonly deleteApp: (userId: string, appId: string) => Effect.Effect<void, WriteError>;
+    readonly deleteApp: (
+      userId: string,
+      appId: string,
+      options?: { readonly withCode: boolean },
+    ) => Effect.Effect<void, WriteError>;
     readonly gitTargetWrite: GitEnvironments["gitTargetWrite"];
     readonly gitTargetReceipt: GitEnvironments["gitTargetReceipt"];
     readonly previewGitEnvironment: GitEnvironments["previewGitEnvironment"];
@@ -1803,7 +1812,7 @@ export const structureLayer = (options: {
           }),
         ),
 
-        deleteApp: fresh((userId, appId) =>
+        deleteApp: fresh((userId, appId, options) =>
           Effect.gen(function* () {
             yield* allowed(userId, "delete_app", null, yield* roles.forWrite);
             yield* leader.write(
@@ -1812,9 +1821,22 @@ export const structureLayer = (options: {
                 // second sees what the first left — a project, or no application.
                 const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR UPDATE`;
                 if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
-                const held = yield* sql<{ readonly held: boolean }>`
-                  SELECT ${appHeld} AS held FROM hq_app a WHERE a.id::text = ${appId}`;
-                if (held[0]?.held !== false) return yield* refuse("conflict", "app_not_empty");
+                if (options?.withCode === true) {
+                  const mates = yield* sql`
+                    SELECT 1 FROM hq_app_project
+                    WHERE app_id::text = ${appId} AND kind IN ('mate', 'devstage')`;
+                  if (mates.length > 0) return yield* refuse("conflict", "app_has_mate");
+                  yield* sql`DELETE FROM hq_change_comment WHERE app_id::text = ${appId}`;
+                  yield* sql`DELETE FROM hq_change_attachment WHERE app_id::text = ${appId}`;
+                  yield* sql`DELETE FROM hq_change WHERE app_id::text = ${appId}`;
+                  yield* sql`DELETE FROM hq_release WHERE app_id::text = ${appId}`;
+                  // Its environments' records go with their rows; their projects stay in Zerops.
+                  yield* sql`DELETE FROM hq_app_project WHERE app_id::text = ${appId}`;
+                } else {
+                  const held = yield* sql<{ readonly held: boolean }>`
+                    SELECT ${appHeld} AS held FROM hq_app a WHERE a.id::text = ${appId}`;
+                  if (held[0]?.held !== false) return yield* refuse("conflict", "app_not_empty");
+                }
                 yield* sql`DELETE FROM hq_recipe_seen WHERE app_id::text = ${appId}`;
                 yield* sql`DELETE FROM hq_git_event WHERE app_id::text = ${appId}`;
                 yield* sql`DELETE FROM hq_repo WHERE app_id::text = ${appId}`;

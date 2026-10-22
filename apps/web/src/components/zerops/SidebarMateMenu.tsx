@@ -328,6 +328,7 @@ function ProjectMenuItems({ entries }: { readonly entries: ReadonlyArray<Heading
         key={entry.label}
         label={entry.label}
         onClick={entry.act}
+        {...(entry.destructive === true ? { variant: "destructive" as const } : {})}
         why={entry.why}
       />
     ),
