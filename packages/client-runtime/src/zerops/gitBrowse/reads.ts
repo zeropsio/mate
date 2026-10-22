@@ -8,10 +8,12 @@
  */
 import * as Schema from "effect/Schema";
 import { blobRead } from "./blob.ts";
+import { commitFileRead, commitRead } from "./commit.ts";
+import { compareFileRead, compareRead } from "./compare.ts";
+import { grepRead } from "./grep.ts";
 import { homeRead } from "./home.ts";
 import { logRead } from "./log.ts";
 import { rawRead } from "./raw.ts";
-import { grepRead } from "./grep.ts";
 import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
 import { treeRead } from "./tree.ts";
@@ -23,6 +25,10 @@ export const GIT_BROWSE_READS = {
   tree: treeRead,
   blob: blobRead,
   raw: rawRead,
+  commit: commitRead,
+  "commit-file": commitFileRead,
+  compare: compareRead,
+  "compare-file": compareFileRead,
   paths: pathsRead,
   grep: grepRead,
 } as const;
