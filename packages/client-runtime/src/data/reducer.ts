@@ -14,6 +14,7 @@ import {
   FAMILIES,
   familySpec,
   ownScopeOf,
+  forgottenOnRelease,
   scopeListing,
   scopeSpec,
   streamMode,
@@ -135,6 +136,11 @@ export type AccountInput =
    * coverage and index entries go. It never claims deletion; a later delivery brings them back.
    */
   | { readonly kind: "forget"; readonly scopes: ReadonlyArray<ScopeKey> }
+  /**
+   * The last holder of these scopes let them go: their streams lose demand, and a detail scope's
+   * facts are forgotten unless its family keeps them (`scope.released`).
+   */
+  | { readonly kind: "release"; readonly scopes: ReadonlyArray<ScopeKey>; readonly now: number }
   /** HQ's catchup of these scopes ended: what they list is the whole. */
   | { readonly kind: "hq-ready"; readonly scopes: ReadonlyArray<DeliveryScope> }
   | {
@@ -763,6 +769,21 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
   if (input.kind === "forget") {
     const next = forget(state, input.scopes, changed);
     return { state: reindex(state, next, changed), changed, directives: [] };
+  }
+  if (input.kind === "release") {
+    const streams = new Map(state.streams);
+    for (const scope of input.scopes) {
+      const released = transition(
+        streamOf(state, scope),
+        { kind: "demand", demanded: false },
+        input.now,
+      );
+      streams.set(scope, released.state);
+      changed.add(`stream:${scope}`);
+    }
+    const paused = { ...state, streams };
+    const next = forget(paused, input.scopes.filter(forgottenOnRelease), changed);
+    return { state: reindex(paused, next, changed), changed, directives: [] };
   }
   if (input.kind === "stream") {
     const { state: stream, directives } = transition(

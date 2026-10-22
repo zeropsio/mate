@@ -126,9 +126,8 @@ describe("a demanded query detail", () => {
       expect(store.state().streams.get(usage)).toMatchObject({ phase: "paused", demanded: false });
       yield* fixture.push(released, { items: [container("c1", 0.9)] });
       yield* settle;
-      expect(factOf(store.state(), "usage", "c1")?.content).toMatchObject({
-        value: { vCpu: { used: 0.4 } },
-      });
+      // Released, its value returns to unknown, and the dropped frame never brings one back.
+      expect(factOf(store.state(), "usage", "c1")).toBeUndefined();
 
       link.demandDetail(USAGE);
       yield* settle;

@@ -104,7 +104,15 @@ const engineSpec = <
 ): FamilySpec<F> => ({
   family,
   authority: "mate",
-  scope: { source: "mate", suffix, leaving: "removed", demand: "detail", mode: "realtime" },
+  // A released conversation is kept for its return grace; its adapter forgets it after.
+  scope: {
+    source: "mate",
+    suffix,
+    leaving: "removed",
+    demand: "detail",
+    mode: "realtime",
+    released: "kept",
+  },
 });
 
 export const mateEngineConversationFamily = engineSpec(

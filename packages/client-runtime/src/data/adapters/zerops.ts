@@ -201,7 +201,11 @@ export function zeropsNavigationLink(options: {
     demanded: (scope, demanded) =>
       Effect.runSync(
         Effect.map(Clock.currentTimeMillis, (now) =>
-          store.dispatch({ kind: "stream", key: scope, now, event: { kind: "demand", demanded } }),
+          store.dispatch(
+            demanded
+              ? { kind: "stream", key: scope, now, event: { kind: "demand", demanded } }
+              : { kind: "release", scopes: [scope], now },
+          ),
         ),
       ),
   });

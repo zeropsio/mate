@@ -348,6 +348,42 @@ describe("hqNavigationLink", () => {
   );
 
   it.effect(
+    "A released application detail returns to unknown and its records are no longer held",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        const release = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        yield* settle;
+        const scope = { kind: "app-detail", appId: "shop" } as const;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "detail",
+          revision: 2,
+          values: [{ key: "preflight:web", value: gitPreflight }],
+          removals: [],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* settle;
+        const read = () =>
+          hqAppDetail.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" });
+        expect(read().preflight).toEqual({ web: gitPreflight });
+        expect(read().read).toBe("read");
+
+        release();
+        yield* settle;
+
+        expect(read().preflight).toEqual({});
+        expect(read().read).toBe("unread");
+        expect(factOf(store.state(), "hqAppDetail", "shop/preflight:web")).toBeUndefined();
+        link.stop();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
     "ending an HQ lifetime forgets protected Git facts and fences late input and holds",
     () =>
       Effect.gen(function* () {

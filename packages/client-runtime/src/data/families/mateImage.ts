@@ -27,7 +27,14 @@ declare module "../model.ts" {
 export const mateImageFamily: FamilySpec<"mateImage"> = {
   family: "mateImage",
   authority: "mate",
-  scope: { source: "mate", suffix: "image", leaving: "removed", demand: "detail" },
+  // A seen image's authorized bytes answer its reopening without another read.
+  scope: {
+    source: "mate",
+    suffix: "image",
+    leaving: "removed",
+    demand: "detail",
+    released: "kept",
+  },
   indexes: [
     { name: "mateImageReference", keyOf: (value) => value.reference ?? null },
     { name: "mateImageDigest", keyOf: (value) => value.digest ?? null },

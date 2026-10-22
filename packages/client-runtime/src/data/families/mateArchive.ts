@@ -11,7 +11,15 @@ declare module "../model.ts" {
 export const mateArchiveFamily: FamilySpec<"mateArchive"> = {
   family: "mateArchive",
   authority: "mate",
-  scope: { source: "mate", suffix: "archive", leaving: "removed", demand: "detail", mode: "once" },
+  // Known archives stay through refusal and a disconnected remount.
+  scope: {
+    source: "mate",
+    suffix: "archive",
+    leaving: "removed",
+    demand: "detail",
+    mode: "once",
+    released: "kept",
+  },
 };
 export const archiveScope = (environmentId: EnvironmentId): ScopeKey =>
   `mate:${encodeURIComponent(environmentId)}:archive`;

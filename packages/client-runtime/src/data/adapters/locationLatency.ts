@@ -102,12 +102,7 @@ export function demandLocationLatency({
       holders: 0,
       release: () => {
         controller.abort();
-        store.dispatch({
-          kind: "stream",
-          key: scope,
-          now: 0,
-          event: { kind: "demand", demanded: false },
-        });
+        store.dispatch({ kind: "release", scopes: [scope], now: 0 });
       },
     };
     held.set(id, entry);

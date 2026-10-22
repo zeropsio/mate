@@ -54,7 +54,15 @@ const spec = <F extends MateFeedFamily>(
 ): FamilySpec<F> => ({
   family,
   authority: "mate",
-  scope: { source: "mate", suffix: family, leaving: "removed", demand: "detail", mode },
+  // A feed's retained facts outlive its screen: access loss withholds them, a remount reuses them.
+  scope: {
+    source: "mate",
+    suffix: family,
+    leaving: "removed",
+    demand: "detail",
+    mode,
+    released: "kept",
+  },
 });
 export const MATE_FEED_FAMILIES = {
   mateServerConfig: spec("mateServerConfig", "realtime"),

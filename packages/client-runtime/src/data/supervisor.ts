@@ -205,9 +205,15 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
     /** Demand moves the link and its scopes together: navigation scopes live as long as it. */
     const demand = (demanded: boolean) =>
       Effect.gen(function* () {
-        // Navigation is demanded with the link; on its end, every child lets go.
-        for (const scope of demanded ? scopes : children())
-          yield* dispatch({ kind: "demand", demanded }, scope);
+        // Navigation is demanded with the link and released at its end. Details stay held by
+        // their screens: they only lose the link's demand.
+        if (demanded)
+          for (const scope of scopes) yield* dispatch({ kind: "demand", demanded }, scope);
+        else {
+          for (const scope of options.details?.() ?? [])
+            yield* dispatch({ kind: "demand", demanded }, scope);
+          store.dispatch({ kind: "release", scopes, now: yield* Clock.currentTimeMillis });
+        }
         return yield* dispatch({ kind: "demand", demanded });
       });
 

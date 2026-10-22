@@ -187,6 +187,11 @@ export interface FamilySpec<F extends Family> {
     readonly demand: "navigation" | "detail";
     /** How a Mate scope is observed while demanded: pushes, repeated reads or one answer. */
     readonly mode?: "realtime" | "sampled" | "once";
+    /**
+     * What a detail scope's last release leaves: by default its facts are forgotten, back to
+     * unknown; `kept` where its adapter keeps them on purpose and forgets them itself.
+     */
+    readonly released?: "kept";
   };
   /**
    * The indexes the reducer keeps for it. A member's `listed` is how this family's own scope lists
