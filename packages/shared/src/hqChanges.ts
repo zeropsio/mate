@@ -23,6 +23,10 @@
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
  * - `GET /api/apps/:appId/repos` → {@link RepoListResponse};
+ * - `PUT /api/apps/:appId/repos/:repo/upstream` {@link FollowRepoUpstreamRequest} → `204`, by a
+ *   structure writer: HQ keeps the repository's code, made if new, and follows the GitHub
+ *   repository at `url` — fetched by the application's Mates (`MateRepo.origin`, `follow`), never
+ *   pushed to, no token kept;
  * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
@@ -344,6 +348,8 @@ export const ReplaceRepoRemoteTokenRequest = Schema.Struct({ token: RemoteToken 
 export type ReplaceRepoRemoteTokenRequest = typeof ReplaceRepoRemoteTokenRequest.Type;
 export const UpdateRepoRemoteAddressRequest = Schema.Struct({ url: HqRemoteUrl });
 export type UpdateRepoRemoteAddressRequest = typeof UpdateRepoRemoteAddressRequest.Type;
+export const FollowRepoUpstreamRequest = Schema.Struct({ url: HqRemoteUrl });
+export type FollowRepoUpstreamRequest = typeof FollowRepoUpstreamRequest.Type;
 
 /**
  * What a GitHub token may read of the repository's CI, as one read each proved: `granted` (GitHub

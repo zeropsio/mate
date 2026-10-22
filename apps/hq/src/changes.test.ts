@@ -1126,6 +1126,78 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    it.effect(
+      "keeping a repository's code in Mate records its GitHub repository followed, for every Mate of the application",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const shop = yield* mateWithChange(call, fake, owner);
+          addProject(fake, "P_TWO");
+          const two = yield* mateInApp(
+            call,
+            fake,
+            owner,
+            "P_TWO",
+            "Shop",
+            new Map([["Shop", shop.appId]]),
+          );
+          const follow = (session: string, url: string, repo = "appdev") =>
+            call("PUT", `/api/apps/${shop.appId}/repos/${repo}/upstream`, {
+              session,
+              body: { url },
+            });
+          assert.strictEqual((yield* follow(owner, "https://github.com/Acme/App.git")).status, 204);
+          const repos = (auth: Record<string, string>) =>
+            Effect.map(
+              call("GET", "/api/mate/self", { headers: auth }),
+              (answer) => (answer.body as { readonly repos: unknown }).repos,
+            );
+          const followed = [
+            { name: "appdev", origin: { url: "https://github.com/acme/app.git", mode: "follow" } },
+            { name: "group" },
+          ];
+          assert.deepStrictEqual(yield* repos(shop.auth), followed);
+          assert.deepStrictEqual(yield* repos(two.auth), followed);
+          // Followed only: no connection a release or a Git environment could push through.
+          const listed = yield* call("GET", `/api/apps/${shop.appId}/repos`, { session: owner });
+          assert.deepStrictEqual(
+            (
+              listed.body as {
+                readonly repos: ReadonlyArray<{ readonly name: string; readonly remote: unknown }>;
+              }
+            ).repos.find((repo) => repo.name === "appdev")?.remote,
+            null,
+          );
+          // Only a GitHub repository is followed, and only by who may connect one.
+          const refused = (answer: { readonly status: number; readonly body: unknown }) => [
+            answer.status,
+            (answer.body as { readonly reason?: unknown }).reason,
+          ];
+          assert.deepStrictEqual(refused(yield* follow(owner, "https://gitlab.com/acme/app.git")), [
+            400,
+            "bad_address",
+          ]);
+          assert.deepStrictEqual(
+            refused(
+              yield* follow(yield* sessionFor(call, "door-reader"), "https://github.com/acme/app"),
+            ),
+            [403, "not_structure_writer"],
+          );
+          assert.deepStrictEqual(yield* repos(shop.auth), followed);
+          // A repository the pair has not wired yet is made in HQ, which keeps its code.
+          assert.strictEqual(
+            (yield* follow(owner, "https://github.com/acme/web", "web")).status,
+            204,
+          );
+          assert.deepStrictEqual(yield* repos(two.auth), [
+            ...followed,
+            { name: "web", origin: { url: "https://github.com/acme/web.git", mode: "follow" } },
+          ]);
+        }),
+    );
+
     it.effect("a Mate never sees another application's origin", () =>
       Effect.gen(function* () {
         const { call, fake, url } = yield* startCore(true);

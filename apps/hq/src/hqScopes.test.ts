@@ -2175,6 +2175,7 @@ describe("revisioned HQ values", () => {
                 },
               ]),
             mateRepos: unused,
+            follow: unused,
             write: unused,
             receipt: unused,
             connect: unused,
@@ -2255,6 +2256,7 @@ describe("revisioned HQ values", () => {
               listRepos: () =>
                 Effect.sync(() => [{ ...repo, remote: { ...remoteForWire(remote)!, governance } }]),
               mateRepos: unused,
+              follow: unused,
               write: unused,
               receipt: unused,
               connect: unused,
