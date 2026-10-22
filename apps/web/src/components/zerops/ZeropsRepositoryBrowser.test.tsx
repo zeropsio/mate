@@ -275,6 +275,36 @@ describe("repository frame", () => {
       }
     },
   );
+
+  it("A link that names a folder as a file opens the folder", async () => {
+    // A README's `[src](src)`: HQ answers the file read that the path is a folder.
+    held.views = {
+      home: knownHome(null),
+      blob: { state: "refused", reason: "not_a_file", words: "HQ refused this (not_a_file)." },
+      tree: {
+        state: "known",
+        busy: false,
+        failed: false,
+        answer: {
+          entries: [
+            { name: "a.ts", path: "src/a.ts", type: "file", mode: "100644", sha: "c".repeat(40) },
+          ],
+          truncated: false,
+        },
+      },
+    };
+    const { host, close } = await browser("appdev", "Shop", { path: "src", kind: "file" });
+    try {
+      expect(held.asked.findLast((asked) => asked.read === "tree")?.params).toEqual({
+        sha,
+        path: "src",
+      });
+      expect(host.textContent).toContain("a.ts");
+      expect(host.textContent).not.toContain("not_a_file");
+    } finally {
+      await close();
+    }
+  });
 });
 
 describe("repository README", () => {
