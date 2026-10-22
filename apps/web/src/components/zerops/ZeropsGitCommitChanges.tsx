@@ -16,6 +16,7 @@ import { checkoutPathFor } from "~/zerops/useZeropsGitRemoteProbe";
 
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { Button } from "../ui/button";
+import { GitBrowserLink, gitCommitLink } from "./gitBrowser/GitBrowserLink";
 import { commitChangesState, type CommitChangesState } from "./ZeropsGitCommitChanges.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 
@@ -28,11 +29,14 @@ export interface OpenGitCommit {
 }
 
 export function ZeropsGitCommitChanges({
+  appId,
   environmentId,
   commit,
   composerDraftTarget,
   onBack,
 }: {
+  /** The Mate's application at HQ, whose copy holds a commit the checkout lost. */
+  readonly appId: string | undefined;
   readonly environmentId: EnvironmentId;
   readonly commit: OpenGitCommit;
   readonly composerDraftTarget: ScopedThreadRef;
@@ -44,6 +48,7 @@ export function ZeropsGitCommitChanges({
   );
   return (
     <ZeropsGitCommitView
+      appId={appId}
       commit={commit}
       composerDraftTarget={composerDraftTarget}
       cwd={cwd}
@@ -57,6 +62,7 @@ export function ZeropsGitCommitChanges({
 
 /** The commit's page for a state of its read: what the Git tab draws, apart from reading it. */
 export function ZeropsGitCommitView({
+  appId,
   environmentId,
   commit,
   cwd,
@@ -65,6 +71,7 @@ export function ZeropsGitCommitView({
   onBack,
   onRetry,
 }: {
+  readonly appId: string | undefined;
   readonly environmentId: EnvironmentId;
   readonly commit: OpenGitCommit;
   readonly cwd: string;
@@ -107,7 +114,14 @@ export function ZeropsGitCommitView({
           {state.kind === "empty" ? (
             <p>This commit changed no files.</p>
           ) : state.kind === "absent" ? (
-            <p>This commit is not in the checkout any more.</p>
+            <>
+              <p>This commit is not in the checkout any more.</p>
+              {appId === undefined ? null : (
+                <GitBrowserLink to={gitCommitLink({ appId, repo: commit.repository }, commit.sha)}>
+                  Open it in Git
+                </GitBrowserLink>
+              )}
+            </>
           ) : state.kind === "needs-update" ? (
             <>
               <p>This Mate shows a commit's changes after its next update.</p>
