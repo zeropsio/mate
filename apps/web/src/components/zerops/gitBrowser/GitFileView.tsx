@@ -6,6 +6,7 @@
  */
 import type { SelectedLineRange } from "@pierre/diffs";
 import { File, Virtualizer } from "@pierre/diffs/react";
+import { noBlame } from "@t3tools/client-runtime/zerops/gitBrowse/blame";
 import {
   fileShape,
   fileSize,
@@ -166,16 +167,28 @@ export function GitFileView({
     ).href;
   const copyLink = () =>
     void writeTextToClipboard(link(), "link").then(() => copied("Link copied"), notCopied);
+  const blame = () =>
+    navigate({
+      rev: sha,
+      view: "blame",
+      path: blob.path,
+      ...(search.lines === undefined ? {} : { lines: search.lines }),
+    });
   const copyLinkRef = useRef(copyLink);
+  const blameRef = useRef(blame);
   useEffect(() => {
     copyLinkRef.current = copyLink;
+    blameRef.current = blame;
   });
+  // `y` copies the link; `b` opens the file's blame, which says why where it has none.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "y" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key !== "y" && event.key !== "b") return;
       if (event.defaultPrevented || isEditableFocused(event.target)) return;
       event.preventDefault();
-      copyLinkRef.current();
+      if (event.key === "y") copyLinkRef.current();
+      else blameRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -258,19 +271,8 @@ export function GitFileView({
             History
           </Button>
         ) : null}
-        {hasView("blame") ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              navigate({
-                rev: sha,
-                view: "blame",
-                path: blob.path,
-                ...(search.lines === undefined ? {} : { lines: search.lines }),
-              })
-            }
-          >
+        {hasView("blame") && noBlame(blob) === null ? (
+          <Button variant="ghost" size="sm" onClick={blame}>
             Blame
           </Button>
         ) : null}
