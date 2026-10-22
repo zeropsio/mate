@@ -9,6 +9,8 @@ import { Sha } from "../hqChanges.ts";
 
 /** The most of an archive a page reads; a larger repository is cloned. */
 export const ARCHIVE_MAX_BYTES = 100 * 1024 * 1024;
+/** How long HQ streams an archive at most; it cuts the stream there. */
+export const ARCHIVE_DEADLINE_MS = 120_000;
 
 export const GitArchiveFormat = Schema.Literals(["tar.gz", "zip"]);
 export type GitArchiveFormat = typeof GitArchiveFormat.Type;
