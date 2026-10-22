@@ -6,6 +6,7 @@
  */
 import { GitError } from "../api.ts";
 import type { GitRunner } from "../git.ts";
+import { pathText } from "../pathText.ts";
 
 export interface PathObject {
   readonly mode: string;
@@ -65,8 +66,7 @@ export const lookupPath = async (
     { signal, acceptExitCodes: [128] },
   );
   if (listed.code !== 0) return { kind: "commit-missing" };
-  const found = listed.stdout
-    .toString()
+  const found = pathText(listed.stdout)
     .split("\0")
     .filter(Boolean)
     .map(parseRecord)

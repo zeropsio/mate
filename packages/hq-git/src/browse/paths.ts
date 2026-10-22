@@ -7,6 +7,7 @@
  */
 import { GitError } from "../api.ts";
 import { terminate, type GitRunner } from "../git.ts";
+import { pathText } from "../pathText.ts";
 
 export interface PathList {
   readonly paths: ReadonlyArray<string>;
@@ -45,7 +46,7 @@ export const listPaths = async (
           truncated = true;
           break reading;
         }
-        paths.push(record.subarray(tab + 1).toString());
+        paths.push(pathText(record.subarray(tab + 1)));
       }
       pending = pending.subarray(at);
     }

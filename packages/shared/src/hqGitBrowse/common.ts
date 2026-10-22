@@ -6,6 +6,7 @@
  * @module hqGitBrowse/common
  */
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 
 /** What a person reads a ref as; `commit` where the page names a commit, not a ref. */
 export const GitRefKind = Schema.Literals([
@@ -34,8 +35,29 @@ export const GitRevision = Schema.String.check(
   ),
 );
 
+/**
+ * A path as HQ reads it from git (hq-git `pathText`): a byte that is not UTF-8 is the lone
+ * surrogate U+DC00 + byte, shown as "�". A URL cannot carry a lone surrogate: a query writes it
+ * `\xHH` and a backslash `\\`, so a path of text without a backslash reads the same in both.
+ */
+export const PathText = Schema.String.pipe(
+  Schema.decodeTo(
+    Schema.String,
+    SchemaTransformation.transform({
+      decode: (written: string) =>
+        written.replace(/\\(\\|x[89a-f][0-9a-f])/giu, (_, code: string) =>
+          code === "\\" ? code : String.fromCharCode(0xdc00 + Number.parseInt(code.slice(1), 16)),
+        ),
+      encode: (path: string) =>
+        path.replace(/[\\\uDC80-\uDCFF]/gu, (char) =>
+          char === "\\" ? "\\\\" : `\\x${(char.charCodeAt(0) - 0xdc00).toString(16)}`,
+        ),
+    }),
+  ),
+);
+
 /** A path inside a commit: `""` its top folder; never `.`, `..`, an empty segment or a backslash. */
-export const GitPath = Schema.String.check(
+export const GitPath = PathText.check(
   Schema.isMaxLength(4096),
   Schema.makeFilter((path: string) =>
     path.includes("\0") ||

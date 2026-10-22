@@ -9,6 +9,7 @@
  */
 import { GitError } from "../api.ts";
 import { terminate, type GitRunner } from "../git.ts";
+import { pathText } from "../pathText.ts";
 
 export interface GrepRequest {
   readonly q: string;
@@ -136,7 +137,7 @@ export const readMatches = async (
         if (end === -1 && textEnd - lineEnd - 1 < LINE_BYTES) break;
         if (matches.length === limits.matches)
           return { matches, truncated: true, deadlineHit: false };
-        const named = pending.subarray(at, pathEnd).toString();
+        const named = pathText(pending.subarray(at, pathEnd));
         matches.push({
           path: named.startsWith(prefix) ? named.slice(prefix.length) : named,
           line: Number(pending.subarray(pathEnd + 1, lineEnd).toString()),

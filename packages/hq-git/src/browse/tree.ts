@@ -6,6 +6,7 @@
  */
 import type { GitRunner } from "../git.ts";
 import { lookupPath, parseRecord } from "./object.ts";
+import { pathText } from "../pathText.ts";
 
 export const TREE_ENTRIES_LIMIT = 1000;
 /** Bytes of a listing read: a record cut by it is dropped, and the answer says it stops. */
@@ -66,7 +67,7 @@ export const listTree = async (
     signal,
     BYTES_LIMIT,
   );
-  const records = read.bytes.toString().split("\0");
+  const records = pathText(read.bytes).split("\0");
   if (read.truncated) records.pop();
   // Sorted whole, so a folder past the cut still lists before the files.
   const entries = records

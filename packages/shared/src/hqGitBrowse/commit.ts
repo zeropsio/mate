@@ -7,13 +7,14 @@
  */
 import * as Schema from "effect/Schema";
 import { Sha } from "../hqChanges.ts";
+import { PathText } from "./common.ts";
 
 export const GitCommitQuery = Schema.Struct({ sha: Sha });
 export type GitCommitQuery = typeof GitCommitQuery.Type;
 
 export const GitCommitFileQuery = Schema.Struct({
   sha: Sha,
-  path: Schema.String.check(
+  path: PathText.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(4096),
     Schema.makeFilter((path: string) => (path.includes("\0") ? "Expected a path" : undefined)),

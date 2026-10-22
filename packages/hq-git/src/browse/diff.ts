@@ -16,6 +16,7 @@
  * @module browse/diff
  */
 import { terminate, type GitRunner } from "../git.ts";
+import { pathText } from "../pathText.ts";
 
 export const DIFF_BUDGET = {
   files: 300,
@@ -141,7 +142,7 @@ const STATUS: Record<string, DiffFileStatus> = { A: "added", D: "deleted" };
 
 /** `--raw --numstat -z`: every file's status first, then its counts, both in the patch's order. */
 const changedFiles = (bytes: Buffer, truncated: boolean) => {
-  const fields = bytes.toString().split("\0");
+  const fields = pathText(bytes).split("\0");
   // A cut read never names a cut record as complete.
   if (truncated) fields.pop();
   const raw: Array<{

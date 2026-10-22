@@ -77,6 +77,53 @@ const commitAt = async (dir: string, ref: string, seconds: number, subject: stri
   return sha;
 };
 
+/** Bytes git holds as they are: `input` on stdin, stdout as bytes. */
+const plumbing = (dir: string, args: string[], input: Uint8Array) =>
+  NodeChildProcess.execFileSync("git", ["-C", dir, ...args], {
+    input,
+    env: {
+      PATH: "/usr/bin:/bin:/usr/local/bin",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: author.name,
+      GIT_AUTHOR_EMAIL: author.email,
+      GIT_COMMITTER_NAME: author.name,
+      GIT_COMMITTER_EMAIL: author.email,
+    },
+  })
+    .toString()
+    .trim();
+/** `files` (name bytes → text) committed on `parent` as `refs/heads/main`. */
+const commitBytes = (
+  dir: string,
+  files: ReadonlyArray<readonly [Uint8Array, string]>,
+  parent?: string,
+) => {
+  const entries = files.map(([name, text]) =>
+    Buffer.concat([
+      Buffer.from(
+        `100644 blob ${plumbing(dir, ["hash-object", "-w", "--stdin"], Buffer.from(text))}\t`,
+      ),
+      name,
+      Buffer.from([0]),
+    ]),
+  );
+  const tree = plumbing(dir, ["mktree", "-z"], Buffer.concat(entries));
+  const sha = plumbing(
+    dir,
+    [
+      "commit-tree",
+      tree,
+      ...(parent === undefined ? [] : ["-p", parent]),
+      "-m",
+      parent ? "two" : "one",
+    ],
+    new Uint8Array(),
+  );
+  plumbing(dir, ["update-ref", "refs/heads/main", sha], new Uint8Array());
+  return sha;
+};
+
 describe("git browse reads", () => {
   it.live("A branch name resolves once to the commit every later read of the page uses", () =>
     fixture(async (git, dir) => {
@@ -249,5 +296,64 @@ describe("git browse reads", () => {
       );
       expect(await value(git.browse.readme(repo, none, 256 * 1024))).toBeNull();
     }),
+  );
+  it.live(
+    "A file whose name is not UTF-8 lists, opens, and shows its history and blame by its exact bytes",
+    () =>
+      fixture(async (git, dir) => {
+        // Latin-1 `café.txt` beside a UTF-8 `café.txt`: two files, one shown name each.
+        const latin = Buffer.from("caf\xe9.txt", "latin1");
+        const utf8 = Buffer.from("café.txt");
+        const first = commitBytes(dir, [
+          [latin, "one\n"],
+          [utf8, "utf8\n"],
+        ]);
+        const second = commitBytes(
+          dir,
+          [
+            [latin, "one\ntwo\n"],
+            [utf8, "utf8\n"],
+          ],
+          first,
+        );
+        const name = "caf\udce9.txt";
+
+        const listed = await value(git.browse.paths(repo, second, 100));
+        expect(listed?.paths).toEqual(["café.txt", name]);
+        const tree = await value(git.browse.tree(repo, second, ""));
+        expect(tree.kind === "tree" ? tree.entries.map((entry) => entry.path) : tree.kind).toEqual([
+          "café.txt",
+          name,
+        ]);
+        const blob = await value(git.browse.blob(repo, second, name, { maxBytes: 1024 }));
+        expect(blob.kind === "blob" ? Buffer.from(blob.bytes).toString() : blob.kind).toBe(
+          "one\ntwo\n",
+        );
+        const history = await value(git.browse.log(repo, { sha: second, path: name }));
+        expect(history?.items.map((item) => item.sha)).toEqual([second, first]);
+        const blame = await value(git.browse.blame(repo, second, name, 1024));
+        expect(blame.kind === "blame" ? blame.ranges : blame.kind).toEqual([
+          { start: 1, count: 1, commit: first },
+          { start: 2, count: 1, commit: second },
+        ]);
+        const commit = await value(git.browse.commit(repo, second));
+        expect(commit?.files.map((file) => file.path)).toEqual([name]);
+        const patch = await value(git.browse.commitFile(repo, second, name));
+        expect(patch?.hunks).toContain("+two");
+        const compared = await value(git.browse.compareFile(repo, first, second, name));
+        expect(compared?.hunks).toContain("+two");
+        const found = await value(
+          git.browse.grep(
+            repo,
+            second,
+            { q: "two", path: name, mode: "fixed", caseSensitive: true },
+            { matches: 10, perFile: 10, lineChars: 200 },
+            new AbortController().signal,
+          ),
+        );
+        expect(
+          found.kind === "found" ? found.matches.map((match) => match.path) : found.kind,
+        ).toEqual([name]);
+      }),
   );
 });
