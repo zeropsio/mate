@@ -251,14 +251,6 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
  * Close codes pass through so the stream owner distinguishes rotation, going-away and refusal.
  */
 /**
- * Whether HQ's health says it is not the organization's official HQ: its anchor is gone, names
- * another, or its own credentials are wrong — never merely a standby, or a Zerops it cannot check.
- */
-export function saysNotOfficial(health: HqHealth): boolean {
-  return health.kind === "not-ready" && health.official !== "ok" && health.official !== "unknown";
-}
-
-/**
  * A write waits until the member list names `hq`: the page may read the HQ whose session the
  * account kept before it verified it, but writes nothing there. One it names not refuses the
  * write; trust ending without a verdict (the list refused for good, the session refused) fails it
@@ -309,8 +301,7 @@ async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else entered
  * through its door on the first call. A door that answers not serving, from an HQ whose health says
- * it is not the official one, makes this page forget its verdict, so the member list is read
- * again.
+ * it is not ready to, makes this page forget its verdict, so the member list is read again.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const platform = zeropsThrowawayPlatform(client, {
@@ -356,7 +347,8 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         }).catch(async (cause: unknown) => {
           if (cause instanceof HqError && cause.code === "not_active") {
             const health = await readAccountHqHealth(hq.address);
-            if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
+            // Not serving, and not ready to: the member list may name another HQ by now.
+            if (health.kind === "not-ready") forgetHqVerdict(clientId, hq);
           }
           throw cause;
         }),
@@ -393,16 +385,15 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
-   * everything keeps using it. `build` the Core it runs (`hq/update.ts`) and `parts` how they
-   * stand, as its stream or its health says them; each absent while neither has yet.
+   * Serving. `build` the Core it runs (`hq/update.ts`) and `parts` how they stand, as its stream
+   * or its health says them; each absent while neither has yet.
    */
   | {
-      readonly kind: "healthy" | "unchecked";
+      readonly kind: "healthy";
       readonly build?: string;
       readonly parts?: HqParts;
     }
-  /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
+  /** Not answering since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number }
   /**
    * Answering, and refusing this person's sign-in: no outage anybody else shares, so no time it
@@ -412,7 +403,7 @@ export type HqStanding =
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") return health;
+  if (health.kind === "healthy") return health;
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 

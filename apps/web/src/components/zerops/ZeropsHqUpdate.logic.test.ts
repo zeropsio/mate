@@ -109,13 +109,6 @@ describe("hqUpdateTrigger", () => {
       trigger: "Update available",
     },
     {
-      name: "an admin, HQ serving unchecked",
-      admin: true,
-      standing: { kind: "unchecked", build: OLDER, parts: { quarantined: [] } },
-      carried: CARRIED,
-      trigger: "Update available",
-    },
-    {
       name: "an admin, HQ on this Core",
       admin: true,
       standing: { kind: "healthy", build: CARRIED, parts: { quarantined: [] } },

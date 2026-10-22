@@ -97,7 +97,7 @@ export function hqUpdateTrigger(input: {
 }): "Update available" | "Up to date" | null {
   const { standing, carried, zerops } = input;
   if (!input.admin || carried === undefined) return null;
-  if (standing.kind !== "healthy" && standing.kind !== "unchecked") return null;
+  if (standing.kind !== "healthy") return null;
   if (standing.build !== undefined) {
     return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
   }
@@ -154,11 +154,7 @@ export function hqUpdateMount(input: {
   readonly last: HqUpdateMount | null;
 }): HqUpdateMount | null {
   const trigger = hqUpdateTrigger(input);
-  if (
-    trigger !== null &&
-    input.carried !== undefined &&
-    (input.standing.kind === "healthy" || input.standing.kind === "unchecked")
-  ) {
+  if (trigger !== null && input.carried !== undefined && input.standing.kind === "healthy") {
     return { trigger, answering: input.standing.build, carried: input.carried };
   }
   return input.admin && input.following ? input.last : null;

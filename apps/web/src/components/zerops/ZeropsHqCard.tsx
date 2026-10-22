@@ -129,10 +129,7 @@ export function ZeropsHqCard() {
               service,
               processes,
               carried,
-              answering:
-                standing.kind === "healthy" || standing.kind === "unchecked"
-                  ? standing.build
-                  : undefined,
+              answering: standing.kind === "healthy" ? standing.build : undefined,
             }),
           };
   const resolvedView = hqCardView({

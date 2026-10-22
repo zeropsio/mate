@@ -820,16 +820,13 @@ const changePath = ({ appId, repo, number }: ChangeLink): string =>
   `/api/apps/${encodeURIComponent(appId)}/changes/${encodeURIComponent(repo)}/${String(number)}`;
 
 /**
- * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads as the official
- * HQ; `unchecked` while it leads but cannot check Zerops right now — HQ's grace keeps it the
- * official HQ for ten minutes past its last answer (`apps/hq/src/official.ts`), and it serves
- * meanwhile; `not-ready` while it answers as anything else — a standby, an HQ whose anchor is
- * missing; `unreachable` while nothing answers as Core does.
+ * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads; `not-ready` while
+ * it answers as anything else — a standby, a Core still starting; `unreachable` while nothing
+ * answers as Core does.
  */
 export type HqHealth =
   | { readonly kind: "healthy"; readonly build: string; readonly parts: HqParts }
-  | { readonly kind: "unchecked"; readonly build: string; readonly parts: HqParts }
-  | { readonly kind: "not-ready"; readonly state: string; readonly official: string }
+  | { readonly kind: "not-ready"; readonly state: string }
   | { readonly kind: "unreachable" };
 
 /**
@@ -967,16 +964,13 @@ export async function readHqHealth(
       signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
     const body = (await response.json()) as Record<string, unknown>;
-    if (typeof body.state !== "string" || typeof body.official !== "string") {
+    if (typeof body.state !== "string") {
       return { kind: "unreachable" };
     }
     const build = typeof body.build === "string" ? body.build : "";
-    if (response.ok && body.state === "active" && body.official === "ok") {
-      return { kind: "healthy", build, parts: readHqParts(body) };
-    }
-    return response.ok && body.state === "active" && body.official === "unknown"
-      ? { kind: "unchecked", build, parts: readHqParts(body) }
-      : { kind: "not-ready", state: body.state, official: body.official };
+    return response.ok && body.state === "active"
+      ? { kind: "healthy", build, parts: readHqParts(body) }
+      : { kind: "not-ready", state: body.state };
   } catch {
     return { kind: "unreachable" };
   }

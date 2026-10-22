@@ -728,24 +728,24 @@ describe("readHqHealth", () => {
   it.each<[string, Response | "throw", Awaited<ReturnType<typeof readHqHealth>>]>([
     [
       "the official HQ leading",
-      json(200, { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" }),
+      json(200, { state: "active", db: "up", epoch: 8, build: "b1" }),
       { kind: "healthy", build: "b1", parts: { db: "up", quarantined: [] } },
     ],
     [
-      // Inside HQ's grace (`official.ts`): it leads and serves, Zerops just does not answer its check.
+      // An HQ that still sends its old verdict: the field is ignored, it leads and serves.
       "the official HQ leading, its check of Zerops unanswered",
       json(200, { state: "active", official: "unknown", db: "up", epoch: 8, build: "b1" }),
-      { kind: "unchecked", build: "b1", parts: { db: "up", quarantined: [] } },
+      { kind: "healthy", build: "b1", parts: { db: "up", quarantined: [] } },
     ],
     [
       "a standby that is not the official HQ yet",
-      json(200, { state: "standby", official: "anchor_missing", db: "up", epoch: 0, build: "b1" }),
-      { kind: "not-ready", state: "standby", official: "anchor_missing" },
+      json(200, { state: "standby", db: "up", epoch: 0, build: "b1" }),
+      { kind: "not-ready", state: "standby" },
     ],
     [
       "a Core that cannot serve",
-      json(503, { state: "starting", official: "unknown", db: "down", epoch: 0, build: "b1" }),
-      { kind: "not-ready", state: "starting", official: "unknown" },
+      json(503, { state: "starting", db: "down", epoch: 0, build: "b1" }),
+      { kind: "not-ready", state: "starting" },
     ],
     ["nothing answering", "throw", { kind: "unreachable" }],
     ["something else answering", new Response("<html>", { status: 502 }), { kind: "unreachable" }],
@@ -760,7 +760,7 @@ describe("readHqHealth", () => {
 });
 
 describe("readHqHealth — how HQ's parts stand", () => {
-  const leading = { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" };
+  const leading = { state: "active", db: "up", epoch: 8, build: "b1" };
   it.each<[string, Record<string, unknown>, unknown]>([
     [
       "its newest backup, its key and its database",

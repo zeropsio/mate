@@ -53,8 +53,7 @@ export function ChiefPage() {
   // An HQ on an older Core than this app's records no Chief: its update comes first.
   const standing = useAtomValue(hqStandingAtom);
   const carried = useCarriedCoreBuild();
-  const answering =
-    standing.kind === "healthy" || standing.kind === "unchecked" ? standing.build : undefined;
+  const answering = standing.kind === "healthy" ? standing.build : undefined;
   const view = chiefPageView({
     own,
     setup,

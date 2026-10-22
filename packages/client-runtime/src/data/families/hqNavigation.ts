@@ -17,7 +17,6 @@ import {
   HqNavigationPerson,
   HqNavigationPress,
   HqNavigationStatus,
-  type HqOfficialVerdict,
   HqPersonFacts as HqPersonFactsSchema,
   HqNavigationMate,
 } from "@t3tools/shared/hqStream";
@@ -50,10 +49,8 @@ export interface HqOrganizationViewer {
   readonly founder: boolean;
 }
 
-/** How the organization's HQ stands (`HqNavigationStatus`): its check of Zerops, its parts. */
+/** How the organization's HQ stands (`HqNavigationStatus`): its parts. */
 export interface HqStatusValue {
-  /** HQ's last check of Zerops that it is the official HQ; `null` before its first. */
-  readonly official: HqOfficialVerdict | null;
   readonly parts: HqParts;
 }
 
@@ -175,8 +172,7 @@ export const hqStatusFamily: FamilySpec<"hqStatus"> = {
     keyOf: () => "status",
     decode: (raw) =>
       Option.getOrNull(
-        Option.map(decodeStatus(raw), ({ official, parts }) => ({
-          official,
+        Option.map(decodeStatus(raw), ({ parts }) => ({
           parts: readHqParts(parts),
         })),
       ),

@@ -130,14 +130,7 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
   const organization = navigation.organization;
   const status = get(shownHqStatusAtom);
   if (!navigation.live || organization === null || status === null) return HQ_STANDING_UNKNOWN;
-  // HQ that is not the official one, as its own check of Zerops says, stands as unavailable.
-  if (status.official !== null && status.official !== "ok" && status.official !== "unknown")
-    return { kind: "unavailable", since: since ?? Date.now() };
-  return {
-    kind: status.official === "unknown" ? "unchecked" : "healthy",
-    build: organization.build,
-    parts: status.parts,
-  };
+  return { kind: "healthy", build: organization.build, parts: status.parts };
 }).pipe(Atom.withLabel("zerops:hq-standing"));
 
 /**

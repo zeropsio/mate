@@ -49,7 +49,6 @@ describe("nextHqStanding", () => {
   const parts = { quarantined: [] };
   const healthy = { kind: "healthy", build: "b1", parts } as const;
   const down = { kind: "unreachable" } as const;
-  const unchecked = { kind: "unchecked", build: "b1", parts } as const;
   it.each<[string, HqStanding, Parameters<typeof nextHqStanding>[1], HqStanding]>([
     [
       "a first answer as the official HQ",
@@ -66,7 +65,7 @@ describe("nextHqStanding", () => {
     [
       "an outage keeps the time it began",
       { kind: "unavailable", since: 1_000 },
-      { kind: "not-ready", state: "standby", official: "unknown" },
+      { kind: "not-ready", state: "standby" },
       { kind: "unavailable", since: 1_000 },
     ],
     [
@@ -74,25 +73,6 @@ describe("nextHqStanding", () => {
       { kind: "unavailable", since: 1_000 },
       healthy,
       { kind: "healthy", build: "b1", parts },
-    ],
-    // An HQ that serves but cannot check Zerops right now is no outage: everything keeps using it.
-    [
-      "an HQ that cannot check Zerops",
-      { kind: "healthy", build: "b1", parts },
-      unchecked,
-      { kind: "unchecked", build: "b1", parts },
-    ],
-    [
-      "an HQ answering again, Zerops still unchecked",
-      { kind: "unavailable", since: 1_000 },
-      unchecked,
-      { kind: "unchecked", build: "b1", parts },
-    ],
-    [
-      "an unchecked HQ that stops answering: unavailable from now",
-      { kind: "unchecked", build: "b1", parts },
-      down,
-      { kind: "unavailable", since: 5_000 },
     ],
     // The build it runs, as its health says it, so an offered update costs no read of its own.
     [
@@ -394,10 +374,10 @@ describe("useAccountHq — the official HQ this page holds", () => {
     const hq = await rendered("org-moved", [anchor("P_NEW", "https://new.example.test")]);
     expect(hq.reads()).toBe(0);
 
-    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
+    // The kept HQ's door: not serving, and its health says it is not ready to.
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
       String(input).endsWith("/health")
-        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
+        ? Response.json({ state: "standby", build: "b1" })
         : Response.json({ code: "not_active" }, { status: 503 }),
     );
     const client = {
@@ -434,10 +414,10 @@ describe("useAccountHq — the official HQ this page holds", () => {
     // An admin moved the anchor: the member list names another HQ now.
     members.splice(0, 1, anchor("P_NEW", "https://new.example.test"));
 
-    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
+    // The kept HQ's door: not serving, and its health says it is not ready to.
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
       String(input).endsWith("/health")
-        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
+        ? Response.json({ state: "standby", build: "b1" })
         : Response.json({ code: "not_active" }, { status: 503 }),
     );
     const client = {

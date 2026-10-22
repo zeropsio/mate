@@ -46,10 +46,9 @@ it.each([{ type: "retry" }, { type: "retry", scopes: [{ kind: "navigation" }] }]
 );
 
 it("status is a separate small navigation fact", () => {
-  expect(readStatus({ official: null, parts: { db: "up" } })).toEqual({
-    official: null,
-    parts: { db: "up" },
-  });
+  expect(readStatus({ parts: { db: "up" } })).toEqual({ parts: { db: "up" } });
+  // An HQ that still sends its old verdict decodes: the field is ignored, not refused.
+  expect(readStatus({ official: "ok", parts: { db: "up" } })).toEqual({ parts: { db: "up" } });
 });
 
 it("defines the definitive HTTP refusal separately from an unavailable response", () => {
