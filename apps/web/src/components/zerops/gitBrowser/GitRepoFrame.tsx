@@ -1,6 +1,6 @@
 /**
  * Every page of a repository stands in this frame: where it is, its way to GitHub and how HQ
- * follows it, Clone, which branch, tag or commit the pages read, and the pages' tabs.
+ * follows it, Clone and Download, which branch, tag or commit the pages read, and the pages' tabs.
  */
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import { githubRepositoryUrl } from "@t3tools/client-runtime/zerops/gitBrowse/home";
@@ -14,6 +14,7 @@ import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { GitTokenGuide } from "../GitTokenGuide";
 import { ZeropsGitCredentials } from "../ZeropsGitCredentials";
+import { GitArchiveButton, useGitArchive } from "./GitArchiveButton";
 import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
@@ -39,11 +40,15 @@ function ClonePopover({
   appId,
   repo,
   project,
+  sha,
 }: {
   readonly appId: string;
   readonly repo: string;
   readonly project: string;
+  /** The commit the pages read; none before it is known or where there is none. */
+  readonly sha: string | null;
 }) {
+  const archive = useGitArchive(appId, repo, sha);
   return (
     <Popover>
       <PopoverTrigger render={<Button variant="secondary" size="sm" />}>Clone</PopoverTrigger>
@@ -54,6 +59,7 @@ function ClonePopover({
             <ZeropsGitCredentials appId={appId} repo={repo} />
           </section>
           {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
+          {sha === null ? null : <GitArchiveButton archive={archive} />}
         </div>
       </PopoverPopup>
     </Popover>
@@ -142,7 +148,12 @@ export function GitRepoFrame({
                 Open on GitHub
               </Button>
             ) : null}
-            <ClonePopover appId={appId} repo={repo} project={project} />
+            <ClonePopover
+              appId={appId}
+              repo={repo}
+              project={project}
+              sha={home.state === "known" ? home.answer.sha : null}
+            />
           </div>
         }
       />
