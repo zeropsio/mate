@@ -70,6 +70,10 @@ const compare = (patch: Partial<GitCompare>): GitCompare => ({
   ...patch,
 });
 const home: GitBrowseView<GitHome> = { state: "unread", busy: false };
+const source = {
+  source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false },
+  again: () => {},
+} as const;
 
 const render = (shown: GitCompare, search: GitBrowseSearch) => {
   held.compare = { state: "known", answer: shown, busy: false, failed: false };
@@ -87,6 +91,7 @@ const render = (shown: GitCompare, search: GitBrowseSearch) => {
         search={search}
         home={home}
         onHomeAgain={() => undefined}
+        source={source}
         navigate={(next) => navigated.push(next)}
         hrefOf={(next) => `/git?${new URLSearchParams({ ...next })}`}
       />,
