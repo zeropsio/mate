@@ -389,6 +389,12 @@ export class Changes extends Context.Service<
      * by id, as they are.
      */
     readonly taskChanges: Stream.Stream<string>;
+    /**
+     * Each repository a Mate just opened a change in on a branch it named, with none of the branch
+     * recorded yet: where the branch is kept elsewhere (GitHub, `githubMirror.ts`), it is looked
+     * for at once.
+     */
+    readonly openedOnBranch: Stream.Stream<Repo>;
     /** Each comment a person posted on a change (`postComment`), once it is kept (`mateTasks.ts`). */
     readonly comments: Stream.Stream<ChangeCommented>;
     /**
@@ -682,6 +688,7 @@ export const changesLayer: Layer.Layer<
     const making = yield* Semaphore.make(1);
     const ticks = yield* SubscriptionRef.make(0);
     const taskChanged = yield* PubSub.unbounded<string>();
+    const openedUnrecorded = yield* PubSub.unbounded<Repo>();
     /** The tasks a change was opened for hear that it moved (`taskChanges`). */
     const tellTasksOf = (appId: string, repo: string, number: number) =>
       Effect.gen(function* () {
@@ -1311,13 +1318,17 @@ export const changesLayer: Layer.Layer<
             ),
             // Opened on a branch pushed before it: the change is at its head from the start. Its
             // head read again while none is recorded, as an opening whose read failed is retried.
+            // A named branch still unrecorded may be kept elsewhere, and is looked for there.
             Effect.flatMap((opened) =>
               opened.change === null || opened.change.head !== null
                 ? Effect.succeed(opened)
                 : Effect.gen(function* () {
                     const change = opened.change;
                     yield* gitHost.follow({ repo: { appId, id: repo }, ...branchOf(change) });
-                    return { ...opened, change: yield* changeIn(appId, repo, change.number) };
+                    const now = yield* changeIn(appId, repo, change.number);
+                    if (branch !== undefined && now.head === null)
+                      yield* PubSub.publish(openedUnrecorded, { appId, id: repo });
+                    return { ...opened, change: now };
                   }),
             ),
             // The task is HQ's to know; the Mate's answer stays the wire's.
@@ -1455,6 +1466,7 @@ export const changesLayer: Layer.Layer<
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
       taskChanges: Stream.fromPubSub(taskChanged),
+      openedOnBranch: Stream.fromPubSub(openedUnrecorded),
       comments: Stream.fromPubSub(commented),
       navigation: readChangeNavigationSource(sql),
       releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),

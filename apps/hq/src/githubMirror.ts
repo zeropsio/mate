@@ -1,13 +1,22 @@
 /**
  * A repository HQ mirrors to GitHub through the organization's app: GitHub's default branch is
  * upstream. HQ pushes its `main` to an empty repository, fast-forwards its own `main` to GitHub's
- * after a merge there, and pushes each open change's head to a branch of its own on GitHub, from
- * which `pullRequests.ts` keeps the change's pull request. GitHub's branches and tags follow into
- * HQ's copy under `refs/github/`, as GitHub has them; nothing there goes back.
+ * after a merge there, and pushes the head of each open change opened without a branch to a branch
+ * of its own on GitHub, from which `pullRequests.ts` keeps the change's pull request. GitHub's
+ * branches and tags follow into HQ's copy under `refs/github/`, as GitHub has them; nothing there
+ * goes back. A change its Mate opened on a branch it named is that branch on GitHub, where the Mate
+ * pushes it: HQ never pushes it, and its branch in HQ's copy follows GitHub's forward, so HQ keeps
+ * every head it records.
  *
  * @module githubMirror
  */
-import type { GitError, HqGit, MirrorRemote, Repo } from "@t3tools/hq-git";
+import {
+  type GitError,
+  type HqGit,
+  type MirrorRemote,
+  type Repo,
+  allocated,
+} from "@t3tools/hq-git";
 import { COMPARE_COMMITS_MAX } from "@t3tools/shared/hqChanges";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -71,6 +80,8 @@ export class GithubMirror extends Context.Service<
     /**
      * Push the change's head to its branch on GitHub (`mate/<number>-<slug>`, named once); its
      * name and the sha pushed, or `undefined` where the change has no head or the repo no mirror.
+     * A change on a branch its Mate named is on GitHub already, its head followed from there: its
+     * branch and head, never pushed.
      */
     readonly pushChange: (
       appId: string,
@@ -116,20 +127,20 @@ const githubLogin = (email: string) =>
   /^(?:\d+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$/u.exec(email)?.[1];
 
 /**
- * The open changes of `repo` whose head is not on GitHub yet — never one whose branch there
- * diverged while its head is still the one it diverged at.
+ * The open changes of `repo` opened without a branch whose head is not on GitHub yet — never one
+ * whose branch there diverged while its head is still the one it diverged at.
  */
 export const changesToPush = (sql: SqlClient.SqlClient, appId: string, repo: string) =>
   Effect.map(
-    sql<{ readonly number: number }>`
-      SELECT c.number FROM hq_change c
+    sql<{ readonly number: number; readonly branch: string }>`
+      SELECT c.number, c.branch FROM hq_change c
       LEFT JOIN hq_change_mirror m
         ON m.app_id = c.app_id AND m.repo = c.repo AND m.number = c.number
       WHERE c.app_id::text = ${appId} AND c.repo = ${repo} AND c.state = 'open'
         AND c.head IS NOT NULL AND c.head IS DISTINCT FROM m.pushed_sha
         AND c.head IS DISTINCT FROM m.diverged_head
       ORDER BY c.number`,
-    (rows) => rows.map((row) => row.number),
+    (rows) => rows.filter((row) => allocated(row.branch)).map((row) => row.number),
   );
 
 export interface GithubMirrorOptions {
@@ -435,9 +446,10 @@ export const githubMirrorLayer = (
       /** The repositories whose last follow of GitHub's other refs failed: said once, until one works. */
       const othersFailing = new Set<string>();
       /**
-       * GitHub's other branches and tags, as they are there now: what it deleted is named. Never
-       * decides the sync: one object git refuses anywhere there fails the whole fetch, every time, and
-       * main, its rules and its merges follow regardless; the next sync tries again.
+       * GitHub's other branches and tags, as they are there now: what it deleted is named; where
+       * each branch is, or none where they were not followed. Never decides the sync: one object
+       * git refuses anywhere there fails the whole fetch, every time, and main, its rules and its
+       * merges follow regardless; the next sync tries again.
        */
       const followOthers = (git: HqGit, at: Repo, remote: MirrorRemote) => {
         const key = `${at.appId}/${at.id}`;
@@ -448,20 +460,64 @@ export const githubMirrorLayer = (
             yield* Effect.logInfo("a ref deleted on GitHub left HQ's copy", { ...context, ref });
           if (othersFailing.delete(key))
             yield* Effect.logInfo("GitHub's other branches and tags followed again", context);
+          return refs.heads;
         }).pipe(
           Effect.catch((error) =>
             othersFailing.has(key)
-              ? Effect.void
+              ? Effect.succeed(undefined)
               : Effect.andThen(
                   Effect.sync(() => othersFailing.add(key)),
-                  Effect.logWarning("GitHub's other branches and tags not followed", {
-                    ...context,
-                    error,
-                  }),
+                  Effect.as(
+                    Effect.logWarning("GitHub's other branches and tags not followed", {
+                      ...context,
+                      error,
+                    }),
+                    undefined,
+                  ),
                 ),
           ),
         );
       };
+
+      /**
+       * Each open change of `at` on a branch its Mate named, at that branch's tip on GitHub
+       * (`heads`): its branch in HQ's copy made there or moved forward to it, as a push of it moves
+       * the change. A branch GitHub has not, or one rewritten there, moves nothing.
+       */
+      const followChanges = (git: HqGit, at: Repo, heads: ReadonlyMap<string, string>) =>
+        Effect.gen(function* () {
+          const open = yield* sql<{
+            readonly number: number;
+            readonly mate_project_id: string;
+            readonly branch: string;
+          }>`
+            SELECT number, mate_project_id, branch FROM hq_change
+            WHERE app_id::text = ${at.appId} AND repo = ${at.id} AND state = 'open'`;
+          for (const row of open) {
+            const tip = heads.get(row.branch);
+            if (allocated(row.branch) || tip === undefined) continue;
+            const change = { mateId: row.mate_project_id, number: row.number, branch: row.branch };
+            const kept = yield* git.changeHead(at, change);
+            if (kept === tip) continue;
+            const moved = yield* git.fastForwardChange(at, change, tip, kept);
+            if (moved.kind === "not_fast_forward")
+              yield* Effect.logWarning("a change's branch on GitHub left its head behind", {
+                appId: at.appId,
+                repo: at.id,
+                number: row.number,
+                head: kept,
+                github: tip,
+              });
+          }
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("changes' branches on GitHub not followed", {
+              appId: at.appId,
+              repo: at.id,
+              error,
+            }),
+          ),
+        );
 
       const sync: GithubMirror["Service"]["sync"] = (appId, repo) =>
         coalesced(
@@ -493,7 +549,8 @@ export const githubMirrorLayer = (
                 mate: outcome.mate,
                 github: outcome.github,
               });
-            yield* followOthers(git, at, remote);
+            const heads = yield* followOthers(git, at, remote);
+            if (heads !== undefined) yield* followChanges(git, at, heads);
             yield* govern(appId, repo);
             return outcome;
           }),
@@ -569,6 +626,8 @@ export const githubMirrorLayer = (
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
             if (change === undefined || change.state !== "open" || change.head === null)
               return undefined;
+            // On a branch its Mate named: GitHub has it, and its head came from there.
+            if (!allocated(change.branch)) return { branch: change.branch, sha: change.head };
             const [kept] = yield* sql<{ readonly branch: string; readonly pushed_sha: string }>`
               SELECT branch, pushed_sha FROM hq_change_mirror
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
@@ -733,6 +792,15 @@ export const githubMirrorLayer = (
           }
         }).pipe(
           Effect.catch((error) => Effect.logWarning("GitHub's push not followed", { error })),
+        ),
+      );
+
+      // A change just opened on a branch its Mate named, none of it recorded: GitHub may have it.
+      yield* Effect.forkScoped(
+        changes.openedOnBranch.pipe(
+          Stream.runForEach((at) =>
+            quietly("a mirrored repository not followed", { repo: at }, sync(at.appId, at.id)),
+          ),
         ),
       );
 
