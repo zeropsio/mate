@@ -229,6 +229,8 @@ export class Remotes extends Context.Service<
       ref: RemoteRef,
       url: string,
     ) => Effect.Effect<void, RemoteConnectError>;
+    /** Its Mates no longer fetch a followed GitHub repository: HQ alone keeps its code. */
+    readonly unfollow: (userId: string, ref: RemoteRef) => Effect.Effect<void, RemoteError>;
   }
 >()("@t3tools/hq/repoRemotes/Remotes") {}
 
@@ -550,26 +552,29 @@ export const repoRemotesLayer = Layer.effect(
       listRepos: Effect.fn("Remotes.listRepos")(function* (userId, appId) {
         const repos = yield* changes.listRepos(userId, appId);
         // A mirror says since when its histories diverged, and through the app whether GitHub
-        // lets only what Mate approved reach its default branch (`githubMirror.ts`).
+        // lets only what Mate approved reach its default branch (`githubMirror.ts`); a repository
+        // whose code HQ keeps says the GitHub repository it follows (`follow`).
         const mirrors = new Map(
           (yield* sql<{
             readonly repo: string;
             readonly since: string | null;
             readonly governance: string | null;
+            readonly upstream: string | null;
           }>`
-            SELECT repo, governance,
-              to_char(diverged_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS since
-            FROM hq_repo_mirror WHERE app_id::text=${appId}`).map(
-            (row) => [row.repo, row] as const,
-          ),
+            SELECT r.name AS repo, r.upstream, m.governance,
+              to_char(m.diverged_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS since
+            FROM hq_repo r LEFT JOIN hq_repo_mirror m ON m.app_id=r.app_id AND m.repo=r.name
+            WHERE r.app_id::text=${appId}`).map((row) => [row.repo, row] as const),
         );
         return yield* Effect.forEach(repos, (repo) =>
           Effect.map(remotes.get({ appId, repo: repo.name }), (row) => {
             const remote = row === undefined ? null : remoteForWire(row);
             const mirror = mirrors.get(repo.name);
             const governance = Option.getOrUndefined(decodeGovernance(mirror?.governance));
+            const follows = mirror?.upstream ?? undefined;
             return {
               ...repo,
+              ...(follows === undefined ? {} : { follows }),
               remote:
                 remote === null
                   ? remote
@@ -833,6 +838,13 @@ export const repoRemotesLayer = Layer.effect(
           );
         yield* leader.write(
           sql`UPDATE hq_repo SET upstream=${remote.url} WHERE app_id::text=${ref.appId} AND name=${ref.repo}`,
+        );
+        yield* SubscriptionRef.update(ticks, (n) => n + 1);
+      }),
+      unfollow: Effect.fn("Remotes.unfollow")(function* (userId: string, ref: RemoteRef) {
+        yield* authorize(userId);
+        yield* leader.write(
+          sql`UPDATE hq_repo SET upstream=NULL WHERE app_id::text=${ref.appId} AND name=${ref.repo}`,
         );
         yield* SubscriptionRef.update(ticks, (n) => n + 1);
       }),

@@ -1198,6 +1198,61 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    it.effect(
+      "people read the GitHub repository a repository follows, and stopping the follow leaves its code only in Mate for every Mate",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const shop = yield* mateWithChange(call, fake, owner);
+          const upstream = `/api/apps/${shop.appId}/repos/appdev/upstream`;
+          assert.strictEqual(
+            (yield* call("PUT", upstream, {
+              session: owner,
+              body: { url: "https://github.com/Acme/App.git" },
+            })).status,
+            204,
+          );
+          const appdev = Effect.map(
+            call("GET", `/api/apps/${shop.appId}/repos`, { session: owner }),
+            (answer) =>
+              (
+                answer.body as {
+                  readonly repos: ReadonlyArray<{
+                    readonly name: string;
+                    readonly remote: unknown;
+                    readonly follows?: unknown;
+                  }>;
+                }
+              ).repos.find((repo) => repo.name === "appdev"),
+          );
+          const followed = yield* appdev;
+          assert.deepStrictEqual(
+            [followed?.remote, followed?.follows],
+            [null, "https://github.com/acme/app.git"],
+          );
+          // Only who may record the follow stops it.
+          const stop = (session: string) => call("DELETE", upstream, { session });
+          const reader = yield* stop(yield* sessionFor(call, "door-reader"));
+          assert.deepStrictEqual(
+            [reader.status, (reader.body as { readonly reason?: unknown }).reason],
+            [403, "not_structure_writer"],
+          );
+          assert.strictEqual((yield* appdev)!.follows, "https://github.com/acme/app.git");
+          assert.strictEqual((yield* stop(owner)).status, 204);
+          assert.strictEqual((yield* appdev)!.follows, undefined);
+          assert.deepStrictEqual(
+            (
+              (yield* call("GET", "/api/mate/self", { headers: shop.auth })).body as {
+                readonly repos: unknown;
+              }
+            ).repos,
+            [{ name: "appdev" }, { name: "group" }],
+          );
+        }),
+    );
+
     it.effect("a Mate never sees another application's origin", () =>
       Effect.gen(function* () {
         const { call, fake, url } = yield* startCore(true);
