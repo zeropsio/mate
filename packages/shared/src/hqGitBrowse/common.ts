@@ -46,6 +46,9 @@ export const GitPath = Schema.String.check(
   ),
 );
 
+/** A file, never the top folder. */
+export const FilePath = GitPath.check(Schema.isMinLength(1));
+
 /** A file's bytes the browser shows; past them it shows these and says it stops. */
 export const SOURCE_FILE_MAX_BYTES = 256 * 1024;
 /** A file's bytes the browser reads at all (raw, download, an image); past them HQ refuses. */

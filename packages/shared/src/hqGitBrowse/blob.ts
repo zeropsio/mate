@@ -8,12 +8,9 @@
  */
 import * as Schema from "effect/Schema";
 import { Sha } from "../hqChanges.ts";
-import { GitPath } from "./common.ts";
+import { FilePath } from "./common.ts";
 
 export { RAW_MAX_BYTES, SOURCE_FILE_MAX_BYTES } from "./common.ts";
-
-/** A file, never the top folder. */
-const FilePath = GitPath.check(Schema.isMinLength(1));
 
 export const GitBlobQuery = Schema.Struct({ sha: Sha, path: FilePath });
 export type GitBlobQuery = typeof GitBlobQuery.Type;
