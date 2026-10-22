@@ -90,7 +90,11 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
 });
-async function view(file: GitBlob, search: GitBrowseSearch) {
+async function view(
+  file: GitBlob,
+  search: GitBrowseSearch,
+  pages: ReadonlyArray<string> = ["commits"],
+) {
   await act(async () =>
     root.render(
       <GitFileView
@@ -101,7 +105,7 @@ async function view(file: GitBlob, search: GitBrowseSearch) {
         search={search}
         navigate={navigate}
         hrefOf={hrefOf}
-        hasView={(page) => page === "commits"}
+        hasView={(page) => pages.includes(page)}
       />,
     ),
   );
@@ -177,6 +181,33 @@ describe("file view", () => {
     await view(blob(), { rev: "main", view: "code", path: "src/a.ts", kind: "file" });
     await press("History");
     expect(navigate).toHaveBeenLastCalledWith({ rev: "main", view: "commits", path: "src/a.ts" });
+  });
+
+  it("`b` toggles blame from the file view", async () => {
+    await view(blob(), { rev: "main", view: "code", path: "src/a.ts", kind: "file", lines: "L3" }, [
+      "commits",
+      "blame",
+    ]);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "b" }));
+    });
+    const blame = { rev: sha, view: "blame", path: "src/a.ts", lines: "L3" };
+    expect(navigate).toHaveBeenLastCalledWith(blame);
+    navigate.mockReset();
+    await press("Blame");
+    expect(navigate).toHaveBeenLastCalledWith(blame);
+  });
+
+  it("A file over 256 KiB offers no blame and says why", async () => {
+    await view(
+      blob({ size: 300 * 1024, truncated: true }),
+      { rev: "main", view: "code", path: "src/a.ts", kind: "file" },
+      ["commits", "blame"],
+    );
+    const pressable = [...host.querySelectorAll("button")].map((button) => button.textContent);
+    expect(pressable).toContain("History");
+    expect(pressable).not.toContain("Blame");
+    expect(host.textContent).toContain("Showing the first 256 KiB of 300 KiB.");
   });
 
   it("A markdown file opens rendered and offers its source", async () => {

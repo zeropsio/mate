@@ -8,6 +8,7 @@
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { blameRead } from "./blame.ts";
 import { blobRead } from "./blob.ts";
 import { commitFileRead, commitRead } from "./commit.ts";
 import { compareFileRead, compareRead } from "./compare.ts";
@@ -32,6 +33,7 @@ export const GIT_BROWSE_READS = {
   "compare-file": compareFileRead,
   paths: pathsRead,
   grep: grepRead,
+  blame: blameRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;

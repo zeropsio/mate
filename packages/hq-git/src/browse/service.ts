@@ -9,6 +9,7 @@ import type * as Effect from "effect/Effect";
 import type { GitError, Repo } from "../api.ts";
 import type { GitRunner } from "../git.ts";
 import type { InRepo } from "../operations.ts";
+import { readBlame, type BlameRead } from "./blame.ts";
 import { readCommit, readCommitFile, type CommitRead } from "./commit.ts";
 import { readCompare, readCompareFile, type CompareRead } from "./compare.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
@@ -20,6 +21,7 @@ import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } 
 import { resolveRevision, type Resolved } from "./resolve.ts";
 import { listTree, type TreeRead } from "./tree.ts";
 
+export type { BlameCommit, BlameRange, BlameRead } from "./blame.ts";
 export type { CompareRead } from "./compare.ts";
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
 export type { BlobRead } from "./blob.ts";
@@ -96,6 +98,13 @@ export interface HqGitBrowse {
     limits: GrepLimits,
     until: AbortSignal,
   ) => Effect.Effect<GrepResult, GitError>;
+  /** Which commit last changed each line of a file at a commit; none past `maxBytes`, only its size. */
+  readonly blame: (
+    repo: Repo,
+    sha: string,
+    path: string,
+    maxBytes: number,
+  ) => Effect.Effect<BlameRead, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -129,4 +138,6 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.grep", repo, (dir, signal) =>
       grepAt(git, dir, sha, request, limits, signal, until),
     ),
+  blame: (repo, sha, path, maxBytes) =>
+    inRepo("browse.blame", repo, (dir, signal) => readBlame(git, dir, sha, path, maxBytes, signal)),
 });

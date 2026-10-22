@@ -21,6 +21,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, principal } from "../api.ts";
 import { BROWSE_LIMIT, DoorRateLimit, TooManyRequests } from "../rateLimit.ts";
+import { blameRead } from "./blame.ts";
 import { blobRead } from "./blob.ts";
 import { commitRead } from "./commit.ts";
 import { commitFileRead } from "./commitFile.ts";
@@ -200,6 +201,7 @@ const BROWSE_READS = [
   route(compareFileRead),
   route(pathsRead),
   route(grepRead),
+  route(blameRead),
 ] as const;
 
 /** The reads share one heavy-read allowance per HQ. */
