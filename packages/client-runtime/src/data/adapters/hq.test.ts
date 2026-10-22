@@ -383,6 +383,63 @@ describe("hqNavigationLink", () => {
       }),
   );
 
+  it.effect.each([
+    { when: "after the link let it go", between: settle },
+    { when: "before the link looked", between: Effect.void },
+  ])(
+    "An application detail held again $when asks HQ for its records whole and reads them again",
+    ({ between }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        const scope = { kind: "app-detail", appId: "shop" } as const;
+        const subscribes = () =>
+          fixture.sent.flatMap(({ request }) =>
+            request.type === "subscribe"
+              ? request.scopes.filter((entry) => entry.scope.kind === "app-detail")
+              : [],
+          );
+        const first = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        yield* settle;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "detail",
+          revision: 2,
+          values: [{ key: "preflight:web", value: gitPreflight }],
+          removals: [],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* settle;
+        const read = () =>
+          hqAppDetail.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" });
+
+        first();
+        yield* between;
+        const again = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        yield* settle;
+
+        expect(subscribes()).toHaveLength(2);
+        expect(subscribes().at(-1)).toEqual({ scope, knownKeys: [] });
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "detail",
+          revision: 2,
+          values: [{ key: "preflight:web", value: gitPreflight }],
+          removals: [],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* settle;
+        expect(read().preflight).toEqual({ web: gitPreflight });
+        expect(read().read).toBe("read");
+        again();
+        link.stop();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect(
     "ending an HQ lifetime forgets protected Git facts and fences late input and holds",
     () =>

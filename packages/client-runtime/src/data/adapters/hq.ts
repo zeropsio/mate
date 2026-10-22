@@ -45,7 +45,7 @@ import * as Stream from "effect/Stream";
 
 import { detailScopeOf, makeDetailDemands, type DetailDemand } from "../demand.ts";
 import { decodeHqProtocol, hqProtocolScope } from "../families/hqProtocol.ts";
-import { FAMILIES, scopeSpec } from "../families/index.ts";
+import { FAMILIES, forgottenOnRelease, scopeSpec } from "../families/index.ts";
 import { hqMateFamily } from "../families/hqMate.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
@@ -191,13 +191,22 @@ export function hqNavigationLink(options: {
       });
     }
   };
+  /** The cursor last committed of each HQ scope, by `hqScopeKey`, across segments and attempts. */
+  const cursors = new Map<string, HqCursor>();
   const demands = makeDetailDemands({
     // A demanded scope's riders are demanded with it: their records come on its wire.
     demanded: (scope, demanded) =>
       Effect.runSync(
         Effect.map(Clock.currentTimeMillis, (now) => {
-          if (!demanded) store.dispatch({ kind: "release", scopes: fedBy(scope), now });
-          else
+          if (!demanded) {
+            const fed = fedBy(scope);
+            store.dispatch({ kind: "release", scopes: fed, now });
+            // What the release forgot is no longer held: the next hold asks HQ for it whole,
+            // never resuming from a cursor that says it is.
+            const registered = detailOf(scope);
+            if (registered !== null && fed.some(forgottenOnRelease))
+              cursors.delete(hqScopeKey(registered.wire));
+          } else
             for (const fed of fedBy(scope))
               store.dispatch({
                 kind: "stream",
@@ -278,8 +287,6 @@ export function hqNavigationLink(options: {
   };
   let stopHolding: (() => void) | null = null;
 
-  /** The cursor last committed of each HQ scope, by `hqScopeKey`, across segments and attempts. */
-  const cursors = new Map<string, HqCursor>();
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
   /** What the person saw while no socket was open, by project: told HQ on the next one. */
