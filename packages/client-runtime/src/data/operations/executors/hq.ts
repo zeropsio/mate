@@ -87,7 +87,7 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
-  Partial<Pick<HqApi, "repoRemoteViaApp">> &
+  Partial<Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream">> &
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
@@ -730,6 +730,27 @@ export function makeHqExecutor(ports: {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
             outcome: { kind: "pending" },
+          };
+        }
+        if (intent.kind === "follow-github-repository") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.followRepoUpstream === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to follow a GitHub repository whose code it keeps.",
+            });
+          yield* Effect.tryPromise({
+            try: () => api.followRepoUpstream!(intent.appId, intent.repo, { url: intent.url }),
+            catch: faultOf,
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            outcome: { kind: "succeeded", evidence: "HQ answered the write." },
           };
         }
         if (!("orgId" in intent))

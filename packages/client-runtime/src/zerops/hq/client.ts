@@ -7,6 +7,7 @@ import {
   type HqGithubManifestRequest,
   type HqRepoRemoteViaAppRequest,
 } from "@t3tools/shared/hqGithub";
+import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
@@ -507,6 +508,15 @@ export interface HqApi {
     appId: string,
     repo: string,
     request: HqRepoRemoteViaAppRequest,
+  ) => Promise<void>;
+  /**
+   * A repository's code kept in HQ while it follows a GitHub repository, with no token
+   * (`PUT /api/apps/:appId/repos/:repo/upstream`).
+   */
+  readonly followRepoUpstream?: (
+    appId: string,
+    repo: string,
+    request: FollowRepoUpstreamRequest,
   ) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
@@ -1591,6 +1601,13 @@ export function makeHqApi(input: {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app`,
         { method: "PUT", body: JSON.stringify(request satisfies HqRepoRemoteViaAppRequest) },
+        true,
+      );
+    },
+    followRepoUpstream: async (appId, repo, request) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
+        { method: "PUT", body: JSON.stringify(request satisfies FollowRepoUpstreamRequest) },
         true,
       );
     },

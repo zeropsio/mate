@@ -109,3 +109,50 @@ describe("mirroring a repository through the organization's GitHub app", () => {
     }),
   );
 });
+
+describe("following a GitHub repository whose code HQ keeps", () => {
+  const follow = {
+    kind: "follow-github-repository",
+    orgId,
+    appId,
+    repo: "appdev",
+    url: "https://github.com/acme/tea-shop",
+  } as const;
+
+  it.effect("asks HQ to follow that address, and ends on HQ's answer", () =>
+    Effect.gen(function* () {
+      const sent: Array<unknown> = [];
+      const r = rig({
+        followRepoUpstream: async (...args) => {
+          sent.push(args);
+        },
+      });
+      yield* r.operations.submit(follow);
+      expect(sent).toEqual([[appId, "appdev", { url: "https://github.com/acme/tea-shop" }]]);
+      expect(r.stage()).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "HQ's refusal",
+      api: {
+        followRepoUpstream: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "remote_refused",
+            status: 403,
+            message: "Only the organization's owner or admin can change this.",
+          });
+        },
+      },
+    },
+    { name: "an HQ that cannot follow one", api: {} },
+  ])("is refused by $name", ({ api }) =>
+    Effect.gen(function* () {
+      const r = rig(api);
+      yield* r.operations.submit(follow);
+      expect(r.stage()).toMatchObject({ stage: "refused" });
+    }),
+  );
+});
