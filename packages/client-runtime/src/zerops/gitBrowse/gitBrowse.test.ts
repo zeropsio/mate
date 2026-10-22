@@ -149,6 +149,11 @@ describe("Git browse reads", () => {
       read: "refs",
       params: { kind: "tag", cursor: "c".repeat(2049) },
     },
+    {
+      name: "a search folder outside the repository",
+      read: "grep",
+      params: { sha: "a".repeat(40), q: "tea", path: "/src" },
+    },
   ] as const)(
     // Refused, not failed: a definitive refusal is read again only on Again, never on its own.
     "A read asked with $name is refused in place and never sent",
