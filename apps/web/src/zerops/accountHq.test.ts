@@ -837,6 +837,28 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     });
   });
 
+  it("two organizations one HQ serves each come through their own door and bear their own session", async () => {
+    keepHqVerdict(
+      {
+        account: { apiOrigin: "https://api.example.test", accountId: "person-1" },
+        clientId: "org-2",
+      },
+      HQ,
+    );
+    const page = load();
+    await accountHqApi(page.client, "org-1", HQ).structure();
+    await accountHqApi(page.client, "org-2", HQ).structure();
+    expect(page.doors()).toBe(2);
+    expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
+
+    const reload = load();
+    await accountHqApi(reload.client, "org-1", HQ).structure();
+    expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(1)}`);
+    await accountHqApi(reload.client, "org-2", HQ).structure();
+    expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
+    expect(reload.doors()).toBe(0);
+  });
+
   it("a reload whose kept session is ending comes through one door, and keeps the new one", async () => {
     // HQ issued a session that ends in ten minutes: within the lead, it is not presented again.
     lifetimeMs = 10 * 60_000;
