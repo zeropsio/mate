@@ -51,9 +51,7 @@ export function useLinkedChange(
     if (owner !== null) account?.retryDetail({ family: "hqChangeRead", ownerId: owner });
   }, [account, owner]);
   if (owner === null || hq === null) return { kind: "idle" };
-  if (read.kind === "read")
-    return read.detail.change.state === "open" && read.detail.change.head === null
-      ? { kind: "gone", readAgain }
-      : { kind: "read", pull: pull! };
+  // One opened before its branch was pushed is read too: its review says so, and closes it.
+  if (read.kind === "read") return { kind: "read", pull: pull! };
   return { ...read, ...(read.kind === "gone" || read.kind === "unavailable" ? { readAgain } : {}) };
 }

@@ -83,6 +83,11 @@ export interface FlowPullRequest {
    */
   readonly state?: string | undefined;
   readonly headSha: string | undefined;
+  /**
+   * Open with nothing pushed yet (`HqChange.head` null): its branch absent, or holding nothing
+   * beyond its base. Only a change read on its own is one: the flows list pushed ones.
+   */
+  readonly unpushed?: true | undefined;
   readonly baseBranch: string;
   /** `appdev #4`; `#6` on the recipe repository, whose row wears the tag. */
   readonly line: string;
@@ -166,6 +171,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
+    ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
     baseBranch: FALLBACK_BASE,
     // Under its Mate the row does not say whose it is; a recipe change's row wears the tag, so
     // its number alone names it.
