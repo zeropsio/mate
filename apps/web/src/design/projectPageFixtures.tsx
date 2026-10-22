@@ -190,6 +190,7 @@ function PageHistory({ groupId }: { readonly groupId: string }) {
       mateName={(projectId) => MATES[projectId]?.name}
       onOpen={nothing}
       releases={groupId === "acme-store" ? ACME_HISTORY : TEA_HISTORY}
+      repo={{ appId: groupId, repo: "appdev" }}
     />
   );
 }

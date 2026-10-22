@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useRepositoryHistory } from "~/zerops/useRepositoryHistory";
 
+import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
 import { ChangeAge, ChangeRow } from "./ChangeRow";
 import {
   groupRepository,
@@ -43,11 +44,8 @@ export function ProjectHistory({
   readonly mateName: (projectId: string) => string | undefined;
   readonly onOpen: (change: FlowPullRequest, from: HTMLElement) => void;
 }) {
-  const history = useRepositoryHistory({
-    appId: groupId,
-    repo: flow === undefined ? undefined : groupRepository(flow.environments),
-    repos: flow?.repos,
-  });
+  const repository = flow === undefined ? undefined : groupRepository(flow.environments);
+  const history = useRepositoryHistory({ appId: groupId, repo: repository, repos: flow?.repos });
   const commits = history.kind === "read" ? history.commits : NO_COMMITS;
   const releases = useMemo(
     () =>
@@ -56,17 +54,28 @@ export function ProjectHistory({
         : undefined,
     [commits, flow],
   );
-  return <ProjectHistoryView face={face} mateName={mateName} onOpen={onOpen} releases={releases} />;
+  return (
+    <ProjectHistoryView
+      face={face}
+      mateName={mateName}
+      onOpen={onOpen}
+      releases={releases}
+      repo={repository === undefined ? undefined : { appId: groupId, repo: repository }}
+    />
+  );
 }
 
 export function ProjectHistoryView({
   releases,
+  repo,
   face,
   mateName,
   onOpen,
 }: {
   /** Newest first; `undefined` until HQ has told them. */
   readonly releases: ReadonlyArray<HistoryRelease> | undefined;
+  /** The repository its commits are on, to open them in the Git browser; none until known. */
+  readonly repo?: GitRepoAt | undefined;
   readonly face: (projectId: string) => ReactNode;
   readonly mateName: (projectId: string) => string | undefined;
   readonly onOpen: (change: FlowPullRequest, from: HTMLElement) => void;
@@ -100,6 +109,7 @@ export function ProjectHistoryView({
             }}
             open={opened.has(release.tag)}
             release={release}
+            repo={repo}
           />
         ))}
       </ul>
@@ -122,6 +132,7 @@ export function ProjectHistoryView({
 
 function ReleaseRow({
   release,
+  repo,
   open,
   onToggle,
   face,
@@ -129,6 +140,7 @@ function ReleaseRow({
   onOpen,
 }: {
   readonly release: HistoryRelease;
+  readonly repo: GitRepoAt | undefined;
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly face: (projectId: string) => ReactNode;
@@ -185,18 +197,25 @@ function ReleaseRow({
               />
             );
           })}
-          {release.outside.length === 0 ? null : <OutsideLine commits={release.outside} />}
+          {release.outside.length === 0 ? null : (
+            <OutsideLine commits={release.outside} repo={repo} />
+          )}
         </ul>
       ) : null}
     </li>
   );
 }
 
-/** A release's commits no Mate's change landed: one quiet line, opening to their subjects. */
+/**
+ * A release's commits no Mate's change landed: one quiet line, opening to their subjects, each
+ * opening its page in the Git browser.
+ */
 function OutsideLine({
   commits,
+  repo,
 }: {
   readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
+  readonly repo: GitRepoAt | undefined;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -218,7 +237,13 @@ function OutsideLine({
         <ul className="ov-history-subjects">
           {commits.map((commit) => (
             <li className="ov-change-line" key={commit.sha}>
-              {commit.subject}
+              {repo === undefined ? (
+                commit.subject
+              ) : (
+                <GitBrowserLink to={gitCommitLink(repo, commit.sha)} tone="muted">
+                  {commit.subject}
+                </GitBrowserLink>
+              )}
             </li>
           ))}
         </ul>
