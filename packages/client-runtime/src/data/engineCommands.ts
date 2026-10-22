@@ -279,7 +279,11 @@ export const engineAnswerVaultAsk =
       summary: input.outcome,
     });
 
-/** How an origin the Mate asked the person for ended, on its card: never a token. */
+/**
+ * Where the person keeps the code of an origin the Mate asked about, picked on its card: never a
+ * token. `connected`: on GitHub, mounted through the organization's GitHub app; `declined`: in
+ * Mate, GitHub only followed — the words every Mate server takes.
+ */
 export interface OriginAskAnswerInput {
   readonly threadId: string;
   readonly requestId: string;
@@ -287,8 +291,8 @@ export interface OriginAskAnswerInput {
 }
 
 /**
- * An origin asked of the person, answered: the outcome alone — the person's client connected it
- * in HQ itself. The engine words the record, so the summary sent is only the outcome's name.
+ * An origin asked of the person, answered: the pick alone — the person's client mounted it in HQ
+ * itself. The engine words the record, so the summary sent is only the outcome's name.
  */
 export const engineAnswerOriginAsk =
   (environmentId: string, input: OriginAskAnswerInput) => (host: MateEngineHost) =>

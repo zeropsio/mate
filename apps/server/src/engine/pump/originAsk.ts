@@ -1,9 +1,10 @@
 /**
- * A repository the agent asks the person to connect, read off zcp's answer to `zerops_origin
+ * A repository the agent asks the person about, read off zcp's answer to `zerops_origin
  * action=request`: its address, the HQ repository the pair will wire, and one line of why. zcp
- * writes nothing and answers at once; the engine opens the ask on that call and the person
- * connects the origin on its card with their own token — never through this answer, which holds
- * none. An origin already connected (`connected`) leaves the person nothing to do.
+ * writes nothing and answers at once; the engine opens the ask on that call and the person picks
+ * on its card where the code is kept — on GitHub, mounted through the organization's GitHub app,
+ * or in Mate, GitHub only followed. No token crosses this answer. An origin already connected
+ * (`connected`) leaves the person nothing to do.
  *
  * @module engine/pump/originAsk
  */
