@@ -114,12 +114,28 @@ describe("Delete, on a project's menu", () => {
     pending: Array.from({ length: pending }, () => ({}) as never),
   });
   it.each([
-    { name: "empty, to a writer: offered", group: group(0, 0), mayDelete: true, offered: true },
-    { name: "empty, to anyone else: not", group: group(0, 0), mayDelete: false, offered: false },
-    { name: "holding a Mate: not", group: group(1, 0), mayDelete: true, offered: false },
-    { name: "a Mate coming: not", group: group(0, 1), mayDelete: true, offered: false },
+    { name: "empty, to a writer: offered", group: group(0, 0), mayDelete: true, offered: "empty" },
+    {
+      name: "empty, to anyone else: not",
+      group: group(0, 0),
+      mayDelete: false,
+      offered: undefined,
+    },
+    { name: "holding a Mate: not", group: group(1, 0), mayDelete: true, offered: undefined },
+    { name: "a Mate coming: not", group: group(0, 1), mayDelete: true, offered: undefined },
   ])("$name", ({ group: given, mayDelete, offered }) => {
     expect(deleteOffered(given, mayDelete, { empty: true, deletingProjectIds: [] })).toBe(offered);
+  });
+
+  // app-delete-projects, 2026-10-22: HQ refuses the plain Delete of a project holding code or
+  // changes, so its Delete is the menu's, with its code.
+  it.each([
+    { name: "to a writer: offered with its code", mayDelete: true, offered: "with-code" },
+    { name: "to anyone else: not", mayDelete: false, offered: undefined },
+  ])("a project HQ says still holds code or changes, $name", ({ mayDelete, offered }) => {
+    expect(deleteOffered(group(0, 0), mayDelete, { empty: false, deletingProjectIds: [] })).toBe(
+      offered,
+    );
   });
 });
 
@@ -150,7 +166,7 @@ describe("HQ's word on an application's contents", () => {
     ["deleting", { empty: false, deletingProjectIds: ["zed"] }, "Deletion is still in progress."],
     ["empty", { empty: true, deletingProjectIds: [] }, "No Mate yet"],
   ] as const)("requires HQ's empty answer before offering Delete: %s", (_state, contents, line) => {
-    expect(deleteOffered({ environments: [], pending: [] }, true, contents)).toBe(
+    expect(deleteOffered({ environments: [], pending: [] }, true, contents) === "empty").toBe(
       contents?.empty === true,
     );
     expect(emptyMateLine(contents)).toBe(line);

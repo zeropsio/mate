@@ -236,7 +236,8 @@ import {
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
 import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
-import { applicationContents, deleteOffered, groupIsEmpty } from "./projects/emptyApps.logic";
+import { applicationContents, groupIsEmpty } from "./projects/emptyApps.logic";
+import { projectDeleteActions } from "./projects/projectDelete";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -2553,25 +2554,15 @@ export function ZeropsProjectsContent({
                 },
               ]
             : []),
-          // A project with nothing in it goes, at whoever writes the structure's word.
-          ...(deleteOffered(
+          // A project with no Mate goes, at whoever writes the structure's word.
+          ...projectDeleteActions({
             group,
-            orgOffer("delete_app").kind !== "refused",
-            applicationContents(hqStructure, activeOrganization?.id, group.groupId),
-          )
-            ? [
-                {
-                  id: "delete-group",
-                  label: `Delete ${group.name}…`,
-                  variant: "destructive" as const,
-                  // While HQ has not said or does not answer, drawn and not pressable.
-                  disabled: orgOffer("delete_app").kind !== "allowed",
-                  onSelect: () => {
-                    setRowDialog({ kind: "delete-group", group });
-                  },
-                },
-              ]
-            : []),
+            offer: orgOffer("delete_app").kind,
+            contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
+            openEmpty: () => {
+              setRowDialog({ kind: "delete-group", group });
+            },
+          }),
         ]}
         group={group}
       />
