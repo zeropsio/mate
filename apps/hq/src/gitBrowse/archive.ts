@@ -37,15 +37,25 @@ export const archiveRead = {
         give();
         return yield* new ChangeRefused({ code: "commit_not_found", reason: "commit_not_found" });
       }
-      // The stream's own deadline: it outlives the answer, and closes however it ends.
-      const deadline = setTimeout(
-        () => stream.destroy(new Error("Archive past its deadline")),
-        Duration.toMillis(ARCHIVE_DEADLINE),
-      );
-      stream.once("close", () => {
-        clearTimeout(deadline);
-        give();
+      // The stream outlives the answer: its own deadline ends it, and the allowance is given back
+      // once it closes, however it ends.
+      const closed = Effect.callback<void>((resume) => {
+        if (stream.closed) resume(Effect.void);
+        else stream.once("close", () => resume(Effect.void));
       });
+      yield* Effect.forkDetach(
+        closed.pipe(
+          Effect.timeoutOrElse({
+            duration: ARCHIVE_DEADLINE,
+            orElse: () =>
+              Effect.andThen(
+                Effect.sync(() => stream.destroy(new Error("Archive past its deadline"))),
+                closed,
+              ),
+          }),
+          Effect.ensuring(Effect.sync(give)),
+        ),
+      );
       const answer: BrowseStream = {
         stream,
         contentType: CONTENT_TYPE[query.format],

@@ -3,6 +3,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Duration from "effect/Duration";
@@ -124,18 +125,21 @@ describe("Git browser archive on HQ", () => {
           sha,
           NodeCrypto.randomBytes(32 * 1024 * 1024),
         );
-        const held = new AbortController();
-        const streaming = yield* Effect.promise(() =>
-          fetch(`${origin}${path("tar.gz", large)}`, {
-            headers: { authorization: `Bearer ${owner}` },
-            signal: held.signal,
-          }),
+        const streaming = yield* Effect.promise(
+          () =>
+            new Promise<NodeHttp.IncomingMessage>((resolve, reject) =>
+              NodeHttp.get(
+                `${origin}${path("tar.gz", large)}`,
+                { headers: { authorization: `Bearer ${owner}` } },
+                resolve,
+              ).on("error", reject),
+            ),
         );
-        assert.strictEqual(streaming.status, 200);
-        assert.strictEqual(streaming.headers.get("content-type"), "application/gzip");
+        assert.strictEqual(streaming.statusCode, 200);
+        assert.strictEqual(streaming.headers["content-type"], "application/gzip");
         const busy = yield* call("GET", path("zip"), { session: owner });
         assert.strictEqual(busy.status, 503);
-        held.abort();
+        streaming.destroy();
       }),
     );
   });
