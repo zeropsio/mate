@@ -613,6 +613,23 @@ const commentOf = (row: CommentRow): HqChangeComment => ({
   createdAt: row.created_at,
 });
 
+/**
+ * A Mate's description without a leading heading "What it does" — at any level, in any case, a
+ * colon after it: HQ heads the description with it wherever it shows it (the change's review, its
+ * pull request), so the words say it once. A heading further down is the Mate's own.
+ */
+const describedOnce = (body: string) => {
+  const lines = body.split(/\r?\n/u);
+  const first = lines.findIndex((line) => line.trim() !== "");
+  const heading = first === -1 ? undefined : /^#{1,6}\s+(.*?)\s*#*\s*$/u.exec(lines[first]!.trim());
+  if (heading?.[1]?.replace(/:$/u, "").trim().toLowerCase() !== "what it does") return body;
+  return lines
+    .slice(first + 1)
+    .join("\n")
+    .replace(/^\s*\n/u, "")
+    .trimEnd();
+};
+
 /** A change as this HQ records it: always on a branch it names. */
 type RecordedChange = HqChange & { readonly branch: string };
 
@@ -1377,8 +1394,12 @@ export const changesLayer: Layer.Layer<
             WHERE app_id = ${placed.app_id}::uuid AND tier = 'production' LIMIT 1`;
           return rows.length > 0;
         }),
-      editChange: (projectId, repo, number, edit) =>
+      editChange: (projectId, repo, number, written) =>
         Effect.gen(function* () {
+          const edit =
+            written.body === undefined
+              ? written
+              : { ...written, body: describedOnce(written.body) };
           const appId = yield* mateChange(projectId, repo, number);
           const edited = yield* touched(
             leader.write(
