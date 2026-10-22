@@ -154,6 +154,10 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",
+  // A change handed to another Mate once its own is gone (`HAND_REFUSALS`).
+  change_has_mate: "This change's Mate is in the project, so it stays that Mate's.",
+  not_app_mate: "That Mate is no longer in this project.",
+  mate_has_change: "That Mate has an open change of its own in this repository.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
   // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).

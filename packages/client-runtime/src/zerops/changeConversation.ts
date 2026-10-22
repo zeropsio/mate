@@ -98,6 +98,22 @@ export function changeAskPrompt(input: {
   return `On ${change}:\n\n${input.said.trim()}\n\nDo that, then push.`;
 }
 
+/**
+ * The words a Mate is sent once a person hands it a change whose own Mate is gone: HQ took the
+ * branch's rights from the gone Mate and gave them to this one, which carries the work on there.
+ */
+export function changeHandedPrompt(input: {
+  readonly repository: string;
+  readonly number: number;
+  readonly title: string;
+  /** The branch it is on, where HQ said. */
+  readonly branch: string | undefined;
+}): string {
+  const change = `#${String(input.number)} "${input.title}" on ${input.repository}`;
+  const branch = input.branch === undefined ? "its branch" : `branch ${input.branch}`;
+  return `Change ${change} is yours now: its Mate is gone. Its work so far is on ${branch} in HQ. Fetch that branch, carry the change on there, and push to it.`;
+}
+
 /** What the *Ask* button says, named after the Mate where there is one. */
 export function changeAskLabel(mateName: string | undefined): string {
   return mateName === undefined ? "Ask the Mate" : `Ask ${mateName}`;

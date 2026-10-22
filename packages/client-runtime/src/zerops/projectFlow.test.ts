@@ -786,6 +786,21 @@ describe("changeState", () => {
     expect(changeState({ number: 1, ...pull })?.word).toBe(word);
   });
 
+  // Its Mate gone, nobody carries it on: a person closes it or hands it to another Mate.
+  it.each([
+    ["one that merges cleanly", { mergeability: "mergeable", ready: true }],
+    ["one that conflicts", { mergeability: "conflicting" }],
+    ["a draft", { mergeability: "mergeable", ready: false }],
+  ] as const)(
+    "says an open change whose Mate is gone is so before anything else, %s",
+    (_case, pull) => {
+      expect(changeState({ number: 1, mateGone: true, ...pull })).toEqual({
+        word: "Mate gone",
+        tone: "attention",
+      });
+    },
+  );
+
   it("carries the tone that means the word", () => {
     expect(changeState({ number: 4, mergeability: "conflicting" })?.tone).toBe("attention");
     expect(changeState({ number: 4, mergeability: "checking" })?.tone).toBe("busy");

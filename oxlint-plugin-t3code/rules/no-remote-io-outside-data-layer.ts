@@ -281,6 +281,7 @@ export const HQ_CLIENT_VERBS = [
   "commentOnChange",
   "mergeChange",
   "closeChange",
+  "handChange",
   "changeAttachment",
   "mateRecipe",
   "release",

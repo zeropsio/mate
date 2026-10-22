@@ -77,6 +77,12 @@ declare module "../model.ts" {
       readonly link: ChangeLink;
       readonly expectedHead: string | null;
     };
+    readonly "hand-change": {
+      readonly orgId: string;
+      readonly link: ChangeLink;
+      /** The application's Mate the change whose Mate is gone becomes. */
+      readonly mateProjectId: string;
+    };
   }
   interface OperationResults {
     /** The release HQ made, by its tag, and where its deploys stand as HQ answered. */
@@ -269,6 +275,24 @@ export const closeChangeWrite: OperationKind<"close-change"> = {
     changeOf(read, intent.link)?.state === "closed" ? [changeHandle(intent.link)] : [],
 };
 
+/** Whether HQ's detail holds the change as the Mate's it was handed to. */
+const handed = (read: ProjectionReads, intent: IntentOf<"hand-change">) =>
+  changeOf(read, intent.link)?.mateProjectId === intent.mateProjectId;
+
+export const handChangeWrite: OperationKind<"hand-change"> = {
+  kind: "hand-change",
+  executor: "hq",
+  reflected: (read, intent) => handed(read, intent),
+  settledBy: (read, intent) => {
+    if (handed(read, intent)) return { kind: "succeeded" };
+    return (changeOf(read, intent.link)?.state ?? "open") === "open"
+      ? null
+      : { kind: "failed", reason: "The change is merged or closed already." };
+  },
+  observedIn: (intent) => appDetail(intent.link.appId),
+  effectHandles: (read, intent) => (handed(read, intent) ? [changeHandle(intent.link)] : []),
+};
+
 export const FLOW_WRITE_KINDS = [
   releaseWrite,
   rollBackWrite,
@@ -276,6 +300,7 @@ export const FLOW_WRITE_KINDS = [
   addServiceWrite,
   mergeChangeWrite,
   closeChangeWrite,
+  handChangeWrite,
 ] as const;
 
 /** A flow write's intent, whichever it is. */

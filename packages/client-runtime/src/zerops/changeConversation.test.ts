@@ -5,6 +5,7 @@ import {
   changeAskLabel,
   changeAskPrompt,
   changeConversationCount,
+  changeHandedPrompt,
   changeRemarks,
 } from "./changeConversation.ts";
 
@@ -101,6 +102,25 @@ describe("changeConversationCount", () => {
       me: undefined,
     });
     expect(changeConversationCount(remarks)).toBe(expected);
+  });
+});
+
+describe("changeHandedPrompt", () => {
+  const change = { repository: "appdev", number: 4, title: "Cache the link previews" };
+
+  it.each<[string, string | undefined, string]>([
+    [
+      "tells the Mate a change handed to it is its own now, and the branch its work goes on",
+      "fix-login",
+      'Change #4 "Cache the link previews" on appdev is yours now: its Mate is gone. Its work so far is on branch fix-login in HQ. Fetch that branch, carry the change on there, and push to it.',
+    ],
+    [
+      "says its branch without naming one HQ did not say",
+      undefined,
+      'Change #4 "Cache the link previews" on appdev is yours now: its Mate is gone. Its work so far is on its branch in HQ. Fetch that branch, carry the change on there, and push to it.',
+    ],
+  ])("%s", (_name, branch, words) => {
+    expect(changeHandedPrompt({ ...change, branch })).toBe(words);
   });
 });
 

@@ -447,6 +447,7 @@ export {
 export {
   changeAskLabel,
   changeAskPrompt,
+  changeHandedPrompt,
   changeConversationCount,
   changeRemarks,
   type ChangeRemark,
@@ -469,6 +470,7 @@ export {
   type ReleaseReviewInput,
   type ReleaseReviewModel,
   type ReviewClose,
+  type ReviewHand,
   type ReviewFix,
   type ReviewFixProblem,
   type ReviewModel,

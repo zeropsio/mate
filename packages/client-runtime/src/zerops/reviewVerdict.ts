@@ -261,6 +261,8 @@ export interface ChangeReviewInput {
     readonly firstCodeMerge?: boolean | undefined;
     /** HQ's word, once it merged, that GitHub merged it of a head no person merged in Mate. */
     readonly landedOutside?: boolean | undefined;
+    /** HQ's word that it is open and its Mate is no longer one of the application's. */
+    readonly mateGone?: true | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -318,7 +320,31 @@ export interface ChangeReviewInput {
   readonly offered: { readonly merge: boolean; readonly close: boolean } | undefined;
   readonly press?: ReviewPress | undefined;
   readonly close?: ReviewClose | undefined;
+  /** The application's Mates a change whose Mate is gone may be handed to. */
+  readonly heirs?: ReadonlyArray<{ readonly projectId: string; readonly name: string }> | undefined;
+  readonly hand?: ReviewHand | undefined;
   readonly now: number;
+}
+
+/** Handing a change whose Mate is gone to another Mate, as the caller holds it. */
+export type ReviewHand =
+  | { readonly kind: "idle" }
+  | { readonly kind: "running"; readonly to: string }
+  | { readonly kind: "refused"; readonly reason: string }
+  | { readonly kind: "done"; readonly to: string };
+
+/** What a change whose Mate is gone says, and the Mates it may be handed to. */
+export interface ReviewOrphan {
+  readonly text: string;
+  readonly options: ReadonlyArray<{
+    readonly projectId: string;
+    readonly label: string;
+    readonly enabled: boolean;
+  }>;
+}
+
+export interface ChangeReviewModel extends ReviewModel {
+  readonly orphan?: ReviewOrphan | undefined;
 }
 
 /** What merging takes, said where Merge would stand for a person HQ would refuse it to. */
@@ -880,9 +906,53 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   };
 }
 
+const ORPHANED = "Its Mate is no longer in this project, so nobody works on it.";
+
+/**
+ * An open change whose Mate is gone: said, with Close in the foot and Hand to each other Mate of the
+ * application for a person HQ lets close it — handing over takes the same right.
+ */
+function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
+  const { pull } = input;
+  const close = input.close ?? { kind: "idle" };
+  if (pull.mateGone !== true || pull.merged || pull.state === "closed" || close.kind !== "idle")
+    return undefined;
+  const hand = input.hand ?? { kind: "idle" };
+  const heirs = input.heirs ?? [];
+  const nameOf = (projectId: string) =>
+    heirs.find((heir) => heir.projectId === projectId)?.name ?? "another Mate";
+  if (hand.kind === "done")
+    return {
+      text: `Handed to ${nameOf(hand.to)}, who goes on with it on its branch.`,
+      options: [],
+    };
+  if (input.offered?.close === false) return { text: ORPHANED, options: [] };
+  const options = heirs.map((heir) => ({
+    projectId: heir.projectId,
+    label:
+      hand.kind === "running" && hand.to === heir.projectId
+        ? `Handing to ${heir.name}…`
+        : `Hand to ${heir.name}`,
+    enabled: input.offered?.close === true && hand.kind !== "running",
+  }));
+  const text =
+    hand.kind === "refused"
+      ? `Not handed over. ${hand.reason}`
+      : input.offered === undefined
+        ? ORPHANED
+        : heirs.length === 0
+          ? `${ORPHANED} Close it, or start another Mate to hand it to.`
+          : `${ORPHANED} Close it, or hand it to another Mate to go on with it.`;
+  return { text, options };
+}
+
 /** One review policy for every client; absent pipeline evidence stays visibly unknown. */
-export function changeReview(input: ChangeReviewInput): ReviewModel {
-  return { ...changeReviewModel(input), pipeline: changePipelineOf(input.pull) };
+export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
+  return {
+    ...changeReviewModel(input),
+    pipeline: changePipelineOf(input.pull),
+    orphan: orphanOf(input),
+  };
 }
 
 // ---------------------------------------------------------------------------

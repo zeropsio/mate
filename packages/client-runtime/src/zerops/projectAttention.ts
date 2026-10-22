@@ -29,6 +29,7 @@
 
 import { pullRequestBlocked } from "./gitTab.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
+import { REVIEW_LABEL } from "./reviewVerdict.ts";
 
 export type ProjectAttentionKind =
   | "mate-waiting"
@@ -113,6 +114,16 @@ export function projectAttention(
   }
 
   for (const pull of input.pullRequests) {
+    // Its Mate gone, nobody can be asked: its review closes it or hands it to another Mate.
+    if (pull.mateGone === true) {
+      items.push({
+        kind: "change-blocked",
+        text: `#${String(pull.number)}'s Mate is gone`,
+        verb: REVIEW_LABEL,
+        target: { kind: "change", repository: pull.repository, number: pull.number },
+      });
+      continue;
+    }
     const blocked = pullRequestBlocked(pull);
     // Checks merely running are not waiting on anybody: waiting is correct.
     if (blocked === null || blocked.ask === undefined) continue;

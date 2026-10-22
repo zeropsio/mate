@@ -98,6 +98,26 @@ describe("projectAttention", () => {
     expect(item?.verb).toBe("Ask the Mate");
   });
 
+  // Its Mate gone, nobody can be asked: the change's review closes it or hands it over.
+  it.each([
+    ["one that merges cleanly", "mergeable"],
+    ["one that conflicts", "conflicting"],
+  ] as const)(
+    "asks a person to close or hand over an open change whose Mate is gone, %s",
+    (_case, mergeability) => {
+      expect(
+        projectAttention({ ...EMPTY, pullRequests: [pull({ mergeability, mateGone: true })] }),
+      ).toEqual([
+        {
+          kind: "change-blocked",
+          text: "#4's Mate is gone",
+          verb: "Review",
+          target: { kind: "change", repository: "appdev", number: 4 },
+        },
+      ]);
+    },
+  );
+
   it("leaves a change HQ is still checking alone: waiting is the correct move", () => {
     const items = projectAttention({
       ...EMPTY,

@@ -80,7 +80,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
- *   change, merged or closed. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
+ *   change, merged or closed; `POST …/hand` `{ mateProjectId }` → the change, a gone Mate's
+ *   handed to another of the application's Mates. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
  *   `GET /api/apps/:appId/recipe/:tier`, and a Mate's own, `GET /api/mate/recipe/:tier`. And `GET
  *   /changes/:appId/:repo/:n`, a change's address at HQ,
  *   redirects to the change in the hosted client.
@@ -129,6 +130,7 @@ import {
   EnsureRepoRequest,
   MergeChangeRequest,
   CloseChangeRequest,
+  HandChangeRequest,
   OpenChangeRequest,
   PostCommentRequest,
   RepoName,
@@ -940,6 +942,25 @@ const routes = (
               const { appId, repo, number } = yield* appChangePath;
               return json(
                 yield* (yield* PullRequests).close(userId, appId, repo, number, expectedHead),
+                200,
+              );
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/hand",
+      handle(
+        Effect.gen(function* () {
+          const { mateProjectId } = yield* jsonBody(HandChangeRequest, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const { appId, repo, number } = yield* appChangePath;
+              return json(
+                yield* (yield* Changes).handChange(userId, appId, repo, number, mateProjectId),
                 200,
               );
             }),

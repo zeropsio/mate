@@ -1271,6 +1271,112 @@ describe("changeReview: Close without merging, the review its one confirmation (
   });
 });
 
+describe("changeReview: an open change whose Mate is gone", () => {
+  const GONE = pull({ mateGone: true });
+  const HEIRS = [
+    { projectId: "p-sage", name: "Sage" },
+    { projectId: "p-juno", name: "Juno" },
+  ];
+  const CLOSE = { label: "Close without merging…", enabled: true };
+
+  it.each<
+    [
+      string,
+      Partial<ChangeReviewInput>,
+      ReturnType<typeof changeReview>["orphan"],
+      ReturnType<typeof changeReview>["secondary"],
+    ]
+  >([
+    [
+      "says so and offers a person who may close it Close, and Hand to each other Mate of the application",
+      { pull: GONE, heirs: HEIRS },
+      {
+        text: "Its Mate is no longer in this project, so nobody works on it. Close it, or hand it to another Mate to go on with it.",
+        options: [
+          { projectId: "p-sage", label: "Hand to Sage", enabled: true },
+          { projectId: "p-juno", label: "Hand to Juno", enabled: true },
+        ],
+      },
+      CLOSE,
+    ],
+    [
+      "offers Close alone where the application has no other Mate",
+      { pull: GONE, heirs: [] },
+      {
+        text: "Its Mate is no longer in this project, so nobody works on it. Close it, or start another Mate to hand it to.",
+        options: [],
+      },
+      CLOSE,
+    ],
+    [
+      "offers neither Close nor Hand to a person who may not close it",
+      { pull: GONE, heirs: HEIRS, offered: { merge: true, close: false } },
+      { text: "Its Mate is no longer in this project, so nobody works on it.", options: [] },
+      undefined,
+    ],
+    [
+      "holds Hand back while HQ has not said whether the person may close it",
+      { pull: GONE, heirs: HEIRS.slice(0, 1), offered: undefined },
+      {
+        text: "Its Mate is no longer in this project, so nobody works on it.",
+        options: [{ projectId: "p-sage", label: "Hand to Sage", enabled: false }],
+      },
+      undefined,
+    ],
+    ["says nothing of it where its Mate is the application's", { heirs: HEIRS }, undefined, CLOSE],
+    [
+      "says nothing of it once it is closed",
+      { pull: { ...GONE, state: "closed" }, heirs: HEIRS },
+      undefined,
+      undefined,
+    ],
+    [
+      "says nothing of it while it is being closed",
+      { pull: GONE, heirs: HEIRS, close: { kind: "asked" } },
+      undefined,
+      { label: "Keep it open", enabled: true },
+    ],
+  ])("%s", (_name, over, orphan, secondary) => {
+    const review = changeReview(change(over));
+    expect(review.orphan).toEqual(orphan);
+    expect(review.secondary).toEqual(secondary);
+  });
+
+  it.each<
+    [string, NonNullable<ChangeReviewInput["hand"]>, ReturnType<typeof changeReview>["orphan"]]
+  >([
+    [
+      "while it is handed over, every Hand waits and the one pressed says so",
+      { kind: "running", to: "p-juno" },
+      {
+        text: "Its Mate is no longer in this project, so nobody works on it. Close it, or hand it to another Mate to go on with it.",
+        options: [
+          { projectId: "p-sage", label: "Hand to Sage", enabled: false },
+          { projectId: "p-juno", label: "Handing to Juno…", enabled: false },
+        ],
+      },
+    ],
+    [
+      "refused, it says HQ's words and a deliberate press tries again",
+      { kind: "refused", reason: "That Mate has an open change of its own in this repository." },
+      {
+        text: "Not handed over. That Mate has an open change of its own in this repository.",
+        options: [
+          { projectId: "p-sage", label: "Hand to Sage", enabled: true },
+          { projectId: "p-juno", label: "Hand to Juno", enabled: true },
+        ],
+      },
+    ],
+    [
+      "handed, it says who goes on with it, before HQ's stream brings its new Mate",
+      { kind: "done", to: "p-juno" },
+      { text: "Handed to Juno, who goes on with it on its branch.", options: [] },
+    ],
+  ])("%s", (_name, hand, orphan) => {
+    expect(changeReview(change({ pull: GONE, heirs: HEIRS, hand })).orphan).toEqual(orphan);
+  });
+});
+
 describe("changeReview: a change closed without merging", () => {
   it("says so, and offers no Merge", () => {
     const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
