@@ -149,6 +149,11 @@ describe("Git browse reads", () => {
       read: "refs",
       params: { kind: "tag", cursor: "c".repeat(2049) },
     },
+    {
+      name: "a search folder outside the repository",
+      read: "grep",
+      params: { sha: "a".repeat(40), q: "tea", path: "/src" },
+    },
   ] as const)(
     // Refused, not failed: a definitive refusal is read again only on Again, never on its own.
     "A read asked with $name is refused in place and never sent",
@@ -175,6 +180,46 @@ describe("Git browse reads", () => {
       await refused;
       expect(registry.get(projected)).toMatchObject({ state: "refused", reason: "invalid" });
       expect(sent).toEqual([]);
+      release();
+      reader.close();
+      registry.dispose();
+    },
+  );
+
+  it.each([
+    {
+      name: "A search",
+      read: "grep",
+      params: { sha: home.sha!, q: "tea" },
+      words: "HQ is busy with other searches. Read again in a moment.",
+    },
+    {
+      name: "A blame",
+      read: "blame",
+      params: { sha: home.sha!, path: "src/a.ts" },
+      words: "HQ is too busy to read this blame now. Read again in a moment.",
+    },
+    {
+      name: "An archive",
+      read: "archive",
+      params: { sha: home.sha!, format: "zip" },
+      words: "HQ is too busy to make this archive now. Read again in a moment.",
+    },
+  ] as const)(
+    "$name HQ is too busy for says so in its own words",
+    async ({ read, params, words }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const busy = async (): Promise<never> => {
+        throw new HqError({ kind: "unavailable", code: "busy", status: 503, message: "Busy." });
+      };
+      const reader = makeGitBrowseReads(store, { gitBrowse: busy, gitBrowseBytes: busy });
+      const asked = { orgId: "org", appId: "app", repo: "repo", read, params } as GitBrowseKey;
+      const projected = store.data.project(gitBrowse, { ...asked, allowed: true });
+      const failed = waitFor(store, () => registry.get(projected).state === "failed");
+      const release = reader.demand(asked);
+      await failed;
+      expect(registry.get(projected)).toEqual({ state: "failed", words });
       release();
       reader.close();
       registry.dispose();

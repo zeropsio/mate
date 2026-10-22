@@ -7,15 +7,19 @@
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import { archiveName, GitArchiveQuery } from "@t3tools/shared/hqGitBrowse/archive";
+import {
+  ARCHIVE_DEADLINE_MS,
+  archiveName,
+  GitArchiveQuery,
+} from "@t3tools/shared/hqGitBrowse/archive";
 import { ChangeRefused } from "../changes.ts";
 import { GitHost } from "../gitHost.ts";
 import { browseAccess } from "./access.ts";
 import { BrowseHeavy } from "./heavy.ts";
 import type { BrowseInput, BrowseStream } from "./routes.ts";
 
-/** How long an archive streams at most. */
-export const ARCHIVE_DEADLINE = Duration.seconds(120);
+/** How long an archive streams at most; the page says a stream cut past it took too long. */
+export const ARCHIVE_DEADLINE = Duration.millis(ARCHIVE_DEADLINE_MS);
 /** Archives one person streams at once, and only while they run no other heavy read. */
 const ARCHIVE_PER_PERSON = 1;
 

@@ -54,30 +54,40 @@ describe("Git browser search on HQ", () => {
     }).pipe(Effect.provide(browseHeavyLayer)),
   );
 
+  /** A running HQ whose application's group repository holds a commit of two files. */
+  const searchable = Effect.gen(function* () {
+    const { call, gitHost } = yield* startCore(true, { viewTtl: Duration.zero });
+    yield* untilHealth(call, "active");
+    const owner = yield* sessionFor(call, "door-owner");
+    const outsider = yield* sessionFor(call, "door-dev");
+    const made = yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } });
+    const appId = (made.body as { id: string }).id;
+    const git = yield* gitHost.opened(Duration.seconds(3));
+    const main = (yield* git.branches({ appId, id: "group" })).items.find(
+      (branch) => branch.ref === "refs/heads/main",
+    );
+    const written = yield* git.commitFiles({ appId, id: "group" }, "refs/heads/main", {
+      files: { "src/tea.ts": "export const tea = 1;\n", "README.md": "# Shop\n" },
+      expectedHead: main?.sha ?? null,
+      message: "Tea",
+      author,
+    });
+    if (!("sha" in written)) throw new Error(written.kind);
+    return {
+      call,
+      owner,
+      outsider,
+      sha: written.sha,
+      base: `/api/apps/${appId}/repos/group/browse`,
+    };
+  });
+
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
       "A person who sees the application searches its files by name and content at a commit",
       () =>
         Effect.gen(function* () {
-          const { call, gitHost } = yield* startCore(true, { viewTtl: Duration.zero });
-          yield* untilHealth(call, "active");
-          const owner = yield* sessionFor(call, "door-owner");
-          const outsider = yield* sessionFor(call, "door-dev");
-          const made = yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } });
-          const appId = (made.body as { id: string }).id;
-          const git = yield* gitHost.opened(Duration.seconds(3));
-          const main = (yield* git.branches({ appId, id: "group" })).items.find(
-            (branch) => branch.ref === "refs/heads/main",
-          );
-          const written = yield* git.commitFiles({ appId, id: "group" }, "refs/heads/main", {
-            files: { "src/tea.ts": "export const tea = 1;\n", "README.md": "# Shop\n" },
-            expectedHead: main?.sha ?? null,
-            message: "Tea",
-            author,
-          });
-          if (!("sha" in written)) throw new Error(written.kind);
-          const sha = written.sha;
-          const base = `/api/apps/${appId}/repos/group/browse`;
+          const { call, owner, outsider, sha, base } = yield* searchable;
           for (const path of [`paths?sha=${sha}`, `grep?sha=${sha}&q=tea`]) {
             const refused = yield* call("GET", `${base}/${path}`, { session: outsider });
             assert.strictEqual(refused.status, 403, path);
@@ -121,6 +131,29 @@ describe("Git browser search on HQ", () => {
             code: "commit_not_found",
             reason: "commit_not_found",
           });
+        }),
+    );
+
+    it.effect(
+      "A search in a folder outside the repository is refused as asked wrong in either mode, never run",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, sha, base } = yield* searchable;
+          const short = yield* call("GET", `${base}/grep?sha=${sha}&q=t`, { session: owner });
+          for (const folder of ["/src", "../src", "src/../.."])
+            for (const mode of ["fixed", "regex"]) {
+              const outside = yield* call(
+                "GET",
+                `${base}/grep?sha=${sha}&q=tea&mode=${mode}&path=${encodeURIComponent(folder)}`,
+                { session: owner },
+              );
+              assert.strictEqual(outside.status, 400, `${mode} ${folder}`);
+              assert.deepStrictEqual(outside.body, short.body, `${mode} ${folder}`);
+            }
+          const inside = yield* call("GET", `${base}/grep?sha=${sha}&q=tea&path=src`, {
+            session: owner,
+          });
+          expect((inside.body as { matches: unknown[] }).matches).toHaveLength(1);
         }),
     );
   });

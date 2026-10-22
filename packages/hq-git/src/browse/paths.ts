@@ -1,6 +1,7 @@
 /**
- * Every file path at a commit, for the file finder: `ls-tree -r --name-only -z`, read until the
- * caller's limit. A commit never changes, so neither does the list.
+ * Every file path at a commit, for the file finder: `ls-tree -r -z`, read until the caller's
+ * limit. A submodule is no file there: it is left out. A commit never changes, so neither does
+ * the list.
  *
  * @module browse/paths
  */
@@ -21,7 +22,7 @@ export const listPaths = async (
   max: number,
   signal: AbortSignal,
 ): Promise<PathList | null> => {
-  const process = git.start(["-C", dir, "ls-tree", "-r", "--name-only", "-z", `${sha}^{commit}`], {
+  const process = git.start(["-C", dir, "ls-tree", "-r", "-z", `${sha}^{commit}`], {
     signal,
     // 128: no such commit.
     acceptExitCodes: [128],
@@ -35,12 +36,16 @@ export const listPaths = async (
       pending = Buffer.concat([pending, chunk as Uint8Array]);
       let at = 0;
       for (let end = pending.indexOf(0); end !== -1; end = pending.indexOf(0, at)) {
+        // `<mode> <type> <object>\t<path>`
+        const record = pending.subarray(at, end);
+        at = end + 1;
+        const tab = record.indexOf(9);
+        if (record.subarray(0, tab).toString().split(" ")[1] === "commit") continue;
         if (paths.length === max) {
           truncated = true;
           break reading;
         }
-        paths.push(pending.subarray(at, end).toString());
-        at = end + 1;
+        paths.push(record.subarray(tab + 1).toString());
       }
       pending = pending.subarray(at);
     }

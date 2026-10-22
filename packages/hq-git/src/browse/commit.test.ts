@@ -52,17 +52,24 @@ const native = (dir: string, args: string[], input?: string) =>
     // and a write to it raises an unhandled EPIPE.
     child.stdin?.end(input);
   });
+/** A file's text, a symlink to `link`, or a submodule at commit `module`. */
+type Entry = string | { readonly link: string } | { readonly module: string };
 /** A commit holding exactly `files` (a flat folder), on `parents`. */
 const commit = async (
   dir: string,
-  files: Record<string, string>,
+  files: Record<string, Entry>,
   parents: ReadonlyArray<string>,
   message: string,
 ) => {
   const lines = [];
-  for (const [name, content] of Object.entries(files)) {
-    const blob = await native(dir, ["hash-object", "-w", "--stdin"], content);
-    lines.push(`100644 blob ${blob}\t${name}\n`);
+  for (const [name, entry] of Object.entries(files)) {
+    if (typeof entry === "object" && "module" in entry) {
+      lines.push(`160000 commit ${entry.module}\t${name}\n`);
+      continue;
+    }
+    const link = typeof entry === "object";
+    const blob = await native(dir, ["hash-object", "-w", "--stdin"], link ? entry.link : entry);
+    lines.push(`${link ? "120000" : "100644"} blob ${blob}\t${name}\n`);
   }
   const tree = await native(dir, ["mktree"], lines.join(""));
   return native(dir, ["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", message]);
@@ -208,6 +215,43 @@ describe("git browse commit", () => {
     }),
   );
 
+  it.effect.each([
+    ["a file to a symlink", "b\n", { link: "a.txt" }],
+    ["a symlink to a file", { link: "a.txt" }, "b\n"],
+    ["a file to a submodule", "b\n", { module: "1".repeat(40) }],
+    ["a submodule to a file", { module: "1".repeat(40) }, "b\n"],
+  ] satisfies ReadonlyArray<[string, Entry, Entry]>)(
+    "A file whose type changes from %s keeps every file's own diff",
+    ([, before, after]) =>
+      fixture(async (git, dir) => {
+        const first = await commit(
+          dir,
+          { "a.txt": "a\n", "b.txt": before, "c.txt": "c\n", "d.txt": "d\n" },
+          [],
+          "Start",
+        );
+        const sha = await commit(
+          dir,
+          { "a.txt": "a\n", "b.txt": after, "c.txt": "c2\n", "d.txt": "d2\n" },
+          [first],
+          "Retype",
+        );
+        const read = (await value(git.browse.commit(repo, sha)))!;
+        expect(read.files.map((file) => file.path)).toEqual(["b.txt", "c.txt", "d.txt"]);
+        for (const file of read.files) {
+          expect(file.hunks, file.path).toMatch(
+            new RegExp(`^diff --git a/${file.path} b/${file.path}\n`),
+          );
+          expect(file.hunks, file.path).toBe(
+            (await value(git.browse.commitFile(repo, sha, file.path)))!.hunks,
+          );
+        }
+        expect(read.files[0]!.hunks).toMatch(/deleted file mode[^]*new file mode/);
+        expect(read.files[1]!.hunks).toContain("-c\n+c2\n");
+        expect(read.files[2]!.hunks).toContain("-d\n+d2\n");
+      }),
+  );
+
   it.effect("The first commit shows every file as added", () =>
     fixture(async (git, dir) => {
       const sha = await commit(dir, { "a.txt": "a\nb\n", "b.txt": "c\n" }, [], "First");
@@ -234,26 +278,30 @@ describe("git browse commit", () => {
   );
 
   it("A patch read in any chunks splits into the same files", () => {
-    const patch = Buffer.from(
-      [
-        "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-diff --git x\n+ diff --git y\n",
-        "diff --git a/b b/b\nnew file mode 100644\n--- /dev/null\n+++ b/b\n@@ -0,0 +1 @@\n+b\n",
-        "diff --git a/c b/c\nBinary files a/c and b/c differ\n",
-      ].join(""),
-    );
-    const whole = new PatchSections();
-    whole.feed(patch);
-    whole.end();
-    expect(whole.sections.map((section) => section.text)).toEqual([
-      "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-diff --git x\n+ diff --git y\n",
-      "diff --git a/b b/b\nnew file mode 100644\n--- /dev/null\n+++ b/b\n@@ -0,0 +1 @@\n+b\n",
-      "diff --git a/c b/c\nBinary files a/c and b/c differ\n",
-    ]);
-    for (const size of [1, 2, 5, 11, 12, 13]) {
-      const chunked = new PatchSections();
-      for (let at = 0; at < patch.length; at += size) chunked.feed(patch.subarray(at, at + size));
-      chunked.end();
-      expect(chunked.sections, `chunks of ${String(size)}`).toEqual(whole.sections);
+    const a = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-diff --git x\n+ diff --git y\n";
+    const b =
+      "diff --git a/b b/b\nnew file mode 100644\n--- /dev/null\n+++ b/b\n@@ -0,0 +1 @@\n+b\n";
+    const c = "diff --git a/c b/c\nBinary files a/c and b/c differ\n";
+    // A typechange: its deletion and its creation are one file's patch.
+    const retype =
+      "diff --git a/r b/r\ndeleted file mode 100644\n" +
+      "diff --git a/r b/r\nnew file mode 120000\n";
+    for (const [files, retyped] of [
+      [[a, b, c], []],
+      [[a, retype, c], [1]],
+      [[retype, a], [0]],
+    ] satisfies ReadonlyArray<[Array<string>, Array<number>]>) {
+      const patch = Buffer.from(files.join(""));
+      const whole = new PatchSections(undefined, new Set(retyped));
+      whole.feed(patch);
+      whole.end();
+      expect(whole.sections.map((section) => section.text)).toEqual(files);
+      for (const size of [1, 2, 5, 11, 12, 13]) {
+        const chunked = new PatchSections(undefined, new Set(retyped));
+        for (let at = 0; at < patch.length; at += size) chunked.feed(patch.subarray(at, at + size));
+        chunked.end();
+        expect(chunked.sections, `chunks of ${String(size)}`).toEqual(whole.sections);
+      }
     }
   });
 });

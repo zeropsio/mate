@@ -10,6 +10,8 @@
  * - The read stops after 8 MiB of patches, each counted up to its own cap; files past it are too
  *   long to read here.
  * - Renames read as a delete and an add (`--no-renames`), as the change review reads them.
+ * - A file whose type changes (file, symlink, submodule) is one listed file; git writes its patch
+ *   as a deletion and a creation, and both are that file's hunks.
  *
  * @module browse/diff
  */
@@ -60,25 +62,34 @@ export class PatchSections {
   readonly sections: Array<Section> = [];
   // A header at the very start follows no newline: this one stands in for it and is dropped.
   private carry: Buffer = Buffer.from("\n");
-  private open: { chunks: Array<Buffer>; kept: number; size: number } | null = null;
+  private open: { chunks: Array<Buffer>; kept: number; size: number; headers: number } | null =
+    null;
   private read = 0;
   private autoLoaded = 0;
   private autoLoading = true;
   private readonly budget: DiffBudget;
+  private readonly retyped: ReadonlySet<number>;
 
-  constructor(budget: DiffBudget = DIFF_BUDGET) {
+  /** `retyped`: the listed files, by index, whose type changes and so own two headers. */
+  constructor(budget: DiffBudget = DIFF_BUDGET, retyped: ReadonlySet<number> = new Set()) {
     this.budget = budget;
+    this.retyped = retyped;
   }
 
   /** Takes the next bytes; false once every listed file is read or the read budget is spent. */
   feed(chunk: Uint8Array): boolean {
     const data = Buffer.concat([this.carry, chunk]);
     let from = 0;
-    for (let at = data.indexOf(HEADER); at !== -1; at = data.indexOf(HEADER, from)) {
+    for (let at = data.indexOf(HEADER); at !== -1; at = data.indexOf(HEADER, at + 1)) {
+      if (this.open !== null && this.open.headers > 0) {
+        this.open.headers--;
+        continue;
+      }
       this.append(data.subarray(from, at + 1));
       this.close();
       if (this.full()) return false;
-      this.open = { chunks: [], kept: 0, size: 0 };
+      const headers = this.retyped.has(this.sections.length) ? 1 : 0;
+      this.open = { chunks: [], kept: 0, size: 0, headers };
       from = at + 1;
     }
     // The last bytes may begin a header the next chunk ends: they wait for it.
@@ -133,7 +144,11 @@ const changedFiles = (bytes: Buffer, truncated: boolean) => {
   const fields = bytes.toString().split("\0");
   // A cut read never names a cut record as complete.
   if (truncated) fields.pop();
-  const raw: Array<{ readonly path: string; readonly status: DiffFileStatus }> = [];
+  const raw: Array<{
+    readonly path: string;
+    readonly status: DiffFileStatus;
+    readonly retyped: boolean;
+  }> = [];
   const counts: Array<{ readonly additions: number | null; readonly deletions: number | null }> =
     [];
   for (let i = 0; i < fields.length; i++) {
@@ -141,7 +156,8 @@ const changedFiles = (bytes: Buffer, truncated: boolean) => {
     if (field.startsWith(":")) {
       const path = fields[i + 1];
       if (path === undefined) break;
-      raw.push({ path, status: STATUS[field.slice(-1)] ?? "modified" });
+      const letter = field.slice(-1);
+      raw.push({ path, status: STATUS[letter] ?? "modified", retyped: letter === "T" });
       i++;
     } else if (field !== "") {
       const [added = "", deleted = ""] = field.split("\t");
@@ -175,7 +191,8 @@ export const readDiff = async (
   );
   const all = changedFiles(listed.bytes, listed.truncated);
   const shown = all.slice(0, budget.files);
-  const sections = new PatchSections(budget);
+  const retyped = new Set(shown.flatMap((file, i) => (file.retyped ? [i] : [])));
+  const sections = new PatchSections(budget, retyped);
   if (shown.length > 0) {
     const process = git.start(["-C", dir, ...PATCH, base, head, "--"], { signal });
     process.child.stdin.end();

@@ -6,6 +6,7 @@
  */
 import * as Schema from "effect/Schema";
 import { Sha } from "../hqChanges.ts";
+import { GitPath } from "./common.ts";
 
 /** Matches an answer holds at most; past them it says it is cut. */
 export const GREP_MATCH_LIMIT = 500;
@@ -28,7 +29,7 @@ export const GitGrepQuery = Schema.Struct({
     ),
   ),
   /** A folder or file the search stays in; absent, the whole repository. */
-  path: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096))),
+  path: Schema.optionalKey(GitPath),
   /** `fixed` (absent) reads `q` as text, `regex` as an extended regular expression. */
   mode: Schema.optionalKey(Schema.Literals(["fixed", "regex"])),
   /** `1` matches case exactly; absent or `0` ignores it. */

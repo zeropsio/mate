@@ -212,6 +212,35 @@ describe("Git browser search", () => {
     }),
   );
 
+  it.live("The finder lists every file and symbolic link at a commit, never a submodule", () =>
+    fixture(async (git, dir) => {
+      const blob = await native(dir, ["hash-object", "-w", "--stdin"], "x\n");
+      const index = NodePath.join(dir, "search-test-index");
+      await native(
+        dir,
+        ["update-index", "--add", "--index-info"],
+        [
+          `100644 blob ${blob}\ta.txt`,
+          `120000 blob ${blob}\tlink`,
+          `160000 commit ${"1".repeat(40)}\tvendor/lib`,
+          `100755 blob ${blob}\tvendor/run.sh`,
+        ].join("\n"),
+        { GIT_INDEX_FILE: index },
+      );
+      const tree = await native(dir, ["write-tree"], undefined, { GIT_INDEX_FILE: index });
+      const sha = await native(dir, ["commit-tree", tree, "-m", "with a submodule"]);
+      expect(await value(git.browse.paths(repo, sha, 25_000))).toEqual({
+        paths: ["a.txt", "link", "vendor/run.sh"],
+        truncated: false,
+      });
+      // The limit counts the files it lists.
+      expect(await value(git.browse.paths(repo, sha, 3))).toEqual({
+        paths: ["a.txt", "link", "vendor/run.sh"],
+        truncated: false,
+      });
+    }),
+  );
+
   it.live("A repository over 25,000 files says the finder sees only the first 25,000", () =>
     fixture(async (git, dir) => {
       const blob = await native(dir, ["hash-object", "-w", "--stdin"], "x\n");
