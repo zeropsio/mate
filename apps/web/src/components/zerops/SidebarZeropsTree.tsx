@@ -1,6 +1,8 @@
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
-import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
+import { useDeleteApplicationDialog } from "../../zerops/deleteApplicationDialog";
+import { applicationDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
@@ -847,6 +849,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const addMateOffer = useAddMateOffer();
+  const orgOffer = useOrgOffers();
   const addMateGate = useNewMateGate();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
@@ -1515,6 +1518,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               stages: stages.map(({ stop }) => targetProjectId(stop.projectId)),
               mates: ordered.map(({ item }) => item.project.id),
             }),
+            kind === "bare",
           );
     const demand =
       group === undefined
@@ -2042,12 +2046,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   /**
    * A project's ···: its own verbs — fold, add a Mate, open it, its addresses (at `place`, its
-   * production or first place), move it, set a place up.
+   * production or first place), move it, set a place up; `withoutMate`, Start a Mate and, to whoever
+   * may delete it, its Delete (app-lifecycle.md).
    */
   const projectMenuOf = (
     group: CanonicalGroup,
     fold: { readonly open: boolean; readonly toggle: () => void } | undefined,
     place: string | undefined,
+    withoutMate = false,
   ): ReadonlyArray<HeadingMenuEntry> => {
     const missing = missingEnvironmentRows({
       tiersOnMain: tiersAddable({
@@ -2067,6 +2073,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     return projectHeadingMenu({
       collapsed: fold?.open === false,
       onToggle: fold?.toggle,
+      startMate: withoutMate,
+      onDelete:
+        withoutMate && orgOffer("delete_app").kind === "allowed"
+          ? {
+              name: group.name,
+              act: () => {
+                useDeleteApplicationDialog
+                  .getState()
+                  .open({ target: applicationDeletionTarget(group) });
+              },
+            }
+          : undefined,
       onAddMate:
         addMateOffer(group.groupId).kind === "allowed"
           ? () => {
@@ -2920,9 +2938,9 @@ function ProjectGroupRow<T extends RosterCandidate>({
 }
 
 /**
- * A project with no Mate in it — a stage or a production alone: the project's mark where a face
- * would be, its name, and "No Mate yet"; a press opens the project. Its tags and verbs are any
- * project's.
+ * A project with no Mate in it — its Mates deleted, or a stage or a production alone: the project's
+ * mark where a face would be, its name, and "No Mate yet"; a press opens the project. Its tags and
+ * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
 function ProjectBareRow({
   groupId,

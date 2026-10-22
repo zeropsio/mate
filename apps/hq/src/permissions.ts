@@ -186,7 +186,7 @@ export interface Targets {
   readonly release: ReleaseTarget;
   readonly create_app: null;
   readonly rename_app: null;
-  /** An application deleted: HQ removes only one that holds nothing (`app_not_empty`). */
+  /** An application deleted: one that holds nothing, or with its code once no Mate is on it. */
   readonly delete_app: null;
   /** Where an application's automated Mates take issues from (`intake.ts`): a structure writer. */
   readonly keep_intake: null;

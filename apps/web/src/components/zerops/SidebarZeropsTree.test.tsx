@@ -196,6 +196,7 @@ import { reviewItemByline, type ProjectReviewItem } from "./SidebarProjectReview
 import { SidebarHqStatus, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { projectHeadingMenu, type HeadingMenuEntry } from "./SidebarZeropsTree.logic";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 
@@ -1502,6 +1503,85 @@ describe("a Mate's face follows its work in the menu", () => {
     expect(html).not.toContain("No Zerops projects yet");
     registry.dispose();
   });
+
+  // Karel 2026-10-22 (app-lifecycle.md): a project whose Mate was deleted outside Mate cannot ask
+  // anyone; its row offers both ways on.
+  const MOVES = [
+    "Start a Mate",
+    "Open project",
+    "—",
+    "Move up (off)",
+    "Move down (off)",
+    "—",
+  ] as const;
+  it.each([
+    {
+      may: true,
+      items: [...MOVES, "All projects", "—", "Delete Beviro CRM…"],
+    },
+    { may: false, items: [...MOVES, "All projects"] },
+  ])(
+    "A project without a Mate offers Start a Mate, and its Delete to whoever may delete it (may: $may)",
+    ({ may, items }) => {
+      const registry = AtomRegistry.make();
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization: organization,
+      });
+      mountHqNavigation(registry, organization.organizationId, {
+        structure: {
+          can: {
+            delete_app: may ? { allow: true } : { allow: false, reason: "not_structure_writer" },
+          },
+          apps: [
+            {
+              id: "aaa",
+              name: "Beviro CRM",
+              projects: [],
+              can: { add_mate: { allow: true } },
+            },
+          ],
+          ungrouped: [],
+        },
+      });
+      useDeleteApplicationDialog.getState().close();
+      const mounted = mount(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[CRM_STAGE, CRM_PROD]}
+            complete
+            onAddMate={() => {}}
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+      const menu = mounted.root.findAll(
+        (node) => node.props.groupId === "aaa" && Array.isArray(node.props.menu),
+      )[0]!.props.menu as ReadonlyArray<HeadingMenuEntry>;
+      expect(
+        menu.map((entry) =>
+          entry.kind === "separator" ? "—" : `${entry.label}${entry.disabled ? " (off)" : ""}`,
+        ),
+      ).toEqual(items);
+      const remove = menu.find(
+        (entry) => entry.kind === "item" && entry.label.startsWith("Delete"),
+      );
+      if (remove?.kind === "item") act(() => remove.act());
+      expect(useDeleteApplicationDialog.getState().request?.target).toEqual(
+        may
+          ? {
+              appId: "aaa",
+              name: "Beviro CRM",
+              stages: [{ projectId: CRM_STAGE.project.id, name: CRM_STAGE.project.name }],
+              productions: [{ name: CRM_PROD.project.name }],
+            }
+          : undefined,
+      );
+      registry.dispose();
+    },
+  );
 
   // Stress run 3 (+16:58.9): a reload painted every project as its "Review" row alone, then the
   // Mates' menu replaced it.
