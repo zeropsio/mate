@@ -32,12 +32,14 @@ import {
   mergeSubject,
   parseAttachmentUrl,
   parseChangeUrl,
+  repoCloneUrl,
 } from "./hqChanges.ts";
 
 const HQ = "https://hqzone.prg1-zerops.zone";
 const APP = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
 const decodeComments = Schema.decodeUnknownSync(CommentListResponse);
 const decodeChange = Schema.decodeUnknownSync(HqChange);
+const decodeRepoList = Schema.decodeUnknownSync(RepoListResponse);
 
 describe("hqChanges — the change link", () => {
   it("names a change at HQ's address, reads it back, and routes it in the client", () => {
@@ -595,4 +597,43 @@ it("Direct-target verbs travel through the existing open offers without a second
       }),
     ).toEqual({ kind: "refused", reason: "not_writer" });
   }
+});
+
+describe("hqChanges — a repository's clone address", () => {
+  const ORG = "Kq3Zt0aRS9yN2mWfLp7xVg";
+  const listed = (url?: string) =>
+    decodeRepoList({
+      repos: [
+        {
+          name: "app",
+          mainHead: null,
+          updatedAt: "2026-10-22T10:00:00.000Z",
+          ...(url === undefined ? {} : { url }),
+        },
+      ],
+    }).repos[0]!;
+
+  it.each([
+    {
+      name: "HQ names its organization's address",
+      repo: listed(`${HQ}/git/${ORG}/${APP}/app.git`),
+      url: `${HQ}/git/${ORG}/${APP}/app.git`,
+    },
+    {
+      name: "an older HQ names none",
+      repo: listed(),
+      url: `${HQ}/git/${APP}/app.git`,
+    },
+  ])(
+    "a repository is cloned at the address HQ names for it, else where an older HQ serves it: $name",
+    ({ repo, url }) => {
+      expect(repoCloneUrl(`${HQ}/`, APP, repo)).toBe(url);
+    },
+  );
+
+  it("a repository address carrying a credential is not read", () => {
+    expect(() =>
+      listed(`https://mate:secret@hqzone.prg1-zerops.zone/git/${ORG}/${APP}/app.git`),
+    ).toThrow();
+  });
 });

@@ -1,8 +1,10 @@
+import { repoCloneUrl } from "@t3tools/shared/hqChanges";
 import { useState } from "react";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 
 export function ZeropsGitCredentialsView({
@@ -159,9 +161,10 @@ export function ZeropsGitCredentials({
   readonly repo: string;
 }) {
   const credentials = useGitCredentials(appId);
+  const listed = useHqAppDetail(appId).repos?.find((entry) => entry.name === repo);
   if (credentials.address === undefined)
     return <p className="text-sm text-muted-foreground">Waiting for HQ…</p>;
-  const cloneUrl = `${credentials.address.replace(/\/+$/u, "")}/git/${encodeURIComponent(appId)}/${encodeURIComponent(repo)}.git`;
+  const cloneUrl = repoCloneUrl(credentials.address, appId, listed ?? { name: repo });
   return (
     <>
       <ZeropsGitCredentialsView {...credentials} cloneUrl={cloneUrl} />

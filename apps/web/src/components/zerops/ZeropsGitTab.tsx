@@ -11,7 +11,7 @@
  *
  * Which repositories there are comes from the project's own topology: a runtime
  * service is a codebase, its hostname is the name of its repository in the
- * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
+ * Mate's application at HQ (`repoCloneUrl`), and its checkout
  * is `/var/www/{hostname}` — the path zcp mounts every sibling service at.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so

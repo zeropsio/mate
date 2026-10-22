@@ -13,7 +13,7 @@
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
- * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
+ * - git over HTTPS at the repository's address (`repoCloneUrl`), Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes any branch but
  *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
  *   whose change was merged or closed until a change is opened on it again (`change_closed`), nor
@@ -257,7 +257,7 @@ export const HqChange = Schema.Struct({
 });
 export type HqChange = typeof HqChange.Type;
 
-/** A repository HQ keeps for an application, served at `/git/<appId>/<name>.git`. */
+/** A repository HQ keeps for an application, served at its address (`repoCloneUrl`). */
 export const HqRepo = Schema.Struct({ appId: Schema.String, name: RepoName });
 export type HqRepo = typeof HqRepo.Type;
 
@@ -426,6 +426,11 @@ export type AddGitEnvironmentRequest = typeof AddGitEnvironmentRequest.Type;
  */
 export const RepoListEntry = Schema.Struct({
   name: RepoName,
+  /**
+   * Where HQ serves it for clones and pushes: `/git/<orgId>/<appId>/<name>.git` at an HQ serving
+   * several organizations. Absent from an older HQ (`repoCloneUrl`).
+   */
+  url: Schema.optionalKey(HqRemoteUrl),
   remote: Schema.optionalKey(Schema.NullOr(HqRepoRemote)),
   /** The GitHub repository whose code its Mates fetch while HQ keeps it (`follow`); a remote outranks it. */
   follows: Schema.optionalKey(HqRemoteUrl),
@@ -440,6 +445,21 @@ export const RepoListEntry = Schema.Struct({
   ),
 });
 export type RepoListEntry = typeof RepoListEntry.Type;
+
+/**
+ * Where a person clones `repo` of `appId` from the HQ at `address`: the address HQ names for it,
+ * else `/git/<appId>/<name>.git`, which an older HQ serves and a newer one still does.
+ */
+export function repoCloneUrl(
+  address: string,
+  appId: string,
+  repo: Pick<RepoListEntry, "name" | "url">,
+): string {
+  return (
+    repo.url ??
+    `${addressOf(address)}/git/${encodeURIComponent(appId)}/${encodeURIComponent(repo.name)}.git`
+  );
+}
 
 /** `GET /api/apps/:appId/repos`: the application's repositories, its recipe's too, by name. */
 export const RepoListResponse = Schema.Struct({ repos: Schema.Array(RepoListEntry) });
