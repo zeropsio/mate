@@ -541,17 +541,14 @@ describe("a change's pull request", () => {
             headers: core.robot.auth,
             body: { body: "Boils the water three times." },
           });
+          const edits = (request: { method: string; path: string; body: unknown }) =>
+            request.method === "PATCH" &&
+            request.path === PULL &&
+            (request.body as { body?: string }).body?.includes("three times") === true;
           const edited = yield* core.github.seenWhere("the body edited", (seen) =>
-            seen.some(
-              (request) =>
-                request.method === "PATCH" &&
-                request.path === PULL &&
-                (request.body as { body?: string }).body?.includes("three times") === true,
-            ),
+            seen.some(edits),
           );
-          const body = (
-            edited.findLast((request) => request.path === PULL)!.body as { body: string }
-          ).body;
+          const body = (edited.findLast(edits)!.body as { body: string }).body;
           assert.include(body, "A reviewer's note.");
           assert.notInclude(body, "Boils the water twice.");
           yield* rowsWhere(
@@ -582,19 +579,16 @@ describe("a change's pull request", () => {
               },
             ],
           });
-          const bodyOnceIt = (what: string, says: string) =>
-            Effect.map(
-              core.github.seenWhere(what, (seen) =>
-                seen.some(
-                  (request) =>
-                    request.method === "PATCH" &&
-                    request.path === PULL &&
-                    (request.body as { body?: string }).body?.includes(says) === true,
-                ),
-              ),
-              (seen) =>
-                (seen.findLast((request) => request.path === PULL)!.body as { body: string }).body,
+          const bodyOnceIt = (what: string, says: string) => {
+            const saying = (request: { method: string; path: string; body: unknown }) =>
+              request.method === "PATCH" &&
+              request.path === PULL &&
+              (request.body as { body?: string }).body?.includes(says) === true;
+            return Effect.map(
+              core.github.seenWhere(what, (seen) => seen.some(saying)),
+              (seen) => (seen.findLast(saying)!.body as { body: string }).body,
             );
+          };
           const receipt = yield* core.call("PATCH", "/api/mate/changes/web/1", {
             headers: core.robot.auth,
             body: { receipt: preview("2026-10-19T01:20:00Z") },
