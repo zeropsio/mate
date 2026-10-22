@@ -1,8 +1,8 @@
 /**
  * An origin the Mate asked the person about (`zerops_origin action=request`): where the code of the
  * repository it started from is kept — on GitHub, mounted in HQ through the organization's GitHub
- * app, or in Mate, GitHub only followed. The person mounts it in HQ themselves; the engine hears
- * only the pick (`connected`, on GitHub; `declined`, in Mate), never a token.
+ * app, or in Mate, GitHub only followed. The person mounts or follows it in HQ themselves; the
+ * engine hears only the pick (`connected`, on GitHub; `declined`, in Mate), never a token.
  */
 import {
   ORIGIN_ASK_ACTIVITY_KIND,
@@ -51,6 +51,25 @@ export function originAskAnswer(
   connected: boolean,
 ): OriginAskSaid | null {
   return state === "open" && said === null && connected ? "connected" : null;
+}
+
+/**
+ * Keeping the asked origin's code in Mate: HQ follows a GitHub repository first, for every Mate of
+ * the application, and the engine hears the pick once HQ did; a refusal is the person's to read,
+ * and the ask stays open. A repository outside GitHub is only the engine's to hear. `follow` is
+ * `undefined` while HQ cannot be asked; each says `null` once done, else why not.
+ */
+export async function keepInMate(
+  url: string,
+  follow: ((url: string) => Promise<string | null>) | undefined,
+  answer: () => Promise<string | null>,
+): Promise<string | null> {
+  if (githubName(url) !== null) {
+    if (follow === undefined) return "HQ can't record this yet. Try again in a moment.";
+    const refused = await follow(url);
+    if (refused !== null) return refused;
+  }
+  return answer();
 }
 
 /**

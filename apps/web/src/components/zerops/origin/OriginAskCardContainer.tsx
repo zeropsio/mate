@@ -1,8 +1,8 @@
 /**
  * An origin ask as the conversation draws it: the engine's record of the request, the application
  * HQ places the Mate in (whose repository the GitHub app mounts) and the pick — on GitHub once HQ
- * mounts the asked repository, from the card's sheet or anywhere else, or in Mate on its press —
- * only the pick reaches the engine. What the person picked here is kept in memory by the request,
+ * mounts the asked repository, from the card's sheet or anywhere else, or in Mate on its press,
+ * once HQ follows a GitHub repository — only the pick reaches the engine. What the person picked here is kept in memory by the request,
  * so the card folds at once and stays folded until the engine's record says so too.
  */
 import {
@@ -33,6 +33,7 @@ import {
   originAskFace,
   originAskFromKey,
   originAskKey,
+  keepInMate,
   originAskOf,
   originConnected,
 } from "./originAsk.logic";
@@ -95,6 +96,7 @@ function AskCard({
   const hqOffers = useHqOffers();
   const offer = hqOffers.state(target.can, "connect_remote");
   const viaApp = target.actions?.viaApp;
+  const follow = appId === null ? undefined : target.actions?.follow;
   // The app is read while the GitHub way can still be picked.
   const github = useGitMirrorApp(ask.state === "open");
   const navigate = useNavigate();
@@ -102,7 +104,7 @@ function AskCard({
   const answerOriginAsk = useAtomCommand(threadEnvironment.answerOriginAsk, {
     reportFailure: false,
   });
-  const onAnswer = useCallback(
+  const tell = useCallback(
     async (outcome: OriginAskSaid): Promise<string | null> => {
       // The sheet's production and HQ's record both answer connected: the engine hears it once.
       if (useOriginAskSaid.getState()[requestId] === outcome) return null;
@@ -117,6 +119,28 @@ function AskCard({
       return error instanceof Error ? error.message : "The Mate did not take the answer.";
     },
     [answerOriginAsk, environmentId, requestId, threadRef.threadId],
+  );
+  const onAnswer = useCallback(
+    (outcome: OriginAskSaid): Promise<string | null> =>
+      outcome === "connected"
+        ? tell(outcome)
+        : keepInMate(
+            ask.url,
+            follow === undefined
+              ? undefined
+              : async (url) => {
+                  try {
+                    await follow(ask.repo, url);
+                    return null;
+                  } catch (cause) {
+                    return cause instanceof OperationStopped
+                      ? cause.message
+                      : "HQ couldn't confirm it follows the repository. Check it before trying again.";
+                  }
+                },
+            () => tell(outcome),
+          ),
+    [ask.repo, ask.url, follow, tell],
   );
   const connected = originConnected(ask, repos);
   // HQ mounting the asked repository, from the sheet or anywhere else, answers once here.
