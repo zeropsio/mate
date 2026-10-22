@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { githubName, type GitMirrorApp } from "../gitMirror.logic";
 import {
+  keepInMate,
   originAskAnswer,
   originAskFace,
   originConnected,
@@ -177,5 +178,55 @@ describe("keeping an asked origin's code on GitHub", () => {
     },
   ] as const)("is $step.kind when $case", ({ github, repos, mountable, step }) => {
     expect(originMountStep(ask, github, repos, mountable)).toMatchObject(step);
+  });
+});
+
+describe("keeping the asked origin's code in Mate", () => {
+  it.each([
+    {
+      case: "a GitHub repository is followed in HQ before the Mate hears the pick",
+      url: "https://github.com/krls2020/eval2",
+      follow: "followed" as const,
+      steps: ["follow https://github.com/krls2020/eval2", "answer"],
+      said: null,
+    },
+    {
+      case: "HQ refusing to follow it tells the person why, and the Mate hears nothing",
+      url: "https://github.com/krls2020/eval2",
+      follow: "Only the organization's owner or admin can change this.",
+      steps: ["follow https://github.com/krls2020/eval2"],
+      said: "Only the organization's owner or admin can change this.",
+    },
+    {
+      case: "without HQ to follow it, the Mate hears nothing",
+      url: "https://github.com/krls2020/eval2",
+      follow: undefined,
+      steps: [],
+      said: "HQ can't record this yet. Try again in a moment.",
+    },
+    {
+      case: "a repository outside GitHub is only the Mate's to hear",
+      url: "https://gitlab.com/acme/app",
+      follow: undefined,
+      steps: ["answer"],
+      said: null,
+    },
+  ])("$case", async ({ url, follow, steps, said }) => {
+    const seen: Array<string> = [];
+    const answer = await keepInMate(
+      url,
+      follow === undefined
+        ? undefined
+        : async (address) => {
+            seen.push(`follow ${address}`);
+            return follow === "followed" ? null : follow;
+          },
+      async () => {
+        seen.push("answer");
+        return null;
+      },
+    );
+    expect(seen).toEqual(steps);
+    expect(answer).toBe(said);
   });
 });

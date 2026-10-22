@@ -52,6 +52,12 @@ export function useGitTargetOperations(appId: string) {
                 options,
               );
             },
+            follow: async (repo: string, url: string) => {
+              await operations.run(
+                { kind: "follow-github-repository", orgId: scope.orgId, appId, repo, url },
+                options,
+              );
+            },
             updateAddress: async (repo: string, url: string) => {
               await operations.run(
                 { kind: "update-git-remote-address", ...scope, repo, url },

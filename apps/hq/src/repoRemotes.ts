@@ -219,6 +219,16 @@ export class Remotes extends Context.Service<
       ref: RemoteRef,
       repository: { readonly fullName: string; readonly id: number },
     ) => Effect.Effect<RemoteRecord, RemoteConnectError>;
+    /**
+     * The repository's code kept in HQ while it follows the GitHub repository at `url`: its Mates
+     * fetch it, nothing pushes to it, no token is kept. Made in HQ if new, as connecting it would.
+     * A remote connected to it says how its code is kept instead (`mateRepos`).
+     */
+    readonly follow: (
+      userId: string,
+      ref: RemoteRef,
+      url: string,
+    ) => Effect.Effect<void, RemoteConnectError>;
   }
 >()("@t3tools/hq/repoRemotes/Remotes") {}
 
@@ -676,21 +686,24 @@ export const repoRemotesLayer = Layer.effect(
       mateRepos: Effect.fn("Remotes.mateRepos")(function* (appId: string) {
         const repos = yield* sql<{
           readonly name: string;
-        }>`SELECT name FROM hq_repo WHERE app_id::text=${appId} ORDER BY name`;
-        return yield* Effect.forEach(repos, ({ name }) =>
+          readonly upstream: string | null;
+        }>`SELECT name, upstream FROM hq_repo WHERE app_id::text=${appId} ORDER BY name`;
+        return yield* Effect.forEach(repos, ({ name, upstream }) =>
           Effect.map(remotes.get({ appId, repo: name }), (row) => {
             const remote = row === undefined ? null : remoteForWire(row);
             // Through the organization's app GitHub keeps the code (`githubMirror.ts` follows
-            // it); with a person's token HQ keeps it, GitHub an upstream.
-            return remote === null
-              ? { name }
-              : {
+            // it); with a person's token, or only followed, HQ keeps it, GitHub an upstream.
+            return remote !== null
+              ? {
                   name,
                   origin: {
                     url: remote.url,
                     mode: remote.via === "app" ? ("github" as const) : ("follow" as const),
                   },
-                };
+                }
+              : upstream !== null
+                ? { name, origin: { url: upstream, mode: "follow" as const } }
+                : { name };
           }),
         );
       }),
@@ -800,6 +813,28 @@ export const repoRemotesLayer = Layer.effect(
           );
         yield* SubscriptionRef.update(ticks, (n) => n + 1);
         return saved;
+      }),
+      follow: Effect.fn("Remotes.follow")(function* (userId: string, ref: RemoteRef, url: string) {
+        yield* authorize(userId);
+        yield* validateRepo(ref.repo);
+        const remote = remoteIdentity(url);
+        if (remote?.kind !== "github") return yield* new RemoteRefused({ reason: "bad_address" });
+        const known =
+          yield* sql`SELECT 1 FROM hq_repo WHERE app_id::text=${ref.appId} AND name=${ref.repo}`;
+        if (known.length === 0)
+          yield* changes.ensurePersonRepo(userId, ref.appId, ref.repo).pipe(
+            Effect.catchTags({
+              ZeropsRefused: () => Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
+              ZeropsUnavailable: () =>
+                Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
+              ZeropsUnexpectedAnswer: () =>
+                Effect.fail(new RemoteRefused({ reason: "membership_unknown" })),
+            }),
+          );
+        yield* leader.write(
+          sql`UPDATE hq_repo SET upstream=${remote.url} WHERE app_id::text=${ref.appId} AND name=${ref.repo}`,
+        );
+        yield* SubscriptionRef.update(ticks, (n) => n + 1);
       }),
       tokenOf: Effect.fn("Remotes.tokenOf")(function* (
         ref: RemoteRef,

@@ -132,6 +132,7 @@ import {
   EnsureRepoRequest,
   MergeChangeRequest,
   CloseChangeRequest,
+  FollowRepoUpstreamRequest,
   HandChangeRequest,
   OpenChangeRequest,
   PostCommentRequest,
@@ -1549,6 +1550,27 @@ const routes = (
           const { userId } = yield* principal;
           const appId = (yield* HttpRouter.params)["appId"] ?? "";
           return json({ repos: yield* (yield* Remotes).listRepos(userId, appId) }, 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "PUT",
+      "/api/apps/:appId/repos/:repo/upstream",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          const { url } = yield* jsonBody(FollowRepoUpstreamRequest, BODY_LIMIT);
+          return yield* outliving(
+            Effect.as(
+              (yield* Remotes).follow(
+                userId,
+                { appId: params["appId"] ?? "", repo: params["repo"] ?? "" },
+                url,
+              ),
+              HttpServerResponse.empty({ status: 204 }),
+            ),
+          );
         }),
       ),
     ),

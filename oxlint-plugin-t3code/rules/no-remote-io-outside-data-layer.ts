@@ -272,6 +272,7 @@ export const HQ_CLIENT_VERBS = [
   "githubManifest",
   "githubDisconnect",
   "repoRemoteViaApp",
+  "followRepoUpstream",
   "gitBrowse",
   "gitBrowseBytes",
   "gitCredentials",
