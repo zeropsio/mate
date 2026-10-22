@@ -12,6 +12,11 @@
  * - Per person a person's door names, once the presented throwaway was read and judged on its own
  *   (`door.ts`) and before HQ reads its org: twenty at once, twenty a minute. One person's flood of
  *   throwaways stops at them, never at their colleagues behind the same address.
+ * - Per signed-in person at the Git browser's reads (`gitBrowse/routes.ts`), never the address's
+ *   door bucket, so browsing never costs anyone behind that address their sign-in: 600 at once,
+ *   five a second. A page holds a handful of reads, a tree walk one per folder or file opened and
+ *   the ref picker one per filter or page; five a second is past any hand's pace, while a script
+ *   paging a whole repository spawns at most that much git.
  *
  * @module rateLimit
  */
@@ -33,6 +38,9 @@ export const DOOR_LIMIT: DoorLimit = { capacity: 10, perMinute: 10 };
 export const PERSON_ADDRESS_LIMIT: DoorLimit = { capacity: 120, perMinute: 60 };
 /** A person's door, per person its throwaway names. */
 export const PERSON_LIMIT: DoorLimit = { capacity: 20, perMinute: 20 };
+
+/** A person's Git browse reads, per person. */
+export const BROWSE_LIMIT: DoorLimit = { capacity: 600, perMinute: 300 };
 
 /** GitHub's deliveries to an intake's webhook, per address: a busy repository's burst of issues. */
 export const INTAKE_LIMIT: DoorLimit = { capacity: 120, perMinute: 120 };

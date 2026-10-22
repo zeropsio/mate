@@ -964,6 +964,24 @@ export async function readHqHealth(
   }
 }
 
+/** A browse read's address; what HQ refuses as invalid is refused here, as HQ words it, unsent. */
+const browsePathOrRefuse = <R extends GitBrowseRead>(
+  read: R,
+  appId: string,
+  repo: string,
+  params: GitBrowseParams<R>,
+) => {
+  const path = gitBrowsePath(read, appId, repo, params);
+  if (path === null)
+    throw new HqError({
+      kind: "refused",
+      code: "invalid",
+      status: 400,
+      message: hqRefusalWords({ code: "invalid", reason: undefined }),
+    });
+  return path;
+};
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor names it. */
   readonly address: string;
@@ -1595,13 +1613,13 @@ export function makeHqApi(input: {
     ) =>
       decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
         await authorized(
-          gitBrowsePath(read, appId, repo, params),
+          browsePathOrRefuse(read, appId, repo, params),
           signal === undefined ? {} : { signal },
         ),
       ),
     gitBrowseBytes: async (appId, repo, params, signal) => {
       const response = await authorized(
-        gitBrowsePath("raw", appId, repo, params),
+        browsePathOrRefuse("raw", appId, repo, params),
         signal === undefined ? {} : { signal },
       );
       let bytes: ArrayBuffer;

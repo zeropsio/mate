@@ -10,10 +10,12 @@ import { GitRefKind } from "./common.ts";
 
 /** Rows a page holds at most. */
 export const REFS_PAGE_LIMIT = 100;
+/** Characters a filter holds at most. */
+export const REFS_QUERY_MAX = 200;
 
 export const GitRefsQuery = Schema.Struct({
   kind: Schema.Literals(["branch", "tag"]),
-  q: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+  q: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(REFS_QUERY_MAX))),
   cursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048))),
   limit: Schema.optionalKey(
     Schema.FiniteFromString.check(

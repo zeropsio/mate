@@ -4,7 +4,7 @@
  * as the person types. A typed commit id is offered as a commit. `w` opens it.
  */
 import type { GitRefKind } from "@t3tools/shared/hqGitBrowse/common";
-import type { GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
+import { REFS_QUERY_MAX, type GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Badge } from "~/components/ui/badge";
@@ -27,6 +27,8 @@ import { pickerSections, type PickerChange, type PickerRow } from "./GitRefPicke
 
 const FILTER_DEBOUNCE_MS = 200;
 type ListKind = "branch" | "tag";
+const listOf = (kind: GitRefKind | null): ListKind =>
+  kind === "tag" || kind === "github-tag" ? "tag" : "branch";
 
 export function GitRefPicker({
   appId,
@@ -54,9 +56,9 @@ export function GitRefPicker({
   readonly shortcut?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [list, setList] = useState<ListKind>(
-    kind === "tag" || kind === "github-tag" ? "tag" : "branch",
-  );
+  // The list of the ref the page reads, read once home is, until the person picks the other.
+  const [chosen, setChosen] = useState<ListKind | null>(null);
+  const list = chosen ?? listOf(kind);
   const [typed, setTyped] = useState("");
   const q = useDebouncedValue(typed.trim(), FILTER_DEBOUNCE_MS);
   // "Show more" pages of this list and filter; another list or filter starts from its first page.
@@ -114,6 +116,7 @@ export function GitRefPicker({
   const pick = (row: PickerRow) => {
     setOpen(false);
     setTyped("");
+    setChosen(null);
     onPick(row.rev);
   };
 
@@ -142,7 +145,7 @@ export function GitRefPicker({
             variant="segmented"
             value={[list]}
             onValueChange={(value) => {
-              if (value[0] === "branch" || value[0] === "tag") setList(value[0]);
+              if (value[0] === "branch" || value[0] === "tag") setChosen(value[0]);
             }}
           >
             <Toggle value="branch">Branches</Toggle>
@@ -153,6 +156,7 @@ export function GitRefPicker({
           aria-label={`Find a ${list === "branch" ? "branch" : "tag"} or commit`}
           placeholder={list === "branch" ? "Find a branch" : "Find a tag"}
           value={typed}
+          maxLength={REFS_QUERY_MAX}
           onChange={(event) => setTyped(event.target.value)}
         />
         <ComboboxEmpty>
@@ -210,7 +214,8 @@ export function GitRefPicker({
         <ComboboxStatus>
           {reading
             ? `Reading ${noun}…`
-            : mounted && !items.some((item) => item.outsideMate)
+            : // Only a whole unfiltered list without one GitHub ref says HQ follows none yet.
+              mounted && q === "" && next === null && !items.some((item) => item.outsideMate)
               ? "Other branches and tags are on GitHub."
               : ""}
         </ComboboxStatus>

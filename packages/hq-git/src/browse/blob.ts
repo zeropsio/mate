@@ -22,7 +22,9 @@ export type BlobRead =
   /** Larger than the caller reads at all: nothing of it was read. */
   | { readonly kind: "too-large"; readonly size: number }
   | { readonly kind: "commit-missing" }
-  | { readonly kind: "path-missing" };
+  | { readonly kind: "path-missing" }
+  /** A folder where a file was asked: a link may name either by the same spelling. */
+  | { readonly kind: "folder" };
 
 export const readBlob = async (
   git: GitRunner,
@@ -40,6 +42,7 @@ export const readBlob = async (
   const found = await lookupPath(git, dir, sha, path, signal);
   if (found.kind !== "found") return found;
   const { object } = found;
+  if (object.type === "tree") return { kind: "folder" };
   if (object.type !== "blob" || object.size === null) return { kind: "path-missing" };
   if (options.refuseOver !== undefined && object.size > options.refuseOver)
     return { kind: "too-large", size: object.size };

@@ -6,6 +6,7 @@
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import type { ReactNode } from "react";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitAtCommit, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
@@ -85,11 +86,15 @@ function FileAt({
   navigate,
   hrefOf,
   hasView,
+  folder,
 }: Pick<GitRepoPageProps, "appId" | "repo" | "search" | "navigate" | "hrefOf" | "hasView"> & {
   readonly sha: string;
   readonly path: string;
+  /** The path as the folder it is at the commit: a link may name a folder as a file. */
+  readonly folder: ReactNode;
 }) {
   const { view, again } = useGitBrowse({ appId, repo, read: "blob", params: { sha, path } }, true);
+  if (view.state === "refused" && view.reason === "not_a_file") return folder;
   if (view.state !== "known") return <NotRead view={view} onAgain={again} />;
   return (
     <>
@@ -124,6 +129,9 @@ export function GitRepoCode(props: GitRepoPageProps) {
         });
         const open = (target: RepoPathTarget) => navigate(at(target));
         const href = (target: RepoPathTarget) => hrefOf(at(target));
+        const folder = (
+          <Folder appId={appId} repo={repo} sha={sha} path={path} open={open} hrefOf={href} />
+        );
         return (
           <div className="flex min-w-0 gap-4">
             <GitTreeSidebar
@@ -140,14 +148,7 @@ export function GitRepoCode(props: GitRepoPageProps) {
                 <div className="flex min-w-0 flex-col gap-3 p-4">
                   <GitPathCrumbs repo={repo} at={{ path, kind }} hrefOf={href} onOpen={open} />
                   {kind === "tree" ? (
-                    <Folder
-                      appId={appId}
-                      repo={repo}
-                      sha={sha}
-                      path={path}
-                      open={open}
-                      hrefOf={href}
-                    />
+                    folder
                   ) : (
                     <FileAt
                       appId={appId}
@@ -158,6 +159,7 @@ export function GitRepoCode(props: GitRepoPageProps) {
                       navigate={navigate}
                       hrefOf={hrefOf}
                       hasView={hasView}
+                      folder={folder}
                     />
                   )}
                 </div>

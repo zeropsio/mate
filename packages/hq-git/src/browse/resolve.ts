@@ -77,9 +77,18 @@ export const resolveRevision = async (
       if (sha !== undefined && ref !== null) return { kind: "commit", sha, ref };
     }
   }
-  if (/^[0-9a-f]{7,40}$/u.test(asked)) {
+  // A typed commit id, in either case.
+  if (/^[0-9a-f]{7,40}$/iu.test(asked)) {
     const found = await git.exec(
-      ["-C", dir, "rev-parse", "--verify", "--quiet", "--end-of-options", `${asked}^{commit}`],
+      [
+        "-C",
+        dir,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        `${asked.toLowerCase()}^{commit}`,
+      ],
       // 1: no such commit; 128: a prefix more than one object starts with.
       { signal, acceptExitCodes: [1, 128] },
     );

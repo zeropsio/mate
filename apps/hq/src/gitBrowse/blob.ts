@@ -30,6 +30,7 @@ export const blobRead = {
       });
       if (read.kind === "commit-missing")
         return yield* new ChangeRefused({ code: "commit_not_found", reason: "commit_not_found" });
+      if (read.kind === "folder") return yield* new BrowseRefused({ code: "not_a_file" });
       if (read.kind !== "blob") return yield* new BrowseRefused({ code: "path_not_found" });
       const body: GitBlob = {
         path: query.path,

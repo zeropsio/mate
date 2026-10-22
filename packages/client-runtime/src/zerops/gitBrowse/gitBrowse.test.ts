@@ -4,8 +4,9 @@ import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
 import { makeAccountStore } from "../../data/store.ts";
 import { makeGitBrowseReads } from "../../data/adapters/hqGitBrowse.ts";
+import type { GitBrowseKey } from "../../data/families/hqGitBrowse.ts";
 import { gitBrowse } from "../../data/projections/gitBrowse.ts";
-import { HqError } from "../hq/client.ts";
+import { HqError, makeHqApi } from "../hq/client.ts";
 import { refGroups } from "./refGroups.ts";
 import { gitBrowsePath } from "./reads.ts";
 import { refRevision } from "./refs.ts";
@@ -46,7 +47,7 @@ describe("Git browse reads", () => {
   it("A repository's home is read once for all its holders, and again on a new visit or Again", async () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    const asked: Array<string> = [];
+    const asked: Array<string | null> = [];
     const reader = makeGitBrowseReads(store, {
       gitBrowseBytes: async () => new Blob(),
       gitBrowse: async (read, appId, repo, params) => {
@@ -133,6 +134,52 @@ describe("Git browse reads", () => {
     reader.close();
     registry.dispose();
   });
+
+  it.each([
+    { name: "an empty revision", read: "home", params: { rev: "" } },
+    { name: "a revision read as an option", read: "home", params: { rev: "-x" } },
+    { name: "a revision past 1024 characters", read: "home", params: { rev: "a".repeat(1025) } },
+    {
+      name: "a filter past 200 characters",
+      read: "refs",
+      params: { kind: "branch", q: "a".repeat(201) },
+    },
+    {
+      name: "a cursor past 2048 characters",
+      read: "refs",
+      params: { kind: "tag", cursor: "c".repeat(2049) },
+    },
+  ] as const)(
+    // Refused, not failed: a definitive refusal is read again only on Again, never on its own.
+    "A read asked with $name is refused in place and never sent",
+    async ({ read, params }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const sent: Array<string> = [];
+      const api = makeHqApi({
+        address: "https://hq.example",
+        throughDoor: async (use) => use("door"),
+        openSocket: () => {
+          throw new Error("unused");
+        },
+        fetch: async (url) => {
+          sent.push(url);
+          throw new Error("unused");
+        },
+      });
+      const reader = makeGitBrowseReads(store, api);
+      const asked = { orgId: "org", appId: "app", repo: "repo", read, params } as GitBrowseKey;
+      const projected = store.data.project(gitBrowse, { ...asked, allowed: true });
+      const refused = waitFor(store, () => registry.get(projected).state === "refused");
+      const release = reader.demand(asked);
+      await refused;
+      expect(registry.get(projected)).toMatchObject({ state: "refused", reason: "invalid" });
+      expect(sent).toEqual([]);
+      release();
+      reader.close();
+      registry.dispose();
+    },
+  );
 
   it("A read's address keeps one order of its parameters", () => {
     expect(gitBrowsePath("refs", "app id", "repo", { limit: 50, q: "fix", kind: "branch" })).toBe(

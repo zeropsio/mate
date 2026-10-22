@@ -48,6 +48,7 @@ export const rawRead = {
           limit: RAW_MAX_BYTES,
           size: read.size,
         });
+      if (read.kind === "folder") return yield* new BrowseRefused({ code: "not_a_file" });
       if (read.kind !== "blob") return yield* new BrowseRefused({ code: "path_not_found" });
       const answer: BrowseBytes = {
         bytes: read.bytes,

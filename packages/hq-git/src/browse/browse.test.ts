@@ -97,11 +97,13 @@ describe("git browse reads", () => {
         const again = await value(git.browse.resolve(repo, rev));
         expect(again.kind === "commit" && again.ref).toEqual(ref);
       }
-      expect(await value(git.browse.resolve(repo, first.slice(0, 7)))).toEqual({
-        kind: "commit",
-        sha: first,
-        ref: { name: first, kind: "commit" },
-      });
+      // A commit id as typed, in either case.
+      for (const typed of [first.slice(0, 7), first.slice(0, 7).toUpperCase()])
+        expect(await value(git.browse.resolve(repo, typed))).toEqual({
+          kind: "commit",
+          sha: first,
+          ref: { name: first, kind: "commit" },
+        });
       // `refs/heads` wins a name both namespaces hold.
       await native(dir, ["update-ref", "refs/github/heads/main", first]);
       await native(dir, ["tag", "-a", "-m", "One", "v1", first]);

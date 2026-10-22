@@ -10,6 +10,7 @@ type Search = GitSearch;
 const fixture = vi.hoisted(() => ({
   search: {} as Search,
   home: {} as unknown,
+  homeAgain: vi.fn(),
   refs: [] as Array<unknown>,
   /** The page's folder read and file read. */
   tree: {} as unknown,
@@ -19,25 +20,31 @@ const fixture = vi.hoisted(() => ({
   failure: undefined as string | undefined,
   navigate: vi.fn(),
 }));
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (actual) => ({
+  defaultStringifySearch: (await actual<typeof import("@tanstack/react-router")>())
+    .defaultStringifySearch,
   useSearch: () => fixture.search,
   useNavigate: () => fixture.navigate,
 }));
-vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: ({ read }: { read: string }) =>
-    read === "home"
-      ? { view: fixture.home, again: () => undefined }
-      : {
-          view:
-            read === "tree"
-              ? fixture.tree
-              : read === "blob"
-                ? fixture.blob
-                : { state: "unread", busy: false },
-          again: fixture.again,
-        },
-  useGitBrowseReads: () => ({ views: fixture.refs, again: () => undefined }),
-}));
+vi.mock("~/zerops/useGitBrowse", () => {
+  const viewOf = (read: string) =>
+    read === "tree"
+      ? fixture.tree
+      : read === "blob"
+        ? fixture.blob
+        : { state: "unread", busy: false };
+  return {
+    useGitBrowse: ({ read }: { read: string }) =>
+      read === "home"
+        ? { view: fixture.home, again: fixture.homeAgain }
+        : { view: viewOf(read), again: fixture.again },
+    // The frame holds the folder or file its page draws; the ref picker holds the refs pages.
+    useGitBrowseReads: (requests: ReadonlyArray<{ read: string }>) => ({
+      views: requests[0]?.read === "refs" ? fixture.refs : requests.map(({ read }) => viewOf(read)),
+      again: () => undefined,
+    }),
+  };
+});
 vi.mock("./gitBrowser/GitTreeSidebar", () => ({ GitTreeSidebar: () => null }));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: ({ appId, repo }: { appId: string; repo: string }) => (
@@ -323,7 +330,6 @@ it.each([
 
 it("Source refusal withholds changes and HTTPS even before offers catch up", async () => {
   fixture.tree = { state: "withheld" };
-  fixture.home = { state: "withheld" };
   await open();
   expect(detail().textContent).toContain("You no longer have access");
   expect(detail().textContent).not.toContain("Add a due date");
@@ -331,6 +337,31 @@ it("Source refusal withholds changes and HTTPS even before offers catch up", asy
     [...detail().querySelectorAll("button")].map((button) => button.textContent),
   ).not.toContain("Clone");
 });
+it.each([
+  { reason: "commit_not_found", words: "HQ has no such commit." },
+  // An empty revision, or one read as an option, refused before it is sent.
+  { reason: "invalid", words: "HQ refused this (invalid)." },
+])(
+  "A link to a revision HQ refuses as $reason says it is not in the repository, in place",
+  async ({ reason, words }) => {
+    fixture.home = { state: "refused", reason, words };
+    await open();
+    expect(detail().textContent).toContain("This branch, tag or commit is not in the repository.");
+    expect(detail().textContent).not.toContain(words);
+    expect(detail().textContent).toContain("Open changes");
+  },
+);
+it.each([false, true])(
+  "A repository's home is read again on Read again, and says when that read failed (failed: %s)",
+  async (failed) => {
+    fixture.home = { ...(fixture.home as object), busy: false, failed };
+    fixture.homeAgain.mockClear();
+    await open();
+    expect(detail().textContent?.includes("HQ could not read this again.")).toBe(failed);
+    await press("Read again", detail());
+    expect(fixture.homeAgain).toHaveBeenCalledTimes(1);
+  },
+);
 it("Clone with HTTPS opens the existing credentials for this project and repository", async () => {
   await open();
   expect(page()).not.toContain("Credentials for");

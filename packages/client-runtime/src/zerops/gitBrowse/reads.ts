@@ -6,6 +6,7 @@
  *
  * @module zerops/gitBrowse/reads
  */
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { blobRead } from "./blob.ts";
 import { commitFileRead, commitRead } from "./commit.ts";
@@ -39,24 +40,34 @@ export type GitBrowseParams<R extends GitBrowseRead> =
 export type GitBrowseValue<R extends GitBrowseRead = GitBrowseRead> =
   (typeof GIT_BROWSE_READS)[R]["value"]["Type"];
 
-/** A read's parameters as its URL carries them, in one order whatever order they were given in. */
+/**
+ * A read's parameters as its URL carries them, in one order whatever order they were given in;
+ * none for parameters HQ refuses as `invalid` (an empty `rev` or one read as an option, a filter or
+ * cursor past its length), which no URL is built for.
+ */
 export const gitBrowseSearch = <R extends GitBrowseRead>(read: R, params: GitBrowseParams<R>) => {
   const query = GIT_BROWSE_READS[read].query as Schema.Codec<
     GitBrowseParams<R>,
     Readonly<Record<string, string | undefined>>
   >;
-  const encoded = Schema.encodeSync(query)(params);
+  const encoded = Schema.encodeOption(query)(params);
+  if (Option.isNone(encoded)) return null;
   return new URLSearchParams(
-    Object.entries(encoded)
+    Object.entries(encoded.value)
       .filter((entry): entry is [string, string] => entry[1] !== undefined)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
   );
 };
 
+/** A read's address; none where HQ would refuse its parameters as `invalid`. */
 export const gitBrowsePath = <R extends GitBrowseRead>(
   read: R,
   appId: string,
   repo: string,
   params: GitBrowseParams<R>,
-) =>
-  `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/browse/${read}?${gitBrowseSearch(read, params)}`;
+) => {
+  const search = gitBrowseSearch(read, params);
+  return search === null
+    ? null
+    : `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/browse/${read}?${search}`;
+};

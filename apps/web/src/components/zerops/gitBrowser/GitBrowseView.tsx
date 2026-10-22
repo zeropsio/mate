@@ -8,6 +8,7 @@ import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { isEditableFocused } from "~/lib/editableFocus";
 import type { GitSearch } from "~/routes/git";
+import type { GitBrowseRequest } from "~/zerops/useGitBrowse";
 
 export type GitView = NonNullable<GitSearch["view"]>;
 /** A link inside one repository: everything `/git` carries but which repository it is. */
@@ -35,6 +36,29 @@ export interface GitRepoPageProps {
 /** The page a link names: its `view`; absent, home, or code where it names a path or kind. */
 export const gitView = (search: Pick<GitSearch, "view" | "path" | "kind">): GitView =>
   search.view ?? (search.path !== undefined || search.kind !== undefined ? "code" : "home");
+
+/**
+ * The folder or file a page draws at the commit home resolved: home's top folder, code's path;
+ * none for a page that draws neither. The frame holds it too, so its refusal withholds the whole
+ * repository, never only the listing. A view without a page draws home.
+ */
+export const pageRead = (
+  view: GitView,
+  search: GitBrowseSearch,
+  home: GitBrowseState<GitHome>,
+  at: { readonly appId: string; readonly repo: string },
+): GitBrowseRequest<"tree" | "blob"> | null => {
+  const sha = home.state === "known" ? home.answer.sha : null;
+  if (sha === null) return null;
+  const page = VIEWS[view] === undefined ? "home" : view;
+  if (page === "code")
+    return {
+      ...at,
+      read: search.kind === "file" ? "blob" : "tree",
+      params: { sha, path: search.path ?? "" },
+    };
+  return page === "home" ? { ...at, read: "tree", params: { sha, path: "" } } : null;
+};
 
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   home: lazy(() => import("./GitRepoHome").then((module) => ({ default: module.GitRepoHome }))),

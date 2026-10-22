@@ -87,6 +87,40 @@ describe("Git browse routes", () => {
         }),
     );
 
+    it.effect(
+      "Browse reads take from the person's own bucket and never from signing in's",
+      () =>
+        Effect.gen(function* () {
+          const { call } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const colleague = yield* sessionFor(call, "door-dev");
+          const made = yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } });
+          const appId = (made.body as { id: string }).id;
+          // One office behind one address: the person browsing, a colleague, and someone signing in.
+          const headers = { "x-real-ip": "10.0.0.7" };
+          const browse = (session: string) =>
+            Effect.map(
+              call("GET", `/api/apps/${appId}/repos/elsewhere/browse/home`, { session, headers }),
+              (answer) => answer.status,
+            );
+          // Core runs on the real clock and refills while the reads travel, so the 429 is awaited
+          // past the bucket's 600, not counted to; rateLimit.test.ts counts it on a test clock.
+          let reads = 0;
+          let status = yield* browse(owner);
+          while (status !== 429 && reads < 2000) {
+            reads++;
+            status = yield* browse(owner);
+          }
+          assert.strictEqual(status, 429);
+          const door = yield* call("POST", "/api/door", { body: { token: "unknown" }, headers });
+          assert.strictEqual(door.status, 401);
+          assert.strictEqual(yield* browse(colleague), 403);
+          assert.isAtLeast(reads, 600);
+        }),
+      60_000,
+    );
+
     it.effect("A change's branch is marked as that change's branch", () =>
       Effect.gen(function* () {
         const { call, fake, origin } = yield* startCore(true, { viewTtl: Duration.zero });
@@ -176,6 +210,8 @@ describe("Git browse routes", () => {
             first.headers["cache-control"],
             "private, max-age=31536000, immutable",
           );
+          // Kept per session: another account on the same browser is checked by HQ again.
+          assert.strictEqual(first.headers["vary"], "Authorization");
           const etag = first.headers["etag"]!;
           expect(etag).toMatch(new RegExp(`^"tree:${sha}:[0-9a-f]{8}"$`));
           // The same query in another order is the same answer; another path is another one.

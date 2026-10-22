@@ -36,14 +36,38 @@ export function GitReadTrouble({
   );
 }
 
+const NO_COMMIT = "This branch, tag or commit is not in the repository.";
+
 const REFUSALS: Readonly<Record<string, string>> = {
-  commit_not_found: "This branch, tag or commit is not in the repository.",
+  commit_not_found: NO_COMMIT,
   path_not_found: "This commit holds nothing at this path.",
 };
 
 /** A read that ended in no answer, in the person's words. */
 export const troubleWords = (view: { readonly words: string; readonly reason?: string }) =>
   (view.reason === undefined ? undefined : REFUSALS[view.reason]) ?? view.words;
+
+/** A home read moves with its ref: read again on the person's ask, said when that read failed. */
+export function GitHomeAgain({
+  home,
+  onHomeAgain,
+}: {
+  readonly home: { readonly busy: boolean; readonly failed: boolean };
+  readonly onHomeAgain: () => void;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-3">
+      {home.failed ? (
+        <span className="text-status-failed" role="alert">
+          HQ could not read this again. Showing the last read.
+        </span>
+      ) : null}
+      <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
+        Read again
+      </Button>
+    </span>
+  );
+}
 
 /** The page at the commit the frame's home read resolved, or what that read says instead. */
 export function GitAtCommit({
@@ -57,7 +81,10 @@ export function GitAtCommit({
 }) {
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <p className="text-sm text-muted-foreground">No commits on this branch yet.</p>
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <p>No commits on this branch yet.</p>
+        <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
+      </div>
     ) : (
       children(home.answer, home.answer.sha)
     );
@@ -68,5 +95,13 @@ export function GitAtCommit({
         Reading the repository…
       </p>
     );
-  return <GitReadTrouble words={troubleWords(home)} onAgain={onHomeAgain} />;
+  return (
+    <GitReadTrouble
+      words={
+        // A revision HQ cannot read as one (empty, or read as an option) names no commit either.
+        home.state === "refused" && home.reason === "invalid" ? NO_COMMIT : troubleWords(home)
+      }
+      onAgain={onHomeAgain}
+    />
+  );
 }

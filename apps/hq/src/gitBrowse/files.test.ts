@@ -205,6 +205,8 @@ describe("Git browse files", () => {
           image.headers.get("cache-control"),
           "private, max-age=31536000, immutable",
         );
+        // Kept per session token: another account on the same browser is checked again.
+        assert.strictEqual(image.headers.get("vary"), "Authorization");
       }),
     );
 
@@ -244,7 +246,6 @@ describe("Git browse files", () => {
           ["tree", "nope"],
           ["tree", "src/a.ts"],
           ["blob", "nope.ts"],
-          ["blob", "src"],
           ["raw", "src/nope.ts"],
         ] as const) {
           const missing = yield* browse(read, { sha, path });
@@ -255,6 +256,20 @@ describe("Git browse files", () => {
         assert.strictEqual(commit.status, 404);
         expect(commit.body).toMatchObject({ code: "commit_not_found" });
       }),
+    );
+
+    it.effect(
+      "A folder asked as a file is answered as a folder the page opens, never as nothing",
+      () =>
+        Effect.gen(function* () {
+          // A README's `[src](src)` names the folder as a file.
+          const { sha, browse } = yield* shopWith({ "src/a.ts": "a" });
+          for (const read of ["blob", "raw"] as const) {
+            const folder = yield* browse(read, { sha, path: "src" });
+            assert.strictEqual(folder.status, 404, read);
+            assert.deepStrictEqual(folder.body, { code: "not_a_file" }, read);
+          }
+        }),
     );
   });
 });

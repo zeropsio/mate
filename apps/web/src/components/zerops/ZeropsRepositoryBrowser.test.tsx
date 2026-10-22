@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { defaultParseSearch } from "@tanstack/react-router";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps, ReactNode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -14,16 +15,25 @@ const held = vi.hoisted(() => ({
   views: {} as Record<string, unknown>,
   asked: [] as Array<{ readonly read: string; readonly params: unknown }>,
 }));
-vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: (request: { readonly read: string; readonly params: unknown }) => {
+vi.mock("~/zerops/useGitBrowse", () => {
+  const viewOf = (request: { readonly read: string; readonly params: unknown }) => {
     held.asked.push({ read: request.read, params: request.params });
-    return {
-      view: held.views[request.read] ?? { state: "unread", busy: false },
+    return held.views[request.read] ?? { state: "unread", busy: false };
+  };
+  return {
+    useGitBrowse: (request: { readonly read: string; readonly params: unknown }) => ({
+      view: viewOf(request),
       again: () => undefined,
-    };
-  },
-  useGitBrowseReads: () => ({ views: [], again: () => undefined }),
-}));
+    }),
+    // The frame holds the folder or file its page draws.
+    useGitBrowseReads: (
+      requests: ReadonlyArray<{ readonly read: string; readonly params: unknown }>,
+    ) => ({
+      views: requests.map(viewOf),
+      again: () => undefined,
+    }),
+  };
+});
 vi.mock("./gitBrowser/GitTreeSidebar", () => ({ GitTreeSidebar: () => null }));
 vi.mock("@pierre/diffs/react", () => ({
   Virtualizer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -265,6 +275,36 @@ describe("repository frame", () => {
       }
     },
   );
+
+  it("A link that names a folder as a file opens the folder", async () => {
+    // A README's `[src](src)`: HQ answers the file read that the path is a folder.
+    held.views = {
+      home: knownHome(null),
+      blob: { state: "refused", reason: "not_a_file", words: "HQ refused this (not_a_file)." },
+      tree: {
+        state: "known",
+        busy: false,
+        failed: false,
+        answer: {
+          entries: [
+            { name: "a.ts", path: "src/a.ts", type: "file", mode: "100644", sha: "c".repeat(40) },
+          ],
+          truncated: false,
+        },
+      },
+    };
+    const { host, close } = await browser("appdev", "Shop", { path: "src", kind: "file" });
+    try {
+      expect(held.asked.findLast((asked) => asked.read === "tree")?.params).toEqual({
+        sha,
+        path: "src",
+      });
+      expect(host.textContent).toContain("a.ts");
+      expect(host.textContent).not.toContain("not_a_file");
+    } finally {
+      await close();
+    }
+  });
 });
 
 describe("repository README", () => {
@@ -290,6 +330,8 @@ describe("repository README", () => {
     ["../docs/setup.md", { path: "docs/setup.md", kind: "file" }],
     ["/src/", { path: "src", kind: "tree" }],
     ["./CONTRIBUTING.md#start", { path: ".github/CONTRIBUTING.md", kind: "file" }],
+    // A name the router would read as a number, opened in a new tab.
+    ["../2024", { path: "2024", kind: "file" }],
   ])(
     "A README link to a repository path opens that path at the same commit: %s",
     async (href, target) => {
@@ -299,6 +341,7 @@ describe("repository README", () => {
       try {
         const link = host.querySelector<HTMLAnchorElement>('section[aria-label="README"] a')!;
         expect(new URL(link.href).searchParams.get("rev")).toBe(sha);
+        expect(defaultParseSearch(new URL(link.href).search)).toMatchObject(target);
         await act(async () => link.click());
         expect(onNavigate).toHaveBeenCalledWith({ rev: sha, view: "code", ...target });
       } finally {

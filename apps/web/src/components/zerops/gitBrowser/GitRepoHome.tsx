@@ -3,13 +3,14 @@
  * it is, its top folder, and its README — every part read at that one commit.
  */
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
+import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
 import type { GitRepoPageProps } from "./GitBrowseView";
-import { GitAtCommit, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
+import { GitAtCommit, GitHomeAgain, GitReadTrouble, GitReading, troubleWords } from "./GitAtCommit";
 import { GitDirectoryList } from "./GitDirectoryList";
 import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
@@ -78,11 +79,14 @@ function HomeAt({
   repo,
   home,
   sha,
+  again: homeAgain,
   navigate,
   hrefOf,
 }: Pick<GitRepoPageProps, "appId" | "repo" | "navigate" | "hrefOf"> & {
   readonly home: GitHome;
   readonly sha: string;
+  /** Read again for the home read itself: the ref may have moved since. */
+  readonly again: ReactNode;
 }) {
   // The top folder at the very commit the home read resolved, so a branch moving between the two
   // reads cannot pair one commit's README with another's files.
@@ -99,6 +103,7 @@ function HomeAt({
           <GitWhen at={about.updatedAt}>Updated {formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
           <span>{count(about.branchCount, "branch", "branches")}</span>
           <span>{count(about.tagCount, "tag", "tags")}</span>
+          {homeAgain}
         </div>
       </Card>
       <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
@@ -162,7 +167,16 @@ export function GitRepoHome(props: GitRepoPageProps) {
     <div className="flex min-w-0 flex-col gap-4">
       <OpenChanges {...props} />
       <GitAtCommit home={home} onHomeAgain={onHomeAgain}>
-        {(answer, sha) => <HomeAt {...props} home={answer} sha={sha} />}
+        {(answer, sha) => (
+          <HomeAt
+            {...props}
+            home={answer}
+            sha={sha}
+            again={
+              home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
+            }
+          />
+        )}
       </GitAtCommit>
     </div>
   );

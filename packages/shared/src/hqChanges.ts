@@ -40,7 +40,7 @@
  *
  * **Answers.** A refusal is `{ code, reason }`: `403 forbidden` with a permission's reason
  * (`zeropsPermissions.ts`), `404` `repo_not_found` / `change_not_found` / `attachment_not_found` /
- * `commit_not_found`,
+ * `commit_not_found` / `path_not_found`,
  * `409 conflict` `change_not_open` for a change merged or closed, `branch_taken` / `protected_ref`
  * for a change opened on another open change's branch / on `main`, `mate/…` or a full ref,
  * `400 invalid` for a body these

@@ -514,6 +514,12 @@ export const failure = (error: {
       return Effect.succeed(unavailable("busy"));
     case "PatternRefused":
       return Effect.succeed(json({ code: "invalid", reason: "invalid_pattern" }, 400));
+    // A Git browse read past its deadline (`gitBrowse/routes.ts`): slow git, read again later.
+    case "BrowseDeadline":
+      return Effect.as(
+        Effect.logInfo("browse read past its deadline", error),
+        unavailable("deadline"),
+      );
     case "SchemaError":
     case "HttpServerError":
       return Effect.succeed(json({ code: "invalid" }, 400));

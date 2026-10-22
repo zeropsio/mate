@@ -1,8 +1,9 @@
+import { defaultStringifySearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
-import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { GitBrowseView, gitView, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
+import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitBrowseView, gitView, pageRead, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 
 /**
@@ -42,11 +43,19 @@ export function ZeropsRepositoryBrowser({
     { appId, repo, read: "home", params: rev === undefined ? {} : { rev } },
     allowed,
   );
+  const view = gitView(query);
+  const drawn = pageRead(view, query, home.view, { appId, repo });
+  const page = useGitBrowseReads(drawn === null ? [] : [drawn], allowed);
   const changes = useMemo(
     () => (repository?.changes ?? []).map(({ pull }) => pull),
     [repository?.changes],
   );
-  if (allowed !== true || home.view.state === "withheld") {
+  // Any read HQ refused for this repository withholds all of it, before the offers catch up.
+  if (
+    allowed !== true ||
+    home.view.state === "withheld" ||
+    page.views.some((read) => read.state === "withheld")
+  ) {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
@@ -62,9 +71,9 @@ export function ZeropsRepositoryBrowser({
       </section>
     );
   }
-  const view = gitView(query);
+  // The router's own stringifier: a path such as `2024` or `true` reads back as the same string.
   const hrefOf = (search: GitBrowseSearch) =>
-    `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...search })}`;
+    `${appBasePath()}/git${defaultStringifySearch({ appId, repo, ...search })}`;
   return (
     <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
       <GitRepoFrame
