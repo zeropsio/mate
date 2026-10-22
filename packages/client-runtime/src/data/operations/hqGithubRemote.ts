@@ -3,6 +3,7 @@
  * answer starts it, and its repository record — the remote at that repository, reached through the
  * app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. And one
  * whose code HQ keeps while it follows a GitHub repository, with no token: HQ's answer ends it.
+ * Stopping that follow ends once the repository's record no longer follows one.
  *
  * @module data/operations/hqGithubRemote
  */
@@ -26,6 +27,12 @@ declare module "../model.ts" {
       readonly repo: string;
       /** The GitHub repository's address its Mates fetch: `https://github.com/acme/app`. */
       readonly url: string;
+    };
+    readonly "stop-following-github-repository": {
+      readonly orgId: string;
+      readonly appId: string;
+      /** HQ's repository: `appdev`. */
+      readonly repo: string;
     };
   }
 }
@@ -71,4 +78,21 @@ export const followGithubRepository: OperationKind<"follow-github-repository"> =
   kind: "follow-github-repository",
   executor: "hq",
   reflected: () => true,
+};
+
+export const stopFollowingGithubRepository: OperationKind<"stop-following-github-repository"> = {
+  kind: "stop-following-github-repository",
+  executor: "hq",
+  ...shownInFacts(
+    (intent) => intent.appId,
+    (read, intent) => {
+      const repos = read.fact("hqAppDetail", `${intent.appId}/repos`);
+      return (
+        repos.kind === "known" &&
+        repos.value.kind === "repos" &&
+        repos.value.value.find((repo) => repo.name === intent.repo)?.follows === undefined
+      );
+    },
+  ),
+  observedIn: (intent) => ({ family: "hqAppDetail", ownerId: intent.appId }),
 };
