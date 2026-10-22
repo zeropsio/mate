@@ -2,7 +2,8 @@
  * The projects page's applications with nothing in them: one HQ holds with no project — what a New
  * project that stopped before its Mate leaves (`mate-rig-e2e-a`, 2026-10-02) — is drawn as its
  * project all the same (`deriveZeropsGroups`'s `apps`), offered *Add a Mate* for the Mate it was
- * made for, and to whoever writes the structure *Delete* (`deleteOffered`).
+ * made for, and to whoever writes the structure *Delete* (`deleteOffered`) — with its code where HQ
+ * still holds some.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/hq";
@@ -70,13 +71,18 @@ export function heldLine(mates: number, contents: HqAppContents | undefined): st
 }
 
 /**
- * Whether a project's menu offers *Delete*: HQ says it holds nothing, no listed or coming member
- * disagrees, and the person writes the structure (`delete_app`).
+ * Which *Delete* a project's menu offers, where it has no listed or coming member and the person
+ * writes the structure (`delete_app`): on HQ's empty answer the plain one, whose dialog has nothing
+ * to list (`empty`); on HQ's word that it still holds code or changes, the menu's dialog that lists
+ * what goes with it (`with-code`, `ZeropsDeleteApplicationDialog`). None while HQ has not answered
+ * or a deletion is still under way.
  */
 export function deleteOffered(
   group: Pick<ZeropsGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
   mayDelete: boolean,
   contents: HqAppContents | undefined,
-): boolean {
-  return mayDelete && groupIsEmpty(group) && contents?.empty === true;
+): "empty" | "with-code" | undefined {
+  if (!mayDelete || !groupIsEmpty(group) || contents === undefined) return undefined;
+  if (contents.deletingProjectIds.length > 0) return undefined;
+  return contents.empty ? "empty" : "with-code";
 }
