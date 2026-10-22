@@ -691,9 +691,9 @@ export const RequestAsk = forwardCompatibleUnion({
       label: Schema.optionalKey(Schema.String),
     }),
     /**
-     * A repository the agent asks the person to connect, so finished work goes back to it: its
-     * address, the HQ repository the pair will wire, and why. The person connects it with their
-     * own token; the agent never hears one.
+     * A repository the agent asks the person about: its address, the HQ repository the pair will
+     * wire, and why. The person picks where its code is kept — on GitHub, mounted through the
+     * organization's GitHub app, or in Mate; the agent never hears a token.
      */
     Schema.Struct({
       kind: Schema.Literal("origin"),

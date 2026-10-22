@@ -16,7 +16,8 @@ export type GitEventKind =
   | "merged"
   | "closed"
   | "commented"
-  | "released";
+  | "released"
+  | "handed";
 
 /** The attachment the `hq_release` row named `release` was accepted for, as its `released` event says. */
 export const releaseTargetOf = (release: string) => `(SELECT data->'releaseTarget' FROM hq_git_event

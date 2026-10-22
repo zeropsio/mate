@@ -17,6 +17,7 @@
  */
 import {
   changeAskPrompt,
+  changeHandedPrompt,
   changeRemarks,
   changeReview,
   recipeReach,
@@ -25,6 +26,7 @@ import {
   type ChangeReadout,
   type ChangeReviewInput,
   type ReviewClose,
+  type ReviewHand,
   type ReviewPress,
   type ReviewQuestion,
   type ChangeReadoutCommit,
@@ -292,8 +294,36 @@ function ChangeReviewData({
     const outcome = await verbs.close(target.groupId, change, pull.headSha ?? null);
     setClosing(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
+  const [hand, setHand] = useState<ReviewHand>({ kind: "idle" });
+  // Handed over, the Mate it went to is told in its conversation that the change is its own now.
+  const handTo = async (mateProjectId: string) => {
+    setHand({ kind: "running", to: mateProjectId });
+    const outcome = await verbs.hand(target.groupId, change, mateProjectId);
+    if (!outcome.ok) {
+      setHand({ kind: "refused", reason: outcome.reason });
+      return;
+    }
+    setHand({ kind: "done", to: mateProjectId });
+    askMate(
+      mateProjectId,
+      changeHandedPrompt({
+        number: pull.number,
+        repository: pull.repository,
+        title: pull.title,
+        branch: pull.branch,
+      }),
+    );
+    onClose();
+  };
 
   const mate = mates.get(pull.mateProjectId);
+  const heirs = useMemo(
+    () =>
+      [...mates.values()]
+        .filter((entry) => entry.mateProjectId !== pull.mateProjectId)
+        .map((entry) => ({ projectId: entry.mateProjectId, name: entry.name })),
+    [mates, pull.mateProjectId],
+  );
   // Only the Mate that wrote it can push to its branch: the fix goes to it, if it is the
   // person's own (S6, the one rule `fixMates.ts` keeps for every surface).
   const fixers = useFixMates({ projectId: pull.mateProjectId, groupId: target.groupId });
@@ -350,7 +380,12 @@ function ChangeReviewData({
       (pull.description === undefined && run.reading && !runGaveUp),
   );
   const project = useGroupName(target.groupId);
-  const previews = useMatePreviews(pull.mateProjectId, flow?.mateTier);
+  // A recipe change is no pair's code: it offers every preview.
+  const previews = useMatePreviews(
+    pull.mateProjectId,
+    flow?.mateTier,
+    pull.kind === "recipe" ? undefined : pull.repository,
+  );
 
   return (
     <ChangeReviewView
@@ -388,6 +423,11 @@ function ChangeReviewData({
       offers={reviewOffers}
       press={press}
       closing={closing}
+      heirs={heirs}
+      hand={hand}
+      onHand={(mateProjectId) => {
+        void handTo(mateProjectId);
+      }}
       onMerge={() => {
         void merge();
       }}
@@ -477,6 +517,11 @@ export interface ChangeReviewViewProps {
   readonly press: ReviewPress;
   /** Closing without merging: asked, then pressed. */
   readonly closing: ReviewClose;
+  /** The application's other Mates a change whose Mate is gone may be handed to. */
+  readonly heirs?: ChangeReviewInput["heirs"];
+  /** Handing it to one of them, as pressed. */
+  readonly hand?: ReviewHand | undefined;
+  readonly onHand?: ((mateProjectId: string) => void) | undefined;
   readonly run: { readonly words: string | undefined; readonly reading: boolean };
   /** The organization's official HQ, which its description's pictures and links are on. */
   readonly hqAddress: string | undefined;
@@ -575,6 +620,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     offered: props.offers,
     press,
     close: closing,
+    heirs: props.heirs,
+    hand: props.hand,
     now: props.now,
   });
   const size = sizeWords({
@@ -753,6 +800,28 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       verdict={model.verdict}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
+      {model.orphan === undefined ? null : (
+        <ReviewSection title="Its Mate is gone">
+          <p className="rv-words">{model.orphan.text}</p>
+          {model.orphan.options.length === 0 ? null : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {model.orphan.options.map((option) => (
+                <Button
+                  disabled={!option.enabled}
+                  key={option.projectId}
+                  onClick={() => {
+                    props.onHand?.(option.projectId);
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </ReviewSection>
+      )}
       {answer === undefined ? null : (
         <ReviewSection title="Where">
           <ReviewWhere answer={answer} />

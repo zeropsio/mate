@@ -45,8 +45,15 @@ export interface FlowPullRequest {
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
-  /** The Mate that opened it: only Mates open changes (SPEC §5.4). */
+  /** The Mate that works on it: the one that opened it, or one it was handed to (SPEC §5.4). */
   readonly mateProjectId: string;
+  /**
+   * HQ's word that its Mate is no longer the application's (`HqChange.mateGone`): it waits for a
+   * person to close it or hand it to another Mate. Absent otherwise.
+   */
+  readonly mateGone?: true | undefined;
+  /** The branch it is on (`HqChange.branch`), where HQ's record of it says. */
+  readonly branch?: string | undefined;
   readonly url: string | undefined;
   /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
@@ -83,6 +90,11 @@ export interface FlowPullRequest {
    */
   readonly state?: string | undefined;
   readonly headSha: string | undefined;
+  /**
+   * Open with nothing pushed yet (`HqChange.head` null): its branch absent, or holding nothing
+   * beyond its base. Only a change read on its own is one: the flows list pushed ones.
+   */
+  readonly unpushed?: true | undefined;
   readonly baseBranch: string;
   /** `appdev #4`; `#6` on the recipe repository, whose row wears the tag. */
   readonly line: string;
@@ -156,6 +168,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",
     mateProjectId: change.mateProjectId,
+    ...(change.mateGone === true ? { mateGone: true } : {}),
+    ...(change.branch === undefined ? {} : { branch: change.branch }),
     url: changeUrl(hqAddress, change.appId, change.repo, change.number),
     mergeability: mergeabilityKindOf(change.mergeability),
     behind: change.behind,
@@ -166,6 +180,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
+    ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
     baseBranch: FALLBACK_BASE,
     // Under its Mate the row does not say whose it is; a recipe change's row wears the tag, so
     // its number alone names it.
@@ -216,6 +231,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",
     mateProjectId: change.mateProjectId,
+    ...(change.mateGone === true ? { mateGone: true } : {}),
     url: changeUrl(hqAddress, appId, change.repo, change.number),
     mergeability: mergeabilityKindOf(change.mergeability),
     behind: false,
@@ -561,7 +577,10 @@ export function changeState(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
   readonly ready?: boolean | undefined;
+  readonly mateGone?: true | undefined;
 }): ChangeState | undefined {
+  // Nobody carries it on until a person closes it or hands it to another Mate.
+  if (pull.mateGone === true) return { word: "Mate gone", tone: "attention" };
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
     return {
@@ -703,9 +722,12 @@ export function releaseContentsSentence(summary: ReleaseContentsSummary): string
 
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
-  /** A change of the application `groupId`, merged or closed without merging in HQ. */
+  /**
+   * A change of the application `groupId`, merged or closed without merging in HQ, or one whose
+   * Mate is gone handed to another of its Mates.
+   */
   | {
-      readonly kind: "merge" | "close";
+      readonly kind: "merge" | "close" | "hand";
       readonly groupId: string;
       readonly repository: string;
       readonly number: number;
@@ -732,6 +754,7 @@ export function flowVerbKey(verb: FlowVerb): string {
   switch (verb.kind) {
     case "merge":
     case "close":
+    case "hand":
       return `${verb.kind} ${verb.groupId}/${verb.repository}#${verb.number}`;
     case "release":
       return `release ${verb.groupId}`;
@@ -745,9 +768,12 @@ export function flowVerbKey(verb: FlowVerb): string {
 
 /**
  * The verb's word on a row: what it does, or what it is doing while it runs. A change is closed
- * only from its review, which says so in its own words.
+ * or handed over only from its review, which says so in its own words.
  */
-export function flowVerbLabel(kind: Exclude<FlowVerb["kind"], "close">, running: boolean): string {
+export function flowVerbLabel(
+  kind: Exclude<FlowVerb["kind"], "close" | "hand">,
+  running: boolean,
+): string {
   switch (kind) {
     case "merge":
       return running ? "Merging…" : "Merge";

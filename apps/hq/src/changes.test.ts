@@ -686,6 +686,48 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    it.effect(
+      "a Mate's description that starts with HQ's own heading, What it does, is kept without it: HQ says it once",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { auth } = yield* mateWithChange(call, fake, owner);
+          for (const [written, kept] of [
+            ["## What it does\n\nAdds a login page.", "Adds a login page."],
+            ["### what it does:\r\n- Browse teas\n", "- Browse teas"],
+            ["\n## What it does ##\nAdds a login page.", "Adds a login page."],
+            // Only a leading heading is HQ's: one heading a later part of the words stays.
+            [
+              "Adds a login page.\n\n## What it does\n- Browse",
+              "Adds a login page.\n\n## What it does\n- Browse",
+            ],
+            ["## What it changes\n\nThe menu.", "## What it changes\n\nThe menu."],
+            ["What it does: adds a login page.", "What it does: adds a login page."],
+          ] as const) {
+            const described = yield* call("PATCH", "/api/mate/changes/appdev/1", {
+              headers: auth,
+              body: { body: written },
+            });
+            assert.deepStrictEqual(
+              [described.status, (described.body as { body: string }).body],
+              [200, kept],
+              written,
+            );
+          }
+          // Nothing but the heading describes nothing: the change is not ready for review on it.
+          const bare = yield* call("PATCH", "/api/mate/changes/appdev/1", {
+            headers: auth,
+            body: { body: "## What it does\n" },
+          });
+          assert.deepStrictEqual(
+            [(bare.body as { body: string }).body, (bare.body as { ready: boolean }).ready],
+            ["", false],
+          );
+        }),
+    );
+
     it.effect("a change is ready for review only at the head the Mate last described it at", () =>
       Effect.gen(function* () {
         const { call, fake, origin, url } = yield* startCore(true);
@@ -841,6 +883,7 @@ describe("a Mate's changes in HQ", () => {
             head,
             mergedSha: null,
             landedHead: null,
+            branch: `mate/P_MATE/${String(number)}`,
           });
           assert.deepStrictEqual(yield* self, {
             ...record,
@@ -1634,6 +1677,7 @@ describe("a Mate's changes in HQ", () => {
             head,
             mergedSha: null,
             landedHead: null,
+            branch: "mate/P_MATE/1",
           });
           const state = (yield* link.next("state")) as {
             readonly mate: { readonly appId: string; readonly changes: ReadonlyArray<Change> };

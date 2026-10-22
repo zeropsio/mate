@@ -4,12 +4,11 @@
  */
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
-import type { RepositoryTarget } from "@t3tools/client-runtime/zerops/hq";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { isEditableFocused } from "~/lib/editableFocus";
 import type { GitSearch } from "~/routes/git";
-import type { useRepositorySource } from "~/zerops/useRepositorySource";
+import type { GitBrowseRequest } from "~/zerops/useGitBrowse";
 
 export type GitView = NonNullable<GitSearch["view"]>;
 /** A link inside one repository: everything `/git` carries but which repository it is. */
@@ -24,17 +23,14 @@ export interface GitRepoPageProps {
   /** The home read the frame holds: the commit the page's ref names now. */
   readonly home: GitBrowseState<GitHome>;
   readonly onHomeAgain: () => void;
-  /**
-   * The source read the page draws ({@link pageSource}), held by the frame: its refusal withholds
-   * the whole repository, never only the listing.
-   */
-  readonly source: ReturnType<typeof useRepositorySource>;
   readonly repository?: GitOverviewRepository | undefined;
   readonly changesFailure?: string | undefined;
   readonly onReadChanges?: (() => void) | undefined;
   readonly onOpenChange?: ((number: number) => void) | undefined;
   readonly navigate: (search: GitBrowseSearch) => void;
   readonly hrefOf: (search: GitBrowseSearch) => string;
+  /** Whether a page is built yet: a link to one that is not is not offered. */
+  readonly hasView: (view: GitView) => boolean;
 }
 
 /** The page a link names: its `view`; absent, home, or code where it names a path or kind. */
@@ -42,24 +38,26 @@ export const gitView = (search: Pick<GitSearch, "view" | "path" | "kind">): GitV
   search.view ?? (search.path !== undefined || search.kind !== undefined ? "code" : "home");
 
 /**
- * The source read a page draws: home's top folder at the commit it resolved, code's path; none for
- * a page that reads no source. A view without a page draws home.
+ * The folder or file a page draws at the commit home resolved: home's top folder, code's path;
+ * none for a page that draws neither. The frame holds it too, so its refusal withholds the whole
+ * repository, never only the listing. A view without a page draws home.
  */
-export const pageSource = (
+export const pageRead = (
   view: GitView,
   search: GitBrowseSearch,
   home: GitBrowseState<GitHome>,
-): RepositoryTarget["query"] | null => {
+  at: { readonly appId: string; readonly repo: string },
+): GitBrowseRequest<"tree" | "blob"> | null => {
+  const sha = home.state === "known" ? home.answer.sha : null;
+  if (sha === null) return null;
   const page = VIEWS[view] === undefined ? "home" : view;
   if (page === "code")
     return {
-      ...(search.rev === undefined ? {} : { rev: search.rev }),
-      path: search.path ?? "",
-      kind: search.kind ?? "tree",
+      ...at,
+      read: search.kind === "file" ? "blob" : "tree",
+      params: { sha, path: search.path ?? "" },
     };
-  return page === "home" && home.state === "known" && home.answer.sha !== null
-    ? { rev: home.answer.sha, path: "", kind: "tree" }
-    : null;
+  return page === "home" ? { ...at, read: "tree", params: { sha, path: "" } } : null;
 };
 
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
@@ -79,6 +77,8 @@ const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   ),
 };
 
+const hasView = (view: GitView) => VIEWS[view] !== undefined;
+
 /** The repository's tabs, each opening its first page and lit on any of them. */
 export const GIT_VIEW_TABS: ReadonlyArray<{
   readonly label: string;
@@ -90,7 +90,9 @@ export const GIT_VIEW_TABS: ReadonlyArray<{
   { label: "Search", views: ["search"] },
 ];
 
-export function GitBrowseView(props: GitRepoPageProps & { readonly view: GitView }) {
+export function GitBrowseView(
+  props: Omit<GitRepoPageProps, "hasView"> & { readonly view: GitView },
+) {
   const View = VIEWS[props.view] ?? VIEWS.home!;
   const { navigate } = props;
   const { rev } = props.search;
@@ -107,7 +109,7 @@ export function GitBrowseView(props: GitRepoPageProps & { readonly view: GitView
   }, [navigate, rev]);
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Opening…</p>}>
-      <View {...props} />
+      <View {...props} hasView={hasView} />
     </Suspense>
   );
 }

@@ -30,12 +30,12 @@ import {
   type HqChangeComment,
   type HqRepo,
   CHANGE_LIST_SETTLED,
+  HAND_REFUSALS,
   MERGE_REFUSALS,
   MATE_CHANGES_PER_REPO,
   type MateChanges,
   type OpenChangeResponse,
   type RepoListEntry,
-  Sha,
   attachmentPath,
   mergeSubject,
 } from "@t3tools/shared/hqChanges";
@@ -49,11 +49,6 @@ import {
 } from "@t3tools/shared/hqRecipe";
 import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
 import { type Facts, can } from "./permissions.ts";
-import {
-  SOURCE_FILE_MAX_BYTES,
-  type RepositoryQuery,
-  type RepositorySource,
-} from "@t3tools/shared/hqGit";
 import { readReleaseVersion } from "./releaseVersion.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -89,7 +84,6 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_not_found",
     "attachment_not_found",
     "commit_not_found",
-    "path_not_found",
     "conflict",
     "invalid",
     "too_large",
@@ -98,12 +92,12 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   reason: Schema.Literals([
     ...REASONS,
     ...MERGE_REFUSALS,
+    ...HAND_REFUSALS,
     "app_not_found",
     "repo_not_found",
     "change_not_found",
     "attachment_not_found",
     "commit_not_found",
-    "path_not_found",
     "not_raster",
     "recipe_too_large",
     "branch_taken",
@@ -113,7 +107,6 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   ]),
 }) {}
 
-const isSha = Schema.is(Sha);
 const isChangeRefused = Schema.is(ChangeRefused);
 
 /** The verbs a Mate does in its application, beside editing its change and fetching. */
@@ -266,13 +259,6 @@ export class Changes extends Context.Service<
       appId: string,
       write?: boolean,
     ) => Effect.Effect<void, ReadError>;
-    /** A bounded source tree or file at one commit, after the person's source-read permission. */
-    readonly repositorySource: (
-      userId: string,
-      appId: string,
-      repo: string,
-      query: RepositoryQuery,
-    ) => Effect.Effect<RepositorySource, ReadError | NotLeader | GitError>;
     /**
      * What lies between two of a repository's commits, git's `base..head` (`CompareQuery`), each
      * commit with the change whose merge it is; `commit_not_found` for either end the repository
@@ -378,6 +364,18 @@ export class Changes extends Context.Service<
       expectedHead: string | null,
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /**
+     * An open change whose Mate is gone, handed by a person who may close it to `mateProjectId`, a
+     * Mate of its application holding no open change of its own in the repository: its branch
+     * stays, and that Mate's from then on (`@t3tools/hq-git` `allowRefUpdate` reads its record).
+     */
+    readonly handChange: (
+      userId: string,
+      appId: string,
+      repo: string,
+      number: number,
+      mateProjectId: string,
+    ) => Effect.Effect<HqChange, ReadError | NotLeader>;
+    /**
      * The changes of every application the person may read them of, by application id: what the
      * structure socket carries (`stream.ts`).
      */
@@ -391,6 +389,12 @@ export class Changes extends Context.Service<
      * by id, as they are.
      */
     readonly taskChanges: Stream.Stream<string>;
+    /**
+     * Each repository a Mate just opened a change in on a branch it named, with none of the branch
+     * recorded yet: where the branch is kept elsewhere (GitHub, `githubMirror.ts`), it is looked
+     * for at once.
+     */
+    readonly openedOnBranch: Stream.Stream<Repo>;
     /** Each comment a person posted on a change (`postComment`), once it is kept (`mateTasks.ts`). */
     readonly comments: Stream.Stream<ChangeCommented>;
     /**
@@ -527,6 +531,10 @@ const CHANGE_COLUMNS = [
   "first_code_merge",
   "landed_outside",
   "receipt",
+  // Open, and its Mate no longer the application's: its project deleted, or taken out of it.
+  `(state = 'open' AND NOT EXISTS (SELECT 1 FROM hq_app_project p
+    WHERE p.project_id = hq_change.mate_project_id AND p.app_id = hq_change.app_id
+      AND p.kind = 'mate')) AS mate_gone`,
   // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
   // asks at the head it last described.
   `(repo = '${RECIPE_REPO}' OR COALESCE(ready_head = head, false)) AS ready`,
@@ -582,6 +590,7 @@ interface ChangeRow {
   readonly first_code_merge: boolean | null;
   readonly landed_outside: boolean;
   readonly receipt: ChangeReceipt | null;
+  readonly mate_gone: boolean;
   readonly ready: boolean;
   readonly comments: number;
   readonly pull_request: PullRequestRow | null;
@@ -615,6 +624,23 @@ const commentOf = (row: CommentRow): HqChangeComment => ({
   createdAt: row.created_at,
 });
 
+/**
+ * A Mate's description without a leading heading "What it does" — at any level, in any case, a
+ * colon after it: HQ heads the description with it wherever it shows it (the change's review, its
+ * pull request), so the words say it once. A heading further down is the Mate's own.
+ */
+const describedOnce = (body: string) => {
+  const lines = body.split(/\r?\n/u);
+  const first = lines.findIndex((line) => line.trim() !== "");
+  const heading = first === -1 ? undefined : /^#{1,6}\s+(.*?)\s*#*\s*$/u.exec(lines[first]!.trim());
+  if (heading?.[1]?.replace(/:$/u, "").trim().toLowerCase() !== "what it does") return body;
+  return lines
+    .slice(first + 1)
+    .join("\n")
+    .replace(/^\s*\n/u, "")
+    .trimEnd();
+};
+
 /** A change as this HQ records it: always on a branch it names. */
 type RecordedChange = HqChange & { readonly branch: string };
 
@@ -630,6 +656,7 @@ const changeOf = (row: ChangeRow): RecordedChange => ({
   repo: row.repo,
   number: row.number,
   mateProjectId: row.mate_project_id,
+  ...(row.mate_gone ? { mateGone: true } : {}),
   branch: row.branch,
   title: row.title,
   body: row.body,
@@ -667,6 +694,7 @@ export const changesLayer: Layer.Layer<
     const making = yield* Semaphore.make(1);
     const ticks = yield* SubscriptionRef.make(0);
     const taskChanged = yield* PubSub.unbounded<string>();
+    const openedUnrecorded = yield* PubSub.unbounded<Repo>();
     /** The tasks a change was opened for hear that it moved (`taskChanges`). */
     const tellTasksOf = (appId: string, repo: string, number: number) =>
       Effect.gen(function* () {
@@ -1251,9 +1279,12 @@ export const changesLayer: Layer.Layer<
                 if (open !== undefined) {
                   const change = changeOf(open);
                   // An opener naming no branch (released zcp) pushes `mate/<Mate>/<number>`, which
-                  // a change on a branch its Mate named never takes: answered, it would push there
-                  // and open again for good.
-                  if (branch === undefined && !change.branch.startsWith("mate/"))
+                  // a change on a branch its Mate named, or one handed over from another Mate's
+                  // default, never takes: answered, it would push there and open again for good.
+                  if (
+                    branch === undefined &&
+                    change.branch !== `mate/${projectId}/${change.number}`
+                  )
                     return yield* refuse("conflict", "change_on_branch");
                   return { change, created: false, task: yield* onTask(change) };
                 }
@@ -1296,13 +1327,17 @@ export const changesLayer: Layer.Layer<
             ),
             // Opened on a branch pushed before it: the change is at its head from the start. Its
             // head read again while none is recorded, as an opening whose read failed is retried.
+            // A named branch still unrecorded may be kept elsewhere, and is looked for there.
             Effect.flatMap((opened) =>
               opened.change === null || opened.change.head !== null
                 ? Effect.succeed(opened)
                 : Effect.gen(function* () {
                     const change = opened.change;
                     yield* gitHost.follow({ repo: { appId, id: repo }, ...branchOf(change) });
-                    return { ...opened, change: yield* changeIn(appId, repo, change.number) };
+                    const now = yield* changeIn(appId, repo, change.number);
+                    if (branch !== undefined && now.head === null)
+                      yield* PubSub.publish(openedUnrecorded, { appId, id: repo });
+                    return { ...opened, change: now };
                   }),
             ),
             // The task is HQ's to know; the Mate's answer stays the wire's.
@@ -1320,10 +1355,18 @@ export const changesLayer: Layer.Layer<
           const rows = yield* sql<
             Pick<
               ChangeRow,
-              "repo" | "number" | "title" | "state" | "head" | "merged_sha" | "landed_head"
-            >
+              | "repo"
+              | "number"
+              | "title"
+              | "state"
+              | "head"
+              | "merged_sha"
+              | "landed_head"
+              | "branch"
+            > & { readonly handed: boolean }
           >`
-            SELECT repo, number, title, state, head, merged_sha, landed_head FROM (
+            SELECT repo, number, title, state, head, merged_sha, landed_head, branch,
+              handed_from IS NOT NULL AS handed FROM (
               SELECT *, row_number() OVER (PARTITION BY repo ORDER BY number DESC) AS rank
               FROM hq_change
               WHERE app_id = ${placed.app_id}::uuid AND mate_project_id = ${projectId}
@@ -1341,6 +1384,8 @@ export const changesLayer: Layer.Layer<
               head: row.head,
               mergedSha: row.merged_sha,
               landedHead: row.landed_head,
+              branch: row.branch,
+              ...(row.handed ? { handed: true } : {}),
             })),
           };
         }),
@@ -1379,8 +1424,12 @@ export const changesLayer: Layer.Layer<
             WHERE app_id = ${placed.app_id}::uuid AND tier = 'production' LIMIT 1`;
           return rows.length > 0;
         }),
-      editChange: (projectId, repo, number, edit) =>
+      editChange: (projectId, repo, number, written) =>
         Effect.gen(function* () {
+          const edit =
+            written.body === undefined
+              ? written
+              : { ...written, body: describedOnce(written.body) };
           const appId = yield* mateChange(projectId, repo, number);
           const edited = yield* touched(
             leader.write(
@@ -1436,6 +1485,7 @@ export const changesLayer: Layer.Layer<
         }),
       changes: Stream.merge(SubscriptionRef.changes(ticks), gitHost.recorded),
       taskChanges: Stream.fromPubSub(taskChanged),
+      openedOnBranch: Stream.fromPubSub(openedUnrecorded),
       comments: Stream.fromPubSub(commented),
       navigation: readChangeNavigationSource(sql),
       releaseRevisions: Effect.provideService(releaseRevisions, SqlClient.SqlClient, sql),
@@ -1493,66 +1543,6 @@ export const changesLayer: Layer.Layer<
         }),
       personGit: (userId, appId, write = false) =>
         personApp(userId, appId, write ? "push_repo" : "read_change"),
-      repositorySource: (userId, appId, repo, query) =>
-        Effect.gen(function* () {
-          yield* personApp(userId, appId, "read_change");
-          const known =
-            yield* sql`SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${repo}`;
-          if (known.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
-          const git = yield* gitHost.git;
-          const target = { appId, id: repo };
-          const branches = yield* git.branches(target);
-          // Resolve a moving branch once; every following read in this response uses its commit.
-          const selected = query.rev ?? "refs/heads/main";
-          const branch = branches.items.find(
-            (branch) => branch.ref === selected || branch.ref === `refs/heads/${selected}`,
-          );
-          const revision =
-            branch?.sha ??
-            (query.rev === undefined && branches.items.length === 0 ? null : selected);
-          const common = {
-            branches: branches.items,
-            branchesTruncated: branches.truncated,
-            path: query.path,
-          };
-          if (revision === null)
-            return {
-              ...common,
-              kind: "tree" as const,
-              revision: null,
-              entries: [],
-              truncated: false,
-            };
-          // A missing commit is an earned negative; a git process failure stays unavailable.
-          if (!isSha(revision)) return yield* refuse("commit_not_found", "commit_not_found");
-          if (branch === undefined && (yield* git.missingCommits(target, [revision])).length > 0) {
-            return yield* refuse("commit_not_found", "commit_not_found");
-          }
-          const commit = { sha: revision };
-          // The path as it is at the commit, whatever kind its link names: a README's
-          // `[docs](docs)` names a folder as a file. Nothing there is an earned negative.
-          const found = yield* git.browse.pathKind(target, commit.sha, query.path);
-          if (found === null) return yield* refuse("path_not_found", "path_not_found");
-          if (found === "file") {
-            const file = yield* git.file(target, commit.sha, query.path, SOURCE_FILE_MAX_BYTES);
-            return {
-              ...common,
-              kind: "file" as const,
-              revision: commit.sha,
-              content: file.binary ? null : file.content.toString("utf8"),
-              binary: file.binary,
-              truncated: file.truncated,
-            };
-          }
-          const tree = yield* git.tree(target, commit.sha, query.path);
-          return {
-            ...common,
-            kind: "tree" as const,
-            revision: commit.sha,
-            entries: tree.items,
-            truncated: tree.truncated,
-          };
-        }),
       compare: (userId, appId, repo, query) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");
@@ -1837,6 +1827,47 @@ export const changesLayer: Layer.Layer<
         Effect.andThen(
           personApp(userId, appId, "close_change"),
           close(appId, repo, number, { userId }, expectedHead),
+        ),
+      handChange: (userId, appId, repo, number, mateProjectId) =>
+        Effect.andThen(
+          personApp(userId, appId, "close_change"),
+          touched(
+            leader.write(
+              Effect.gen(function* () {
+                // The repository's row, locked, as an opening locks it: its Mates' one open change
+                // each is decided one write at a time.
+                yield* sql`
+                  SELECT 1 FROM hq_repo WHERE app_id = ${appId}::uuid AND name = ${repo} FOR UPDATE`;
+                yield* openChangeLocked(appId, repo, number);
+                const change = yield* changeIn(appId, repo, number);
+                if (change.mateGone !== true) return yield* refuse("conflict", "change_has_mate");
+                const mates = yield* sql`
+                  SELECT 1 FROM hq_app_project
+                  WHERE project_id = ${mateProjectId} AND app_id = ${appId}::uuid AND kind = 'mate'`;
+                if (mates.length === 0) return yield* refuse("conflict", "not_app_mate");
+                // Off any task: its new Mate's own one open change in the repository.
+                const own = yield* sql`
+                  SELECT 1 FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo} AND state = 'open'
+                    AND mate_project_id = ${mateProjectId} AND task_id IS NULL`;
+                if (own.length > 0) return yield* refuse("conflict", "mate_has_change");
+                const [row] = yield* sql<ChangeRow>`
+                  UPDATE hq_change
+                  SET mate_project_id = ${mateProjectId}, task_id = NULL,
+                      handed_from = mate_project_id, updated_at = now()
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
+                  RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
+                yield* appendEvent(sql, {
+                  kind: "handed",
+                  appId,
+                  repo,
+                  number,
+                  data: { from: change.mateProjectId, to: mateProjectId, userId },
+                });
+                return changeOf(row!);
+              }),
+            ),
+          ),
         ),
       attachment: (userId, appId, repo, number, id) =>
         Effect.gen(function* () {

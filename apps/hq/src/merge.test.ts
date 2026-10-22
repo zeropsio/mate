@@ -201,6 +201,7 @@ describe("a change merged into main, or closed", () => {
             head,
             mergedSha: main,
             landedHead: head,
+            branch: "mate/P_MATE/1",
           });
           yield* ada.commit("later.ts", "later\n", "Later");
           const later = yield* ada.push("P_MATE", 1);

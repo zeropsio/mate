@@ -12,21 +12,23 @@ import type { InRepo } from "../operations.ts";
 import { readCommit, readCommitFile, type CommitRead } from "./commit.ts";
 import { readCompare, readCompareFile, type CompareRead } from "./compare.ts";
 import { listLog, type LogPage, type LogRequest } from "./log.ts";
+import { readBlob, type BlobRead } from "./blob.ts";
 import { grepAt, type GrepLimits, type GrepRequest, type GrepResult } from "./grep.ts";
 import { listPaths, type PathList } from "./paths.ts";
-import { pathKind, type PathKind } from "./pathKind.ts";
 import { findReadme, type Readme } from "./readme.ts";
 import { countRefs, listRefs, type RefCounts, type RefsPage, type RefsRequest } from "./refs.ts";
 import { resolveRevision, type Resolved } from "./resolve.ts";
+import { listTree, type TreeRead } from "./tree.ts";
 
 export type { CompareRead } from "./compare.ts";
 export type { LogItem, LogPage, LogRequest } from "./log.ts";
+export type { BlobRead } from "./blob.ts";
 export type { GrepLimits, GrepMatch, GrepRequest, GrepResult } from "./grep.ts";
 export type { PathList } from "./paths.ts";
-export type { PathKind } from "./pathKind.ts";
 export type { Readme } from "./readme.ts";
 export type { RefCounts, RefItem, RefsPage, RefsRequest } from "./refs.ts";
 export type { RefKind, Resolved } from "./resolve.ts";
+export type { FolderEntry, FolderEntryType, TreeRead } from "./tree.ts";
 
 export interface HqGitBrowse {
   /**
@@ -45,6 +47,17 @@ export interface HqGitBrowse {
   ) => Effect.Effect<Readme | null, GitError>;
   /** A page of the commits reachable from `sha`, or of those that touched a path; none where the commit is absent. */
   readonly log: (repo: Repo, request: LogRequest) => Effect.Effect<LogPage | null, GitError>;
+  /** A folder of a commit: folders first, then files, each by name; at most 1,000 entries. */
+  readonly tree: (repo: Repo, sha: string, path: string) => Effect.Effect<TreeRead, GitError>;
+  /**
+   * A file of a commit, its first `maxBytes`; none of it past `refuseOver`, only its size.
+   */
+  readonly blob: (
+    repo: Repo,
+    sha: string,
+    path: string,
+    options: { readonly maxBytes: number; readonly refuseOver?: number },
+  ) => Effect.Effect<BlobRead, GitError>;
   /** A commit and what it changed against its first parent; none where there is no such commit. */
   readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead | null, GitError>;
   /** One file's hunks in a commit, read on request; none where there is no such commit. */
@@ -83,12 +96,6 @@ export interface HqGitBrowse {
     limits: GrepLimits,
     until: AbortSignal,
   ) => Effect.Effect<GrepResult, GitError>;
-  /** What `path` is at the commit `sha`: a file, a folder, or none where it holds nothing there. */
-  readonly pathKind: (
-    repo: Repo,
-    sha: string,
-    path: string,
-  ) => Effect.Effect<PathKind | null, GitError>;
 }
 
 export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => ({
@@ -102,6 +109,10 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.readme", repo, (dir, signal) => findReadme(git, dir, sha, maxBytes, signal)),
   log: (repo, request) =>
     inRepo("browse.log", repo, (dir, signal) => listLog(git, dir, request, signal)),
+  tree: (repo, sha, path) =>
+    inRepo("browse.tree", repo, (dir, signal) => listTree(git, dir, sha, path, signal)),
+  blob: (repo, sha, path, options) =>
+    inRepo("browse.blob", repo, (dir, signal) => readBlob(git, dir, sha, path, options, signal)),
   commit: (repo, sha) =>
     inRepo("browse.commit", repo, (dir, signal) => readCommit(git, dir, sha, signal)),
   commitFile: (repo, sha, path) =>
@@ -118,6 +129,4 @@ export const makeHqGitBrowse = (git: GitRunner, inRepo: InRepo): HqGitBrowse => 
     inRepo("browse.grep", repo, (dir, signal) =>
       grepAt(git, dir, sha, request, limits, signal, until),
     ),
-  pathKind: (repo, sha, path) =>
-    inRepo("browse.pathKind", repo, (dir, signal) => pathKind(git, dir, sha, path, signal)),
 });

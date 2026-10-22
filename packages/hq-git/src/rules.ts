@@ -12,7 +12,7 @@ export const validRef = (ref: string) =>
   ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 const refuse = (reason: string): RefDecision => ({ allowed: false, reason });
 /** HQ's namespace: the branch of a change opened without naming one, `mate/<mateId>/<number>`. */
-const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
+export const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
 
 /** Built-in policy the handler applies to every update; Core's port only answers change records. */
 export const allowRefUpdate = async (
@@ -35,17 +35,14 @@ export const allowRefUpdate = async (
       return refuse("tag_immutable");
     return { allowed: true };
   }
+  // `main` moves only by a merge, and every ref but a branch is HQ's: nobody's to push.
   if (!update.ref.startsWith("refs/heads/") || update.ref === "refs/heads/main")
-    return refuse(principal.kind === "person" ? "protected_ref" : "not_your_ref");
+    return refuse("protected_ref");
   const branch = update.ref.slice("refs/heads/".length);
-  if (principal.kind === "person") {
-    // HQ owns main, tags and the namespace of changes opened without a branch; a branch an open
-    // change is on is its Mate's. People own every other branch.
-    if (allocated(branch)) return refuse("protected_ref");
-    return (await lookupChange(repo, branch))?.open === true
-      ? refuse("protected_ref")
-      : { allowed: true };
-  }
+  // HQ owns main, tags and the namespace of changes opened without a branch. People own every
+  // other branch, one a Mate's change is on too: they work on it beside the Mate.
+  if (principal.kind === "person")
+    return allocated(branch) ? refuse("protected_ref") : { allowed: true };
   // A Mate names its own branches: none another Mate's open change is on, and in HQ's namespace
   // only its own open change's. A settled change leaves its named branch to whoever pushes next.
   const change = await lookupChange(repo, branch);

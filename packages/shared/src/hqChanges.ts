@@ -30,7 +30,8 @@
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
  *   {@link HqChangeComment};
  * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
- *   by whoever develops the application → the change, merged or closed;
+ *   by whoever develops the application → the change, merged or closed; `POST …/hand`
+ *   {@link HandChangeRequest}, by whoever may close it → the change, its gone Mate's no longer;
  * - `GET` {@link attachmentPath} → the picture with its detected raster Content-Type;
  * - the structure socket carries changes too: {@link ChangesSnapshot}, {@link ChangesMessage};
  *   and its load data (`hqAppReads.ts`);
@@ -183,6 +184,12 @@ export const HqChange = Schema.Struct({
   number: ChangeNumber,
   /** The Mate's Zerops project. */
   mateProjectId: Schema.String,
+  /**
+   * On an open change: its Mate is no longer one of the application's — its project deleted, or
+   * taken out of it. A person may close it or hand it to another of the application's Mates
+   * ({@link HandChangeRequest}). Absent otherwise, and from an older HQ.
+   */
+  mateGone: Schema.optionalKey(Schema.Literal(true)),
   /** The branch it is on. Absent from an older HQ, whose changes are all on their default. */
   branch: Schema.optionalKey(ChangeBranchName),
   title: ChangeTitle,
@@ -527,6 +534,13 @@ export const MateChange = Schema.Struct({
   head: Schema.NullOr(Sha),
   mergedSha: Schema.NullOr(Sha),
   landedHead: Schema.NullOr(Sha),
+  /** The branch its work is on. Added after the rest: an older HQ's change names none. */
+  branch: Schema.optionalKey(ChangeBranchName),
+  /**
+   * A change a person handed to this Mate after its own Mate was gone: its work is on `branch`,
+   * which this Mate pushes from then on. Absent otherwise.
+   */
+  handed: Schema.optionalKey(Schema.Literal(true)),
 });
 export type MateChange = typeof MateChange.Type;
 
@@ -714,6 +728,26 @@ export const MergeChangeRequest = Schema.Struct({ expectedHead: Sha });
 
 /** A close applies only to the head the person reviewed, including an unpushed change. */
 export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sha) });
+
+/**
+ * `POST /api/apps/:appId/changes/:repo/:n/hand`, by whoever may close the application's changes: an
+ * open change whose Mate is gone ({@link HqChange} `mateGone`) becomes the Mate `mateProjectId`'s,
+ * on the same branch — from then on that Mate's pushes to the branch are taken and nobody else's
+ * Mate's. → the change, or `409 conflict` with one of {@link HAND_REFUSALS}.
+ */
+export const HandChangeRequest = Schema.Struct({ mateProjectId: Schema.String });
+
+/**
+ * Why HQ does not hand a change over: it is merged or closed; its Mate is still the application's;
+ * the Mate named is not one of the application's; or it holds an open change of its own in the
+ * repository already.
+ */
+export const HAND_REFUSALS = [
+  "change_not_open",
+  "change_has_mate",
+  "not_app_mate",
+  "mate_has_change",
+] as const;
 
 /**
  * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would

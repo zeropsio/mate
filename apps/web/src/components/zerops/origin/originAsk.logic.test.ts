@@ -1,10 +1,16 @@
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
-import { originAskAnswer, originAskFace, originConnected } from "./originAsk.logic";
+import { githubName, type GitMirrorApp } from "../gitMirror.logic";
+import {
+  originAskAnswer,
+  originAskFace,
+  originConnected,
+  originMountStep,
+} from "./originAsk.logic";
 
 const ask = { url: "https://github.com/krls2020/eval2", repo: "appdev" };
-const repo = (name: string, url: string | null): RepoListEntry => ({
+const repo = (name: string, url: string | null, via?: "app" | "token"): RepoListEntry => ({
   name,
   mainHead: "a".repeat(40),
   updatedAt: "2026-10-18T08:33:20Z",
@@ -18,65 +24,50 @@ const repo = (name: string, url: string | null): RepoListEntry => ({
           keptBy: "viewer",
           expiresAt: null,
           invalidSince: null,
+          ...(via === undefined ? {} : { via }),
         },
       }),
 });
-const git = (tier: "stage" | "production") =>
-  ({ tier, target: { kind: "git", branch: "main", delivery: "direct" } }) as const;
-const zerops = { tier: "production", target: { kind: "zerops", projectId: "P" } } as const;
 
 describe("an origin HQ already delivers to", () => {
   it.each([
     {
-      case: "production pushes to Git and the asked repository's remote is the asked address",
-      environments: [git("production")],
-      repos: [repo("appdev", "https://github.com/krls2020/eval2.git")],
+      case: "the asked repository is mounted through the GitHub app at the asked address",
+      repos: [repo("appdev", "https://github.com/krls2020/eval2.git", "app")],
       connected: true,
     },
     {
       case: "the remote is written in another case",
-      environments: [git("production")],
-      repos: [repo("appdev", "https://github.com/Krls2020/Eval2")],
+      repos: [repo("appdev", "https://github.com/Krls2020/Eval2", "app")],
       connected: true,
     },
     {
-      case: "only stage pushes to Git",
-      environments: [git("stage")],
-      repos: [repo("appdev", "https://github.com/krls2020/eval2.git")],
+      case: "HQ reaches the asked address with a person's token",
+      repos: [repo("appdev", "https://github.com/krls2020/eval2.git", "token")],
       connected: false,
     },
     {
-      case: "production is a Zerops project",
-      environments: [zerops],
+      case: "an older HQ says no way it reaches the asked address",
       repos: [repo("appdev", "https://github.com/krls2020/eval2.git")],
       connected: false,
     },
     {
       case: "the asked repository's remote is another repository",
-      environments: [git("production")],
-      repos: [repo("appdev", "https://github.com/krls2020/other.git")],
+      repos: [repo("appdev", "https://github.com/krls2020/other.git", "app")],
       connected: false,
     },
     {
       case: "another repository holds the asked address",
-      environments: [git("production")],
-      repos: [repo("api", "https://github.com/krls2020/eval2.git"), repo("appdev", null)],
-      connected: false,
-    },
-    {
-      case: "HQ has not said its environments",
-      environments: undefined,
-      repos: [repo("appdev", "https://github.com/krls2020/eval2.git")],
+      repos: [repo("api", "https://github.com/krls2020/eval2.git", "app"), repo("appdev", null)],
       connected: false,
     },
     {
       case: "HQ has not said its repositories",
-      environments: [git("production")],
       repos: undefined,
       connected: false,
     },
-  ])("is connected only when $case: $connected", ({ environments, repos, connected }) => {
-    expect(originConnected(ask, environments, repos)).toBe(connected);
+  ])("is connected only when $case: $connected", ({ repos, connected }) => {
+    expect(originConnected(ask, repos)).toBe(connected);
   });
 
   it.each([
@@ -94,4 +85,97 @@ describe("an origin HQ already delivers to", () => {
       expect(originAskAnswer(state, said, connected)).toBe(answer);
     },
   );
+});
+
+const app = (repositories: ReadonlyArray<string>): GitMirrorApp => ({
+  kind: "connected",
+  name: "Acme Mate",
+  repositories,
+  installUrl: "https://github.com/apps/acme-mate/installations/new",
+});
+
+describe("keeping an asked origin's code on GitHub", () => {
+  it.each([
+    { url: "https://github.com/krls2020/eval2", repository: "krls2020/eval2" },
+    { url: "https://github.com/krls2020/eval2.git", repository: "krls2020/eval2" },
+    { url: "https://gitlab.com/krls2020/eval2", repository: null },
+    { url: "https://github.com/krls2020", repository: null },
+  ])("$url is the GitHub repository $repository", ({ url, repository }) => {
+    expect(githubName(url)).toBe(repository);
+  });
+
+  it.each([
+    {
+      case: "the GitHub app is still read",
+      github: null,
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "reading" },
+    },
+    {
+      case: "HQ has not said its repositories",
+      github: app(["krls2020/eval2"]),
+      repos: undefined,
+      mountable: true,
+      step: { kind: "reading" },
+    },
+    {
+      case: "the asked repository is mounted at the asked address",
+      github: app(["krls2020/eval2"]),
+      repos: [repo("appdev", "https://github.com/krls2020/eval2", "app")],
+      mountable: false,
+      step: { kind: "mounted" },
+    },
+    {
+      case: "the asked repository is mounted and the app is no longer read",
+      github: null,
+      repos: [repo("appdev", "https://github.com/krls2020/eval2", "app")],
+      mountable: true,
+      step: { kind: "mounted" },
+    },
+    {
+      case: "the asked repository already has another remote",
+      github: app(["krls2020/eval2"]),
+      repos: [repo("appdev", "https://github.com/krls2020/eval2", "token")],
+      mountable: true,
+      step: { kind: "taken", url: "https://github.com/krls2020/eval2" },
+    },
+    {
+      case: "HQ does not let the person mount it",
+      github: app(["krls2020/eval2"]),
+      repos: [repo("appdev", null)],
+      mountable: false,
+      step: { kind: "refused" },
+    },
+    {
+      case: "the organization has no GitHub app",
+      github: { kind: "none" },
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "no-app" },
+    },
+    {
+      case: "HQ's answer about the app could not be read",
+      github: { kind: "unknown" },
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "unknown" },
+    },
+    {
+      case: "the app does not reach the repository",
+      github: app(["krls2020/other"]),
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "not-reached", name: "Acme Mate" },
+    },
+    {
+      case: "the app reaches the repository in another case",
+      github: app(["Krls2020/Eval2"]),
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "ready", repository: "Krls2020/Eval2", name: "Acme Mate" },
+    },
+  ] as const)("is $step.kind when $case", ({ github, repos, mountable, step }) => {
+    expect(originMountStep(ask, github, repos, mountable)).toMatchObject(step);
+  });
 });

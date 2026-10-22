@@ -49,6 +49,7 @@ describe("Git browse reads", () => {
     const store = makeAccountStore(registry);
     const asked: Array<string | null> = [];
     const reader = makeGitBrowseReads(store, {
+      gitBrowseBytes: async () => new Blob(),
       gitBrowse: async (read, appId, repo, params) => {
         asked.push(gitBrowsePath(read, appId, repo, params));
         return home;
@@ -79,6 +80,7 @@ describe("Git browse reads", () => {
     const store = makeAccountStore(registry);
     let reads = 0;
     const reader = makeGitBrowseReads(store, {
+      gitBrowseBytes: async () => new Blob(),
       gitBrowse: async () => {
         reads++;
         throw new HqError({
@@ -111,6 +113,7 @@ describe("Git browse reads", () => {
     const store = makeAccountStore(registry);
     let deny = false;
     const reader = makeGitBrowseReads(store, {
+      gitBrowseBytes: async () => new Blob(),
       gitBrowse: async () => {
         if (deny) throw new HqError({ kind: "refused", code: "forbidden", message: "No." });
         return home;

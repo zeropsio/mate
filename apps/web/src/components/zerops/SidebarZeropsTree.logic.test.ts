@@ -226,6 +226,11 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       ],
     },
     {
+      case: "a project without a Mate starts one, and its Delete comes last, a line apart",
+      over: { onToggle: undefined, startMate: true, onDelete: { name: "shop", act: () => {} } },
+      items: ["Start a Mate", "Open project", "—", "All projects", "—", "Delete shop…"],
+    },
+    {
       case: "a missing stage or production to add",
       over: { setUp: [{ label: "Add stage", act: () => {} }] },
       items: ["Fold", "Add a project Mate", "Open project", "—", "Add stage", "All projects"],

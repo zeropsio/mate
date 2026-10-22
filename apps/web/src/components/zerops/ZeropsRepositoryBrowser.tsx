@@ -2,14 +2,8 @@ import { defaultStringifySearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
-import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { useRepositorySource } from "~/zerops/useRepositorySource";
-import {
-  GitBrowseView,
-  gitView,
-  pageSource,
-  type GitBrowseSearch,
-} from "./gitBrowser/GitBrowseView";
+import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitBrowseView, gitView, pageRead, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 
 /**
@@ -50,17 +44,18 @@ export function ZeropsRepositoryBrowser({
     allowed,
   );
   const view = gitView(query);
-  const sourceQuery = pageSource(view, query, home.view);
-  const source = useRepositorySource(
-    sourceQuery === null ? null : { appId, repo, query: sourceQuery },
-    allowed,
-  );
+  const drawn = pageRead(view, query, home.view, { appId, repo });
+  const page = useGitBrowseReads(drawn === null ? [] : [drawn], allowed);
   const changes = useMemo(
     () => (repository?.changes ?? []).map(({ pull }) => pull),
     [repository?.changes],
   );
   // Any read HQ refused for this repository withholds all of it, before the offers catch up.
-  if (allowed !== true || home.view.state === "withheld" || source.source.state === "withheld") {
+  if (
+    allowed !== true ||
+    home.view.state === "withheld" ||
+    page.views.some((read) => read.state === "withheld")
+  ) {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
@@ -101,7 +96,6 @@ export function ZeropsRepositoryBrowser({
         search={query}
         home={home.view}
         onHomeAgain={home.again}
-        source={source}
         repository={repository}
         changesFailure={changesFailure}
         onReadChanges={onReadChanges}

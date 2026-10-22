@@ -9,9 +9,7 @@ import { useMemo } from "react";
 
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
-import { useGithubApp } from "~/zerops/useTaskSourceSettings";
-
-import { appName as githubAppName, appRepositories } from "../settings/automationSettings.logic";
+import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
 
 import {
   Dialog,
@@ -21,7 +19,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { GitRemoteSettings, type GitMirrorApp } from "./GitRemoteSettings";
+import { GitRemoteSettings } from "./GitRemoteSettings";
 
 export function GitMirrorDialog({
   appId,
@@ -36,23 +34,8 @@ export function GitMirrorDialog({
   // The application's repositories and environments, read while the dialog is open.
   const flow = useProjectFlows(useMemo(() => [appId], [appId])).flows.get(appId);
   // The organization's GitHub app, read while the dialog is open: its repositories need no token.
-  const app = useGithubApp().read.setting;
+  const github = useGitMirrorApp().app;
   const navigate = useNavigate();
-  const github: GitMirrorApp | null =
-    app.state === "unread" || app.state === "reading"
-      ? null
-      : app.state === "known" && app.held.state === "connected"
-        ? {
-            kind: "connected",
-            name: githubAppName(app.held),
-            ...(app.held.appId === undefined ? {} : { appId: app.held.appId }),
-            repositories: appRepositories(app.held),
-            installUrl: app.held.installUrl,
-          }
-        : app.state === "known" || app.state === "unsupported"
-          ? { kind: "none" }
-          : // HQ's answer could not be read: nothing is said of an app that may be there.
-            { kind: "unknown" };
   return (
     <Dialog
       onOpenChange={(open) => {

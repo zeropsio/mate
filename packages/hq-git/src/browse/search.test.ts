@@ -29,7 +29,7 @@ const fixture = (run: (git: HqGit, dir: string) => Promise<void>) =>
       yield* Effect.promise(() => run(git, NodePath.join(root, "app/repo.git")));
     }),
   );
-const native = (dir: string, args: string[], input = "", env: Record<string, string> = {}) =>
+const native = (dir: string, args: string[], input?: string, env: Record<string, string> = {}) =>
   new Promise<string>((resolve, reject) => {
     const child = NodeChildProcess.execFile(
       "git",
@@ -49,6 +49,8 @@ const native = (dir: string, args: string[], input = "", env: Record<string, str
       },
       (err, out) => (err ? reject(err) : resolve(out.trim())),
     );
+    // Without input nothing is written: git that never reads stdin may already have exited,
+    // and a write to it raises an unhandled EPIPE.
     child.stdin?.end(input);
   });
 const value = Effect.runPromise;
@@ -221,7 +223,7 @@ describe("Git browser search", () => {
         names.map((name) => `100644 blob ${blob}\t${name}\n`).join(""),
         { GIT_INDEX_FILE: index },
       );
-      const tree = await native(dir, ["write-tree"], "", { GIT_INDEX_FILE: index });
+      const tree = await native(dir, ["write-tree"], undefined, { GIT_INDEX_FILE: index });
       const sha = await native(dir, ["commit-tree", tree, "-m", "many"]);
       const all = await value(git.browse.paths(repo, sha, 25_001));
       expect(all?.truncated).toBe(false);

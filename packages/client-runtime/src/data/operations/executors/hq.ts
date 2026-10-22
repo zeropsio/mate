@@ -64,7 +64,7 @@ function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleR
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
   HqApi,
-  "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange"
+  "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange" | "handChange"
 > & {
   readonly release: (
     ...input: Parameters<HqApi["release"]>
@@ -194,6 +194,11 @@ function flowWrite(
     case "close-change":
       return Effect.map(
         write(() => api.closeChange(intent.link, intent.expectedHead)),
+        () => receipt(requestId, changeHandle(intent.link), undefined, PENDING),
+      );
+    case "hand-change":
+      return Effect.map(
+        write(() => api.handChange(intent.link, intent.mateProjectId)),
         () => receipt(requestId, changeHandle(intent.link), undefined, PENDING),
       );
   }
@@ -695,7 +700,7 @@ export function makeHqExecutor(ports: {
             try: () =>
               intent.kind === "rename-app"
                 ? api.renameApp(intent.appId, intent.name)
-                : api.deleteApp(intent.appId),
+                : api.deleteApp(intent.appId, { withCode: intent.withCode === true }),
             catch: faultOf,
           });
           return {

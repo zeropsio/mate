@@ -453,6 +453,21 @@ describe("ChangeReviewView: an open change", () => {
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
 
+  it("whose Mate is gone says so, offers Hand to each other Mate of the application, and Close without merging in the foot", () => {
+    const html = render({ ...open, mateGone: true }, files, {
+      heirs: [
+        { projectId: "p-sage", name: "Sage" },
+        { projectId: "p-juno", name: "Juno" },
+      ],
+    });
+    expect(textOf(html)).toContain(
+      "Its Mate is no longer in this project, so nobody works on it. Close it, or hand it to another Mate to go on with it.",
+    );
+    expect(html).toContain(">Hand to Sage</button>");
+    expect(html).toContain(">Hand to Juno</button>");
+    expect(footOf(html)).toContain(">Close without merging…</button>");
+  });
+
   describe("a change of an application of several parts", () => {
     const HEAD = "c".repeat(40);
     const part = (setup: string, more: Partial<ChangeReceiptPart> = {}): ChangeReceiptPart => ({

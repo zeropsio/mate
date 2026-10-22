@@ -34,13 +34,8 @@ import {
   type AttachmentLink,
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
-import {
-  GitCredential,
-  GitCredentialList,
-  type GitCredentialRecord,
-  RepositorySource,
-  type RepositoryQuery,
-} from "@t3tools/shared/hqGit";
+import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
+import type { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
@@ -83,6 +78,7 @@ import {
   type GitBrowseRead,
   type GitBrowseValue,
 } from "../gitBrowse/reads.ts";
+import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
@@ -353,8 +349,11 @@ export interface HqApi {
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
-  /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
-  readonly deleteApp: (appId: string) => Promise<void>;
+  /**
+   * Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`).
+   * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
+   */
+  readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
   /**
@@ -512,13 +511,6 @@ export interface HqApi {
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
-  /** Source content pinned to a commit; uses the same person read rule as changes. */
-  readonly repositorySource: (
-    appId: string,
-    repo: string,
-    query: RepositoryQuery,
-    signal?: AbortSignal,
-  ) => Promise<RepositorySource>;
   /** One of the Git browser's reads (`zerops/gitBrowse/reads.ts`), after the person's read rule. */
   readonly gitBrowse: <R extends GitBrowseRead>(
     read: R,
@@ -527,6 +519,16 @@ export interface HqApi {
     params: GitBrowseParams<R>,
     signal?: AbortSignal,
   ) => Promise<GitBrowseValue<R>>;
+  /**
+   * A file's bytes (`raw`), held as an image, plain text or an octet stream whatever HQ sends,
+   * so opening them runs nothing.
+   */
+  readonly gitBrowseBytes: (
+    appId: string,
+    repo: string,
+    params: GitRawQuery,
+    signal?: AbortSignal,
+  ) => Promise<Blob>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
   readonly change: (
     link: ChangeLink,
@@ -542,6 +544,11 @@ export interface HqApi {
   readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<Asked<HqChange>>;
   /** Closes a change without merging it, as the person; its branch stays. */
   readonly closeChange: (link: ChangeLink, expectedHead: string | null) => Promise<HqChange>;
+  /**
+   * Hands an open change whose Mate is gone to the application's Mate `mateProjectId`, as the
+   * person; its branch stays, that Mate's from then on.
+   */
+  readonly handChange: (link: ChangeLink, mateProjectId: string) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
   /**
@@ -960,6 +967,24 @@ export async function readHqHealth(
   }
 }
 
+/** A browse read's address; what HQ refuses as invalid is refused here, as HQ words it, unsent. */
+const browsePathOrRefuse = <R extends GitBrowseRead>(
+  read: R,
+  appId: string,
+  repo: string,
+  params: GitBrowseParams<R>,
+) => {
+  const path = gitBrowsePath(read, appId, repo, params);
+  if (path === null)
+    throw new HqError({
+      kind: "refused",
+      code: "invalid",
+      status: 400,
+      message: hqRefusalWords({ code: "invalid", reason: undefined }),
+    });
+  return path;
+};
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor names it. */
   readonly address: string;
@@ -1331,9 +1356,14 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId))?.name === name,
       ),
-    deleteApp: (appId) =>
+    deleteApp: (appId, options) =>
       confirmedDone(
-        () => authorized(`/api/apps/${encodeURIComponent(appId)}`, { method: "DELETE" }, true),
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
+            { method: "DELETE" },
+            true,
+          ),
         async () => (await appOf(appId)) === undefined,
       ),
     createMate: (mate) =>
@@ -1387,6 +1417,21 @@ export function makeHqApi(input: {
           ),
         () => changeIn(link, "closed"),
         ["change_not_open"],
+      ),
+    handChange: (link, mateProjectId) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/hand`,
+              { method: "POST", body: JSON.stringify({ mateProjectId }) },
+              true,
+            ),
+          ),
+        async () => {
+          const held = await changeIn(link, "open");
+          return held?.mateProjectId === mateProjectId ? held : undefined;
+        },
       ),
     changeAttachment: async (link, signal) =>
       (
@@ -1567,32 +1612,36 @@ export function makeHqApi(input: {
         true,
       );
     },
-    repositorySource: async (appId, repo, query, signal) =>
-      decoded(RepositorySource)(
-        await authorized(
-          `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
-          signal === undefined ? {} : { signal },
-        ),
-      ),
     gitBrowse: async <R extends GitBrowseRead>(
       read: R,
       appId: string,
       repo: string,
       params: GitBrowseParams<R>,
       signal?: AbortSignal,
-    ) => {
-      const path = gitBrowsePath(read, appId, repo, params);
-      // What HQ refuses as invalid is refused here, as HQ words it, and never sent.
-      if (path === null)
-        throw new HqError({
-          kind: "refused",
-          code: "invalid",
-          status: 400,
-          message: hqRefusalWords({ code: "invalid", reason: undefined }),
-        });
-      return decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
-        await authorized(path, signal === undefined ? {} : { signal }),
+    ) =>
+      decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
+        await authorized(
+          browsePathOrRefuse(read, appId, repo, params),
+          signal === undefined ? {} : { signal },
+        ),
+      ),
+    gitBrowseBytes: async (appId, repo, params, signal) => {
+      const response = await authorized(
+        browsePathOrRefuse("raw", appId, repo, params),
+        signal === undefined ? {} : { signal },
       );
+      let bytes: ArrayBuffer;
+      try {
+        bytes = await response.arrayBuffer();
+      } catch {
+        // Cut on its way, like a call that never arrived.
+        throw new HqError({
+          kind: "unavailable",
+          code: "network",
+          message: "HQ could not be reached.",
+        });
+      }
+      return new Blob([bytes], { type: heldType(response.headers.get("content-type")) });
     },
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.

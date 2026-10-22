@@ -1327,7 +1327,10 @@ const answerByMessage = (
 
 /** How a value asked of the person ended: put in the vault, or not given. */
 export type VaultOutcome = "saved" | "declined";
-/** How an origin asked of the person ended: connected in HQ, or not. */
+/**
+ * Where the person keeps an origin's code: `connected`, on GitHub — HQ mounts it through the
+ * organization's GitHub app; `declined`, in Mate — GitHub is not connected, only followed.
+ */
 export type OriginOutcome = "connected" | "declined";
 
 /** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
@@ -1354,12 +1357,16 @@ export const vaultAnswerWords = (
 ): string =>
   `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}` : "declined"}.`;
 
-/** The agent's line on an origin it asked for: the HQ repository it wires, or declined. Never a token. */
+/**
+ * The agent's line on an origin it asked for: where the person keeps the code, in the words zcp's
+ * `zerops_origin` names (kept on GitHub, kept in Mate, followed), and connected or not, which a zcp
+ * older than those words reads. Never a token.
+ */
 export const originAnswerWords = (
   ask: Pick<OriginAsk, "url" | "repo">,
   outcome: OriginOutcome,
 ): string =>
-  `Origin request for ${ask.url}: ${outcome === "connected" ? `connected as ${ask.repo}` : "declined"}.`;
+  `Origin request for ${ask.url}: ${outcome === "connected" ? `kept on GitHub, connected as ${ask.repo}` : "kept in Mate and only followed, not connected"}.`;
 
 /**
  * An ask on a card is answered there: the person's client does the work as them (writes the
@@ -1438,12 +1445,12 @@ const answerOrigin = (
   if (outcome === null || request.origin === undefined) {
     throw new Rejected(
       "not-answerable",
-      "An origin asked of the person is answered connected or declined, never with a token.",
+      "An origin asked of the person is answered kept on GitHub or in Mate, never with a token.",
     );
   }
   answerOnCard(b, request, {
     declined: outcome === "declined",
-    summary: outcome === "connected" ? `Connected as ${request.origin.repo}` : "Declined",
+    summary: outcome === "connected" ? "Kept on GitHub" : "Kept in Mate",
     wake: ORIGIN_ANSWER_WAKE,
     text: originAnswerWords(request.origin, outcome),
   });

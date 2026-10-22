@@ -94,12 +94,18 @@ describe("default write rules", () => {
     },
   );
 
-  it("refuses a person the branch a Mate's open change is on, and leaves it theirs once settled", async () => {
-    const person: Principal = { kind: "person", userId: "user", appId: "app" };
-    const ref = { ref: "refs/heads/fix-login" };
-    expect(await decide(person, ref, change)).toEqual({ allowed: false, reason: "protected_ref" });
-    expect(await decide(person, ref, { ...change, open: false })).toEqual({ allowed: true });
-  });
+  it.each([
+    ["open", change],
+    ["settled", { ...change, open: false }],
+  ] satisfies Array<[string, Change]>)(
+    "lets a person push the branch a Mate's %s change is on, as they work on it beside the Mate",
+    async (_state, record) => {
+      const person: Principal = { kind: "person", userId: "user", appId: "app" };
+      expect(await decide(person, { ref: "refs/heads/fix-login" }, record)).toEqual({
+        allowed: true,
+      });
+    },
+  );
 
   it.each([
     ["reader", { kind: "reader", userId: "user" }, {}, change, "read_only"],
@@ -111,8 +117,8 @@ describe("default write rules", () => {
       { ...change, mateId: "bob" },
       "not_your_ref",
     ],
-    ["main", mate, { ref: "refs/heads/main" }, change, "not_your_ref"],
-    ["tag", mate, { ref: "refs/tags/v1" }, change, "not_your_ref"],
+    ["main", mate, { ref: "refs/heads/main" }, change, "protected_ref"],
+    ["tag", mate, { ref: "refs/tags/v1" }, change, "protected_ref"],
     ["deletion", mate, { newSha: "0".repeat(40) }, change, "deletion"],
     [
       "core tag replacement",
@@ -125,7 +131,7 @@ describe("default write rules", () => {
     ["unknown", mate, {}, null, "unknown_change"],
     ["closed", mate, {}, { ...change, open: false }, "change_closed"],
     ["another Mate's closed", mate, {}, { ...change, mateId: "bob", open: false }, "change_closed"],
-    ["notes", mate, { ref: "refs/notes/review" }, null, "not_your_ref"],
+    ["notes", mate, { ref: "refs/notes/review" }, null, "protected_ref"],
   ] satisfies Array<[string, Principal, Partial<RefUpdate>, Change | null, string]>)(
     "refuses %s",
     async (_name, principal, patch, record, reason) => {
@@ -164,6 +170,6 @@ describe("default write rules", () => {
       await allowRefUpdate(mate, repo, { ...update, ref: "refs/heads/main" }, () => {
         throw new Error("unexpected lookup");
       }),
-    ).toEqual({ allowed: false, reason: "not_your_ref" });
+    ).toEqual({ allowed: false, reason: "protected_ref" });
   });
 });

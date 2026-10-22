@@ -26,7 +26,7 @@ const fixture = (run: (git: HqGit, dir: string) => Promise<void>) =>
       yield* Effect.promise(() => run(git, NodePath.join(root, "app/repo.git")));
     }),
   );
-const native = (dir: string, args: string[], input = "") =>
+const native = (dir: string, args: string[], input?: string) =>
   new Promise<string>((resolve, reject) => {
     const child = NodeChildProcess.execFile(
       "git",
@@ -46,6 +46,8 @@ const native = (dir: string, args: string[], input = "") =>
       },
       (err, out) => (err ? reject(err) : resolve(out.trim())),
     );
+    // Without input nothing is written: git that never reads stdin may already have exited,
+    // and a write to it raises an unhandled EPIPE.
     child.stdin?.end(input);
   });
 /** A commit holding exactly `files` (a flat folder), on `parents`. */

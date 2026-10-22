@@ -578,7 +578,7 @@
       "components": [
         "apps/web/src/components/zerops/origin/OriginAskCard.tsx",
         "apps/web/src/components/zerops/origin/OriginAskCardContainer.tsx",
-        "apps/web/src/components/zerops/origin/OriginGitSheet.tsx",
+        "apps/web/src/components/zerops/origin/OriginGithubSheet.tsx",
         "apps/web/src/components/zerops/origin/originAsk.logic.ts"
       ],
       "entryPoints": [
@@ -600,12 +600,12 @@
       "contracts": ["@t3tools/client-runtime/data", "@t3tools/shared/hqChanges"],
       "reverseStates": [
         {
-          "action": "Connect",
-          "reverse": "none: closing the Git sheet before production is added leaves the ask open on its card; an added Git environment is removed where the application lists them."
+          "action": "Keep the code on GitHub",
+          "reverse": "none: closing the sheet before HQ mounts the repository leaves the ask open on its card; a mounted repository is disconnected in the project's Mirror code to GitHub or GitLab."
         },
         {
-          "action": "Not now",
-          "reverse": "none: the engine closes the ask declined; the Mate can ask again."
+          "action": "Keep the code in Mate",
+          "reverse": "none: the engine closes the ask with the code kept in Mate; the Mate can ask again."
         }
       ],
       "docs": {
@@ -1282,6 +1282,11 @@
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationLists.tsx",
+        "apps/web/src/zerops/deleteApplicationDialog.ts",
+        "apps/web/src/zerops/useDeleteApplication.ts",
         "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteProjectForm.tsx",
         "apps/web/src/components/zerops/ZeropsSetUpMateDialog.tsx",
@@ -1475,6 +1480,8 @@
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.test.ts",
         "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteProjectForm.test.tsx",
         "apps/web/src/components/zerops/ZeropsSetUpMateDialog.test.tsx",
@@ -1539,10 +1546,9 @@
         "apps/web/src/components/zerops/ZeropsGitChangeRow.tsx",
         "apps/web/src/components/zerops/ZeropsGitCredentials.tsx",
         "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx",
-        "apps/web/src/components/zerops/ZeropsRepositorySource.tsx",
         "apps/web/src/components/zerops/GitTokenGuide.tsx",
         "apps/web/src/zerops/useGitCredentials.ts",
-        "apps/web/src/zerops/useRepositorySource.ts",
+        "apps/web/src/zerops/useGitRaw.ts",
         "apps/web/src/zerops/useGitBrowse.ts",
         "apps/web/src/components/zerops/gitBrowser/GitRepoFrame.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitBrowseView.tsx",
@@ -1553,6 +1559,12 @@
         "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitWhen.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitCommitsView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitAtCommit.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitDirectoryList.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitPathCrumbs.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.logic.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitFileView.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitCommitView.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitDiffFiles.tsx",
         "apps/web/src/components/zerops/gitBrowser/GitCompareView.tsx",
@@ -1621,7 +1633,9 @@
         "apps/web/src/components/zerops/ZeropsGitCredentials.test.tsx",
         "apps/web/src/components/zerops/ZeropsRepositoryBrowser.test.tsx",
         "packages/client-runtime/src/zerops/hq/gitCredentialStore.test.ts",
-        "packages/client-runtime/src/zerops/hq/repositoryStore.test.ts",
+        "packages/client-runtime/src/zerops/gitBrowse/files.test.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitFileView.test.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.logic.test.ts",
         "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],
       "captures": []

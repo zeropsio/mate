@@ -68,6 +68,11 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
       "conflict",
       "This project is no longer empty: a Mate, an environment or a change is in it now.",
     ],
+    [
+      "app_has_mate",
+      "conflict",
+      "A Mate still works on this project. Delete it first, or try again in a minute if it was just deleted.",
+    ],
     ["held_changed", "conflict", "Somebody changed this project in HQ meanwhile. Try again."],
     ["name_length", "invalid", "A name has 1 to 100 characters."],
     // D3: a Mate's face is all HQ records of it.
@@ -75,6 +80,14 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["mate_record_with_kind", "invalid", "Only a Mate has a face."],
     ["change_not_found", "change_not_found", "HQ has no such change."],
     ["change_not_open", "conflict", "This change is merged or closed already."],
+    // A change handed to another Mate once its own is gone.
+    [
+      "change_has_mate",
+      "conflict",
+      "This change's Mate is in the project, so it stays that Mate's.",
+    ],
+    ["not_app_mate", "conflict", "That Mate is no longer in this project."],
+    ["mate_has_change", "conflict", "That Mate has an open change of its own in this repository."],
     ["recipe_too_large", "too_large", "This project's recipe is too large to read here."],
     // An application's environments and their deploy keys (SPEC §3.2b).
     ["environment_with_kind", "invalid", "Only a stage or a production is an environment."],

@@ -53,6 +53,7 @@ describe("Git browser search reads", () => {
           });
         return found;
       },
+      gitBrowseBytes: async () => new Blob(),
     });
     const projected = store.data.project(gitBrowse, { ...key, allowed: true });
     // HQ said busy, and the read waits to be tried again.

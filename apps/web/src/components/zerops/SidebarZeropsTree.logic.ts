@@ -74,6 +74,8 @@ export type HeadingMenuEntry =
       readonly disabled: boolean;
       /** Why an item stands off, said on it. */
       readonly why?: string | undefined;
+      /** It deletes: in red. */
+      readonly destructive?: boolean;
       readonly act: () => void;
     }
   | { readonly kind: "separator" };
@@ -95,13 +97,18 @@ export function addressesPlace(input: {
  * verbs, none of them on it at rest — then its Addresses where it has a place, Invite people for
  * someone who may bring people in (the project picked in the invitation), then moving it
  * among the others, then adding a stage or a production it lacks, and where projects are added.
- * The New Mate dialog opens over the view on screen: Add a Mate goes nowhere.
+ * The New Mate dialog opens over the view on screen: Add a Mate goes nowhere. A project without a
+ * Mate starts one, and offers its Delete last of all, a line apart, in red (app-lifecycle.md).
  */
 export function projectHeadingMenu(input: {
   readonly collapsed: boolean;
   /** Absent where the heading does not fold. */
   readonly onToggle: (() => void) | undefined;
   readonly onAddMate: (() => void) | undefined;
+  /** The project has no Mate: adding one starts it (*Start a Mate*). */
+  readonly startMate?: boolean;
+  /** Opens the project's Delete dialog; absent where it has a Mate or the person may not delete. */
+  readonly onDelete?: { readonly name: string; readonly act: () => void } | undefined;
   /** Opens *Add automated Mates* for the project; absent where HQ makes none or none may be added. */
   readonly onAddAutomatedMates?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press (`newMateGate`); Add stands off. */
@@ -129,7 +136,8 @@ export function projectHeadingMenu(input: {
     act,
   });
   const separator: HeadingMenuEntry = { kind: "separator" };
-  const { reorder } = input;
+  const { reorder, onDelete } = input;
+  const addLabel = input.startMate === true ? "Start a Mate" : "Add a project Mate";
   return [
     ...(input.onToggle === undefined
       ? []
@@ -137,11 +145,11 @@ export function projectHeadingMenu(input: {
     ...(input.onAddMate === undefined
       ? []
       : input.addMateWhy == null
-        ? [item("Add a project Mate", input.onAddMate)]
+        ? [item(addLabel, input.onAddMate)]
         : [
             {
               kind: "item" as const,
-              label: "Add a project Mate",
+              label: addLabel,
               disabled: true,
               why: input.addMateWhy,
               act: input.onAddMate,
@@ -173,5 +181,17 @@ export function projectHeadingMenu(input: {
         ]),
     ...input.setUp.map(({ label, act }) => item(label, act)),
     item("All projects", input.onBrowseProjects),
+    ...(onDelete === undefined
+      ? []
+      : [
+          separator,
+          {
+            kind: "item" as const,
+            label: `Delete ${onDelete.name}…`,
+            disabled: false,
+            destructive: true,
+            act: onDelete.act,
+          },
+        ]),
   ];
 }

@@ -139,6 +139,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   app_not_found: "That project is gone from HQ.",
   app_not_empty:
     "This project is no longer empty: a Mate, an environment or a change is in it now.",
+  app_has_mate:
+    "A Mate still works on this project. Delete it first, or try again in a minute if it was just deleted.",
   mate_not_found: "HQ has no such Mate.",
   placed_or_production_taken:
     "This Zerops project is in a project already, or that project has its production.",
@@ -154,7 +156,10 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",
-  path_not_found: "This commit has no such file or folder.",
+  // A change handed to another Mate once its own is gone (`HAND_REFUSALS`).
+  change_has_mate: "This change's Mate is in the project, so it stays that Mate's.",
+  not_app_mate: "That Mate is no longer in this project.",
+  mate_has_change: "That Mate has an open change of its own in this repository.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
   // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).

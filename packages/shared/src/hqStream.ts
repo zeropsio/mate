@@ -461,6 +461,7 @@ export const HqNavigationChange = Schema.Struct({
   repo: HqChange.fields.repo,
   number: HqChange.fields.number,
   mateProjectId: HqChange.fields.mateProjectId,
+  mateGone: HqChange.fields.mateGone,
   title: HqChange.fields.title,
   state: Schema.Literal("open"),
   hasHead: Schema.Boolean,

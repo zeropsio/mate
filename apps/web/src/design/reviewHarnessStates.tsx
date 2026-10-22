@@ -294,6 +294,12 @@ function remarksOf(conversation: ChangeDiscussion) {
 const TALKING = comments({ kind: "read", comments: TALK });
 
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
+/** A Mate deleted since it opened the change: no face, nobody's own. */
+const GONE = { name: "the Mate", tint: undefined, mine: false } as const;
+const HEIRS = [
+  { projectId: "p-sage", name: "Sage" },
+  { projectId: "p-juno", name: "Juno" },
+];
 
 const IDLE: ReviewPress = { kind: "idle" };
 /** Nobody asked to close it. */
@@ -456,6 +462,9 @@ function Change({
   closing = OPEN,
   frame,
   addable,
+  mate = NOVA,
+  heirs,
+  hand,
 }: {
   readonly over?: Partial<FlowPullRequest>;
   /** HQ's detail of it, where it is not the one every state shares. */
@@ -470,6 +479,9 @@ function Change({
   readonly frame?: ChangeReviewViewProps["frame"];
   /** The environments the one question after a first merge may offer. */
   readonly addable?: ChangeReviewViewProps["addable"];
+  readonly mate?: ChangeReviewViewProps["mate"];
+  readonly heirs?: ChangeReviewViewProps["heirs"];
+  readonly hand?: ChangeReviewViewProps["hand"];
 }) {
   const value = pull(over);
   return (
@@ -484,7 +496,10 @@ function Change({
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       live="v0.1.0"
-      mate={NOVA}
+      mate={mate}
+      heirs={heirs}
+      hand={hand}
+      onHand={noop}
       now={NOW}
       onAsk={async () => {}}
       onClose={noop}
@@ -1048,6 +1063,23 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "closed",
     label: "Closed without merging",
     node: <Change over={{ state: "closed", merged: false }} />,
+  },
+  {
+    id: "mate-gone",
+    label: "Its Mate gone: Close, or Hand to another Mate",
+    node: <Change over={{ mateGone: true }} mate={GONE} heirs={HEIRS} />,
+  },
+  {
+    id: "mate-gone-handing",
+    label: "Its Mate gone: being handed to another Mate",
+    node: (
+      <Change
+        over={{ mateGone: true }}
+        mate={GONE}
+        heirs={HEIRS}
+        hand={{ kind: "running", to: "p-juno" }}
+      />
+    ),
   },
   {
     id: "recipe",

@@ -17,7 +17,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
  * - `DELETE /api/session`: revokes the presented session.
  * - `POST /api/apps` `{ name }` → the application; `DELETE /api/apps/:id` → `204`, only one that
- *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it.
+ *   holds nothing (`409 conflict` `app_not_empty`), its repositories with it; `?with=code`, its
+ *   code, changes, releases and history too, its environments unlinked, once no Mate is on it
+ *   (`409 conflict` `app_has_mate`).
  * - Every event that asks for deploys answers, beside its own, `deploys`: where each job it asked
  *   for stands once HQ submitted it (`@t3tools/shared/hqDeploys`, `deploys.ts`); a deploy that did
  *   not go through never undoes the event.
@@ -80,7 +82,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   `GET /api/apps/:appId/changes` → `{ changes }`; `GET
  *   /api/apps/:appId/changes/:repo/:n` → the change's review; `GET`, `POST …/comments`; `GET
  *   …/attachments/:id` → a picture; `POST …/merge` `{ expectedHead }` and `POST …/close` → the
- *   change, merged or closed. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
+ *   change, merged or closed; `POST …/hand` `{ mateProjectId }` → the change, a gone Mate's
+ *   handed to another of the application's Mates. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
  *   `GET /api/apps/:appId/recipe/:tier`, and a Mate's own, `GET /api/mate/recipe/:tier`. And `GET
  *   /changes/:appId/:repo/:n`, a change's address at HQ,
  *   redirects to the change in the hosted client.
@@ -129,6 +132,7 @@ import {
   EnsureRepoRequest,
   MergeChangeRequest,
   CloseChangeRequest,
+  HandChangeRequest,
   OpenChangeRequest,
   PostCommentRequest,
   RepoName,
@@ -136,7 +140,6 @@ import {
   changeRoutePath,
 } from "@t3tools/shared/hqChanges";
 
-import { RepositoryQuery } from "@t3tools/shared/hqGit";
 import { ChangeRefused, Changes } from "./changes.ts";
 import { PullRequests } from "./pullRequests.ts";
 import { RecipeTier } from "@t3tools/shared/hqRecipe";
@@ -297,7 +300,6 @@ const CHANGE_STATUS = {
   change_not_found: 404,
   attachment_not_found: 404,
   commit_not_found: 404,
-  path_not_found: 404,
   conflict: 409,
   invalid: 400,
   too_large: 413,
@@ -609,9 +611,7 @@ export const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request
   mateHolding(/^Mate (\S+)$/u.exec(request.headers["authorization"] ?? "")?.[1]),
 );
 
-/** A repository as a path names it, `:repo`, and a comparison as its query asks it. */
-const decodeRepositoryQuery = Schema.decodeUnknownEffect(RepositoryQuery);
-const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
+/** A comparison as its query asks it. */
 const decodeChangeDetailQuery = Schema.decodeUnknownEffect(ChangeDetailQuery);
 
 /** The repository a Mate's agent asks a git credential for, as git's helper names it. */
@@ -950,6 +950,25 @@ const routes = (
               const { appId, repo, number } = yield* appChangePath;
               return json(
                 yield* (yield* PullRequests).close(userId, appId, repo, number, expectedHead),
+                200,
+              );
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/apps/:appId/changes/:repo/:n/hand",
+      handle(
+        Effect.gen(function* () {
+          const { mateProjectId } = yield* jsonBody(HandChangeRequest, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const { appId, repo, number } = yield* appChangePath;
+              return json(
+                yield* (yield* Changes).handChange(userId, appId, repo, number, mateProjectId),
                 200,
               );
             }),
@@ -1378,7 +1397,12 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["id"] ?? "";
-              yield* (yield* Structure).deleteApp(userId, appId);
+              const withCode =
+                new URL(
+                  (yield* HttpServerRequest.HttpServerRequest).url,
+                  "http://hq",
+                ).searchParams.get("with") === "code";
+              yield* (yield* Structure).deleteApp(userId, appId, { withCode });
               // Its repositories go after it; should they not now, they are only on disk, unnamed.
               yield* (yield* Changes)
                 .removeAppRepos(appId)
@@ -1525,29 +1549,6 @@ const routes = (
           const { userId } = yield* principal;
           const appId = (yield* HttpRouter.params)["appId"] ?? "";
           return json({ repos: yield* (yield* Remotes).listRepos(userId, appId) }, 200);
-        }),
-      ),
-    ),
-    HttpRouter.add(
-      "GET",
-      "/api/apps/:appId/repos/:repo/source",
-      handle(
-        Effect.gen(function* () {
-          const { userId } = yield* principal;
-          const params = yield* HttpRouter.params;
-          const repo = yield* decodeRepoName(params["repo"]);
-          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
-            .searchParams;
-          const rev = search.get("rev");
-          const query = yield* decodeRepositoryQuery({
-            ...(rev === null ? {} : { rev }),
-            path: search.get("path") ?? "",
-            kind: search.get("kind") ?? "tree",
-          });
-          return json(
-            yield* (yield* Changes).repositorySource(userId, params["appId"] ?? "", repo, query),
-            200,
-          );
         }),
       ),
     ),
