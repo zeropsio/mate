@@ -268,13 +268,20 @@ const ACTIONS = {
   replaceToken: async () => ({ ok: false as const, reason: "Fixture." }),
   disconnect: async () => {},
   viaApp: async () => {},
+  unfollow: async () => {},
 };
 const GIT_ENVIRONMENTS = [
   { name: "tea-shop-production", target: { kind: "git" } },
   { name: "tea-shop-stage", target: { kind: "git" } },
 ];
-const repo = (name: string, remote: unknown) =>
-  ({ name, mainHead: null, updatedAt: null, remote }) as never;
+const repo = (name: string, remote: unknown, follows?: string) =>
+  ({
+    name,
+    mainHead: null,
+    updatedAt: null,
+    remote,
+    ...(follows === undefined ? {} : { follows }),
+  }) as never;
 
 /** The dialog's panel, drawn in place: the popup's width and padding, never its portal. */
 function DialogFrame({
@@ -307,6 +314,26 @@ function Dialogs() {
           can={OFFERS}
           github={APP}
           repos={[repo("appdev", null)]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Followed, Mate keeps the code">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={APP}
+          repos={[repo("appdev", null, REMOTE.url)]}
+        />
+      </DialogFrame>
+      <DialogFrame title="Followed, read by a member">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={{}}
+          github={APP}
+          repos={[repo("appdev", null, REMOTE.url)]}
         />
       </DialogFrame>
       <DialogFrame title="No app, not mirrored">

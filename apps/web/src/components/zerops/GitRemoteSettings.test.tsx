@@ -7,6 +7,7 @@ import {
   makeAccountStore,
   readsOfState,
   makeOperations,
+  OperationStopped,
   runToEnd,
 } from "@t3tools/client-runtime/data";
 import { createRoot } from "react-dom/client";
@@ -722,6 +723,65 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  it("a followed repository says the GitHub repository it follows, and offers Connect on GitHub and Stop following to who may connect", async () => {
+    const viaApp = vi.fn(async () => {});
+    const unfollow = vi.fn(async () => {});
+    const followed = [{ ...unmirrored[0]!, follows: "https://github.com/acme/tea-shop.git" }];
+    const view = await mount({
+      github: app,
+      actions: { ...actions, viaApp, unfollow },
+      repos: followed,
+    });
+    try {
+      expect(view.host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe(
+        "Follows github.com/acme/tea-shop · Mate keeps the code",
+      );
+      expect(view.buttons()).toEqual([
+        "Connect on GitHub",
+        "Stop following",
+        "Use a token instead",
+      ]);
+      await view.click("Connect on GitHub");
+      expect(viaApp).toHaveBeenCalledWith("appdev", "acme/tea-shop");
+      await view.click("Stop following");
+      expect(unfollow).toHaveBeenCalledWith("appdev");
+      await view.render({
+        github: app,
+        actions: { ...actions, viaApp, unfollow },
+        repos: followed,
+        can: {},
+      });
+      expect(view.host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe(
+        "Follows github.com/acme/tea-shop · Mate keeps the code",
+      );
+      expect(view.buttons()).toEqual([]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("says HQ's refusal to stop following where Stop following stood", async () => {
+    const unfollow = vi.fn(async () => {
+      throw new OperationStopped(
+        "Only the organization's owner or admin can change this.",
+        "not_structure_writer",
+      );
+    });
+    const view = await mount({
+      github: app,
+      actions: { ...actions, unfollow },
+      repos: [{ ...unmirrored[0]!, follows: "https://github.com/acme/tea-shop.git" }],
+    });
+    try {
+      await view.click("Stop following");
+      expect(view.host.textContent).toContain(
+        "Only the organization's owner or admin can change this.",
+      );
+    } finally {
+      await view.unmount();
+    }
+  });
+
   // live gate 2026-10-21 (D2): a way in needs a way out.
   it("a repository mirrored through the app offers the way back to a token", async () => {
     const probe = { ok: true as const, remote };
@@ -844,4 +904,82 @@ it("a diverged mirror says nothing moves until both mains match, never that it m
   );
   expect(html).toContain("differ since 2026-10-16 — nothing moves until they match");
   expect(html).not.toContain("Mirrors to");
+});
+
+it("Stop following returns a followed repository to not mirrored once HQ's record no longer follows it", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  let revision = 0;
+  const key = "hq:org:hq-app-detail:shop" as const;
+  const publish = (follows: string | undefined) =>
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope: key, generation: 1 }],
+      reset: true,
+      rows: [
+        {
+          family: "hqAppDetail",
+          id: "shop/repos",
+          revision: { kind: "hq", incarnation: "i", revision: ++revision },
+          value: {
+            kind: "repos",
+            value: [
+              {
+                ...repos[0]!,
+                name: "appdev",
+                remote: null,
+                ...(follows === undefined ? {} : { follows }),
+              },
+            ],
+          },
+        },
+      ],
+      removals: [],
+    });
+  const render = async () =>
+    act(async () =>
+      root.render(
+        <GitRemoteSettings
+          appId="shop"
+          repos={
+            hqAppDetail.derive(readsOfState(store.state()), { orgId: "org", appId: "shop" }).repos
+          }
+          appName="Shop"
+          can={{ connect_remote: { allow: true } }}
+          // HQ's record answers the stop.
+          actions={{
+            unfollow: async () => {
+              publish(undefined);
+            },
+          }}
+        />,
+      ),
+    );
+  try {
+    store.dispatch({ kind: "stream", key, now: 0, event: { kind: "demand", demanded: true } });
+    store.dispatch({ kind: "stream", key, now: 0, event: { kind: "attempt" } });
+    publish("https://github.com/acme/tea-shop.git");
+    await render();
+    expect(host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe(
+      "Follows github.com/acme/tea-shop · Mate keeps the code",
+    );
+    await act(async () =>
+      [...host.querySelectorAll("button")]
+        .find((node) => node.textContent === "Stop following")!
+        .click(),
+    );
+    await render();
+    expect(host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe("Not mirrored");
+    expect([...host.querySelectorAll("button")].map((node) => node.textContent)).not.toContain(
+      "Stop following",
+    );
+  } finally {
+    await act(async () => root.unmount());
+    registry.dispose();
+    vi.unstubAllGlobals();
+  }
 });

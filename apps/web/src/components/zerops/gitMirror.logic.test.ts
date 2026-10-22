@@ -17,6 +17,20 @@ describe("a repository's line in the mirror dialog", () => {
   it.each([
     { case: "nothing mirrored", remote: null, app, says: "Not mirrored" },
     {
+      case: "the GitHub repository a repository follows while Mate keeps its code",
+      remote: null,
+      follows: "https://github.com/acme/tea-shop.git",
+      app,
+      says: "Follows github.com/acme/tea-shop · Mate keeps the code",
+    },
+    {
+      case: "where it mirrors to, never what it followed before",
+      remote: { ...remote, via: "app" },
+      follows: "https://github.com/acme/old.git",
+      app,
+      says: "Mirrors to github.com/acme/tea-shop · through Acme Mate",
+    },
+    {
       case: "a mirror through the app",
       remote: { ...remote, via: "app" },
       app,
@@ -58,8 +72,10 @@ describe("a repository's line in the mirror dialog", () => {
       app: { kind: "unknown" },
       says: "Mirrors to github.com/acme/tea-shop · through the organization's GitHub app",
     },
-  ] as const)("says $case", ({ remote: held, app: reach, says }) => {
-    expect(mirrorStateLine(held, reach, NOW)).toBe(says);
+  ] as const)("says $case", (row) => {
+    const { remote: held, app: reach, says } = row;
+    const follows = "follows" in row ? { follows: row.follows } : {};
+    expect(mirrorStateLine({ remote: held, ...follows }, reach, NOW)).toBe(says);
   });
 });
 

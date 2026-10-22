@@ -1575,6 +1575,25 @@ const routes = (
       ),
     ),
     HttpRouter.add(
+      "DELETE",
+      "/api/apps/:appId/repos/:repo/upstream",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const params = yield* HttpRouter.params;
+          return yield* outliving(
+            Effect.as(
+              (yield* Remotes).unfollow(userId, {
+                appId: params["appId"] ?? "",
+                repo: params["repo"] ?? "",
+              }),
+              HttpServerResponse.empty({ status: 204 }),
+            ),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
       "GET",
       "/api/apps/:appId/releases",
       handle(

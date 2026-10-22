@@ -249,6 +249,7 @@ const remotes = (refused?: RemoteRefused) =>
       listRepos: () => Effect.die("not read by CI"),
       mateRepos: () => Effect.die("not read by CI"),
       follow: () => Effect.die("not read by CI"),
+      unfollow: () => Effect.die("not read by CI"),
       mateCredential: () => Effect.die("not read by CI"),
       write: () => Effect.die("not written by CI"),
       receipt: () => Effect.succeed(null),

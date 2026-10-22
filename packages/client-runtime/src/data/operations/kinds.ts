@@ -31,7 +31,11 @@ import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp } from "./hqAppWrites.ts";
-import { connectGitRemoteViaApp, followGithubRepository } from "./hqGithubRemote.ts";
+import {
+  connectGitRemoteViaApp,
+  followGithubRepository,
+  stopFollowingGithubRepository,
+} from "./hqGithubRemote.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
@@ -106,6 +110,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   deleteApp,
   connectGitRemoteViaApp,
   followGithubRepository,
+  stopFollowingGithubRepository,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,

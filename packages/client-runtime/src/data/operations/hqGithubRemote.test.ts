@@ -36,7 +36,8 @@ function rig(api: Partial<HqWrites>) {
   const scope = `hq:${orgId}:hq-app-detail:${appId}` as const;
   store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
   store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
-  const publish = (remote: Record<string, unknown> | null) =>
+  let revision = 0;
+  const publish = (remote: Record<string, unknown> | null, follows?: string) =>
     store.dispatch({
       kind: "delivery",
       via: "hq-stream",
@@ -46,10 +47,18 @@ function rig(api: Partial<HqWrites>) {
         {
           family: "hqAppDetail",
           id: `${appId}/repos`,
-          revision: { kind: "hq", incarnation: "i", revision: 1 },
+          revision: { kind: "hq", incarnation: "i", revision: ++revision },
           value: {
             kind: "repos",
-            value: [{ name: "appdev", mainHead: null, updatedAt: null, remote }],
+            value: [
+              {
+                name: "appdev",
+                mainHead: null,
+                updatedAt: null,
+                remote,
+                ...(follows === undefined ? {} : { follows }),
+              },
+            ],
           } as never,
         },
       ],
@@ -152,6 +161,55 @@ describe("following a GitHub repository whose code HQ keeps", () => {
     Effect.gen(function* () {
       const r = rig(api);
       yield* r.operations.submit(follow);
+      expect(r.stage()).toMatchObject({ stage: "refused" });
+    }),
+  );
+});
+
+describe("stopping a repository's GitHub follow", () => {
+  const stop = {
+    kind: "stop-following-github-repository",
+    orgId,
+    appId,
+    repo: "appdev",
+  } as const;
+
+  it.effect("asks HQ to stop, and says it is stopping until HQ's record no longer follows it", () =>
+    Effect.gen(function* () {
+      const sent: Array<unknown> = [];
+      const r = rig({
+        unfollowRepoUpstream: async (...args) => {
+          sent.push(args);
+        },
+      });
+      r.publish(null, "https://github.com/acme/tea-shop.git");
+      yield* r.operations.submit(stop);
+      expect(sent).toEqual([[appId, "appdev"]]);
+      expect(r.stage().stage).not.toBe("done");
+      r.publish(null);
+      expect(r.stage()).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "HQ's refusal",
+      api: {
+        unfollowRepoUpstream: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "remote_refused",
+            status: 403,
+            message: "Only the organization's owner or admin can change this.",
+          });
+        },
+      },
+    },
+    { name: "an HQ that cannot stop one", api: {} },
+  ])("is refused by $name", ({ api }) =>
+    Effect.gen(function* () {
+      const r = rig(api);
+      yield* r.operations.submit(stop);
       expect(r.stage()).toMatchObject({ stage: "refused" });
     }),
   );

@@ -26,7 +26,7 @@
  * - `PUT /api/apps/:appId/repos/:repo/upstream` {@link FollowRepoUpstreamRequest} → `204`, by a
  *   structure writer: HQ keeps the repository's code, made if new, and follows the GitHub
  *   repository at `url` — fetched by the application's Mates (`MateRepo.origin`, `follow`), never
- *   pushed to, no token kept;
+ *   pushed to, no token kept; `DELETE` there, by a structure writer → `204`: no longer followed;
  * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
@@ -427,6 +427,8 @@ export type AddGitEnvironmentRequest = typeof AddGitEnvironmentRequest.Type;
 export const RepoListEntry = Schema.Struct({
   name: RepoName,
   remote: Schema.optionalKey(Schema.NullOr(HqRepoRemote)),
+  /** The GitHub repository whose code its Mates fetch while HQ keeps it (`follow`); a remote outranks it. */
+  follows: Schema.optionalKey(HqRemoteUrl),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
