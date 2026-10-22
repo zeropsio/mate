@@ -9,6 +9,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/desktop/src/app/smokeCapture.test.ts": [],
   "apps/desktop/src/settings/DesktopAppSettings.test.ts": [],
   "apps/desktop/src/settings/DesktopClientSettings.test.ts": [],
+  "apps/hq/src/gitBrowse/archive.test.ts": [],
   "apps/mobile/app-config-personal-team.test.ts": [
     "apps/mobile/app.config.ts",
     "apps/mobile/plugins/withoutIosPersonalTeamCapabilities.cjs",
@@ -161,6 +162,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "packages/client-runtime/src/zerops/zcpFixtures.test.ts": [
     "packages/client-runtime/src/zerops/fixtures/zcp/**",
   ],
+  "packages/hq-git/src/browse/archive.test.ts": [],
   "packages/hq-git/src/integration.test.ts": [],
   "packages/hq-git/src/operations.test.ts": [],
   "packages/shared/src/logging.test.ts": [],
