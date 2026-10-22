@@ -1275,6 +1275,38 @@ describe("pairPreviewRoutes", () => {
       pairPreviewRoutes(routes, hostnames, file).map((preview) => [preview.service, preview.url]),
     ).toEqual(previews);
   });
+
+  // mono-live 2026-10-22 H6: "Try it" on a notesdev change listed appdev's stage.
+  it.each([
+    {
+      case: "a change of one repository offers only that repository's stage",
+      routes: [route("appstage"), route("notesstage")],
+      hostnames: ["appdev", "appstage", "notesdev", "notesstage"],
+      tier: undefined,
+      repository: "notesdev",
+      previews: ["notes"],
+    },
+    {
+      case: "a change of a repository with several parts offers each of its parts",
+      routes: [route("webstage"), route("apistage"), route("notesstage")],
+      hostnames: ["appdev", "webstage", "apistage", "notesdev", "notesstage"],
+      tier: tier(["web", "api"]),
+      repository: "appdev",
+      previews: ["web", "api"],
+    },
+    {
+      case: "a change of a repository without a public stage offers none",
+      routes: [route("appstage")],
+      hostnames: ["appdev", "appstage", "notesdev", "notesstage"],
+      tier: undefined,
+      repository: "notesdev",
+      previews: [],
+    },
+  ])("$case", ({ routes, hostnames, tier: file, repository, previews }) => {
+    expect(
+      pairPreviewRoutes(routes, hostnames, file, repository).map((preview) => preview.service),
+    ).toEqual(previews);
+  });
 });
 
 it("A listed environment replaces its target's creation while another project keeps its own coming stage.", () => {

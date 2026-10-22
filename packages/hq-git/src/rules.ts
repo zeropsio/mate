@@ -12,7 +12,7 @@ export const validRef = (ref: string) =>
   ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 const refuse = (reason: string): RefDecision => ({ allowed: false, reason });
 /** HQ's namespace: the branch of a change opened without naming one, `mate/<mateId>/<number>`. */
-const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
+export const allocated = (branch: string) => branch === "mate" || branch.startsWith("mate/");
 
 /** Built-in policy the handler applies to every update; Core's port only answers change records. */
 export const allowRefUpdate = async (
@@ -35,8 +35,9 @@ export const allowRefUpdate = async (
       return refuse("tag_immutable");
     return { allowed: true };
   }
+  // `main` moves only by a merge, and every ref but a branch is HQ's: nobody's to push.
   if (!update.ref.startsWith("refs/heads/") || update.ref === "refs/heads/main")
-    return refuse(principal.kind === "person" ? "protected_ref" : "not_your_ref");
+    return refuse("protected_ref");
   const branch = update.ref.slice("refs/heads/".length);
   // HQ owns main, tags and the namespace of changes opened without a branch. People own every
   // other branch, one a Mate's change is on too: they work on it beside the Mate.

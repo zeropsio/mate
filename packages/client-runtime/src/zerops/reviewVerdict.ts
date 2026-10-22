@@ -243,6 +243,8 @@ export interface ChangeReviewInput {
   readonly pull: {
     readonly number: number;
     readonly headSha?: string | undefined;
+    /** Open with nothing pushed yet (`FlowPullRequest.unpushed`). */
+    readonly unpushed?: true | undefined;
     readonly pipeline?: ChangePipeline | undefined;
     readonly kind: FlowPullRequestKind;
     readonly baseBranch: string;
@@ -779,6 +781,21 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   if (close.kind !== "idle") return closeReview(input, close);
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
   const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
+  // Opened before its branch was pushed: nothing to merge yet, and a person may still close it.
+  if (pull.unpushed === true) {
+    return {
+      verdict: {
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing pushed yet",
+        why: `${input.mateName} opened it before pushing its branch`,
+        fix: undefined,
+      },
+      consequence: "Nothing merges from here until its branch is pushed.",
+      primary: undefined,
+      secondary,
+    };
+  }
 
   const verdictOf = changeMergeVerdict(input);
   const { verdict } = verdictOf;

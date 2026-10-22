@@ -653,6 +653,11 @@ export function pairPreviewRoutes(
   hostnames: ReadonlyArray<string>,
   /** The Mate tier on `main`, which pairs a dev with each part's preview; absent while unread. */
   tier?: string | undefined,
+  /**
+   * A change's repository, its pair's dev half: only that pair's previews — a change says which
+   * code it touched; absent, every pair's.
+   */
+  repository?: string | undefined,
 ): ReadonlyArray<GroupFlowPreview> {
   const { pairs } = servicePairs({
     // Routes and list are read separately: a route's service is a service even before the list shows it.
@@ -665,13 +670,15 @@ export function pairPreviewRoutes(
   const urlOf = new Map<string, string>();
   for (const route of routes) if (!urlOf.has(route.service)) urlOf.set(route.service, route.url);
   return pairs.flatMap((pair) =>
-    pair.previews.flatMap((preview) => {
-      const url = urlOf.get(preview.hostname);
-      if (url === undefined) return [];
-      const part =
-        previewLabel(pair, preview) ?? (pair.previews.length > 1 ? preview.hostname : pair.name);
-      return [{ service: part, url }];
-    }),
+    (repository === undefined || pair.dev === repository ? pair.previews : []).flatMap(
+      (preview) => {
+        const url = urlOf.get(preview.hostname);
+        if (url === undefined) return [];
+        const part =
+          previewLabel(pair, preview) ?? (pair.previews.length > 1 ? preview.hostname : pair.name);
+        return [{ service: part, url }];
+      },
+    ),
   );
 }
 

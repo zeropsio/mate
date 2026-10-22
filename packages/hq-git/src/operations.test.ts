@@ -1845,6 +1845,40 @@ describe("a mirror on another host", () => {
     }),
   );
 
+  it.live(
+    "a change's branch kept on GitHub is made in HQ's copy at the tip followed from there, then only moves forward",
+    () =>
+      fixture(async (git, dir, events) => {
+        const main = await write(git, { app: "1" }, null);
+        const { path, remote } = await mirrorOf(dir);
+        await value(git.pushRef(repo, remote, "main", main, null));
+        const pushed = await commitThere(path, main, "fix");
+        await native(path, ["update-ref", "refs/heads/fix-x", pushed]);
+        const followed = await value(git.followRefs(repo, remote));
+        expect([...followed.heads]).toEqual([
+          ["fix-x", pushed],
+          ["main", main],
+        ]);
+        const change = { mateId: "alice", number: 1, branch: "fix-x" };
+        const before = events.length;
+        expect(await value(git.fastForwardChange(repo, change, pushed, null))).toEqual({
+          kind: "moved",
+        });
+        expect(await native(dir, ["rev-parse", "refs/heads/fix-x"])).toBe(pushed);
+        expect(events.slice(before)).toEqual([
+          {
+            kind: "pushed",
+            repo,
+            updates: [{ ref: "refs/heads/fix-x", oldSha: "0".repeat(40), newSha: pushed }],
+          },
+        ]);
+        // Made once: a second making from nothing is stale, never a reset.
+        expect(await value(git.fastForwardChange(repo, change, main, null))).toEqual({
+          kind: "stale",
+        });
+      }),
+  );
+
   it.live("main never moves backwards or sideways to a mirror's tip", () =>
     fixture(async (git, dir, events) => {
       const first = await write(git, { app: "1" }, null);

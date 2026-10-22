@@ -319,8 +319,8 @@ describe("repositories and real smart HTTP", () => {
 
   it.live.each([
     ["refs/heads/mate/bob/1", "mate", "not_your_ref"],
-    ["refs/heads/main", "mate", "not_your_ref"],
-    ["refs/tags/v1", "mate", "not_your_ref"],
+    ["refs/heads/main", "mate", "protected_ref"],
+    ["refs/tags/v1", "mate", "protected_ref"],
     ["refs/heads/mate/alice/2", "mate", "unknown_change"],
     ["refs/heads/mate/alice/1", "reader", "read_only"],
   ] as const)("refuses %s with the reason printed by git (%s)", ([ref, principal, reason]) =>
@@ -386,7 +386,7 @@ describe("repositories and real smart HTTP", () => {
           run(clone, ["push", url(), `${next}:refs/heads/main`], "mate"),
         );
         expect(result.code).not.toBe(0);
-        expect(result.stderr).toContain("not_your_ref");
+        expect(result.stderr).toContain("protected_ref");
         expect(decisions).toBe(before);
         expect(yield* Effect.promise(() => checked(repoDir(), ["rev-parse", "main"]))).toBe(sha);
       }),

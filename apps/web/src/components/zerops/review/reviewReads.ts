@@ -39,24 +39,31 @@ const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
  * The Mate's previews: "Try it", one per service and named by it. There is none per change; the
  * Mate's own stand for it, each — a frontend and a backend are two, and nothing says which a
  * change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend, how do
- * you know?").
+ * you know?"). Its repository's only, where a change names one: its pair's stage, each part's.
  */
 export function useMatePreviews(
   mateProjectId: string,
   /** The Mate tier on `main` (`ZeropsProjectFlow.mateTier`). */
   mateTier: string | undefined,
+  /** The change's repository; `undefined` for every pair's. */
+  repository: string | undefined,
 ): ReadonlyArray<ReviewPreview> {
   const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = pairPreviewRoutes(row?.routes ?? [], row?.services?.hostnames ?? [], mateTier);
+    const previews = pairPreviewRoutes(
+      row?.routes ?? [],
+      row?.services?.hostnames ?? [],
+      mateTier,
+      repository,
+    );
     return previews.length === 0
       ? NO_PREVIEWS
       : previews.map((preview) => ({
           ...preview,
           host: preview.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, ""),
         }));
-  }, [listing, mateProjectId, mateTier]);
+  }, [listing, mateProjectId, mateTier, repository]);
 }
 
 /**

@@ -197,7 +197,7 @@ describe("useLinkedChange", () => {
 
   it.each([
     ["absent", { kind: "gone" }],
-    ["unpushed", { kind: "gone" }],
+    ["unpushed", { kind: "read", pull: { state: "open", unpushed: true } }],
     ["unavailable", { kind: "unavailable", reason: "HQ could not be reached." }],
     ["forbidden", { kind: "refused", reason: "HQ refused this (forbidden)." }],
     ["change", { kind: "read" }],

@@ -1203,6 +1203,20 @@ describe("changeReview: Close without merging, the review its one confirmation (
     expect(changeReview(change(over)).secondary).toEqual(secondary);
   });
 
+  // mono-live 2026-10-22 H5: a change opened before its branch was pushed read "has no change #2".
+  it("shows a change opened before its branch was pushed, merges nothing of it, and closes it", () => {
+    const review = changeReview(change({ pull: pull({ unpushed: true }), commits: 0 }));
+    expect(review.verdict).toMatchObject({
+      state: "empty",
+      tone: "quiet",
+      title: "Nothing pushed yet",
+      why: "Nova opened it before pushing its branch",
+    });
+    expect(review.consequence).toBe("Nothing merges from here until its branch is pushed.");
+    expect(review.primary).toBeUndefined();
+    expect(review.secondary).toEqual({ label: "Close without merging…", enabled: true });
+  });
+
   it("asks before it closes, in the review's own words, never for ⌘↵", () => {
     const review = changeReview(change({ close: ASKED }));
     expect(review.verdict).toMatchObject({

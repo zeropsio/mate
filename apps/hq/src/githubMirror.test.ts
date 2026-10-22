@@ -1175,6 +1175,72 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
       ),
     );
 
+    // mono-live 2026-10-22 H1/H2: an agent's own branch on GitHub never reached HQ, and HQ pushed a
+    // change to a `mate/<n>-<slug>` branch of its own beside the branch it was opened on.
+    it.effect(
+      "a change opened on the Mate's own branch follows that branch on GitHub: HQ never pushes it, nor a branch of its own",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            // The agent pushed `fix-x` to GitHub, its checkout's origin, and opened the change on it.
+            const pushed = commitIn(f.github, [f.main], "fix.ts");
+            native(f.github, ["update-ref", "refs/heads/fix-x", pushed]);
+            yield* f.sql`
+              INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, branch)
+              VALUES (${f.appId}::uuid, 'appdev', 1, 'nova', 'Fix x', 'fix-x')`;
+            yield* f.mirror.sync(f.appId, "appdev");
+            yield* f.headIs(pushed);
+            assert.strictEqual(refIn(f.hqDir, "refs/heads/fix-x"), pushed);
+            assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 1), {
+              branch: "fix-x",
+              sha: pushed,
+            });
+            // Its next push there moves the change, through GitHub's push event.
+            const again = commitIn(f.github, [pushed], "fix-more.ts");
+            native(f.github, ["update-ref", "refs/heads/fix-x", again]);
+            yield* f.events.dispatch({
+              name: "push",
+              deliveryId: "delivery-fix-x",
+              repository: "acme/tea-shop",
+              payload: {
+                ref: "refs/heads/fix-x",
+                after: again,
+                repository: { default_branch: "main" },
+              },
+            });
+            yield* f.headIs(again);
+            yield* f.mirror.sync(f.appId, "appdev");
+            assert.strictEqual(
+              refsOf(f.github, "refs/heads/"),
+              "refs/heads/fix-x\nrefs/heads/main",
+            );
+            assert.strictEqual(refIn(f.github, "refs/heads/fix-x"), again);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a change opened on a branch already on GitHub is at that branch's head as soon as GitHub is followed",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            yield* f.sql`
+              INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
+              VALUES ('nova', ${f.appId}::uuid, 'mate', 'owner')`;
+            yield* f.sql`INSERT INTO hq_mate (project_id, face) VALUES ('nova', 'face-1')`;
+            const pushed = commitIn(f.github, [f.main], "fix.ts");
+            native(f.github, ["update-ref", "refs/heads/fix-x", pushed]);
+            // No sweep runs within the test: only the opening asks GitHub.
+            yield* f.changes.openChange("nova", "appdev", "Fix x", undefined, "fix-x");
+            yield* f.headIs(pushed);
+          }),
+        ),
+    );
+
     it.effect("A push to a non-default GitHub branch starts a follow", () =>
       Effect.scoped(
         Effect.gen(function* () {

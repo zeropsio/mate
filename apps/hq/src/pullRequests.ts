@@ -1,10 +1,11 @@
 /**
  * Each open change of a repository HQ mirrors through the organization's GitHub app
- * (`GithubMirror.repositoryOf`) is a pull request on GitHub, opened by the app's bot: one change,
- * two views (`hq_pull_request`).
+ * (`GithubMirror.repositoryOf`) is a pull request on GitHub, opened by the app's bot or, on a
+ * branch its Mate named, by its Mate: one change, two views (`hq_pull_request`).
  *
  * - Once the change has a head its Mate described (`ready`), its head goes to its branch on GitHub
- *   (`GithubMirror.pushChange`) and a pull request opens from it into GitHub's default branch,
+ *   (`GithubMirror.pushChange`; a branch its Mate named is there already) and a pull request opens
+ *   from it into GitHub's default branch, or the one its Mate opened there is taken for it,
  *   ready for review: its body says what it does, how it was checked, where to try it, `Fixes #n`
  *   for its task's issue, and a footer naming the Mate, its task and who asked; who asked is its
  *   assignee where they can write; its first comment says once what the Mate does with it. A
@@ -24,7 +25,7 @@
  *
  * @module pullRequests
  */
-import type { GitError } from "@t3tools/hq-git";
+import { type GitError, allocated } from "@t3tools/hq-git";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import {
   COMMENT_BODY_MAX,
@@ -660,7 +661,10 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             body: section,
           });
           // Opened before, its record lost: the open one of its branch is it — only one the app's
-          // bot opened from the repository itself. Anyone else's holds the branch: never taken.
+          // bot opened from the repository itself. Anyone else's holds the branch: never taken. A
+          // branch its Mate named is the Mate's: the open one from the repository itself is the
+          // change's, whoever opened it (the Mate's own `gh pr create`).
+          const named = !allocated(pushed.branch);
           const bot = made.pull === undefined && made.status === 422 ? yield* auth.bot : undefined;
           const found =
             bot === undefined
@@ -668,11 +672,11 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               : (yield* github.pullsOf(app.remote, app.token, pushed.branch)).find(
                   (candidate) => candidate.state === "open",
                 );
-          const pull =
-            made.pull ??
-            (found !== undefined && found.author === bot?.login && found.sameRepository
+          const adopted =
+            found !== undefined && found.sameRepository && (named || found.author === bot?.login)
               ? found
-              : undefined);
+              : undefined;
+          const pull = made.pull ?? adopted;
           if (pull === undefined) {
             taken.set(
               `${appId}/${repo}/${String(number)}`,
@@ -696,7 +700,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             INSERT INTO hq_pull_request (app_id, repo, number, github_repo, pr_number, url,
               head_sha, described)
             VALUES (${appId}::uuid, ${repo}, ${number}, ${repository}, ${pull.number}, ${pull.url},
-              ${pushed.sha}, ${`${change.title}\n${section}`})
+              ${pushed.sha}, ${named && made.pull === undefined ? "" : `${change.title}\n${section}`})
             ON CONFLICT DO NOTHING RETURNING 1`);
           if (kept.length === 0) return;
           yield* moved(change.mate_project_id);

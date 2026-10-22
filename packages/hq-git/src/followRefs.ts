@@ -9,12 +9,21 @@ import type { GitRunner } from "./git.ts";
  */
 export const GITHUB_REFS = "refs/github/";
 
+/** Every ref under `refs/github/`, at its object. */
 const held = async (git: GitRunner, dir: string, signal: AbortSignal) =>
-  new Set(
-    (await git.run(["-C", dir, "for-each-ref", "--format=%(refname)", GITHUB_REFS], { signal }))
+  new Map(
+    (
+      await git.run(["-C", dir, "for-each-ref", "--format=%(refname) %(objectname)", GITHUB_REFS], {
+        signal,
+      })
+    )
       .toString()
       .split("\n")
-      .filter(Boolean),
+      .filter(Boolean)
+      .map((line) => {
+        const at = line.lastIndexOf(" ");
+        return [line.slice(0, at), line.slice(at + 1)] as const;
+      }),
   );
 
 /**
@@ -48,7 +57,15 @@ export const followRefs = async (
     signal,
   );
   const after = await held(git, dir, signal);
-  return { pruned: [...before].filter((ref) => !after.has(ref)) };
+  const heads = `${GITHUB_REFS}heads/`;
+  return {
+    pruned: [...before.keys()].filter((ref) => !after.has(ref)),
+    heads: new Map(
+      [...after]
+        .filter(([ref]) => ref.startsWith(heads))
+        .map(([ref, sha]) => [ref.slice(heads.length), sha] as const),
+    ),
+  };
 };
 
 /** Every ref under `refs/github/` gone: the repository no longer follows a remote's refs. */
@@ -57,6 +74,6 @@ export const unfollowRefs = async (git: GitRunner, dir: string, signal: AbortSig
   if (refs.size === 0) return;
   await git.run(["-C", dir, "update-ref", "--stdin"], {
     signal,
-    input: [...refs].map((ref) => `delete ${ref}\n`).join(""),
+    input: [...refs.keys()].map((ref) => `delete ${ref}\n`).join(""),
   });
 };
