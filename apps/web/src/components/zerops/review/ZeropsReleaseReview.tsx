@@ -82,6 +82,7 @@ import {
   releaseChangeRows,
   releaseHeading,
   releaseLine,
+  productionCode,
   reviewKindLine,
   rollbackListNote,
   sinceWords,
@@ -101,6 +102,7 @@ import { answeredDeploys } from "../ZeropsDeployAnswer";
 import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { Button } from "~/components/ui/button";
+import { GitBrowserLink, gitCodeLink } from "../gitBrowser/GitBrowserLink";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -452,6 +454,8 @@ function ReleaseData({
         onClose();
       }}
       onAddDomain={onAddDomain}
+      appId={flow.groupId}
+      productionCode={productionCode(flow.release)}
       onRelease={() => {
         void release();
       }}
@@ -521,6 +525,10 @@ export interface ReleaseReviewViewProps {
   /** Production's services whose commit cannot be told: what goes live on them is not said. */
   readonly untold: ReadonlyArray<string>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
+  /** The project's application in the Git browser; without it nothing links there. */
+  readonly appId?: string | undefined;
+  /** The code production runs, per service, to browse before it is replaced. */
+  readonly productionCode?: ReturnType<typeof productionCode> | undefined;
   readonly hasStage: boolean;
   /** The stage that follows `main`: its name, and when what it runs went live. */
   readonly stage?: { readonly name: string; readonly at: string | undefined } | undefined;
@@ -738,7 +746,17 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 <p className="rv-words">
                   {repo.repository} ·{" "}
                   {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
-                  {repo.sha?.slice(0, 7) ?? "Nothing merged yet"}
+                  {repo.sha == null ? (
+                    "Nothing merged yet"
+                  ) : props.appId === undefined ? (
+                    repo.sha.slice(0, 7)
+                  ) : (
+                    <GitBrowserLink
+                      to={gitCodeLink({ appId: props.appId, repo: repo.repository }, repo.sha)}
+                    >
+                      {repo.sha.slice(0, 7)}
+                    </GitBrowserLink>
+                  )}
                 </p>
                 {repo.remote == null ? null : (
                   <p className="rv-note">
@@ -766,7 +784,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         untoldDeploying.length === 0 &&
         (answer !== undefined || props.where.length === 0) ? null : (
         <ReviewSection title="What goes out">
-          {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
+          {rows.length === 0 ? null : (
+            <ReviewReleaseRows appId={props.appId} onOpen={props.onOpenChange} rows={rows} />
+          )}
           {props.git !== undefined || untoldDeploying.length === 0 ? null : (
             <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
           )}
@@ -794,6 +814,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               {row}
             </p>
           ))}
+          {offered && props.appId !== undefined ? (
+            <ProductionCode appId={props.appId} code={props.productionCode ?? []} />
+          ) : null}
         </ReviewSection>
       )}
       {props.git !== undefined || answer === undefined ? null : (
@@ -1073,10 +1096,15 @@ function RollbackData({
       tag={tag}
       titleId={titleId}
       untold={lists.untold}
-      where={(earlier?.entries ?? NO_ENTRIES).map((entry) => ({
-        service: entry.service,
-        line: `goes back to ${shortCommit(entry.commit)}`,
-      }))}
+      appId={flow.groupId}
+      where={(earlier?.entries ?? NO_ENTRIES).map((entry) => {
+        const repository = repositories?.get(entry.service);
+        return {
+          service: entry.service,
+          line: `goes back to ${shortCommit(entry.commit)}`,
+          code: repository === undefined ? undefined : { repository, sha: entry.commit },
+        };
+      })}
     />
   );
 }
@@ -1091,7 +1119,14 @@ export interface RollbackReviewViewProps {
   /** What the earlier release lists, short: `app 3fa9c21 · api 3fa9c21`. */
   readonly line: string | undefined;
   readonly services: ReadonlyArray<string>;
-  readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
+  /** Each service and the commit it goes back to, its code where its repository is known. */
+  readonly where: ReadonlyArray<{
+    readonly service: string;
+    readonly line: string;
+    readonly code?: { readonly repository: string; readonly sha: string } | undefined;
+  }>;
+  /** The project's application in the Git browser; without it nothing links there. */
+  readonly appId?: string | undefined;
   /** What production runs that the release does not: it leaves production. */
   readonly leaving: RollbackList;
   /** What the release lists that production does not run: it comes back. */
@@ -1120,12 +1155,14 @@ function RollbackListSection({
   side,
   list,
   onOpen,
+  appId,
   children,
 }: {
   readonly title: string;
   readonly side: RollbackSide;
   readonly list: RollbackList;
   readonly onOpen: ((row: ReviewReleaseRow) => void) | undefined;
+  readonly appId: string | undefined;
   readonly children?: ReactNode;
 }) {
   const listed = list.state === "known" && list.rows.length > 0;
@@ -1135,7 +1172,7 @@ function RollbackListSection({
       title={title}
     >
       {listed ? (
-        <ReviewReleaseRows onOpen={onOpen} rows={list.rows} />
+        <ReviewReleaseRows appId={appId} onOpen={onOpen} rows={list.rows} />
       ) : list.state === "failed" && list.again !== undefined ? (
         <ZeropsReadFailure
           action="Compare again"
@@ -1212,6 +1249,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       verdict={model.verdict}
     >
       <RollbackListSection
+        appId={props.appId}
         list={props.leaving}
         onOpen={props.onOpenChange}
         side="leaving"
@@ -1220,6 +1258,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
       </RollbackListSection>
       <RollbackListSection
+        appId={props.appId}
         list={props.comingBack}
         onOpen={props.onOpenChange}
         side="coming-back"
@@ -1227,9 +1266,54 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       />
       {props.where.length === 0 && answer === undefined ? null : (
         <ReviewSection title="Where">
-          <ReviewWhere answer={answer} rows={props.where} />
+          <ReviewWhere
+            answer={answer}
+            rows={props.where.map(({ service, line, code }) => ({
+              service,
+              line,
+              code:
+                code === undefined || props.appId === undefined
+                  ? undefined
+                  : gitCodeLink({ appId: props.appId, repo: code.repository }, code.sha),
+            }))}
+          />
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
+  );
+}
+
+/**
+ * The code production runs, to read before a release replaces it: one service's is "Browse files",
+ * several are each by its name — never by a hash, which names no release.
+ */
+function ProductionCode({
+  appId,
+  code,
+}: {
+  readonly appId: string;
+  readonly code: ReturnType<typeof productionCode>;
+}) {
+  if (code.length === 0) return null;
+  const link = (entry: (typeof code)[number], words: string) => (
+    <GitBrowserLink
+      key={entry.service}
+      to={gitCodeLink({ appId, repo: entry.repository }, entry.sha)}
+    >
+      {words}
+    </GitBrowserLink>
+  );
+  return (
+    <p className="rv-note">
+      {code.length === 1
+        ? link(code[0]!, "Browse files")
+        : [
+            "Browse files: ",
+            ...code.flatMap((entry, index) => [
+              index === 0 ? null : " · ",
+              link(entry, entry.service),
+            ]),
+          ]}
+    </p>
   );
 }

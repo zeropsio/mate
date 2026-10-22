@@ -191,7 +191,7 @@ function CarriedReleaseRow({
                       carried.onOpenChange?.(read.repository, change, from);
                     }
               }
-              request={{ repo: read.repository, deployed: EMPTY_DEPLOYED }}
+              request={{ appId: groupId, repo: read.repository, deployed: EMPTY_DEPLOYED }}
               tags={EMPTY_RELEASES}
             />
           </ReleaseService>

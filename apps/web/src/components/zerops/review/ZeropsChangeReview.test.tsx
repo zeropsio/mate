@@ -110,7 +110,10 @@ const hq = vi.hoisted(() => ({
   },
 }));
 vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
-vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: async () => {} }) }));
+vi.mock("@tanstack/react-router", async (actual) => ({
+  ...(await actual<typeof import("@tanstack/react-router")>()),
+  useRouter: () => ({ navigate: async () => {} }),
+}));
 /** What HQ's detail of the change answers. */
 const detail = vi.hoisted(() => ({ readout: { kind: "reading" } as unknown }));
 vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
@@ -1087,5 +1090,77 @@ describe("ChangeReviewView: current pipeline evidence and terminal facts", () =>
     expect(textOf(html)).not.toContain("Merged into main");
     expect(textOf(html)).not.toContain("No permission to merge.");
     expect(html).not.toContain("data-review-primary");
+  });
+});
+
+describe("ChangeReviewView: its code in the Git browser", () => {
+  const APP = "group-orchard";
+  const HEAD = "c".repeat(40);
+  const SQUASH = "d".repeat(40);
+  const open = merged({ state: "open", merged: false, mergedAt: undefined });
+  /** Every link into the Git browser: its words and its address. */
+  const gitLinks = (html: string) => {
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    return [...document.querySelectorAll("a")]
+      .filter((link) => link.getAttribute("href")?.startsWith("/git?") === true)
+      .map((link) => [link.textContent?.replace(/\s+/gu, " ").trim(), link.getAttribute("href")]);
+  };
+  const deletes = (path: string): ChangeFile => ({
+    ...changed(path),
+    added: 0,
+    deleted: 3,
+    hunks: `diff --git a/${path} b/${path}\ndeleted file mode 100644\n--- a/${path}\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-a\n-b\n-c`,
+  });
+
+  it("an open change browses its files at its head", () => {
+    expect(gitLinks(render(open, [], { appId: APP }))).toEqual([
+      ["Browse files", `/git?appId=${APP}&repo=appdev&rev=${HEAD}&view=code`],
+    ]);
+  });
+
+  it("a merged change opens the commit it added to main", () => {
+    expect(gitLinks(render(merged({ mergeCommitSha: SQUASH }), [], { appId: APP }))).toEqual([
+      ["Commit on main", `/git?appId=${APP}&repo=appdev&rev=${SQUASH}&view=commit`],
+    ]);
+  });
+
+  it.each([
+    ["a file it edits", changed("src/mail.ts"), "src%2Fmail.ts"],
+    [
+      "a binary file, whose diff has nothing to read here",
+      { ...changed("logo.png"), added: null, deleted: null, binary: true },
+      "logo.png",
+    ],
+    ["a file it deletes, which its head no longer has", deletes("src/old.ts"), undefined],
+  ] as const)("an opened file offers the whole file at the head: %s", (_case, file, path) => {
+    const html = render(open, [file], { appId: APP, initiallyOpen: [file.path] });
+    expect(gitLinks(html).filter(([words]) => words === "Open file")).toEqual(
+      path === undefined
+        ? []
+        : [
+            [
+              "Open file",
+              `/git?appId=${APP}&repo=appdev&rev=${HEAD}&view=code&kind=file&path=${path}`,
+            ],
+          ],
+    );
+  });
+
+  it("a file its description names opens at the head, on the line it names", () => {
+    const html = render({ ...open, description: "The form posts to `src/mail.ts:12`." }, [], {
+      appId: APP,
+    });
+    expect(gitLinks(html)).toContainEqual([
+      "mail.ts · L12",
+      `/git?appId=${APP}&repo=appdev&rev=${HEAD}&view=code&kind=file&path=src%2Fmail.ts&lines=L12`,
+    ]);
+  });
+
+  it("links nothing into the browser where it does not know the change's application", () => {
+    const html = render({ ...open, description: "See `src/mail.ts`." }, [changed("src/mail.ts")], {
+      initiallyOpen: ["src/mail.ts"],
+    });
+    expect(gitLinks(html)).toEqual([]);
   });
 });

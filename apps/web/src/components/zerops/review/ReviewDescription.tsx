@@ -10,7 +10,8 @@
  * whose description gives its size (zcp writes `<img alt width height src>`) holds that box from
  * the first paint, its line in it (`reviewPictureBox`), so nothing moves when it arrives or when a
  * read fails; one without a size stands as the line alone. A picture anywhere else stays a plain
- * link, never read with the person's session.
+ * link, never read with the person's session. A file it names opens in the Git browser at the
+ * change's code, on the line it names: the review has no checkout to open it in.
  */
 import { useNearViewport } from "../../../hooks/useNearViewport";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -18,11 +19,16 @@ import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, XIcon } from "lucide-reac
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import ChatMarkdown, {
+  MarkdownFileContext,
   MarkdownPictureContext,
+  type MarkdownFileElsewhere,
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
+import { checkoutPathFor } from "~/zerops/useZeropsGitRemoteProbe";
+
+import { gitFileLink, useGitLinkProps, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
 
 import {
   absoluteDescription,
@@ -45,13 +51,19 @@ interface PictureView {
   readonly index: number;
 }
 
+/** The commit a change's files are read at, in its repository. */
+export type ChangeCodeAt = GitRepoAt & { readonly sha: string };
+
 export function ReviewDescription({
   description,
+  code,
   run,
   hqAddress,
   pictures,
   onOpenRun,
 }: {
+  /** Where a file it names opens; absent, such a file opens nothing. */
+  readonly code?: ChangeCodeAt | undefined;
   /** The change's description as its author wrote it. */
   readonly description: string | undefined;
   /** What the run that made it said of it, while its conversation is read. */
@@ -80,7 +92,12 @@ export function ReviewDescription({
     >
       <div className="rv-what">
         {shown.kind === "body" ? (
-          <DescriptionBody hqAddress={hqAddress} pictures={pictures} text={shown.text} />
+          <DescriptionBody
+            code={code}
+            hqAddress={hqAddress}
+            pictures={pictures}
+            text={shown.text}
+          />
         ) : shown.kind === "run" ? (
           <p className="rv-words">{shown.words}</p>
         ) : (
@@ -91,12 +108,30 @@ export function ReviewDescription({
   );
 }
 
+/** A file the description names, its chip a link to it in the Git browser. */
+function DescriptionFile({
+  at,
+  file,
+}: {
+  readonly at: ChangeCodeAt;
+  readonly file: MarkdownFileElsewhere;
+}) {
+  const link = useGitLinkProps(gitFileLink(at, at.sha, file.path, file.line));
+  return (
+    <a {...link} className={file.className} data-markdown-copy={file.copyMarkdown}>
+      {file.chip}
+    </a>
+  );
+}
+
 function DescriptionBody({
   text,
+  code,
   hqAddress,
   pictures,
 }: {
   readonly text: string;
+  readonly code: ChangeCodeAt | undefined;
   readonly hqAddress: string | undefined;
   readonly pictures: ChangePictureSource | undefined;
 }) {
@@ -108,10 +143,22 @@ function DescriptionBody({
     ),
     [hqAddress, pictures],
   );
+  const openFile = useCallback(
+    (file: MarkdownFileElsewhere): ReactNode =>
+      code === undefined ? null : <DescriptionFile at={code} file={file} />,
+    [code],
+  );
   return (
     <div className="rv-desc" data-review-description="">
       <MarkdownPictureContext value={draw}>
-        <ChatMarkdown cwd={undefined} text={written} variant="answer" />
+        <MarkdownFileContext value={code === undefined ? null : openFile}>
+          {/* Its paths are the Mate's, written in its checkout of the change's repository. */}
+          <ChatMarkdown
+            cwd={code === undefined ? undefined : checkoutPathFor(code.repo)}
+            text={written}
+            variant="answer"
+          />
+        </MarkdownFileContext>
       </MarkdownPictureContext>
       {view === null ? null : (
         <PictureViewer

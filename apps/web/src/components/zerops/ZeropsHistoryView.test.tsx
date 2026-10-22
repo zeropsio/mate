@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -34,7 +35,7 @@ const render = (
       here={here}
       history={history}
       onOpenChange={onOpenChange}
-      request={{ repo: "appdev", deployed: new Map([["stage", SHA]]) }}
+      request={{ appId: "shop", repo: "appdev", deployed: new Map([["stage", SHA]]) }}
       tags={new Map([[SHA, tags]])}
     />,
   );
@@ -81,6 +82,16 @@ describe("ZeropsHistoryView's rows", () => {
     const markup = render(undefined, LANDED, () => {});
     expect(markup.match(/<button/gu)).toHaveLength(1);
     expect(markup).toMatch(/<button[^>]*>.*Two-step checkout/u);
+  });
+
+  it("opens every commit's page in the Git browser from its id, whether a change merged it or not", () => {
+    const links = [...markupDom(render(undefined, LANDED, () => {})).querySelectorAll("a")].map(
+      (link) => [link.textContent, link.getAttribute("href")],
+    );
+    expect(links).toEqual([
+      ["9c41d2e", `/git?appId=shop&repo=appdev&rev=${OTHER}&view=commit`],
+      ["3f9c1b2", `/git?appId=shop&repo=appdev&rev=${SHA}&view=commit`],
+    ]);
   });
 
   it("says how many earlier commits HQ counted beyond the ones it listed", () => {

@@ -19,6 +19,7 @@ import {
 
 import { XIcon } from "lucide-react";
 
+import { LeaveForGitContext } from "../components/zerops/gitBrowser/GitBrowserLink";
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
 import { Loading } from "../components/ui/loading";
 import {
@@ -174,25 +175,28 @@ function ReviewBody({
     }
   })();
   return (
-    // Keyed by what it shows, so another review starts from its own state.
-    <div className="contents" key={reviewTargetKey(target)}>
-      <Suspense
-        fallback={
-          <div className="relative h-96">
-            <h2 id={titleId} className="sr-only">
-              Review
-            </h2>
-            <div className="absolute end-2 top-2">
-              <button aria-label="Close" className="rv-x" onClick={close} type="button">
-                <XIcon aria-hidden="true" />
-              </button>
+    // Keyed by what it shows, so another review starts from its own state. A link into the Git
+    // browser leaves the dialog: it closes as the page goes.
+    <LeaveForGitContext value={close} key={reviewTargetKey(target)}>
+      <div className="contents">
+        <Suspense
+          fallback={
+            <div className="relative h-96">
+              <h2 id={titleId} className="sr-only">
+                Review
+              </h2>
+              <div className="absolute end-2 top-2">
+                <button aria-label="Close" className="rv-x" onClick={close} type="button">
+                  <XIcon aria-hidden="true" />
+                </button>
+              </div>
+              <Loading label="The review" shape="room" />
             </div>
-            <Loading label="The review" shape="room" />
-          </div>
-        }
-      >
-        {body}
-      </Suspense>
-    </div>
+          }
+        >
+          {body}
+        </Suspense>
+      </div>
+    </LeaveForGitContext>
   );
 }

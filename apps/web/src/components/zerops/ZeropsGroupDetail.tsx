@@ -1800,7 +1800,7 @@ export function ZeropsStopPane({
                   history={history}
                   names={names}
                   onOpenChange={onOpenChange}
-                  request={{ repo, deployed }}
+                  request={{ appId: groupId, repo, deployed }}
                   tags={tags}
                 />
               )}

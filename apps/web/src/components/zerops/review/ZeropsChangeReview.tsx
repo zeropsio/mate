@@ -70,6 +70,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 import {
   changeChecks,
+  changeCode,
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
@@ -79,6 +80,13 @@ import {
   type ReviewFrame,
   type ReviewKind,
 } from "./ZeropsReview.logic";
+import {
+  GitBrowserLink,
+  gitCodeLink,
+  gitCommitLink,
+  gitFileLink,
+  type GitRepoAt,
+} from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
 import { mainStageOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
@@ -406,6 +414,7 @@ function ChangeReviewData({
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
       previews={previews}
       project={project}
+      appId={target.groupId}
       stage={flow === undefined ? undefined : mainStageOf(flow)?.name}
       release={flow?.release.gate}
       mate={
@@ -546,6 +555,8 @@ export interface ChangeReviewViewProps {
   readonly live: string | undefined;
   /** The project's name: the top line's "Sage · Tea Shop". */
   readonly project?: string | undefined;
+  /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
+  readonly appId?: string | undefined;
   /** The stage that follows `main`, by name: "Merge to stage". */
   readonly stage?: string | undefined;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
@@ -673,6 +684,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   });
   const pipeline = model.pipeline;
   const receipt = changeReceipt({ receipt: pull.receipt, head: pull.headSha });
+  const repo: GitRepoAt | undefined =
+    props.appId === undefined ? undefined : { appId: props.appId, repo: pull.repository };
+  const code = repo === undefined ? undefined : changeCode(pull);
+  const filesAt = repo === undefined || code === undefined ? undefined : { ...repo, sha: code.sha };
   // Merging and merged say all of it on the line under the title: words under the line would come
   // in at the press and push the body down under the person's eye (a run 2 follow-up). Merging's
   // own words only restate its title.
@@ -743,6 +758,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             {pullRequestLinkWords(pull.pullRequest)}
             <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
           </InlineButton>
+        )
+      }
+      code={
+        repo === undefined || code === undefined ? undefined : (
+          <GitBrowserLink
+            to={
+              code.view === "commit" ? gitCommitLink(repo, code.sha) : gitCodeLink(repo, code.sha)
+            }
+          >
+            {code.words}
+          </GitBrowserLink>
         )
       }
       onOpenPage={props.onOpenPage}
@@ -828,6 +854,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         </ReviewSection>
       )}
       <ReviewDescription
+        code={filesAt}
         description={pull.description}
         hqAddress={props.hqAddress}
         onOpenRun={props.onOpenRun}
@@ -862,6 +889,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       >
         <ReviewFiles
           diffOf={diffOf}
+          fileAt={
+            filesAt === undefined ? undefined : (path) => gitFileLink(filesAt, filesAt.sha, path)
+          }
           failed={readout.kind === "failed" ? readout.reason : undefined}
           files={read?.files}
           initiallyOpen={props.initiallyOpen}
@@ -917,6 +947,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         />
       </div>
       <ReviewCommits
+        at={repo}
         commits={commits}
         fold={props.frame === "page" ? undefined : history}
         now={props.now}

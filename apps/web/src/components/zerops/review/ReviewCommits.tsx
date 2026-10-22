@@ -1,6 +1,6 @@
 /**
  * The commits a change squashes, one line each: what it did, then its age and its hash on the
- * column's right edge. No spine — a straight run of commits on one branch has nothing for one to
+ * column's right edge, which opens the commit's page in the Git browser. No spine — a straight run of commits on one branch has nothing for one to
  * say. A long run shows its newest five and opens whole in place ("Show all 19", D4). While they
  * are read, three rows hold their place; a read that fails says so, with *Try again*.
  */
@@ -15,16 +15,21 @@ import { commitFold } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
 
+import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
+
 /** How many rows hold the place of commits still being read. */
 const COMMITS_PENDING = 3;
 
 export function ReviewCommits({
   commits,
+  at,
   now,
   onRetry,
   fold,
 }: {
   readonly commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>;
+  /** The repository its commits open in, in the Git browser; absent, a hash is only words. */
+  readonly at?: GitRepoAt | undefined;
   readonly now: number;
   readonly onRetry: (() => void) | undefined;
   /** Folded to its row, in the sheet: one click away. */
@@ -56,7 +61,13 @@ export function ReviewCommits({
           what="The commits couldn't be read."
         />
       ) : (
-        <CommitRows all={all} commits={commits.value} now={now} onShowAll={() => setAll(true)} />
+        <CommitRows
+          all={all}
+          at={at}
+          commits={commits.value}
+          now={now}
+          onShowAll={() => setAll(true)}
+        />
       )}
     </ReviewSection>
   );
@@ -64,11 +75,13 @@ export function ReviewCommits({
 
 function CommitRows({
   commits,
+  at,
   all,
   now,
   onShowAll,
 }: {
   readonly commits: ReadonlyArray<ChangeReadoutCommit>;
+  readonly at: GitRepoAt | undefined;
   readonly all: boolean;
   readonly now: number;
   readonly onShowAll: () => void;
@@ -87,7 +100,15 @@ function CommitRows({
               <TooltipPopup>{commit.subject}</TooltipPopup>
             </Tooltip>
             <span className="rv-commit-at">{historyAge(commit.at, now)}</span>
-            <code className="rv-commit-sha">{shortCommit(commit.sha)}</code>
+            <code className="rv-commit-sha">
+              {at === undefined ? (
+                shortCommit(commit.sha)
+              ) : (
+                <GitBrowserLink to={gitCommitLink(at, commit.sha)} tone="muted">
+                  {shortCommit(commit.sha)}
+                </GitBrowserLink>
+              )}
+            </code>
           </li>
         ))}
       </ol>
