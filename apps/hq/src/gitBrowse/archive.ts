@@ -7,7 +7,7 @@
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import { GitArchiveQuery } from "@t3tools/shared/hqGitBrowse/archive";
+import { archiveName, GitArchiveQuery } from "@t3tools/shared/hqGitBrowse/archive";
 import { ChangeRefused } from "../changes.ts";
 import { GitHost } from "../gitHost.ts";
 import { browseAccess } from "./access.ts";
@@ -49,7 +49,7 @@ export const archiveRead = {
       const answer: BrowseStream = {
         stream,
         contentType: CONTENT_TYPE[query.format],
-        download: `${repo}-${query.sha.slice(0, 7)}.${query.format}`,
+        download: archiveName(repo, query.sha, query.format),
       };
       return answer;
     }),

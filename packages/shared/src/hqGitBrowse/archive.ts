@@ -15,3 +15,7 @@ export type GitArchiveFormat = typeof GitArchiveFormat.Type;
 
 export const GitArchiveQuery = Schema.Struct({ sha: Sha, format: GitArchiveFormat });
 export type GitArchiveQuery = typeof GitArchiveQuery.Type;
+
+/** The name a commit's archive is saved under: the repository and the commit's short id. */
+export const archiveName = (repo: string, sha: string, format: GitArchiveFormat) =>
+  `${repo}-${sha.slice(0, 7)}.${format}`;

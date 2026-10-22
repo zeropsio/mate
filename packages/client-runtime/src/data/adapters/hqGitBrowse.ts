@@ -9,8 +9,12 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
-import type { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
-import { GIT_BROWSE_READS, type GitBrowseValue } from "../../zerops/gitBrowse/reads.ts";
+import {
+  GIT_BROWSE_READS,
+  type GitBrowseBytesRead,
+  type GitBrowseParams,
+  type GitBrowseValue,
+} from "../../zerops/gitBrowse/reads.ts";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import {
   gitBrowseId,
@@ -58,7 +62,13 @@ const answerOf = (
   signal: AbortSignal,
 ): Promise<GitBrowseValue> =>
   "bytes" in GIT_BROWSE_READS[identity.read]
-    ? api.gitBrowseBytes(identity.appId, identity.repo, identity.params as GitRawQuery, signal)
+    ? api.gitBrowseBytes(
+        identity.read as GitBrowseBytesRead,
+        identity.appId,
+        identity.repo,
+        identity.params as GitBrowseParams<GitBrowseBytesRead>,
+        signal,
+      )
     : api.gitBrowse(identity.read, identity.appId, identity.repo, identity.params, signal);
 
 export function makeGitBrowseReads(

@@ -1,14 +1,15 @@
 /**
  * The Git browser's reads, one line each: what each asks (its query, encoded into the URL's search
  * parameters) and what it answers. `HqApi.gitBrowse`, the `hqGitBrowse` family and the web hook
- * read this table, so a new read touches none of them. A read of `bytes` answers a `Blob` through
- * `HqApi.gitBrowseBytes`; every other one JSON through `HqApi.gitBrowse`.
+ * read this table, so a new read touches none of them. A read of `bytes` answers a `Blob` of at
+ * most its `limit` through `HqApi.gitBrowseBytes`; every other one JSON through `HqApi.gitBrowse`.
  *
  * @module zerops/gitBrowse/reads
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { blameRead } from "./blame.ts";
+import { archiveRead } from "./archive.ts";
 import { blobRead } from "./blob.ts";
 import { commitFileRead, commitRead } from "./commit.ts";
 import { compareFileRead, compareRead } from "./compare.ts";
@@ -34,6 +35,7 @@ export const GIT_BROWSE_READS = {
   paths: pathsRead,
   grep: grepRead,
   blame: blameRead,
+  archive: archiveRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;
@@ -41,6 +43,12 @@ export type GitBrowseParams<R extends GitBrowseRead> =
   (typeof GIT_BROWSE_READS)[R]["query"]["Type"];
 export type GitBrowseValue<R extends GitBrowseRead = GitBrowseRead> =
   (typeof GIT_BROWSE_READS)[R]["value"]["Type"];
+/** The reads that answer bytes. */
+export type GitBrowseBytesRead = {
+  [R in GitBrowseRead]: (typeof GIT_BROWSE_READS)[R] extends { readonly bytes: unknown }
+    ? R
+    : never;
+}[GitBrowseRead];
 
 /**
  * A read's parameters as its URL carries them, in one order whatever order they were given in;
