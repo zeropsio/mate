@@ -17,6 +17,7 @@ export const readChangeNavigationSource = Effect.fnUntraced(function* (sql: SqlC
     readonly repo: string;
     readonly number: number;
     readonly mate_project_id: string;
+    readonly mate_gone: boolean;
     readonly title: string;
     readonly has_head: boolean;
     readonly updated_at: string;
@@ -27,6 +28,9 @@ export const readChangeNavigationSource = Effect.fnUntraced(function* (sql: SqlC
     readonly pr_state: HqPullRequest["state"] | null;
     readonly pr_checks: HqPullRequest["checks"] | null;
   }>`SELECT c.app_id::text AS app_id, c.repo, c.number, c.mate_project_id, c.title,
+      NOT EXISTS (SELECT 1 FROM hq_app_project p
+        WHERE p.project_id = c.mate_project_id AND p.app_id = c.app_id AND p.kind = 'mate')
+        AS mate_gone,
       c.head IS NOT NULL AS has_head,
       to_char(c.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
       c.mergeability, (c.repo = ${RECIPE_REPO} OR COALESCE(c.ready_head = c.head, false)) AS ready,
@@ -47,6 +51,7 @@ export const readChangeNavigationSource = Effect.fnUntraced(function* (sql: SqlC
       repo: row.repo,
       number: row.number,
       mateProjectId: row.mate_project_id,
+      ...(row.mate_gone ? { mateGone: true as const } : {}),
       title: row.title,
       state: "open",
       hasHead: row.has_head,

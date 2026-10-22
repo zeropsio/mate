@@ -841,6 +841,7 @@ describe("a Mate's changes in HQ", () => {
             head,
             mergedSha: null,
             landedHead: null,
+            branch: `mate/P_MATE/${String(number)}`,
           });
           assert.deepStrictEqual(yield* self, {
             ...record,
@@ -1634,6 +1635,7 @@ describe("a Mate's changes in HQ", () => {
             head,
             mergedSha: null,
             landedHead: null,
+            branch: "mate/P_MATE/1",
           });
           const state = (yield* link.next("state")) as {
             readonly mate: { readonly appId: string; readonly changes: ReadonlyArray<Change> };
