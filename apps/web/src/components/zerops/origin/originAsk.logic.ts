@@ -56,16 +56,23 @@ export function originAskAnswer(
 /**
  * Keeping the asked origin's code in Mate: HQ follows a GitHub repository first, for every Mate of
  * the application, and the engine hears the pick once HQ did; a refusal is the person's to read,
- * and the ask stays open. A repository outside GitHub is only the engine's to hear. `follow` is
- * `undefined` while HQ cannot be asked; each says `null` once done, else why not.
+ * and the ask stays open. A follow HQ leaves to an owner or admin (`owner-or-admin`) does not hold
+ * the pick: the engine hears it, and the person reads who records the follow. A repository outside
+ * GitHub is only the engine's to hear. `follow` is `undefined` while HQ cannot be asked; each says
+ * `null` once done, else why not.
  */
 export async function keepInMate(
   url: string,
-  follow: ((url: string) => Promise<string | null>) | undefined,
+  follow: ((url: string) => Promise<string | null>) | "owner-or-admin" | undefined,
   answer: () => Promise<string | null>,
 ): Promise<string | null> {
   if (githubName(url) !== null) {
     if (follow === undefined) return "HQ can't record this yet. Try again in a moment.";
+    if (follow === "owner-or-admin")
+      return (
+        (await answer()) ??
+        "Only this Mate follows the repository. An owner or admin of the organization can record the follow for every Mate of the application."
+      );
     const refused = await follow(url);
     if (refused !== null) return refused;
   }

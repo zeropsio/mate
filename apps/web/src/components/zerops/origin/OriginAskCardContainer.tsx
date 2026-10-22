@@ -2,7 +2,7 @@
  * An origin ask as the conversation draws it: the engine's record of the request, the application
  * HQ places the Mate in (whose repository the GitHub app mounts) and the pick — on GitHub once HQ
  * mounts the asked repository, from the card's sheet or anywhere else, or in Mate on its press,
- * once HQ follows a GitHub repository — only the pick reaches the engine. What the person picked here is kept in memory by the request,
+ * once HQ follows a GitHub repository or leaves its follow to an owner or admin — only the pick reaches the engine. What the person picked here is kept in memory by the request,
  * so the card folds at once and stays folded until the engine's record says so too.
  */
 import {
@@ -126,21 +126,24 @@ function AskCard({
         ? tell(outcome)
         : keepInMate(
             ask.url,
-            follow === undefined
-              ? undefined
-              : async (url) => {
-                  try {
-                    await follow(ask.repo, url);
-                    return null;
-                  } catch (cause) {
-                    return cause instanceof OperationStopped
-                      ? cause.message
-                      : "HQ couldn't confirm it follows the repository. Check it before trying again.";
-                  }
-                },
+            // HQ follows on the same verdict it connects on.
+            offer.kind === "refused"
+              ? "owner-or-admin"
+              : follow === undefined
+                ? undefined
+                : async (url) => {
+                    try {
+                      await follow(ask.repo, url);
+                      return null;
+                    } catch (cause) {
+                      return cause instanceof OperationStopped
+                        ? cause.message
+                        : "HQ couldn't confirm it follows the repository. Check it before trying again.";
+                    }
+                  },
             () => tell(outcome),
           ),
-    [ask.repo, ask.url, follow, tell],
+    [ask.repo, ask.url, follow, offer.kind, tell],
   );
   const connected = originConnected(ask, repos);
   // HQ mounting the asked repository, from the sheet or anywhere else, answers once here.

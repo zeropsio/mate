@@ -198,6 +198,13 @@ describe("keeping the asked origin's code in Mate", () => {
       said: "Only the organization's owner or admin can change this.",
     },
     {
+      case: "a follow only an owner or admin can record still tells the Mate the pick, and the person who records it",
+      url: "https://github.com/krls2020/eval2",
+      follow: "owner-or-admin" as const,
+      steps: ["answer"],
+      said: "Only this Mate follows the repository. An owner or admin of the organization can record the follow for every Mate of the application.",
+    },
+    {
       case: "without HQ to follow it, the Mate hears nothing",
       url: "https://github.com/krls2020/eval2",
       follow: undefined,
@@ -215,8 +222,8 @@ describe("keeping the asked origin's code in Mate", () => {
     const seen: Array<string> = [];
     const answer = await keepInMate(
       url,
-      follow === undefined
-        ? undefined
+      follow === undefined || follow === "owner-or-admin"
+        ? follow
         : async (address) => {
             seen.push(`follow ${address}`);
             return follow === "followed" ? null : follow;
