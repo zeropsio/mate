@@ -46,8 +46,7 @@ export interface LogPage {
   readonly stopped: boolean;
 }
 
-/** One commit as a list reads it: a record of `\x1f`-separated fields (`logItemOf`). */
-export const LOG_FORMAT = [
+const FORMAT = [
   "%H",
   "%P",
   "%at",
@@ -60,7 +59,7 @@ export const LOG_FORMAT = [
 const CHANGE = /^([A-Za-z0-9][A-Za-z0-9_-]{0,127})\/([1-9][0-9]*)$/u;
 const instant = (seconds: string) => new Date(Number(seconds) * 1000).toISOString();
 
-export const logItemOf = (record: string): LogItem => {
+const itemOf = (record: string): LogItem => {
   const [sha = "", parents = "", authored = "", committed = "", trailers = "", ...rest] =
     record.split("\x1f");
   // HQ writes its own trailer last, after any a message carried.
@@ -113,7 +112,7 @@ export const listLog = async (
       "log",
       "-z",
       "--no-color",
-      `--format=${LOG_FORMAT}`,
+      `--format=${FORMAT}`,
       `--skip=${offset}`,
       `--max-count=${want + 1}`,
       "--end-of-options",
@@ -127,7 +126,7 @@ export const listLog = async (
   const records = read.bytes.toString().split("\0");
   if (read.truncated) records.pop(); // Never a cut record as a whole one.
   const complete = records.filter(Boolean);
-  const items = complete.slice(0, want).map(logItemOf);
+  const items = complete.slice(0, want).map(itemOf);
   const more = read.truncated || complete.length > want;
   const reached = offset + items.length;
   const stopped = more && reached >= LOG_HISTORY_LIMIT;

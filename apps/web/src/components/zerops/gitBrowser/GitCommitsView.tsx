@@ -58,8 +58,7 @@ function RepoLink({
   );
 }
 
-/** One commit of a list: its subject, author, time, change, short id and a way to its files. */
-export function CommitRow({
+function CommitRow({
   item,
   changes,
   appId,
