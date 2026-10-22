@@ -1,6 +1,6 @@
 /**
  * The Git browser's heavy reads — content search, blame, archive — share one allowance: four at
- * once per HQ, two per person. A read past it is answered busy at once, never queued, so the
+ * once per HQ, two per person, and an archive only while the person runs no other. A read past it is answered busy at once, never queued, so the
  * person asks again rather than waiting on reads nobody watches any more.
  *
  * @module gitBrowse/heavy
@@ -29,34 +29,42 @@ export class BrowseHeavy extends Context.Service<
       userId: string,
       read: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | BrowseBusy, R>;
+    /**
+     * Takes one of HQ's allowance and one of the person's, while the person runs fewer than
+     * `perPerson`, until the answered release runs (again, it does nothing); busy otherwise.
+     * For a read that goes on past its answer, as a streamed archive does.
+     */
+    readonly hold: (userId: string, perPerson: number) => Effect.Effect<() => void, BrowseBusy>;
   }
 >()("@t3tools/hq/gitBrowse/heavy/BrowseHeavy") {}
 
 export const browseHeavyLayer = Layer.sync(BrowseHeavy, () => {
   let running = 0;
   const byPerson = new Map<string, number>();
-  const take = (userId: string) =>
+  const hold = (userId: string, perPerson: number) =>
     Effect.suspend(() => {
       if (running >= HEAVY_PER_HQ) return Effect.fail(new BrowseBusy({ limit: "hq" }));
       const mine = byPerson.get(userId) ?? 0;
-      if (mine >= HEAVY_PER_PERSON) return Effect.fail(new BrowseBusy({ limit: "person" }));
+      if (mine >= perPerson) return Effect.fail(new BrowseBusy({ limit: "person" }));
       running++;
       byPerson.set(userId, mine + 1);
-      return Effect.void;
-    });
-  const give = (userId: string) =>
-    Effect.sync(() => {
-      running--;
-      const mine = (byPerson.get(userId) ?? 1) - 1;
-      if (mine === 0) byPerson.delete(userId);
-      else byPerson.set(userId, mine);
+      let held = true;
+      return Effect.succeed(() => {
+        if (!held) return;
+        held = false;
+        running--;
+        const left = (byPerson.get(userId) ?? 1) - 1;
+        if (left === 0) byPerson.delete(userId);
+        else byPerson.set(userId, left);
+      });
     });
   return {
     run: (userId, read) =>
       Effect.acquireUseRelease(
-        take(userId),
+        hold(userId, HEAVY_PER_PERSON),
         () => read,
-        () => give(userId),
+        (give) => Effect.sync(give),
       ),
+    hold,
   };
 });

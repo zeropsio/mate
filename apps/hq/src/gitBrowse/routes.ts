@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- an archive streams from git as a Node stream.
 /**
  * The Git browser's reads, `GET /api/apps/:appId/repos/:repo/browse/<read>`: the only HTTP path to
  * a repository's content beside git itself. Each read is a module of this folder and one line in
@@ -8,9 +9,11 @@
  * An answer pinned to a commit never changes, so it says so and answers a matching
  * `If-None-Match` with `304`; an answer about refs (`home`, `refs`) is never cached. A file's
  * bytes (`raw`) go out as plain text, an image or an octet stream, never anything a browser runs.
+ * An archive streams as a download the browser never keeps: it may be a hundred megabytes.
  *
  * @module gitBrowse/routes
  */
+import type * as NodeStream from "node:stream";
 import { RepoName } from "@t3tools/shared/hqChanges";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -22,6 +25,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { handle, principal } from "../api.ts";
 import { BROWSE_LIMIT, DoorRateLimit, TooManyRequests } from "../rateLimit.ts";
 import { blameRead } from "./blame.ts";
+import { archiveRead } from "./archive.ts";
 import { blobRead } from "./blob.ts";
 import { commitRead } from "./commit.ts";
 import { commitFileRead } from "./commitFile.ts";
@@ -51,7 +55,16 @@ export interface BrowseBytes {
   readonly download: string | null;
 }
 
-const isBytes = (answer: BrowseAnswer | BrowseBytes): answer is BrowseBytes => "bytes" in answer;
+/** Bytes streamed while they are read, as a download of this name. */
+export interface BrowseStream {
+  readonly stream: NodeStream.Readable;
+  readonly contentType: string;
+  readonly download: string;
+}
+
+type Answered = BrowseAnswer | BrowseBytes | BrowseStream;
+const isBytes = (answer: Answered): answer is BrowseBytes => "bytes" in answer;
+const isStream = (answer: Answered): answer is BrowseStream => "stream" in answer;
 
 /** What a read is asked: by whom, of which repository, and its query as decoded. */
 export interface BrowseInput<Q> {
@@ -66,9 +79,7 @@ interface BrowseRead<Q extends Schema.Decoder<unknown>, E, R> {
   readonly read: string;
   readonly query: Q;
   readonly deadline: Duration.Duration;
-  readonly answer: (
-    input: BrowseInput<Q["Type"]>,
-  ) => Effect.Effect<BrowseAnswer | BrowseBytes, E, R>;
+  readonly answer: (input: BrowseInput<Q["Type"]>) => Effect.Effect<Answered, E, R>;
 }
 
 /**
@@ -89,6 +100,13 @@ const hashOf = (text: string) => {
   return (hash >>> 0).toString(16).padStart(8, "0");
 };
 
+/** Nothing in a file's bytes runs, wherever they open. */
+const INERT = {
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'none'; sandbox",
+};
+const attachment = (name: string) => `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+
 /** A file's bytes: nothing in them runs, and a download carries the file's name. */
 const bytesResponse = (
   request: { readonly headers: Readonly<Record<string, string | undefined>> },
@@ -99,13 +117,8 @@ const bytesResponse = (
     "cache-control": IMMUTABLE,
     etag,
     vary: "Authorization",
-    "x-content-type-options": "nosniff",
-    "content-security-policy": "default-src 'none'; sandbox",
-    ...(answer.download === null
-      ? {}
-      : {
-          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(answer.download)}`,
-        }),
+    ...INERT,
+    ...(answer.download === null ? {} : { "content-disposition": attachment(answer.download) }),
   };
   return request.headers["if-none-match"] === etag
     ? HttpServerResponse.empty({ status: 304, headers })
@@ -121,9 +134,19 @@ export const browseResponse = (
   request: { readonly headers: Readonly<Record<string, string | undefined>> },
   read: string,
   params: URLSearchParams,
-  answer: BrowseAnswer | BrowseBytes,
+  answer: Answered,
 ) => {
   if (isBytes(answer)) return bytesResponse(request, answer);
+  if (isStream(answer))
+    return HttpServerResponse.raw(answer.stream, {
+      status: 200,
+      headers: {
+        "cache-control": "no-store",
+        ...INERT,
+        "content-disposition": attachment(answer.download),
+      },
+      contentType: answer.contentType,
+    });
   if (answer.pinned === null)
     return HttpServerResponse.jsonUnsafe(answer.body, {
       status: 200,
@@ -202,6 +225,7 @@ const BROWSE_READS = [
   route(pathsRead),
   route(grepRead),
   route(blameRead),
+  route(archiveRead),
 ] as const;
 
 /** The reads share one heavy-read allowance per HQ. */
