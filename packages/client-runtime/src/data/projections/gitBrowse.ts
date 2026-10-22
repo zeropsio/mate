@@ -1,6 +1,7 @@
 /**
- * One Git browser read as a page draws it: withheld while access is unverified or denied, unread,
- * known (kept through a failed read again), failed, or refused with HQ's reason.
+ * One Git browser read as a page draws it: withheld while access is unverified or denied (by the
+ * offers or by HQ), unread, known (kept through a failed read again), failed, or refused with HQ's
+ * reason.
  */
 import type { GitBrowseRead, GitBrowseValue } from "../../zerops/gitBrowse/reads.ts";
 import {
@@ -33,10 +34,17 @@ export const gitBrowse: Projection<
   derive: (read, key) => {
     const fact = read.fact("hqGitBrowse", gitBrowseId(key));
     const stream = read.stream(gitBrowseScope(key));
-    if (key.allowed !== true || fact.kind === "withheld") return { state: "withheld" };
-    const busy = stream.phase === "connecting" || stream.phase === "baselining";
+    const link = read.stream(gitBrowseLink(key)).fault;
+    // HQ's denial, kept on the link, withholds the read whether or not it had answered before.
+    if (
+      key.allowed !== true ||
+      fact.kind === "withheld" ||
+      link?.outcome === "authoritative-denial"
+    )
+      return { state: "withheld" };
     // A refusal reaches the scope; a failure tried again (HQ busy, unreachable) stays on the link.
-    const fault = stream.fault ?? read.stream(gitBrowseLink(key)).fault;
+    const fault = stream.fault ?? link;
+    const busy = stream.phase === "connecting" || stream.phase === "baselining";
     if (fact.kind === "known")
       return { state: "known", answer: fact.value, busy, failed: fault !== null };
     if (fault?.outcome === "definitive-refusal")
