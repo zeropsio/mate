@@ -1629,6 +1629,7 @@ export function makeHqApi(input: {
         ),
       ),
     gitBrowseBytes: async (read, appId, repo, params, signal) => {
+      // @effect-diagnostics-next-line globalDate:off -- plain promises: a byte read's age against HQ's deadline.
       const asked = Date.now();
       const response = await authorized(
         browsePathOrRefuse(read, appId, repo, params),
@@ -1659,6 +1660,7 @@ export function makeHqApi(input: {
       } catch (error) {
         if (error instanceof HqError) throw error;
         // HQ cuts a read at its deadline; a cut past it is that answer, never HQ out of reach.
+        // @effect-diagnostics-next-line globalDate:off -- plain promises: a byte read's age against HQ's deadline.
         if (deadline !== undefined && Date.now() - asked >= deadline)
           throw new HqError({
             kind: "refused",

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off -- the mocked system time owns `Date.now()`; the client under test reads it.
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AtomRegistry } from "effect/reactivity";
 import { ARCHIVE_DEADLINE_MS, ARCHIVE_MAX_BYTES } from "@t3tools/shared/hqGitBrowse/archive";
