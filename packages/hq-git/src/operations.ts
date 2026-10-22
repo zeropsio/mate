@@ -2,7 +2,6 @@
 // @effect-diagnostics globalDate:off -- a tag records the wall-clock time it was made.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import * as NodeStream from "node:stream";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
@@ -26,6 +25,7 @@ import {
 } from "./followRefs.ts";
 import { GitRunner, fetchDeadlineMs, sweepPartialPacks, terminate } from "./git.ts";
 import { validRef } from "./rules.ts";
+import { streamArchive } from "./browse/archive.ts";
 
 // Hard ceilings bound memory even when refs, messages, paths, or blobs are hostile.
 const readLimits = {
@@ -1398,57 +1398,9 @@ export const makeOperations = (
       };
     });
   const archive: HqGit["archive"] = (repo, rev) =>
-    inRepo("archive", repo, async (dir, signal) => {
-      const sha = await resolve(dir, rev, signal);
-      // Empty worktree/index suppress export-ignore and export-subst: archive exact stored bytes.
-      const temp = await NodeFSP.mkdtemp(NodePath.join(dir, ".archive-"));
-      const process = git.start(
-        [
-          "-C",
-          dir,
-          "-c",
-          "core.bare=false",
-          "-c",
-          "tar.umask=0022",
-          "archive",
-          "--worktree-attributes",
-          "--format=tar.gz",
-          sha,
-        ],
-        {
-          signal,
-          env: { GIT_WORK_TREE: temp, GIT_INDEX_FILE: NodePath.join(temp, "index") },
-        },
-      );
-      const cleanup = process.done.finally(() =>
-        NodeFSP.rm(temp, { recursive: true, force: true }),
-      );
-      void cleanup.catch(() => {});
-      process.child.stdin.end();
-      const stream = new NodeStream.PassThrough({
-        flush(callback) {
-          void cleanup.then(
-            () => callback(),
-            () => callback(new Error("Git archive failed")),
-          );
-        },
-        destroy(cause, callback) {
-          process.child.stdout.unpipe();
-          process.child.stdout.resume();
-          terminate(process.child);
-          void cleanup.catch(() => {}).then(() => callback(cause));
-        },
-      });
-      process.child.stdout.on("error", () => stream.destroy(new Error("Git archive failed")));
-      void process.done.then(
-        () => {},
-        () => {
-          if (!stream.destroyed) stream.destroy(new Error("Git archive failed"));
-        },
-      );
-      process.child.stdout.pipe(stream);
-      return stream;
-    });
+    inRepo("archive", repo, async (dir, signal) =>
+      streamArchive(git, dir, await resolve(dir, rev, signal), "tar.gz", signal),
+    );
   return {
     changeHead,
     bundle,
