@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - an archive streams from git as a Node stream.
 /**
  * What a person's Git browser reads of a repository, beside the layer's own operations: each read
  * one module of this folder, each run inside the held repository (`repoReader`), each stopped

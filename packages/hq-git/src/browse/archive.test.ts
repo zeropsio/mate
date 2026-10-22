@@ -79,10 +79,11 @@ describe("Git browser archive", () => {
           Buffer.from(content).toString("base64"),
         ]),
       );
-      for (const [format, unpack] of [
-        ["tar.gz", (file: string) => ["tar", ["-xzf", file]]],
-        ["zip", (file: string) => ["unzip", ["-q", file]]],
-      ] as const) {
+      const unpackers: ReadonlyArray<readonly ["tar.gz" | "zip", string, ReadonlyArray<string>]> = [
+        ["tar.gz", "tar", ["-xzf"]],
+        ["zip", "unzip", ["-q"]],
+      ];
+      for (const [format, command, flags] of unpackers) {
         const stream = await value(git.browse.archive(repo, sha, format));
         expect(stream, format).not.toBeNull();
         const chunks: Buffer[] = [];
@@ -90,8 +91,7 @@ describe("Git browser archive", () => {
         const into = await NodeFSP.mkdtemp(NodePath.join(root, `unpacked-${format}-`));
         const file = NodePath.join(root, `archive.${format}`);
         await NodeFSP.writeFile(file, Buffer.concat(chunks));
-        const [command, args] = unpack(file);
-        await run(command, [...args], into);
+        await run(command, [...flags, file], into);
         expect(await filesIn(into), format).toEqual(expected);
       }
       expect(await value(git.browse.archive(repo, "f".repeat(40), "zip"))).toBeNull();
