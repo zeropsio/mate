@@ -35,8 +35,9 @@ export const allowRefUpdate = async (
       return refuse("tag_immutable");
     return { allowed: true };
   }
+  // `main` moves only by a merge, and every ref but a branch is HQ's: nobody's to push.
   if (!update.ref.startsWith("refs/heads/") || update.ref === "refs/heads/main")
-    return refuse(principal.kind === "person" ? "protected_ref" : "not_your_ref");
+    return refuse("protected_ref");
   const branch = update.ref.slice("refs/heads/".length);
   if (principal.kind === "person") {
     // HQ owns main, tags and the namespace of changes opened without a branch; a branch an open

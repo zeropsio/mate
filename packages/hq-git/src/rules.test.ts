@@ -111,8 +111,8 @@ describe("default write rules", () => {
       { ...change, mateId: "bob" },
       "not_your_ref",
     ],
-    ["main", mate, { ref: "refs/heads/main" }, change, "not_your_ref"],
-    ["tag", mate, { ref: "refs/tags/v1" }, change, "not_your_ref"],
+    ["main", mate, { ref: "refs/heads/main" }, change, "protected_ref"],
+    ["tag", mate, { ref: "refs/tags/v1" }, change, "protected_ref"],
     ["deletion", mate, { newSha: "0".repeat(40) }, change, "deletion"],
     [
       "core tag replacement",
@@ -125,7 +125,7 @@ describe("default write rules", () => {
     ["unknown", mate, {}, null, "unknown_change"],
     ["closed", mate, {}, { ...change, open: false }, "change_closed"],
     ["another Mate's closed", mate, {}, { ...change, mateId: "bob", open: false }, "change_closed"],
-    ["notes", mate, { ref: "refs/notes/review" }, null, "not_your_ref"],
+    ["notes", mate, { ref: "refs/notes/review" }, null, "protected_ref"],
   ] satisfies Array<[string, Principal, Partial<RefUpdate>, Change | null, string]>)(
     "refuses %s",
     async (_name, principal, patch, record, reason) => {
@@ -164,6 +164,6 @@ describe("default write rules", () => {
       await allowRefUpdate(mate, repo, { ...update, ref: "refs/heads/main" }, () => {
         throw new Error("unexpected lookup");
       }),
-    ).toEqual({ allowed: false, reason: "not_your_ref" });
+    ).toEqual({ allowed: false, reason: "protected_ref" });
   });
 });
