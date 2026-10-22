@@ -209,7 +209,7 @@ function HistoryRow({
               </span>
             ),
           )}
-          <span className="shrink-0 font-mono text-[11px] leading-5 tabular-nums">
+          <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
             <GitBrowserLink to={gitCommitLink(at, entry.sha)} tone="muted">
               {entry.shortSha}
             </GitBrowserLink>
