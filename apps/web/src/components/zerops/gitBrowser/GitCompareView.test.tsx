@@ -85,6 +85,7 @@ const render = (shown: GitCompare, search: GitBrowseSearch) => {
         repo="group"
         project="Shop"
         search={search}
+        hasView={() => true}
         home={home}
         onHomeAgain={() => undefined}
         navigate={(next) => navigated.push(next)}

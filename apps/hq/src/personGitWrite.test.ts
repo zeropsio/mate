@@ -92,9 +92,13 @@ describe("person Git write rights (E202)", () => {
             (yield* layer.branches(repo)).items.some((b) => b.ref === "refs/heads/topic"),
           );
           assert.strictEqual(
-            (yield* call("GET", `/api/apps/${appId}/repos/group/source?rev=refs%2Fheads%2Ftopic`, {
-              session: dev,
-            })).status,
+            (yield* call(
+              "GET",
+              `/api/apps/${appId}/repos/group/browse/home?rev=refs%2Fheads%2Ftopic`,
+              {
+                session: dev,
+              },
+            )).status,
             200,
           );
           assert.isFalse(

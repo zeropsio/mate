@@ -81,6 +81,7 @@ async function page(search: GitBrowseSearch, navigate = vi.fn<(to: GitBrowseSear
     onHomeAgain: () => {},
     navigate,
     hrefOf: (to) => `/git?${new URLSearchParams({ appId: "app", repo: "shop", ...to })}`,
+    hasView: () => true,
   };
   await act(async () => root.render(<GitSearchView {...props} />));
   unmount = async () => {

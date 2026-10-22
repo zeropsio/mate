@@ -452,12 +452,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
   },
   {
-    token: "ReturnType<typeof makeRepositoryStore>",
-    family: "HQ structure/apps",
-    reason: "repository and git-credential stores are built in the app; the HQ adapter owns them",
-    paths: ["apps/web/src/zerops/useRepositorySource.ts"],
-  },
-  {
     token: "ReturnType<typeof makeGitCredentialStore>",
     family: "HQ structure/apps",
     reason: "repository and git-credential stores are built in the app; the HQ adapter owns them",

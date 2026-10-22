@@ -103,6 +103,7 @@ async function history(
         onOpenChange={more.onOpenChange}
         navigate={more.navigate ?? (() => {})}
         hrefOf={(to) => `/git?${new URLSearchParams({ appId: "app", repo: "appdev", ...to })}`}
+        hasView={() => true}
       />,
     ),
   );

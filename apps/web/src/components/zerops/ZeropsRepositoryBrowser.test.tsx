@@ -2,74 +2,35 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import type { RepositorySource } from "@t3tools/shared/hqGit";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
-import { ZeropsRepositorySource } from "./ZeropsRepositorySource";
 
 beforeAll(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 afterAll(() => vi.unstubAllGlobals());
 
-const common = {
-  revision: "a".repeat(40),
-  path: "",
-  branches: [{ ref: "refs/heads/main", sha: "a".repeat(40) }],
-  branchesTruncated: false,
-  truncated: false,
-};
-const render = (source: RepositorySource) =>
-  renderToStaticMarkup(<ZeropsRepositorySource source={source} onOpen={() => {}} />);
-describe("repository source view", () => {
-  it("shows every tree entry and explicitly says when the listing is incomplete", () => {
-    const html = render({
-      ...common,
-      kind: "tree",
-      entries: [
-        { path: "src", type: "tree", mode: "040000", sha: "b".repeat(40) },
-        { path: "README.md", type: "blob", mode: "100644", sha: "c".repeat(40) },
-      ],
-      truncated: true,
-    });
-    expect(html).toContain("src");
-    expect(html).toContain("README.md");
-    expect(html).toContain("Folder");
-    expect(html).toContain("Only the first");
-  });
-  it("renders source as escaped text, identifies binary files and names clipped content", () => {
-    const html = render({
-      ...common,
-      kind: "file",
-      content: "<script>alert(1)</script>",
-      binary: false,
-      truncated: true,
-    });
-    expect(html).toContain("&lt;script&gt;");
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("Only the first");
-    expect(render({ ...common, kind: "file", content: null, binary: true })).toContain(
-      "Binary file",
-    );
-  });
-  it("names an earned empty tree", () => {
-    expect(render({ ...common, kind: "tree", entries: [] })).toContain("No files here");
-  });
-});
-
 const held = vi.hoisted(() => ({
-  source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false } as unknown,
-  sourceAsked: [] as Array<unknown>,
-  home: { state: "unread", busy: false } as unknown,
-}));
-vi.mock("~/zerops/useRepositorySource", () => ({
-  useRepositorySource: (input: { readonly query: unknown }) => {
-    held.sourceAsked.push(input.query);
-    return { source: held.source, again: () => undefined };
-  },
+  /** Each read's view by which read it is; the home read is the frame's. */
+  views: {} as Record<string, unknown>,
+  asked: [] as Array<{ readonly read: string; readonly params: unknown }>,
 }));
 vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowse: () => ({ view: held.home, again: () => undefined }),
+  useGitBrowse: (request: { readonly read: string; readonly params: unknown }) => {
+    held.asked.push({ read: request.read, params: request.params });
+    return {
+      view: held.views[request.read] ?? { state: "unread", busy: false },
+      again: () => undefined,
+    };
+  },
   useGitBrowseReads: () => ({ views: [], again: () => undefined }),
+}));
+vi.mock("./gitBrowser/GitTreeSidebar", () => ({ GitTreeSidebar: () => null }));
+vi.mock("@pierre/diffs/react", () => ({
+  Virtualizer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  File: ({ file }: { file: { contents: string } }) => <pre>{file.contents}</pre>,
+}));
+vi.mock("~/components/DiffWorkerPoolProvider", () => ({
+  DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: () => <p>Clone address</p>,
@@ -232,9 +193,8 @@ const knownHome = (readme: { readonly path: string; readonly content: string } |
   },
 });
 afterEach(() => {
-  held.home = { state: "unread", busy: false };
-  held.source = { state: "unread", words: "Waiting for HQ…", alert: false, busy: false };
-  held.sourceAsked = [];
+  held.views = {};
+  held.asked = [];
 });
 
 describe("repository frame", () => {
@@ -255,32 +215,50 @@ describe("repository frame", () => {
   it.each([
     [
       { rev: "v1", path: "src/a.ts", kind: "file" as const },
+      "blob",
       {
-        ...common,
-        kind: "file" as const,
-        path: "src/a.ts",
-        content: "export const a = 1;",
-        binary: false,
+        state: "known",
+        busy: false,
+        failed: false,
+        answer: {
+          path: "src/a.ts",
+          blobSha: "b".repeat(40),
+          size: 19,
+          binary: false,
+          content: "export const a = 1;",
+          truncated: false,
+        },
       },
       "export const a = 1;",
     ],
     [
       { rev: "v1", path: "src", kind: "tree" as const },
+      "tree",
       {
-        ...common,
-        kind: "tree" as const,
-        path: "src",
-        entries: [{ path: "a.ts", type: "blob" as const, mode: "100644", sha: "c".repeat(40) }],
+        state: "known",
+        busy: false,
+        failed: false,
+        answer: {
+          entries: [
+            { name: "a.ts", path: "src/a.ts", type: "file", mode: "100644", sha: "c".repeat(40) },
+          ],
+          truncated: false,
+        },
       },
       "a.ts",
     ],
   ])(
     "A link with rev, path and kind still opens the same file or folder: %j",
-    async (query, source, shown) => {
-      held.source = { state: "known", source, busy: false, failed: false };
+    async (query, read, view, shown) => {
+      held.views = { home: knownHome(null), [read]: view };
       const { host, close } = await browser("appdev", "Shop", query);
       try {
-        expect(held.sourceAsked.at(-1)).toEqual(query);
+        // The link's branch, tag or commit is resolved once; its path is read at that commit.
+        expect(held.asked.find((asked) => asked.read === "home")?.params).toEqual({ rev: "v1" });
+        expect(held.asked.findLast((asked) => asked.read === read)?.params).toEqual({
+          sha,
+          path: query.path,
+        });
         expect(host.textContent).toContain(shown);
       } finally {
         await close();
@@ -291,7 +269,7 @@ describe("repository frame", () => {
 
 describe("repository README", () => {
   it("Raw HTML in a README is sanitized", async () => {
-    held.home = knownHome({
+    held.views.home = knownHome({
       path: "README.md",
       content:
         '# Shop\n\n<script>window.hit = 1</script><b onclick="window.hit = 2">bold</b> <a href="javascript:alert(1)">bad</a> <iframe src="https://example.test"></iframe>',
@@ -315,7 +293,7 @@ describe("repository README", () => {
   ])(
     "A README link to a repository path opens that path at the same commit: %s",
     async (href, target) => {
-      held.home = knownHome({ path: ".github/README.md", content: `[open](${href})` });
+      held.views.home = knownHome({ path: ".github/README.md", content: `[open](${href})` });
       const onNavigate = vi.fn();
       const { host, close } = await browser("appdev", "Shop", { rev: "main" }, onNavigate);
       try {
@@ -329,8 +307,47 @@ describe("repository README", () => {
     },
   );
 
+  it("An image of the repository is drawn from the commit's bytes, at most twenty a document", async () => {
+    held.views.home = knownHome({
+      path: "docs/README.md",
+      content: [
+        "![logo](./logo.png)",
+        ...Array.from({ length: 20 }, (_, i) => `![shot ${i + 2}](../shots/${i + 2}.png)`),
+        "![far](https://cdn.example.test/far.png)",
+      ].join("\n\n"),
+    });
+    held.views.raw = {
+      state: "known",
+      busy: false,
+      failed: false,
+      answer: new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }),
+    };
+    const { host, close } = await browser();
+    try {
+      const readme = host.querySelector('section[aria-label="README"]')!;
+      const images = [...readme.querySelectorAll("img")];
+      expect(images).toHaveLength(20);
+      expect(images.every((img) => img.src.startsWith("blob:"))).toBe(true);
+      expect(images[0]!.alt).toBe("logo");
+      const raws = held.asked.filter((asked) => asked.read === "raw").map((a) => a.params);
+      expect(raws).toContainEqual({ sha, path: "docs/logo.png" });
+      expect(raws).toContainEqual({ sha, path: "shots/2.png" });
+      expect(raws).not.toContainEqual({ sha, path: "shots/21.png" });
+      // Past twenty, an image of the repository opens its file; one outside it is only a link.
+      const [extra, far] = [...readme.querySelectorAll("a")];
+      expect(extra!.textContent).toBe("shot 21");
+      expect(new URL(extra!.href).searchParams.get("path")).toBe("shots/21.png");
+      expect([far!.textContent, far!.getAttribute("href")]).toEqual([
+        "far",
+        "https://cdn.example.test/far.png",
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
   it("An image outside the repository is shown as a link and never loaded", async () => {
-    held.home = knownHome({
+    held.views.home = knownHome({
       path: "README.md",
       content:
         '![logo](https://cdn.example.test/logo.png)\n\n<img src="https://tracker.example.test/p.gif" alt="pixel">\n\n[![build](https://ci.example.test/badge.svg)](https://ci.example.test/)',

@@ -1,6 +1,6 @@
 /**
  * Git browser reads on demand, supervised by the common retry and refusal policy: one HTTP read
- * per key, shared by every holder and released at the last. An answer pinned to a commit is never
+ * per key, shared by every holder and released at the last; a file's bytes are held as a `Blob`. An answer pinned to a commit is never
  * read again while held; a moving one (`home`, `refs`) is read again on a new visit or an explicit
  * Again, never on a timer.
  */
@@ -9,7 +9,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
-import { GIT_BROWSE_READS } from "../../zerops/gitBrowse/reads.ts";
+import type { GitRawQuery } from "@t3tools/shared/hqGitBrowse/blob";
+import { GIT_BROWSE_READS, type GitBrowseValue } from "../../zerops/gitBrowse/reads.ts";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import {
   gitBrowseId,
@@ -50,7 +51,20 @@ interface Held {
   fiber?: Fiber.Fiber<never>;
 }
 
-export function makeGitBrowseReads(store: AccountStore, api: Pick<HqApi, "gitBrowse">) {
+/** One read's answer: a file's bytes as a `Blob`, anything else as HQ's JSON. */
+const answerOf = (
+  api: Pick<HqApi, "gitBrowse" | "gitBrowseBytes">,
+  identity: GitBrowseKey,
+  signal: AbortSignal,
+): Promise<GitBrowseValue> =>
+  "bytes" in GIT_BROWSE_READS[identity.read]
+    ? api.gitBrowseBytes(identity.appId, identity.repo, identity.params as GitRawQuery, signal)
+    : api.gitBrowse(identity.read, identity.appId, identity.repo, identity.params, signal);
+
+export function makeGitBrowseReads(
+  store: AccountStore,
+  api: Pick<HqApi, "gitBrowse" | "gitBrowseBytes">,
+) {
   let closed = false;
   const active = new Map<string, Held>();
   const demand = (identity: GitBrowseKey) => {
@@ -96,14 +110,7 @@ export function makeGitBrowseReads(store: AccountStore, api: Pick<HqApi, "gitBro
                     if (fact?.content.kind !== "value" || made.again) {
                       const answer = yield* Effect.result(
                         Effect.tryPromise({
-                          try: (abort) =>
-                            api.gitBrowse(
-                              identity.read,
-                              identity.appId,
-                              identity.repo,
-                              identity.params,
-                              abort,
-                            ),
+                          try: (abort) => answerOf(api, identity, abort),
                           catch: gitBrowseFailure,
                         }),
                       );
