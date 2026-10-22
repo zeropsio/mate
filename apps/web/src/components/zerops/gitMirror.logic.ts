@@ -23,6 +23,17 @@ export type GitMirrorApp =
   | { readonly kind: "none" }
   | { readonly kind: "unknown" };
 
+/** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
+export function githubName(url: string): string | null {
+  const address = new URL(url);
+  if (address.hostname !== "github.com") return null;
+  const [owner, name] = address.pathname
+    .replace(/^\/+|\/+$/gu, "")
+    .replace(/\.git$/u, "")
+    .split("/");
+  return owner && name ? `${owner}/${name}` : null;
+}
+
 /** A remote's address as people read it: `github.com/acme/tea-shop`. */
 function remoteLabel(url: string): string {
   const address = new URL(url);

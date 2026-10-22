@@ -1,7 +1,8 @@
 /**
- * An origin the Mate asked the person for (`zerops_origin action=request`): whether finished work
- * goes back to the repository it started from. The person connects it in HQ themselves, on the
- * Git sheet; the engine hears only connected or declined, never a token.
+ * An origin the Mate asked the person about (`zerops_origin action=request`): where the code of the
+ * repository it started from is kept — on GitHub, mounted in HQ through the organization's GitHub
+ * app, or in Mate, GitHub only followed. The person mounts it in HQ themselves; the engine hears
+ * only the pick (`connected`, on GitHub; `declined`, in Mate), never a token.
  */
 import {
   ORIGIN_ASK_ACTIVITY_KIND,
@@ -10,11 +11,7 @@ import {
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
-/**
- * The branch stage follows production on when it is added from an origin ask (the orchestrator's
- * decision): a stage added by hand keeps the sheet's own default.
- */
-export const ORIGIN_STAGE_BRANCH = "mate-stage";
+import { githubName, type GitMirrorApp } from "../gitMirror.logic";
 
 /** Where an origin ask stands in the timeline: the run card it was asked in. */
 export interface OriginAskPlace {
@@ -23,14 +20,17 @@ export interface OriginAskPlace {
   readonly createdAt: string;
 }
 
-/** What the person said to the card here, before the engine's record says it. Memory only. */
+/**
+ * What the person picked on the card here, before the engine's record says it: `connected`, the
+ * code kept on GitHub; `declined`, kept in Mate. Memory only.
+ */
 export type OriginAskSaid = "connected" | "declined";
 
 export type OriginAskFace = OriginAskActivityPayload["state"];
 
 /**
- * What the card draws: the engine's record; while it is open, connected once HQ delivers to the
- * origin — however the person connected it — else what the person just said here.
+ * What the card draws: the engine's record; while it is open, connected once HQ mounts the origin
+ * — however the person mounted it — else what the person just picked here.
  */
 export function originAskFace(
   state: OriginAskActivityPayload["state"],
@@ -42,8 +42,8 @@ export function originAskFace(
 }
 
 /**
- * What the engine is still to hear of an open ask the person said nothing to here: connected, once
- * HQ delivers to the origin — production added with the sheet closed, or anywhere else.
+ * What the engine is still to hear of an open ask the person picked nothing on here: connected,
+ * once HQ mounts the origin — from the card's sheet, or anywhere else.
  */
 export function originAskAnswer(
   state: OriginAskActivityPayload["state"],
@@ -54,24 +54,59 @@ export function originAskAnswer(
 }
 
 /**
- * Whether HQ delivers to the asked origin: the application's production pushes to Git, and the
- * HQ repository the ask names keeps the asked address as its remote. `false` while HQ has not said.
+ * Whether HQ mounts the asked origin: the HQ repository the ask names reaches the asked address
+ * through the organization's GitHub app. A person's token only follows it. `false` while HQ has
+ * not said.
  */
 export function originConnected(
   ask: Pick<OriginAsk, "url" | "repo">,
-  environments:
-    | ReadonlyArray<{ readonly tier: string; readonly target: { readonly kind: string } }>
-    | undefined,
   repos: ReadonlyArray<RepoListEntry> | undefined,
 ): boolean {
-  const remote = repos?.find((entry) => entry.name === ask.repo)?.remote?.url;
-  return (
-    remote !== undefined &&
-    sameAddress(remote, ask.url) &&
-    (environments ?? []).some(
-      (environment) => environment.tier === "production" && environment.target.kind === "git",
-    )
-  );
+  const remote = repos?.find((entry) => entry.name === ask.repo)?.remote;
+  return remote?.via === "app" && sameAddress(remote.url, ask.url);
+}
+
+/**
+ * Where keeping the asked origin's code on GitHub stands: still read; mounted, whatever is known
+ * of the app; the asked repository already kept with another remote; HQ does not let the person mount it; no GitHub app,
+ * or none HQ could say; an app that does not reach the repository; or ready to mount it, by the
+ * name the app's repositories give it.
+ */
+export type OriginMountStep =
+  | { readonly kind: "reading" }
+  | { readonly kind: "mounted"; readonly remote: NonNullable<RepoListEntry["remote"]> }
+  | { readonly kind: "taken"; readonly url: string }
+  | { readonly kind: "refused" }
+  | { readonly kind: "no-app" }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "not-reached"; readonly name: string; readonly installUrl: string }
+  | { readonly kind: "ready"; readonly name: string; readonly repository: string };
+
+/**
+ * The step of keeping a GitHub origin there: `github` is the organization's app (`null` while
+ * read), `mountable` whether HQ lets the person mount a repository of the application.
+ */
+export function originMountStep(
+  ask: Pick<OriginAsk, "url" | "repo">,
+  github: GitMirrorApp | null,
+  repos: ReadonlyArray<RepoListEntry> | undefined,
+  mountable: boolean,
+): OriginMountStep {
+  if (repos === undefined) return { kind: "reading" };
+  const remote = repos.find((entry) => entry.name === ask.repo)?.remote;
+  if (remote != null)
+    return originConnected(ask, repos)
+      ? { kind: "mounted", remote }
+      : { kind: "taken", url: remote.url };
+  if (github === null) return { kind: "reading" };
+  if (!mountable) return { kind: "refused" };
+  if (github.kind === "none") return { kind: "no-app" };
+  if (github.kind === "unknown") return { kind: "unknown" };
+  const wanted = githubName(ask.url)?.toLowerCase();
+  const repository = github.repositories.find((name) => name.toLowerCase() === wanted);
+  return repository === undefined
+    ? { kind: "not-reached", name: github.name, installUrl: github.installUrl }
+    : { kind: "ready", name: github.name, repository };
 }
 
 const sameAddress = (a: string, b: string) =>
@@ -84,7 +119,7 @@ export function originAddress(url: string): string {
 
 /** The card's question. */
 export function originAskQuestion(url: string): string {
-  return `Deliver finished work back to ${originAddress(url)}?`;
+  return `Where do you keep the code of ${originAddress(url)}?`;
 }
 
 /**
