@@ -14,9 +14,13 @@
  *
  * Verified historical bindings remain routable after unmount. Each remote
  * command checks the project and service IDs in the same shell before Git.
- * An unresolved remote location fails instead of falling back to local Git.
- * Non-Git commands and Git outside the remote workspace keep their platform
- * behaviour. Compound Git pipelines involving remote locations are refused.
+ * A workspace path the cached read holds no mount at is read again; one a
+ * whole read of the mount table still holds no mount at is this container's
+ * own disk, where Git runs as anywhere else (a runtime with no checkout
+ * mounted reads as no repository). Any other unresolved remote location fails
+ * instead of falling back to local Git. Non-Git commands and Git outside the
+ * remote workspace keep their platform behaviour. Compound Git pipelines
+ * involving remote locations are refused.
  *
  * The path map has one rule in both directions: everything T3 hands us is
  * mount-side, everything we hand git is host-side, everything git hands back
@@ -189,25 +193,28 @@ const gitLocation = (
   return { location, args };
 };
 
-const mentionsRemoteLocation = (command: ChildProcess.Command): boolean => {
-  if (command._tag === "PipedCommand")
-    return mentionsRemoteLocation(command.left) || mentionsRemoteLocation(command.right);
-  if (command.command !== "git") return false;
+/** The places under the workspace root a git command names: its location and path-valued options. */
+const remoteLocationsOf = (command: ChildProcess.StandardCommand): ReadonlyArray<string> => {
+  if (command.command !== "git") return [];
   const { location } = gitLocation(command);
-  return (
-    location?.startsWith("/var/www/") === true ||
-    Object.entries(command.options.env ?? {}).some(
-      ([key, value]) => PATH_VALUED_ENV.has(key) && value?.startsWith("/var/www/"),
-    ) ||
-    command.args.some(
-      (token, i) =>
-        token.startsWith("/var/www/") && PATH_VALUED_FLAGS.has(command.args[i - 1] ?? ""),
-    ) ||
-    command.args.some((token) =>
-      [...PATH_VALUED_FLAGS].some((flag) => token.startsWith(`${flag}=/var/www/`)),
-    )
-  );
+  return [
+    ...(location === undefined ? [] : [location]),
+    ...Object.entries(command.options.env ?? {}).flatMap(([key, value]) =>
+      PATH_VALUED_ENV.has(key) && value !== undefined ? [value] : [],
+    ),
+    ...command.args.filter((token, i) => PATH_VALUED_FLAGS.has(command.args[i - 1] ?? "")),
+    ...command.args.flatMap((token) =>
+      [...PATH_VALUED_FLAGS].flatMap((flag) =>
+        token.startsWith(`${flag}=`) ? [token.slice(flag.length + 1)] : [],
+      ),
+    ),
+  ].filter((candidate) => candidate.startsWith("/var/www/"));
 };
+
+const mentionsRemoteLocation = (command: ChildProcess.Command): boolean =>
+  command._tag === "PipedCommand"
+    ? mentionsRemoteLocation(command.left) || mentionsRemoteLocation(command.right)
+    : remoteLocationsOf(command).length > 0;
 
 /**
  * Decides whether this spawn is a git command inside a mounted repository and,
@@ -333,6 +340,11 @@ export interface ZeropsGitSpawnerOptions {
   readonly enabled: boolean;
   /** The repository set, re-read per spawn behind the source's own TTL. */
   readonly repositories: Effect.Effect<ZeropsRepositories>;
+  /**
+   * An unconditional re-read of the repository set, for a workspace path the cached one holds no
+   * mount at: a mount newer than the cached read is a checkout, never a local path.
+   */
+  readonly refresh?: Effect.Effect<ZeropsRepositories>;
   readonly known?: Effect.Effect<ReadonlyArray<ZeropsRepository>>;
   readonly observe?: (repository: ZeropsRepository) => Effect.Effect<ZeropsWorkspaceObservation>;
   /** The platform spawner every untouched command still goes to. */
@@ -404,7 +416,24 @@ export const makeZeropsGitSpawner = (
       ];
       let invocation = rewriteGitSpawn(command, candidates);
       if (invocation === undefined) {
-        if (mentionsRemoteLocation(command)) {
+        const mentioned = remoteLocationsOf(command);
+        if (mentioned.length === 0) return yield* options.inner.spawn(command);
+        // Read again: what the cached read holds no mount at may be one mounted since.
+        const fresh = options.refresh === undefined ? repositories : yield* options.refresh;
+        const mounted = fresh._tag === "available" ? fresh.repositories : [];
+        invocation = rewriteGitSpawn(command, mounted);
+        if (invocation === undefined) {
+          // A place no mount holds, read whole, is this container's own disk (or nothing): git
+          // there touches no remote checkout, and answers as it does anywhere — no repository.
+          // An unread mount table, an attachment it cannot identify, or a path it names in a
+          // mount still refuses: git must never run against a mount.
+          const ownDisk =
+            fresh._tag === "available" &&
+            (fresh.limitations?.length ?? 0) === 0 &&
+            !mentioned.some((path) =>
+              [...mounted, ...known].some((repository) => isUnderMount(path, repository)),
+            );
+          if (ownDisk) return yield* options.inner.spawn(command);
           return yield* Effect.fail(
             PlatformError.badArgument({
               module: "ZeropsGitSpawner",
@@ -414,7 +443,6 @@ export const makeZeropsGitSpawner = (
             }),
           );
         }
-        return yield* options.inner.spawn(command);
       }
       if (invocation.repository.identity === undefined && options.observe) {
         const observation = yield* options.observe(invocation.repository);
@@ -487,6 +515,7 @@ export const layer = Layer.effect(
     return makeZeropsGitSpawner({
       enabled: isZeropsEnvironment(config),
       repositories: source.list,
+      refresh: source.refresh,
       known: source.known,
       observe: observer.observe,
       inner,
