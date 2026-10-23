@@ -9,7 +9,6 @@
  * @module crewEngineFixture
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
@@ -29,6 +28,7 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
 import * as ProcessRunner from "../../../processRunner.ts";
+import { testTempDir } from "../../../testing/testTempDir.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { type ProviderInstanceAgent, ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
@@ -366,9 +366,7 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
  */
 export const makeFixtureWorld = Effect.gen(function* () {
   const root = makeServiceRepository();
-  const workspace = NodeFS.realpathSync(
-    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
-  );
+  const workspace = NodeFS.realpathSync(testTempDir("t3-crew-mate-"));
   const signIns = yield* PubSub.unbounded<SignIn>();
   const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
   const world: CrewWorld = {

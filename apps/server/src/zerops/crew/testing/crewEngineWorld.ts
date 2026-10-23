@@ -92,7 +92,6 @@ import {
   writeCrewHome,
   type CrewFixtureWorld,
 } from "./crewEngineFixture.ts";
-import { removeServiceRepository } from "./crewGitFixture.ts";
 import type {
   CrewChat,
   CrewHold,
@@ -1140,5 +1139,3 @@ export const engineWorld: CrewWorldRunner = <E>(
       if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
     }
   }).pipe(Effect.ensuring(Effect.void), Effect.orDie) as Effect.Effect<void>;
-
-export { removeServiceRepository };
