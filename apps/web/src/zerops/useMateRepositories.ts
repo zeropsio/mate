@@ -1,12 +1,17 @@
 /**
  * A Mate's checkouts that are Git repositories on disk now, in the Git tab's order: the runtime
- * services its topology lists (`gitCheckoutHostnames`), each read as the Git tab reads it (the
- * server's status of `/var/www/{hostname}`). Empty off Zerops, after a failed read, or not asked
- * (`environmentId` null: a hidden terminal reads nothing).
+ * services its topology lists (`gitCheckoutHostnames`), or a bound thread's lease alone
+ * (`threadCheckoutHostnames`), each read as the Git tab reads it (the server's status of
+ * `/var/www/{hostname}`). Empty off Zerops, after a failed read, or not asked (`environmentId`
+ * null: a hidden terminal reads nothing).
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { gitCheckoutHostnames } from "@t3tools/client-runtime/zerops";
+import {
+  gitCheckoutHostnames,
+  threadCheckoutHostnames,
+  type CheckoutLease,
+} from "@t3tools/client-runtime/zerops";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState } from "react";
@@ -24,9 +29,15 @@ const UNREAD_WAIT_MS = 3000;
 /** The checkouts; `null` while the topology or a checkout's status is still read, however long. */
 export function useMateCheckouts(
   environmentId: EnvironmentId | null,
+  /** The thread's lease; `null` for none. */
+  lease: CheckoutLease | null,
 ): ReadonlyArray<string> | null {
   const { view, error } = useProjectTopology(environmentId);
-  const key = view === undefined ? null : gitCheckoutHostnames(view.services).join("\n");
+  const key =
+    threadCheckoutHostnames(
+      view === undefined ? undefined : gitCheckoutHostnames(view.services),
+      lease,
+    )?.join("\n") ?? null;
   const atom = useMemo(() => {
     if (environmentId === null || key === "") return NONE_ATOM;
     if (key === null) return error === undefined ? UNREAD_ATOM : NONE_ATOM;
@@ -48,8 +59,9 @@ export function useMateCheckouts(
  */
 export function useMateRepositories(
   environmentId: EnvironmentId | null,
+  lease: CheckoutLease | null,
 ): ReadonlyArray<string> | null {
-  const repositories = useMateCheckouts(environmentId);
+  const repositories = useMateCheckouts(environmentId, lease);
   const unread = repositories === null;
   const [waited, setWaited] = useState(false);
   useEffect(() => {

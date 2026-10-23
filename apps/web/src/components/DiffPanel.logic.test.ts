@@ -6,6 +6,7 @@ import type { DiffPanelSelection } from "../diffPanelStore";
 import {
   diffChoiceCount,
   diffChoices,
+  diffRepositories,
   shownDiff,
   type DiffRepositoryRead,
   type DiffRepositoryStatus,
@@ -198,5 +199,21 @@ describe("shownDiff", () => {
         ? `${shown.choice.repository.name}:${shown.choice.scope}`
         : shown.kind,
     ).toBe(shows);
+  });
+});
+
+describe("diffRepositories", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("a thread bound to a lease diffs that lease's repository, named by its pool and branch", () => {
+    expect(
+      diffRepositories({ checkouts: ["webpool-3"], cwd: "/var/www", crewmate: null, lease: LEASE }),
+    ).toEqual([{ name: "webpool · feat-x", cwd: "/var/www/webpool-3" }]);
+  });
+
+  it("a thread bound to no lease diffs the Mate's checkouts by their hostnames", () => {
+    expect(
+      diffRepositories({ checkouts: ["appdev"], cwd: "/var/www", crewmate: null, lease: null }),
+    ).toEqual([{ name: "appdev", cwd: "/var/www/appdev" }]);
   });
 });

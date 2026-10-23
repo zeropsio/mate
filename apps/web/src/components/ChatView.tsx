@@ -1033,7 +1033,10 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
   // Terminals already open stay on screen while the checkouts are read: they keep their folders.
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    serverThread?.lease ?? null,
+  );
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
@@ -1316,7 +1319,10 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    serverThread?.lease ?? null,
+  );
   const cwd = useMemo(
     () =>
       project
@@ -3248,7 +3254,10 @@ function ConversationView(props: ChatViewProps) {
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
-  const mateRepositories = useMateRepositories(activeProject ? environmentId : null);
+  const mateRepositories = useMateRepositories(
+    activeProject ? environmentId : null,
+    activeThread?.lease ?? null,
+  );
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,

@@ -2,6 +2,7 @@ import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  checkoutLabel,
   gitCheckoutHostnames,
   environmentForBranch,
   gitActionAllowed,
@@ -11,6 +12,7 @@ import {
   gitVerdict,
   mateChangeIn,
   pullRequestBlocked,
+  threadCheckoutHostnames,
   type GitBlockEvidence,
   type GitChangeState,
   type GitCheckoutState,
@@ -839,4 +841,53 @@ it("does not call an unread working tree clean or claim it has no repository", (
   const unread = checkout({ read: false, isRepo: false, changed: [] });
   expect(gitCheckoutLine(unread)).toBe("Reading repository…");
   expect(block(unread).state).toBe("unread");
+});
+
+describe("a thread's lease", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("a thread bound to a lease reads that lease's repository and no other", () => {
+    expect(threadCheckoutHostnames(["appdev", "api"], LEASE)).toEqual(["webpool-3"]);
+    // Its lease is known before the Mate's topology is: it waits on nothing.
+    expect(threadCheckoutHostnames(undefined, LEASE)).toEqual(["webpool-3"]);
+  });
+
+  it("a thread bound to no lease reads the Mate's checkouts, as before", () => {
+    expect(threadCheckoutHostnames(["appdev", "api"], null)).toEqual(["appdev", "api"]);
+    expect(threadCheckoutHostnames(["appdev"], undefined)).toEqual(["appdev"]);
+    expect(threadCheckoutHostnames(undefined, null)).toBeUndefined();
+  });
+
+  it("names a lease's repository by its pool and branch, and by its alias with no branch", () => {
+    expect(checkoutLabel("webpool-3", LEASE)).toBe("webpool · feat-x");
+    expect(checkoutLabel("webpool-3", { ...LEASE, branch: null })).toBe("webpool-3");
+    expect(checkoutLabel("appdev", LEASE)).toBe("appdev");
+    expect(checkoutLabel("appdev", null)).toBe("appdev");
+  });
+
+  it("a lease's block in the Git tab goes by the lease's name, a service's by its hostname", () => {
+    const checkout = (repository: string): GitCheckoutState => ({
+      repository,
+      isRepo: true,
+      hasRemote: true,
+      headRef: "feat-x",
+      aheadCount: 0,
+      behindCount: 0,
+      hasUpstream: true,
+      changed: [],
+    });
+    const block = (repository: string, lease: typeof LEASE | null) =>
+      gitBlock({
+        checkout: checkout(repository),
+        changes: { read: true, change: undefined },
+        declarations: DECLARATIONS,
+        evidence: { remoteReachable: true },
+        lease,
+      });
+    expect(block("webpool-3", LEASE)).toMatchObject({
+      repository: "webpool-3",
+      label: "webpool · feat-x",
+    });
+    expect(block("appdev", null)).toMatchObject({ repository: "appdev", label: "appdev" });
+  });
 });

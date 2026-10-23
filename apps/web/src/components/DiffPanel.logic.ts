@@ -1,3 +1,4 @@
+import { checkoutLabel, type CheckoutLease } from "@t3tools/client-runtime/zerops";
 import type { Crewmate, VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
@@ -15,13 +16,16 @@ export interface DiffRepository {
  * The repositories a conversation's Diff reads, as its agent works in them; `null` while that is
  * still read. A crewmate who writes works in its own copy of its service's checkout
  * (`.crew/<handle>`, on `crew/<handle>`), as its crew places it (`CrewWorkspaceDirectory` on the
- * server); every other conversation in the Mate's checkouts (`checkouts`), else its own folder.
+ * server); every other conversation in the Mate's checkouts (`checkouts`, a bound thread's lease
+ * alone, named `<pool> · <branch>`), else its own folder.
  */
 export function diffRepositories(input: {
   readonly checkouts: ReadonlyArray<string> | null;
   readonly cwd: string | null;
   /** A crewmate's conversation's crewmate; `undefined` while its crew is read, else `null`. */
   readonly crewmate: Pick<Crewmate, "handle" | "kind" | "host"> | null | undefined;
+  /** The thread's lease, which names its checkout; `null` for none. */
+  readonly lease: CheckoutLease | null;
 }): ReadonlyArray<DiffRepository> | null {
   const { checkouts, cwd, crewmate } = input;
   if (crewmate === undefined) return null;
@@ -31,7 +35,10 @@ export function diffRepositories(input: {
   }
   if (checkouts === null) return null;
   if (checkouts.length > 0) {
-    return checkouts.map((hostname) => ({ name: hostname, cwd: checkoutPathFor(hostname) }));
+    return checkouts.map((hostname) => ({
+      name: checkoutLabel(hostname, input.lease),
+      cwd: checkoutPathFor(hostname),
+    }));
   }
   return cwd === null
     ? []

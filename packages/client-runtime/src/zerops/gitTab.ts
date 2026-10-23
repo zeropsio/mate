@@ -154,6 +154,8 @@ export interface GitBlockAction {
 
 export interface GitBlock {
   readonly repository: string;
+  /** What the block is called: the repository, or a lease's `<pool> · <branch>` (`checkoutLabel`). */
+  readonly label?: string;
   /** The branch the container is on. `main` for a codebase nobody has touched. */
   readonly branch: string;
   /**
@@ -508,6 +510,8 @@ export function gitBlock(input: {
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;
+  /** The lease of the thread the tab is open beside, which names its repository. */
+  readonly lease?: CheckoutLease | null | undefined;
 }): GitBlock {
   const { checkout, changes } = input;
   const change = changes.change;
@@ -546,6 +550,7 @@ export function gitBlock(input: {
   });
   return {
     repository: checkout.repository,
+    label: checkoutLabel(checkout.repository, input.lease),
     branch: checkout.read === false ? "" : (checkout.headRef ?? MAIN),
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
@@ -602,4 +607,35 @@ export function gitCheckoutHostnames(
         !sharesCodeWith.has(service.hostname),
     )
     .map((service) => service.hostname);
+}
+
+/** The pool container a thread's agent leased, as a checkout reads it (`ThreadLease`). */
+export interface CheckoutLease {
+  /** `<pool>-<number>`: zcp mounts the container at `/var/www/<alias>`. */
+  readonly alias: string;
+  readonly pool: string;
+  /** The branch zcp checked out there; null for none. */
+  readonly branch: string | null;
+}
+
+/**
+ * The checkouts a thread reads: the one its lease mounts, alone, once its agent leased a pool
+ * container — the thread works there and nowhere else, and a lease is never a service its topology
+ * lists; with no lease, the Mate's own (`gitCheckoutHostnames`), `undefined`/`null` while unread.
+ * A thread bound to no lease so never reads another thread's lease.
+ */
+export function threadCheckoutHostnames<Unread extends null | undefined>(
+  checkouts: ReadonlyArray<string> | Unread,
+  lease: CheckoutLease | null | undefined,
+): ReadonlyArray<string> | Unread {
+  return lease == null ? checkouts : [lease.alias];
+}
+
+/**
+ * What a checkout is called: its hostname, or — for the thread's lease, whose alias says only which
+ * container of the pool it is — `<pool> · <branch>`, the alias with no branch.
+ */
+export function checkoutLabel(hostname: string, lease: CheckoutLease | null | undefined): string {
+  if (lease == null || lease.alias !== hostname) return hostname;
+  return lease.branch === null ? lease.alias : `${lease.pool} · ${lease.branch}`;
 }

@@ -43,6 +43,14 @@ describe("ZeropsGitBlock", () => {
     expect(html.indexOf("feature/invoices ↑3")).toBeLessThan(html.indexOf("Nothing is stopping"));
   });
 
+  it("a lease's block goes by the lease's pool and branch, not its alias", () => {
+    const html = render({
+      block: blockOf({ repository: "webpool-3", label: "webpool · feat-x" }),
+    });
+    expect(html).toContain(">webpool · feat-x<");
+    expect(html).not.toContain(">webpool-3<");
+  });
+
   it("spends the repository's name once, on the line that is the name", () => {
     // `api · feature/invoices ↑0 ↓0` spent the first third of every row
     // repeating the heading directly above it.
