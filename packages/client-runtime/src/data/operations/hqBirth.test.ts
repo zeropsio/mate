@@ -234,7 +234,7 @@ describe("hq-key-secret", () => {
         const store = account();
         const calls: string[] = [];
         yield* operationsOf(store, {
-          hasServiceVariable: async ({ key }) => key === "HQ_KEY_SECRET" && held,
+          hasServiceVariable: async ({ key }) => key !== "HQ_KEY_SECRET" || held,
           writeServiceSecret: async ({ clientId, serviceId, key, content }) => {
             expect(clientId).toBe(ORG);
             calls.push(`secret ${serviceId} ${key} ${content}`);
@@ -244,6 +244,29 @@ describe("hq-key-secret", () => {
         expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
       }
     }),
+  );
+
+  it.effect(
+    "draws the serving database's secret, a hidden variable apart from HQ's key, where HQ's service holds none",
+    () =>
+      Effect.gen(function* () {
+        const drawn = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+        for (const [held, writes] of [
+          [true, []],
+          [false, [`secret svc HQ_SERVING_DATABASE_SECRET ${drawn}`]],
+        ] as const) {
+          const store = account();
+          const calls: string[] = [];
+          yield* operationsOf(store, {
+            hasServiceVariable: async ({ key }) => key !== "HQ_SERVING_DATABASE_SECRET" || held,
+            writeServiceSecret: async ({ serviceId, key, content }) => {
+              calls.push(`secret ${serviceId} ${key} ${content}`);
+            },
+          }).submit({ kind: "hq-key-secret", orgId: ORG, serviceId: "svc" });
+          expect(calls).toEqual(writes);
+          expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        }
+      }),
   );
 });
 
