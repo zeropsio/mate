@@ -2,7 +2,7 @@ import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { organizationMembers } from "@t3tools/client-runtime/data";
+import { classifyHqCall, organizationMembers } from "@t3tools/client-runtime/data";
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import {
@@ -17,6 +17,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { makeMemberAccount } from "./__fixtures__/sampledAccount";
 import {
   accountHqApi,
+  configuredHq,
   nextHqStanding,
   readOfficialHqNow,
   readBundledCore,
@@ -27,6 +28,7 @@ import {
   type HqStanding,
 } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { hqOutage } from "./hqNavigation";
 import { keepHqVerdict } from "./hqVerdict";
 import { keptHqSessions } from "./keptSessions";
 import { AccountDataContext } from "./ZeropsAccountData";
@@ -1044,5 +1046,209 @@ describe("readOfficialHqNow", () => {
       await expect(readOfficialHqNow(account.value, registry, "org-refused")).rejects.toThrow();
     }
     expect(account.reads()).toBe(1);
+  });
+});
+
+describe("a web built with an HQ origin — one shared HQ every organization signs in to", () => {
+  const SHARED = "https://hq.shared.test";
+  /** What the shared HQ's door was handed, in order. */
+  let doors: Array<{ readonly token: unknown; readonly orgKey?: unknown }>;
+  /** What HQ was asked, by path, in order. */
+  let paths: Array<string>;
+  /** Whether an Owner or Admin has started the organization at HQ. */
+  let started: boolean;
+  let stored: Map<string, string>;
+  /** The page's account epochs only grow, across tests too: the mint budget is fenced by them. */
+  let epoch = 10_000;
+
+  beforeEach(() => {
+    doors = [];
+    paths = [];
+    started = true;
+    stored = new Map();
+    let issued = 0;
+    vi.stubEnv("VITE_HQ_ORIGIN", SHARED);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      },
+    });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      paths.push(`${url.origin}${url.pathname}`);
+      if (url.pathname === "/api/door") {
+        const body = JSON.parse(String(init?.body)) as {
+          readonly token: unknown;
+          readonly orgKey?: unknown;
+        };
+        doors.push(body);
+        if (!started && body.orgKey === undefined)
+          return Response.json({ code: "org_not_started" }, { status: 409 });
+        started = true;
+        return Response.json({
+          session: `shared-session-${String(++issued)}`,
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          userId: "u1",
+        });
+      }
+      if (url.pathname === "/api/structure") return Response.json({ apps: [] });
+      return new Response(null, { status: 204 });
+    });
+    openAccountLifetime("person-shared");
+  });
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  /** A signed-in person's client in `org-1` with `roleCode` there, counting what it mints. */
+  const person = (roleCode: string) => {
+    const throwaways: Array<string> = [];
+    const keys: Array<unknown> = [];
+    const taken: Array<string> = [];
+    epoch += 1;
+    const client = {
+      accountEpoch: epoch,
+      mintThrowaway: async (
+        input: { readonly name: string },
+        options: { readonly beforeMint?: () => Promise<void> },
+      ) => {
+        await options.beforeMint?.();
+        throwaways.push(input.name);
+        const n = String(throwaways.length);
+        return { id: `t-${n}`, token: `door-${n}`, mintingToken: "minting" };
+      },
+      deleteThrowaway: async () => {},
+      verifiedUser: () => ({
+        user: { clientUserList: [{ id: "m-1", clientId: "org-1", roleCode, status: "ACTIVE" }] },
+        atMs: 0,
+      }),
+      mintIntegrationToken: async (input: unknown) => {
+        keys.push(input);
+        return { id: "org-key-id", token: "org-key-1" };
+      },
+      deleteIntegrationToken: async (input: { readonly tokenId: string }) => {
+        taken.push(input.tokenId);
+      },
+    } as unknown as ZeropsApiClient;
+    return { client, throwaways, keys, taken };
+  };
+
+  const sharedApi = (client: ZeropsApiClient) => {
+    const hq = configuredHq();
+    if (hq === undefined) throw new Error("This build names no HQ.");
+    return accountHqApi(client, "org-1", hq);
+  };
+
+  it("A web built with an HQ origin signs in to that HQ without reading the organisation's anchor", async () => {
+    const registry = AtomRegistry.make();
+    const account = makeMemberAccount({
+      registry,
+      orgId: "org-1",
+      members: async () => [anchor("P_ANCHORED", "https://anchored.example.test")],
+    });
+    const { client } = person("OWNER");
+    const session = {
+      client,
+      activeOrganization: { id: "org-1" },
+    } as unknown as ZeropsSessionValue;
+    const data = {
+      scope: {
+        account: {
+          apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+          accountId: ZeropsAccountId.make("person-shared"),
+        },
+        epoch: AccountEpoch.make(1),
+      },
+    } as unknown as ZeropsDataContextValue;
+    const seen: Array<ReturnType<typeof useOfficialHq>> = [];
+    function Probe() {
+      seen.push(useOfficialHq());
+      return null;
+    }
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(
+        createElement(
+          RegistryContext.Provider,
+          { value: registry },
+          createElement(
+            ZeropsDataContext.Provider,
+            { value: data },
+            createElement(
+              ZeropsSessionContext.Provider,
+              { value: session },
+              createElement(
+                AccountDataContext.Provider,
+                { value: account.value },
+                createElement(Probe),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+    const official = seen.at(-1);
+    expect(official?.address).toBe(SHARED);
+    await official?.api.structure();
+    expect(paths).toEqual([`${SHARED}/api/door`, `${SHARED}/api/structure`]);
+    expect(account.reads()).toBe(0);
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("Signing in to a shared HQ presents a throwaway named mate-door:hq:<nonce>", async () => {
+    const { client, throwaways } = person("BASIC_USER");
+    await sharedApi(client).structure();
+
+    expect(throwaways).toHaveLength(1);
+    expect(throwaways[0]).toMatch(/^mate-door:hq:[0-9a-f-]{36}$/u);
+    expect(doors).toEqual([{ token: "door-1" }]);
+  });
+
+  it("An Owner's first sign-in to an organisation the HQ has not started hands it a read-only key and then signs in", async () => {
+    started = false;
+    const { client, keys, taken } = person("OWNER");
+    await sharedApi(client).structure();
+
+    expect(keys).toEqual([
+      { clientId: "org-1", name: "mate-hq-org:hq", roleCode: "READ_ONLY", projects: [] },
+    ]);
+    expect(doors).toEqual([{ token: "door-1" }, { token: "door-1", orgKey: "org-key-1" }]);
+    expect(paths.at(-1)).toBe(`${SHARED}/api/structure`);
+    // HQ keeps the key it took: nothing here takes it back.
+    expect(taken).toEqual([]);
+  });
+
+  it("A member's sign-in to an organisation no Owner has started says an Owner or Admin must sign in first", async () => {
+    started = false;
+    const { client, keys } = person("BASIC_USER");
+    const refusal = await sharedApi(client)
+      .structure()
+      .then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+
+    expect(refusal).toMatchObject({ kind: "refused", code: "org_not_started" });
+    expect(keys).toEqual([]);
+    expect(doors).toEqual([{ token: "door-1" }]);
+    // The menu says it, with Try again as the way out once an Owner or Admin has signed in.
+    const navigation = {
+      live: false,
+      refusal: classifyHqCall(refusal).message,
+      capped: false,
+      reconnecting: false,
+      structure: null,
+    };
+    expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
+      kind: "refused",
+      line: "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
+      again: true,
+    });
   });
 });

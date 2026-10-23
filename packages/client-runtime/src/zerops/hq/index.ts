@@ -4,6 +4,8 @@ export {
   hqOrgTokenName,
   hqProjectsOf,
   ownersAndAdmins,
+  SHARED_HQ_DOOR,
+  sharedHq,
   type OfficialHq,
 } from "./anchor.ts";
 export {

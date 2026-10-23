@@ -30,6 +30,17 @@ export function hqOrgTokenName(projectId: string): string {
   return `mate-hq-org:${projectId}`;
 }
 
+/**
+ * The door of an HQ every organization shares, as a throwaway names it: `mate-door:hq:<nonce>`
+ * (mate-hq `apps/hq/src/door.ts`). Such an HQ lives in no project of the organization.
+ */
+export const SHARED_HQ_DOOR = "hq";
+
+/** The HQ at `address` that every organization shares, as an official HQ named by its door. */
+export function sharedHq(address: string): Extract<OfficialHq, { readonly kind: "official" }> {
+  return { kind: "official", projectId: SHARED_HQ_DOOR, address: address.replace(/\/+$/u, "") };
+}
+
 export type OfficialHq =
   /** No Admin member names an HQ: an org owner or admin may set one up. */
   | { readonly kind: "none" }
