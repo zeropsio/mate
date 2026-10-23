@@ -42,6 +42,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
@@ -587,7 +588,7 @@ export function gitActionAllowed(
  * service built from the same repository shares the first one's code volume.
  */
 export function gitCheckoutHostnames(
-  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group"> & { type?: string }>,
   tier?: string,
 ): ReadonlyArray<string> {
   const { devOf, sharesCodeWith } = servicePairs({ services, tier });
@@ -595,6 +596,8 @@ export function gitCheckoutHostnames(
     .filter(
       (service) =>
         service.group === "runtimes" &&
+        // A pool or a Box holds no codebase, whatever group a caller's read gave it.
+        (service.type === undefined || !isPoolOrSandboxServiceType(service.type)) &&
         !devOf.has(service.hostname) &&
         !sharesCodeWith.has(service.hostname),
     )

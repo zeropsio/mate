@@ -95,6 +95,18 @@ describe("recipeTierServices", () => {
     ).toEqual([{ hostname: "api", role }]);
   });
 
+  it.each([
+    { type: "swarm@1", keys: "    zeropsSetup: api\n" },
+    { type: "swarm-vm@1", keys: "    startWithoutCode: true\n" },
+    { type: "alpine/swarm@1", keys: "    buildFromGit: https://hq.test/git/acme/api.git\n" },
+    { type: "ubuntu/zbox@1", keys: "    startWithoutCode: true\n" },
+    { type: "zbox@1", keys: "" },
+  ])("never reads a $type pool or Box as a dev, whatever keys it carries", ({ type, keys }) => {
+    expect(recipeTierServices(`services:\n  - hostname: pool\n    type: ${type}\n${keys}`)).toEqual(
+      [{ hostname: "pool", role: "managed" }],
+    );
+  });
+
   it("reads a stage half by its name, zcp's convention", () => {
     const tier = `services:\n  - hostname: webstage\n    buildFromGit: https://hq.test/git/acme/web.git\n`;
     expect(recipeTierServices(tier)).toEqual([{ hostname: "webstage", role: "stage" }]);

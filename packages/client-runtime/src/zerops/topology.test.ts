@@ -2,7 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ActivityProcess } from "./activity/dto.ts";
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { projectTopology, zcpServiceIdFor } from "./topology.ts";
+import {
+  isPoolServiceType,
+  isSandboxServiceType,
+  projectTopology,
+  zcpServiceIdFor,
+} from "./topology.ts";
 import processFixture from "./__fixtures__/z3-eval.process.json" with { type: "json" };
 import serviceStackFixture from "./__fixtures__/z3-eval.service-stack.json" with { type: "json" };
 
@@ -45,6 +50,71 @@ describe("projectTopology — grouping", () => {
 
     expect(view.services.some((service) => service.hostname === "core")).toBe(false);
     expect(view.services).toHaveLength(6);
+  });
+});
+
+describe("projectTopology — pools and Box are infrastructure", () => {
+  const typed = (
+    id: string,
+    name: string,
+    serviceStackTypeVersionName: string,
+    serviceStackTypeCategory: string,
+  ): ZeropsService =>
+    service({
+      id,
+      name,
+      serviceStackTypeInfo: { serviceStackTypeVersionName, serviceStackTypeCategory },
+    });
+
+  // The platform reports `swarm@1` / `swarm-vm@1` as USER (like an app runtime) and
+  // `ubuntu/zbox@1` as STANDARD (like a managed database) — only the version string tells them apart.
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    ["swarm@1", "USER", "a pool"],
+    ["swarm-vm@1", "USER", "a VM pool"],
+    ["Swarm-VM@1", "USER", "a pool, any case"],
+    ["alpine/swarm@1", "USER", "a pool with an OS prefix"],
+    ["ubuntu/swarm-vm@1", "USER", "a VM pool with an OS prefix"],
+    ["ubuntu/zbox@1", "STANDARD", "a Box"],
+    ["zbox@1", "STANDARD", "a Box without a prefix"],
+  ];
+
+  it.each(cases)(
+    "groups %s (%s) as infrastructure, never a runtime card nor data (%s)",
+    (type, category) => {
+      const view = projectTopology(
+        project,
+        [
+          typed("A", "thing", type, category),
+          typed("B", "api", "ubuntu/python@3.12", "USER"),
+          typed("C", "db", "postgresql@17", "STANDARD"),
+        ],
+        [],
+      );
+      const group = (hostname: string) =>
+        view.services.find((entry) => entry.hostname === hostname)?.group;
+
+      expect(group("thing")).toBe("infrastructure");
+      expect(group("api")).toBe("runtimes");
+      expect(group("db")).toBe("data");
+    },
+  );
+
+  it("names pools and a Box by the type-version string alone", () => {
+    expect(["swarm@1", "swarm-vm@1", "alpine/swarm@1"].map(isPoolServiceType)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(["ubuntu/zbox@1", "zbox@1", "ZBOX@1"].map(isSandboxServiceType)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(
+      ["nodejs@22", "ubuntu/python@3.12", "postgresql@17", "zcp@1", "swarmlike@1", "zboxes@1"].map(
+        (type) => isPoolServiceType(type) || isSandboxServiceType(type),
+      ),
+    ).toEqual([false, false, false, false, false, false]);
   });
 });
 

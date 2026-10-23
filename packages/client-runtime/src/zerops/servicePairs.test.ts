@@ -175,6 +175,47 @@ describe("servicePairs", () => {
       pairs: [],
     },
     {
+      name: "a pool is no dev half: `poolstage` beside `pool` pairs nothing",
+      input: {
+        services: [
+          { hostname: "pool", group: "runtimes", type: "swarm@1" },
+          { hostname: "poolstage", group: "runtimes", type: "ubuntu/python@3.12" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a pool is no preview half either",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "ubuntu/python@3.12" },
+          { hostname: "appstage", group: "runtimes", type: "swarm-vm@1" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a Box is neither half, even beside a `…stage` of its own group",
+      input: {
+        services: [
+          { hostname: "boxdev", group: "data", type: "ubuntu/zbox@1" },
+          { hostname: "boxstage", group: "data", type: "ubuntu/zbox@1" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a tier that declares a pool as a runtime pairs nothing for it",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "swarm@1" },
+          { hostname: "appstage", group: "runtimes", type: "ubuntu/nodejs@22" },
+        ],
+        tier: SINGLE_TIER,
+      },
+      pairs: [],
+    },
+    {
       name: "a `…stage` with no dev half beside it is a service somebody named that way",
       input: { services: runtimes("docsstage") },
       pairs: [],

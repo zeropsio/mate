@@ -680,6 +680,20 @@ describe("gitCheckoutHostnames", () => {
     ).toEqual(["todoapp"]);
   });
 
+  it("never lists a pool or a Box as a checkout, nor pairs one with a stage", () => {
+    // A pool reads `USER` and a Box `STANDARD`; the type-version string is what tells them apart.
+    expect(
+      gitCheckoutHostnames([
+        { hostname: "appdev", group: "runtimes", type: "ubuntu/python@3.12" },
+        { hostname: "pool", group: "infrastructure", type: "swarm@1" },
+        { hostname: "vmpool", group: "runtimes", type: "swarm-vm@1" },
+        { hostname: "box", group: "runtimes", type: "ubuntu/zbox@1" },
+        { hostname: "boxstage", group: "runtimes", type: "ubuntu/zbox@1" },
+        { hostname: "appstage", group: "runtimes", type: "ubuntu/python@3.12" },
+      ]),
+    ).toEqual(["appdev"]);
+  });
+
   it("keeps a runtime whose name ends in stage when it has no dev partner", () => {
     expect(
       gitCheckoutHostnames([

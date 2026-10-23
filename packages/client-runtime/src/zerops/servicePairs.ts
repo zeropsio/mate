@@ -24,6 +24,7 @@
  *
  * @module servicePairs
  */
+import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import {
   isStageHostname,
   recipeTierRepositories,
@@ -65,7 +66,16 @@ export interface ServicePairing {
 
 export interface ServicePairsInput {
   /** The project's services, in its order; a service without a group pairs with another without. */
-  readonly services: ReadonlyArray<{ readonly hostname: string; readonly group?: string }>;
+  readonly services: ReadonlyArray<{
+    readonly hostname: string;
+    readonly group?: string;
+    /**
+     * The type-version string. A pool or a Box is infrastructure an app uses, never a dev or a
+     * preview half, whatever its name and category say; a caller that omits the type keeps the
+     * name-and-group reading.
+     */
+    readonly type?: string;
+  }>;
   /** The Mate tier as `main` holds it. */
   readonly tier?: string | undefined;
   /** The Mate tier as the Mate's open recipe change holds it. */
@@ -128,7 +138,12 @@ function sharedDevs(
 
 /** The pairs among a project's services, from the tier on `main`, the open recipe change, the stem. */
 export function servicePairs(input: ServicePairsInput): ServicePairing {
-  const groupOf = new Map(input.services.map((service) => [service.hostname, service.group]));
+  // A pool or a Box stands outside every pair: it is in no group to pair within, so it is neither
+  // a dev half nor a preview half, and a tier that declares it as a runtime pairs nothing for it.
+  const pairable = input.services.filter(
+    (service) => service.type === undefined || !isPoolOrSandboxServiceType(service.type),
+  );
+  const groupOf = new Map(pairable.map((service) => [service.hostname, service.group]));
   const beside = (preview: string, dev: string) =>
     dev !== preview && groupOf.has(dev) && groupOf.get(dev) === groupOf.get(preview);
   const sources: ReadonlyArray<readonly [ServicePairSource, ReadonlyMap<string, Declared>]> = [
@@ -155,7 +170,7 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
 
   const previewsByDev = new Map<string, Array<ServicePreview>>();
   const devOf = new Map<string, string>();
-  for (const { hostname } of input.services) {
+  for (const { hostname } of pairable) {
     const paired = pairOf(hostname);
     if (paired === undefined) continue;
     devOf.set(hostname, paired.dev);
@@ -163,8 +178,8 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
     previews.push(paired.preview);
     previewsByDev.set(paired.dev, previews);
   }
-  const sharesCodeWith = sharedDevs(input.tier, input.services, groupOf);
-  const pairs = input.services.flatMap(({ hostname }) => {
+  const sharesCodeWith = sharedDevs(input.tier, pairable, groupOf);
+  const pairs = pairable.flatMap(({ hostname }) => {
     const previews = previewsByDev.get(hostname);
     return previews === undefined ? [] : [{ name: pairName(hostname), dev: hostname, previews }];
   });
