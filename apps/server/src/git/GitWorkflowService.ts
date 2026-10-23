@@ -48,6 +48,16 @@ export class GitWorkflowService extends Context.Service<
     readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
+    /**
+     * What HEAD reads at `cwd`, commit and branch, in one word to compare: a status read under one
+     * HEAD is not the status under another. `null` where git reads none (no repository there).
+     */
+    readonly readHead: (cwd: string) => Effect.Effect<string | null>;
+    /**
+     * Forgets everything kept of the repository at `cwd`, without asking git: another repository
+     * may sit at that path now, such as a lease's checkout handed to another branch.
+     */
+    readonly forgetRepository: (cwd: string) => Effect.Effect<void>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
@@ -101,6 +111,9 @@ export class GitWorkflowService extends Context.Service<
     }) => Effect.Effect<{ readonly branch: string }, GitManagerServiceError>;
   }
 >()("t3/git/GitWorkflowService") {}
+
+/** HEAD's commit and branch: two short lines. */
+const HEAD_MAX_OUTPUT_BYTES = 4_096;
 
 function nonRepositoryLocalStatus(): VcsStatusLocalResult {
   return {
@@ -282,6 +295,29 @@ export const make = Effect.gen(function* () {
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,
     invalidateStatus: gitManager.invalidateStatus,
+    readHead: (cwd) =>
+      Effect.gen(function* () {
+        const driver = yield* registry.get("git");
+        const head = yield* driver.execute({
+          operation: "GitWorkflowService.readHead",
+          cwd,
+          args: ["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"],
+          allowNonZeroExit: true,
+          maxOutputBytes: HEAD_MAX_OUTPUT_BYTES,
+        });
+        if (head.exitCode === 0) return head.stdout.trim().split(/\s+/u).join(" ");
+        // A branch with no commit yet still names itself.
+        const branch = yield* driver.execute({
+          operation: "GitWorkflowService.readHead.unborn",
+          cwd,
+          args: ["symbolic-ref", "-q", "HEAD"],
+          allowNonZeroExit: true,
+          maxOutputBytes: HEAD_MAX_OUTPUT_BYTES,
+        });
+        return branch.exitCode === 0 ? `unborn ${branch.stdout.trim()}` : null;
+      }).pipe(Effect.orElseSucceed(() => null)),
+    forgetRepository: (cwd) =>
+      Effect.andThen(git.forgetRepository(cwd), gitManager.invalidateStatus(cwd)),
     pullCurrentBranch: (cwd) =>
       ensureGitCommand("GitWorkflowService.pullCurrentBranch", cwd).pipe(
         Effect.andThen(git.pullCurrentBranch(cwd)),

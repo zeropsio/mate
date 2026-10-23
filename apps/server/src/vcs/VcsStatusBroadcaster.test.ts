@@ -29,6 +29,8 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
+/** The HEAD every status here is read under, unless a test moves it. */
+const HEAD = "2f6e0d1 refs/heads/feature/status-broadcast";
 
 const baseLocalStatus: VcsStatusLocalResult = {
   isRepo: true,
@@ -76,12 +78,20 @@ function makeTestLayer(state: {
   localInvalidationCalls: number;
   remoteInvalidationCalls: number;
   remoteStatusRefreshUpstreamValues?: Array<boolean | undefined>;
+  /** What HEAD reads at the path: the commit and branch the status is read under. */
+  currentHead?: string | null;
+  forgottenRepositories?: Array<string>;
 }) {
   return VcsStatusBroadcaster.layer.pipe(
     Layer.provideMerge(NodeServices.layer),
     Layer.provide(makeBackgroundPolicyLayer(() => true)),
     Layer.provide(
       Layer.mock(GitWorkflowService.GitWorkflowService)({
+        readHead: () => Effect.sync(() => state.currentHead ?? HEAD),
+        forgetRepository: (cwd) =>
+          Effect.sync(() => {
+            state.forgottenRepositories?.push(cwd);
+          }),
         localStatus: () =>
           Effect.sync(() => {
             state.localStatusCalls += 1;
@@ -224,6 +234,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -334,6 +345,7 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(makeBackgroundPolicyLayer(() => true)),
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
+            readHead: () => Effect.succeed(HEAD),
             localStatus: (input) =>
               Effect.sync(() => {
                 seenCwds.push(input.cwd);
@@ -379,6 +391,115 @@ describe("VcsStatusBroadcaster", () => {
         assert.equal(state.localStatusCalls, 1);
         assert.equal(state.remoteStatusCalls, 1);
       }).pipe(Effect.provide(testLayer));
+    },
+  );
+
+  // A lease's checkout is one path that pools hand from branch to branch: conversation A edits
+  // matepool-2 on feat-a and releases it, B acquires it on feat-b, clean.
+  const onFeatA: VcsStatusLocalResult = {
+    ...baseLocalStatus,
+    refName: "feat-a",
+    hasWorkingTreeChanges: true,
+    workingTree: {
+      files: [{ path: "README.md", insertions: 1, deletions: 0 }],
+      insertions: 1,
+      deletions: 0,
+    },
+  };
+  const onFeatB: VcsStatusLocalResult = { ...baseLocalStatus, refName: "feat-b" };
+
+  it.effect(
+    "a checkout bound again to another branch is read afresh, and whoever watches it hears so",
+    () => {
+      const state = {
+        currentLocalStatus: onFeatA,
+        currentRemoteStatus: baseRemoteStatus,
+        localStatusCalls: 0,
+        remoteStatusCalls: 0,
+        localInvalidationCalls: 0,
+        remoteInvalidationCalls: 0,
+        currentHead: "1111111 refs/heads/feat-a",
+        forgottenRepositories: [] as Array<string>,
+      };
+
+      return Effect.gen(function* () {
+        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+        const cwd = "/var/www/matepool-2";
+        const before = yield* broadcaster.getStatus({ cwd });
+        const watched = yield* Deferred.make<VcsStatusStreamEvent>();
+        const reread = yield* Deferred.make<VcsStatusStreamEvent>();
+        yield* Stream.runForEach(broadcaster.streamStatus({ cwd, includeRemote: false }), (event) =>
+          Deferred.isDone(watched).pipe(
+            Effect.flatMap((done) =>
+              Deferred.succeed(done ? reread : watched, event).pipe(Effect.ignore),
+            ),
+          ),
+        ).pipe(Effect.forkScoped);
+        assert.deepStrictEqual(yield* Deferred.await(watched), {
+          _tag: "snapshot",
+          local: onFeatA,
+          remote: baseRemoteStatus,
+        } satisfies VcsStatusStreamEvent);
+
+        state.currentLocalStatus = onFeatB;
+        state.currentHead = "2222222 refs/heads/feat-b";
+        yield* broadcaster.forgetStatus(cwd);
+
+        assert.deepStrictEqual(yield* Deferred.await(reread), {
+          _tag: "snapshot",
+          local: onFeatB,
+          remote: baseRemoteStatus,
+        } satisfies VcsStatusStreamEvent);
+        assert.deepStrictEqual(before, { ...onFeatA, ...baseRemoteStatus });
+        assert.deepStrictEqual(yield* broadcaster.getStatus({ cwd }), {
+          ...onFeatB,
+          ...baseRemoteStatus,
+        });
+        assert.deepStrictEqual(state.forgottenRepositories, [cwd]);
+      }).pipe(Effect.provide(makeTestLayer(state)));
+    },
+  );
+
+  it.effect(
+    "a status is not served once HEAD at its path reads another branch or commit, to a reader or a new watcher",
+    () => {
+      const state = {
+        currentLocalStatus: onFeatA,
+        currentRemoteStatus: baseRemoteStatus,
+        localStatusCalls: 0,
+        remoteStatusCalls: 0,
+        localInvalidationCalls: 0,
+        remoteInvalidationCalls: 0,
+        currentHead: "1111111 refs/heads/feat-a",
+      };
+
+      return Effect.gen(function* () {
+        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+        const cwd = "/var/www/matepool-2";
+        yield* broadcaster.getStatus({ cwd });
+        yield* broadcaster.getStatus({ cwd });
+        assert.equal(state.localStatusCalls, 1, "the same HEAD serves what was read");
+
+        // Nobody told the cache: the checkout moved under the same path.
+        state.currentLocalStatus = onFeatB;
+        state.currentHead = "2222222 refs/heads/feat-b";
+        assert.deepStrictEqual(yield* broadcaster.getStatus({ cwd }), {
+          ...onFeatB,
+          ...baseRemoteStatus,
+        });
+
+        state.currentLocalStatus = { ...onFeatB, hasWorkingTreeChanges: true };
+        state.currentHead = "3333333 refs/heads/feat-b";
+        const snapshot = yield* Stream.runHead(
+          broadcaster.streamStatus({ cwd, includeRemote: false }),
+        );
+        assert.deepStrictEqual(Option.getOrUndefined(snapshot), {
+          _tag: "snapshot",
+          local: state.currentLocalStatus,
+          remote: null,
+        } satisfies VcsStatusStreamEvent);
+        assert.equal(state.localStatusCalls, 3);
+      }).pipe(Effect.provide(makeTestLayer(state)));
     },
   );
 
@@ -539,6 +660,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -739,6 +861,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => false)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -792,6 +915,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -878,6 +1002,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;

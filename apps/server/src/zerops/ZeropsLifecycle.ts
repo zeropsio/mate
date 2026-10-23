@@ -28,7 +28,8 @@
  * acquires it again, or reads it no longer held unbinds every other
  * conversation bound to it (`leaseBindings`). Every read of the leases is told
  * to the repository source (`noteLeases`), whose mounts named after one are a
- * lease's, never a service's.
+ * lease's, never a service's, and every lease that changed hands is told by its
+ * alias (`checkoutChanged`): its checkout may be another branch's now.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -356,6 +357,12 @@ export interface ZeropsLifecycleOptions {
   ) => Effect.Effect<void>;
   /** Told the aliases of every lease each read of zcp's leases names, and the last one at start. */
   readonly noteLeases?: (aliases: ReadonlyArray<string>) => Effect.Effect<void>;
+  /**
+   * Told the alias of every lease a call released, acquired or read ended, once its conversations'
+   * records are told: a pool hands a container on under the same alias, so the checkout at
+   * `/var/www/<alias>` may be another branch's now, and nothing read of it before may be served.
+   */
+  readonly checkoutChanged?: (alias: string) => Effect.Effect<void>;
 }
 
 export const make = (options: ZeropsLifecycleOptions) =>
@@ -555,7 +562,8 @@ export const make = (options: ZeropsLifecycleOptions) =>
           return;
         }
         const bindings = yield* options.leaseBindings ?? Effect.succeed([]);
-        for (const { conversation, change } of leaseChangesFor(facts, bindings)) {
+        const changes = leaseChangesFor(facts, bindings);
+        for (const { conversation, change } of changes) {
           const key =
             change._tag === "BindLease"
               ? `lease:${event.eventId}:bind`
@@ -567,6 +575,18 @@ export const make = (options: ZeropsLifecycleOptions) =>
                 change: change._tag,
                 cause,
               }),
+            ),
+          );
+        }
+        const changedCheckouts = new Set([
+          ...(facts.released === undefined ? [] : [facts.released]),
+          ...(facts.acquired === undefined ? [] : [facts.acquired.lease.alias]),
+          ...changes.flatMap(({ change }) => (change._tag === "UnbindLease" ? [change.ended] : [])),
+        ]);
+        for (const alias of changedCheckouts) {
+          yield* (options.checkoutChanged?.(alias) ?? Effect.void).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not forget a lease's checkout", { alias, cause }),
             ),
           );
         }
@@ -623,11 +643,11 @@ export const make = (options: ZeropsLifecycleOptions) =>
 /**
  * The feed over the provider bus. Every read of zcp's leases is told to the lease roster the
  * repository source classifies by; a lease change, to `recordLease` (the wiring's engine door),
- * for the conversations `leaseBindings` reads bound.
+ * for the conversations `leaseBindings` reads bound, and then to `checkoutChanged` by its alias.
  */
 export const layer = (
   threadOwner: NonNullable<ZeropsLifecycleOptions["threadOwner"]>,
-  leases?: Pick<ZeropsLifecycleOptions, "leaseBindings" | "recordLease">,
+  leases?: Pick<ZeropsLifecycleOptions, "leaseBindings" | "recordLease" | "checkoutChanged">,
 ) =>
   Layer.effect(
     ZeropsLifecycle,
