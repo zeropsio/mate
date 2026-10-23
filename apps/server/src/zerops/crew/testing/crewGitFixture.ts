@@ -9,7 +9,6 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -18,6 +17,7 @@ import * as Layer from "effect/Layer";
 
 import { runMigrations } from "../../../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
+import { testTempDir } from "../../../testing/testTempDir.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { shellQuote } from "../../ZeropsWorkspaceAccess.ts";
@@ -66,20 +66,18 @@ export const read = (root: string, path: string): string =>
 export const exists = (root: string, path: string): boolean =>
   NodeFS.existsSync(NodePath.join(root, path));
 
-/** A repository on `main` with one commit (`README.md`), as `/var/www` on a dev service. */
+/**
+ * A repository on `main` with one commit (`README.md`), as `/var/www` on a dev service; gone when
+ * its test ends.
+ */
 export const makeServiceRepository = (): string => {
-  const root = NodeFS.realpathSync(
-    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-service-")),
-  );
+  const root = NodeFS.realpathSync(testTempDir("t3-crew-service-"));
   git(root, ["init", "-q", "-b", "main"]);
   write(root, "README.md", "service\n");
   git(root, ["add", "-A"]);
   git(root, ["commit", "-q", "-m", "initial"]);
   return root;
 };
-
-export const removeServiceRepository = (root: string): void =>
-  NodeFS.rmSync(root, { recursive: true, force: true });
 
 export const serviceRepository = (root: string): ZeropsRepository => ({
   host: TEST_HOST,
@@ -200,7 +198,7 @@ answer(1, { code: 1, error: "unknown verb " + verb });
 export const remoteEnvWithSetsid = (): Readonly<Record<string, string>> => {
   const found = NodeChildProcess.spawnSync("sh", ["-c", "command -v setsid"]).status === 0;
   if (found) return TEST_IDENTITY;
-  const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-bin-"));
+  const bin = testTempDir("t3-crew-bin-");
   NodeFS.writeFileSync(
     NodePath.join(bin, "setsid"),
     '#!/bin/sh\nexec perl -MPOSIX -e \'POSIX::setsid() or die "setsid: $!"; exec @ARGV or die "exec: $!"\' -- "$@"\n',
@@ -213,20 +211,16 @@ export const remoteEnvWithSetsid = (): Readonly<Record<string, string>> => {
  * The far side's environment with the fake supervisor as `zcp-devsup` on its PATH
  * ({@link FAKE_SUPERVISOR}), and a `setsid` for a supervisor that does not answer.
  */
-let supervisedEnv: Readonly<Record<string, string>> | undefined;
-
 export const remoteEnvWithSupervisor = (): Readonly<Record<string, string>> => {
-  if (supervisedEnv !== undefined) return supervisedEnv;
-  const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-bin-"));
+  const bin = testTempDir("t3-crew-bin-");
   NodeFS.writeFileSync(NodePath.join(bin, "zcp-devsup.cjs"), FAKE_SUPERVISOR);
   NodeFS.writeFileSync(
     NodePath.join(bin, "zcp-devsup"),
     `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(NodePath.join(bin, "zcp-devsup.cjs"))} "$@"\n`,
     { mode: 0o755 },
   );
-  process.once("exit", () => NodeFS.rmSync(bin, { recursive: true, force: true }));
   const path = remoteEnvWithSetsid().PATH ?? process.env.PATH ?? "";
-  return (supervisedEnv = { ...TEST_IDENTITY, PATH: `${bin}:${path}` });
+  return { ...TEST_IDENTITY, PATH: `${bin}:${path}` };
 };
 
 /** The fake supervisor's runtime entries in the service repository at `root`. */
@@ -432,15 +426,12 @@ export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}
   );
 };
 
-/** Runs `body` against a fresh service repository, removed afterwards. */
+/** Runs `body` against a fresh service repository. */
 export const withCrewService = <A, E, R, LE>(
   body: (root: string) => Effect.Effect<A, E, R>,
   layer: (root: string) => Layer.Layer<R, LE>,
 ) =>
   Effect.gen(function* () {
     const root = makeServiceRepository();
-    return yield* body(root).pipe(
-      Effect.provide(layer(root)),
-      Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
-    );
+    return yield* body(root).pipe(Effect.provide(layer(root)));
   });

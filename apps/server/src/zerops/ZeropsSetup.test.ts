@@ -1,6 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -33,6 +32,7 @@ import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
+import { testTempDir } from "../testing/testTempDir.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import {
   MateEngine,
@@ -420,8 +420,7 @@ const withServer = <A, E>(
     return yield* body(setup);
   }).pipe(Effect.provide(serverOn(world, database, timings)), Effect.scoped);
 
-const freshDatabase = () =>
-  NodePath.join(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-setup-")), "state.sqlite");
+const freshDatabase = () => NodePath.join(testTempDir("mate-setup-"), "state.sqlite");
 
 /** The stand-ups the engine was woken for, each with the agent its conversation was given. */
 const turnsOf = (world: World) =>

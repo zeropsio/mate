@@ -4,7 +4,6 @@
  * "crash" is the end of one lifetime (nothing in memory survives) and a "restart" is the next one
  * with a new boot id. The world (the provider outside the process) survives in plain memory.
  */
-import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -38,15 +37,15 @@ import { OwnerDomains, type AnyDomain, type Domain, type OwnerEvent } from "../o
 import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
 import { runEngineMigrations } from "../store/migrations.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
+import { testTempDir } from "../../testing/testTempDir.ts";
 import { Violation } from "./invariants.ts";
 
-/** A fresh database file; `ENGINE_PROOF_TMP` picks the directory. */
-export const tempDb = (label: string): string => {
-  const dir = NodeFS.mkdtempSync(
-    NodePath.join(process.env.ENGINE_PROOF_TMP ?? NodeOS.tmpdir(), `engine-proof-${label}-`),
+/** A fresh database file, gone when its test ends; `ENGINE_PROOF_TMP` picks the directory. */
+export const tempDb = (label: string): string =>
+  NodePath.join(
+    testTempDir(`engine-proof-${label}-`, process.env.ENGINE_PROOF_TMP ?? NodeOS.tmpdir()),
+    "state.sqlite",
   );
-  return NodePath.join(dir, "state.sqlite");
-};
 
 export const engineLayer = (
   filename: string,

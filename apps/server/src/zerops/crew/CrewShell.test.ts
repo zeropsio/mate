@@ -8,7 +8,6 @@ import {
   git,
   makeServiceRepository,
   read,
-  removeServiceRepository,
   serviceRepository,
   TEST_HOST,
   TEST_IDENTITY,
@@ -22,7 +21,6 @@ const withService = <A, E>(
     const root = makeServiceRepository();
     return yield* body(root).pipe(
       Effect.provide(crewShellLayer([serviceRepository(root)], options)),
-      Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
     );
   });
 
@@ -159,7 +157,6 @@ describe("CrewShell", () => {
             return error.reason;
           }).pipe(Effect.provide(crewShellLayer([missing]))),
         ),
-        Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
       );
       assert.deepStrictEqual(outcomes, [125, "workspace"]);
     }),

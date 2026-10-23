@@ -7,7 +7,6 @@ import * as CrewChecks from "./CrewChecks.ts";
 import {
   crewShellLayer,
   makeServiceRepository,
-  removeServiceRepository,
   serviceRepository,
   TEST_HOST,
   write,
@@ -76,7 +75,6 @@ describe("CrewChecks", () => {
         Effect.provide(
           CrewChecks.layer.pipe(Layer.provide(crewShellLayer([serviceRepository(root)]))),
         ),
-        Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
       );
       assert.strictEqual(outcome._tag, row.expected);
       for (const [key, value] of Object.entries(row.detail ?? {})) {
