@@ -142,10 +142,6 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       entry.count++;
       if (manual) entry.wake?.();
     } else {
-      if (manual) {
-        Effect.runSync(signal(key, { kind: "manual-retry" }));
-        Effect.runSync(signal(scope, { kind: "manual-retry" }));
-      }
       const made: Entry = {
         count: 1,
         kind,
@@ -290,6 +286,11 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                 }),
             });
             made.supervisor = supervisor;
+            // Asked now, by a view that let its demand go and took it again (a refresh): a
+            // refusal outlives the release, so only the supervisor's own retry reads it again. A
+            // read let go after an answer is read again by being demanded at all.
+            if (manual && streamOf(store.state(), key).phase === "refused")
+              yield* supervisor.signal("manual-retry");
             made.wake = () => {
               const phase = streamOf(store.state(), key).phase;
               if (["refused", "recovering", "paused"].includes(phase))

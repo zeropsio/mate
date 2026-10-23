@@ -23,6 +23,7 @@ import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { conversationOfThread, MateEngine } from "../engine/MateEngine.ts";
 import { engineLayer } from "../engine/layer.ts";
+import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewEngineHooks, crewLayer } from "./crew/crewLayer.ts";
 import { crewEngineLinkLayer } from "./crew/engine/CrewEngineLayer.ts";
@@ -40,6 +41,7 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import { ZEROPS_WORKSPACE_ROOT } from "./ZeropsRepositorySource.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
@@ -226,11 +228,15 @@ const ZeropsHqLinkLive = Layer.unwrap(
  * every conversation bound to a lease that ended, through the very engine the merge runs (memoized
  * by reference): the record binds or unbinds it, under the call's own command id, so a call told
  * again acts once. Who is bound is read from the conversations' views, only when a call says
- * something new of the leases.
+ * something new of the leases. A lease that changed hands has its checkout's git status forgotten
+ * and read again: the same alias may be another branch's container now.
  */
 const ZeropsLifecycleLive = Layer.unwrap(
-  Effect.map(MateEngine, (engine) =>
-    ZeropsLifecycle.layer(conversationOfThread, {
+  Effect.gen(function* () {
+    const engine = yield* MateEngine;
+    const vcsStatus = yield* VcsStatusBroadcaster;
+    return ZeropsLifecycle.layer(conversationOfThread, {
+      checkoutChanged: (alias) => vcsStatus.forgetStatus(`${ZEROPS_WORKSPACE_ROOT}/${alias}`),
       leaseBindings: Effect.map(engine.conversations, ({ views }) =>
         views.flatMap((view) =>
           view.lease == null
@@ -261,8 +267,8 @@ const ZeropsLifecycleLive = Layer.unwrap(
               }),
             ),
           ),
-    }),
-  ),
+    });
+  }),
 ).pipe(Layer.provide(ZeropsThreadLifecycle.layer), Layer.provide(MateEngineLive));
 
 const liveLayer = Layer.mergeAll(

@@ -955,6 +955,13 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
       bound: () => Effect.Effect<Readonly<Record<string, string>>>,
       told: () => Effect.Effect<ReadonlyArray<ZeropsLifecycle.LeaseChange>>,
+      /** Each checkout told changed, with who was bound to what when it was told. */
+      checkouts: () => Effect.Effect<
+        ReadonlyArray<{
+          readonly alias: string;
+          readonly bound: Readonly<Record<string, string>>;
+        }>
+      >,
     ) => Effect.Effect<A, E, never>,
   ) =>
     Effect.scoped(
@@ -962,6 +969,12 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
         const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
         const records = yield* Ref.make<Readonly<Record<string, string>>>({});
         const changes = yield* Ref.make<ReadonlyArray<ZeropsLifecycle.LeaseChange>>([]);
+        const changedCheckouts = yield* Ref.make<
+          ReadonlyArray<{
+            readonly alias: string;
+            readonly bound: Readonly<Record<string, string>>;
+          }>
+        >([]);
         const lifecycle = yield* ZeropsLifecycle.make({
           toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository,
@@ -982,11 +995,16 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
                 return alias === change.ended ? others : all;
               }),
             ),
+          checkoutChanged: (alias) =>
+            Effect.flatMap(Ref.get(records), (bound) =>
+              Ref.update(changedCheckouts, (all) => [...all, { alias, bound }]),
+            ),
         });
         return yield* use(
           lifecycle,
           () => Ref.get(records),
           () => Ref.get(changes),
+          () => Ref.get(changedCheckouts),
         );
       }),
     ).pipe(Effect.provide(persistence));
@@ -1002,6 +1020,30 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     ...acquire(alias, held),
     threadId,
   });
+
+  it.effect(
+    "a lease released and acquired again tells its checkout changed each time, once its records moved",
+    () =>
+      withConversations((lifecycle, _bound, _told, checkouts) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          yield* lifecycle.ingest(release("webpool-3", sessionOf("ada"), []));
+          yield* lifecycle.ingest(acquireBy(sessionOf("bob"), "webpool-3", [lease("webpool-3")]));
+          expect(yield* checkouts()).toEqual([
+            { alias: "webpool-3", bound: { ada: "webpool-3" } },
+            { alias: "webpool-3", bound: {} },
+            { alias: "webpool-3", bound: { bob: "webpool-3" } },
+          ]);
+          const first = (yield* checkouts()).length;
+          yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+          expect((yield* checkouts()).length, "a read that says nothing new tells nothing").toBe(
+            first,
+          );
+          yield* lifecycle.ingest(statusReading([lease("webpool-3", "lost")]));
+          expect((yield* checkouts()).slice(first)).toEqual([{ alias: "webpool-3", bound: {} }]);
+        }),
+      ),
+  );
 
   it.effect("a release unbinds the lease it released", () =>
     withConversations((lifecycle, bound) =>
