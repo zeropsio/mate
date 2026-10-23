@@ -467,16 +467,49 @@ it("decodes a signer persistence failure from adding a login", () => {
   expect(decoded.reason).toBe("signer-write-failed");
 });
 
-describe("ZeropsStateEnvelope leases", () => {
-  const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
-  const envelope = (extra: Record<string, unknown> = {}) => ({
-    phase: "develop-active",
-    environment: "container",
-    project: { id: "proj-1", name: "z3-eval" },
-    services: [],
-    generated: "2026-10-23T12:00:00Z",
+const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
+const envelope = (extra: Record<string, unknown> = {}) => ({
+  phase: "develop-active",
+  environment: "container",
+  project: { id: "proj-1", name: "z3-eval" },
+  services: [],
+  generated: "2026-10-23T12:00:00Z",
+  ...extra,
+});
+
+describe("ZeropsStateEnvelope services", () => {
+  const service = (hostname: string, extra: Record<string, unknown> = {}) => ({
+    hostname,
+    typeVersion: "nodejs@22",
+    runtimeClass: "dynamic",
+    status: "ACTIVE",
+    bootstrapped: true,
     ...extra,
   });
+  const web = {
+    name: "web",
+    port: 3000,
+    url: "https://appdev-1df2-3000.prg1.zerops.app",
+    status: "running",
+    readAt: "2026-10-23T12:00:00Z",
+  };
+  const worker = { name: "worker", status: "crashed", readAt: "2026-10-23T12:00:00Z" };
+
+  it("a service's dev server this build cannot read is left out, never the service", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        services: [
+          service("appdev", { devServers: [web, { name: "api", port: "x" }, worker] }),
+          service("appstage"),
+        ],
+      }),
+    );
+    expect(decoded.services.map((entry) => entry.hostname)).toEqual(["appdev", "appstage"]);
+    expect(decoded.services[0]?.devServers).toEqual([web, worker]);
+  });
+});
+
+describe("ZeropsStateEnvelope leases", () => {
   const held = {
     alias: "webpool-3",
     pool: "webpool",

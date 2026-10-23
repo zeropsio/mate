@@ -189,6 +189,21 @@ describe("server config forward compatibility", () => {
       { id: "primary", kind: "session", label: "Session", usedPercent: 12 },
     ]);
   });
+
+  it("keeps a provider in the list when one of its usage windows cannot be read", () => {
+    const session = { id: "primary", kind: "session", label: "Session", usedPercent: 12 };
+    const parsed = decodeServerProviders([
+      {
+        ...baseProviderSnapshot,
+        usageLimits: {
+          checkedAt: "2026-04-10T00:00:00.000Z",
+          windows: [session, { id: "future", kind: "some-future-kind", label: "Future" }],
+        },
+      },
+    ]);
+
+    expect(parsed.map((provider) => provider.usageLimits?.windows)).toEqual([[session]]);
+  });
 });
 
 describe("ServerObservability", () => {
