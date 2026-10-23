@@ -274,14 +274,11 @@ export type Command =
   | { readonly _tag: "Unarchive" }
   /** The agent leased a pool container: the conversation is bound to it, unless it has a lease. */
   | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
-  /** A lease ended: the conversation's is unbound when it is `ended`, or not among `held`. */
-  | {
-      readonly _tag: "UnbindLease";
-      /** The lease the agent released. */
-      readonly ended?: string;
-      /** Every lease zcp still holds, as its latest read says. */
-      readonly held?: ReadonlyArray<string>;
-    }
+  /**
+   * A lease ended — released, lost, no longer held, or acquired again by another conversation: the
+   * conversation's is unbound when it is `ended`.
+   */
+  | { readonly _tag: "UnbindLease"; readonly ended: string }
   | {
       readonly _tag: "ArmWake";
       readonly kind: string;

@@ -56,10 +56,6 @@ const play = (steps: ReadonlyArray<Command>): Scene => {
 
 const bind = (lease: ThreadLease): Command => ({ _tag: "BindLease", lease });
 const released = (alias: string): Command => ({ _tag: "UnbindLease", ended: alias });
-const held = (...aliases: ReadonlyArray<string>): Command => ({
-  _tag: "UnbindLease",
-  held: aliases,
-});
 
 describe("a conversation's lease", () => {
   it("a conversation has no lease until its agent acquires one", () => {
@@ -89,16 +85,8 @@ describe("a conversation's lease", () => {
     expect(own.state.lease).toBeNull();
   });
 
-  it("a lease zcp no longer holds unbinds the conversation; one it still holds stays", () => {
-    expect(play([bind(webpool3), held("webpool-3", "webpool-4")]).state.lease).toEqual(webpool3);
-    const gone = play([bind(webpool3), held("webpool-4")]);
-    expect(gone.events.map((event) => event._tag)).toEqual(["LeaseUnbound"]);
-    expect(gone.state.lease).toBeNull();
-  });
-
   it("nothing unbinds a conversation without a lease", () => {
     expect(play([released("webpool-3")]).events).toEqual([]);
-    expect(play([held()]).events).toEqual([]);
   });
 
   it("after a release the next lease its agent acquires binds it", () => {

@@ -317,11 +317,7 @@ const handle = (b: StepBuilder, command: Command): void => {
       return;
     case "UnbindLease": {
       const bound = b.state.lease;
-      if (
-        bound !== null &&
-        (bound.alias === command.ended ||
-          (command.held !== undefined && !command.held.includes(bound.alias)))
-      ) {
+      if (bound !== null && bound.alias === command.ended) {
         b.emit({ _tag: "LeaseUnbound", alias: bound.alias });
       }
       return;

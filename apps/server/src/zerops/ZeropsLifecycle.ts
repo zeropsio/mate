@@ -20,13 +20,15 @@
  *   envelope, a failed one carries none by design, and the strip still has to
  *   read "deploying". A log, not a state machine.
  *
- * The envelope's `leases` are zcp's: the pool containers it holds. Which one a
+ * The envelope's `leases` are zcp's: the pool containers it holds, one set for
+ * every conversation (zcp keeps it in the shared working directory). Which one a
  * conversation works in is the conversation's own fact, so it is not kept here:
- * a conversation's agent acquiring a lease (`zerops_lease`), releasing it, or
- * zcp no longer holding it is told to the conversation's record
- * (`recordLease`), which binds or unbinds it; and every read of the leases is
- * told to the repository source (`noteLeases`), whose mounts named after one
- * are a lease's, never a service's.
+ * a conversation's agent acquiring a lease (`zerops_lease`) binds that
+ * conversation's record (`recordLease`), and any call that releases a lease,
+ * acquires it again, or reads it no longer held unbinds every other
+ * conversation bound to it (`leaseBindings`). Every read of the leases is told
+ * to the repository source (`noteLeases`), whose mounts named after one are a
+ * lease's, never a service's.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -161,18 +163,22 @@ const withLastLeases = (
  */
 export type LeaseChange =
   | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
-  | {
-      readonly _tag: "UnbindLease";
-      /** The lease its agent released. */
-      readonly ended?: string;
-      /** Every lease zcp still holds. */
-      readonly held?: ReadonlyArray<string>;
-    };
+  /** The lease the conversation is bound to ended: released, lost, gone, or taken again. */
+  | { readonly _tag: "UnbindLease"; readonly ended: string };
+
+/** A conversation bound to a lease, as its record holds it. */
+export interface LeaseBinding {
+  readonly conversation: ThreadId;
+  readonly alias: string;
+}
 
 /** The tool a conversation's agent leases a pool container with. */
 const LEASE_TOOL = "zerops_lease";
-/** A lease in one of these states is no longer held. */
-const ENDED_LEASE_STATES: ReadonlySet<string> = new Set(["released", "lost"]);
+/**
+ * A lease in one of these states is no longer held by zcp: released, lost, or reserved on the pool
+ * with no record of zcp's (`unknown-holder`).
+ */
+const ENDED_LEASE_STATES: ReadonlySet<string> = new Set(["released", "lost", "unknown-holder"]);
 
 const decodeLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLease));
 const decodeThreadLease = Schema.decodeUnknownOption(ThreadLease);
@@ -238,38 +244,69 @@ const acquiredLease = (
 };
 
 /**
- * The lease changes one successful call says, in the order they apply: what zcp no longer holds
- * first, so a conversation whose lease is gone can take the one this call acquired.
+ * What one successful call says of zcp's leases, whoever made it: zcp keeps one set of leases for
+ * every conversation (its state is in the shared working directory), so a release, an acquire or
+ * a read by one conversation speaks for the leases every other one is bound to.
  */
-const leaseChangesOf = (
+interface LeaseFacts {
+  /** The leases zcp holds, when this call read them and the read differs from the last one. */
+  readonly held?: ReadonlyArray<string>;
+  /** The lease this call released. */
+  readonly released?: string;
+  /** The lease this call acquired, and the conversation that now holds it (none: no conversation). */
+  readonly acquired?: { readonly lease: ThreadLease; readonly by: ThreadId | undefined };
+}
+
+const leaseFactsOf = (
   call: SpiToolCall,
   text: string,
   read: ReadonlyArray<ZeropsLease> | undefined,
-  previous: ReadonlyArray<ZeropsLease> | undefined,
-): ReadonlyArray<{ readonly key: string; readonly change: LeaseChange }> => {
-  const changes: Array<{ readonly key: string; readonly change: LeaseChange }> = [];
-  if (read !== undefined && (previous === undefined || leasesKey(read) !== leasesKey(previous))) {
-    changes.push({
-      key: "held",
-      change: {
-        _tag: "UnbindLease",
-        held: read
-          .filter((lease) => !ENDED_LEASE_STATES.has(lease.state))
-          .map((lease) => lease.alias),
-      },
-    });
-  }
-  if (call.name !== LEASE_TOOL) return changes;
-  const action = argument(call, "action");
-  const released = argument(call, "lease");
-  if (action === "release" && released !== undefined) {
-    changes.push({ key: "ended", change: { _tag: "UnbindLease", ended: released } });
-  }
+  readChanged: boolean,
+  owner: ThreadId | undefined,
+): LeaseFacts => {
+  const held =
+    read !== undefined && readChanged
+      ? read.filter((lease) => !ENDED_LEASE_STATES.has(lease.state)).map((lease) => lease.alias)
+      : undefined;
+  const action = call.name === LEASE_TOOL ? argument(call, "action") : undefined;
+  const released = action === "release" ? argument(call, "lease") : undefined;
   const acquired = action === "acquire" ? acquiredLease(call, text, read) : undefined;
-  if (acquired !== undefined) {
-    changes.push({ key: "bind", change: { _tag: "BindLease", lease: acquired } });
-  }
-  return changes;
+  return {
+    ...(held === undefined ? {} : { held }),
+    ...(released === undefined ? {} : { released }),
+    ...(acquired === undefined ? {} : { acquired: { lease: acquired, by: owner } }),
+  };
+};
+
+/**
+ * The lease changes the facts say to the conversations bound now, in the order they apply: every
+ * conversation whose lease ended is unbound first — released, no longer held, or acquired again by
+ * another (a pool hands a released container out again under the same alias, so the alias alone
+ * never says whose lease it is: the binding is the conversation's that acquired it) — then the
+ * conversation that acquired one is bound, which takes it only while it has no lease.
+ */
+const leaseChangesFor = (
+  facts: LeaseFacts,
+  bindings: ReadonlyArray<LeaseBinding>,
+): ReadonlyArray<{ readonly conversation: ThreadId; readonly change: LeaseChange }> => {
+  const ended = bindings.filter(
+    ({ conversation, alias }) =>
+      alias === facts.released ||
+      (facts.held !== undefined && !facts.held.includes(alias)) ||
+      (alias === facts.acquired?.lease.alias && conversation !== facts.acquired.by),
+  );
+  const by = facts.acquired?.by;
+  return [
+    ...ended.map(({ conversation, alias }) => ({
+      conversation,
+      change: { _tag: "UnbindLease", ended: alias } as const,
+    })),
+    ...(facts.acquired === undefined || by === undefined
+      ? []
+      : [
+          { conversation: by, change: { _tag: "BindLease", lease: facts.acquired.lease } as const },
+        ]),
+  ];
 };
 
 const INGEST_RESTART_FIRST = Duration.seconds(1);
@@ -282,9 +319,14 @@ export interface ZeropsLifecycleOptions {
   /** The runtime wiring supplies the owner of a provider session; other threads keep their ID. */
   readonly threadOwner?: (threadId: ThreadId) => string | undefined;
   /**
-   * Records a change of the lease of the conversation that owns a provider session, in that
-   * conversation's own record, once per `key` (derived from the call). Absent, or for a thread
-   * no conversation owns: nothing is bound.
+   * The conversations bound to a lease now, as their records hold them: whom a release, an acquire
+   * or a read of zcp's leases unbinds. Absent: none is bound.
+   */
+  readonly leaseBindings?: Effect.Effect<ReadonlyArray<LeaseBinding>>;
+  /**
+   * Records a change of a conversation's lease in that conversation's own record, once per `key`
+   * (derived from the call and the conversation). Absent: nothing is bound. Only the conversation
+   * that owns the provider session an acquire ran in is bound by it.
    */
   readonly recordLease?: (
     conversation: ThreadId,
@@ -316,6 +358,9 @@ export const make = (options: ZeropsLifecycleOptions) =>
     );
     const writeMutex = yield* Semaphore.make(1);
     const cache = yield* Ref.make(new Map<ThreadId, ZeropsLifecycleState>());
+    // The last read of zcp's leases any thread's call carried: one set for every conversation, so a
+    // read that says nothing new unbinds nothing. None at start: the first read is checked whole.
+    const lastRead = yield* Ref.make<string | undefined>(undefined);
 
     /** Reads a stored row tolerantly: anything unreadable degrades to "nothing yet". */
     const fromRow = (row: ZeropsThreadLifecycleRow): ZeropsLifecycleState => ({
@@ -413,11 +458,11 @@ export const make = (options: ZeropsLifecycleOptions) =>
       writeMutex.withPermits(1)(
         Effect.gen(function* () {
           if (event.type !== "item.started" && event.type !== "item.completed") {
-            return [];
+            return undefined;
           }
           const call = readZeropsToolCall(event);
           if (call === undefined) {
-            return [];
+            return undefined;
           }
 
           const owner = options.threadOwner?.(event.threadId);
@@ -458,18 +503,21 @@ export const make = (options: ZeropsLifecycleOptions) =>
           yield* persist(next, at);
           yield* PubSub.publish(yield* channel(next.threadId), next);
 
+          let readChanged = false;
           if (envelope?.leases !== undefined) {
             yield* noteLeases(envelope.leases.map((lease) => lease.alias));
+            const key = leasesKey(envelope.leases);
+            readChanged = (yield* Ref.getAndSet(lastRead, key)) !== key;
           }
-          // Only a conversation's own provider session binds it, and only by what a call did.
-          return owner === undefined || resultText === undefined || failed
-            ? []
-            : leaseChangesOf(call, resultText, envelope?.leases, previous.envelope?.leases).map(
-                (change) => ({
-                  ...change,
-                  conversation: threadId,
-                  key: `lease:${event.eventId}:${change.key}`,
-                }),
+          // Only what a successful call did or read; any thread's, since zcp's leases are shared.
+          return resultText === undefined || failed
+            ? undefined
+            : leaseFactsOf(
+                call,
+                resultText,
+                envelope?.leases,
+                readChanged,
+                owner === undefined ? undefined : threadId,
               );
         }),
       );
@@ -478,8 +526,19 @@ export const make = (options: ZeropsLifecycleOptions) =>
     // outside the write mutex: a reader never waits on a conversation's record.
     const ingest = (event: SpiEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const changes = yield* fold(event);
-        for (const { conversation, change, key } of changes) {
+        const facts = yield* fold(event);
+        if (
+          facts === undefined ||
+          (facts.held === undefined && facts.released === undefined && facts.acquired === undefined)
+        ) {
+          return;
+        }
+        const bindings = yield* options.leaseBindings ?? Effect.succeed([]);
+        for (const { conversation, change } of leaseChangesFor(facts, bindings)) {
+          const key =
+            change._tag === "BindLease"
+              ? `lease:${event.eventId}:bind`
+              : `lease:${event.eventId}:unbind:${conversation}`;
           yield* (options.recordLease?.(conversation, change, key) ?? Effect.void).pipe(
             Effect.catchCause((cause) =>
               Effect.logWarning("Could not record a Zerops lease change", {
@@ -542,11 +601,12 @@ export const make = (options: ZeropsLifecycleOptions) =>
 
 /**
  * The feed over the provider bus. Every read of zcp's leases is told to the lease roster the
- * repository source classifies by; a lease change, to `recordLease` (the wiring's engine door).
+ * repository source classifies by; a lease change, to `recordLease` (the wiring's engine door),
+ * for the conversations `leaseBindings` reads bound.
  */
 export const layer = (
   threadOwner: NonNullable<ZeropsLifecycleOptions["threadOwner"]>,
-  recordLease?: ZeropsLifecycleOptions["recordLease"],
+  leases?: Pick<ZeropsLifecycleOptions, "leaseBindings" | "recordLease">,
 ) =>
   Layer.effect(
     ZeropsLifecycle,
@@ -559,7 +619,7 @@ export const layer = (
         repository,
         threadOwner,
         noteLeases: roster.note,
-        ...(recordLease === undefined ? {} : { recordLease }),
+        ...leases,
       });
     }),
   );

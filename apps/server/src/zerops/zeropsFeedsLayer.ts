@@ -14,7 +14,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { CommandId, ConversationId } from "@t3tools/contracts";
+import { CommandId, ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
@@ -222,36 +222,46 @@ const ZeropsHqLinkLive = Layer.unwrap(
 );
 
 /**
- * The lifecycle feed, which tells a conversation's own record the lease its agent acquired or let
- * go, through the very engine the merge runs (memoized by reference): the record binds it, under
- * the call's own command id, so a call told again acts once.
+ * The lifecycle feed, which tells a conversation's own record the lease its agent acquired, and
+ * every conversation bound to a lease that ended, through the very engine the merge runs (memoized
+ * by reference): the record binds or unbinds it, under the call's own command id, so a call told
+ * again acts once. Who is bound is read from the conversations' views, only when a call says
+ * something new of the leases.
  */
 const ZeropsLifecycleLive = Layer.unwrap(
   Effect.map(MateEngine, (engine) =>
-    ZeropsLifecycle.layer(conversationOfThread, (conversation, change, key) =>
-      engine
-        .deliver(ConversationId.make(conversation), change, CommandId.make(key), {
-          kind: "engine",
-        })
-        .pipe(
-          Effect.flatMap((result) =>
-            result._tag === "Rejected"
-              ? Effect.logWarning("A conversation's record refused its lease change", {
-                  conversation,
-                  change: change._tag,
-                  rejection: result.rejection,
-                })
-              : Effect.void,
-          ),
-          Effect.catch((error) =>
-            Effect.logWarning("A conversation's lease change could not be recorded", {
-              conversation,
-              change: change._tag,
-              error: error.message,
-            }),
-          ),
+    ZeropsLifecycle.layer(conversationOfThread, {
+      leaseBindings: Effect.map(engine.conversations, ({ views }) =>
+        views.flatMap((view) =>
+          view.lease == null
+            ? []
+            : [{ conversation: ThreadId.make(view.conversationId), alias: view.lease.alias }],
         ),
-    ),
+      ),
+      recordLease: (conversation, change, key) =>
+        engine
+          .deliver(ConversationId.make(conversation), change, CommandId.make(key), {
+            kind: "engine",
+          })
+          .pipe(
+            Effect.flatMap((result) =>
+              result._tag === "Rejected"
+                ? Effect.logWarning("A conversation's record refused its lease change", {
+                    conversation,
+                    change: change._tag,
+                    rejection: result.rejection,
+                  })
+                : Effect.void,
+            ),
+            Effect.catch((error) =>
+              Effect.logWarning("A conversation's lease change could not be recorded", {
+                conversation,
+                change: change._tag,
+                error: error.message,
+              }),
+            ),
+          ),
+    }),
   ),
 ).pipe(Layer.provide(ZeropsThreadLifecycle.layer), Layer.provide(MateEngineLive));
 
