@@ -5,7 +5,24 @@ import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+
+/**
+ * The supervisor's guard holds server.lock while PostgreSQL runs, so taking that lock is the
+ * kernel's receipt that the supervisor stopped it. A file watch is no receipt: macOS can drop it.
+ */
+const postgresStopped = (home: string) =>
+  new Promise<void>((resolve, reject) => {
+    const probe = NodeChildProcess.spawn(
+      "flock",
+      ["-x", NodePath.join(home, "server.lock"), "true"],
+      { stdio: "ignore" },
+    );
+    probe.once("error", reject);
+    probe.once("exit", (code) =>
+      code === 0 ? resolve() : reject(new Error(`flock exited ${String(code)}`)),
+    );
+  });
 
 it("releases the lifecycle lock while a scenario run keeps its PostgreSQL lease open", async () => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-run-"));
@@ -129,18 +146,10 @@ it("admits another worktree's lease while the last release waits for its lifecyc
     return child;
   };
   let firstReleased = false;
-  let stopped: Promise<void> | undefined;
-  let watcher: NodeFS.FSWatcher | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
     const first = start("first");
     const original = await next((r) => r.role === "first" && r.event === "created");
-    stopped = new Promise<void>((resolve) => {
-      watcher = NodeFS.watch(home, (_, filename) => {
-        if (filename === "supervisor.sock" && !NodeFS.existsSync(NodePath.join(home, filename)))
-          resolve();
-      });
-    });
     const second = start("second");
     const held = await next((r) => r.role === "second" && r.event === "locked");
     // The second acquirer owns the kernel lock but has not connected yet. The last release
@@ -170,9 +179,80 @@ it("admits another worktree's lease while the last release waits for its lifecyc
       await next((r) => r.role === "first" && r.event === "released");
     for (const child of children) if (child.exitCode === null) child.kill("SIGTERM");
     await Promise.all(exits);
-    await stopped;
-    watcher?.close();
+    await postgresStopped(home);
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("a lease client that disconnects before its answer leaves the supervisor and its held leases running", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-gone-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const held = await acquireTestPostgres();
+    const gone = NodeNet.createConnection(NodePath.join(home, "supervisor.sock"));
+    gone.write("create\ncreate\n");
+    // The first answer proves the supervisor heard both; the second is written to a closed socket.
+    await new Promise((resolve) =>
+      NodeReadline.createInterface({ input: gone }).once("line", resolve),
+    );
+    gone.destroy();
+    expect(await held.createDatabase()).toMatch(/^postgres:/u);
+    await held.close();
+    await postgresStopped(home);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("admits a lease while another lease's database command waits on PostgreSQL", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-wait-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  let holder: NodeChildProcess.ChildProcess | undefined;
+  try {
+    const { acquireTestPostgres, postgresBinDir } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    const maintenance = new URL(await first.createDatabase());
+    maintenance.pathname = "/postgres";
+    // A comment held open on the template blocks every CREATE DATABASE that copies it.
+    holder = NodeChildProcess.spawn(
+      NodePath.join(postgresBinDir(), "psql"),
+      ["-X", "-v", "ON_ERROR_STOP=1", "-At", maintenance.href],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    const said = NodeReadline.createInterface({ input: holder.stdout! });
+    const heard = (tag: string) =>
+      new Promise<void>((resolve) =>
+        said.on("line", (line) => {
+          if (line === tag) resolve();
+        }),
+      );
+    const commented = heard("COMMENT");
+    holder.stdin!.write("BEGIN; COMMENT ON DATABASE template0 IS 'held';\n");
+    await commented;
+    const waiting = first.createDatabase();
+    const blocked = heard("DO");
+    holder.stdin!.write(`DO $$ BEGIN
+      WHILE NOT EXISTS (SELECT FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query LIKE 'CREATE DATABASE %') LOOP
+        PERFORM pg_sleep(0.01);
+        PERFORM pg_stat_clear_snapshot();
+      END LOOP; END $$;\n`);
+    await blocked;
+    // The CREATE stays blocked until the ROLLBACK below, so this admission happens while it waits.
+    const second = await acquireTestPostgres();
+    holder.stdin!.end("ROLLBACK;\n");
+    expect(await waiting).toMatch(/^postgres:/u);
+    await second.close();
+    await first.close();
+    await postgresStopped(home);
+  } finally {
+    holder?.stdin!.end();
+    vi.unstubAllEnvs();
     NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
