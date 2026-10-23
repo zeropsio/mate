@@ -187,10 +187,15 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
     // The service's subdomain URL is not part of this result — it comes from the
     // client's own topology view as a prop the timeline supplies, never baked
     // into the operation here. Several named servers each bring their own
-    // port's address, as zcp read it from Zerops in this call.
-    links: (card?.servers ?? []).flatMap((server) =>
-      server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
-    ),
+    // port's address, as zcp read it from Zerops in this call; a lease, in no
+    // topology view, opens the address zcp read on its one server, as a
+    // service's card opens the view's.
+    links:
+      card?.leaseUrl !== undefined
+        ? [{ label: "Open", url: card.leaseUrl }]
+        : (card?.servers ?? []).flatMap((server) =>
+            server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
+          ),
     target: { hostname: subject },
     ...(phase === "failed" && decoded.document?.code === "INVALID_PARAMETER"
       ? { refused: true as const }

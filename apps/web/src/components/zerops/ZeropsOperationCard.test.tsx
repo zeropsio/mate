@@ -701,6 +701,56 @@ describe("ZeropsOperationCard — dev server", () => {
     );
     expect(html).not.toContain("apidev-26a7-3000.prg1.zerops.app");
   });
+
+  it("opens a lease with one dev server at the preview address zcp read on it, no topology needed", () => {
+    const readAt = "2026-10-23T12:00:00Z";
+    const lease = operationFor(
+      zeropsCall({
+        id: "dev3",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_dev_server",
+        input: { action: "status", hostname: "webpool-3" },
+        status: "completed",
+        resultText: JSON.stringify({
+          action: "status",
+          hostname: "webpool-3",
+          running: true,
+          port: 3000,
+          envelope: {
+            phase: "develop-active",
+            environment: "container",
+            project: { id: "proj-1", name: "z3-eval" },
+            services: [],
+            leases: [
+              {
+                alias: "webpool-3",
+                pool: "webpool",
+                state: "held",
+                devServers: [
+                  {
+                    name: "web",
+                    port: 3000,
+                    url: "https://webpool-29f-8003.ny1.zerops.app",
+                    status: "running",
+                    readAt,
+                  },
+                ],
+              },
+            ],
+            generated: readAt,
+          },
+        }),
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={lease} />);
+    const row = html.match(/<div[^>]*data-zerops-result-row[\s\S]*$/)?.[0] ?? "";
+    expect(row).toContain("dev server running on webpool-3:3000.");
+    expect(row).toContain('aria-label="Open https://webpool-29f-8003.ny1.zerops.app"');
+    expect(row).toContain('href="https://webpool-29f-8003.ny1.zerops.app"');
+    expect(row).toContain("<span>Open</span>");
+    expect(html).not.toContain('data-zerops-primitive="process-steps"');
+  });
 });
 
 describe("ZeropsOperationCard — browser", () => {

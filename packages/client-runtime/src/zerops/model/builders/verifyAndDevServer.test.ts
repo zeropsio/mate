@@ -240,3 +240,107 @@ describe("buildDevServerFields — a service of several named dev servers", () =
     expect(fields.refused).toBe(true);
   });
 });
+
+describe("buildDevServerFields — a lease with one dev server", () => {
+  const readAt = "2026-10-23T12:00:00Z";
+  const preview = {
+    name: "web",
+    port: 3000,
+    url: "https://webpool-29f-8003.ny1.zerops.app",
+    status: "running",
+    readAt,
+  };
+  /** A healthy status of the one server on the lease `webpool-3`, its envelope reading `leases`. */
+  const onLease = (leases: ReadonlyArray<Record<string, unknown>>, services: unknown[] = []) =>
+    buildDevServerFields(
+      call(
+        "zerops_dev_server",
+        { hostname: "webpool-3", action: "status" },
+        {
+          action: "status",
+          hostname: "webpool-3",
+          running: true,
+          port: 3000,
+          healthStatus: 200,
+          envelope: {
+            phase: "develop-active",
+            environment: "container",
+            project: { id: "proj-1", name: "z3-eval" },
+            services,
+            leases,
+            generated: readAt,
+          },
+        },
+      ),
+    );
+
+  it.each([
+    {
+      name: "opens the lease at the preview address zcp read on its one dev server",
+      leases: [
+        {
+          alias: "webpool-4",
+          pool: "webpool",
+          state: "held",
+          devServers: [{ ...preview, url: "https://webpool-29f-8004.ny1.zerops.app" }],
+        },
+        { alias: "webpool-3", pool: "webpool", state: "held", devServers: [preview] },
+      ],
+      links: [{ label: "Open", url: "https://webpool-29f-8003.ny1.zerops.app" }],
+    },
+    {
+      name: "has no Open link where zcp read no address on the lease's one dev server",
+      leases: [
+        {
+          alias: "webpool-3",
+          pool: "webpool",
+          state: "held",
+          devServers: [{ name: "web", port: 3000, status: "running", readAt }],
+        },
+      ],
+      links: [],
+    },
+    {
+      name: "has no Open link where the call did not read the lease's dev servers",
+      leases: [{ alias: "webpool-3", pool: "webpool", state: "held" }],
+      links: [],
+    },
+  ])("$name", ({ leases, links }) => {
+    const fields = onLease(leases);
+    expect(fields.steps.map((step) => [step.label, step.state, step.note])).toEqual([
+      ["Health check", "done", "HTTP 200"],
+    ]);
+    expect(fields.links).toEqual(links);
+  });
+
+  it("leaves a service's one dev server to the topology view's address, never the result's", () => {
+    const fields = buildDevServerFields(
+      call(
+        "zerops_dev_server",
+        { hostname: "appdev", action: "status" },
+        {
+          action: "status",
+          hostname: "appdev",
+          running: true,
+          port: 3000,
+          envelope: {
+            phase: "develop-active",
+            environment: "container",
+            project: { id: "proj-1", name: "z3-eval" },
+            services: [
+              {
+                hostname: "appdev",
+                devServers: [
+                  { ...preview, name: "appdev", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+                ],
+              },
+            ],
+            leases: [{ alias: "webpool-3", pool: "webpool", state: "held", devServers: [preview] }],
+            generated: readAt,
+          },
+        },
+      ),
+    );
+    expect(fields.links).toEqual([]);
+  });
+});
