@@ -30,7 +30,7 @@
  * A folded stage row carries no position of its own — it is nested under
  * its dev partner and follows it automatically.
  */
-import type { ZeropsDevServer, ZeropsLifecycle } from "@t3tools/contracts";
+import type { ZeropsDevServer, ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import type { Known } from "./knowledge/index.ts";
@@ -550,9 +550,14 @@ export const leaseDevServersOf = (
   alias: string,
   lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
-  lifecycle?.state === "known"
-    ? lifecycle.value.envelope?.leases?.find((lease) => lease.alias === alias)?.devServers
-    : undefined;
+  lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
+
+/** The dev servers one envelope read on a lease, by alias; none when it did not read them. */
+export const leaseDevServersIn = (
+  alias: string,
+  envelope: Pick<ZeropsStateEnvelope, "leases"> | undefined,
+): ReadonlyArray<ZeropsDevServer> | undefined =>
+  envelope?.leases?.find((lease) => lease.alias === alias)?.devServers;
 
 /**
  * The map to render, or undefined when there is nothing to render at all —

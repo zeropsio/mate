@@ -9,10 +9,11 @@
  * block when one does. That is the normal path for a payload this build does
  * not recognise, and it is what the brief means by a card degrading.
  */
-import { ZeropsDevServer } from "@t3tools/contracts";
+import { ForwardCompatibleArray, ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { leaseDevServersIn } from "../serviceMap.ts";
 import {
   type ZeropsCardSource,
   readBoolean,
@@ -529,18 +530,26 @@ const servers = (value: ReadonlyArray<ZeropsDevServer> | undefined) =>
   value === undefined ? {} : { servers: value };
 
 const decodeDevServerEntry = Schema.decodeUnknownOption(ZeropsDevServer);
+const decodeLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLease));
 
-/** The named dev servers the result's `envelope` read for `hostname`, where there are several. */
+/**
+ * The named dev servers the result's `envelope` read for `hostname`, where there are several: a
+ * lease's (`leases[].devServers`) when the call named a lease by its alias, else the service's.
+ */
 function devServersOf(
   envelope: unknown,
   hostname: string,
 ): ReadonlyArray<ZeropsDevServer> | undefined {
-  const service = readRecordArray(readRecord(envelope)?.services).find(
+  const read = readRecord(envelope);
+  const leases = Option.getOrUndefined(decodeLeases(read?.leases));
+  const service = readRecordArray(read?.services).find(
     (entry) => readString(entry.hostname) === hostname,
   );
-  const servers = readRecordArray(service?.devServers).flatMap((entry) =>
-    Option.toArray(decodeDevServerEntry(entry)),
-  );
+  const servers =
+    leaseDevServersIn(hostname, { leases }) ??
+    readRecordArray(service?.devServers).flatMap((entry) =>
+      Option.toArray(decodeDevServerEntry(entry)),
+    );
   return servers.length > 1 ? servers : undefined;
 }
 

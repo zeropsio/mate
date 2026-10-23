@@ -182,6 +182,49 @@ describe("buildDevServerFields — a service of several named dev servers", () =
     ]);
   });
 
+  it("shows each server zcp read on the lease the call named, with its pool address", () => {
+    const readAt = "2026-10-23T12:00:00Z";
+    const web = {
+      name: "web",
+      port: 3000,
+      url: "https://webpool-29f-8003.ny1.zerops.app",
+      status: "running",
+      readAt,
+    };
+    const worker = { name: "worker", status: "starting", readAt };
+    const fields = buildDevServerFields(
+      call(
+        "zerops_dev_server",
+        { hostname: "webpool-3", action: "status", name: "web" },
+        {
+          action: "status",
+          hostname: "webpool-3",
+          name: "web",
+          running: true,
+          port: 3000,
+          envelope: {
+            phase: "develop-active",
+            environment: "container",
+            project: { id: "proj-1", name: "z3-eval" },
+            services: [],
+            leases: [
+              { alias: "webpool-4", pool: "webpool", state: "held", devServers: [web, web] },
+              { alias: "webpool-3", pool: "webpool", state: "held", devServers: [web, worker] },
+            ],
+            generated: readAt,
+          },
+        },
+      ),
+    );
+    expect(fields.steps.map((step) => [step.label, step.stateLabel])).toEqual([
+      ["web :3000", "Running"],
+      ["worker", "Starting"],
+    ]);
+    expect(fields.links).toEqual([
+      { label: "web :3000", url: "https://webpool-29f-8003.ny1.zerops.app" },
+    ]);
+  });
+
   it("reads an invalid-parameter answer as a failed call, never as a server that is not running", () => {
     const refusal = {
       code: "INVALID_PARAMETER",
