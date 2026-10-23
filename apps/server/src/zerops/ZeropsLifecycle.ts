@@ -146,16 +146,42 @@ const withLastDevServers = (
 };
 
 /**
+ * A lease in one of these states is no longer held by zcp: released, lost, or reserved on the pool
+ * with no record of zcp's (`unknown-holder`).
+ */
+const ENDED_LEASE_STATES: ReadonlySet<string> = new Set(["released", "lost", "unknown-holder"]);
+
+/**
  * The newest envelope, with the last read of zcp's leases carried over where this call did not
- * read them: absent `leases` means "not read", never "none".
+ * read them: absent `leases` means "not read", never "none". A lease still held keeps the dev
+ * servers last read on it where this call did not read its supervisor (only a `zerops_dev_server`
+ * call for its alias does); a lease that ended, or is gone from the read, keeps none.
  */
 const withLastLeases = (
   next: ZeropsStateEnvelope,
   previous: ZeropsStateEnvelope | undefined,
-): ZeropsStateEnvelope =>
-  next.leases !== undefined || previous?.leases === undefined
-    ? next
-    : { ...next, leases: previous.leases };
+): ZeropsStateEnvelope => {
+  if (next.leases === undefined) {
+    return previous?.leases === undefined ? next : { ...next, leases: previous.leases };
+  }
+  const lastRead = new Map(
+    (previous?.leases ?? []).flatMap((lease) =>
+      lease.devServers === undefined ? [] : [[lease.alias, lease.devServers] as const],
+    ),
+  );
+  if (lastRead.size === 0) return next;
+  return {
+    ...next,
+    leases: next.leases.map((lease) => {
+      const devServers = lastRead.get(lease.alias);
+      return lease.devServers !== undefined ||
+        devServers === undefined ||
+        ENDED_LEASE_STATES.has(lease.state)
+        ? lease
+        : { ...lease, devServers };
+    }),
+  };
+};
 
 /**
  * A change of a conversation's lease: the same commands the conversation's record takes
@@ -174,11 +200,6 @@ export interface LeaseBinding {
 
 /** The tool a conversation's agent leases a pool container with. */
 const LEASE_TOOL = "zerops_lease";
-/**
- * A lease in one of these states is no longer held by zcp: released, lost, or reserved on the pool
- * with no record of zcp's (`unknown-holder`).
- */
-const ENDED_LEASE_STATES: ReadonlySet<string> = new Set(["released", "lost", "unknown-holder"]);
 
 const decodeLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLease));
 const decodeThreadLease = Schema.decodeUnknownOption(ThreadLease);

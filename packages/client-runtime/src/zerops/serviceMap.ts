@@ -543,6 +543,18 @@ export const devServersOf = (
     : undefined;
 
 /**
+ * The dev servers zcp last read on a lease (`leases[].devServers`, by alias), never a service's of
+ * its name; none while the lifecycle is not known or nothing read them.
+ */
+export const leaseDevServersOf = (
+  alias: string,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsDevServer> | undefined =>
+  lifecycle?.state === "known"
+    ? lifecycle.value.envelope?.leases?.find((lease) => lease.alias === alias)?.devServers
+    : undefined;
+
+/**
  * The map to render, or undefined when there is nothing to render at all —
  * `useProjectTopology` has not produced a view yet (no session, no resolved
  * project, or the first read still in flight). `runningTool` is the

@@ -73,7 +73,7 @@ export interface MateAddressInput {
   }>;
   /**
    * The lease of the thread the list is for: its alias, its name (`checkoutLabel`) and the dev
-   * servers zcp last read on it (`devServersOf` under the alias); absent for a thread with none.
+   * servers zcp last read on it (`leaseDevServersOf`); absent for a thread with none.
    */
   readonly lease?:
     | {

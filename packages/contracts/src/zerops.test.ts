@@ -512,6 +512,21 @@ describe("ZeropsStateEnvelope leases", () => {
     expect(decoded.phase).toBe("develop-active");
   });
 
+  it("a lease names the dev servers zcp read on it, one this build cannot read left out", () => {
+    const preview = {
+      name: "webpool-3",
+      port: 3000,
+      url: "https://webpool-3003.prg1.zerops.app",
+      status: "running",
+      readAt: "2026-10-23T12:00:00Z",
+    };
+    const decoded = decodeEnvelope(
+      envelope({ leases: [{ ...held, devServers: [preview, { port: "x" }] }, held] }),
+    );
+    expect(decoded.leases?.[0]?.devServers).toEqual([preview]);
+    expect(decoded.leases?.[1]).not.toHaveProperty("devServers");
+  });
+
   it("a lease acquired for no branch reads without one", () => {
     const { branch: _branch, ...noBranch } = held;
     expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);

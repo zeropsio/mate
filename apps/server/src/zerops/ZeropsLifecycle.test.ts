@@ -779,6 +779,42 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     ),
   );
 
+  it.effect("keeps a lease's dev servers while it is held, and drops them when it ends", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        const preview = [
+          {
+            name: "webpool-3",
+            port: 3000,
+            url: "https://webpool-3003.zerops.app",
+            status: "running",
+            readAt: "2026-10-23T12:00:00Z",
+          },
+        ];
+        const devServersOf = Effect.map(lifecycle.get(OWNER), (state) =>
+          state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+        );
+        yield* lifecycle.ingest(
+          statusReading([{ ...lease("webpool-3"), devServers: preview }, lease("webpool-4")]),
+        );
+        expect((yield* devServersOf)?.devServers).toEqual(preview);
+        yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
+        expect((yield* devServersOf)?.devServers, "a read that did not ask keeps them").toEqual(
+          preview,
+        );
+        yield* lifecycle.ingest(statusReading(undefined));
+        expect((yield* devServersOf)?.devServers).toEqual(preview);
+        yield* lifecycle.ingest(statusReading([lease("webpool-3", "released")]));
+        expect(yield* devServersOf).not.toHaveProperty("devServers");
+        yield* lifecycle.ingest(statusReading([]));
+        yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+        expect(yield* devServersOf, "a lease held again starts unread").not.toHaveProperty(
+          "devServers",
+        );
+      }),
+    ),
+  );
+
   it.effect("a successful acquire binds its conversation to the container it leased", () =>
     withLeases((lifecycle, told) =>
       Effect.gen(function* () {

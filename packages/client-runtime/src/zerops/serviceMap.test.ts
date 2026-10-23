@@ -7,6 +7,7 @@ import {
   buildZeropsServiceMap,
   formatAmount,
   formatRange,
+  leaseDevServersOf,
   serviceStatusNeedsWord,
   serviceStatusTone,
   zeropsPortLabel,
@@ -892,5 +893,39 @@ describe("zeropsServiceFacts", () => {
     expect(zeropsServiceFacts(zcp, "Zerops Control Plane").map((fact) => fact.id)).toEqual([
       "deploy",
     ]);
+  });
+});
+
+describe("a lease's dev servers", () => {
+  const preview = {
+    name: "webpool-3",
+    port: 3000,
+    url: "https://webpool-3003.zerops.app",
+    status: "running",
+    readAt: "2026-10-23T12:00:00Z",
+  };
+  const leased = (devServers?: ReadonlyArray<unknown>) =>
+    lifecycle({
+      envelope: {
+        services: [{ hostname: "webpool-3", devServers: [{ ...preview, name: "stale" }] }],
+        leases: [
+          {
+            alias: "webpool-3",
+            pool: "webpool",
+            state: "held",
+            ...(devServers === undefined ? {} : { devServers }),
+          },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+
+  it("are the ones zcp read on the lease, never a service's of its name", () => {
+    expect(leaseDevServersOf("webpool-3", leased([preview]))).toEqual([preview]);
+    expect(leaseDevServersOf("webpool-3", leased())).toBeUndefined();
+    expect(leaseDevServersOf("webpool-4", leased([preview]))).toBeUndefined();
+  });
+
+  it("are none while the lifecycle is not known", () => {
+    expect(leaseDevServersOf("webpool-3", undefined)).toBeUndefined();
   });
 });
