@@ -7,7 +7,7 @@ import {
   type ThreadLease,
 } from "@t3tools/contracts";
 
-import { prepared, send } from "../testing/fixtures.ts";
+import { ended, opened, prepared, send, sent, signal } from "../testing/fixtures.ts";
 import type { Command, Decision, EffectDraft } from "./command.ts";
 import { decide } from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
@@ -106,6 +106,40 @@ describe("a conversation's lease", () => {
       webpool4,
     );
   });
+
+  // A fresh thread would cost the agent its whole conversation, while the providers resume theirs
+  // in another folder (Claude Code finds the transcript by its id, OpenCode forks the session into
+  // the new folder): a lease changes where the next session opens, never what it resumes.
+  it.each<{
+    readonly name: string;
+    readonly before: ReadonlyArray<Command>;
+    readonly after: ReadonlyArray<Command>;
+    readonly lease: ThreadLease | undefined;
+  }>([
+    { name: "bound", before: [], after: [bind(webpool3)], lease: webpool3 },
+    { name: "unbound", before: [bind(webpool3)], after: [released("webpool-3")], lease: undefined },
+  ])(
+    "a lease $name between sessions keeps the agent's conversation: the next session resumes it in the new folder",
+    ({ before, after, lease }) => {
+      const scene = play([
+        ...before,
+        send(),
+        prepared(1),
+        opened(1),
+        sent(1),
+        ended(1),
+        signal({ kind: "session-exited", reason: "idle" }),
+        ...after,
+        send(),
+        prepared(2),
+      ]);
+      const payload = scene.effects.find((effect) => effect.kind === "session.open")?.payload;
+      expect(payload).toMatchObject({ resume: "native-1", generation: 1 });
+      expect(payload).not.toHaveProperty("fresh");
+      if (lease === undefined) expect(payload).not.toHaveProperty("lease");
+      else expect(payload).toHaveProperty("lease", lease);
+    },
+  );
 
   it("a session opened after the binding is told the lease it works in; before, none", () => {
     const open = (scene: Scene) => scene.effects.find((effect) => effect.kind === "session.open");

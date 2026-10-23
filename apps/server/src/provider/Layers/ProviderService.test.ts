@@ -2217,6 +2217,41 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  // The saved state goes with the thread, never with its folder: a provider resumes it in the new
+  // folder (Claude Code finds the transcript by its id in every project folder), so a move never
+  // costs the agent its conversation.
+  it.effect.each([
+    { name: "a lease bound", thread: "thread-lease-bound", from: "www", to: "www/webpool-3" },
+    { name: "a lease unbound", thread: "thread-lease-unbound", from: "www/webpool-3", to: "www" },
+  ])(
+    "after $name moves a thread to another folder, its next session resumes the provider's saved conversation there",
+    ({ thread, from, to }) =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const initial = yield* provider.startSession(asThreadId(thread), {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId(thread),
+          cwd: fixtureCwd(from),
+          runtimeMode: "full-access",
+        });
+        yield* provider.stopSession({ threadId: initial.threadId });
+        routing.claude.startSession.mockClear();
+
+        yield* provider.startSession(initial.threadId, {
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: initial.threadId,
+          cwd: fixtureCwd(to),
+          runtimeMode: "full-access",
+        });
+
+        assert.equal(routing.claude.startSession.mock.calls.length, 1);
+        const resumed = routing.claude.startSession.mock.calls[0]?.[0];
+        assert.equal(resumed?.cwd, fixtureCwd(to));
+        assert.deepEqual(resumed?.resumeCursor, initial.resumeCursor);
+      }),
+  );
+
   it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
