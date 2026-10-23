@@ -11,7 +11,7 @@ import {
   makeVcsReads,
   workspaceReading,
 } from "@t3tools/client-runtime/data";
-import { workspaceCommand, workspaceHostAtom, workspaceQuery } from "./workspace";
+import { vcsStatus, workspaceCommand, workspaceHostAtom, workspaceQuery } from "./workspace";
 
 it("MCP changes apply in the order requested and cannot publish an older action last", async () => {
   const registry = AtomRegistry.make();
@@ -125,6 +125,77 @@ it("the history binding keeps owner evidence without changing the projected resu
     );
     expect(Object.hasOwn(owner.result, "read")).toBe(false);
   } finally {
+    reads.close();
+    vcs.close();
+    store.close();
+    registry.dispose();
+  }
+});
+
+it("reading a checkout's Git status again asks its owner again after a refusal", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const reads = makeWorkspaceReads(store, { read: () => Effect.never });
+  let subscriptions = 0;
+  const vcs = makeVcsReads(store, () =>
+    ++subscriptions === 1
+      ? Stream.fail({ outcome: "definitive-refusal" as const, message: "Git status refused." })
+      : Stream.concat(
+          Stream.make({
+            isRepo: false,
+            hasPrimaryRemote: false,
+            isDefaultRef: false,
+            refName: null,
+            hasWorkingTreeChanges: false,
+            workingTree: { files: [], insertions: 0, deletions: 0 },
+            hasUpstream: false,
+            aheadCount: 0,
+            behindCount: 0,
+            pr: null,
+          }),
+          Stream.never,
+        ),
+  );
+  registry.set(workspaceHostAtom, {
+    data: store.data,
+    reads,
+    vcs,
+    act: makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "action",
+      mcpAnswer: reads.mcpAnswer,
+      wire: { call: () => Effect.never },
+    }),
+    writeFile: makeFileWrites({
+      store,
+      reads,
+      current: () => true,
+      makeId: () => "save",
+      write: () => Effect.never,
+    }),
+  });
+  const status = vcsStatus({
+    environmentId: EnvironmentId.make("mate"),
+    input: { cwd: "/var/www/imgrun" },
+  });
+  const settled = (tag: "Failure" | "Success") =>
+    new Promise<void>((resolve) => {
+      const check = () => {
+        if (registry.get(status)._tag === tag) resolve();
+      };
+      registry.subscribe(status, check);
+      check();
+    });
+  const unmount = registry.mount(status);
+  try {
+    await settled("Failure");
+    registry.refresh(status);
+    await settled("Success");
+    expect(subscriptions).toBe(2);
+    expect(registry.get(status)).toMatchObject({ _tag: "Success", value: { isRepo: false } });
+  } finally {
+    unmount();
     reads.close();
     vcs.close();
     store.close();

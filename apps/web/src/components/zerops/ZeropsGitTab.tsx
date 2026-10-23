@@ -76,10 +76,13 @@ function CheckoutProbe({
   const cwd = checkoutPathFor(hostname);
   const status = useEnvironmentQuery(vcsEnvironment.status({ environmentId, input: { cwd } }));
   const data = status.data;
+  // A read that failed has answered: it says so, and never reads as one still on its way.
+  const failure = data === null ? (status.error ?? undefined) : undefined;
   const state = useMemo<GitCheckoutState>(
     () => ({
       repository: hostname,
-      read: data !== null,
+      read: data !== null || failure !== undefined,
+      ...(failure === undefined ? {} : { failure }),
       isRepo: data?.isRepo ?? false,
       hasRemote: data?.hasPrimaryRemote ?? false,
       headRef: data?.refName ?? null,
@@ -88,7 +91,7 @@ function CheckoutProbe({
       hasUpstream: data?.hasUpstream ?? false,
       changed: data === null ? EMPTY_CHANGED : data.workingTree.files,
     }),
-    [data, hostname],
+    [data, failure, hostname],
   );
   const key = JSON.stringify(state);
   useMemo(() => {
@@ -97,6 +100,26 @@ function CheckoutProbe({
     // would set state in a loop.
   }, [hostname, key, onState, state]);
   return null;
+}
+
+/** Reads a repository's status again, after its read failed. */
+function RepositoryReadAgain({
+  environmentId,
+  repository,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly repository: string;
+}) {
+  const status = useEnvironmentQuery(
+    vcsEnvironment.status({ environmentId, input: { cwd: checkoutPathFor(repository) } }),
+  );
+  return (
+    <ZeropsMateVerb
+      disabled={status.isPending}
+      label="Read again"
+      onClick={() => status.refresh()}
+    />
+  );
 }
 
 /** The existing VCS action manager owns pending/error state for this repository. */
@@ -310,6 +333,10 @@ function KnownGitTab({
   }, [asking, props.threadRef]);
 
   const renderBlockAction = (block: GitBlock) => {
+    if (block.state === "unreadable")
+      return environmentId === undefined ? null : (
+        <RepositoryReadAgain environmentId={environmentId} repository={block.repository} />
+      );
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
     if (action.kind === "push") return null;
