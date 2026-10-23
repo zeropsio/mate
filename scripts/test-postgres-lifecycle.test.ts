@@ -6,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import { expect, it, vi } from "vite-plus/test";
+import { RESERVED, reservePort } from "./test-ports.ts";
 
 /**
  * The supervisor's guard holds server.lock while PostgreSQL runs, so taking that lock is the
@@ -252,6 +253,25 @@ it("admits a lease while another lease's database command waits on PostgreSQL", 
     await postgresStopped(home);
   } finally {
     holder?.stdin!.end();
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("a running test PostgreSQL cluster's port is reserved, so no other test process is handed it", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-port-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const lease = await acquireTestPostgres();
+    const port = Number(new URL(await lease.createDatabase()).port);
+    expect(port).toBeGreaterThanOrEqual(RESERVED.first);
+    expect(port).toBeLessThanOrEqual(RESERVED.last);
+    await expect(reservePort([port])).rejects.toThrow("is free to reserve");
+    await lease.close();
+    await postgresStopped(home);
+  } finally {
     vi.unstubAllEnvs();
     NodeFS.rmSync(home, { recursive: true, force: true });
   }

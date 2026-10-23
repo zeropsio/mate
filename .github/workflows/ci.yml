@@ -990,7 +990,7 @@ jobs:
           gate native_clients "^apps/(mobile|desktop)/|${native_packages}"
 
           # The bundle feeds every scenario area, all of which run real HQ Core.
-          gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres)"
+          gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres|test-ports)"
 
           if [[ -n "${PR_NUMBER}" ]]; then
             gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'

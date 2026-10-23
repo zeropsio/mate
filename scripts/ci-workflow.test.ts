@@ -277,6 +277,7 @@ it.each([
   "apps/web/test/scenarios/fakes/g-outage/outage.ts",
   "apps/web/test/scenarios/harness/scenario.ts",
   "scripts/test-postgres.ts",
+  "scripts/test-ports.ts",
   "apps/server/src/engine/engine.ts",
   "packages/client-runtime/src/data.ts",
 ])("PR scenarios run when their input %s changes", (path) => {
