@@ -13,7 +13,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
 
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { HQ_SERVICE } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_SERVICE, hqZeropsProject } from "@t3tools/client-runtime/zerops/hq";
 import { serviceDashboardUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { accountHqApi, useAccountHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
@@ -132,7 +132,7 @@ export function ZeropsHqNavigation(): null {
 export function useHqServiceUrl(): string | undefined {
   const orgId = useZeropsSession().activeOrganization?.id;
   const hq = useAccountHq(orgId).hq;
-  const { services } = useProjectServices(hq.kind === "official" ? hq.projectId : null);
+  const { services } = useProjectServices(hqZeropsProject(hq) ?? null);
   const service = services?.find((entry) => entry.name === HQ_SERVICE && entry.isSystem !== true);
   return service === undefined ? undefined : serviceDashboardUrl(service.id);
 }
