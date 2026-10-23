@@ -201,6 +201,23 @@ export const KNOWN_ZEROPS_LEASE_STATES = [
   "released",
 ] as const;
 
+/** The states of a lease zcp no longer holds: released, lost, or reserved with no record of zcp's. */
+const ENDED_ZEROPS_LEASE_STATES: ReadonlySet<string> = new Set([
+  "released",
+  "lost",
+  "unknown-holder",
+]);
+
+/** Whether zcp still holds a lease in this state: any state but an ended one, a new one included. */
+export const isZeropsLeaseHeld = (state: string): boolean => !ENDED_ZEROPS_LEASE_STATES.has(state);
+
+/**
+ * The branch whose group a lease is of: the leases zcp holds of one branch are one group, one per
+ * part's pool (zcp `docs/spec-workflows.md` §8 DP-17), and a lease of no branch is of `main`'s.
+ */
+export const zeropsLeaseGroupBranch = (branch: string | null | undefined): string =>
+  branch === null || branch === undefined || branch === "" ? "main" : branch;
+
 /**
  * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
  * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
@@ -214,6 +231,12 @@ export const ZeropsLease = Schema.Struct({
   state: Schema.String,
   /** The state is zcp's own record's: the pool's orchestrator did not answer. */
   unverified: Schema.optional(Schema.Boolean),
+  /**
+   * When zcp acquired the lease (RFC 3339), from its record; absent for one it has no record of.
+   * Of the leases of one branch, the earliest acquired is the one a conversation is bound to next
+   * when the lease it was bound to ends.
+   */
+  acquiredAt: Schema.optional(Schema.String),
   /**
    * The dev servers zcp read on the lease's supervisor, only on a `zerops_dev_server` call for its
    * alias (the preview server's `url` is the pool's per-port subdomain). Absent means not read in
