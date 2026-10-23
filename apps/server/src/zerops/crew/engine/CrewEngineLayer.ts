@@ -73,7 +73,11 @@ import { ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "../../ZeropsLogins.ts";
-import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
+import {
+  isLeaseRepository,
+  ZeropsRepositorySource,
+  type ZeropsRepositories,
+} from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
@@ -423,6 +427,19 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     /** A host's verified repository: bound by an observation, which a restart forgets. */
     const repositoryOf = (host: string) => Effect.option(shell.repository(host));
 
+    /** The dev services mounted: a pool container a thread's agent leased is that thread's. */
+    const devServicesOf = (listed: ZeropsRepositories): ZeropsRepositories =>
+      listed._tag === "available"
+        ? {
+            ...listed,
+            repositories: listed.repositories.filter(
+              (repository) => !isLeaseRepository(repository),
+            ),
+          }
+        : listed;
+    const listServices = Effect.map(repositories.list, devServicesOf);
+    const refreshServices = Effect.map(repositories.refresh, devServicesOf);
+
     const devHosts = yield* SubscriptionRef.make<Readonly<Record<string, boolean | null>>>({});
 
     const recordDevHosts = (
@@ -441,7 +458,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         const problems: Array<string> = [];
         const wanted = [...new Set(hosts)];
         if (wanted.length === 0) return problems;
-        const listed = yield* repositories.list;
+        const listed = yield* listServices;
         for (const host of wanted) {
           if (Option.isSome(yield* repositoryOf(host))) continue;
           const mounted =
@@ -450,14 +467,16 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               : undefined;
           const seen = mounted === undefined ? undefined : yield* observer.observe(mounted);
           if (seen?._tag !== "available") {
-            problems.push(`${host} could not be verified: ${seen?.reason ?? "it is not mounted"}`);
+            problems.push(
+              `${host} could not be verified: ${seen?.reason ?? "it is not a mounted dev service"}`,
+            );
           }
         }
         return problems;
       });
 
     const listDevHosts = Effect.gen(function* () {
-      const listed = yield* repositories.list;
+      const listed = yield* listServices;
       if (listed._tag === "available") {
         yield* recordDevHosts(
           listed.repositories.map((repository) => repository.host),
@@ -468,7 +487,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     /** Each mounted dev service verified and asked whether it reaches a database (ssh). */
     const probeDevHosts = Effect.gen(function* () {
-      const listed = yield* repositories.refresh;
+      const listed = yield* refreshServices;
       if (listed._tag !== "available") return;
       const databases = new Map<string, boolean>();
       for (const repository of listed.repositories) {
@@ -670,7 +689,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         const writerHosts = definition.members.flatMap((member) =>
           member.kind === "writer" && member.host !== undefined ? [member.host] : [],
         );
-        const listed = yield* repositories.refresh;
+        const listed = yield* refreshServices;
         if (listed._tag !== "available") {
           return yield* refuse("io", "This Mate's dev services cannot be listed right now.");
         }

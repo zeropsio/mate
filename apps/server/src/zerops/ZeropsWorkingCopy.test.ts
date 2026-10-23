@@ -34,6 +34,8 @@ interface Copy {
   readonly failing?: string;
   /** The branch on HQ's git its local branch tracks; none when it tracks none. */
   upstream?: string;
+  /** `lease`: the mount of a pool container a thread's agent leased, not a dev service's. */
+  readonly kind?: "lease";
 }
 
 const copy = (host: string, given: Partial<Copy> = {}): Copy => ({
@@ -136,6 +138,7 @@ const rig = (copies: ReadonlyArray<Copy>) =>
         _tag: "available",
         repositories: copies.map((each) => ({
           host: each.host,
+          ...(each.kind === undefined ? {} : { kind: each.kind }),
           mountPath: `/var/www/${each.host}`,
           remotePath: "/var/www",
         })),
@@ -235,6 +238,17 @@ describe("an automated Mate's working copies hold the task it works", () => {
       }),
   );
 
+  it.effect("a pool container a thread's agent leased is never put on a task's base", () =>
+    Effect.gen(function* () {
+      const webpool = copy("webpool-3", { kind: "lease", dirty: true, unpushed: 1 });
+      const { workingCopy, ran } = yield* rig([copy("appdev"), webpool]);
+      const held = yield* workingCopy.hold("task-2", { kind: "main" });
+      assert.deepStrictEqual(held, { missed: [], unlisted: false });
+      assert.isFalse(ran.some((step) => step.startsWith("webpool-3:")));
+      assert.deepStrictEqual([webpool.head, webpool.dirty], ["aaa", true]);
+    }),
+  );
+
   it.effect("a clean working copy already at its base is left alone", () =>
     Effect.gen(function* () {
       const { workingCopy, ran } = yield* rig([copy("appdev", { head: "main1" })]);
@@ -303,6 +317,17 @@ describe("an automated Mate's working copies hold the task it works", () => {
         assert.deepStrictEqual(changing(ran), []);
         assert.isFalse(ran.some((step) => step.includes(": fetch ")));
       }),
+  );
+
+  it.effect("a leased pool container's work is its thread's, never named undelivered", () =>
+    Effect.gen(function* () {
+      const { workingCopy, ran } = yield* rig([
+        copy("appdev", { dirty: true }),
+        copy("webpool-3", { kind: "lease", dirty: true, unpushed: 2 }),
+      ]);
+      assert.deepStrictEqual(yield* workingCopy.undelivered(true), ["appdev"]);
+      assert.isFalse(ran.some((step) => step.startsWith("webpool-3:")));
+    }),
   );
 
   it.effect(

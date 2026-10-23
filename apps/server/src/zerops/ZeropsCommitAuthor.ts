@@ -5,7 +5,8 @@
  * runs on the dev service itself (`ZeropsGitSpawner` routes it over SSH), never on the mount.
  *
  * Written again at every task's start, so a task from another app finds its own bot. zcp fills an
- * identity only where none is set, so it never writes over this one.
+ * identity only where none is set, so it never writes over this one. A pool container a thread's
+ * agent leased keeps its own: it is that thread's working copy, not the Mate's.
  *
  * @module ZeropsCommitAuthor
  */
@@ -16,7 +17,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { VcsProcess } from "../vcs/VcsProcess.ts";
-import { ZeropsRepositorySource, type ZeropsRepository } from "./ZeropsRepositorySource.ts";
+import {
+  isLeaseRepository,
+  ZeropsRepositorySource,
+  type ZeropsRepository,
+} from "./ZeropsRepositorySource.ts";
 
 /** How long one `git config` on a dev service may take, its SSH included. */
 const CONFIG_TIMEOUT_MS = 15_000;
@@ -81,7 +86,7 @@ export const make = Effect.gen(function* () {
         return yield* new CommitAuthorUnset({ where: [] });
       }
       const missed = yield* Effect.forEach(
-        listed.repositories,
+        listed.repositories.filter((repository) => !isLeaseRepository(repository)),
         (repository) => configure(repository, author),
         { concurrency: "unbounded" },
       );

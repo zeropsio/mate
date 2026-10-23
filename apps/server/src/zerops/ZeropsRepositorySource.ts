@@ -49,6 +49,13 @@ export interface ZeropsRepository {
   readonly rootId?: string;
 }
 
+/**
+ * A lease's mount: the working copy of the one thread whose agent leased it. A Mate-wide sweep over
+ * every mounted dev service leaves it alone.
+ */
+export const isLeaseRepository = (repository: ZeropsRepository): boolean =>
+  repository.kind === "lease";
+
 /** The result of an enumeration. See the module doc for why there are three. */
 export type ZeropsRepositories =
   | { readonly _tag: "disabled" }

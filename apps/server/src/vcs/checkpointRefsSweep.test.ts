@@ -21,6 +21,31 @@ const refsOf = (cwd: string) =>
     out.split("\n").filter((ref) => ref.length > 0),
   );
 
+const SNAPSHOT_REFS = [
+  "refs/t3/checkpoints/dGhyZWFkLTE/turn/0",
+  "refs/t3/checkpoints/dGhyZWFkLTE/turn/1",
+  "refs/t3/checkpoints/dGhyZWFkLTI/turn/1",
+];
+
+/** A source listing `repositories`, each named after its folder. */
+const sourceOf = (repositories: ReadonlyArray<{ mountPath: string; kind?: "lease" }>) =>
+  Layer.succeed(
+    ZeropsRepositorySource,
+    ZeropsRepositorySource.of({
+      list: Effect.succeed({
+        _tag: "available",
+        repositories: repositories.map((repository) => ({
+          ...repository,
+          host: repository.mountPath.split("/").at(-1)!,
+          remotePath: "/var/www",
+        })),
+      }),
+      refresh: Effect.die("not read"),
+      known: Effect.succeed([]),
+      remember: () => Effect.void,
+    }),
+  );
+
 /** A service checkout with the capture's snapshot refs of two conversations beside its own refs. */
 const checkoutWithSnapshots = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -30,12 +55,7 @@ const checkoutWithSnapshots = Effect.gen(function* () {
   yield* git(cwd, ["config", "user.name", "Test"]);
   yield* git(cwd, ["commit", "--allow-empty", "-m", "initial"]);
   const head = yield* git(cwd, ["rev-parse", "HEAD"]);
-  for (const ref of [
-    "refs/t3/checkpoints/dGhyZWFkLTE/turn/0",
-    "refs/t3/checkpoints/dGhyZWFkLTE/turn/1",
-    "refs/t3/checkpoints/dGhyZWFkLTI/turn/1",
-    "refs/heads/crew/backend",
-  ]) {
+  for (const ref of [...SNAPSHOT_REFS, "refs/heads/crew/backend"]) {
     yield* git(cwd, ["update-ref", ref, head]);
   }
   return cwd;
@@ -47,22 +67,7 @@ it.effect(
     Effect.gen(function* () {
       const apidev = yield* checkoutWithSnapshots;
       const appdev = yield* checkoutWithSnapshots;
-      const source = Layer.succeed(
-        ZeropsRepositorySource,
-        ZeropsRepositorySource.of({
-          list: Effect.succeed({
-            _tag: "available",
-            repositories: [apidev, appdev].map((mountPath) => ({
-              host: mountPath.split("/").at(-1)!,
-              mountPath,
-              remotePath: "/var/www",
-            })),
-          }),
-          refresh: Effect.die("not read"),
-          known: Effect.succeed([]),
-          remember: () => Effect.void,
-        }),
-      );
+      const source = sourceOf([{ mountPath: apidev }, { mountPath: appdev }]);
 
       yield* sweepCheckpointRefs.pipe(
         Effect.provide(Layer.merge(source, serverConfigTest("/nowhere", { prefix: "sweep" }))),
@@ -75,4 +80,28 @@ it.effect(
       Effect.scoped,
       Effect.provide(VcsProcess.layer.pipe(Layer.provideMerge(NodeServices.layer))),
     ),
+);
+
+it.effect("a start never sweeps the refs of a pool container a thread's agent leased", () =>
+  Effect.gen(function* () {
+    const appdev = yield* checkoutWithSnapshots;
+    const webpool = yield* checkoutWithSnapshots;
+    const before = yield* refsOf(webpool);
+
+    yield* sweepCheckpointRefs.pipe(
+      Effect.provide(
+        Layer.merge(
+          sourceOf([{ mountPath: appdev }, { mountPath: webpool, kind: "lease" }]),
+          serverConfigTest("/nowhere", { prefix: "sweep" }),
+        ),
+      ),
+    );
+
+    assert.deepStrictEqual(yield* refsOf(appdev), ["refs/heads/crew/backend", "refs/heads/main"]);
+    assert.deepStrictEqual(yield* refsOf(webpool), before);
+    assert.includeMembers(before, SNAPSHOT_REFS);
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(VcsProcess.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+  ),
 );

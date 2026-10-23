@@ -22,6 +22,7 @@ import {
   stopSupervised,
   write,
 } from "./testing/crewGitFixture.ts";
+import { TEST_LEASE } from "./testing/crewEngineFixture.ts";
 import {
   AS_CREW,
   KAREL,
@@ -2139,6 +2140,7 @@ describe("CrewEngine", () => {
     () =>
       crewJourney((world) =>
         Effect.gen(function* () {
+          // The pool container a thread's agent leased (`TEST_LEASE`) is mounted too: never one.
           const before = yield* world.snapshotWhere((current) => current.devHosts.length > 0);
           const sshBefore = yield* world.serviceSessions;
           yield* world.readFiles;
@@ -2156,6 +2158,40 @@ describe("CrewEngine", () => {
           );
         }),
       ),
+  );
+
+  it.live("Apply refuses a writer on a pool container a thread leased: it is no dev service", () =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        world.writeHome({
+          "crew.yaml": [
+            "name: Game team",
+            "briefTitle: Space shooter",
+            "members:",
+            "  - handle: backend",
+            "    displayName: Backend",
+            `    host: ${TEST_LEASE.host}`,
+            "  - handle: erik",
+            "    displayName: Erik",
+            "    kind: reader",
+            "",
+          ].join("\n"),
+          "jobs/erik.md": "You write the plan.\n",
+        });
+        const refused = yield* Effect.flip(world.press({ _tag: "apply" }));
+        assert.deepStrictEqual(
+          [refused.reason, refused.detail],
+          [
+            "invalid-definition",
+            `${TEST_LEASE.host} could not be verified: it is not a mounted dev service`,
+          ],
+        );
+        assert.deepStrictEqual(
+          (yield* world.snapshot).devHosts.map((host) => host.host),
+          [TEST_HOST],
+        );
+      }),
+    ),
   );
 
   it.live(

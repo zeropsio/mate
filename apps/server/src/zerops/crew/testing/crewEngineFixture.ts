@@ -127,17 +127,29 @@ export interface PendingHold {
   readonly release: Deferred.Deferred<void>;
 }
 
+/** A pool container the Mate's agent leased: mounted like a dev service, but a thread's alone. */
+export const TEST_LEASE: ZeropsRepository = {
+  host: "webpool-3",
+  kind: "lease",
+  mountPath: "/var/www/webpool-3",
+  remotePath: "/var/www",
+};
+
 /**
  * The service's mount and its verification, as on a container: the mount is
  * listed without an identity, and only an observation remembers a verified
- * binding — which a restart forgets.
+ * binding — which a restart forgets. A leased pool container's mount is listed
+ * beside it, as a thread's agent leaves one.
  */
 export const repositoryLayers = (root: string) =>
   Layer.effectContext(
     Effect.gen(function* () {
       const known = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
       const { identity: _identity, ...mounted } = serviceRepository(root);
-      const listed = Effect.succeed({ _tag: "available", repositories: [mounted] } as const);
+      const listed = Effect.succeed({
+        _tag: "available",
+        repositories: [mounted, TEST_LEASE],
+      } as const);
       const source = ZeropsRepositorySource.of({
         list: listed,
         refresh: listed,
