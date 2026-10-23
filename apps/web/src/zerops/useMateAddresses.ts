@@ -3,13 +3,16 @@
  * already holds: the Mate's project topology, the dev servers the
  * conversation's lifecycle last read, and the group's stage and production
  * projects in the inventory. No request of its own — the topology's contents
- * are the same ones the conversation and project panel read.
+ * are the same ones the conversation and project panel read. A thread bound to
+ * a lease adds the dev servers zcp last read on it, under the lease's name.
  */
-import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { checkoutLabel, derivePublicRoutes } from "@t3tools/client-runtime/zerops";
 import { devServersOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
+import { useThreadShell } from "../state/entities";
 import { InventoryContext } from "./inventoryContext";
 import { groupAddressEnvironments, mateAddresses, type MateAddress } from "./mateAddresses.logic";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
@@ -29,6 +32,12 @@ export function useMateAddresses(
 ): MateAddressesRead {
   const topology = useZeropsTopology(environmentId);
   const lifecycle = useZeropsLifecycle(environmentId, threadId);
+  const threadRef = useMemo(
+    () =>
+      environmentId === null || threadId === null ? null : scopeThreadRef(environmentId, threadId),
+    [environmentId, threadId],
+  );
+  const lease = useThreadShell(threadRef)?.lease ?? null;
   const project = useEnvironmentProjectRef(environmentId);
   const inventory = useContext(InventoryContext);
   const projectIds = useMemo(
@@ -54,6 +63,15 @@ export function useMateAddresses(
         ...service,
         devServers: devServersOf(service.hostname, lifecycle),
       })),
+      ...(lease === null
+        ? {}
+        : {
+            lease: {
+              alias: lease.alias,
+              label: checkoutLabel(lease.alias, lease),
+              devServers: devServersOf(lease.alias, lifecycle),
+            },
+          }),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });
@@ -62,5 +80,5 @@ export function useMateAddresses(
       // An unread project reads as failed once the account's read settles: then it is known absent.
       known: group === undefined || !group.pending || inventory?.isLoading !== true,
     };
-  }, [topology, lifecycle, project, inventory, services]);
+  }, [topology, lifecycle, lease, project, inventory, services]);
 }

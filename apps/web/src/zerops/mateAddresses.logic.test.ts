@@ -350,3 +350,54 @@ describe("groupAddressEnvironments", () => {
     ).toEqual({ ownRole: undefined, environments: [], pending: true });
   });
 });
+
+describe("a thread's lease's addresses", () => {
+  const pool = svc("webpool", ["https://webpool-1df2-3000.prg1.zerops.app"]);
+  const LEASE_URL = "https://webpool-3-1df2-3000.prg1.zerops.app";
+  const lease = (devServers?: NonNullable<MateAddressInput["lease"]>["devServers"]) => ({
+    alias: "webpool-3",
+    label: "webpool · feat-x",
+    ...(devServers === undefined ? {} : { devServers }),
+  });
+
+  it("a bound thread lists its lease's dev server under the lease's name, as a dev", () => {
+    const addresses = mateAddresses({
+      services: [pool],
+      lease: lease([{ name: "web", port: 3000, url: LEASE_URL }]),
+    });
+    expect(addresses).toContainEqual({
+      service: "webpool-3",
+      role: "dev",
+      url: LEASE_URL,
+      host: "webpool-3-1df2-3000.prg1.zerops.app",
+      name: "webpool · feat-x",
+    });
+  });
+
+  it("each named dev server on a lease is its own address, by the lease and the server", () => {
+    const addresses = mateAddresses({
+      services: [],
+      lease: lease([
+        { name: "web", port: 3000, url: LEASE_URL },
+        { name: "api", port: 8080, url: "https://webpool-3-1df2-8080.prg1.zerops.app" },
+        { name: "worker" },
+      ]),
+    });
+    expect(addresses.map(({ service, name, url }) => ({ service, name, url }))).toEqual([
+      { service: "webpool-3 web", name: "webpool · feat-x · web :3000", url: LEASE_URL },
+      {
+        service: "webpool-3 api",
+        name: "webpool · feat-x · api :8080",
+        url: "https://webpool-3-1df2-8080.prg1.zerops.app",
+      },
+    ]);
+  });
+
+  it("a lease the envelope carries no address for adds nothing, and never the pool's own address", () => {
+    const before = mateAddresses({ services: [pool] });
+    expect(mateAddresses({ services: [pool], lease: lease() })).toEqual(before);
+    expect(
+      mateAddresses({ services: [pool], lease: lease([{ name: "web", port: 3000 }]) }),
+    ).toEqual(before);
+  });
+});
