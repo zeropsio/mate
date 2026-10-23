@@ -22,9 +22,7 @@
  * produces: they stay strings (`IsoDateTime`), while timestamps this server
  * mints are `Schema.DateTimeUtc`.
  */
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
   ForwardCompatibleArray,
@@ -203,24 +201,6 @@ export const KNOWN_ZEROPS_LEASE_STATES = [
   "released",
 ] as const;
 
-const decodeDevServer = Schema.decodeUnknownOption(ZeropsDevServer);
-
-/**
- * A lease's dev servers, one this build cannot read left out. Not a `ForwardCompatibleArray`:
- * inside an element of one (the envelope's `leases`), a nested one's left-out entry fails the
- * whole element (Effect Schema's catch within a catch), which would drop the lease from the read.
- * Each entry is read on its own instead.
- */
-const LeaseDevServers = Schema.Array(Schema.Unknown).pipe(
-  Schema.decodeTo(
-    Schema.Array(Schema.toType(ZeropsDevServer)),
-    SchemaTransformation.transform<ReadonlyArray<ZeropsDevServer>, ReadonlyArray<unknown>>({
-      decode: (values) => values.flatMap((value) => Option.toArray(decodeDevServer(value))),
-      encode: (values) => values,
-    }),
-  ),
-);
-
 /**
  * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
  * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
@@ -239,7 +219,7 @@ export const ZeropsLease = Schema.Struct({
    * alias (the preview server's `url` is the pool's per-port subdomain). Absent means not read in
    * this call, never none running; a server this build cannot read is dropped, not the lease.
    */
-  devServers: Schema.optional(LeaseDevServers),
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
 });
 export type ZeropsLease = typeof ZeropsLease.Type;
 
