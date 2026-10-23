@@ -15,6 +15,7 @@ import {
   HQ_KEY_SECRET_ENV,
   HQ_ORG_TOKEN_ENV,
   HQ_PORT,
+  HQ_SERVING_DATABASE_SECRET_ENV,
 } from "../../../zerops/hq/birth.ts";
 import type { RandomBytes } from "../../../zerops/newProject.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
@@ -154,17 +155,14 @@ export function hqBirthExecutor(
       return done(requestId, target, { tokenId: token.id });
     });
 
+  /** HQ's key and its serving database's secret, each drawn where HQ's service holds none. */
   const keySecret = (requestId: string, intent: IntentOf<"hq-key-secret">) =>
     Effect.gen(function* () {
       const target = { family: "service", id: intent.serviceId } as const;
-      if (!(yield* holds(intent.orgId, intent.serviceId, HQ_KEY_SECRET_ENV))) {
+      for (const env of [HQ_KEY_SECRET_ENV, HQ_SERVING_DATABASE_SECRET_ENV]) {
+        if (yield* holds(intent.orgId, intent.serviceId, env)) continue;
         const key = randomBytes(new Uint8Array(HQ_KEY_SECRET_BYTES));
-        yield* writeSecret(
-          intent.orgId,
-          intent.serviceId,
-          HQ_KEY_SECRET_ENV,
-          btoa(String.fromCharCode(...key)),
-        );
+        yield* writeSecret(intent.orgId, intent.serviceId, env, btoa(String.fromCharCode(...key)));
       }
       return done(requestId, target);
     });
