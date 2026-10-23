@@ -12,6 +12,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { RegistryContext } from "@effect/atom-react";
 import { type Atom, AtomRegistry } from "effect/reactivity";
@@ -29,6 +30,10 @@ const CARRIED = "20261004T100000Z.0123456789ab";
 
 /** The Core HQ's health answers with. */
 const health = vi.hoisted(() => ({ build: "20261003T080500Z.ba9876543210" }));
+/** The organization's HQ as the account names it. */
+const named = vi.hoisted(() => ({
+  hq: { kind: "official", projectId: "hq1", address: "https://hq.example.test" } as OfficialHq,
+}));
 
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -40,9 +45,7 @@ vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ run: async () => undefined }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({
-    hq: { kind: "official", projectId: "hq1", address: "https://hq.example.test" },
-  }),
+  useAccountHq: () => ({ hq: named.hq }),
   useCarriedCoreBuild: () => CARRIED,
   readBundledCore: () => Promise.reject(new Error("no Core in this test")),
 }));
@@ -116,6 +119,8 @@ const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
   health.build = RUNS;
+  named.hq = { kind: "official", projectId: "hq1", address: "https://hq.example.test" };
+  vi.unstubAllEnvs();
 });
 
 let registry = AtomRegistry.make();
@@ -274,5 +279,22 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     const tree = await mount();
     await press(tree);
     expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused this read.");
+  });
+
+  it("A web built with an HQ origin never reads the HQ as a Zerops project", async () => {
+    vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.shared.test");
+    const { configuredHq } =
+      await vi.importActual<typeof import("~/zerops/accountHq")>("~/zerops/accountHq");
+    named.hq = { kind: "official", ...configuredHq()! };
+    account();
+    const tree = await mount();
+    await press(tree);
+
+    // HQ's own word stands; nothing of a Zerops project is read, linked or updated.
+    expect(text(tree)).toContain("Running");
+    expect(held).toEqual([]);
+    expect(tree.root.findAll((node) => node.type === "a")).toEqual([]);
+    expect(text(tree)).not.toContain("Update");
+    expect(text(tree)).not.toContain("Couldn't read HQ from Zerops");
   });
 });

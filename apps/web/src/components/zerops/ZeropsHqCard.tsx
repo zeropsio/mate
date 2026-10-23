@@ -10,10 +10,12 @@
  * newest builds, its process history held as a detail of the account's store, as HQ's update reads
  * them. Where the stream names no Core, those name the running one (its `hq` service's active app
  * version), and the update is offered on it. What a refused read could not say, the card says.
+ * An HQ every organization shares lives in no project of theirs (`hqZeropsProject`): its card
+ * shows only what HQ reports, with no services, builds, update or link into Zerops.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { NOT_READ_PROCESSES, projectProcessesAtom } from "@t3tools/client-runtime/data";
-import { HQ_SERVICE, hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_SERVICE, hqUpdateState, hqZeropsProject } from "@t3tools/client-runtime/zerops/hq";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
@@ -83,7 +85,7 @@ export function ZeropsHqCard() {
   const [following, setFollowing] = useState(false);
   /** How the update control was last mounted: it stays so while followed through HQ's switch. */
   const [lastMount, setLastMount] = useState<HqUpdateMount | null>(null);
-  const projectId = hq?.projectId ?? null;
+  const projectId = hqZeropsProject(accountHq.hq) ?? null;
   // HQ's project's newest builds are held while the card is open, and let go once it closes.
   useDetailDemand("process", "history", open ? projectId : null);
   const listed = useProjectServices(projectId);
@@ -94,23 +96,24 @@ export function ZeropsHqCard() {
   const onBusy = useCallback((busy: boolean) => setUpdating(busy), []);
 
   /** HQ's project as the open card reads it: its services and its builds. */
-  const project: HqProjectRead | undefined = !open
-    ? undefined
-    : listed.unavailableReason !== undefined || activity.history === "failed"
-      ? {
-          kind: "failed",
-          reason:
-            listed.unavailableReason === "forbidden" || listed.unavailableReason === "refused"
-              ? "Zerops refused this read."
-              : listed.unavailableReason === "expired-session"
-                ? "Sign in again to read HQ services."
-                : "HQ process history is unavailable. Retry the read.",
-        }
-      : listed.services === undefined ||
-          activity.history !== "read" ||
-          activity.processes === undefined
-        ? { kind: "reading" }
-        : { kind: "read" };
+  const project: HqProjectRead | undefined =
+    !open || projectId === null
+      ? undefined
+      : listed.unavailableReason !== undefined || activity.history === "failed"
+        ? {
+            kind: "failed",
+            reason:
+              listed.unavailableReason === "forbidden" || listed.unavailableReason === "refused"
+                ? "Zerops refused this read."
+                : listed.unavailableReason === "expired-session"
+                  ? "Sign in again to read HQ services."
+                  : "HQ process history is unavailable. Retry the read.",
+          }
+        : listed.services === undefined ||
+            activity.history !== "read" ||
+            activity.processes === undefined
+          ? { kind: "reading" }
+          : { kind: "read" };
 
   if (hq === undefined) return null;
   const services = listed.services;
@@ -150,14 +153,17 @@ export function ZeropsHqCard() {
     resolvedView.state !== null || navigation.read === "read" || trouble === null
       ? resolvedView
       : { ...resolvedView, troubles: [...resolvedView.troubles, trouble] };
-  const mount = hqUpdateMount({
-    admin,
-    standing,
-    carried,
-    zerops: update?.kind === "read" ? update.state : undefined,
-    following,
-    last: lastMount,
-  });
+  const mount =
+    projectId === null
+      ? null
+      : hqUpdateMount({
+          admin,
+          standing,
+          carried,
+          zerops: update?.kind === "read" ? update.state : undefined,
+          following,
+          last: lastMount,
+        });
   // Kept as it is mounted now, so a moment HQ does not answer finds it.
   if (
     mount !== null &&
@@ -172,18 +178,18 @@ export function ZeropsHqCard() {
     <ZeropsHqCardView
       onOpenChange={openCard}
       open={open}
-      projectUrl={zeropsProjectUrl(hq.projectId)}
+      projectUrl={projectId === null ? null : zeropsProjectUrl(projectId)}
       update={
         // Mounted while HQ answers, and through a moment it does not while the person follows
         // the update — its own switch to the new Core answers a health read 503 — so the dialog
         // sees the update to its end; the card recovers on its next read.
-        mount === null ? null : (
+        mount === null || projectId === null ? null : (
           <ZeropsHqUpdate
             answering={mount.answering}
             carried={mount.carried}
             onBusy={onBusy}
             onFollowing={setFollowing}
-            projectId={hq.projectId}
+            projectId={projectId}
             trigger={mount.trigger}
           />
         )
@@ -215,8 +221,8 @@ export function ZeropsHqCardView({
   readonly onOpenChange: (open: boolean) => void;
   /** The update's offer and its dialog (`ZeropsHqUpdate`), an admin's. */
   readonly update: ReactNode;
-  /** HQ's project in Zerops. */
-  readonly projectUrl: string;
+  /** HQ's project in Zerops; `null` for an HQ that lives in none of the organization's. */
+  readonly projectUrl: string | null;
 }) {
   return (
     // One quiet line at the overview's end, no card around it (round 5).
@@ -291,14 +297,16 @@ export function ZeropsHqCardView({
               </span>
             </DetailRow>
           )}
-          <Button
-            className="self-start"
-            render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
-            size="sm"
-            variant="link"
-          >
-            Open in Zerops
-          </Button>
+          {projectUrl === null ? null : (
+            <Button
+              className="self-start"
+              render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
+              size="sm"
+              variant="link"
+            >
+              Open in Zerops
+            </Button>
+          )}
         </div>
       ) : null}
     </div>

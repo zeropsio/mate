@@ -4972,7 +4972,7 @@ it("a reader sees the protocol notice without an update action", () => {
   session.role = "READ_ONLY";
   const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
     status: "ready",
-    hq: { kind: "official", projectId: "hq", address: "https://hq.invalid" },
+    hq: { kind: "official", projectId: "hq1", address: "https://hq.invalid" },
     admins: [],
     reread: () => {},
   });

@@ -3,6 +3,7 @@ export {
   hqAnchorName,
   hqOrgTokenName,
   hqProjectsOf,
+  hqZeropsProject,
   ownersAndAdmins,
   SHARED_HQ_DOOR,
   sharedHq,
