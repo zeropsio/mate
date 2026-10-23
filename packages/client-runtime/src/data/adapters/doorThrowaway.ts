@@ -1,6 +1,10 @@
 /** Throwaway mint/delete boundary; cleanup debt and locks remain supplied by the captured account. */
 import type { ZeropsThrowawayPlatform } from "../../authorization/zeropsThrowaway.ts";
-import { ZeropsApiError, type ZeropsApiClient } from "../../zerops/api.ts";
+import { mayBearHq } from "@t3tools/shared/zeropsRoles";
+
+import { ZeropsApiError, zeropsClientsFromUser, type ZeropsApiClient } from "../../zerops/api.ts";
+import { hqOrgTokenName, SHARED_HQ_DOOR } from "../../zerops/hq/anchor.ts";
+import { HqError } from "../../zerops/hq/client.ts";
 import { diagnosticFailure, mateDiagnostics } from "../../zerops/diagnostics.ts";
 import {
   makeThrowawayMintBudgets,
@@ -192,6 +196,39 @@ export function zeropsThrowawayPlatform(
         token: throwaway.token,
         expire: () => clearTimeout(timer),
       });
+    },
+  };
+}
+
+/**
+ * The organization's key for a shared HQ's first door (`orgKey`, mate-hq `spec/protocol.md`
+ * "Doors"): an integration token `READ_ONLY` with no grant and no flag, which HQ keeps sealed and
+ * reads the organization's members with. Only an active Owner or Admin, as the session's own
+ * `GET /user/info` names them, starts the organization; HQ checks the same. A key HQ refused is
+ * taken back; one it took is HQ's, and nothing here keeps or deletes it.
+ */
+export function zeropsHqOrgKey(client: ZeropsApiClient, clientId: string) {
+  return {
+    mayStart: async () => {
+      const user = client.verifiedUser()?.user ?? (await client.fetchUser());
+      return mayBearHq(zeropsClientsFromUser(user).find((org) => org.id === clientId));
+    },
+    handOver: async <T>(use: (orgKey: string) => Promise<T>): Promise<T> => {
+      const minted = await client.mintIntegrationToken({
+        clientId,
+        name: hqOrgTokenName(SHARED_HQ_DOOR),
+        roleCode: "READ_ONLY",
+        projects: [],
+      });
+      try {
+        return await use(minted.token);
+      } catch (cause) {
+        if (cause instanceof HqError && cause.kind === "refused")
+          await client
+            .deleteIntegrationToken({ clientId, tokenId: minted.id })
+            .catch(() => undefined);
+        throw cause;
+      }
     },
   };
 }
