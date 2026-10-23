@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -18,15 +19,24 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 
+import { layerTest as serverConfigTest } from "../config.ts";
 import { conversationOfThread, providerThreadOf } from "../engine/MateEngine.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { applyToolCall } from "../spi/toolCall.ts";
+import { sweepCheckpointRefs } from "../vcs/checkpointRefsSweep.ts";
+import { VcsProcess, type VcsProcessOutput } from "../vcs/VcsProcess.ts";
 import { ZEROPS_ENVELOPE_FENCE } from "./zeropsEnvelope.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import { makeZeropsLeaseRoster, ZeropsLeaseRoster } from "./ZeropsRepositorySource.ts";
+import {
+  isLeaseRepository,
+  makeZeropsLeaseRoster,
+  makeZeropsRepositorySource,
+  ZeropsLeaseRoster,
+  ZeropsRepositorySource,
+} from "./ZeropsRepositorySource.ts";
 
 const THREAD = "thread-1" as ThreadId;
 const OTHER_THREAD = "thread-2" as ThreadId;
@@ -941,6 +951,98 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           expect(yield* Ref.get(noted)).toEqual(["webpool-3", "webpool-4"]);
         }),
       ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect(
+    "a lease's mount stays a lease's to every sweep after a restart that kept an older read of the leases",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const ada = providerThreadOf(ConversationId.make("ada"));
+          const bob = providerThreadOf(ConversationId.make("bob"));
+          const before = yield* makeZeropsLeaseRoster;
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const lifecycle = yield* ZeropsLifecycle.make({
+                toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+                repository,
+                threadOwner: conversationOfThread,
+                noteLeases: before.note,
+              });
+              yield* lifecycle.ingest({ ...statusReading([]), threadId: ada });
+              yield* TestClock.adjust("1 second");
+              yield* lifecycle.ingest({
+                ...acquire("webpool-3", [lease("webpool-3")]),
+                threadId: bob,
+              });
+              yield* TestClock.adjust("1 second");
+              // A Zerops tool that reads no leases: ada's older read is stored again, newest.
+              yield* lifecycle.ingest(
+                claudeEvent({
+                  threadId: ada,
+                  toolName: "mcp__zerops__zerops_logs",
+                  text: "no envelope",
+                }),
+              );
+            }),
+          );
+
+          // A restart: a new roster, told what the store kept, and the mounts read again.
+          const roster = yield* makeZeropsLeaseRoster;
+          yield* ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            noteLeases: roster.note,
+          });
+          const source = yield* makeZeropsRepositorySource({
+            enabled: true,
+            readMountTable: Effect.succeed(
+              [
+                "appdev:/var/www /var/www/appdev fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+                "webpool-3:/var/www /var/www/webpool-3 fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+              ].join("\n"),
+            ),
+            leaseAliases: roster.aliases,
+          });
+
+          const listed = yield* source.list;
+          const webpool =
+            listed._tag === "available"
+              ? listed.repositories.find((entry) => entry.host === "webpool-3")
+              : undefined;
+          expect(webpool?.kind).toBe("lease");
+          expect(webpool !== undefined && isLeaseRepository(webpool)).toBe(true);
+
+          const swept: Array<string> = [];
+          yield* sweepCheckpointRefs.pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(ZeropsRepositorySource, source),
+                serverConfigTest("/nowhere", { prefix: "sweep" }),
+                Layer.succeed(
+                  VcsProcess,
+                  VcsProcess.of({
+                    run: (input) =>
+                      Effect.sync(() => {
+                        swept.push(input.cwd);
+                        return {
+                          exitCode: 0 as VcsProcessOutput["exitCode"],
+                          stdout: "",
+                          stderr: "",
+                          stdoutTruncated: false,
+                          stderrTruncated: false,
+                        };
+                      }),
+                  }),
+                ),
+              ),
+            ),
+          );
+          expect(swept).toEqual(["/var/www/appdev"]);
+        }),
+      ).pipe(Effect.provide(Layer.merge(persistence, NodeServices.layer))),
   );
 });
 

@@ -5,7 +5,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { layerTest as serverConfigTest } from "../config.ts";
-import { ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
+import {
+  makeZeropsRepositorySource,
+  ZeropsRepositorySource,
+} from "../zerops/ZeropsRepositorySource.ts";
 import { sweepCheckpointRefs } from "./checkpointRefsSweep.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
@@ -104,4 +107,50 @@ it.effect("a start never sweeps the refs of a pool container a thread's agent le
     Effect.scoped,
     Effect.provide(VcsProcess.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   ),
+);
+
+it.effect(
+  "a start's sweep, before any read of zcp's leases, never sweeps a pool container's refs: its name is a lease's",
+  () =>
+    Effect.gen(function* () {
+      const cwds: Array<string> = [];
+      const recorded = Layer.succeed(
+        VcsProcess.VcsProcess,
+        VcsProcess.VcsProcess.of({
+          run: (input) =>
+            Effect.sync(() => {
+              cwds.push(input.cwd);
+              return {
+                exitCode: 0 as VcsProcess.VcsProcessOutput["exitCode"],
+                stdout: "",
+                stderr: "",
+                stdoutTruncated: false,
+                stderrTruncated: false,
+              };
+            }),
+        }),
+      );
+      // The mount table as the server reads it at start: nothing has told it zcp's leases yet.
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable: Effect.succeed(
+          [
+            "appdev:/var/www /var/www/appdev fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+            "webpool-3:/var/www /var/www/webpool-3 fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+          ].join("\n"),
+        ),
+      });
+
+      yield* sweepCheckpointRefs.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(ZeropsRepositorySource, source),
+            serverConfigTest("/nowhere", { prefix: "sweep" }),
+            recorded,
+          ),
+        ),
+      );
+
+      assert.deepStrictEqual(cwds, ["/var/www/appdev"]);
+    }).pipe(Effect.provide(NodeServices.layer)),
 );

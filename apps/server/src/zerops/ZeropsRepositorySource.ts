@@ -50,11 +50,21 @@ export interface ZeropsRepository {
 }
 
 /**
+ * The shape of a lease's alias, `<pool>-<number>` (zcp `platform.ValidateLeaseAlias`). A Zerops
+ * service hostname is lowercase alphanumeric only — the platform refuses a dash — so a mount named
+ * this way is a lease's, never a service's, whatever zcp's leases were last read to say.
+ */
+const LEASE_ALIAS_SHAPE = /^[a-z][a-z0-9]{0,39}-[0-9]+$/u;
+
+/** Whether a mount's name can only be a lease's alias. */
+export const isLeaseAliasName = (name: string): boolean => LEASE_ALIAS_SHAPE.test(name);
+
+/**
  * A lease's mount: the working copy of the one thread whose agent leased it. A Mate-wide sweep over
- * every mounted dev service leaves it alone.
+ * every mounted dev service leaves it alone, told by its name before any read of zcp's leases.
  */
 export const isLeaseRepository = (repository: ZeropsRepository): boolean =>
-  repository.kind === "lease";
+  repository.kind === "lease" || isLeaseAliasName(repository.host);
 
 /** The result of an enumeration. See the module doc for why there are three. */
 export type ZeropsRepositories =
@@ -128,14 +138,16 @@ export interface ZeropsRepositorySourceOptions {
 }
 
 /**
- * A repository as zcp's leases name it now: a lease's mount when its name is a lease's alias,
- * else a service's. One whose kind changed is identified again under the new one: its identity
- * and root were verified as the other.
+ * A repository as its name and zcp's leases tell it: a lease's mount when its name has a lease
+ * alias's shape (no service's can) or a read of zcp's leases names it, else a service's. The name
+ * alone decides at start, before anything read the leases, and after a restart that kept an older
+ * read. One whose kind changed is identified again under the new one: its identity and root were
+ * verified as the other.
  */
 const classify =
   (aliases: ReadonlySet<string>) =>
   (repository: ZeropsRepository): ZeropsRepository => {
-    const lease = aliases.has(repository.host);
+    const lease = isLeaseAliasName(repository.host) || aliases.has(repository.host);
     if (lease === (repository.kind === "lease")) return repository;
     const { kind: _kind, identity: _identity, rootId: _rootId, ...rest } = repository;
     return lease ? { ...rest, kind: "lease" } : rest;
@@ -150,7 +162,8 @@ const classifyAll =
 
 /**
  * The leases zcp holds, as the latest read of them named them: a mount named after one is the
- * lease's, never a service's. The lifecycle feed tells it every read; the repository source reads it.
+ * lease's, never a service's. The lifecycle feed tells it every read; the repository source reads
+ * it beside each mount's name, which decides alone where no read has (`isLeaseAliasName`).
  */
 export class ZeropsLeaseRoster extends Context.Service<
   ZeropsLeaseRoster,

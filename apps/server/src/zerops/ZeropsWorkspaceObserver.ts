@@ -10,7 +10,11 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { ServerConfig } from "../config.ts";
-import { ZeropsRepositorySource, type ZeropsRepository } from "./ZeropsRepositorySource.ts";
+import {
+  isLeaseRepository,
+  ZeropsRepositorySource,
+  type ZeropsRepository,
+} from "./ZeropsRepositorySource.ts";
 import { identityGuard, shellQuote, sshArguments } from "./ZeropsWorkspaceAccess.ts";
 export { withRepository } from "./ZeropsWorkspaceAccess.ts";
 
@@ -156,7 +160,7 @@ export const makeZeropsWorkspaceObserver = (options: ZeropsWorkspaceObserverOpti
           projectId,
           serviceId,
           repository.remotePath,
-          repository.kind === "lease" ? repository.host : undefined,
+          isLeaseRepository(repository) ? repository.host : undefined,
         ),
       };
       if (repository.rootId !== undefined && repository.rootId !== verified.rootId)

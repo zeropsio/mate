@@ -212,6 +212,31 @@ describe("a lease's mount", () => {
     }),
   );
 
+  // A Zerops service hostname is lowercase alphanumeric only, so `<pool>-<number>` is a lease's.
+  it.effect.each([
+    { host: "webpool-3", aliases: [], kind: "lease" },
+    { host: "webpool-3", aliases: ["webpool-3"], kind: "lease" },
+    { host: "weatherdash", aliases: [], kind: undefined },
+    { host: "weatherdash", aliases: ["weatherdash"], kind: "lease" },
+  ])(
+    "is told by its name before any read of zcp's leases, and by a read beside it: $host with $aliases",
+    ({ host, aliases, kind }) =>
+      Effect.gen(function* () {
+        const source = yield* makeZeropsRepositorySource({
+          enabled: true,
+          readMountTable: Effect.succeed(TABLE),
+          leaseAliases: Effect.succeed(new Set(aliases)),
+        });
+        const result = yield* source.list;
+        assert.strictEqual(
+          result._tag === "available"
+            ? result.repositories.find((entry) => entry.host === host)?.kind
+            : "unread",
+          kind,
+        );
+      }),
+  );
+
   it.effect(
     "turns a lease's once zcp's leases name it, and is identified again under that kind",
     () =>
