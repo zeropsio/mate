@@ -285,7 +285,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.shared.test");
     const { configuredHq } =
       await vi.importActual<typeof import("~/zerops/accountHq")>("~/zerops/accountHq");
-    named.hq = configuredHq()!;
+    named.hq = { kind: "official", ...configuredHq()! };
     account();
     const tree = await mount();
     await press(tree);
