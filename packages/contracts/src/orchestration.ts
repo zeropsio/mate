@@ -551,8 +551,10 @@ export type LeaseAlias = typeof LeaseAlias.Type;
 
 /**
  * The pool container a thread's agent leased (zcp's `zerops_lease`), which the thread works in
- * from then on: its first lease, until that lease is released or lost. Never a worktree: nothing
- * removes it with the thread.
+ * from then on: its first lease (a group acquire's first), until that lease is released, lost or
+ * acquired again by another thread — then the earliest-acquired lease of its branch zcp still
+ * holds, if any. The thread also shows every other lease of its branch, read from zcp's leases,
+ * never kept here. Never a worktree: nothing removes it with the thread.
  */
 export const ThreadLease = Schema.Struct({
   alias: LeaseAlias,

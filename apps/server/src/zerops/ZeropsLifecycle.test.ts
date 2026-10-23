@@ -17,6 +17,7 @@ import {
   type ItemLifecyclePayload,
   type SpiEvent,
   type ThreadId,
+  type ThreadLease,
 } from "@t3tools/contracts";
 
 import { layerTest as serverConfigTest } from "../config.ts";
@@ -967,7 +968,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
-        const records = yield* Ref.make<Readonly<Record<string, string>>>({});
+        const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
         const changes = yield* Ref.make<ReadonlyArray<ZeropsLifecycle.LeaseChange>>([]);
         const changedCheckouts = yield* Ref.make<
           ReadonlyArray<{
@@ -975,34 +976,40 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
             readonly bound: Readonly<Record<string, string>>;
           }>
         >([]);
+        const boundAliases = Effect.map(Ref.get(records), (all) =>
+          Object.fromEntries(
+            Object.entries(all).map(([conversation, { alias }]) => [conversation, alias]),
+          ),
+        );
         const lifecycle = yield* ZeropsLifecycle.make({
           toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository,
           threadOwner: conversationOfThread,
           leaseBindings: Effect.map(Ref.get(records), (all) =>
-            Object.entries(all).map(([conversation, alias]) => ({
+            Object.entries(all).map(([conversation, { alias, branch }]) => ({
               conversation: conversation as ThreadId,
               alias,
+              branch,
             })),
           ),
           recordLease: (conversation, change) =>
             Effect.andThen(
               Ref.update(changes, (all) => [...all, change]),
               Ref.update(records, (all) => {
-                const { [conversation]: alias, ...others } = all;
+                const { [conversation]: held, ...others } = all;
                 if (change._tag === "BindLease")
-                  return alias === undefined ? { ...all, [conversation]: change.lease.alias } : all;
-                return alias === change.ended ? others : all;
+                  return held === undefined ? { ...all, [conversation]: change.lease } : all;
+                return held?.alias === change.ended ? others : all;
               }),
             ),
           checkoutChanged: (alias) =>
-            Effect.flatMap(Ref.get(records), (bound) =>
+            Effect.flatMap(boundAliases, (bound) =>
               Ref.update(changedCheckouts, (all) => [...all, { alias, bound }]),
             ),
         });
         return yield* use(
           lifecycle,
-          () => Ref.get(records),
+          () => boundAliases,
           () => Ref.get(changes),
           () => Ref.get(changedCheckouts),
         );
@@ -1074,7 +1081,8 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
           expect((yield* told()).length, "the same leases again say nothing new").toBe(first);
           yield* lifecycle.ingest(
-            statusReading([lease("webpool-3", "lost"), lease("webpool-5", "unmounted")]),
+            // webpool-5 is of another branch: neither conversation is bound to it next.
+            statusReading([lease("webpool-3", "lost"), lease("webpool-5", "unmounted", "feat-z")]),
           );
           expect(yield* bound()).toEqual({});
           expect((yield* told()).slice(first)).toEqual([
@@ -1132,13 +1140,15 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       ),
   );
 
+  /** bob's lease, of a branch of its own: ada is never bound to it next. */
+  const bobsOwn = lease("webpool-4", "held", "feat-y");
   it.effect.each([
-    { name: "gone from them", read: [lease("webpool-4")] },
-    { name: "lost", read: [lease("webpool-3", "lost"), lease("webpool-4")] },
-    { name: "released", read: [lease("webpool-3", "released"), lease("webpool-4")] },
+    { name: "gone from them", read: [bobsOwn] },
+    { name: "lost", read: [lease("webpool-3", "lost"), bobsOwn] },
+    { name: "released", read: [lease("webpool-3", "released"), bobsOwn] },
     {
       name: "reserved with no record of zcp's",
-      read: [lease("webpool-3", "unknown-holder"), lease("webpool-4")],
+      read: [lease("webpool-3", "unknown-holder"), bobsOwn],
     },
   ])(
     "another conversation's read of zcp's leases with the lease $name unbinds every conversation bound to it",
@@ -1146,13 +1156,285 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       withConversations((lifecycle, bound) =>
         Effect.gen(function* () {
           yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
-          yield* lifecycle.ingest(
-            acquireBy(sessionOf("bob"), "webpool-4", [lease("webpool-3"), lease("webpool-4")]),
-          );
+          yield* lifecycle.ingest({
+            ...acquire("webpool-4", [lease("webpool-3"), bobsOwn], "feat-y"),
+            threadId: sessionOf("bob"),
+          });
           yield* lifecycle.ingest({ ...statusReading(read), threadId: sessionOf("cid") });
           expect(yield* bound()).toEqual({ bob: "webpool-4" });
         }),
       ),
+  );
+
+  /** A lease of a branch's group: its pool is its alias's, as zcp names a lease. */
+  const member = (
+    alias: string,
+    options: {
+      readonly acquiredAt?: string;
+      readonly reused?: boolean;
+      readonly branch?: string;
+      readonly state?: string;
+    } = {},
+  ) => {
+    const [pool = alias, number = "1"] = alias.split("-");
+    return {
+      alias,
+      pool,
+      branch: options.branch ?? "feat-x",
+      containerHostname: `node-id-${number}.runtime.${pool}.zerops`,
+      state: options.state ?? "held",
+      unverified: false,
+      ...(options.acquiredAt === undefined ? {} : { acquiredAt: options.acquiredAt }),
+      ...(options.reused === undefined ? {} : { reused: options.reused }),
+    };
+  };
+  /** zcp's envelope never says `reused`: only the acquire's own result does. */
+  const asRead = (leases: ReadonlyArray<ReturnType<typeof member>>) =>
+    leases.map(({ reused: _reused, ...lease }) => lease);
+  /** An acquire of one pool, or of several (`pools`), whose result lists `leases` in that order. */
+  const acquireLeases = (
+    threadId: ThreadId,
+    pools: ReadonlyArray<string>,
+    leases: ReadonlyArray<ReturnType<typeof member>>,
+    held: ReadonlyArray<ReturnType<typeof member>> = leases,
+  ) =>
+    leaseCall({
+      input:
+        pools.length === 1
+          ? { action: "acquire", pool: pools[0], branch: "feat-x" }
+          : { action: "acquire", pools, branch: "feat-x" },
+      leases,
+      envelope: asRead(held),
+      threadId,
+    });
+
+  it.effect("a group acquire binds its conversation to the first lease its result lists", () =>
+    withConversations((lifecycle, bound, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("ada"),
+            ["hqpool", "webpool"],
+            [member("hqpool-2"), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2" });
+        expect(yield* told()).toEqual([
+          { _tag: "BindLease", lease: { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" } },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "another conversation's acquire that comes back reused binds nothing and unbinds nothing",
+    () =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          const held = [member("webpool-3"), member("hqpool-2")];
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("ada"), ["webpool"], [member("webpool-3")], held),
+          );
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("bob"),
+              ["webpool"],
+              [member("webpool-3", { reused: true })],
+              held,
+            ),
+          );
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("bob"),
+              ["webpool", "hqpool"],
+              [member("webpool-3", { reused: true }), member("hqpool-2", { reused: true })],
+              held,
+            ),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          expect((yield* told()).slice(first)).toEqual([]);
+        }),
+      ),
+  );
+
+  it.effect("a group acquire whose first lease comes back reused binds the first it leased", () =>
+    withConversations((lifecycle, bound) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [member("hqpool-2")]));
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("bob"),
+            ["hqpool", "webpool"],
+            [member("hqpool-2", { reused: true }), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2", bob: "webpool-3" });
+      }),
+    ),
+  );
+
+  it.effect(
+    "every lease a group acquire leased unbinds another conversation still bound to it, and tells its checkout changed",
+    () =>
+      withConversations((lifecycle, bound, _told, checkouts) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("cid"),
+              ["webpool"],
+              [member("webpool-3", { branch: "feat-y" })],
+            ),
+          );
+          const first = (yield* checkouts()).length;
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("ada"),
+              ["hqpool", "webpool", "apipool"],
+              [member("hqpool-2"), member("webpool-3"), member("apipool-4", { reused: true })],
+            ),
+          );
+          expect(yield* bound()).toEqual({ ada: "hqpool-2" });
+          expect(
+            (yield* checkouts())
+              .slice(first)
+              .map(({ alias }) => alias)
+              .toSorted(),
+            "a reused lease's checkout is the one it was",
+          ).toEqual(["hqpool-2", "webpool-3"]);
+        }),
+      ),
+  );
+
+  /** ada works on `hqpool-2`; its branch is held on two more pools, and on one more that was lost. */
+  const adas = member("hqpool-2", { acquiredAt: "2026-10-23T12:00:03Z" });
+  const groupAt = [
+    adas,
+    member("webpool-3", { acquiredAt: "2026-10-23T12:00:02Z" }),
+    member("apipool-4", { acquiredAt: "2026-10-23T12:00:01Z" }),
+    member("docspool-5", { acquiredAt: "2026-10-23T12:00:00Z", state: "lost" }),
+    member("hqpool-6", { acquiredAt: "2026-10-23T11:00:00Z", branch: "feat-y" }),
+  ];
+  const others = groupAt.filter(({ alias }) => alias !== "hqpool-2");
+
+  it.effect.each([
+    {
+      how: "is released by its conversation",
+      end: release("hqpool-2", sessionOf("ada"), asRead(others)),
+    },
+    {
+      how: "is read lost by another conversation",
+      end: {
+        ...statusReading(asRead([member("hqpool-2", { state: "lost" }), ...others])),
+        threadId: sessionOf("cid"),
+      },
+    },
+    {
+      how: "is gone from another conversation's read",
+      end: { ...statusReading(asRead(others)), threadId: sessionOf("cid") },
+    },
+  ])(
+    "when the bound lease $how, its conversation is bound to the earliest-acquired lease of its branch still held",
+    ({ end }) =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(end);
+          expect((yield* told()).slice(first)).toEqual([
+            { _tag: "UnbindLease", ended: "hqpool-2" },
+            {
+              _tag: "BindLease",
+              lease: { alias: "apipool-4", pool: "apipool", branch: "feat-x" },
+            },
+          ]);
+          expect(yield* bound()).toEqual({ ada: "apipool-4" });
+        }),
+      ),
+  );
+
+  /** hqpool-2 and apipool-4 were released unseen, and bob's group acquire of ada's branch took both. */
+  const bobs = [
+    member("hqpool-2", { acquiredAt: "2026-10-23T13:00:00Z" }),
+    member("apipool-4", { acquiredAt: "2026-10-23T13:00:00Z" }),
+  ];
+
+  it.effect(
+    "a bound lease another conversation acquired again rebinds its conversation to the earliest-acquired lease of its branch still held",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("bob"), ["hqpool", "apipool"], bobs, [
+              ...bobs,
+              ...others.filter(({ alias }) => alias !== "apipool-4"),
+            ]),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3", bob: "hqpool-2" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a conversation whose lease another acquired again is never bound to a lease that other one leased",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], [adas]));
+          yield* lifecycle.ingest(acquireLeases(sessionOf("bob"), ["hqpool", "apipool"], bobs));
+          expect(yield* bound()).toEqual({ bob: "hqpool-2" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a bound lease that ends with no other lease of its branch held leaves its conversation unbound",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          yield* lifecycle.ingest(
+            release(
+              "hqpool-2",
+              sessionOf("ada"),
+              asRead(
+                groupAt.filter(({ state, branch }) => state !== "held" || branch !== "feat-x"),
+              ),
+            ),
+          );
+          expect(yield* bound()).toEqual({});
+        }),
+      ),
+  );
+
+  it.effect("a release of a branch unbinds every conversation bound to a lease it released", () =>
+    withConversations((lifecycle, bound) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [member("hqpool-2")]));
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("bob"),
+            ["webpool"],
+            [member("webpool-3")],
+            [member("hqpool-2"), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2", bob: "webpool-3" });
+        // Its result says what it released; its envelope did not read the leases again.
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "release", branch: "feat-x" },
+            leases: [
+              member("hqpool-2", { state: "released" }),
+              member("webpool-3", { state: "released" }),
+            ],
+            threadId: sessionOf("cid"),
+          }),
+        );
+        expect(yield* bound()).toEqual({});
+      }),
+    ),
   );
 
   it.effect(

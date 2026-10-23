@@ -241,7 +241,13 @@ const ZeropsLifecycleLive = Layer.unwrap(
         views.flatMap((view) =>
           view.lease == null
             ? []
-            : [{ conversation: ThreadId.make(view.conversationId), alias: view.lease.alias }],
+            : [
+                {
+                  conversation: ThreadId.make(view.conversationId),
+                  alias: view.lease.alias,
+                  branch: view.lease.branch,
+                },
+              ],
         ),
       ),
       recordLease: (conversation, change, key) =>

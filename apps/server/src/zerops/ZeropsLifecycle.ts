@@ -24,12 +24,15 @@
  * every conversation (zcp keeps it in the shared working directory). Which one a
  * conversation works in is the conversation's own fact, so it is not kept here:
  * a conversation's agent acquiring a lease (`zerops_lease`) binds that
- * conversation's record (`recordLease`), and any call that releases a lease,
- * acquires it again, or reads it no longer held unbinds every other
- * conversation bound to it (`leaseBindings`). Every read of the leases is told
- * to the repository source (`noteLeases`), whose mounts named after one are a
- * lease's, never a service's, and every lease that changed hands is told by its
- * alias (`checkoutChanged`): its checkout may be another branch's now.
+ * conversation's record (`recordLease`) — the first lease a group acquire lists,
+ * and never one it says zcp already held (`reused`) — and any call that releases
+ * a lease, acquires it again, or reads it no longer held unbinds every other
+ * conversation bound to it (`leaseBindings`), each then bound to the
+ * earliest-acquired lease of its branch still held, if any. Every read of the
+ * leases is told to the repository source (`noteLeases`), whose mounts named
+ * after one are a lease's, never a service's, and every lease that changed hands
+ * is told by its alias (`checkoutChanged`): its checkout may be another branch's
+ * now.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -48,8 +51,10 @@ import * as Stream from "effect/Stream";
 
 import {
   ForwardCompatibleArray,
+  isZeropsLeaseHeld,
   ZEROPS_RECENT_TOOLS_LIMIT,
   ZeropsLease,
+  zeropsLeaseGroupBranch,
   ZeropsRecentTool,
   ZeropsStateEnvelope,
   type SpiEvent,
@@ -147,12 +152,6 @@ const withLastDevServers = (
 };
 
 /**
- * A lease in one of these states is no longer held by zcp: released, lost, or reserved on the pool
- * with no record of zcp's (`unknown-holder`).
- */
-const ENDED_LEASE_STATES: ReadonlySet<string> = new Set(["released", "lost", "unknown-holder"]);
-
-/**
  * The newest envelope, with the last read of zcp's leases carried over where this call did not
  * read them: absent `leases` means "not read", never "none". A lease still held keeps the dev
  * servers last read on it where this call did not read its supervisor (only a `zerops_dev_server`
@@ -177,7 +176,7 @@ const withLastLeases = (
       const devServers = lastRead.get(lease.alias);
       return lease.devServers !== undefined ||
         devServers === undefined ||
-        ENDED_LEASE_STATES.has(lease.state)
+        !isZeropsLeaseHeld(lease.state)
         ? lease
         : { ...lease, devServers };
     }),
@@ -197,12 +196,25 @@ export type LeaseChange =
 export interface LeaseBinding {
   readonly conversation: ThreadId;
   readonly alias: string;
+  /** The lease's branch (null: none), whose other leases the conversation is bound to next. */
+  readonly branch: string | null;
 }
 
 /** The tool a conversation's agent leases a pool container with. */
 const LEASE_TOOL = "zerops_lease";
 
 const decodeLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLease));
+/**
+ * A lease a `zerops_lease` call's own result lists: the envelope's, and whether an acquire returned
+ * the lease zcp already held for its repository, branch and pool (zcp `docs/spec-workflows.md` §8
+ * DP-17) — another conversation's acquire, which moves no binding.
+ */
+const ZeropsLeaseResult = Schema.Struct({
+  ...ZeropsLease.fields,
+  reused: Schema.optional(Schema.Boolean),
+});
+type ZeropsLeaseResult = typeof ZeropsLeaseResult.Type;
+const decodeResultLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLeaseResult));
 const decodeThreadLease = Schema.decodeUnknownOption(ThreadLease);
 
 /** What a set of leases says, to tell a new read from the same read again. */
@@ -213,7 +225,7 @@ const leasesKey = (leases: ReadonlyArray<ZeropsLease>): string =>
     .join("\n");
 
 /** A call's own `leases` beside its envelope: the leases the `zerops_lease` call acted on. */
-const callLeases = (text: string): ReadonlyArray<ZeropsLease> => {
+const callLeases = (text: string): ReadonlyArray<ZeropsLeaseResult> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -221,7 +233,10 @@ const callLeases = (text: string): ReadonlyArray<ZeropsLease> => {
     return [];
   }
   return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-    ? Option.getOrElse(decodeLeases((parsed as { readonly leases?: unknown }).leases), () => [])
+    ? Option.getOrElse(
+        decodeResultLeases((parsed as { readonly leases?: unknown }).leases),
+        () => [],
+      )
     : [];
 };
 
@@ -233,36 +248,49 @@ const argument = (call: SpiToolCall, key: string): string | undefined => {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
-/**
- * The lease an acquire took: the one its result names, else the one lease of its pool and branch
- * zcp's leases hold. None when neither says which.
- */
-const acquiredLease = (
-  call: SpiToolCall,
-  text: string,
-  read: ReadonlyArray<ZeropsLease> | undefined,
-): ThreadLease | undefined => {
-  const own = callLeases(text);
-  const pool = argument(call, "pool");
-  const branch = argument(call, "branch");
-  const candidates =
-    own.length === 1
-      ? own
-      : (read ?? []).filter(
-          (lease) =>
-            lease.pool === pool &&
-            (branch === undefined || lease.branch === branch) &&
-            !ENDED_LEASE_STATES.has(lease.state),
-        );
-  const [lease] = candidates;
-  if (candidates.length !== 1 || lease === undefined) return undefined;
-  return Option.getOrUndefined(
+/** A lease as a conversation's record binds it; none when it cannot be one. */
+const threadLeaseOf = (lease: ZeropsLease): ThreadLease | undefined =>
+  Option.getOrUndefined(
     decodeThreadLease({
       alias: lease.alias,
       pool: lease.pool,
       branch: lease.branch === undefined || lease.branch === "" ? null : lease.branch,
     }),
   );
+
+/**
+ * What an acquire leased: every lease its result lists but the ones zcp already held (`reused`),
+ * the first of which binds its conversation — a group acquire lists its leases in its pools' order.
+ * A result that lists none of its own leased the one lease of its pool and branch zcp's leases
+ * hold. None when it leased nothing, or nothing says which.
+ */
+const acquiredLeases = (
+  call: SpiToolCall,
+  text: string,
+  read: ReadonlyArray<ZeropsLease> | undefined,
+): { readonly lease: ThreadLease; readonly aliases: ReadonlyArray<string> } | undefined => {
+  const own = callLeases(text);
+  const pool = argument(call, "pool");
+  const branch = argument(call, "branch");
+  const leased =
+    own.length > 0
+      ? own.filter((lease) => lease.reused !== true)
+      : (read ?? []).filter(
+          (lease) =>
+            lease.pool === pool &&
+            (branch === undefined || lease.branch === branch) &&
+            isZeropsLeaseHeld(lease.state),
+        );
+  const [first] = leased;
+  if (first === undefined || (own.length === 0 && leased.length !== 1)) return undefined;
+  const lease = threadLeaseOf(first);
+  return lease === undefined ? undefined : { lease, aliases: leased.map(({ alias }) => alias) };
+};
+
+/** When zcp acquired a lease, in ms; one with no time it says is acquired after every other. */
+const acquiredAtMs = (lease: ZeropsLease): number => {
+  const at = lease.acquiredAt === undefined ? Number.NaN : Date.parse(lease.acquiredAt);
+  return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
 };
 
 /**
@@ -273,10 +301,19 @@ const acquiredLease = (
 interface LeaseFacts {
   /** The leases zcp holds, when this call read them and the read differs from the last one. */
   readonly held?: ReadonlyArray<string>;
-  /** The lease this call released. */
-  readonly released?: string;
-  /** The lease this call acquired, and the conversation that now holds it (none: no conversation). */
-  readonly acquired?: { readonly lease: ThreadLease; readonly by: ThreadId | undefined };
+  /** zcp's leases as this call read them: where a conversation whose lease ended is bound next. */
+  readonly read?: ReadonlyArray<ZeropsLease>;
+  /** The leases this call released: the one it names, and each its result says it released. */
+  readonly released: ReadonlyArray<string>;
+  /**
+   * The leases this call acquired (`aliases`, never one zcp already held), the one of them its
+   * conversation is bound to (`lease`), and that conversation (none: no conversation).
+   */
+  readonly acquired?: {
+    readonly lease: ThreadLease;
+    readonly aliases: ReadonlyArray<string>;
+    readonly by: ThreadId | undefined;
+  };
 }
 
 const leaseFactsOf = (
@@ -288,15 +325,28 @@ const leaseFactsOf = (
 ): LeaseFacts => {
   const held =
     read !== undefined && readChanged
-      ? read.filter((lease) => !ENDED_LEASE_STATES.has(lease.state)).map((lease) => lease.alias)
+      ? read.filter((lease) => isZeropsLeaseHeld(lease.state)).map((lease) => lease.alias)
       : undefined;
   const action = call.name === LEASE_TOOL ? argument(call, "action") : undefined;
-  const released = action === "release" ? argument(call, "lease") : undefined;
-  const acquired = action === "acquire" ? acquiredLease(call, text, read) : undefined;
+  const named = argument(call, "lease");
+  // A release of a branch names no lease: its result lists each it released.
+  const released =
+    action === "release"
+      ? [
+          ...new Set([
+            ...(named === undefined ? [] : [named]),
+            ...callLeases(text)
+              .filter((lease) => !isZeropsLeaseHeld(lease.state))
+              .map((lease) => lease.alias),
+          ]),
+        ]
+      : [];
+  const acquired = action === "acquire" ? acquiredLeases(call, text, read) : undefined;
   return {
     ...(held === undefined ? {} : { held }),
-    ...(released === undefined ? {} : { released }),
-    ...(acquired === undefined ? {} : { acquired: { lease: acquired, by: owner } }),
+    ...(read === undefined ? {} : { read }),
+    released,
+    ...(acquired === undefined ? {} : { acquired: { ...acquired, by: owner } }),
   };
 };
 
@@ -304,30 +354,60 @@ const leaseFactsOf = (
  * The lease changes the facts say to the conversations bound now, in the order they apply: every
  * conversation whose lease ended is unbound first — released, no longer held, or acquired again by
  * another (a pool hands a released container out again under the same alias, so the alias alone
- * never says whose lease it is: the binding is the conversation's that acquired it) — then the
- * conversation that acquired one is bound, which takes it only while it has no lease.
+ * never says whose lease it is: the binding is the conversation's that acquired it) — then each is
+ * bound to the earliest-acquired lease of its branch this call read still held, if any (a branch
+ * spanning several app parts holds one lease per part's pool, and its conversation goes on
+ * showing the others), never one another conversation acquired in this call; then the
+ * conversation that acquired one is bound, which takes it only while it has no lease, and which
+ * its own acquire binds rather than its branch's.
  */
 const leaseChangesFor = (
   facts: LeaseFacts,
   bindings: ReadonlyArray<LeaseBinding>,
 ): ReadonlyArray<{ readonly conversation: ThreadId; readonly change: LeaseChange }> => {
+  const { acquired } = facts;
+  const acquiredByAnother = (alias: string, conversation: ThreadId) =>
+    acquired !== undefined && acquired.aliases.includes(alias) && conversation !== acquired.by;
   const ended = bindings.filter(
     ({ conversation, alias }) =>
-      alias === facts.released ||
+      facts.released.includes(alias) ||
       (facts.held !== undefined && !facts.held.includes(alias)) ||
-      (alias === facts.acquired?.lease.alias && conversation !== facts.acquired.by),
+      acquiredByAnother(alias, conversation),
   );
-  const by = facts.acquired?.by;
+  const boundNext = (binding: LeaseBinding): ThreadLease | undefined => {
+    if (acquired !== undefined && binding.conversation === acquired.by) return undefined;
+    const branch = zeropsLeaseGroupBranch(binding.branch);
+    const earliest = (facts.read ?? [])
+      .filter(
+        (lease) =>
+          lease.alias !== binding.alias &&
+          isZeropsLeaseHeld(lease.state) &&
+          zeropsLeaseGroupBranch(lease.branch) === branch &&
+          !facts.released.includes(lease.alias) &&
+          !acquiredByAnother(lease.alias, binding.conversation),
+      )
+      .reduce<ZeropsLease | undefined>(
+        (best, lease) =>
+          best === undefined || acquiredAtMs(lease) < acquiredAtMs(best) ? lease : best,
+        undefined,
+      );
+    return earliest === undefined ? undefined : threadLeaseOf(earliest);
+  };
+  const by = acquired?.by;
   return [
     ...ended.map(({ conversation, alias }) => ({
       conversation,
       change: { _tag: "UnbindLease", ended: alias } as const,
     })),
-    ...(facts.acquired === undefined || by === undefined
+    ...ended.flatMap((binding) => {
+      const lease = boundNext(binding);
+      return lease === undefined
+        ? []
+        : [{ conversation: binding.conversation, change: { _tag: "BindLease", lease } as const }];
+    }),
+    ...(acquired === undefined || by === undefined
       ? []
-      : [
-          { conversation: by, change: { _tag: "BindLease", lease: facts.acquired.lease } as const },
-        ]),
+      : [{ conversation: by, change: { _tag: "BindLease", lease: acquired.lease } as const }]),
   ];
 };
 
@@ -557,7 +637,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
         const facts = yield* fold(event);
         if (
           facts === undefined ||
-          (facts.held === undefined && facts.released === undefined && facts.acquired === undefined)
+          (facts.held === undefined && facts.released.length === 0 && facts.acquired === undefined)
         ) {
           return;
         }
@@ -579,8 +659,8 @@ export const make = (options: ZeropsLifecycleOptions) =>
           );
         }
         const changedCheckouts = new Set([
-          ...(facts.released === undefined ? [] : [facts.released]),
-          ...(facts.acquired === undefined ? [] : [facts.acquired.lease.alias]),
+          ...facts.released,
+          ...(facts.acquired?.aliases ?? []),
           ...changes.flatMap(({ change }) => (change._tag === "UnbindLease" ? [change.ended] : [])),
         ]);
         for (const alias of changedCheckouts) {
