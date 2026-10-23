@@ -21,6 +21,7 @@ import {
   type Room,
   type StoredSet,
   directoryStore,
+  libpqEnv,
   retained,
   roomFor,
   setsIn,
@@ -86,6 +87,27 @@ const untilTold = (call: Call) =>
   );
 
 const NOW = DateTime.makeUnsafe("2026-10-02T12:00:00.000Z");
+
+describe("HQ's deploy spec", () => {
+  it("connects Core to the database it names, which Zerops' connection string leaves out", () => {
+    // The `db` service's variables, as Zerops resolves them: its connection string has no path.
+    const zerops: Record<string, string> = {
+      db_connectionString: "postgresql://${db_user}:${db_password}@${db_hostname}:${db_port}",
+      db_user: "db",
+      db_password: "pw",
+      db_hostname: "db",
+      db_port: "5432",
+      db_dbName: "hq_data",
+    };
+    const resolve = (value: string): string => {
+      const next = value.replace(/\$\{(\w+)\}/gu, (_, name: string) => zerops[name]!);
+      return next === value ? value : resolve(next);
+    };
+    const spec = NodeFS.readFileSync(NodePath.join(import.meta.dirname, "../zerops.yml"), "utf8");
+    const [, address] = /^ {8}DATABASE_URL: (\S+)$/mu.exec(spec)!;
+    assert.strictEqual(libpqEnv(Redacted.make(resolve(address!))).PGDATABASE, "hq_data");
+  });
+});
 
 describe("the sets kept", () => {
   const cases: ReadonlyArray<{
