@@ -1057,6 +1057,8 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   let paths: Array<string>;
   /** Whether an Owner or Admin has started the organization at HQ. */
   let started: boolean;
+  /** HQ refuses the organization's key the door hands it. */
+  let keyRejected: boolean;
   let stored: Map<string, string>;
   /** The page's account epochs only grow, across tests too: the mint budget is fenced by them. */
   let epoch = 10_000;
@@ -1065,6 +1067,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     doors = [];
     paths = [];
     started = true;
+    keyRejected = false;
     stored = new Map();
     let issued = 0;
     vi.stubEnv("VITE_HQ_ORIGIN", SHARED);
@@ -1086,6 +1089,8 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
         doors.push(body);
         if (!started && body.orgKey === undefined)
           return Response.json({ code: "org_not_started" }, { status: 409 });
+        if (keyRejected && body.orgKey !== undefined)
+          return Response.json({ code: "forbidden", reason: "org_key_rejected" }, { status: 403 });
         started = true;
         return Response.json({
           session: `shared-session-${String(++issued)}`,
@@ -1248,6 +1253,33 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
       kind: "refused",
       line: "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
+      again: true,
+    });
+  });
+
+  it("An organisation's key HQ did not accept tells the person to sign in again as an Owner or Admin", async () => {
+    started = false;
+    keyRejected = true;
+    const { client } = person("OWNER");
+    const refusal = await sharedApi(client)
+      .structure()
+      .then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+
+    expect(refusal).toMatchObject({ kind: "refused", code: "forbidden" });
+    expect(doors).toEqual([{ token: "door-1" }, { token: "door-1", orgKey: "org-key-1" }]);
+    const navigation = {
+      live: false,
+      refusal: classifyHqCall(refusal).message,
+      capped: false,
+      reconnecting: false,
+      structure: null,
+    };
+    expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
+      kind: "refused",
+      line: "HQ did not accept the organization's key. Sign in again as an Owner or Admin.",
       again: true,
     });
   });
