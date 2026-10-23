@@ -13,6 +13,7 @@ import {
   postgresHome,
   prepareClusterDirectory,
 } from "./test-postgres.ts";
+import { reservePort } from "./test-ports.ts";
 
 const pgBinDir = postgresBinDir();
 const data = NodePath.join(postgresHome, "data");
@@ -30,19 +31,6 @@ const run = (command: string, args: string[]) => {
   return result.stdout;
 };
 const urlOf = (port: number, name: string) => `postgres://postgres@127.0.0.1:${port}/${name}`;
-const freePort = () =>
-  new Promise<number>((resolve, reject) => {
-    const server = NodeNet.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("No PostgreSQL TCP address"));
-        return;
-      }
-      server.close(() => resolve(address.port));
-    });
-  });
 
 async function guardPostgres() {
   if (prepareClusterDirectory(data, (line) => process.stderr.write(`${line}\n`)) === "initialise")
@@ -57,23 +45,29 @@ async function guardPostgres() {
       "-E",
       "UTF8",
     ]);
-  const port = await freePort();
-  NodeFS.writeFileSync(
-    NodePath.join(data, "postgresql.auto.conf"),
-    [
-      `port = ${port}`,
-      "listen_addresses = '127.0.0.1'",
-      "unix_socket_directories = ''",
-      "max_connections = 400",
-      "fsync = off",
-      "synchronous_commit = off",
-      "full_page_writes = off",
-      "",
-    ].join("\n"),
-  );
-  let running = false;
-  run("pg_ctl", ["-D", data, "-l", NodePath.join(postgresHome, "postgres.log"), "-w", "start"]);
-  running = true;
+  // The guard holds the reservation until it ends, so no other test is handed PostgreSQL's port.
+  const { port, release } = await reservePort();
+  try {
+    NodeFS.writeFileSync(
+      NodePath.join(data, "postgresql.auto.conf"),
+      [
+        `port = ${port}`,
+        "listen_addresses = '127.0.0.1'",
+        "unix_socket_directories = ''",
+        "max_connections = 400",
+        "fsync = off",
+        "synchronous_commit = off",
+        "full_page_writes = off",
+        "",
+      ].join("\n"),
+    );
+    run("pg_ctl", ["-D", data, "-l", NodePath.join(postgresHome, "postgres.log"), "-w", "start"]);
+  } catch (error) {
+    // The held socket would keep a guard whose PostgreSQL never started alive.
+    await release();
+    throw error;
+  }
+  let running = true;
   const stop = () => {
     if (!running) return;
     run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
