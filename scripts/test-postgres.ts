@@ -34,6 +34,24 @@ export const postgresHome = choosePostgresHome({
   user: process.getuid?.() ?? NodeOS.userInfo().username,
 });
 
+/** The PostgreSQL server and client binaries the supervisor runs; tests reach its server with them. */
+export function postgresBinDir(): string {
+  const named = process.env["MATE_PG_BIN"];
+  if (named !== undefined) return named;
+  const config = NodeChildProcess.spawnSync("pg_config", ["--bindir"], { encoding: "utf8" });
+  const fromConfig = config.status === 0 ? config.stdout.trim() : "";
+  if (fromConfig !== "" && NodeFS.existsSync(NodePath.join(fromConfig, "initdb")))
+    return fromConfig;
+  const debian = "/usr/lib/postgresql";
+  if (NodeFS.existsSync(debian)) {
+    const newest = NodeFS.readdirSync(debian)
+      .filter((major) => NodeFS.existsSync(NodePath.join(debian, major, "bin", "initdb")))
+      .sort((a, b) => Number(b) - Number(a))[0];
+    if (newest !== undefined) return NodePath.join(debian, newest, "bin");
+  }
+  return "/opt/homebrew/bin";
+}
+
 /** A data directory without PG_VERSION cannot start; replace it instead of failing in pg_ctl. */
 export function prepareClusterDirectory(
   data: string,

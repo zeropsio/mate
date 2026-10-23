@@ -207,3 +207,68 @@ it("a lease client that disconnects before its answer leaves the supervisor and 
     NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
+
+it("admits a lease while another lease's database command waits on PostgreSQL", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-wait-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  let watcher: NodeFS.FSWatcher | undefined;
+  let holder: NodeChildProcess.ChildProcess | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { acquireTestPostgres, postgresBinDir } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    const stopped = new Promise<void>((resolve) => {
+      watcher = NodeFS.watch(home, (_, filename) => {
+        if (filename === "supervisor.sock" && !NodeFS.existsSync(NodePath.join(home, filename)))
+          resolve();
+      });
+    });
+    const maintenance = new URL(await first.createDatabase());
+    maintenance.pathname = "/postgres";
+    // A comment held open on the template blocks every CREATE DATABASE that copies it.
+    holder = NodeChildProcess.spawn(
+      NodePath.join(postgresBinDir(), "psql"),
+      ["-X", "-v", "ON_ERROR_STOP=1", "-At", maintenance.href],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    const said = NodeReadline.createInterface({ input: holder.stdout! });
+    const heard = (tag: string) =>
+      new Promise<void>((resolve) =>
+        said.on("line", (line) => {
+          if (line === tag) resolve();
+        }),
+      );
+    const commented = heard("COMMENT");
+    holder.stdin!.write("BEGIN; COMMENT ON DATABASE template0 IS 'held';\n");
+    await commented;
+    const waiting = first.createDatabase();
+    const blocked = heard("DO");
+    holder.stdin!.write(`DO $$ BEGIN
+      WHILE NOT EXISTS (SELECT FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query LIKE 'CREATE DATABASE %') LOOP
+        PERFORM pg_sleep(0.01);
+        PERFORM pg_stat_clear_snapshot();
+      END LOOP; END $$;\n`);
+    await blocked;
+    const second = acquireTestPostgres();
+    const admitted = await Promise.race([
+      second.then(() => "admitted"),
+      new Promise<string>((resolve) => {
+        deadline = setTimeout(() => resolve("blocked"), 5_000);
+      }),
+    ]);
+    holder.stdin!.end("ROLLBACK;\n");
+    expect(await waiting).toMatch(/^postgres:/u);
+    expect(admitted).toBe("admitted");
+    await (await second).close();
+    await first.close();
+    await stopped;
+  } finally {
+    clearTimeout(deadline);
+    holder?.stdin!.end();
+    watcher?.close();
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});

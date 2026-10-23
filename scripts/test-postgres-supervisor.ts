@@ -7,24 +7,14 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
-import { lifecycleLock, postgresHome, prepareClusterDirectory } from "./test-postgres.ts";
+import {
+  lifecycleLock,
+  postgresBinDir,
+  postgresHome,
+  prepareClusterDirectory,
+} from "./test-postgres.ts";
 
-const pgBinDir = (() => {
-  const named = process.env["MATE_PG_BIN"];
-  if (named !== undefined) return named;
-  const config = NodeChildProcess.spawnSync("pg_config", ["--bindir"], { encoding: "utf8" });
-  const fromConfig = config.status === 0 ? config.stdout.trim() : "";
-  if (fromConfig !== "" && NodeFS.existsSync(NodePath.join(fromConfig, "initdb")))
-    return fromConfig;
-  const debian = "/usr/lib/postgresql";
-  if (NodeFS.existsSync(debian)) {
-    const newest = NodeFS.readdirSync(debian)
-      .filter((major) => NodeFS.existsSync(NodePath.join(debian, major, "bin", "initdb")))
-      .sort((a, b) => Number(b) - Number(a))[0];
-    if (newest !== undefined) return NodePath.join(debian, newest, "bin");
-  }
-  return "/opt/homebrew/bin";
-})();
+const pgBinDir = postgresBinDir();
 const data = NodePath.join(postgresHome, "data");
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 const socketPath = NodePath.join(postgresHome, "supervisor.sock");
@@ -148,6 +138,14 @@ async function supervise() {
     };
     const sql = (query: string) =>
       run("psql", [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query]);
+    // Lease DDL runs off the event loop, so admission never waits behind another lease's DDL.
+    const ddl = async (query: string) => {
+      await execFile(
+        NodePath.join(pgBinDir, "psql"),
+        [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query],
+        { timeout: 60_000 },
+      );
+    };
     /**
      * Whether a database's last client backend left. A client's close returns before its backend
      * exits (PostgreSQL's own CREATE DATABASE … TEMPLATE waits for such backends too), so a closed
@@ -219,7 +217,6 @@ async function supervise() {
       );
       return shutdown;
     };
-    // Synchronous DDL must not delay a drain callback past its deadline with a stale sample.
     // Serialize all leases, including cleanup, rather than just pairing each lease's replies.
     let queue = Promise.resolve();
     const server = NodeNet.createServer({ allowHalfOpen: true }, (socket) => {
@@ -257,11 +254,11 @@ async function supervise() {
           if (command.startsWith("freeze ")) {
             const name = ownedDatabase(command.slice("freeze ".length));
             // Publication requires a closed migration pool; no writer survives the freeze.
-            sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS false`);
+            await ddl(`ALTER DATABASE ${name} ALLOW_CONNECTIONS false`);
             try {
               await drained(name);
             } catch (error) {
-              sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS true`);
+              await ddl(`ALTER DATABASE ${name} ALLOW_CONNECTIONS true`);
               throw error;
             }
             templates.add(name);
@@ -278,7 +275,7 @@ async function supervise() {
           }
           const name = `mate_test_${NodeCrypto.randomUUID().replaceAll("-", "")}`;
           databases.add(name);
-          sql(`CREATE DATABASE ${name} TEMPLATE ${template}`);
+          await ddl(`CREATE DATABASE ${name} TEMPLATE ${template}`);
           socket.write(`${JSON.stringify({ url: urlOf(port, name) })}\n`);
         } catch (error) {
           socket.write(`${JSON.stringify({ error: String(error) })}\n`);
@@ -290,7 +287,7 @@ async function supervise() {
         released = true;
         lines.close();
         try {
-          for (const name of databases) sql(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+          for (const name of databases) await ddl(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
           owners.delete(socket);
           await idle();
           if (requested) socket.write(`${JSON.stringify({ url: "" })}\n`);
