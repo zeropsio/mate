@@ -843,6 +843,28 @@ it("does not call an unread working tree clean or claim it has no repository", (
   expect(block(unread).state).toBe("unread");
 });
 
+it.each([
+  { name: "HQ has told its changes", told: changes() },
+  { name: "HQ has not", told: changes({ read: false, change: undefined }) },
+])(
+  "a checkout whose read failed says so, in git's words, and offers no verb on it, when $name",
+  ({ told }) => {
+    const failure =
+      "Git command failed in GitVcsDriver.statusDetails.status (/var/www/api): Git command exited with a non-zero status.";
+    const failed = checkout({ read: true, failure, isRepo: false, headRef: null, changed: [] });
+    const shown = block(failed, told);
+    expect(shown.state).toBe("unreadable");
+    expect(shown.checkoutLine).toBe(failure);
+    expect(shown.verdict).toEqual({
+      tone: "failed",
+      text: "Could not read this repository.",
+      ask: undefined,
+    });
+    expect(shown.action).toBeUndefined();
+    expect(shown.destination).toBe("");
+  },
+);
+
 describe("a thread's lease", () => {
   const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
 

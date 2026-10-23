@@ -53,6 +53,11 @@ import type { ZeropsTopologyService } from "./topology.ts";
 export interface GitCheckoutState {
   /** False until the checkout owner has answered; omitted on retained clients. */
   readonly read?: boolean;
+  /**
+   * Why the checkout's owner could not read it, in its own words: a read that failed is an
+   * answer, never one still on its way.
+   */
+  readonly failure?: string | undefined;
   /** The service's hostname, which is its repository's name in the group's org. */
   readonly repository: string;
   readonly isRepo: boolean;
@@ -135,7 +140,15 @@ export interface GitBlockEvidence {
 /** What the person is looking at, in one word the block is built around. */
 export type GitBlockState =
   /** HQ has not told the changes. Says nothing, and must not be made to. */
-  "unread" | "no-repository" | "untouched" | "unpushed" | "behind" | "in-review" | "merged";
+  | "unread"
+  /** The checkout could not be read. Says so, and nothing about the work in it. */
+  | "unreadable"
+  | "no-repository"
+  | "untouched"
+  | "unpushed"
+  | "behind"
+  | "in-review"
+  | "merged";
 
 export type GitBlockActionKind = "update-from-main" | "push" | "review";
 
@@ -297,6 +310,7 @@ export function gitCheckoutLine(
    */
   hasChange = false,
 ): string {
+  if (checkout.failure !== undefined) return checkout.failure;
   if (checkout.read === false) return "Reading repository…";
   if (!checkout.isRepo) return "no repository yet";
   const branch = branchLabel(checkout.headRef, mateName);
@@ -367,6 +381,8 @@ export function gitVerdict(input: {
       // read lands — and a panel that speaks here is a panel that takes it
       // back.
       return undefined;
+    case "unreadable":
+      return { tone: "failed", text: "Could not read this repository.", ask: undefined };
     case "no-repository":
       return { tone: "off", text: "No code here yet.", ask: undefined };
     case "merged":
@@ -465,6 +481,7 @@ function runsInTheContainer(action: GitBlockAction): boolean {
 }
 
 function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockState {
+  if (checkout.failure !== undefined) return "unreadable";
   if (checkout.read === false || !changes.read) return "unread";
   if (!checkout.isRepo) return "no-repository";
   if (changes.change?.merged === true) return "merged";
@@ -484,7 +501,13 @@ function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockS
  * change open: the Mate's push opens its change (SPEC §3.2a).
  */
 function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAction | undefined {
-  if (state === "unread" || state === "no-repository" || state === "merged") return undefined;
+  if (
+    state === "unread" ||
+    state === "unreadable" ||
+    state === "no-repository" ||
+    state === "merged"
+  )
+    return undefined;
   if (state === "unpushed" && checkout.isRepo) {
     return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
   }
@@ -520,7 +543,7 @@ export function gitBlock(input: {
   // which is what a push to a source branch already does.
   const target = change?.baseBranch ?? checkout.headRef;
   const environment =
-    state === "unread" || state === "no-repository"
+    state === "unread" || state === "unreadable" || state === "no-repository"
       ? // Where the branch lands is local knowledge, but its wording is not:
         // the same branch reads "runs this branch" before HQ answers and
         // "picks it up on merge" after. Said once, when it is settled.
@@ -551,7 +574,8 @@ export function gitBlock(input: {
   return {
     repository: checkout.repository,
     label: checkoutLabel(checkout.repository, input.lease),
-    branch: checkout.read === false ? "" : (checkout.headRef ?? MAIN),
+    branch:
+      checkout.read === false || checkout.failure !== undefined ? "" : (checkout.headRef ?? MAIN),
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
     state,
