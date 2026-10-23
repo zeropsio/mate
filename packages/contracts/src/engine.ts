@@ -1133,8 +1133,9 @@ export const RuntimeModeSet = event("RuntimeModeSet", { runtimeMode: RuntimeMode
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
 /**
- * The pool container the conversation's agent leased (zcp's `zerops_lease`): the conversation's
- * sessions open there from now on. Only its first lease binds it.
+ * The pool container the conversation's agent leased (zcp's `zerops_lease`): the person's views of
+ * the conversation's work (Git tab, diff, terminal) show it from now on; its sessions stay where
+ * they open. Only its first lease binds it.
  */
 export const LeaseBound = event("LeaseBound", { lease: ThreadLease });
 /** The conversation's lease ended: released, lost, or no longer held. */

@@ -272,7 +272,7 @@ export type Command =
     }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
-  /** The agent leased a pool container: the conversation works there, unless it has a lease. */
+  /** The agent leased a pool container: the conversation is bound to it, unless it has a lease. */
   | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
   /** A lease ended: the conversation's is unbound when it is `ended`, or not among `held`. */
   | {

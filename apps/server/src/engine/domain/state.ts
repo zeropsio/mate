@@ -231,7 +231,7 @@ export interface ConversationState {
   readonly runtimeMode: RuntimeMode | null;
   /** The interaction mode of the person's latest message; null before one. */
   readonly interactionMode: ProviderInteractionMode | null;
-  /** The pool container the agent leased, which its sessions open in; null: none. */
+  /** The pool container the agent leased, which the person's views show; null: none. */
   readonly lease: ThreadLease | null;
   /**
    * The generation of the conversation's provider thread: bumped when the conversation moves to

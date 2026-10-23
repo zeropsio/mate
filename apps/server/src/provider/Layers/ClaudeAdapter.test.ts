@@ -9914,8 +9914,8 @@ describe("ClaudeAdapterLive", () => {
   // history helpers find it there, or anywhere when no folder is named; a named folder is the only
   // place they look.
   it.effect.each([
-    { name: "a lease bound", began: "/var/www", now: "/var/www/webpool-3" },
-    { name: "a lease unbound", began: "/var/www/webpool-3", now: "/var/www" },
+    { name: "a move into a subfolder", began: "/var/www", now: "/var/www/appdev" },
+    { name: "a move back out", began: "/var/www/appdev", now: "/var/www" },
   ])("rewinds Claude history after $name moved the session to another folder", ({ began, now }) => {
     const lookedIn = (dir: string | undefined) => dir === undefined || dir === began;
     const harness = makeHarness({

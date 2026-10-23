@@ -407,21 +407,30 @@ describe("a conversation bound to the lease its agent acquired", () => {
     ),
   );
 
-  it.effect("opens its next session where the lease is, and the media root follows", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const w = yield* world;
-        yield* w.tell({ _tag: "BindLease", lease }, engine);
-        yield* w.tell({ _tag: "Send", text: "Fix the footer" });
-        assert.strictEqual(
-          (w.provider.starts[0] as { readonly cwd?: string }).cwd,
-          `${w.dir}/webpool-3`,
-        );
-        const context = yield* (yield* w.engine).assetContext(ThreadId.make(mate));
-        assert.strictEqual(context?.workspaceRoot, `${w.dir}/webpool-3`);
-        yield* w.shutdown;
-      }),
-    ),
+  // zcp keeps its lease records and work session in the session's working directory: a session
+  // moved into the lease would find none of them after a reopen.
+  it.effect(
+    "opens every session where it always worked, through a kill of the server, and resolves its pictures there",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const cwds = () =>
+            w.provider.starts.map((start) => (start as { readonly cwd?: string }).cwd);
+          yield* w.tell({ _tag: "Send", text: "Lease a container for the footer" });
+          yield* w.tell({ _tag: "BindLease", lease }, engine);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const before = cwds();
+          yield* w.kill;
+          yield* w.boot;
+          yield* w.tell({ _tag: "Send", text: "Fix the footer" });
+          assert.deepStrictEqual(before, [w.dir]);
+          assert.deepStrictEqual(cwds(), [w.dir]);
+          const context = yield* (yield* w.engine).assetContext(ThreadId.make(mate));
+          assert.strictEqual(context?.workspaceRoot, w.dir);
+          yield* w.shutdown;
+        }),
+      ),
   );
 });
 

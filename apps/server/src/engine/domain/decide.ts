@@ -801,8 +801,6 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     model: b.state.model,
     options: b.state.agent?.options ?? null,
     ...(b.state.runtimeMode === null ? {} : { runtimeMode: b.state.runtimeMode }),
-    // Where the session opens is recorded before it opens: the lease bound when it was asked.
-    ...(b.state.lease === null ? {} : { lease: b.state.lease }),
     // A fresh rotation resumes nothing: its session starts on a thread of its own.
     resume: rotation?.fresh === true ? null : b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,

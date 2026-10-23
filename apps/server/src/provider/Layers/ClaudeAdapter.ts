@@ -6224,7 +6224,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         Effect.tryPromise({
           try: async () => {
             // No folder named: Claude keeps the transcript under the directory the conversation
-            // began in, which a session moved to another folder (a lease bound or unbound) is not.
+            // began in, which a session resumed in another folder is not.
             const readOptions = { includeSystemMessages: true };
             if (options?.getSessionMessages)
               return options.getSessionMessages(historySessionId, readOptions);

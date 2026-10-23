@@ -107,20 +107,19 @@ describe("a conversation's lease", () => {
     );
   });
 
-  // A fresh thread would cost the agent its whole conversation, while the providers resume theirs
-  // in another folder (Claude Code finds the transcript by its id, OpenCode forks the session into
-  // the new folder): a lease changes where the next session opens, never what it resumes.
+  // zcp keeps its state (its lease records, its work session) in the session's working directory,
+  // so a session that moved into the lease would leave zcp's records behind: a lease changes what
+  // the person's views show, never where the agent's sessions open or what they resume.
   it.each<{
     readonly name: string;
     readonly before: ReadonlyArray<Command>;
     readonly after: ReadonlyArray<Command>;
-    readonly lease: ThreadLease | undefined;
   }>([
-    { name: "bound", before: [], after: [bind(webpool3)], lease: webpool3 },
-    { name: "unbound", before: [bind(webpool3)], after: [released("webpool-3")], lease: undefined },
+    { name: "bound", before: [], after: [bind(webpool3)] },
+    { name: "unbound", before: [bind(webpool3)], after: [released("webpool-3")] },
   ])(
-    "a lease $name between sessions keeps the agent's conversation: the next session resumes it in the new folder",
-    ({ before, after, lease }) => {
+    "a lease $name between sessions keeps the agent's conversation where it works: the next session resumes it and names no lease",
+    ({ before, after }) => {
       const scene = play([
         ...before,
         send(),
@@ -136,16 +135,7 @@ describe("a conversation's lease", () => {
       const payload = scene.effects.find((effect) => effect.kind === "session.open")?.payload;
       expect(payload).toMatchObject({ resume: "native-1", generation: 1 });
       expect(payload).not.toHaveProperty("fresh");
-      if (lease === undefined) expect(payload).not.toHaveProperty("lease");
-      else expect(payload).toHaveProperty("lease", lease);
+      expect(payload).not.toHaveProperty("lease");
     },
   );
-
-  it("a session opened after the binding is told the lease it works in; before, none", () => {
-    const open = (scene: Scene) => scene.effects.find((effect) => effect.kind === "session.open");
-    expect(open(play([bind(webpool3), send(), prepared(1)]))?.payload).toMatchObject({
-      lease: webpool3,
-    });
-    expect(open(play([send(), prepared(1)]))?.payload).not.toHaveProperty("lease");
-  });
 });

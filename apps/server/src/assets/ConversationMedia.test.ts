@@ -424,12 +424,13 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
 
 it.each([
   {
-    sentence: "a thread bound to a lease captures its pictures from the container its agent leased",
+    // Its agent writes paths from where it works, which holds the lease's mount.
+    sentence: "a thread bound to a lease captures its pictures where its agent works",
     thread: {
       lease: { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
       worktreePath: null,
     },
-    root: "/var/www/webpool-3",
+    root: "/var/www",
   },
   {
     sentence: "a thread with a worktree captures from its worktree",

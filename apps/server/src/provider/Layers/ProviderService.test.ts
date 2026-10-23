@@ -2221,8 +2221,8 @@ routing.layer("ProviderServiceLive routing", (it) => {
   // folder (Claude Code finds the transcript by its id in every project folder), so a move never
   // costs the agent its conversation.
   it.effect.each([
-    { name: "a lease bound", thread: "thread-lease-bound", from: "www", to: "www/webpool-3" },
-    { name: "a lease unbound", thread: "thread-lease-unbound", from: "www/webpool-3", to: "www" },
+    { name: "a move into a subfolder", thread: "thread-moved-in", from: "www", to: "www/appdev" },
+    { name: "a move back out", thread: "thread-moved-out", from: "www/appdev", to: "www" },
   ])(
     "after $name moves a thread to another folder, its next session resumes the provider's saved conversation there",
     ({ thread, from, to }) =>

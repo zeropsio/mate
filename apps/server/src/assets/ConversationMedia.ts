@@ -23,7 +23,6 @@ import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
 import { outsideWorkspaceImageRoots } from "./AssetAccess.ts";
 import { findRetainedMedia, retainedMediaDirectory } from "./RetainedMedia.ts";
-import { ZEROPS_WORKSPACE_ROOT } from "../zerops/ZeropsRepositorySource.ts";
 
 /** Capture only locally authored images. External URLs remain external. */
 export const captureConversationText = Effect.fn("captureConversationText")(function* (
@@ -159,16 +158,14 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
 });
 
 /**
- * Where a thread's pictures are captured from: the pool container its agent leased
- * (`/var/www/<alias>`), its worktree, else its project's root.
+ * Where a thread's pictures are captured from: where its agent works, its worktree, else its
+ * project's root. A thread bound to a lease too: its agent writes paths from there, and the
+ * lease's mount is under it.
  */
 export const threadWorkspaceRoot = (
-  thread: Pick<OrchestrationThread, "lease" | "worktreePath"> | undefined,
+  thread: Pick<OrchestrationThread, "worktreePath"> | undefined,
   project: { readonly workspaceRoot: string } | undefined,
-): string | undefined =>
-  thread?.lease != null
-    ? `${ZEROPS_WORKSPACE_ROOT}/${thread.lease.alias}`
-    : (thread?.worktreePath ?? project?.workspaceRoot);
+): string | undefined => thread?.worktreePath ?? project?.workspaceRoot;
 
 type PlannedEvent = OrchestrationEvent extends infer E
   ? E extends unknown

@@ -416,9 +416,8 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             WHERE conversation_id = ${id} AND owner_kind = 'conversation' LIMIT 1
           `;
           if (rows.length === 0) return undefined;
-          const { lease } = yield* conversations.state(id);
           return {
-            workspaceRoot: (yield* workspace.of(id, lease)).cwd,
+            workspaceRoot: (yield* workspace.of(id)).cwd,
             ownsThread: (owner: ThreadId) =>
               (TurnPumpModule.conversationOfThread(owner) ?? owner) === id,
           };
