@@ -33,6 +33,7 @@
 import type { ZeropsDevServer, ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
+import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import { servicePairs } from "./servicePairs.ts";
@@ -551,6 +552,17 @@ export const leaseDevServersOf = (
   lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
   lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
+
+/**
+ * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its branch its
+ * lifecycle last read zcp holding, its own first; the bound one alone while the lifecycle is not
+ * known.
+ */
+export const threadLeasesOf = (
+  lease: CheckoutLease | null | undefined,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<CheckoutLease> =>
+  threadLeases(lease, lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined);
 
 /** The dev servers one envelope read on a lease, by alias; none when it did not read them. */
 export const leaseDevServersIn = (

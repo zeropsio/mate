@@ -207,13 +207,33 @@ describe("diffRepositories", () => {
 
   it("a thread bound to a lease diffs that lease's repository, named by its pool and branch", () => {
     expect(
-      diffRepositories({ checkouts: ["webpool-3"], cwd: "/var/www", crewmate: null, lease: LEASE }),
+      diffRepositories({
+        checkouts: ["webpool-3"],
+        cwd: "/var/www",
+        crewmate: null,
+        leases: [LEASE],
+      }),
     ).toEqual([{ name: "webpool · feat-x", cwd: "/var/www/webpool-3" }]);
   });
 
   it("a thread bound to no lease diffs the Mate's checkouts by their hostnames", () => {
     expect(
-      diffRepositories({ checkouts: ["appdev"], cwd: "/var/www", crewmate: null, lease: null }),
+      diffRepositories({ checkouts: ["appdev"], cwd: "/var/www", crewmate: null, leases: [] }),
     ).toEqual([{ name: "appdev", cwd: "/var/www/appdev" }]);
+  });
+
+  it("a thread bound to a lease of a branch held on several pools diffs every lease of it, each named by its pool and branch", () => {
+    const hq = { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" } as const;
+    expect(
+      diffRepositories({
+        checkouts: ["webpool-3", "hqpool-2"],
+        cwd: "/var/www",
+        crewmate: null,
+        leases: [LEASE, hq],
+      }),
+    ).toEqual([
+      { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
+      { name: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
+    ]);
   });
 });

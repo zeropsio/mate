@@ -26,9 +26,10 @@ export function useDiffRepositories(
   environmentId: EnvironmentId | null,
   cwd: string | null,
   crew: ThreadCrewOrigin | null,
-  lease: CheckoutLease | null,
+  /** The thread's leases (`useThreadLeases`); none for a thread bound to none. */
+  leases: ReadonlyArray<CheckoutLease>,
 ): { readonly reads: ReadonlyArray<DiffRepositoryRead> | null; readonly gitPage: boolean } {
-  const checkouts = useMateCheckouts(environmentId, lease);
+  const checkouts = useMateCheckouts(environmentId, leases);
   const { view } = useProjectTopology(environmentId);
   const crewRead = useAtomValue(
     environmentId === null || crew === null
@@ -43,7 +44,7 @@ export function useDiffRepositories(
       : snapshot === null
         ? undefined
         : (snapshot.crewmates.find((member) => member.handle === crew.crewmate) ?? null);
-  const repositories = diffRepositories({ checkouts, cwd, crewmate, lease });
+  const repositories = diffRepositories({ checkouts, cwd, crewmate, leases });
   const key = environmentId === null || repositories === null ? null : JSON.stringify(repositories);
   const atom = useMemo(() => {
     if (environmentId === null || key === null) return READING;

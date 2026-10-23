@@ -13,8 +13,9 @@
  * service is a codebase, its hostname is the name of its repository in the
  * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
  * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A thread
- * whose agent leased a pool container reads that lease's repository alone
- * (`threadCheckoutHostnames`), at `/var/www/{alias}`.
+ * whose agent leased a pool container reads that lease's repository and every
+ * other of its branch zcp holds, alone (`threadLeases`, `threadCheckoutHostnames`),
+ * each at `/var/www/{alias}`.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
  * they are the Mate's owner's alone (D11); *Review* is offered to whoever can
@@ -43,6 +44,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useThreadShell } from "../../state/entities";
+import { useThreadLeases } from "../../zerops/useThreadLeases";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
@@ -193,7 +195,11 @@ export interface ZeropsGitTabProps {
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const topology = useProjectTopology(props.threadRef?.environmentId ?? null);
-  const lease = useThreadShell(props.threadRef)?.lease ?? null;
+  const leases = useThreadLeases(
+    props.threadRef?.environmentId ?? null,
+    props.threadRef?.threadId ?? null,
+    useThreadShell(props.threadRef)?.lease ?? null,
+  );
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;
@@ -203,9 +209,9 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
         topology.view === undefined
           ? undefined
           : gitCheckoutHostnames(topology.view.services, tierYaml),
-        lease,
+        leases,
       ),
-    [topology.view, tierYaml, lease],
+    [topology.view, tierYaml, leases],
   );
   if (repositories === undefined)
     return (
@@ -221,7 +227,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       ) : null}
       <KnownGitTab
         {...props}
-        lease={lease}
+        leases={leases}
         repositories={repositories}
         key={props.threadRef?.environmentId}
       />
@@ -231,11 +237,11 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
 
 function KnownGitTab({
   repositories,
-  lease,
+  leases,
   ...props
 }: ZeropsGitTabProps & {
   readonly repositories: ReadonlyArray<string>;
-  readonly lease: CheckoutLease | null;
+  readonly leases: ReadonlyArray<CheckoutLease>;
 }) {
   const environmentId = props.threadRef?.environmentId;
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
@@ -288,7 +294,7 @@ function KnownGitTab({
                 },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
-          lease,
+          leases,
           evidence: {
             remoteReachable: remotes.get(repository)?.reachable,
             remoteDetail: remotes.get(repository)?.detail,
@@ -297,7 +303,7 @@ function KnownGitTab({
       ),
     [
       checkouts,
-      lease,
+      leases,
       props.changes,
       props.declarations,
       props.mateName,

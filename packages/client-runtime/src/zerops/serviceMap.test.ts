@@ -8,6 +8,7 @@ import {
   formatAmount,
   formatRange,
   leaseDevServersOf,
+  threadLeasesOf,
   serviceStatusNeedsWord,
   serviceStatusTone,
   zeropsPortLabel,
@@ -927,5 +928,31 @@ describe("a lease's dev servers", () => {
 
   it("are none while the lifecycle is not known", () => {
     expect(leaseDevServersOf("webpool-3", undefined)).toBeUndefined();
+  });
+});
+
+describe("a thread's leases", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("are every lease of its branch its lifecycle last read zcp holding, its own first", () => {
+    const read = lifecycle({
+      envelope: {
+        services: [],
+        leases: [
+          { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
+          { alias: "webpool-3", pool: "webpool", branch: "feat-x", state: "held" },
+          { alias: "apipool-4", pool: "apipool", branch: "feat-y", state: "held" },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+    expect(threadLeasesOf(LEASE, read)).toEqual([
+      LEASE,
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+    ]);
+  });
+
+  it("are the one it is bound to while the lifecycle is not known", () => {
+    expect(threadLeasesOf(LEASE, undefined)).toEqual([LEASE]);
+    expect(threadLeasesOf(null, undefined)).toEqual([]);
   });
 });

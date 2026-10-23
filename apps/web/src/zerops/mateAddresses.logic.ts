@@ -17,9 +17,10 @@
  * part of the application: "web :3000", "api :8080" (the monorepo model, §6).
  * The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
- * A thread bound to a lease also lists the dev servers zcp read on its leased
- * container, under the lease's name (`<pool> · <branch>`). A lease has no
- * address but those: the pool's own route is the pool's, never the lease's.
+ * A thread bound to a lease also lists the dev servers zcp read on each of its
+ * leases — the one it is bound to and every other of its branch — under the
+ * lease's name (`<pool> · <branch>`). A lease has no address but those: the
+ * pool's own route is the pool's, never the lease's.
  *
  * Pure: no React, no store.
  */
@@ -72,15 +73,16 @@ export interface MateAddressInput {
     readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
   }>;
   /**
-   * The lease of the thread the list is for: its alias, its name (`checkoutLabel`) and the dev
-   * servers zcp last read on it (`leaseDevServersOf`); absent for a thread with none.
+   * The leases of the thread the list is for (`threadLeases`): each one's alias, its name
+   * (`checkoutLabel`) and the dev servers zcp last read on it (`leaseDevServersOf`); absent or
+   * empty for a thread with none.
    */
-  readonly lease?:
-    | {
+  readonly leases?:
+    | ReadonlyArray<{
         readonly alias: string;
         readonly label: string;
         readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
-      }
+      }>
     | undefined;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
@@ -138,8 +140,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
         : projectRole;
     add(service.hostname, role, route.url);
   }
-  if (input.lease !== undefined) {
-    const { alias, label, devServers = [] } = input.lease;
+  for (const { alias, label, devServers = [] } of input.leases ?? []) {
     for (const server of devServers) {
       if (server.url === undefined) continue;
       // One dev server is the lease's address; several are each a part of it, by name and port.

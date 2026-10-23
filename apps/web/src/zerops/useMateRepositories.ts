@@ -1,6 +1,6 @@
 /**
  * A Mate's checkouts that are Git repositories on disk now, in the Git tab's order: the runtime
- * services its topology lists (`gitCheckoutHostnames`), or a bound thread's lease alone
+ * services its topology lists (`gitCheckoutHostnames`), or a bound thread's leases alone
  * (`threadCheckoutHostnames`), each read as the Git tab reads it (the server's status of
  * `/var/www/{hostname}`). Empty off Zerops, after a failed read, or not asked (`environmentId`
  * null: a hidden terminal reads nothing).
@@ -29,14 +29,14 @@ const UNREAD_WAIT_MS = 3000;
 /** The checkouts; `null` while the topology or a checkout's status is still read, however long. */
 export function useMateCheckouts(
   environmentId: EnvironmentId | null,
-  /** The thread's lease; `null` for none. */
-  lease: CheckoutLease | null,
+  /** The thread's leases (`useThreadLeases`); none for a thread bound to none. */
+  leases: ReadonlyArray<CheckoutLease>,
 ): ReadonlyArray<string> | null {
   const { view, error } = useProjectTopology(environmentId);
   const key =
     threadCheckoutHostnames(
       view === undefined ? undefined : gitCheckoutHostnames(view.services),
-      lease,
+      leases,
     )?.join("\n") ?? null;
   const atom = useMemo(() => {
     if (environmentId === null || key === "") return NONE_ATOM;
@@ -59,9 +59,9 @@ export function useMateCheckouts(
  */
 export function useMateRepositories(
   environmentId: EnvironmentId | null,
-  lease: CheckoutLease | null,
+  leases: ReadonlyArray<CheckoutLease>,
 ): ReadonlyArray<string> | null {
-  const repositories = useMateCheckouts(environmentId, lease);
+  const repositories = useMateCheckouts(environmentId, leases);
   const unread = repositories === null;
   const [waited, setWaited] = useState(false);
   useEffect(() => {

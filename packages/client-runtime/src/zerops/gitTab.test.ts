@@ -13,6 +13,7 @@ import {
   mateChangeIn,
   pullRequestBlocked,
   threadCheckoutHostnames,
+  threadLeases,
   type GitBlockEvidence,
   type GitChangeState,
   type GitCheckoutState,
@@ -869,22 +870,22 @@ describe("a thread's lease", () => {
   const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
 
   it("a thread bound to a lease reads that lease's repository and no other", () => {
-    expect(threadCheckoutHostnames(["appdev", "api"], LEASE)).toEqual(["webpool-3"]);
+    expect(threadCheckoutHostnames(["appdev", "api"], [LEASE])).toEqual(["webpool-3"]);
     // Its lease is known before the Mate's topology is: it waits on nothing.
-    expect(threadCheckoutHostnames(undefined, LEASE)).toEqual(["webpool-3"]);
+    expect(threadCheckoutHostnames(undefined, [LEASE])).toEqual(["webpool-3"]);
   });
 
   it("a thread bound to no lease reads the Mate's checkouts, as before", () => {
-    expect(threadCheckoutHostnames(["appdev", "api"], null)).toEqual(["appdev", "api"]);
-    expect(threadCheckoutHostnames(["appdev"], undefined)).toEqual(["appdev"]);
-    expect(threadCheckoutHostnames(undefined, null)).toBeUndefined();
+    expect(threadCheckoutHostnames(["appdev", "api"], [])).toEqual(["appdev", "api"]);
+    expect(threadCheckoutHostnames(["appdev"], threadLeases(null, undefined))).toEqual(["appdev"]);
+    expect(threadCheckoutHostnames(undefined, [])).toBeUndefined();
   });
 
   it("names a lease's repository by its pool and branch, and by its alias with no branch", () => {
-    expect(checkoutLabel("webpool-3", LEASE)).toBe("webpool · feat-x");
-    expect(checkoutLabel("webpool-3", { ...LEASE, branch: null })).toBe("webpool-3");
-    expect(checkoutLabel("appdev", LEASE)).toBe("appdev");
-    expect(checkoutLabel("appdev", null)).toBe("appdev");
+    expect(checkoutLabel("webpool-3", [LEASE])).toBe("webpool · feat-x");
+    expect(checkoutLabel("webpool-3", [{ ...LEASE, branch: null }])).toBe("webpool-3");
+    expect(checkoutLabel("appdev", [LEASE])).toBe("appdev");
+    expect(checkoutLabel("appdev", [])).toBe("appdev");
   });
 
   it("a lease's block in the Git tab goes by the lease's name, a service's by its hostname", () => {
@@ -904,12 +905,63 @@ describe("a thread's lease", () => {
         changes: { read: true, change: undefined },
         declarations: DECLARATIONS,
         evidence: { remoteReachable: true },
-        lease,
+        leases: lease === null ? [] : [lease],
       });
     expect(block("webpool-3", LEASE)).toMatchObject({
       repository: "webpool-3",
       label: "webpool · feat-x",
     });
     expect(block("appdev", null)).toMatchObject({ repository: "appdev", label: "appdev" });
+  });
+
+  /** zcp's leases as the thread last read them: its branch is held on two more pools. */
+  const READ = [
+    { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
+    { alias: "webpool-3", pool: "webpool", branch: "feat-x", state: "held" },
+    { alias: "apipool-4", pool: "apipool", branch: "feat-x", state: "unmounted" },
+    { alias: "docspool-5", pool: "docspool", branch: "feat-x", state: "lost" },
+    { alias: "hqpool-6", pool: "hqpool", branch: "feat-y", state: "held" },
+  ];
+
+  it("a thread bound to a lease of a branch held on several pools reads every lease of its branch zcp holds, its own first", () => {
+    const leases = threadLeases(LEASE, READ);
+    expect(leases).toEqual([
+      LEASE,
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+      { alias: "apipool-4", pool: "apipool", branch: "feat-x" },
+    ]);
+    expect(threadCheckoutHostnames(["appdev"], leases)).toEqual([
+      "webpool-3",
+      "hqpool-2",
+      "apipool-4",
+    ]);
+  });
+
+  it("names every lease of a thread's branch by its pool and branch", () => {
+    const leases = threadLeases(LEASE, READ);
+    expect(leases.map(({ alias }) => checkoutLabel(alias, leases))).toEqual([
+      "webpool · feat-x",
+      "hqpool · feat-x",
+      "apipool · feat-x",
+    ]);
+  });
+
+  it("a thread reads only the lease it is bound to until zcp's leases are read, and none while it is bound to none", () => {
+    expect(threadLeases(LEASE, undefined)).toEqual([LEASE]);
+    expect(threadLeases(null, READ)).toEqual([]);
+  });
+
+  it("a lease of no branch is of main's group", () => {
+    expect(
+      threadLeases({ ...LEASE, branch: null }, [
+        { alias: "hqpool-2", pool: "hqpool", branch: "main", state: "held" },
+        { alias: "apipool-4", pool: "apipool", state: "held" },
+        { alias: "docspool-5", pool: "docspool", branch: "feat-x", state: "held" },
+      ]),
+    ).toEqual([
+      { ...LEASE, branch: null },
+      { alias: "hqpool-2", pool: "hqpool", branch: "main" },
+      { alias: "apipool-4", pool: "apipool", branch: null },
+    ]);
   });
 });

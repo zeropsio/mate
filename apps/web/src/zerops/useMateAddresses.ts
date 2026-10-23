@@ -4,12 +4,16 @@
  * conversation's lifecycle last read, and the group's stage and production
  * projects in the inventory. No request of its own — the topology's contents
  * are the same ones the conversation and project panel read. A thread bound to
- * a lease adds the dev servers zcp last read on it (the envelope's lease, never a
- * service), under the lease's name.
+ * a lease adds the dev servers zcp last read on each of its leases
+ * (`threadLeasesOf`: the envelope's leases, never a service), under each one's name.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { checkoutLabel, derivePublicRoutes } from "@t3tools/client-runtime/zerops";
-import { devServersOf, leaseDevServersOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import {
+  devServersOf,
+  leaseDevServersOf,
+  threadLeasesOf,
+} from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
@@ -48,6 +52,7 @@ export function useMateAddresses(
   const services = useProjectsServiceValues(projectIds);
   return useMemo(() => {
     if (topology === undefined) return { addresses: NO_ADDRESSES, known: false };
+    const leases = threadLeasesOf(lease, lifecycle);
     const group =
       project === null || inventory === null
         ? undefined
@@ -64,15 +69,11 @@ export function useMateAddresses(
         ...service,
         devServers: devServersOf(service.hostname, lifecycle),
       })),
-      ...(lease === null
-        ? {}
-        : {
-            lease: {
-              alias: lease.alias,
-              label: checkoutLabel(lease.alias, lease),
-              devServers: leaseDevServersOf(lease.alias, lifecycle),
-            },
-          }),
+      leases: leases.map(({ alias }) => ({
+        alias,
+        label: checkoutLabel(alias, leases),
+        devServers: leaseDevServersOf(alias, lifecycle),
+      })),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });

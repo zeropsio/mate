@@ -266,6 +266,7 @@ export {
   pullRequestBlocked,
   pullRequestBlockedReason,
   threadCheckoutHostnames,
+  threadLeases,
   type CheckoutLease,
   type GitBlock,
   type GitBlockAction,

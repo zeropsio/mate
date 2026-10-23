@@ -23,6 +23,7 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
+import { useThreadLeases } from "../zerops/useThreadLeases";
 import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
@@ -1033,10 +1034,12 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
   // Terminals already open stay on screen while the checkouts are read: they keep their folders.
-  const repositories = useMateRepositories(
+  const leases = useThreadLeases(
     visible ? threadRef.environmentId : null,
+    threadRef.threadId,
     serverThread?.lease ?? null,
   );
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
@@ -1319,10 +1322,12 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
-  const repositories = useMateRepositories(
+  const leases = useThreadLeases(
     visible ? threadRef.environmentId : null,
+    threadRef.threadId,
     serverThread?.lease ?? null,
   );
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
   const cwd = useMemo(
     () =>
       project
@@ -3254,10 +3259,12 @@ function ConversationView(props: ChatViewProps) {
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
-  const mateRepositories = useMateRepositories(
+  const mateLeases = useThreadLeases(
     activeProject ? environmentId : null,
+    activeThreadId,
     activeThread?.lease ?? null,
   );
+  const mateRepositories = useMateRepositories(activeProject ? environmentId : null, mateLeases);
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,

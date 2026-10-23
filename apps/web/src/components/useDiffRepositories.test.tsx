@@ -75,11 +75,11 @@ afterEach(() => vi.useRealTimers());
 async function readRepositories(
   crew: { crew: string; crewmate: string; stint: number } | null,
   look: (latest: () => ReadonlyArray<DiffRepositoryRead> | null) => Promise<void>,
-  lease: { alias: string; pool: string; branch: string | null } | null = null,
+  leases: ReadonlyArray<{ alias: string; pool: string; branch: string | null }> = [],
 ) {
   let latest: ReadonlyArray<DiffRepositoryRead> | null = null;
   function Probe() {
-    latest = useDiffRepositories(ENVIRONMENT, "/var/www", crew, lease).reads;
+    latest = useDiffRepositories(ENVIRONMENT, "/var/www", crew, leases).reads;
     return null;
   }
   const container = document.createElement("div");
@@ -131,7 +131,26 @@ it("a thread bound to a lease diffs that lease's repository alone, named by its 
         { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
       ]);
     },
-    { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
+    [{ alias: "webpool-3", pool: "webpool", branch: "feat-x" }],
+  );
+});
+
+it("a thread bound to a lease of a branch held on several pools diffs every lease of it, each named by its pool and branch", async () => {
+  mate.statuses.set("/var/www/apidev", { isRepo: true, refName: "main" });
+  mate.statuses.set("/var/www/webpool-3", { isRepo: true, refName: "feat-x" });
+  mate.statuses.set("/var/www/hqpool-2", { isRepo: true, refName: "feat-x" });
+  await readRepositories(
+    null,
+    async (latest) => {
+      expect(latest()?.map(({ repository }) => repository)).toEqual([
+        { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
+        { name: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
+      ]);
+    },
+    [
+      { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+    ],
   );
 });
 

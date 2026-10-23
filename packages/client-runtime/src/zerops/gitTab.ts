@@ -37,7 +37,12 @@
  * @module gitTab
  */
 
-import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
+import {
+  isZeropsLeaseHeld,
+  ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
+  zeropsLeaseGroupBranch,
+  type ZeropsLease,
+} from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
@@ -533,8 +538,8 @@ export function gitBlock(input: {
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;
-  /** The lease of the thread the tab is open beside, which names its repository. */
-  readonly lease?: CheckoutLease | null | undefined;
+  /** The leases of the thread the tab is open beside (`threadLeases`), which name their repositories. */
+  readonly leases?: ReadonlyArray<CheckoutLease> | undefined;
 }): GitBlock {
   const { checkout, changes } = input;
   const change = changes.change;
@@ -573,7 +578,7 @@ export function gitBlock(input: {
   });
   return {
     repository: checkout.repository,
-    label: checkoutLabel(checkout.repository, input.lease),
+    label: checkoutLabel(checkout.repository, input.leases ?? []),
     branch:
       checkout.read === false || checkout.failure !== undefined ? "" : (checkout.headRef ?? MAIN),
     verdict,
@@ -643,23 +648,53 @@ export interface CheckoutLease {
 }
 
 /**
- * The checkouts a thread reads: the one its lease mounts, alone, once its agent leased a pool
- * container — the thread works there and nowhere else, and a lease is never a service its topology
- * lists; with no lease, the Mate's own (`gitCheckoutHostnames`), `undefined`/`null` while unread.
- * A thread bound to no lease so never reads another thread's lease.
+ * The leases a thread reads: the one it is bound to first, then every other lease of its branch
+ * zcp holds, as the thread's last read of zcp's leases (`leases[]`) names them — a branch that
+ * spans several app parts holds one lease per part's pool, and the conversation that acquired them
+ * shows them all. Derived on every read, never kept: none for a thread bound to no lease, and the
+ * bound one alone until zcp's leases are read.
  */
-export function threadCheckoutHostnames<Unread extends null | undefined>(
-  checkouts: ReadonlyArray<string> | Unread,
+export function threadLeases(
   lease: CheckoutLease | null | undefined,
-): ReadonlyArray<string> | Unread {
-  return lease == null ? checkouts : [lease.alias];
+  read: ReadonlyArray<Pick<ZeropsLease, "alias" | "pool" | "branch" | "state">> | undefined,
+): ReadonlyArray<CheckoutLease> {
+  if (lease == null) return [];
+  const branch = zeropsLeaseGroupBranch(lease.branch);
+  const others = (read ?? []).filter(
+    (other) =>
+      other.alias !== lease.alias &&
+      isZeropsLeaseHeld(other.state) &&
+      zeropsLeaseGroupBranch(other.branch) === branch,
+  );
+  return [
+    lease,
+    ...others.map(({ alias, pool, branch: checkedOut }) => ({
+      alias,
+      pool,
+      branch: checkedOut === undefined || checkedOut === "" ? null : checkedOut,
+    })),
+  ];
 }
 
 /**
- * What a checkout is called: its hostname, or — for the thread's lease, whose alias says only which
- * container of the pool it is — `<pool> · <branch>`, the alias with no branch.
+ * The checkouts a thread reads: the ones its leases mount (`threadLeases`), alone, once its agent
+ * leased a pool container — the thread works there and nowhere else, and a lease is never a
+ * service its topology lists; with no lease, the Mate's own (`gitCheckoutHostnames`),
+ * `undefined`/`null` while unread. A thread bound to no lease so never reads another thread's lease.
  */
-export function checkoutLabel(hostname: string, lease: CheckoutLease | null | undefined): string {
-  if (lease == null || lease.alias !== hostname) return hostname;
+export function threadCheckoutHostnames<Unread extends null | undefined>(
+  checkouts: ReadonlyArray<string> | Unread,
+  leases: ReadonlyArray<CheckoutLease>,
+): ReadonlyArray<string> | Unread {
+  return leases.length === 0 ? checkouts : leases.map(({ alias }) => alias);
+}
+
+/**
+ * What a checkout is called: its hostname, or — for one of the thread's leases, whose alias says
+ * only which container of the pool it is — `<pool> · <branch>`, the alias with no branch.
+ */
+export function checkoutLabel(hostname: string, leases: ReadonlyArray<CheckoutLease>): string {
+  const lease = leases.find(({ alias }) => alias === hostname);
+  if (lease === undefined) return hostname;
   return lease.branch === null ? lease.alias : `${lease.pool} · ${lease.branch}`;
 }

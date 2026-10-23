@@ -51,6 +51,7 @@ import {
   type DiffChoice,
 } from "./DiffPanel.logic";
 import { useDiffRepositories } from "./useDiffRepositories";
+import { useThreadLeases } from "../zerops/useThreadLeases";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -149,11 +150,16 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
+  const leases = useThreadLeases(
+    activeThread?.environmentId ?? null,
+    activeThread?.id ?? null,
+    activeThread?.lease ?? null,
+  );
   const { reads, gitPage } = useDiffRepositories(
     activeThread?.environmentId ?? null,
     activeCwd ?? null,
     activeThread?.crew ?? null,
-    activeThread?.lease ?? null,
+    leases,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
