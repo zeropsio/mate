@@ -5,7 +5,7 @@ import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 
 it("releases the lifecycle lock while a scenario run keeps its PostgreSQL lease open", async () => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-run-"));
@@ -173,6 +173,37 @@ it("admits another worktree's lease while the last release waits for its lifecyc
     await stopped;
     watcher?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("a lease client that disconnects before its answer leaves the supervisor and its held leases running", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-gone-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  let watcher: NodeFS.FSWatcher | undefined;
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const held = await acquireTestPostgres();
+    const stopped = new Promise<void>((resolve) => {
+      watcher = NodeFS.watch(home, (_, filename) => {
+        if (filename === "supervisor.sock" && !NodeFS.existsSync(NodePath.join(home, filename)))
+          resolve();
+      });
+    });
+    const gone = NodeNet.createConnection(NodePath.join(home, "supervisor.sock"));
+    gone.write("create\ncreate\n");
+    // The first answer proves the supervisor heard both; the second is written to a closed socket.
+    await new Promise((resolve) =>
+      NodeReadline.createInterface({ input: gone }).once("line", resolve),
+    );
+    gone.destroy();
+    expect(await held.createDatabase()).toMatch(/^postgres:/u);
+    await held.close();
+    await stopped;
+  } finally {
+    watcher?.close();
+    vi.unstubAllEnvs();
     NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });

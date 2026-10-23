@@ -312,6 +312,8 @@ async function supervise() {
       socket.on("error", disconnected);
       socket.on("end", disconnected);
       socket.on("close", disconnected);
+      // readline re-emits its socket's errors; one unheard would end every lease with the supervisor.
+      lines.on("error", disconnected);
     });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
