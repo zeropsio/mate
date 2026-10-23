@@ -36,6 +36,11 @@ const SSHFS_FSTYPE = "fuse.sshfs";
 export interface ZeropsRepository {
   /** The service hostname, which is also the SSH host inside the project. */
   readonly host: string;
+  /**
+   * `lease`: the mount of a pool container zcp leased (`zerops_lease`), named by its alias, which
+   * is its SSH host: no service's. Absent: a service's.
+   */
+  readonly kind?: "lease";
   /** `/var/www/<host>` - the path the server, the agent and T3 all speak. */
   readonly mountPath: string;
   /** `/var/www` - the path git must run against on `host`. */
@@ -111,7 +116,50 @@ export type ZeropsMountTableReader = Effect.Effect<string, MountTableReadError>;
 export interface ZeropsRepositorySourceOptions {
   readonly enabled: boolean;
   readonly readMountTable: ZeropsMountTableReader;
+  /** The aliases of the leases zcp holds, as its latest read names them; none by default. */
+  readonly leaseAliases?: Effect.Effect<ReadonlySet<string>>;
 }
+
+/**
+ * A repository as zcp's leases name it now: a lease's mount when its name is a lease's alias,
+ * else a service's. One whose kind changed is identified again under the new one: its identity
+ * and root were verified as the other.
+ */
+const classify =
+  (aliases: ReadonlySet<string>) =>
+  (repository: ZeropsRepository): ZeropsRepository => {
+    const lease = aliases.has(repository.host);
+    if (lease === (repository.kind === "lease")) return repository;
+    const { kind: _kind, identity: _identity, rootId: _rootId, ...rest } = repository;
+    return lease ? { ...rest, kind: "lease" } : rest;
+  };
+
+const classifyAll =
+  (aliases: ReadonlySet<string>) =>
+  (outcome: ZeropsRepositories): ZeropsRepositories =>
+    outcome._tag === "available"
+      ? { ...outcome, repositories: outcome.repositories.map(classify(aliases)) }
+      : outcome;
+
+/**
+ * The leases zcp holds, as the latest read of them named them: a mount named after one is the
+ * lease's, never a service's. The lifecycle feed tells it every read; the repository source reads it.
+ */
+export class ZeropsLeaseRoster extends Context.Service<
+  ZeropsLeaseRoster,
+  {
+    readonly note: (aliases: ReadonlyArray<string>) => Effect.Effect<void>;
+    readonly aliases: Effect.Effect<ReadonlySet<string>>;
+  }
+>()("t3/zerops/ZeropsRepositorySource/ZeropsLeaseRoster") {}
+
+export const makeZeropsLeaseRoster = Effect.map(
+  Ref.make<ReadonlySet<string>>(new Set()),
+  (aliases): ZeropsLeaseRoster["Service"] => ({
+    note: (next) => Ref.set(aliases, new Set(next)),
+    aliases: Ref.get(aliases),
+  }),
+);
 
 export interface ZeropsRepositorySourceService {
   /** The repository set, re-read when the cached one is older than the TTL. */
@@ -132,6 +180,7 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
     return { list: off, refresh: off, known: Effect.succeed([]), remember: () => Effect.void };
   }
 
+  const leaseAliases = options.leaseAliases ?? Effect.succeed<ReadonlySet<string>>(new Set());
   const remembered = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
   const remember = (repository: ZeropsRepository) =>
     Ref.update(remembered, (previous) => [
@@ -223,7 +272,18 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
     }),
   );
 
-  return { list, refresh: gate.withPermits(1)(read), known: Ref.get(remembered), remember };
+  // Classified as they are read out, so a lease zcp named after the mount was read is its own.
+  const classified = (outcome: Effect.Effect<ZeropsRepositories>) =>
+    Effect.zipWith(outcome, leaseAliases, (value, aliases) => classifyAll(aliases)(value));
+
+  return {
+    list: classified(list),
+    refresh: classified(gate.withPermits(1)(read)),
+    known: Effect.zipWith(Ref.get(remembered), leaseAliases, (entries, aliases) =>
+      entries.map(classify(aliases)),
+    ),
+    remember,
+  };
 });
 
 export class ZeropsRepositorySource extends Context.Service<
@@ -231,9 +291,11 @@ export class ZeropsRepositorySource extends Context.Service<
   ZeropsRepositorySourceService
 >()("t3/zerops/ZeropsRepositorySource") {}
 
-/** The live source, reading only `/proc/mounts`, never touching FUSE. */
-export const layer = Layer.effect(
-  ZeropsRepositorySource,
+/**
+ * The live source, reading only `/proc/mounts`, never touching FUSE, and beside it the lease
+ * roster it classifies by: one instance, told by the lifecycle feed.
+ */
+export const layer = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const enabled = isZeropsEnvironment(config);
@@ -243,8 +305,14 @@ export const layer = Layer.effect(
       .readFileString(MOUNT_TABLE_PATH)
       .pipe(Effect.mapError((cause) => new MountTableReadError({ path: MOUNT_TABLE_PATH, cause })));
 
-    return ZeropsRepositorySource.of(
-      yield* makeZeropsRepositorySource({ enabled, readMountTable }),
+    const roster = yield* makeZeropsLeaseRoster;
+    const source = yield* makeZeropsRepositorySource({
+      enabled,
+      readMountTable,
+      leaseAliases: roster.aliases,
+    });
+    return Context.make(ZeropsRepositorySource, source).pipe(
+      Context.add(ZeropsLeaseRoster, roster),
     );
   }),
 );

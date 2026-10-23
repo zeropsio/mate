@@ -28,6 +28,7 @@ import type {
   SessionCapabilities,
   SessionCloseReason,
   SessionId,
+  ThreadLease,
   TurnHandle,
   WakeId,
 } from "@t3tools/contracts";
@@ -36,10 +37,10 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 16
- * keeps the task the session holds (`sessionTask`), folded from every run sent since.
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 17
+ * keeps the pool container the conversation's agent leased (`lease`).
  */
-export const STATE_VERSION = 16;
+export const STATE_VERSION = 17;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -230,6 +231,8 @@ export interface ConversationState {
   readonly runtimeMode: RuntimeMode | null;
   /** The interaction mode of the person's latest message; null before one. */
   readonly interactionMode: ProviderInteractionMode | null;
+  /** The pool container the agent leased, which its sessions open in; null: none. */
+  readonly lease: ThreadLease | null;
   /**
    * The generation of the conversation's provider thread: bumped when the conversation moves to
    * another instance or driver, whose saved resume state does not carry over, so its next session
@@ -309,6 +312,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   model: null,
   runtimeMode: null,
   interactionMode: null,
+  lease: null,
   threadGeneration: 1,
   nextRunOrdinal: 1,
   runs: {},

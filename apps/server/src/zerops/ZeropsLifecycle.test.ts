@@ -26,6 +26,7 @@ import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { applyToolCall } from "../spi/toolCall.ts";
 import { ZEROPS_ENVELOPE_FENCE } from "./zeropsEnvelope.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import { makeZeropsLeaseRoster, ZeropsLeaseRoster } from "./ZeropsRepositorySource.ts";
 
 const THREAD = "thread-1" as ThreadId;
 const OTHER_THREAD = "thread-2" as ThreadId;
@@ -63,6 +64,8 @@ const claudeEvent = (options: {
   readonly text?: string;
   readonly type?: "item.started" | "item.completed";
   readonly itemId?: string;
+  readonly input?: Record<string, unknown>;
+  readonly isError?: boolean;
 }): SpiEvent =>
   applyToolCall({
     eventId: `evt-${(eventCounter += 1)}`,
@@ -77,7 +80,7 @@ const claudeEvent = (options: {
       title: "zerops",
       data: {
         toolName: options.toolName ?? "mcp__zerops__zerops_workflow",
-        input: { action: "status" },
+        input: options.input ?? { action: "status" },
         ...(options.type === "item.started"
           ? {}
           : {
@@ -85,6 +88,7 @@ const claudeEvent = (options: {
                 type: "tool_result",
                 tool_use_id: options.itemId ?? "toolu_01",
                 content: [{ type: "text", text: options.text ?? envelopeBlock("develop-active") }],
+                ...(options.isError === true ? { is_error: true } : {}),
               },
             }),
       },
@@ -670,6 +674,276 @@ describe("ZeropsLifecycle", () => {
   );
 });
 
+describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
+  const CONVERSATION = ConversationId.make("mate");
+  const SESSION = providerThreadOf(CONVERSATION);
+  /** The conversation the lifecycle reads a provider session's events on. */
+  const OWNER = CONVERSATION as string as ThreadId;
+  /** `branch` null: a lease acquired for none. */
+  const lease = (alias: string, state = "held", branch: string | null = "feat-x") => ({
+    alias,
+    pool: "webpool",
+    ...(branch === null ? {} : { branch }),
+    containerHostname: `node-id-${alias.split("-")[1]}.runtime.webpool.zerops`,
+    state,
+    unverified: false,
+  });
+  const envelopeWith = (leases: ReadonlyArray<unknown> | undefined) => ({
+    ...JSON.parse(envelopeJsonText("develop-active")),
+    ...(leases === undefined ? {} : { leases }),
+  });
+  /** A `zerops_lease` call's result, as zcp's JSON carrier writes it. */
+  const leaseCall = (options: {
+    readonly input: Record<string, unknown>;
+    readonly leases?: ReadonlyArray<unknown>;
+    readonly envelope?: ReadonlyArray<unknown> | undefined;
+    readonly isError?: boolean;
+    readonly threadId?: ThreadId;
+  }) =>
+    claudeEvent({
+      threadId: options.threadId ?? SESSION,
+      toolName: "mcp__zerops__zerops_lease",
+      input: options.input,
+      ...(options.isError === undefined ? {} : { isError: options.isError }),
+      text: JSON.stringify({
+        action: options.input.action,
+        leases: options.leases ?? [],
+        envelope: envelopeWith(options.envelope),
+      }),
+    });
+  const acquire = (alias: string, held: ReadonlyArray<unknown>, branch = "feat-x") =>
+    leaseCall({
+      input: { action: "acquire", pool: "webpool", branch },
+      leases: [lease(alias, "held", branch)],
+      envelope: held,
+    });
+  /** Any other Zerops tool whose envelope reads zcp's leases. */
+  const statusReading = (leases: ReadonlyArray<unknown> | undefined) =>
+    claudeEvent({
+      threadId: SESSION,
+      toolName: "mcp__zerops__zerops_deploy",
+      text: JSON.stringify({ status: "DEPLOYED", envelope: envelopeWith(leases) }),
+    });
+
+  const withLeases = <A, E>(
+    use: (
+      lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
+      told: () => Effect.Effect<ReadonlyArray<unknown>>,
+      noted: () => Effect.Effect<ReadonlyArray<string> | undefined>,
+    ) => Effect.Effect<A, E, never>,
+  ) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const changes = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const roster = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+          recordLease: (conversation, change, key) =>
+            Ref.update(changes, (all) => [...all, { conversation, change, key }]),
+          noteLeases: (aliases) => Ref.set(roster, aliases),
+        });
+        return yield* use(
+          lifecycle,
+          () =>
+            Effect.map(Ref.get(changes), (all) =>
+              all.map((entry) => (entry as { readonly change: unknown }).change),
+            ),
+          () => Ref.get(roster),
+        );
+      }),
+    ).pipe(Effect.provide(persistence));
+
+  it.effect("keeps the latest leases, and the last read where a result did not read them", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+        yield* lifecycle.ingest(statusReading(undefined));
+        const kept = (yield* lifecycle.get(OWNER)).envelope?.leases;
+        expect(kept?.map((one) => one.alias)).toEqual(["webpool-3"]);
+        yield* lifecycle.ingest(statusReading([]));
+        expect((yield* lifecycle.get(OWNER)).envelope?.leases, "an empty read is none").toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect("a successful acquire binds its conversation to the container it leased", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquire("webpool-3", [lease("webpool-3")]));
+        expect(yield* told()).toContainEqual({
+          _tag: "BindLease",
+          lease: { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
+        });
+      }),
+    ),
+  );
+
+  it.effect("the binding is told once per call: its key is the call's own", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const keys: Array<string> = [];
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+          recordLease: (_conversation, change, key) =>
+            Effect.sync(() => {
+              if (change._tag === "BindLease") keys.push(key);
+            }),
+        });
+        const event = acquire("webpool-3", [lease("webpool-3")]);
+        yield* lifecycle.ingest(event);
+        yield* lifecycle.ingest(event);
+        expect(keys).toHaveLength(2);
+        expect(keys[0]).toBe(keys[1]);
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("a lease acquired for no branch binds without one", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "acquire", pool: "webpool" },
+            leases: [lease("webpool-3", "held", null)],
+          }),
+        );
+        expect(yield* told()).toContainEqual({
+          _tag: "BindLease",
+          lease: { alias: "webpool-3", pool: "webpool", branch: null },
+        });
+      }),
+    ),
+  );
+
+  it.effect(
+    "an acquire whose result names no lease of its own binds the one its envelope holds",
+    () =>
+      withLeases((lifecycle, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(
+            leaseCall({
+              input: { action: "acquire", pool: "webpool", branch: "feat-y" },
+              envelope: [lease("webpool-3"), lease("webpool-4", "held", "feat-y")],
+            }),
+          );
+          expect(yield* told()).toContainEqual({
+            _tag: "BindLease",
+            lease: { alias: "webpool-4", pool: "webpool", branch: "feat-y" },
+          });
+        }),
+      ),
+  );
+
+  it.effect("a failed acquire, or one still running, binds nothing", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "acquire", pool: "webpool", branch: "feat-x" },
+            isError: true,
+          }),
+        );
+        yield* lifecycle.ingest(
+          claudeEvent({
+            threadId: SESSION,
+            toolName: "mcp__zerops__zerops_lease",
+            type: "item.started",
+            input: { action: "acquire", pool: "webpool", branch: "feat-x" },
+          }),
+        );
+        expect(yield* told()).toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect("a release unbinds the lease it released", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "release", lease: "webpool-3" },
+            leases: [lease("webpool-3", "released")],
+          }),
+        );
+        expect(yield* told()).toContainEqual({ _tag: "UnbindLease", ended: "webpool-3" });
+      }),
+    ),
+  );
+
+  it.effect(
+    "a lease gone from zcp's leases, or read lost or released, unbinds; an unchanged read tells nothing",
+    () =>
+      withLeases((lifecycle, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
+          expect((yield* told()).length, "the same leases again say nothing new").toBe(first);
+          yield* lifecycle.ingest(
+            statusReading([lease("webpool-3", "lost"), lease("webpool-5", "unmounted")]),
+          );
+          expect((yield* told()).at(-1)).toEqual({ _tag: "UnbindLease", held: ["webpool-5"] });
+        }),
+      ),
+  );
+
+  it.effect("an acquire's binding is told after what its own read of the leases unbinds", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquire("webpool-4", [lease("webpool-4")]));
+        expect((yield* told()).map((change) => (change as { _tag: string })._tag)).toEqual([
+          "UnbindLease",
+          "BindLease",
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("a thread that is no conversation of the engine is bound to nothing", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest({
+          ...acquire("webpool-3", [lease("webpool-3")]),
+          threadId: THREAD,
+        });
+        expect(yield* told()).toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "every read of zcp's leases tells which mounts are leases, and a restart the last",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const noted = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+          const start = ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            noteLeases: (aliases) => Ref.set(noted, aliases),
+          });
+          const lifecycle = yield* start;
+          expect(yield* Ref.get(noted), "nothing stored, nothing told").toBeUndefined();
+          yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4", "lost")]));
+          expect(yield* Ref.get(noted)).toEqual(["webpool-3", "webpool-4"]);
+
+          // A restart: the roster starts empty, and the last stored read is told again.
+          yield* Ref.set(noted, undefined);
+          yield* start;
+          expect(yield* Ref.get(noted)).toEqual(["webpool-3", "webpool-4"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+});
+
 describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not ProviderService)", () => {
   it.effect("ingests an event delivered over the bus", () =>
     Effect.scoped(
@@ -678,6 +952,7 @@ describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not
         const layer = ZeropsLifecycle.layer(conversationOfThread).pipe(
           Layer.provide(ProviderRuntimeEventBusTest.make(Stream.fromQueue(bus))),
           Layer.provide(persistence),
+          Layer.provide(Layer.effect(ZeropsLeaseRoster, makeZeropsLeaseRoster)),
         );
 
         const published = yield* Effect.gen(function* () {

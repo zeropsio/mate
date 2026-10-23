@@ -23,6 +23,7 @@ import {
   type ProviderOptionSelection,
   type RuntimeMode,
   type SessionCapabilities,
+  type ThreadLease,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -52,6 +53,8 @@ interface Payload {
   readonly seed?: string | null;
   /** The runtime mode a person set; absent: the workspace's. */
   readonly runtimeMode?: RuntimeMode;
+  /** The lease the conversation was bound to when the open was asked; absent: none. */
+  readonly lease?: ThreadLease;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -98,7 +101,7 @@ export const makeSessionOpen = Effect.gen(function* () {
         const driver = payload.driver;
         const host = yield* pump.hostFor(row.conversationId, driver, payload.generation ?? 1);
         const session = yield* sessionIdOf(host.thread, row.conversationId, row.effectId);
-        const setup = yield* workspace.of(row.conversationId).pipe(
+        const setup = yield* workspace.of(row.conversationId, payload.lease ?? null).pipe(
           Effect.catchTags({
             WorkspaceUnavailable: (unavailable) => Effect.succeed(unavailable),
           }),

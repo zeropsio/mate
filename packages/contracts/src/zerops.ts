@@ -30,6 +30,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { LeaseAlias } from "./orchestration.ts";
 import { ServerProviderAuthStatus } from "./server.ts";
 
 // ---------------------------------------------------------------------------
@@ -191,6 +192,31 @@ export const ZeropsBootstrapSession = Schema.Struct({
 });
 export type ZeropsBootstrapSession = typeof ZeropsBootstrapSession.Type;
 
+/** A lease's reconciled state as zcp reports it, verbatim: switch with a default branch. */
+export const KNOWN_ZEROPS_LEASE_STATES = [
+  "held",
+  "unmounted",
+  "lost",
+  "unknown-holder",
+  "released",
+] as const;
+
+/**
+ * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
+ * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
+ */
+export const ZeropsLease = Schema.Struct({
+  alias: LeaseAlias,
+  pool: Schema.String,
+  /** Absent for a lease acquired for no branch. */
+  branch: Schema.optional(Schema.String),
+  containerHostname: Schema.optional(Schema.String),
+  state: Schema.String,
+  /** The state is zcp's own record's: the pool's orchestrator did not answer. */
+  unverified: Schema.optional(Schema.Boolean),
+});
+export type ZeropsLease = typeof ZeropsLease.Type;
+
 /**
  * `workflow.StateEnvelope` — the state zcp computes once per workflow-aware
  * tool result and ships inside the result text as a fenced `json zcp-envelope`
@@ -208,6 +234,11 @@ export const ZeropsStateEnvelope = Schema.Struct({
   selfService: Schema.optional(ZeropsEnvelopeSelfService),
   project: ZeropsEnvelopeProject,
   services: ForwardCompatibleArray(ZeropsServiceSnapshot),
+  /**
+   * The pool containers zcp holds leases on. Absent means not read (a zcp that predates leases),
+   * never none; `[]` is none. A lease this build cannot read is dropped, not the envelope.
+   */
+  leases: Schema.optional(ForwardCompatibleArray(ZeropsLease)),
   workSession: Schema.optional(ZeropsWorkSession),
   bootstrap: Schema.optional(ZeropsBootstrapSession),
   generated: IsoDateTime,

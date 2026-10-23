@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 
 import {
   ConversationId,
@@ -24,6 +25,7 @@ import {
   turnPrincipalOf,
   zeropsRunAdmission,
 } from "./engineAdapters.ts";
+import { makeZeropsRepositorySource, ZeropsRepositorySource } from "./ZeropsRepositorySource.ts";
 import { type TurnPrincipal, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 describe("engineAdapters", () => {
@@ -173,8 +175,8 @@ describe("engineAdapters: where an agent works", () => {
     () =>
       Effect.gen(function* () {
         const workspace = yield* AgentWorkspace;
-        assert.deepStrictEqual(yield* workspace.of(ana), lane);
-        assert.deepStrictEqual(yield* workspace.of(mate), {
+        assert.deepStrictEqual(yield* workspace.of(ana, null), lane);
+        assert.deepStrictEqual(yield* workspace.of(mate, null), {
           cwd: "/var/www",
           runtimeMode: "full-access",
         });
@@ -185,7 +187,7 @@ describe("engineAdapters: where an agent works", () => {
     "a crewmate's conversation whose workspace its crew cannot tell opens nowhere, never in the server's directory",
     () =>
       Effect.gen(function* () {
-        const unread = yield* Effect.flip((yield* AgentWorkspace).of(ana));
+        const unread = yield* Effect.flip((yield* AgentWorkspace).of(ana, null));
         assert.strictEqual(unread._tag, "WorkspaceUnavailable");
       }).pipe(
         Effect.provide(
@@ -206,10 +208,63 @@ describe("engineAdapters: where an agent works", () => {
 
   it.effect("with no crew, every agent works in the server's directory", () =>
     Effect.gen(function* () {
-      assert.deepStrictEqual(yield* (yield* AgentWorkspace).of(ana), {
+      assert.deepStrictEqual(yield* (yield* AgentWorkspace).of(ana, null), {
         cwd: "/var/www",
         runtimeMode: "full-access",
       });
     }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(config)))),
+  );
+
+  const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+  it.effect(
+    "a conversation bound to a lease works in the container zcp mounted for it, with full access",
+    () =>
+      Effect.gen(function* () {
+        const workspace = yield* AgentWorkspace;
+        assert.deepStrictEqual(yield* workspace.of(mate, lease), {
+          cwd: "/var/www/webpool-3",
+          runtimeMode: "full-access",
+        });
+        assert.deepStrictEqual(yield* workspace.of(mate, null), {
+          cwd: "/var/www",
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(config)))),
+  );
+
+  it.effect(
+    "a conversation whose lease is not mounted works in the server's directory until zcp mounts it again",
+    () =>
+      Effect.gen(function* () {
+        const table = yield* Ref.make("");
+        const source = yield* makeZeropsRepositorySource({
+          enabled: true,
+          readMountTable: Ref.get(table),
+        });
+        const workspace = yield* AgentWorkspace.pipe(
+          Effect.provide(
+            serverWorkspace.pipe(
+              Layer.provideMerge(
+                Layer.merge(config, Layer.succeed(ZeropsRepositorySource, source)),
+              ),
+            ),
+          ),
+        );
+        assert.strictEqual((yield* workspace.of(mate, lease)).cwd, "/var/www");
+        yield* Ref.set(
+          table,
+          "webpool-3:/var/www /var/www/webpool-3 fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+        );
+        assert.strictEqual((yield* workspace.of(mate, lease)).cwd, "/var/www/webpool-3");
+      }),
+  );
+
+  it.effect("beside a crew, a person's conversation bound to a lease still works in it", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* (yield* AgentWorkspace).of(mate, lease), {
+        cwd: "/var/www/webpool-3",
+        runtimeMode: "full-access",
+      });
+    }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(Layer.merge(config, crew))))),
   );
 });

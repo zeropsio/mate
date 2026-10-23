@@ -143,6 +143,12 @@ describe("the menu row", () => {
     expect(conversationRowOf(view({ runtimeMode: set }), revision).runtimeMode).toBe(reads);
   });
 
+  it("names the pool container its agent leased, and nothing while it holds none", () => {
+    const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+    expect(conversationRowOf(view({ lease }), revision).lease).toEqual(lease);
+    expect(conversationRowOf(view({ lease: null }), revision)).not.toHaveProperty("lease");
+  });
+
   // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
   it.each([
     {

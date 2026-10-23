@@ -540,6 +540,28 @@ export const ThreadCrewOrigin = Schema.Struct({
 });
 export type ThreadCrewOrigin = typeof ThreadCrewOrigin.Type;
 
+/**
+ * A lease's alias, `<pool>-<number>`: the name zcp gives one container of a Swarm pool, its mount
+ * point's last segment (`/var/www/<alias>`) and its ssh host. A path segment, so nothing else.
+ */
+export const LeaseAlias = TrimmedNonEmptyString.check(
+  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9-]*$/u),
+);
+export type LeaseAlias = typeof LeaseAlias.Type;
+
+/**
+ * The pool container a thread's agent leased (zcp's `zerops_lease`), which the thread works in
+ * from then on: its first lease, until that lease is released or lost. Never a worktree: nothing
+ * removes it with the thread.
+ */
+export const ThreadLease = Schema.Struct({
+  alias: LeaseAlias,
+  pool: TrimmedNonEmptyString,
+  /** The branch zcp checked out there; null for a lease acquired for none. */
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ThreadLease = typeof ThreadLease.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -551,6 +573,9 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // The pool container its agent leased (ThreadLease). Optional so payloads from older servers
+  // still decode; absent or null: none.
+  lease: Schema.optional(Schema.NullOr(ThreadLease)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
@@ -724,6 +749,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // The pool container its agent leased (ThreadLease). Optional so payloads from older servers
+  // still decode; absent or null: none.
+  lease: Schema.optional(Schema.NullOr(ThreadLease)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,

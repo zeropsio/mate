@@ -247,5 +247,6 @@ export const conversationRowOf = (
     at: view.updatedAt,
     askedAt: asked?.at ?? null,
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
+    ...(view.lease == null ? {} : { lease: view.lease }),
   };
 };

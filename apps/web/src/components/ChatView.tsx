@@ -1035,17 +1035,26 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   // Terminals already open stay on screen while the checkouts are read: they keep their folders.
   const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
+  const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
     () =>
       project
         ? (terminalStartCwd({
             launchCwd: launchContext?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: leaseAlias,
             worktreePath: effectiveWorktreePath,
             repositories,
           }) ?? (hasOpenTerminals ? project.workspaceRoot : null))
         : (launchContext?.cwd ?? null),
-    [effectiveWorktreePath, hasOpenTerminals, launchContext?.cwd, project, repositories],
+    [
+      effectiveWorktreePath,
+      hasOpenTerminals,
+      launchContext?.cwd,
+      leaseAlias,
+      project,
+      repositories,
+    ],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1300,6 +1309,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     threadId: threadRef.threadId,
   });
   const threadWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
+  const threadLease = serverThread?.lease?.alias ?? null;
   const activeSummary =
     knownTerminalSessions.find((session) => session.target.terminalId === surface.activeTerminalId)
       ?.state.summary ?? null;
@@ -1313,11 +1323,12 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
         ? terminalStartCwd({
             launchCwd: launchContext?.cwd ?? activeSummary?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: threadLease,
             worktreePath,
             repositories,
           })
         : (launchContext?.cwd ?? activeSummary?.cwd ?? null),
-    [activeSummary?.cwd, launchContext?.cwd, project, repositories, worktreePath],
+    [activeSummary?.cwd, launchContext?.cwd, project, repositories, threadLease, worktreePath],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1359,6 +1370,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
         ? terminalStartCwd({
             launchCwd: launchContext?.cwd ?? summary?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: threadLease,
             worktreePath: terminalWorktreePath,
             repositories,
           })
@@ -1381,6 +1393,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     project,
     repositories,
     surface.terminalIds,
+    threadLease,
     threadWorktreePath,
   ]);
 
@@ -3240,6 +3253,7 @@ function ConversationView(props: ChatViewProps) {
     ? terminalStartCwd({
         launchCwd: null,
         workspaceRoot: activeProject.workspaceRoot,
+        lease: activeThread?.lease?.alias ?? null,
         worktreePath: activeThread?.worktreePath ?? null,
         repositories: mateRepositories,
       })

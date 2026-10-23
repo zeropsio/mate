@@ -268,6 +268,27 @@ describe("EngineStore", () => {
       }),
     );
 
+    it.effect("the lease a conversation's agent acquired is read back after a restart", () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const leased = ConversationId.make("leased");
+        const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+        yield* drive(yield* makeEngineStore({ snapshotEvery: 1 }), initialState(leased), [
+          envelope({ _tag: "BindLease", lease }, { by: { kind: "engine" }, conversation: leased }),
+        ]);
+        // A restart: a new store reads the conversation from its record alone.
+        expect((yield* (yield* makeEngineStore()).load(leased)).lease).toEqual(lease);
+
+        // A snapshot an older build kept knows no lease: it is refolded from the record.
+        const { lease: _lease, ...older } = yield* (yield* makeEngineStore()).load(leased);
+        yield* sql`
+          UPDATE engine_conversation SET snapshot_json = ${JSON.stringify({ v: 16, state: older })}
+          WHERE conversation_id = ${leased}
+        `;
+        expect((yield* (yield* makeEngineStore()).load(leased)).lease).toEqual(lease);
+      }),
+    );
+
     it.effect("an event from a newer engine is read as Unknown and only moves the head", () =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

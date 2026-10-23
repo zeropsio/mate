@@ -1474,6 +1474,8 @@ export function overlayEngineRow(
   return {
     ...thread,
     runtimeMode,
+    // The pool container its agent leased, as its record says: the V1 thread never had one.
+    lease: row.lease ?? null,
     ...(row.agent === null
       ? {}
       : {

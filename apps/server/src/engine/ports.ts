@@ -22,6 +22,7 @@ import type {
   Principal,
   RunTrigger,
   RuntimeMode,
+  ThreadLease,
 } from "@t3tools/contracts";
 
 import type { ProviderUsageReport } from "./domain/command.ts";
@@ -106,8 +107,10 @@ export class WorkspaceUnavailable extends Data.TaggedError("WorkspaceUnavailable
 export class AgentWorkspace extends Context.Service<
   AgentWorkspace,
   {
+    /** `lease`: the pool container the conversation's agent leased, as its record holds it. */
     readonly of: (
       conversation: ConversationId,
+      lease: ThreadLease | null,
     ) => Effect.Effect<WorkspaceSetup, WorkspaceUnavailable>;
   }
 >()("t3/engine/ports/AgentWorkspace") {}

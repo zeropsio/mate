@@ -311,6 +311,21 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
+    case "BindLease":
+      // Its first lease is where it works: another the agent acquires is only a container it uses.
+      if (b.state.lease === null) b.emit({ _tag: "LeaseBound", lease: command.lease });
+      return;
+    case "UnbindLease": {
+      const bound = b.state.lease;
+      if (
+        bound !== null &&
+        (bound.alias === command.ended ||
+          (command.held !== undefined && !command.held.includes(bound.alias)))
+      ) {
+        b.emit({ _tag: "LeaseUnbound", alias: bound.alias });
+      }
+      return;
+    }
     case "ArmWake":
       return armWake(b, command);
     case "CancelWake":
@@ -786,6 +801,8 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     model: b.state.model,
     options: b.state.agent?.options ?? null,
     ...(b.state.runtimeMode === null ? {} : { runtimeMode: b.state.runtimeMode }),
+    // Where the session opens is recorded before it opens: the lease bound when it was asked.
+    ...(b.state.lease === null ? {} : { lease: b.state.lease }),
     // A fresh rotation resumes nothing: its session starts on a thread of its own.
     resume: rotation?.fresh === true ? null : b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,

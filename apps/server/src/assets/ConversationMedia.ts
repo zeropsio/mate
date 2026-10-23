@@ -2,6 +2,7 @@
 import type {
   OrchestrationEvent,
   OrchestrationReadModel,
+  OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
   ThreadId,
 } from "@t3tools/contracts";
@@ -22,6 +23,7 @@ import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
 import { outsideWorkspaceImageRoots } from "./AssetAccess.ts";
 import { findRetainedMedia, retainedMediaDirectory } from "./RetainedMedia.ts";
+import { ZEROPS_WORKSPACE_ROOT } from "../zerops/ZeropsRepositorySource.ts";
 
 /** Capture only locally authored images. External URLs remain external. */
 export const captureConversationText = Effect.fn("captureConversationText")(function* (
@@ -156,6 +158,18 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
   return result;
 });
 
+/**
+ * Where a thread's pictures are captured from: the pool container its agent leased
+ * (`/var/www/<alias>`), its worktree, else its project's root.
+ */
+export const threadWorkspaceRoot = (
+  thread: Pick<OrchestrationThread, "lease" | "worktreePath"> | undefined,
+  project: { readonly workspaceRoot: string } | undefined,
+): string | undefined =>
+  thread?.lease != null
+    ? `${ZEROPS_WORKSPACE_ROOT}/${thread.lease.alias}`
+    : (thread?.worktreePath ?? project?.workspaceRoot);
+
 type PlannedEvent = OrchestrationEvent extends infer E
   ? E extends unknown
     ? Omit<E, "sequence">
@@ -172,7 +186,7 @@ export const captureConversationEvent = Effect.fn("captureConversationEvent")(fu
   if (Option.isNone(config)) return event;
   const thread = model.threads.find((value) => value.id === event.payload.threadId);
   const project = model.projects.find((value) => value.id === thread?.projectId);
-  const workspaceRoot = thread?.worktreePath ?? project?.workspaceRoot;
+  const workspaceRoot = threadWorkspaceRoot(thread, project);
   if (!workspaceRoot) return event;
   if (event.type === "thread.message-sent") {
     if (event.payload.role === "reasoning") return event;

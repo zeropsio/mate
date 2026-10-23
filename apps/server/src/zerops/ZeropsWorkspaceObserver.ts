@@ -39,9 +39,27 @@ export type ZeropsWorkspaceObservation =
       readonly reason: string;
       readonly observedAt: string;
     };
-export const workspaceRootId = (projectId: string, serviceId: string, remotePath: string): string =>
+/**
+ * A working root's identity. Every container of a pool reports the pool's project and service, so
+ * a lease's root names its alias too: two leases of one pool are two roots. A service's is as it
+ * always was.
+ */
+export const workspaceRootId = (
+  projectId: string,
+  serviceId: string,
+  remotePath: string,
+  leaseAlias?: string,
+): string =>
   `zerops:${Hex.encode(
-    sha256(new TextEncoder().encode(JSON.stringify([projectId, serviceId, remotePath]))),
+    sha256(
+      new TextEncoder().encode(
+        JSON.stringify(
+          leaseAlias === undefined
+            ? [projectId, serviceId, remotePath]
+            : [projectId, serviceId, remotePath, leaseAlias],
+        ),
+      ),
+    ),
   )}`;
 
 /** NUL-delimited fixed fields avoid interpreting file paths or environment as shell code. */
@@ -134,7 +152,12 @@ export const makeZeropsWorkspaceObserver = (options: ZeropsWorkspaceObserverOpti
       const verified: VerifiedZeropsRepository = {
         ...repository,
         identity: { projectId, serviceId },
-        rootId: workspaceRootId(projectId, serviceId, repository.remotePath),
+        rootId: workspaceRootId(
+          projectId,
+          serviceId,
+          repository.remotePath,
+          repository.kind === "lease" ? repository.host : undefined,
+        ),
       };
       if (repository.rootId !== undefined && repository.rootId !== verified.rootId)
         return unavailable("Remote root binding mismatch");

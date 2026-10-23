@@ -14,13 +14,14 @@
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { CommandId, ConversationId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { conversationOfThread } from "../engine/MateEngine.ts";
+import { conversationOfThread, MateEngine } from "../engine/MateEngine.ts";
 import { engineLayer } from "../engine/layer.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewEngineHooks, crewLayer } from "./crew/crewLayer.ts";
@@ -220,8 +221,42 @@ const ZeropsHqLinkLive = Layer.unwrap(
   Layer.provide(MateEngineLive),
 );
 
+/**
+ * The lifecycle feed, which tells a conversation's own record the lease its agent acquired or let
+ * go, through the very engine the merge runs (memoized by reference): the record binds it, under
+ * the call's own command id, so a call told again acts once.
+ */
+const ZeropsLifecycleLive = Layer.unwrap(
+  Effect.map(MateEngine, (engine) =>
+    ZeropsLifecycle.layer(conversationOfThread, (conversation, change, key) =>
+      engine
+        .deliver(ConversationId.make(conversation), change, CommandId.make(key), {
+          kind: "engine",
+        })
+        .pipe(
+          Effect.flatMap((result) =>
+            result._tag === "Rejected"
+              ? Effect.logWarning("A conversation's record refused its lease change", {
+                  conversation,
+                  change: change._tag,
+                  rejection: result.rejection,
+                })
+              : Effect.void,
+          ),
+          Effect.catch((error) =>
+            Effect.logWarning("A conversation's lease change could not be recorded", {
+              conversation,
+              change: change._tag,
+              error: error.message,
+            }),
+          ),
+        ),
+    ),
+  ),
+).pipe(Layer.provide(ZeropsThreadLifecycle.layer), Layer.provide(MateEngineLive));
+
 const liveLayer = Layer.mergeAll(
-  ZeropsLifecycle.layer(conversationOfThread).pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
+  ZeropsLifecycleLive,
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
   // reads who signed each agent in for its snapshot, and the turn gate below
   // asks the same service before it lets a turn start (D6). Both go by the

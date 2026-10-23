@@ -62,8 +62,30 @@ describe("where a new terminal starts", () => {
       input: { workspaceRoot: "/home/nova/tea-shop", repositories: null },
       cwd: "/home/nova/tea-shop",
     },
+    {
+      sentence: "A thread bound to a lease starts in the container its agent leased",
+      input: { workspaceRoot: "/var/www", lease: "webpool-3", repositories: ["appdev"] },
+      cwd: "/var/www/webpool-3",
+    },
+    {
+      sentence: "A thread bound to a lease waits for no checkout",
+      input: { workspaceRoot: "/var/www", lease: "webpool-3", repositories: null },
+      cwd: "/var/www/webpool-3",
+    },
+    {
+      sentence: "Where the terminal was launched from wins over the lease",
+      input: {
+        workspaceRoot: "/var/www",
+        launchCwd: "/var/www/appdev/src",
+        lease: "webpool-3",
+        repositories: ["appdev"],
+      },
+      cwd: "/var/www/appdev/src",
+    },
   ])("$sentence", ({ input, cwd }) => {
-    expect(terminalStartCwd({ launchCwd: null, worktreePath: null, ...input })).toBe(cwd);
+    expect(terminalStartCwd({ launchCwd: null, worktreePath: null, lease: null, ...input })).toBe(
+      cwd,
+    );
   });
 
   it.each([

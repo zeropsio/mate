@@ -195,6 +195,8 @@ const projectWith = (
     case "ReportsTaken":
     case "ConversationArchived":
     case "ConversationUnarchived":
+    case "LeaseBound":
+    case "LeaseUnbound":
     case "EffectRequested":
     case "EffectOutcomeRecorded":
     case "WakeArmed":

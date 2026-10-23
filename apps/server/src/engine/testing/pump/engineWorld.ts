@@ -162,10 +162,14 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         AgentWorkspace,
         AgentWorkspace.of({
-          of: () =>
+          // A leased conversation works in its lease's directory, as the server's mounts it.
+          of: (_conversation, lease) =>
             unavailable-- > 0
               ? Effect.fail(new WorkspaceUnavailable({ message: "The copy cannot be read now." }))
-              : Effect.succeed({ cwd: dir, runtimeMode: "full-access" }),
+              : Effect.succeed({
+                  cwd: lease === null ? dir : NodePath.join(dir, lease.alias),
+                  runtimeMode: "full-access",
+                }),
         }),
       ),
       Layer.succeed(

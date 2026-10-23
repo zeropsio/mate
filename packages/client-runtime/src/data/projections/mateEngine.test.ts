@@ -1296,6 +1296,19 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
   });
 
+  it("names the pool container the conversation's agent leased, and none once the row names none", () => {
+    const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+    const leased = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", { state: { kind: "idle" }, lease } as Partial<ConversationRow>),
+    );
+    expect(leased.lease).toEqual(lease);
+    expect(leased.worktreePath).toBeNull();
+    expect(
+      overlayEngineRow(leased, engineRow(ENV, "thread-ada", { state: { kind: "idle" } })).lease,
+    ).toBeNull();
+  });
+
   it("gives a thread shell that never had a session its row's: working, on its run", () => {
     const overlaid = overlayEngineRow(
       { ...shellThread, session: null },

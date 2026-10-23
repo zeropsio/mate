@@ -2,7 +2,8 @@
  * The Mate engine's ports, implemented for Zerops: a run is admitted by
  * `ZeropsTurnAdmission.admitRun` (D6), the restart is read by
  * `ZeropsRestartRead` and worded as V1 words it, and the agent works in the
- * server's own directory, or a crewmate where its crew says; the providers' usage reaches it from
+ * server's own directory, its lease's when it leased a pool container, or a crewmate where its
+ * crew says; the providers' usage reaches it from
  * the provider registry everywhere. Outside Zerops nothing is gated and nothing is read.
  *
  * @module engineAdapters
@@ -15,7 +16,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
-import type { Principal, RunTrigger, ServerProvider } from "@t3tools/contracts";
+import type { Principal, RunTrigger, ServerProvider, ThreadLease } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import {
@@ -37,6 +38,7 @@ import {
 import { ProviderInstances, layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZEROPS_WORKSPACE_ROOT, ZeropsRepositorySource } from "./ZeropsRepositorySource.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
@@ -115,23 +117,47 @@ export const noRestartEvidence = Layer.succeed(
 );
 
 /**
- * A crewmate's conversation works where its crew says (its copy, or the Mate's tree); every other
- * agent works in the server's own directory, with full access: the Mate's container.
+ * A crewmate's conversation works where its crew says (its copy, or the Mate's tree); a
+ * conversation bound to a lease works in the pool container zcp mounted for it
+ * (`/var/www/<alias>`); every other agent works in the server's own directory. Each with full
+ * access: the Mate's container, or the container leased to it.
+ *
+ * A lease the mount table does not hold now (zcp could not mount it again after a restart) opens
+ * in the server's directory instead: a session never opens in a folder that is not there, and the
+ * agent can mount it again from there. The mount table is the kernel's, never a FUSE read.
  */
 export const serverWorkspace = Layer.effect(
   AgentWorkspace,
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const crew = yield* Effect.serviceOption(CrewWorkspaceDirectory);
+    const mounts = yield* Effect.serviceOption(ZeropsRepositorySource);
     const server = { cwd: config.cwd, runtimeMode: "full-access" } as const;
+    const own = (lease: ThreadLease | null) => {
+      if (lease === null) return Effect.succeed(server);
+      const leased = {
+        cwd: `${ZEROPS_WORKSPACE_ROOT}/${lease.alias}`,
+        runtimeMode: "full-access",
+      } as const;
+      return Option.match(mounts, {
+        onNone: () => Effect.succeed(leased),
+        onSome: (source) =>
+          Effect.map(source.refresh, (read) =>
+            read._tag === "available" &&
+            !read.repositories.some((repository) => repository.mountPath === leased.cwd)
+              ? server
+              : leased,
+          ),
+      });
+    };
     return AgentWorkspace.of({
-      of: (conversation) =>
+      of: (conversation, lease) =>
         Option.match(crew, {
-          onNone: () => Effect.succeed(server),
+          onNone: () => own(lease),
           onSome: (directory) =>
-            Effect.map(
+            Effect.flatMap(
               directory.workspaceOf(conversation),
-              Option.getOrElse(() => server),
+              Option.match({ onNone: () => own(lease), onSome: Effect.succeed }),
             ),
         }),
     });

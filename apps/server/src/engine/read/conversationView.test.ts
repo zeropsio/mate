@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { CommandId, ConversationId, runId } from "@t3tools/contracts";
+import { CommandId, ConversationId, runId, ThreadId } from "@t3tools/contracts";
 import { USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 
 import { conversationRowOf } from "./conversationRow.ts";
@@ -370,6 +370,55 @@ describe("a conversation's agent", () => {
           (w.provider.starts[0] as { readonly modelSelection?: unknown }).modelSelection,
           { instanceId: "claudeAgent", model: "m1", options: [{ id: "effort", value: "xhigh" }] },
         );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a conversation bound to the lease its agent acquired", () => {
+  const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+  const engine = { kind: "engine" } as const;
+
+  it.effect("names the lease its agent works in, until the lease ends", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        assert.strictEqual((yield* viewOf(w))?.lease, null);
+        yield* w.tell({ _tag: "BindLease", lease }, engine);
+        assert.deepStrictEqual((yield* viewOf(w))?.lease, lease);
+        yield* w.tell({ _tag: "UnbindLease", ended: "webpool-3" }, engine);
+        assert.strictEqual((yield* viewOf(w))?.lease, null);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("keeps its lease through a kill of the server: the record holds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "BindLease", lease }, engine);
+        yield* w.kill;
+        yield* w.boot;
+        assert.deepStrictEqual((yield* viewOf(w))?.lease, lease);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("opens its next session where the lease is, and the media root follows", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "BindLease", lease }, engine);
+        yield* w.tell({ _tag: "Send", text: "Fix the footer" });
+        assert.strictEqual(
+          (w.provider.starts[0] as { readonly cwd?: string }).cwd,
+          `${w.dir}/webpool-3`,
+        );
+        const context = yield* (yield* w.engine).assetContext(ThreadId.make(mate));
+        assert.strictEqual(context?.workspaceRoot, `${w.dir}/webpool-3`);
         yield* w.shutdown;
       }),
     ),

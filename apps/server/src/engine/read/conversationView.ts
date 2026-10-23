@@ -24,6 +24,7 @@ import {
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
+  type ThreadLease,
 } from "@t3tools/contracts";
 
 import { userAskOf } from "@t3tools/shared/userAsk";
@@ -77,6 +78,8 @@ export interface ConversationView {
   readonly agent: ConversationAgent | null;
   /** How freely its agent works, once a person set it. */
   readonly runtimeMode?: RuntimeMode | null;
+  /** The pool container its agent leased, which it works in; null: none. */
+  readonly lease?: ThreadLease | null;
   readonly archived: boolean;
   /** When its record began, and when it last changed. */
   readonly createdAt: number;
@@ -308,6 +311,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       seq: head.head_seq,
       agent: state.agent,
       runtimeMode: state.runtimeMode,
+      lease: state.lease,
       archived: state.archived,
       createdAt: first?.at ?? head.updated_at,
       updatedAt: head.updated_at,

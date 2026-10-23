@@ -20,6 +20,7 @@ import {
   ZeropsLogin,
   ZeropsLoginAddInput,
   ZeropsLoginRemoveInput,
+  ZeropsStateEnvelope,
 } from "./zerops.ts";
 
 const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
@@ -464,4 +465,55 @@ it("decodes a signer persistence failure from adding a login", () => {
     detail: "Sign-in could not be recorded.",
   });
   expect(decoded.reason).toBe("signer-write-failed");
+});
+
+describe("ZeropsStateEnvelope leases", () => {
+  const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
+  const envelope = (extra: Record<string, unknown> = {}) => ({
+    phase: "develop-active",
+    environment: "container",
+    project: { id: "proj-1", name: "z3-eval" },
+    services: [],
+    generated: "2026-10-23T12:00:00Z",
+    ...extra,
+  });
+  const held = {
+    alias: "webpool-3",
+    pool: "webpool",
+    branch: "feat-x",
+    containerHostname: "node-id-3.runtime.webpool.zerops",
+    state: "held",
+    unverified: false,
+  };
+
+  it("an envelope from a zcp that reads no leases says nothing of them", () => {
+    expect(decodeEnvelope(envelope()).leases).toBeUndefined();
+  });
+
+  it("an envelope says which pool containers zcp holds, and none as none", () => {
+    expect(decodeEnvelope(envelope({ leases: [held] })).leases).toEqual([held]);
+    expect(decodeEnvelope(envelope({ leases: [] })).leases).toEqual([]);
+  });
+
+  it("a lease in a state or with a field this build does not know still reads", () => {
+    const decoded = decodeEnvelope(
+      envelope({ leases: [{ ...held, state: "draining", region: "prg1" }] }),
+    );
+    expect(decoded.leases).toEqual([{ ...held, state: "draining" }]);
+  });
+
+  it("a lease this build cannot read is left out, never the envelope", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        leases: [{ pool: "webpool", state: "held" }, held, { ...held, alias: "../etc" }],
+      }),
+    );
+    expect(decoded.leases).toEqual([held]);
+    expect(decoded.phase).toBe("develop-active");
+  });
+
+  it("a lease acquired for no branch reads without one", () => {
+    const { branch: _branch, ...noBranch } = held;
+    expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);
+  });
 });
