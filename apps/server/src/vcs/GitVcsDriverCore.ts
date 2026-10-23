@@ -2530,9 +2530,21 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const indexPath = path.isAbsolute(indexValue.trim())
       ? indexValue.trim()
       : path.resolve(cwd, indexValue.trim());
-    const tempIndexPath = yield* fileSystem.makeTempFileScoped({
-      prefix: `t3code-review-index-${process.pid}-`,
-    });
+    // Beside the real index, in the repository's own git directory: git may run on another
+    // machine that shares only the checkout with this one (a Zerops service over ssh), where a
+    // file in this server's temp directory does not exist and `git add` cannot take its lock.
+    const tempIndexPath = yield* Effect.acquireRelease(
+      crypto.randomUUIDv4.pipe(
+        Effect.map((id) =>
+          path.join(path.dirname(indexPath), `t3code-review-index-${process.pid}-${id}`),
+        ),
+      ),
+      (file) =>
+        Effect.all([
+          fileSystem.remove(file, { force: true }),
+          fileSystem.remove(`${file}.lock`, { force: true }),
+        ]).pipe(Effect.ignore),
+    );
     const indexExists = yield* fileSystem.exists(indexPath);
     if (indexExists) {
       const { mtime } = yield* fileSystem.stat(indexPath);
