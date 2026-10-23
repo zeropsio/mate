@@ -95,6 +95,36 @@ describe("workspace owner reads and saves", () => {
     reads.close();
     registry.dispose();
   });
+  it.each([
+    ["an answer", () => Effect.succeed(value("owner"))],
+    [
+      "a refusal",
+      () => Effect.fail({ outcome: "definitive-refusal", message: "Read refused." } as const),
+    ],
+  ] as const)(
+    "a refresh of a read's only view asks its owner again after %s",
+    async (_first, firstAnswer) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      let calls = 0;
+      const reads = makeWorkspaceReads(
+        store,
+        wire(() => (++calls === 1 ? firstAnswer() : Effect.succeed(value("again")))),
+      );
+      const settled = waitFor(store, () => ["Success", "Failure"].includes(snapshot(store)._tag));
+      const view = reads.demand("file", file);
+      await settled;
+      // A view's refresh lets its demand go and takes it again, as one asking now.
+      view();
+      const refreshed = reads.demand("file", file, true);
+      await waitFor(store, () => snapshot(store)._tag === "Success");
+      expect(calls).toBe(2);
+      expect(snapshot(store)).toMatchObject({ _tag: "Success", value: value("again") });
+      refreshed();
+      reads.close();
+      registry.dispose();
+    },
+  );
   it("keeps a save pending until its later owner read-back confirms the contents", async () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
