@@ -8,7 +8,8 @@ import { chatGateStages, chatGateTestFiles } from "./chat-gate.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
 
 export interface SignalReport {
-  tests: { file: string; title: string; status: string }[];
+  /** `path` is the test's describe titles then its own: what Vitest's name filter reads. */
+  tests: { file: string; title: string; path: string[]; status: string }[];
   errors: string[];
 }
 
@@ -29,8 +30,20 @@ const failedTests = (reports: ReadonlyArray<SignalReport>) => {
   ];
 };
 
-export const failedFiles = (reports: ReadonlyArray<SignalReport>): string[] =>
-  [...new Set(failedTests(reports).map((test) => test.file))].sort();
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+/** The failed files, and a name pattern that selects only their failed tests. */
+export function failedSelection(reports: ReadonlyArray<SignalReport>): {
+  files: string[];
+  testNamePattern: string;
+} {
+  const failed = failedTests(reports);
+  const names = new Set(failed.map((test) => test.path.map(escapeRegExp).join(" > ")));
+  return {
+    files: [...new Set(failed.map((test) => test.file))].sort(),
+    testNamePattern: `^(?:${[...names].join("|")})$`,
+  };
+}
 
 export interface SignalFailure {
   file: string;
@@ -64,6 +77,38 @@ export function standingReds(
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
+// Each C scenario file's slowest summed test time in Signal runs 40112366539 and 40114861112
+// (2026-10-24), so the C shards split the time rather than the file count. The four
+// owner-reported layout files are their describe groups' times from the file they were split from.
+const cScenarioDurations = {
+  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-conversation.scenario.ts": 157796,
+  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-composer.scenario.ts": 134579,
+  "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts": 127867,
+  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-live-card.scenario.ts": 101771,
+  "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts": 70523,
+  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-menu.scenario.ts": 69967,
+  "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts": 55981,
+  "apps/web/test/scenarios/areas/c-mate/images.scenario.ts": 38479,
+  "apps/web/test/scenarios/areas/c-mate/fold-work.scenario.ts": 38276,
+  "apps/web/test/scenarios/areas/c-mate/ownership-loading.scenario.ts": 30697,
+  "apps/web/test/scenarios/areas/c-mate/composer-overlap.scenario.ts": 29798,
+  "apps/web/test/scenarios/areas/c-mate/health.scenario.ts": 24745,
+  "apps/web/test/scenarios/areas/c-mate/overview-reload.scenario.ts": 16815,
+  "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts": 13920,
+  "apps/web/test/scenarios/areas/c-mate/replay.scenario.ts": 13261,
+  "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts": 13198,
+  "apps/web/test/scenarios/areas/c-mate/identity.scenario.ts": 11643,
+  "apps/web/test/scenarios/areas/c-mate/overview-filter.scenario.ts": 10969,
+  "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts": 10162,
+  "apps/web/test/scenarios/areas/c-mate/composer.scenario.ts": 8329,
+  "apps/web/test/scenarios/areas/c-mate/first-send.scenario.ts": 7565,
+  "apps/web/test/scenarios/areas/c-mate/providerLimits.scenario.ts": 6777,
+  "apps/web/test/scenarios/areas/c-mate/image-layout.scenario.ts": 6139,
+  "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts": 4566,
+  "apps/web/test/scenarios/areas/c-mate/context-window.scenario.ts": 4519,
+  "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts": 3402,
+};
+
 export function readSignalReport(output: string): SignalReport {
   const evidence = JSON.parse(
     NodeFS.readFileSync(`${output}.vitest.json`, "utf8"),
@@ -73,6 +118,7 @@ export function readSignalReport(output: string): SignalReport {
       file.assertionResults.map((test) => ({
         file: NodePath.relative(root, file.name).split(NodePath.sep).join("/"),
         title: test.fullName,
+        path: [...test.ancestorTitles, test.title],
         status: test.status,
       })),
     ),
@@ -134,6 +180,7 @@ if (import.meta.main) {
             ),
             index,
             count,
+            cScenarioDurations,
           ).map((file) => NodePath.join(root, file))
         : [
             "test/scenarios/areas",
@@ -153,10 +200,10 @@ if (import.meta.main) {
       (path) =>
         JSON.parse(NodeFS.readFileSync(NodePath.join(directory, path), "utf8")) as SignalReport,
     );
-    const files = failedFiles(initial);
+    const { files, testNamePattern } = failedSelection(initial);
     const rerun = files.length
       ? runScenarios(
-          files.map((file) => NodePath.join(root, file)),
+          [...files.map((file) => NodePath.join(root, file)), "--testNamePattern", testNamePattern],
           NodePath.join(directory, "rerun.json"),
         )
       : { tests: [], errors: [] };
