@@ -44,6 +44,7 @@ import {
   visibleInMenu,
   sendConversationMessage,
 } from "./browser.ts";
+import { trackSteps } from "./lastStep.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -656,6 +657,13 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     // oxlint-disable-next-line unicorn/no-thenable
     return { given, when, then, page, clock: web.clock(page) };
   };
+  // Reading a step records it, so the tracked DSL is wrapped last, after the spreads below.
+  const tracked = <A extends ReturnType<typeof actor>>(built: A): A => ({
+    ...built,
+    given: trackSteps("given", built.given),
+    when: trackSteps("when", built.when),
+    then: trackSteps("then", built.then),
+  });
   const primary = actor(web.page);
   const newActor = Effect.fn("scenarios.given.browserActor")(function* (
     options: { person?: string; context?: BrowserContext | "new" } = {},
@@ -665,12 +673,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         ? yield* Effect.promise(() => web.newContext())
         : options.context;
     const page = yield* Effect.promise(() => web.newPage(context));
-    return actor(page, options.person ?? "owner");
+    return tracked(actor(page, options.person ?? "owner"));
   });
   // oxlint-disable-next-line unicorn/no-thenable -- the scenario keeps its `then` step, never awaited.
   return {
-    ...primary,
-    given: { ...primary.given, browserActor: newActor },
+    ...tracked({ ...primary, given: { ...primary.given, browserActor: newActor } }),
     drivers,
     web,
     hq,

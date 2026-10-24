@@ -21,9 +21,11 @@ export default defineConfig({
             "test/scenarios/harness/browserProcess.ts",
           ],
           fileParallelism: false,
-          // Past Signal's 25-minute shard guard: a wait ends on its predicate, or the job ends it.
-          hookTimeout: 30 * 60_000,
-          testTimeout: 30 * 60_000,
+          // A hang ceiling, never a timing assertion: 6 times the longest case, far under Signal's
+          // 25-minute shard guard. A case that reaches it fails as hung, and the shard goes on.
+          // Waits stay past it, so a wait ends on its predicate or the ceiling names the case.
+          hookTimeout: 3 * 60_000,
+          testTimeout: 3 * 60_000,
           expect: { poll: { timeout: 30 * 60_000 } },
         },
       },
