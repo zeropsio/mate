@@ -1813,6 +1813,8 @@ const zeropsTestEnvironment = (publicOrigin?: string) =>
     projectId: "TEST000000000000000023",
     apiHost: undefined,
     publicOrigin,
+    // A test server links to no HQ that answers: never production's.
+    hqOrigin: "http://127.0.0.1:9",
   });
 
 /**
