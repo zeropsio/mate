@@ -85,6 +85,22 @@ describe("a Chief recorded at HQ", () => {
   );
 });
 
+describe("a Chief mark removed at HQ", () => {
+  it.effect("ends when HQ answers it holds no mark", () =>
+    Effect.gen(function* () {
+      let removed = 0;
+      const { store, operations } = account({
+        removeChief: async () => {
+          removed += 1;
+        },
+      });
+      yield* operations.submit({ kind: "remove-chief", orgId: ORG });
+      expect(removed).toBe(1);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+});
+
 describe("a decision on a proposal written to HQ", () => {
   it.effect("is answered with the decision HQ holds now", () =>
     Effect.gen(function* () {

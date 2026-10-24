@@ -659,6 +659,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           closeChange: unused,
           handChange: unused,
           setChief: unused,
+          removeChief: unused,
           decideProposal: unused,
         }),
       }),

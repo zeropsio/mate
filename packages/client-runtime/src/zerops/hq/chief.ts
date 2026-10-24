@@ -52,6 +52,8 @@ export const PROPOSAL_IDS_PER_READ = 100;
 
 export interface HqChiefCalls {
   readonly setChief: (projectId: string) => Promise<HqChiefMarkSet>;
+  /** Removes the organisation's mark: HQ answers nothing but that it holds none. */
+  readonly removeChief: () => Promise<void>;
   /** Every decision HQ holds of `ids`, read {@link PROPOSAL_IDS_PER_READ} at a time. */
   readonly proposalDecisions: (
     ids: ReadonlyArray<string>,
@@ -84,6 +86,9 @@ export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChi
           true,
         ),
       ),
+    removeChief: async () => {
+      await authorized("/api/chief", { method: "DELETE" }, true);
+    },
     proposalDecisions: async (ids, signal) => {
       const unique = [...new Set(ids)];
       const batches: string[][] = [];
