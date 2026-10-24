@@ -254,7 +254,7 @@ jobs:
             echo "::notice title=Signal::No previous kh-next classification to compare"
           fi
 
-      - name: Rerun only failed files once on this commit and classify
+      - name: Rerun only failed tests once on this commit and classify
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
           MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json

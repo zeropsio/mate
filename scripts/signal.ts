@@ -8,7 +8,8 @@ import { chatGateStages, chatGateTestFiles } from "./chat-gate.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
 
 export interface SignalReport {
-  tests: { file: string; title: string; status: string }[];
+  /** `path` is the test's describe titles then its own: what Vitest's name filter reads. */
+  tests: { file: string; title: string; path: string[]; status: string }[];
   errors: string[];
 }
 
@@ -29,8 +30,20 @@ const failedTests = (reports: ReadonlyArray<SignalReport>) => {
   ];
 };
 
-export const failedFiles = (reports: ReadonlyArray<SignalReport>): string[] =>
-  [...new Set(failedTests(reports).map((test) => test.file))].sort();
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+/** The failed files, and a name pattern that selects only their failed tests. */
+export function failedSelection(reports: ReadonlyArray<SignalReport>): {
+  files: string[];
+  testNamePattern: string;
+} {
+  const failed = failedTests(reports);
+  const names = new Set(failed.map((test) => test.path.map(escapeRegExp).join(" > ")));
+  return {
+    files: [...new Set(failed.map((test) => test.file))].sort(),
+    testNamePattern: `^(?:${[...names].join("|")})$`,
+  };
+}
 
 export interface SignalFailure {
   file: string;
@@ -73,6 +86,7 @@ export function readSignalReport(output: string): SignalReport {
       file.assertionResults.map((test) => ({
         file: NodePath.relative(root, file.name).split(NodePath.sep).join("/"),
         title: test.fullName,
+        path: [...test.ancestorTitles, test.title],
         status: test.status,
       })),
     ),
@@ -153,10 +167,10 @@ if (import.meta.main) {
       (path) =>
         JSON.parse(NodeFS.readFileSync(NodePath.join(directory, path), "utf8")) as SignalReport,
     );
-    const files = failedFiles(initial);
+    const { files, testNamePattern } = failedSelection(initial);
     const rerun = files.length
       ? runScenarios(
-          files.map((file) => NodePath.join(root, file)),
+          [...files.map((file) => NodePath.join(root, file)), "--testNamePattern", testNamePattern],
           NodePath.join(directory, "rerun.json"),
         )
       : { tests: [], errors: [] };

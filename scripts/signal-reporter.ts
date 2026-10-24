@@ -4,6 +4,14 @@ import type { Reporter } from "vite-plus/test/node";
 
 /** Test failures are evidence; setup, collection and unhandled errors break the workflow. */
 export default class SignalReporter implements Reporter {
+  // Classify's rerun selects only the failed tests; the cases its name filter leaves out are
+  // deselected, not omitted, and the classifier itself checks that each selected one ran.
+  private namePattern: RegExp | undefined;
+
+  onInit(vitest: { config: { testNamePattern?: RegExp | undefined } }): void {
+    this.namePattern = vitest.config.testNamePattern;
+  }
+
   onTestRunEnd(
     modules: ReadonlyArray<{
       moduleId: string;
@@ -25,7 +33,10 @@ export default class SignalReporter implements Reporter {
     // never executes, or expects failure, cannot certify the promised scenario inventory.
     for (const module of modules)
       for (const test of module.children.allTests())
-        if (test.options.fails || !["passed", "failed"].includes(test.result().state))
+        if (
+          (this.namePattern?.test(test.fullName) ?? true) &&
+          (test.options.fails || !["passed", "failed"].includes(test.result().state))
+        )
           failures.push(`Scenario did not certify execution: ${test.fullName}`);
     const path = process.env.MATE_SIGNAL_REPORT;
     if (!path) throw new Error("Signal report path is missing");
