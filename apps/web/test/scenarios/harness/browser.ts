@@ -147,6 +147,8 @@ export async function openBrowser(
   };
   // Every request leaves through the scenario's routes, or is blocked and reported.
   const route = async (page: Page) => {
+    // A wait ends on its predicate or at the hang guard, never at a window sized to one machine.
+    page.setDefaultTimeout(0);
     await page.setBypassServiceWorker(true);
     page.on("popup", (popup) => {
       if (popup === null) return;

@@ -21,8 +21,9 @@ export default defineConfig({
             "test/scenarios/harness/browserProcess.ts",
           ],
           fileParallelism: false,
-          hookTimeout: 120_000,
-          testTimeout: 45_000,
+          // Past Signal's 25-minute shard guard: a wait ends on its predicate, or the job ends it.
+          hookTimeout: 30 * 60_000,
+          testTimeout: 30 * 60_000,
         },
       },
       {
