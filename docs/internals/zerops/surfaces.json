@@ -891,7 +891,8 @@
         "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
         "packages/client-runtime/src/zerops/strip.ts",
         "apps/web/src/components/zerops/ZeropsWorkspaceChip.tsx",
-        "packages/client-runtime/src/zerops/workspaceChip.ts"
+        "packages/client-runtime/src/zerops/workspaceChip.ts",
+        "apps/web/src/zerops/releaseAskNotice.tsx"
       ],
       "entryPoints": [
         {
@@ -918,6 +919,14 @@
         {
           "action": "Close Zerops panel",
           "reverse": "Open Zerops panel"
+        },
+        {
+          "action": "Ask to release a bound workspace",
+          "reverse": "Not now"
+        },
+        {
+          "action": "Not now",
+          "reverse": "Ask to release a bound workspace"
         }
       ],
       "docs": {
@@ -928,6 +937,7 @@
         "packages/client-runtime/src/zerops/strip.test.ts",
         "apps/web/src/components/zerops/ZeropsWorkspaceChip.test.tsx",
         "packages/client-runtime/src/zerops/workspaceChip.test.ts",
+        "apps/web/src/hooks/useThreadActions.undo.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": ["web:lifecycle-active", "web:lifecycle-waiting"]
