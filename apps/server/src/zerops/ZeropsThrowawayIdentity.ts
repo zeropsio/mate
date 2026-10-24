@@ -78,7 +78,7 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
-import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import {
   readJson,
   responseDateEpochMs,
@@ -122,16 +122,9 @@ export class ZeropsReadOnlyError extends Schema.TaggedError<ZeropsReadOnlyError>
   {},
 ) {}
 
-/** A verified caller tried to open another person's personal Chief. */
-export class ZeropsChiefOwnerRequiredError extends Schema.TaggedError<ZeropsChiefOwnerRequiredError>()(
-  "ZeropsChiefOwnerRequiredError",
-  { ownerName: Schema.String },
-) {}
-
 export type ZeropsThrowawayError =
   | ZeropsThrowawayRefusedError
   | ZeropsReadOnlyError
-  | ZeropsChiefOwnerRequiredError
   | ZeropsNotAMemberError
   | ZeropsInvalidTokenError
   | ZeropsProjectNotFoundError
@@ -306,27 +299,20 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   // unavailable; the caller or the next membership sample owns another read.
   const createdByUser = token.createdByUser;
   if (createdByUser === null) return yield* refused("not_member");
-  // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
-  // and the member list is not read. A held explicit Chief refusal stands here, between HQ's
-  // relays too; without that classification the read below retains today's platform-role
-  // admission.
-  const projectAccess = yield* ZeropsProjectAccess;
-  const access = Option.getOrUndefined(yield* projectAccess.relay);
-  const chief = yield* projectAccess.chief;
-  const opened = access?.members.find(
-    (entry) => entry.userId === createdByUser && entry.visibility === "open",
-  );
+  // HQ's access list while it holds (`ZeropsMateAccessList`): a creator it opens for is let in,
+  // and the member list is not read.
+  const access = Option.getOrUndefined(yield* (yield* ZeropsMateAccessList).current);
+  const opened = access?.refused
+    ? undefined
+    : access?.members.find(
+        (entry) => entry.userId === createdByUser && entry.visibility === "open",
+      );
   if (opened !== undefined) {
     return {
       userId: opened.userId,
       clientId: project.clientId,
       role: opened.role,
     } satisfies ZeropsThrowawayCaller;
-  }
-  if (chief != null && chief.userId !== createdByUser) {
-    return yield* new ZeropsChiefOwnerRequiredError({
-      ownerName: chief.ownerName ?? "another person",
-    });
   }
   const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
   if (members.kind === "unreachable") return yield* unavailable(members.reason);

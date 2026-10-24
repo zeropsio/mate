@@ -663,6 +663,7 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),
           sessionMaxAge: Duration.hours(24),
+          hqOrigin: "https://hq.zerops.io",
           serviceId: undefined,
           hostname: undefined,
           statusFile: undefined,

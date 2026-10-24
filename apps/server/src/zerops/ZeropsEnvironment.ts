@@ -30,13 +30,9 @@ export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
  *
  * A session minted at the throwaway door carries no credential of the caller's
  * to re-present, so nothing about it expires on its own. Instead the server
- * asks the platform on this interval — with its own key, or HQ's relay while
- * it holds (`ZeropsProjectAccess`) — and ends the sessions whose answer
- * changed. While Zerops answers, a removed colleague keeps their screen at
- * most one interval past the newest answer that still named them, and no
- * answer is trusted longer than this interval: a minute at worst. The two
- * reads a pass makes are the two the door already makes, cached across both
- * (`ZeropsOrgRead`).
+ * asks HQ's access list on this interval (`ZeropsMateAccessList`), and at once
+ * whenever HQ sends a different one, and ends the sessions whose entry
+ * changed.
  */
 export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 30;
 
@@ -97,11 +93,15 @@ export interface ZeropsEnvironment {
   /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
   readonly sessionMaxAge: Duration.Duration;
   /**
-   * The file zcp keeps the Mate's HQ enrollment in (`T3CODE_ZEROPS_HQ_ENROLLMENT`): HQ's address
-   * and the Mate credential the link to HQ opens with (`ZeropsHqLink`). Absent on a zcp that does
-   * not enroll: no link.
+   * The HQ the Mate links to (`ZeropsHqLink`): `T3CODE_ZEROPS_HQ_ORIGIN` in development, else
+   * {@link DEFAULT_HQ_ORIGIN}. Nothing discovers it (spec-mate §3.5).
    */
-  readonly hqEnrollmentPath?: string | undefined;
+  readonly hqOrigin: string;
+  /**
+   * The file the Mate's Git credential is kept in (`T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`,
+   * `ZeropsGitCredentialFile`), which zcp reads; absent where zcp names none.
+   */
+  readonly hqGitCredentialPath?: string | undefined;
   /** This container's service id and hostname, as the platform sets `serviceId` and `hostname`. */
   readonly serviceId: string | undefined;
   readonly hostname: string | undefined;
@@ -121,12 +121,28 @@ export interface ZeropsEnvironmentInput {
   readonly apiToken?: string | undefined;
   readonly roleRecheckSeconds?: number | undefined;
   readonly sessionMaxAgeSeconds?: number | undefined;
-  readonly hqEnrollmentPath?: string | undefined;
+  readonly hqOrigin?: string | undefined;
+  readonly hqGitCredentialPath?: string | undefined;
   readonly serviceId?: string | undefined;
   readonly hostname?: string | undefined;
   readonly statusFile?: string | undefined;
   readonly mateUpdateStateFile?: string | undefined;
 }
+
+/** The HQ every Mate links to unless development names another (`T3CODE_ZEROPS_HQ_ORIGIN`). */
+export const DEFAULT_HQ_ORIGIN = "https://hq.zerops.io";
+
+/** The variable that names HQ's origin, to the server and to every process it starts. */
+export const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";
+
+/**
+ * Puts the HQ the Mate links to into `env`, the environment every process the server starts
+ * inherits (provider CLIs, and through them zcp, which has no default of its own): one origin
+ * for the server and everything it runs.
+ */
+export const publishHqOrigin = (env: Record<string, string | undefined>, origin: string): void => {
+  env[HQ_ORIGIN_ENV] = origin;
+};
 
 /**
  * The container's live service-environment snapshot (`../zcp/internal/mate/mate.go:113-125`):
@@ -166,7 +182,6 @@ export const resolveZeropsEnvironment = (
     value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
-  const hqEnrollmentPath = input.hqEnrollmentPath?.trim();
   const present = (value: string | undefined) => {
     const trimmed = value?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -185,7 +200,10 @@ export const resolveZeropsEnvironment = (
     sessionMaxAge: Duration.seconds(
       positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
     ),
-    ...(hqEnrollmentPath && hqEnrollmentPath.length > 0 ? { hqEnrollmentPath } : {}),
+    hqOrigin: (present(input.hqOrigin) ?? DEFAULT_HQ_ORIGIN).replace(/\/+$/u, ""),
+    ...(present(input.hqGitCredentialPath) === undefined
+      ? {}
+      : { hqGitCredentialPath: present(input.hqGitCredentialPath) }),
     serviceId: present(input.serviceId),
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),

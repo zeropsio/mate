@@ -13,6 +13,8 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
+import { ACCESS_LIST_HOLDS } from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
@@ -25,7 +27,6 @@ import {
   ZEROPS_SUBJECT_PREFIX,
   type MembershipRead,
 } from "./ZeropsMembershipWatch.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 
 const PROJECT_ID = "TEST000000000000000023";
 const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
@@ -56,10 +57,9 @@ const BLIND: MembershipRead = { ok: false };
 
 describe("planMembershipRecheck", () => {
   const INTERVAL_MS = 5 * 60_000;
-  /** The last good answer: this long ago, read by this Mate itself, or relayed by HQ. */
+  const HOLD_MS = Duration.toMillis(ACCESS_LIST_HOLDS);
+  /** The last list that answered: heard this long ago. */
   const good = (agoMs: number) => ({ atMs: NOW - agoMs });
-  /** HQ's relayed answer: aged, as this Mate's own, from when Zerops answered it. */
-  const relayed = good;
   // Everything that ends a session, and everything that does not. Each row is one pass: the
   // sessions live, what the read said, and when the last good answer before it was read.
   it.each(
@@ -94,26 +94,18 @@ describe("planMembershipRecheck", () => {
           ["s1", "s2"],
         ],
         [
-          "a failed read keeps sessions for one more interval",
+          "a pass with no list keeps sessions while the last list holds",
           [session("s1", JAN)],
           BLIND,
-          good(INTERVAL_MS),
+          good(HOLD_MS),
           [],
         ],
+        // The bound a removed person keeps their screen for is spent.
         [
-          "a second failed read in a row ends them",
+          "a pass with no list past the last list's hold ends them",
           [session("s1", JAN)],
           BLIND,
-          good(2 * INTERVAL_MS),
-          ["s1"],
-        ],
-        // R6: HQ's relay held for one interval from its read already; with nothing answering after
-        // it, the bound a removed person keeps their screen for is spent.
-        [
-          "HQ's relay past its hold with nothing answering ends them",
-          [session("s1", JAN)],
-          BLIND,
-          relayed(INTERVAL_MS + 1),
+          good(HOLD_MS + 1),
           ["s1"],
         ],
         [
@@ -194,7 +186,7 @@ const readLayer = (
 ) => {
   const seen: Array<string | undefined> = [];
   const paths: Array<string> = [];
-  const layer = ZeropsProjectAccessModule.layer.pipe(
+  const layer = ZeropsMateAccessListModule.layer.pipe(
     Layer.provideMerge(
       ZeropsOrgReadModule.layer.pipe(
         Layer.provideMerge(
@@ -227,6 +219,27 @@ const membershipRoute =
     if (url.endsWith("/user/list")) return json(MEMBERS, overrides.memberStatus ?? 200);
     return json({ message: "unexpected route" }, 500);
   };
+
+/** An access frame from HQ naming these members, at this version: a full one unless said. */
+const heardList = (
+  members: ReadonlyArray<{
+    readonly userId: string;
+    readonly role: "OWNER" | "READ_ONLY";
+    readonly visibility: "open" | "listed" | "none";
+  }>,
+  version = 1,
+  full = true,
+) =>
+  Effect.gen(function* () {
+    const list = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
+    yield* list.heard({
+      type: "access",
+      version,
+      viewAt: "2026-10-24T10:00:00.000Z",
+      full,
+      members,
+    });
+  });
 
 describe("recordIdentity", () => {
   it.effect("records the identity status of its own-project read", () => {
@@ -282,9 +295,13 @@ describe("runMembershipRecheck", () => {
         { sessionId: "eva", subject: `${ZEROPS_SUBJECT_PREFIX}${EVA}` },
       ]);
       const { layer } = readLayer(membershipRoute());
-      const ended = yield* runMembershipRecheck({ environment, lastGood }).pipe(
-        Effect.provide(Layer.mergeAll(auth.layer, layer)),
-      );
+      const ended = yield* Effect.gen(function* () {
+        yield* heardList([
+          { userId: JAN, role: "OWNER", visibility: "open" },
+          { userId: EVA, role: "READ_ONLY", visibility: "listed" },
+        ]);
+        return yield* runMembershipRecheck({ environment, lastGood });
+      }).pipe(Effect.provide(Layer.mergeAll(auth.layer, layer)));
       // Eva is READ_ONLY here: she keeps her row in the list and loses her seat.
       assert.strictEqual(ended, 1);
       assert.deepStrictEqual(auth.revoked, ["eva"]);
@@ -296,7 +313,8 @@ describe("runMembershipRecheck", () => {
     Effect.gen(function* () {
       const lastGood = yield* lastGoodAt(0);
       const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
-      const { layer } = readLayer(membershipRoute({ memberStatus: 500 }));
+      // HQ has sent no list since the last one, heard at 0.
+      const { layer } = readLayer(membershipRoute());
       const run = runMembershipRecheck({ environment, lastGood }).pipe(
         Effect.provide(Layer.mergeAll(auth.layer, layer)),
       );
@@ -305,14 +323,14 @@ describe("runMembershipRecheck", () => {
       assert.strictEqual(yield* run, 0);
       assert.deepStrictEqual(auth.revoked, []);
 
-      yield* TestClock.adjust(Duration.minutes(5));
+      yield* TestClock.adjust(Duration.sum(Duration.minutes(10), Duration.millis(1)));
       assert.strictEqual(yield* run, 1);
       assert.deepStrictEqual(auth.revoked, ["jan"]);
     }),
   );
 
-  // R6: while HQ's relay holds, who the project lets in is its answer: the member list is not
-  // read, and only the Mate's own project is, for the descriptor (S4).
+  // Who the project lets in is HQ's list: the member list is never read, and only the Mate's own
+  // project is, for the descriptor (S4).
   it.effect("reads no member list while HQ's relay holds", () =>
     Effect.gen(function* () {
       const lastGood = yield* lastGoodAt(-300_000);
@@ -322,36 +340,27 @@ describe("runMembershipRecheck", () => {
       ]);
       const { layer, paths } = readLayer(membershipRoute());
       const ended = yield* Effect.gen(function* () {
-        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
-          members: [{ userId: EVA, role: "OWNER", visibility: "open" }],
-          ageMs: 10_000,
-        });
+        yield* heardList([{ userId: EVA, role: "OWNER", visibility: "open" }]);
         return yield* runMembershipRecheck({ environment, lastGood });
       }).pipe(Effect.provide(Layer.mergeAll(auth.layer, layer)));
       assert.strictEqual(ended, 1);
       assert.deepStrictEqual(auth.revoked, ["jan"]);
       assert.deepStrictEqual(paths, [`/api/rest/public/project/${PROJECT_ID}`]);
-      assert.deepStrictEqual(yield* Ref.get(lastGood), { atMs: -10_000 });
+      assert.deepStrictEqual(yield* Ref.get(lastGood), { atMs: 0 });
     }),
   );
 
-  it.effect("a Chief session belongs only to its registered owner even for an org owner", () =>
+  it.effect("ends every session while HQ says the organisation's key was refused", () =>
     Effect.gen(function* () {
-      const lastGood = yield* lastGoodAt(-300_000);
-      const auth = fakeAuth([
-        { sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` },
-        { sessionId: "eva", subject: `${ZEROPS_SUBJECT_PREFIX}${EVA}` },
-      ]);
+      const lastGood = yield* lastGoodAt(0);
+      const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
       const { layer } = readLayer(membershipRoute());
       const ended = yield* Effect.gen(function* () {
-        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
-          members: [
-            { userId: JAN, role: "OWNER", visibility: "open" },
-            { userId: EVA, role: "OWNER", visibility: "open" },
-          ],
-          chief: { userId: EVA, ownerName: "Eva" },
-          ageMs: 0,
-        });
+        yield* heardList([{ userId: JAN, role: "OWNER", visibility: "open" }]);
+        const list = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
+        yield* list.heard({ type: "access", version: 2, full: true, refused: true, members: [] });
+        // Only a full list without the refusal lifts it; a delta naming him does not.
+        yield* heardList([{ userId: JAN, role: "OWNER", visibility: "open" }], 3, false);
         return yield* runMembershipRecheck({ environment, lastGood });
       }).pipe(Effect.provide(Layer.mergeAll(auth.layer, layer)));
       assert.strictEqual(ended, 1);
@@ -406,7 +415,7 @@ describe("runMembershipRecheck", () => {
 
       const ended = yield* runMembershipRecheck({ environment, lastGood }).pipe(
         Effect.provide(
-          ZeropsProjectAccessModule.layer.pipe(
+          ZeropsMateAccessListModule.layer.pipe(
             Layer.provideMerge(
               ZeropsOrgReadModule.layer.pipe(
                 Layer.provideMerge(
@@ -451,7 +460,7 @@ describe("the re-check loop", () => {
     }).pipe(Effect.scoped),
   );
 
-  // R6: HQ relaying a different answer is a removal landing now, not at the next interval.
+  // HQ sending a different list is a removal landing now, not at the next interval.
   it.effect("runs a pass at once when HQ relays a different answer", () =>
     Effect.gen(function* () {
       const { layer } = readLayer(membershipRoute());
@@ -460,121 +469,57 @@ describe("the re-check loop", () => {
         yield* makeWatch;
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(auth.revoked, []);
-        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
-          members: [{ userId: EVA, role: "OWNER", visibility: "open" }],
-          ageMs: 0,
-        });
+        yield* heardList([{ userId: EVA, role: "OWNER", visibility: "open" }]);
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(auth.revoked, ["jan"]);
       }).pipe(Effect.provide(Layer.mergeAll(layer, auth.layer)));
     }).pipe(Effect.scoped),
   );
 
-  /** The watch over a member list `members` answers as it is at each read, with Jan signed in. */
-  const watching = (members: { current: { readonly status: number; readonly body: unknown } }) => {
-    const { layer } = readLayer((url) =>
-      url.endsWith("/user/list")
-        ? json(members.current.body, members.current.status)
-        : json({ id: PROJECT_ID, clientId: CLIENT_ID, userRoles: [] }),
-    );
+  /** The watch with Jan signed in, its feeds the test's: `run` runs a scene over them. */
+  const watching = () => {
+    const { layer } = readLayer(membershipRoute());
     const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
-    return { auth, start: makeWatch.pipe(Effect.provide(Layer.mergeAll(layer, auth.layer))) };
-  };
-  const REMOVED = {
-    clientUserList: MEMBERS.clientUserList.filter((member) => member.userId !== JAN),
+    return {
+      auth,
+      run: <A, E, R>(scene: Effect.Effect<A, E, R>) =>
+        Effect.andThen(makeWatch, scene).pipe(Effect.provide(Layer.mergeAll(layer, auth.layer))),
+    };
   };
 
   it.effect("a removed member's session ends within a minute while Zerops answers", () =>
     Effect.gen(function* () {
-      const members = { current: { status: 200, body: MEMBERS as unknown } };
-      const { auth, start } = watching(members);
-      yield* start;
-      yield* TestClock.adjust(Duration.zero);
-      assert.deepStrictEqual(auth.revoked, []);
-      // Removed right after that pass.
-      members.current = { status: 200, body: REMOVED };
-      yield* TestClock.adjust(Duration.seconds(60));
-      // The fake keeps listing an ended session, so each later pass ends it again.
-      assert.deepStrictEqual([...new Set(auth.revoked)], ["jan"]);
+      const { auth, run } = watching();
+      yield* run(
+        Effect.gen(function* () {
+          yield* heardList([{ userId: JAN, role: "OWNER", visibility: "open" }]);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(auth.revoked, []);
+          // HQ's next view no longer names him.
+          yield* heardList([{ userId: JAN, role: "OWNER", visibility: "none" }], 2, false);
+          yield* TestClock.adjust(Duration.seconds(60));
+          // The fake keeps listing an ended session, so each later pass ends it again.
+          assert.deepStrictEqual([...new Set(auth.revoked)], ["jan"]);
+        }),
+      );
     }).pipe(Effect.scoped),
   );
 
   it.effect(
-    "a failed read keeps a session for the five minutes a scheduled turn keeps running, and no longer",
+    "keeps a session while HQ's list holds, 15 minutes from the frame that brought it, and no longer",
     () =>
       Effect.gen(function* () {
-        const members = { current: { status: 200, body: MEMBERS as unknown } };
-        const { auth, start } = watching(members);
-        yield* start;
-        yield* TestClock.adjust(Duration.zero);
-        // Zerops answered at start and stops answering.
-        members.current = { status: 500, body: MEMBERS };
-        yield* TestClock.adjust(Duration.minutes(5));
-        assert.deepStrictEqual(auth.revoked, [], "the last answer holds five minutes");
-        yield* TestClock.adjust(Duration.seconds(30));
-        assert.deepStrictEqual(auth.revoked, ["jan"]);
+        const { auth, run } = watching();
+        yield* run(
+          Effect.gen(function* () {
+            yield* heardList([{ userId: JAN, role: "OWNER", visibility: "open" }]);
+            // HQ sends nothing more: its link is down, or Zerops does not answer it.
+            yield* TestClock.adjust(ACCESS_LIST_HOLDS);
+            assert.deepStrictEqual(auth.revoked, [], "the last list holds 15 minutes");
+            yield* TestClock.adjust(environment.roleRecheckInterval);
+            assert.deepStrictEqual([...new Set(auth.revoked)], ["jan"]);
+          }),
+        );
       }).pipe(Effect.scoped),
-  );
-
-  // The worst case the bound has to survive: the role is lowered just after a
-  // pass, the next pass cannot read, and the configured interval is above the
-  // ceiling. The session still ends within two clamped intervals.
-  const clamped = resolveZeropsEnvironment({
-    projectId: PROJECT_ID,
-    apiHost: undefined,
-    apiToken: MATE_KEY,
-    roleRecheckSeconds: 3_600,
-  })!;
-  const LOWERED = {
-    clientUserList: MEMBERS.clientUserList.map((member) =>
-      member.userId === JAN ? { ...member, roleCode: "READ_ONLY" } : member,
-    ),
-  };
-
-  it.effect.each(
-    Array.from(
-      [
-        ["the second pass reads", "reads"],
-        ["the second pass fails", "fails"],
-      ] as const,
-      ([label, secondPass]) => ({
-        title: `a lowered role ends the session within two recheck intervals whether or not the second pass reads (${label})`,
-        secondPass,
-      }),
-    ),
-  )("$title", ({ secondPass }) =>
-    Effect.gen(function* () {
-      let members: { readonly status: number; readonly body: unknown } = {
-        status: 200,
-        body: MEMBERS,
-      };
-      const { layer, seen } = readLayer((url) =>
-        url.endsWith("/user/list")
-          ? json(members.body, members.status)
-          : json({ id: PROJECT_ID, clientId: CLIENT_ID, userRoles: [] }),
-      );
-      const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
-      yield* makeWatch.pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            layer,
-            auth.layer,
-            ServerConfig.layer({ zerops: clamped } as ServerConfig.ServerConfig["Service"]),
-          ),
-        ),
-      );
-      yield* TestClock.adjust(Duration.zero);
-      assert.strictEqual(seen.length, 2, "the first pass ran at start");
-      assert.deepStrictEqual(auth.revoked, []);
-
-      // Lowered right after that pass; the next one cannot read.
-      members = { status: 500, body: LOWERED };
-      yield* TestClock.adjust(Duration.seconds(300));
-      assert.deepStrictEqual(auth.revoked, [], "one failed pass is tolerated");
-
-      members = secondPass === "reads" ? { status: 200, body: LOWERED } : members;
-      yield* TestClock.adjust(Duration.seconds(300));
-      assert.deepStrictEqual(auth.revoked, ["jan"]);
-    }).pipe(Effect.scoped),
   );
 });

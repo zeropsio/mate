@@ -25,7 +25,7 @@ import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
-import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { publishHqOrigin, resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 
 export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -177,8 +177,13 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  // The Mate's HQ enrollment, kept by zcp (ZeropsHqLink).
-  zeropsHqEnrollment: Config.String("T3CODE_ZEROPS_HQ_ENROLLMENT").pipe(
+  // The HQ the Mate links to, in development; production's is the server's default (ZeropsHqLink).
+  zeropsHqOrigin: Config.String("T3CODE_ZEROPS_HQ_ORIGIN").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // The file the Mate's Git credential is kept in, which zcp reads (ZeropsGitCredentialFile).
+  zeropsHqGitCredential: Config.String("T3CODE_ZEROPS_HQ_GIT_CREDENTIAL").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -451,13 +456,17 @@ export const resolveServerConfig = (
             apiToken: env.zeropsApiToken,
             roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
             sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
-            hqEnrollmentPath: env.zeropsHqEnrollment,
+            hqOrigin: env.zeropsHqOrigin,
+            hqGitCredentialPath: env.zeropsHqGitCredential,
             serviceId: env.zeropsServiceId,
             hostname: env.zeropsHostname,
             statusFile: env.zcpStatusFile,
             mateUpdateStateFile: env.zcpMateUpdateStateFile,
           })
         : undefined;
+    // Every process the server starts (provider CLIs, and through them zcp) inherits this
+    // environment, so they all reach the HQ this Mate links to.
+    if (zerops !== undefined) publishHqOrigin(process.env, zerops.hqOrigin);
     if (
       zerops !== undefined &&
       env.zeropsRoleRecheckSeconds !== undefined &&

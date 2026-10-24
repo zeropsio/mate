@@ -1,4 +1,3 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -12,14 +11,11 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
-import { readOwnAccess } from "./ZeropsProjectAccess.ts";
-import { ORG_READ_MAX_AGE } from "./ZeropsOrgRead.ts";
-import { make as makeProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ORG_READ_MAX_AGE, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
-import { memorySignInStore, ZeropsSignIns } from "./zeropsSignIns.ts";
 
 const PROJECT_ID = "TEST000000000000000023";
 const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
@@ -77,31 +73,29 @@ function platform(
     }
     return json({ message: "unexpected route" }, 500);
   };
-  const layer = ZeropsProjectAccessModule.layer.pipe(
+  const layer = ZeropsOrgReadModule.layer.pipe(
     Layer.provideMerge(
-      ZeropsOrgReadModule.layer.pipe(
-        Layer.provideMerge(
-          Layer.mergeAll(
-            Layer.succeed(
-              HttpClient.HttpClient,
-              HttpClient.make((request) =>
-                Effect.gen(function* () {
-                  seen.push(new URL(request.url).pathname);
-                  if (held !== undefined && request.url.endsWith("/user/list")) {
-                    yield* Deferred.await(held);
-                  }
-                  return HttpClientResponse.fromWeb(request, route(request.url));
-                }),
-              ),
-            ),
-            Layer.succeed(
-              ZeropsMateKeyModule.ZeropsMateKey,
-              ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
-            ),
-            ZeropsIdentityStatusModule.layer,
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+      Layer.mergeAll(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) =>
+            Effect.gen(function* () {
+              seen.push(new URL(request.url).pathname);
+              if (held !== undefined && request.url.endsWith("/user/list")) {
+                yield* Deferred.await(held);
+              }
+              return HttpClientResponse.fromWeb(request, route(request.url));
+            }),
           ),
         ),
+        Layer.succeed(
+          ZeropsMateKeyModule.ZeropsMateKey,
+          ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
+        ),
+        ZeropsIdentityStatusModule.layer,
+        // No HQ list: the door reads the member list itself.
+        ZeropsMateAccessListModule.layer,
+        ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
       ),
     ),
   );
@@ -109,45 +103,20 @@ function platform(
   return { layer, count };
 }
 
-/** The signers gate over no recorded sign-in. */
-const signersGate = Effect.gen(function* () {
-  const signIns = yield* memorySignInStore();
-  return yield* makeProjectSigners.pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-        NodeServices.layer,
-        Layer.succeed(ZeropsSignIns, signIns),
-      ),
-    ),
-  );
+/** This Mate's project and its organisation's members, read as the door reads them. */
+const readProjectAndMembers = Effect.gen(function* () {
+  const orgRead = yield* ZeropsOrgRead;
+  yield* orgRead.project({ apiBaseUrl: environment.apiBaseUrl, projectId: PROJECT_ID });
+  return yield* orgRead.members({ apiBaseUrl: environment.apiBaseUrl, clientId: CLIENT_ID });
 });
 
 describe("the org, as this Mate reads it", () => {
-  // the organization's list carries every integration token as a member (181 rows, 2026-10-03), and a slow
-  // Zerops took up to 35 s to answer it: read once for all three.
-  it.effect(
-    "reads the member list once for a door, the membership watch and a signer check within 30 s",
-    () => {
-      const zerops = platform();
-      return Effect.gen(function* () {
-        const signers = yield* signersGate;
-        yield* verifyThrowawayCaller({ environment, token: PRESENTED });
-        const watched = yield* readOwnAccess({ environment });
-        assert.isTrue(watched.ok);
-        assert.isTrue(yield* signers.hasProjectAccess(USER_ID));
-        assert.strictEqual(zerops.count("/user/list"), 1);
-      }).pipe(Effect.scoped, Effect.provide(zerops.layer));
-    },
-  );
-
   it.effect("reads this Mate's own project once for all three as well", () => {
     const zerops = platform();
     return Effect.gen(function* () {
-      const signers = yield* signersGate;
       yield* verifyThrowawayCaller({ environment, token: PRESENTED });
-      yield* readOwnAccess({ environment });
-      yield* signers.hasProjectAccess(USER_ID);
+      yield* readProjectAndMembers;
+      yield* readProjectAndMembers;
       assert.strictEqual(zerops.count(`/project/${PROJECT_ID}`), 1);
     }).pipe(Effect.scoped, Effect.provide(zerops.layer));
   });
@@ -157,10 +126,10 @@ describe("the org, as this Mate reads it", () => {
     return Effect.gen(function* () {
       yield* verifyThrowawayCaller({ environment, token: PRESENTED });
       yield* TestClock.adjust(Duration.subtract(ORG_READ_MAX_AGE, Duration.millis(1)));
-      yield* readOwnAccess({ environment });
+      yield* readProjectAndMembers;
       assert.strictEqual(zerops.count("/user/list"), 1);
       yield* TestClock.adjust(Duration.millis(1));
-      yield* readOwnAccess({ environment });
+      yield* readProjectAndMembers;
       assert.strictEqual(zerops.count("/user/list"), 2);
     }).pipe(Effect.provide(zerops.layer));
   });
@@ -252,8 +221,6 @@ describe("the org, as this Mate reads it", () => {
       );
       granted = false;
       yield* TestClock.adjust(ORG_READ_MAX_AGE);
-      // The membership watch can warm the cache before the door refuses.
-      yield* readOwnAccess({ environment });
       const denied = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
         Effect.flip,
       );
@@ -274,15 +241,13 @@ describe("the org, as this Mate reads it", () => {
       const zerops = platform(held);
       return yield* Effect.gen(function* () {
         const both = yield* Effect.forkChild(
-          Effect.all([readOwnAccess({ environment }), readOwnAccess({ environment })], {
-            concurrency: "unbounded",
-          }),
+          Effect.all([readProjectAndMembers, readProjectAndMembers], { concurrency: "unbounded" }),
         );
         yield* TestClock.adjust(Duration.zero);
         assert.strictEqual(zerops.count("/user/list"), 1);
         yield* Deferred.succeed(held, undefined);
         const [first, second] = yield* Fiber.join(both);
-        assert.deepStrictEqual([first.ok, second.ok], [true, true]);
+        assert.deepStrictEqual([first.kind, second.kind], ["answered", "answered"]);
         assert.strictEqual(zerops.count("/user/list"), 1);
       }).pipe(Effect.provide(zerops.layer));
     }),

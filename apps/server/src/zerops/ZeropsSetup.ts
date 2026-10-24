@@ -4,9 +4,9 @@
  * Two jobs, both from facts this container holds:
  *
  * - **It reports the setup** (`GET /setup.json`, `zeropsSetupSteps.ts`): the
- *   container is up; zcp enrolled the Mate with its HQ, whose credential is
- *   its Git access — or zcp's word on why not (`outcome.json`, through
- *   `ZeropsHqLink`); zcp's status file (`ZCP_STATUS_FILE`) for the runtimes;
+ *   container is up; HQ sent the Mate its Git credential over the link, kept
+ *   in its file (`ZeropsGitCredentialFile`) — or HQ refused the project's key
+ *   (`ZeropsHqLink`); zcp's status file (`ZCP_STATUS_FILE`) for the runtimes;
  *   who asked for the
  *   stand-up (the Mate's birth record at its HQ, `ZeropsHqLink`) and who
  *   signed an agent in here (`ZeropsProjectSigners`) for the sign-in; the
@@ -68,6 +68,7 @@ import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
@@ -107,6 +108,8 @@ export class ZeropsSetupReads extends Context.Service<
   {
     /** Where the Mate stands with its HQ (`ZeropsHqLink`): who asked, or why nobody is known to. */
     readonly hq: Effect.Effect<HqStanding>;
+    /** Whether the Mate's Git credential file holds HQ's credential (`ZeropsGitCredentialFile`). */
+    readonly gitCredentialHeld: Effect.Effect<boolean>;
     /** Who this server saw sign each login in (`ZeropsProjectSigners`). */
     readonly signers: Effect.Effect<ProjectSigners>;
     /** Claude Code and Codex as the agent-auth feed says them (`ZeropsAgentAuth`). */
@@ -432,7 +435,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const document = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       const standing = yield* reads.hq;
-      const git = gitAccessOf(standing, yield* latch(gitAt, standing.kind !== "not-enrolled"));
+      const git = gitAccessOf(standing, yield* latch(gitAt, yield* reads.gitCredentialHeld));
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* Effect.flatMap(recordOf, seenOnEngine);
       const ran = record !== undefined && RAN.has(record.source);
@@ -861,35 +864,23 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
   });
 
 /**
- * The Mate's Git access, from where it stands with its HQ: granted since `at` once zcp holds an
- * enrollment — and still, once granted, whatever the standing says later (`at` is latched) —
- * else failed where zcp said why not, else on its way.
+ * The Mate's Git access: granted since `at` once its credential file holds HQ's credential — and
+ * still, once granted, whatever the standing says later (`at` is latched) — else failed where HQ
+ * refused the project's key, its close reason the code, else on its way.
  */
 const gitAccessOf = (standing: HqStanding, at: string | undefined): GitAccess => {
   if (at !== undefined) return { state: "done", at };
-  const outcome =
-    standing.kind === "not-enrolled" ? Option.getOrUndefined(standing.outcome) : undefined;
-  if (outcome === undefined) return { state: "waiting" };
-  return outcome.code === undefined
-    ? { state: "failed", reason: outcome.state }
-    : { state: "failed", reason: outcome.state, code: outcome.code };
+  return standing.kind === "not-linked" && standing.refusal !== undefined
+    ? { state: "failed", reason: "refused", code: standing.refusal }
+    : { state: "waiting" };
 };
 
 /** Why a stand-up nothing started waits, from where the Mate stands with its HQ. */
 const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {
-  switch (hq.kind) {
-    case "not-enrolled": {
-      const outcome = Option.getOrUndefined(hq.outcome);
-      if (outcome?.state === "no_hq") return { reason: "no_hq" };
-      return outcome?.code === undefined
-        ? { reason: "not_enrolled" }
-        : { reason: "not_enrolled", code: outcome.code };
-    }
-    case "not-linked":
-      return { reason: "not_linked" };
-    case "linked":
-      return undefined;
-  }
+  if (hq.kind === "linked") return undefined;
+  return hq.refusal === undefined
+    ? { reason: "not_linked" }
+    : { reason: "not_linked", code: hq.refusal };
 };
 
 /* ------------------------------------------------------------ the live reads */
@@ -929,7 +920,8 @@ export const zcpProcessGone = (fs: FileSystem.FileSystem, zcp: ZcpProcess) =>
   });
 
 /**
- * The live reads: who asked for the stand-up, from the link to HQ; who signed
+ * The live reads: who asked for the stand-up, from the link to HQ; whether the
+ * Git credential file holds HQ's credential; who signed
  * each login in, as this server saw it; the zcp service's variables from the
  * platform's live env store (`ZeropsEnvironment.envStorePath`, rewritten seconds
  * after a change, no restart) and this process's own environment; zcp's
@@ -941,6 +933,7 @@ export const liveReadsLayer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const link = yield* ZeropsHqLink;
+    const gitCredential = yield* ZeropsGitCredentialFile;
     const projectSigners = yield* ZeropsProjectSigners;
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;
@@ -949,6 +942,7 @@ export const liveReadsLayer = Layer.effect(
     const statusFilePath = zerops?.statusFile;
     return ZeropsSetupReads.of({
       hq: link.standing,
+      gitCredentialHeld: gitCredential.held,
       signers: projectSigners.signers,
       agents: Effect.map(agentAuth.latest, (snapshot) => snapshot.agents),
       serviceVariables: readServiceVariableKeys(zerops?.envStorePath).pipe(

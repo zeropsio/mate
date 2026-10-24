@@ -24,12 +24,8 @@ import { awaitSessionEnd } from "./sessionLifetime.ts";
 import { layer as ZeropsIdentityStatusLayer } from "../zerops/ZeropsIdentityStatus.ts";
 import { snapshotOnlyReader, ZeropsMateKey } from "../zerops/ZeropsMateKey.ts";
 import { layer as ZeropsMembershipWatchLayer } from "../zerops/ZeropsMembershipWatch.ts";
-import { ZeropsOrgRead, layer as ZeropsOrgReadLayer } from "../zerops/ZeropsOrgRead.ts";
-import {
-  ACCESS_HOLDS,
-  ZeropsProjectAccess,
-  layer as projectAccessLayer,
-} from "../zerops/ZeropsProjectAccess.ts";
+import { layer as ZeropsOrgReadLayer } from "../zerops/ZeropsOrgRead.ts";
+import { ZeropsMateAccessList, layer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
 import { ZeropsSessionAdmissionLive } from "../zerops/zeropsFeedsLayer.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -62,46 +58,32 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-const makeAdmissionAuthLayer = (platformAnswers = false) => {
-  const access = projectAccessLayer.pipe(
-    Layer.provide(
-      Layer.succeed(ZeropsOrgRead, {
-        project: () =>
-          platformAnswers
-            ? Effect.succeed({
-                kind: "answered" as const,
-                status: 200,
-                body: { clientId: "org", userRoles: [], tagList: ["mate", "chief"] },
-              })
-            : Effect.die("Enrolled admission must not fall back to platform roles"),
-        members: () =>
-          platformAnswers
-            ? Effect.succeed({
-                kind: "answered" as const,
-                status: 200,
-                body: {
-                  clientUserList: [
-                    { id: "member", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
-                  ],
-                },
-              })
-            : Effect.die("Enrolled admission must not fall back to platform roles"),
-        forgetAccess: () => Effect.void,
-      }),
-    ),
-  );
-  return EnvironmentAuth.layer.pipe(
+/** The auth boundary inside a Zerops Mate, its admission read from HQ's access list. */
+const makeAdmissionAuthLayer = () =>
+  EnvironmentAuth.layer.pipe(
     Layer.provide(ZeropsSessionAdmissionLive),
-    Layer.provideMerge(access),
+    Layer.provideMerge(accessListLayer),
     Layer.provide(SqlitePersistenceMemory),
     Layer.provide(ServerSecretStore.layer),
-    Layer.provide(
-      makeServerConfigLayer({
-        zerops: { ...zeropsTestEnvironment!, hqEnrollmentPath: "/test/hq/enrollment.json" },
-      }),
-    ),
+    Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
   );
-};
+
+/** HQ's full list, opening the project for `open` and listing `listed`. */
+const accessFrame = (
+  version: number,
+  open: ReadonlyArray<string>,
+  listed: ReadonlyArray<string> = [],
+) =>
+  ({
+    type: "access",
+    version,
+    viewAt: "2026-10-24T10:00:00.000Z",
+    full: true,
+    members: [
+      ...open.map((userId) => ({ userId, role: "ADMIN", visibility: "open" }) as const),
+      ...listed.map((userId) => ({ userId, role: "READ_ONLY", visibility: "listed" }) as const),
+    ],
+  }) as const;
 
 const makeCookieRequest = (
   cookieName: string,
@@ -312,78 +294,32 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 });
 
 it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
-  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
-    Effect.gen(function* () {
-      const auth = yield* EnvironmentAuth.EnvironmentAuth;
-      const access = yield* ZeropsProjectAccess;
-      const session = yield* auth.issueSession({ subject: "zerops-user:owner" });
-      for (const state of ["missing", "expired", "ordinary"] as const) {
-        if (state !== "missing") {
-          yield* access.relayed({
-            ageMs: state === "expired" ? Duration.toMillis(ACCESS_HOLDS) + 1 : 0,
-            chief: state === "ordinary" ? null : { userId: "another-person", ownerName: "Ada" },
-            members:
-              state === "ordinary" ? [{ userId: "owner", role: "OWNER", visibility: "open" }] : [],
-          });
-        }
-        const ticket = yield* auth.issueWebSocketTicket(session);
-        const http = yield* auth.authenticateHttpRequest(makeBearerRequest(session.token));
-        const websocket = yield* auth.authenticateWebSocketUpgrade(
-          HttpServerRequest.fromWeb(
-            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
-          ),
-        );
-        expect([http.subject, websocket.subject]).toEqual([
-          "zerops-user:owner",
-          "zerops-user:owner",
-        ]);
-      }
-    }).pipe(Effect.provide(makeAdmissionAuthLayer(true))),
-  );
-
-  it.effect.each([
-    ["another person's", "other", "current", false],
-    ["the owner's", "owner", "current", true],
-  ] as const)(
-    "%s existing session opens its Chief only with current ownership",
-    ([, person, , allowed]) =>
+  it.effect(
+    "an existing session opens only while HQ's access list opens the project for its person",
+    () =>
       Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
-        const access = yield* ZeropsProjectAccess;
-        const session = yield* auth.issueSession({ subject: `zerops-user:${person}` });
-        // Mint the ticket before the current ownership verdict: restored credentials cannot bypass it.
-        const ticket = yield* auth.issueWebSocketTicket(session);
-        yield* access.relayed({
-          ageMs: 0,
-          chief: { userId: "owner", ownerName: "Ada" },
-          members: [
-            { userId: "owner", role: "OWNER", visibility: "open" },
-            { userId: "other", role: "OWNER", visibility: "open" },
-          ],
-        });
-        const http = yield* auth
-          .authenticateHttpRequest(makeBearerRequest(session.token))
-          .pipe(Effect.result);
-        const websocket = yield* auth
-          .authenticateWebSocketUpgrade(
-            HttpServerRequest.fromWeb(
-              new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
-            ),
-          )
-          .pipe(Effect.result);
-        expect({ http: http._tag, websocket: websocket._tag }).toEqual({
-          http: allowed ? "Success" : "Failure",
-          websocket: allowed ? "Success" : "Failure",
-        });
-        if (http._tag === "Success") expect(http.success.subject).toBe("zerops-user:owner");
-        if (websocket._tag === "Success")
-          expect(websocket.success.subject).toBe("zerops-user:owner");
+        const list = yield* ZeropsMateAccessList;
+        const session = yield* auth.issueSession({ subject: "zerops-user:owner" });
+        const opens = () =>
+          auth
+            .authenticateHttpRequest(makeBearerRequest(session.token))
+            .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
+        const admitted = [yield* opens()];
+        yield* list.heard(accessFrame(1, ["owner"]));
+        admitted.push(yield* opens());
+        yield* list.heard(accessFrame(2, [], ["owner"]));
+        admitted.push(yield* opens());
+        yield* list.heard(accessFrame(3, ["owner"]));
+        yield* list.heard({ type: "access", version: 4, full: true, refused: true, members: [] });
+        admitted.push(yield* opens());
+        expect(admitted).toEqual([false, true, false, false]);
       }).pipe(Effect.provide(makeAdmissionAuthLayer())),
   );
 });
 
-// F1 (permission audit): an open bearer session outlived the person's org role. The bound is two
-// re-checks: a member list or HQ relay read just before the change holds one, the next reads it.
+// F1 (permission audit): an open bearer session outlived the person's org role. HQ's next list
+// after the change ends it at once.
 const DEMOTED_PROJECT = "TEST000000000000000023";
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -397,13 +333,11 @@ const beaListedAs = (roleCode: string) => ({
   ],
 });
 const demotions = [
-  { case: "lowered to Developer while the Mate reads Zerops", to: "NO_ACCESS", hq: false },
-  { case: "lowered to Read only while the Mate reads Zerops", to: "READ_ONLY", hq: false },
-  { case: "lowered to Developer just after HQ relayed", to: "NO_ACCESS", hq: true },
-  { case: "lowered to Read only just after HQ relayed", to: "READ_ONLY", hq: true },
-];
+  { case: "lowered to Developer: HQ's next list leaves her out", to: "NO_ACCESS" },
+  { case: "lowered to Read only: HQ's next list only lists her", to: "READ_ONLY" },
+] as const;
 
-/** A Zerops Mate whose platform lists Bea as Admin until a test lowers her. */
+/** A Zerops Mate whose platform lists Bea as Admin, for the door's own read. */
 const makeDemotionScene = () => {
   const zerops = { members: beaListedAs("ADMIN") };
   const platform = Layer.mergeAll(
@@ -427,7 +361,7 @@ const makeDemotionScene = () => {
     Layer.provideMerge(
       EnvironmentAuth.layer.pipe(
         Layer.provide(ZeropsSessionAdmissionLive),
-        Layer.provideMerge(projectAccessLayer),
+        Layer.provideMerge(accessListLayer),
         Layer.provideMerge(ZeropsOrgReadLayer),
         Layer.provideMerge(platform),
         Layer.provide(SqlitePersistenceMemory),
@@ -436,21 +370,19 @@ const makeDemotionScene = () => {
     ),
     Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
   );
-  return { zerops, layer };
+  return { layer };
 };
 
-/** Bea signs in through the door and holds a bearer session; with `hq`, HQ relayed her as Admin first. */
-const signInBea = Effect.fn("signInBea")(function* (hq: boolean) {
+/** HQ's next list after Bea is lowered: without her, or listing her only. */
+const demote = (to: (typeof demotions)[number]["to"]) =>
+  Effect.flatMap(ZeropsMateAccessList, (list) =>
+    list.heard(to === "READ_ONLY" ? accessFrame(2, ["owner"], ["bea"]) : accessFrame(2, ["owner"])),
+  );
+
+/** HQ lists Bea as Admin, and she signs in through the door and holds a bearer session. */
+const signInBea = Effect.fn("signInBea")(function* () {
   const auth = yield* EnvironmentAuth.EnvironmentAuth;
-  if (hq) {
-    yield* (yield* ZeropsProjectAccess).relayed({
-      ageMs: 0,
-      members: [
-        { userId: "owner", role: "OWNER", visibility: "open" },
-        { userId: "bea", role: "ADMIN", visibility: "open" },
-      ],
-    });
-  }
+  yield* (yield* ZeropsMateAccessList).heard(accessFrame(1, ["owner", "bea"]));
   yield* TestClock.adjust(Duration.zero);
   const issued = yield* auth.createPairingLink({
     method: "zerops-throwaway",
@@ -468,14 +400,14 @@ const signInBea = Effect.fn("signInBea")(function* (hq: boolean) {
 it.layer(NodeServices.layer)(
   "a person whose Zerops access ended loses their open session within 60 seconds",
   (it) => {
-    it.effect.each(demotions)("$case", ({ to, hq }) => {
-      const { zerops, layer } = makeDemotionScene();
+    it.effect.each(demotions)("$case", ({ to }) => {
+      const { layer } = makeDemotionScene();
       return Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
         const sessions = yield* SessionStore.SessionStore;
 
         // Bea signs in through the door and holds a bearer session and a live socket.
-        const { access, session } = yield* signInBea(hq);
+        const { access, session } = yield* signInBea();
         const ticket = yield* auth.issueWebSocketTicket(session);
         const socket = yield* auth.authenticateWebSocketUpgrade(
           HttpServerRequest.fromWeb(
@@ -490,8 +422,10 @@ it.layer(NodeServices.layer)(
           }),
         );
         const later = yield* auth.issueWebSocketTicket(session);
+        // The live socket is listening before HQ's next list lands, as a connected one is.
+        yield* TestClock.adjust(Duration.zero);
 
-        zerops.members = beaListedAs(to);
+        yield* demote(to);
         yield* TestClock.adjust(Duration.seconds(60));
 
         const http = yield* auth
@@ -522,8 +456,8 @@ it.layer(NodeServices.layer)(
 
 // Decision: removal ends every channel within one bound, terminals included.
 it.layer(NodeServices.layer)("Terminals a removed person opened end with their session", (it) => {
-  it.effect.each(demotions)("$case", ({ to, hq }) => {
-    const { zerops, layer } = makeDemotionScene();
+  it.effect.each(demotions)("$case", ({ to }) => {
+    const { layer } = makeDemotionScene();
     const signals: Array<string | undefined> = [];
     const typed: Array<string> = [];
     const pty: PtyAdapter.PtyAdapter["Service"] = {
@@ -559,7 +493,7 @@ it.layer(NodeServices.layer)("Terminals a removed person opened end with their s
     ).pipe(Layer.provide(ProcessRunner.layer));
     return Effect.gen(function* () {
       const manager = yield* TerminalManager.TerminalManager;
-      const { session } = yield* signInBea(hq);
+      const { session } = yield* signInBea();
       const terminal = { threadId: "thread-bea", terminalId: "default" };
       yield* manager.open({
         ...terminal,
@@ -569,7 +503,7 @@ it.layer(NodeServices.layer)("Terminals a removed person opened end with their s
         openedBy: session.sessionId,
       });
 
-      zerops.members = beaListedAs(to);
+      yield* demote(to);
       yield* TestClock.adjust(Duration.seconds(60));
 
       yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);

@@ -53,7 +53,7 @@ export interface ScenarioMateOptions {
   readonly zeropsApiToken: string;
   /** Where the browser reaches it, e.g. `https://zcp-a-8080.prg1.zerops.app`. */
   readonly publicOrigin: string;
-  /** The HQ it is enrolled with; absent leaves it unenrolled. */
+  /** The HQ it links to; the credential is the fake HQ's own. Absent, it links to none that answers. */
   readonly hq?: { readonly origin: string; readonly credential: string };
   /** The scenario's wall clock, in epoch milliseconds. */
   readonly now: () => number;
@@ -122,17 +122,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       JSON.stringify({ providers: { opencode: { enabled: true } } }),
     );
   }
-  let hqEnrollmentPath: string | undefined;
-  if (options.hq) {
-    hqEnrollmentPath = NodePath.join(root, "hq", "enrollment.json");
-    await NodeFSP.mkdir(NodePath.dirname(hqEnrollmentPath), { recursive: true });
-    await NodeFSP.writeFile(
-      hqEnrollmentPath,
-      JSON.stringify({ hq: options.hq.origin, credential: options.hq.credential }),
-      { mode: 0o600 },
-    );
-  }
-
   const nativeServices = options.claudeSignIn
     ? await scriptedClaudeSignIn({ root, homeDir, cwd })
     : undefined;
@@ -200,7 +189,9 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           apiToken: options.zeropsApiToken,
           roleRecheckInterval: Duration.minutes(5),
           sessionMaxAge: Duration.days(30),
-          hqEnrollmentPath,
+          // A scene without an HQ links to none that answers: never production's.
+          hqOrigin: options.hq?.origin ?? "http://127.0.0.1:9",
+          hqGitCredentialPath: NodePath.join(root, "hq", "git-credential"),
           serviceId: options.serviceId,
           hostname: options.hostname,
           statusFile: NodePath.join(root, "zcp", "status.json"),

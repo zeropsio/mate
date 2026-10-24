@@ -76,8 +76,6 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
         }),
         Effect.catchTags({
           ZeropsReadOnlyError: () => failEnvironmentOperationForbidden("zerops_read_only"),
-          ZeropsChiefOwnerRequiredError: (error) =>
-            failEnvironmentOperationForbidden("zerops_chief_owner_required", error.ownerName),
         }),
         Effect.catchTags({
           ZeropsNotAMemberError: () =>

@@ -38,7 +38,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { mateUpdateRouteLayer } from "./zerops/mateUpdateHttp.ts";
 import {
   ZeropsLayerLive,
-  ZeropsProjectAccessLive,
+  ZeropsMateAccessListLive,
   ZeropsSessionAdmissionLive,
 } from "./zerops/zeropsFeedsLayer.ts";
 import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
@@ -411,7 +411,7 @@ const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
 
 const AuthLayerLive = EnvironmentAuth.layer.pipe(
   Layer.provide(ZeropsSessionAdmissionLive),
-  Layer.provideMerge(ZeropsProjectAccessLive),
+  Layer.provideMerge(ZeropsMateAccessListLive),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provide(ServerSecretStore.layer),
 );

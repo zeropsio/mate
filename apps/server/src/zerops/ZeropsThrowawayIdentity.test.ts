@@ -1,6 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { projectAccess } from "@t3tools/shared/mateAccess";
 import { DOOR_MAX_AGE_MS } from "@t3tools/shared/zeropsDoor";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -12,10 +11,10 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 const PROJECT_ID = "TEST000000000000000023";
@@ -56,7 +55,7 @@ const stub = (
   ),
 ) => {
   const seen: Array<SeenRequest> = [];
-  const layer = ZeropsProjectAccessModule.layer.pipe(
+  const layer = ZeropsMateAccessListModule.layer.pipe(
     Layer.provideMerge(
       ZeropsOrgReadModule.layer.pipe(
         Layer.provideMerge(
@@ -154,108 +153,6 @@ const scene = (overrides: Scene = {}) =>
   });
 
 describe("verifyThrowawayCaller", () => {
-  it.effect("a Mate admits by today's rules while HQ has not classified it", () => {
-    const { layer } = scene({
-      project: { id: PROJECT_ID, clientId: CLIENT_ID, tagList: ["mate", "chief"] },
-    });
-    return Effect.gen(function* () {
-      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
-      for (const state of ["missing", "expired", "ordinary", "legacy"] as const) {
-        if (state === "expired") {
-          yield* access.relayed({
-            members: [],
-            ageMs: 24 * 60 * 60_000,
-            chief: { userId: "another-person", ownerName: "Ada" },
-          });
-        } else if (state === "ordinary" || state === "legacy") {
-          yield* access.relayed({
-            members: [],
-            ageMs: 0,
-            ...(state === "ordinary" ? { chief: null } : {}),
-          });
-        }
-        const caller = yield* verifyThrowawayCaller({
-          environment: { ...environment, hqEnrollmentPath: "/test/hq/enrollment.json" },
-          token: PRESENTED,
-        });
-        assert.strictEqual(caller.userId, USER_ID);
-        assert.strictEqual(caller.role, "BASIC_USER");
-      }
-    }).pipe(Effect.provide(layer));
-  });
-
-  it.effect("someone else's Chief Mate stays shut between HQ's relays", () => {
-    const { layer } = scene();
-    return Effect.gen(function* () {
-      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
-      yield* access.relayed({
-        members: [],
-        ageMs: 40_000,
-        chief: { userId: "another-person", ownerName: "Ada" },
-      });
-      const answer = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
-        Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
-      );
-      assert.strictEqual(answer, "ZeropsChiefOwnerRequiredError");
-    }).pipe(Effect.provide(layer));
-  });
-
-  it.effect.each([
-    {
-      title: "someone else's Chief Mate is not opened by its direct address",
-      role: "BASIC_USER",
-      owner: "another-person",
-      outcome: "ZeropsChiefOwnerRequiredError",
-    },
-    {
-      title: "an org owner does not open another person's Chief Mate",
-      role: "OWNER",
-      owner: "another-person",
-      outcome: "ZeropsChiefOwnerRequiredError",
-    },
-    {
-      title: "the owner opens their own Chief Mate by direct address",
-      role: "BASIC_USER",
-      owner: USER_ID,
-      outcome: "admitted",
-    },
-  ])("$title", ({ role, owner, outcome }) => {
-    const { layer } = scene();
-    const chief = { userId: owner, ownerName: "Ada" };
-    return Effect.gen(function* () {
-      const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
-      yield* access.relayed({
-        ageMs: 0,
-        chief,
-        members: projectAccess({
-          projectId: PROJECT_ID,
-          chief,
-          overrides: {},
-          members: [
-            {
-              userId: USER_ID,
-              clientUserId: CLIENT_USER_ID,
-              orgRole: role,
-              status: "ACTIVE",
-              canCreateProjects: true,
-            },
-            {
-              userId: "another-person",
-              clientUserId: "cu-other",
-              orgRole: "OWNER",
-              status: "ACTIVE",
-              canCreateProjects: true,
-            },
-          ],
-        }),
-      });
-      const answer = yield* verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
-        Effect.match({ onSuccess: () => "admitted", onFailure: (error) => error._tag }),
-      );
-      assert.strictEqual(answer, outcome);
-    }).pipe(Effect.provide(layer));
-  });
-
   it.effect("admits the throwaway's creator and names them", () => {
     const { layer, seen } = scene();
     return verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
@@ -698,7 +595,7 @@ describe("verifyThrowawayCaller", () => {
         token: PRESENTED,
       }).pipe(
         Effect.provide(
-          ZeropsProjectAccessModule.layer.pipe(
+          ZeropsMateAccessListModule.layer.pipe(
             Layer.provideMerge(
               ZeropsOrgReadModule.layer.pipe(
                 Layer.provideMerge(
@@ -720,7 +617,7 @@ describe("verifyThrowawayCaller", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
   });
 
-  // R6: HQ's relay, while it holds, lets in a creator it opens for, and the member list is not
+  // HQ's access list, while it holds, lets in a creator it opens for, and the member list is not
   // read; whomever it lists or leaves out, this Mate's own read decides, with today's refusals.
   it.effect.each(
     Array.from(
@@ -749,9 +646,12 @@ describe("verifyThrowawayCaller", () => {
   )("$title", ({ relayed, admitted, readsList }) => {
     const { layer, seen } = scene();
     return Effect.gen(function* () {
-      yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
+      yield* (yield* ZeropsMateAccessListModule.ZeropsMateAccessList).heard({
+        type: "access",
+        version: 1,
+        viewAt: FRESH,
+        full: true,
         members: [relayed],
-        ageMs: 0,
       });
       const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
       assert.deepStrictEqual({ role: caller.role }, admitted);

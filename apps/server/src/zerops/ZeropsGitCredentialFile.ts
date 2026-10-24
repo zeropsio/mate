@@ -12,7 +12,10 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+
+import { ServerConfig } from "../config.ts";
 
 export class ZeropsGitCredentialFile extends Context.Service<
   ZeropsGitCredentialFile,
@@ -56,3 +59,14 @@ export const makeGitCredentialFile = (at: string) =>
       held: fs.exists(at).pipe(Effect.orElseSucceed(() => false)),
     });
   });
+
+/** The file zcp names (`ZeropsEnvironment.hqGitCredentialPath`); where it names none, nothing is kept. */
+export const layer = Layer.effect(
+  ZeropsGitCredentialFile,
+  Effect.gen(function* () {
+    const at = (yield* ServerConfig).zerops?.hqGitCredentialPath;
+    return at === undefined
+      ? ZeropsGitCredentialFile.of({ write: () => Effect.void, held: Effect.succeed(false) })
+      : yield* makeGitCredentialFile(at);
+  }),
+);

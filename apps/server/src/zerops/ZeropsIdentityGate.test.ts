@@ -15,7 +15,7 @@ import { mintZeropsThrowawayPairingCredential, zeropsGrantScopes } from "./Zerop
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 
 const PROJECT_ID = "TEST000000000000000023";
 const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
@@ -68,13 +68,7 @@ const makeLayer = (route: (url: string) => Response) =>
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-zerops-gate-test-" })),
       ),
     ),
-    Layer.provideMerge(
-      ZeropsProjectAccessModule.layer.pipe(
-        Layer.provide(
-          ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-        ),
-      ),
-    ),
+    Layer.provideMerge(ZeropsMateAccessListModule.layer),
     Layer.provideMerge(ZeropsOrgReadModule.layer),
     Layer.provideMerge(httpClientLayer(route)),
     Layer.provideMerge(

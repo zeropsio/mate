@@ -109,9 +109,11 @@ const linked = (standupRequestedBy: string | null, closedOff = true): HqStanding
     face: "coral:gem",
     standupRequestedBy,
     closedOff,
+    signers: {},
     appId: null,
     appName: null,
     changes: [],
+    chief: null,
   },
 });
 /** A provider instance as the picker sees it, the Zerops overlay applied. */
@@ -177,6 +179,8 @@ const CLAUDE_ENV_TOKEN = [
 interface World {
   /** Where the Mate stands with its HQ. */
   readonly hq: Ref.Ref<HqStanding>;
+  /** Whether the Git credential file holds HQ's credential. */
+  readonly gitCredential: Ref.Ref<boolean>;
   /** The model an automated Mate's agents start on, as HQ last handed it. */
   readonly automatedModel: Ref.Ref<string>;
   /** Who this server saw sign each login in. */
@@ -223,6 +227,7 @@ interface World {
 const makeWorld = Effect.gen(function* () {
   return {
     hq: yield* Ref.make(ASKED),
+    gitCredential: yield* Ref.make(true),
     automatedModel: yield* Ref.make("nebius/zai-org/GLM-5.3"),
     providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
     signers: yield* Ref.make<ProjectSigners>({}),
@@ -263,6 +268,7 @@ const fakes = (world: World) =>
   Layer.mergeAll(
     Layer.succeed(ZeropsSetupReads, {
       hq: Ref.update(world.hqReads, (count) => count + 1).pipe(Effect.andThen(Ref.get(world.hq))),
+      gitCredentialHeld: Ref.get(world.gitCredential),
       signers: Ref.get(world.signers),
       agents: Ref.get(world.agents),
       serviceVariables: Ref.get(world.variables),
@@ -1099,21 +1105,11 @@ describe("ZeropsSetup: the stand-up", () => {
 describe("ZeropsSetup: why a stand-up waits", () => {
   const waits: ReadonlyArray<[string, HqStanding, Readonly<Record<string, string>>]> = [
     [
-      "zcp found no official HQ",
-      { kind: "not-enrolled", outcome: Option.some({ state: "no_hq" }) },
-      { reason: "no_hq" },
+      "HQ refused the project's key",
+      { kind: "not-linked", refusal: "key_refused" },
+      { reason: "not_linked", code: "key_refused" },
     ],
-    [
-      "HQ refused the enrollment",
-      { kind: "not-enrolled", outcome: Option.some({ state: "refused", code: "not_a_mate" }) },
-      { reason: "not_enrolled", code: "not_a_mate" },
-    ],
-    [
-      "zcp said nothing this build reads",
-      { kind: "not-enrolled", outcome: Option.none() },
-      { reason: "not_enrolled" },
-    ],
-    ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { reason: "not_linked" }],
+    ["HQ has not sent the Mate", { kind: "not-linked" }, { reason: "not_linked" }],
     ["asked, the asker not signed in yet", ASKED, {}],
   ];
   it.live.each(Array.from(waits, ([name, hq, said]) => ({ title: `${name}`, hq, said })))(
@@ -1155,7 +1151,8 @@ describe("ZeropsSetup: the document", () => {
   it.live("follows the Mate from a bare container to a stood-up one", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
+      yield* Ref.set(world.hq, { kind: "not-linked" });
+      yield* Ref.set(world.gitCredential, false);
       const database = freshDatabase();
       yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
@@ -1169,7 +1166,8 @@ describe("ZeropsSetup: the document", () => {
             "waiting",
             "waiting",
           ]);
-          // zcp enrolled the Mate, and HQ sent it with who asked for its stand-up.
+          // HQ linked the Mate, sent its Git credential and who asked for its stand-up.
+          yield* Ref.set(world.gitCredential, true);
           yield* Ref.set(world.hq, ASKED);
           yield* Ref.set(world.statusFile, {
             version: 1,
@@ -1188,7 +1186,8 @@ describe("ZeropsSetup: the document", () => {
           });
           assert.deepStrictEqual(yield* states, ["done", "done", "done", "done", "done"]);
           // A git step once done stays done: the setup is a record, not a live probe.
-          yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
+          yield* Ref.set(world.gitCredential, false);
+          yield* Ref.set(world.hq, { kind: "not-linked", refusal: "key_refused" });
           assert.strictEqual(yield* stateOf(setup, "git"), "done");
         }),
       );
@@ -1478,32 +1477,30 @@ const turnRow = (database: string, threadId: string, messageId: string, state: s
     `;
   }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database })), Effect.orDie);
 
-describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => {
-  const steps: ReadonlyArray<[string, HqStanding, Record<string, string>]> = [
-    ["enrolled and sent", ASKED, { state: "done" }],
-    ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { state: "done" }],
+describe("ZeropsSetup: the git step reads HQ's credential as the Mate keeps it", () => {
+  const steps: ReadonlyArray<[string, HqStanding, boolean, Record<string, string>]> = [
+    ["HQ sent its credential and the Mate", ASKED, true, { state: "done" }],
     [
-      "pending: zcp has said nothing",
-      { kind: "not-enrolled", outcome: Option.none() },
-      { state: "waiting" },
+      "the credential kept, HQ has not sent the Mate",
+      { kind: "not-linked" },
+      true,
+      { state: "done" },
     ],
+    ["pending: HQ has sent no credential", { kind: "not-linked" }, false, { state: "waiting" }],
     [
-      "no official HQ",
-      { kind: "not-enrolled", outcome: Option.some({ state: "no_hq" }) },
-      { state: "failed", reason: "no_hq" },
-    ],
-    [
-      "HQ refused",
-      { kind: "not-enrolled", outcome: Option.some({ state: "refused", code: "not_a_mate" }) },
-      { state: "failed", reason: "refused", code: "not_a_mate" },
+      "HQ refused the project's key",
+      { kind: "not-linked", refusal: "key_not_sensitive" },
+      false,
+      { state: "failed", reason: "refused", code: "key_not_sensitive" },
     ],
   ];
-  it.live.each(Array.from(steps, ([name, hq, said]) => ({ title: name, hq, said })))(
+  it.live.each(Array.from(steps, ([name, hq, held, said]) => ({ title: name, hq, held, said })))(
     "$title",
-    ({ hq, said }) =>
+    ({ hq, held, said }) =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
         yield* Ref.set(world.hq, hq);
+        yield* Ref.set(world.gitCredential, held);
         yield* withServer(world, freshDatabase(), (setup) =>
           Effect.gen(function* () {
             const git = (yield* setup.document).steps.find((step) => step.id === "git");

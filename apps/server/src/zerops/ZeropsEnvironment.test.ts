@@ -5,7 +5,9 @@ import {
   DEFAULT_ZEROPS_API_HOST,
   DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS,
   DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS,
+  HQ_ORIGIN_ENV,
   isZeropsEnvironment,
+  publishHqOrigin,
   resolveZeropsApiBaseUrl,
   resolveZeropsEnvironment,
 } from "./ZeropsEnvironment.ts";
@@ -172,5 +174,22 @@ describe("isZeropsEnvironment", () => {
     assert.isTrue(
       isZeropsEnvironment({ zerops: resolveZeropsEnvironment(input({ projectId: "abc" })) }),
     );
+  });
+});
+
+describe("the HQ a Mate links to", () => {
+  it.each<[string, string | undefined, string]>([
+    ["production's HQ when none is named", undefined, "https://hq.zerops.io"],
+    [
+      "the named HQ, without its trailing slash",
+      "https://hq.stage.example/",
+      "https://hq.stage.example",
+    ],
+  ])("the processes a Mate starts read the HQ origin it links to: %s", (_name, named, expected) => {
+    const zerops = resolveZeropsEnvironment(input({ projectId: "p", hqOrigin: named }));
+    const env: Record<string, string | undefined> = { [HQ_ORIGIN_ENV]: named };
+    publishHqOrigin(env, zerops?.hqOrigin ?? "");
+    assert.strictEqual(zerops?.hqOrigin, expected);
+    assert.strictEqual(env[HQ_ORIGIN_ENV], expected);
   });
 });

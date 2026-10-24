@@ -39,7 +39,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
@@ -669,16 +669,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
         members: () => Effect.succeed({ kind: "no-key" }),
       }),
     ),
-    // No HQ relays to a fixture scene, and nothing is read for it either.
-    Layer.succeed(
-      ZeropsProjectAccessModule.ZeropsProjectAccess,
-      ZeropsProjectAccessModule.ZeropsProjectAccess.of({
-        relayed: () => Effect.void,
-        relay: Effect.succeed(Option.none()),
-        chief: Effect.undefined,
-        read: Effect.succeed({ ok: false }),
-        changes: Stream.empty,
-      }),
-    ),
+    // No HQ sends a fixture scene an access list: the list stays empty.
+    ZeropsMateAccessListModule.layer,
   );
 };
