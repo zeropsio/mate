@@ -1568,7 +1568,9 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     string,
     { needs?: string | string[]; "timeout-minutes": number }
   >;
+  // prepare may wait for main's in-flight run of the same tree; that wait is not execution.
   const budget = (id: string): number => {
+    if (id === "prepare") return 0;
     const job = jobs[id]!;
     return job["timeout-minutes"] + Math.max(0, ...[job.needs ?? []].flat().map(budget));
   };
@@ -1579,7 +1581,7 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     ).toBeLessThanOrEqual(15);
   }
   for (const [id, measuredCeiling] of Object.entries({
-    prepare: 1,
+    prepare: 9,
     changes: 1,
     check: 9,
     state_smoke: 3,
@@ -1605,6 +1607,14 @@ const mainRun = (id: number, tree: string) => ({
   event: "push",
   status: "completed",
   conclusion: "success",
+  head_commit: { tree_id: tree },
+});
+const pendingRun = (id: number, tree: string, status: "in_progress" | "queued") => ({
+  id,
+  head_branch: "main",
+  event: "push",
+  status,
+  conclusion: null,
   head_commit: { tree_id: tree },
 });
 const hqJob = (conclusion: string) => ({ name: "Test HQ 1", conclusion });
@@ -1640,7 +1650,44 @@ it.each([
     jobs: {},
     skip: false,
   },
-])("CI verification reuse: $title", ({ runs, jobs, skip }) => {
+  {
+    title:
+      "a kh-next push waits for main's in-progress run of the same tree and skips when it passes",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: true,
+  },
+  {
+    title: "a kh-next push waits for main's queued run of the same tree and skips when it passes",
+    runs: [pendingRun(1, "same", "queued")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: true,
+  },
+  {
+    title: "a kh-next push runs in full when main's in-progress run of the same tree fails",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("failure")] },
+    watch: { 1: 1 },
+    skip: false,
+  },
+  {
+    title: "a kh-next push does not wait for an in-progress main run of another tree",
+    runs: [pendingRun(1, "other", "in_progress")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: false,
+  },
+  {
+    title: "a kh-next push does not take a waited main run that itself skipped as verification",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("skipped")] },
+    watch: { 1: 0 },
+    skip: false,
+  },
+])("CI verification reuse: $title", ({ runs, jobs, skip, ...rest }) => {
+  const watch: Record<number, number> = "watch" in rest ? rest.watch : {};
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
@@ -1654,10 +1701,16 @@ it.each([
     NodeFS.writeFileSync(NodePath.join(dir, "runs.json"), JSON.stringify({ workflow_runs: runs }));
     for (const [id, list] of Object.entries(jobs))
       NodeFS.writeFileSync(NodePath.join(dir, `jobs-${id}.json`), JSON.stringify({ jobs: list }));
+    for (const [id, code] of Object.entries(watch))
+      NodeFS.writeFileSync(NodePath.join(dir, `watch-${id}`), String(code));
     // Stands in for `gh api <url> --paginate --jq <filter>`, applying the filter like gh does.
     NodeFS.writeFileSync(
       NodePath.join(bin, "gh"),
       `#!/usr/bin/env bash
+if [[ "$1 $2" == "run watch" ]]; then
+  [[ "$4" == "--exit-status" ]] || exit 98
+  exit "$(cat "${dir}/watch-$3")"
+fi
 url=$2
 filter=\${@: -1}
 case "$url" in
