@@ -3,6 +3,7 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
+import { ZeropsWorkspaceChip } from "../zerops/ZeropsWorkspaceChip";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
@@ -678,6 +679,18 @@ export const ChatHeader = memo(function ChatHeader({
                 status={status}
                 timestampFormat={settings.timestampFormat}
               />
+            )}
+            {/* A conversation bound to a lease: when its workspace was last active, what a
+              release would lose there, and whether it is idle — where the header has room. */}
+            {activeThreadShell?.lease == null ? null : (
+              <span className="hidden shrink-0 @3xl/header-actions:block">
+                <ZeropsWorkspaceChip
+                  environmentId={activeThreadEnvironmentId}
+                  latestTurn={activeThreadShell.latestTurn}
+                  lease={activeThreadShell.lease}
+                  threadId={activeThreadId}
+                />
+              </span>
             )}
           </>
         ) : (

@@ -283,6 +283,14 @@ export { linkedChanges, linksChange } from "./changeLinks.ts";
 export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
+  boundLeaseRead,
+  workspaceChip,
+  workspaceChipOf,
+  zeropsLeaseIdle,
+  ZEROPS_LEASE_IDLE_AFTER_MS,
+  type WorkspaceChip,
+} from "./workspaceChip.ts";
+export {
   MATE_ARRIVAL_WINDOW_MS,
   mateArriving,
   mateArrivingUntil,

@@ -4,6 +4,8 @@ import * as Schema from "effect/Schema";
 
 import {
   agentIdForDriverKind,
+  isZeropsLeaseHeld,
+  KNOWN_ZEROPS_LEASE_STATES,
   ZEROPS_AGENT_LOGIN_COMMANDS,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -563,5 +565,69 @@ describe("ZeropsStateEnvelope leases", () => {
   it("a lease acquired for no branch reads without one", () => {
     const { branch: _branch, ...noBranch } = held;
     expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);
+  });
+
+  /** What a `zerops_lease action=status` read of the lease's checkout found (spec-mate §2.8a.3). */
+  const activity = {
+    lastChangeAt: "2026-10-23T19:12:40Z",
+    previewLastConnAt: "2026-10-23T19:40:00Z",
+    previewOpenConns: 0,
+    acquiredAt: "2026-10-23T18:00:00Z",
+    readAt: "2026-10-23T20:04:00Z",
+  };
+  const unsaved = {
+    files: [" M src/App.tsx", "?? notes.txt"],
+    fileCount: 2,
+    unpushedCommits: 2,
+  };
+
+  it("a lease says what zcp read of its checkout: when it was last active, and what a release would lose", () => {
+    const decoded = decodeEnvelope(envelope({ leases: [{ ...held, activity, unsaved }, held] }));
+    expect(decoded.leases?.[0]).toEqual({ ...held, activity, unsaved });
+    expect(decoded.leases?.[1], "a lease no call read carries neither").toEqual(held);
+  });
+
+  it("a fact zcp did not read stays absent, never a zero", () => {
+    const unread = {
+      acquiredAt: "2026-10-23T18:00:00Z",
+      note: "not read: the pool's orchestrator did not confirm this lease",
+    };
+    const clean = { fileCount: 0, unpushedCommits: 0 };
+    const [lease] =
+      decodeEnvelope(envelope({ leases: [{ ...held, activity: unread, unsaved: clean }] }))
+        .leases ?? [];
+    expect(lease?.activity).toEqual(unread);
+    expect(lease?.unsaved, "a clean checkout lists no files").toEqual(clean);
+  });
+
+  it("what zcp read of a checkout that this build cannot read costs only itself, never the lease", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        leases: [
+          { ...held, activity: { ...activity, previewOpenConns: "two" }, unsaved },
+          { ...held, alias: "webpool-4", activity, unsaved: { fileCount: "many" } },
+          {
+            ...held,
+            alias: "webpool-5",
+            unsaved: { ...unsaved, files: [" M src/App.tsx", 7, "?? notes.txt"] },
+          },
+        ],
+      }),
+    );
+    expect(decoded.leases?.map((lease) => lease.alias)).toEqual([
+      "webpool-3",
+      "webpool-4",
+      "webpool-5",
+    ]);
+    expect(decoded.leases?.[0]?.activity).toBeUndefined();
+    expect(decoded.leases?.[0]?.unsaved).toEqual(unsaved);
+    expect(decoded.leases?.[1]?.activity).toEqual(activity);
+    expect(decoded.leases?.[1]?.unsaved).toBeUndefined();
+    expect(decoded.leases?.[2]?.unsaved?.files).toEqual(unsaved.files);
+  });
+
+  it("a parked lease is a state this build knows, and zcp still holds it", () => {
+    expect(KNOWN_ZEROPS_LEASE_STATES).toContain("parked");
+    expect(isZeropsLeaseHeld("parked")).toBe(true);
   });
 });
