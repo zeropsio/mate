@@ -467,16 +467,29 @@ jobs:
   # failed gate from skipping its dependents outright.
   # Each State Smoke shard builds the scenario bundles itself and waits on no
   # other job; shard 1 certifies sign-in, shard 2 the state-only cases.
+  # Both run against the test HQ of zeropsio/mate-hq (private), read with a deploy key.
   state_smoke:
     name: State Smoke ${{ matrix.shard }}
     needs: [prepare, changes]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 13
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.state_smoke) }}
+    env:
+      # The bundle build reads it too: an external HQ changes the bundle's HQ origin.
+      MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
     steps:
+      - name: Require the mate-hq deploy key
+        env:
+          MATE_HQ_DEPLOY_KEY: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MATE_HQ_DEPLOY_KEY" ]; then
+            echo "::error::Secret MATE_HQ_DEPLOY_KEY is absent (fork pull requests get no secrets). The state-only smoke needs the test HQ from zeropsio/mate-hq and fails without it."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -484,6 +497,29 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      # The HQ ref each branch is tested against; any branch not listed uses main.
+      - name: Resolve the mate-hq ref
+        id: hq_ref
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          case "$BRANCH" in
+            main | kh-next) ref=main ;;
+            wt/keys | kh-bisect/keys | kh-bisect/keys-*) ref=r/keys ;;
+            *) ref=main ;;
+          esac
+          echo "$BRANCH tests against mate-hq $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout mate-hq
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: ${{ steps.hq_ref.outputs.ref }}
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+          submodules: true
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -506,6 +542,14 @@ jobs:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
         run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
+
+      - name: Install mate-hq and its services
+        working-directory: mate-hq
+        env: *verified_lockfile
+        run: |
+          vp install --frozen-lockfile
+          scripts/ci-install-object-store.sh
+          scripts/ci-install-postgres.sh
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
