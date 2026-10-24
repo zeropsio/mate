@@ -32,7 +32,7 @@ import {
   type HqParts,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
-import { makeBrowserHqApi, zeropsOrgStart } from "@t3tools/client-runtime/data";
+import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
 import { organizationMembers } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
@@ -334,6 +334,7 @@ async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const configured = isConfiguredHq(hq);
+  const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
   const active = captureAccountLifetime();
   const api = makeBrowserHqApi({
@@ -361,9 +362,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     beforeWrite: () => (configured ? Promise.resolve() : writeChecked(clientId, hq)),
     isCurrent: () => active() && (configured || verdictNames(clientId, hq) === true),
     accessToken: (refresh) =>
-      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() =>
-        client.accessToken(refresh),
-      ),
+      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() => accessToken(refresh)),
     orgId: clientId,
     startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });

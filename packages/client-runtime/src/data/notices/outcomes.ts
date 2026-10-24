@@ -41,6 +41,6 @@ export function presentOutcomes<
       },
     ];
   });
-  const terminals = items.filter((item) => item.outcome.terminal).slice(-16);
-  return items.filter((item) => !item.outcome.terminal || terminals.includes(item));
+  const terminals = new Set(items.filter((item) => item.outcome.terminal).slice(-16));
+  return items.filter((item) => !item.outcome.terminal || terminals.has(item));
 }

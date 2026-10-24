@@ -39,3 +39,9 @@ export function zeropsOrgStart(
       locks === undefined ? run() : (locks.request(name, run) as Promise<T>),
   };
 }
+
+/** The person's current Zerops access token, as HQ's door takes it; `refresh` asks Zerops again. */
+export const zeropsAccessToken =
+  (client: Pick<ZeropsApiClient, "accessToken">) =>
+  (refresh: boolean): Promise<string> =>
+    client.accessToken(refresh);
