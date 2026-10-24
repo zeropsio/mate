@@ -12,7 +12,6 @@
  * persisted server-side.
  */
 
-import { isThrowawayName } from "../authorization/zeropsThrowaway.ts";
 import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
@@ -66,8 +65,6 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
-/** A throwaway delete's own deadline; it never runs on a caller's signal. */
-export const THROWAWAY_DELETE_TIMEOUT_MS = 15_000;
 /** How long an app version's archive may take to upload. */
 const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
 
@@ -740,8 +737,6 @@ interface RequestOptions {
    * out from under whatever else is using it.
    */
   readonly clearSessionOnUnauthorized?: boolean;
-  /** Told the access token each attempt carries, just before it is sent. */
-  readonly sentWith?: (accessToken: string) => void;
   /**
    * Whether a request lost in transport may still have been carried out, so
    * its failure is `uncertain` rather than `network`. Defaults to whether it
@@ -1699,53 +1694,6 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly id: string; readonly token: string }> {
-    const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
-    return { id, token };
-  }
-
-  /**
-   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door
-   * (`authorization/zeropsThrowaway.ts`).
-   *
-   * It carries no rights, so it is an `account-write` that a closed account
-   * window does not hold up (spec-mate C6): the door decides what it opens,
-   * with its own key, when it is presented.
-   *
-   * `beforeMint` is a wait of the caller's own — a rate budget — that the
-   * mint queues behind. The wait belongs to the account epoch the mint was
-   * asked in: one that ends meanwhile refuses the mint with
-   * `expired-session`, so nothing is minted as whoever signed in since.
-   *
-   * `mintingToken` is the session access token the mint carried. The
-   * throwaway is deleted with that token and no other
-   * ({@link deleteThrowaway}), so its deletion never acts as whoever holds
-   * this client by then.
-   */
-  async mintThrowaway(
-    input: { readonly clientId: string; readonly name: string },
-    options: { readonly signal?: AbortSignal; readonly beforeMint?: () => Promise<void> } = {},
-  ): Promise<{ readonly id: string; readonly token: string; readonly mintingToken: string }> {
-    const generation = this.#generation;
-    await options.beforeMint?.();
-    this.#assertGeneration(generation);
-    return this.#mintIntegrationToken(
-      { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
-      options.signal,
-      undefined,
-    );
-  }
-
-  async #mintIntegrationToken(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly roleCode: ZeropsProjectRole;
-      readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
-    },
-    signal: AbortSignal | undefined,
-    beforeWrite: (() => Promise<void>) | undefined,
-  ): Promise<{ readonly id: string; readonly token: string; readonly mintingToken: string }> {
-    let mintingToken: string | undefined;
     const response = await this.#request<{ readonly id?: string; readonly token?: string }>(
       `/client/${input.clientId}/integration-token`,
       {
@@ -1765,26 +1713,22 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
         // A token exists whether or not its answer arrives.
         mayHaveWritten: true,
-        sentWith: (accessToken) => {
-          mintingToken = accessToken;
-        },
       },
     );
-    if (!response.token || !response.id || mintingToken === undefined) {
+    if (!response.token || !response.id) {
       throw new ZeropsApiError(
         "Zerops accepted the token but did not return it in full, so it can neither be used nor taken back.",
         "uncertain",
       );
     }
-    return { id: response.id, token: response.token, mintingToken };
+    return { id: response.id, token: response.token };
   }
 
   /**
    * `DELETE /client/{id}/integration-token/{tokenId}` — takes a token back.
    *
-   * The other half of every throwaway: one is minted for a single call and
-   * deleted seconds later, and a deletion is immediate at the platform (the
-   * value answers `401` within about 0.6 s, measured 2026-09-15).
+   * A deletion is immediate at the platform (the value answers `401` within about 0.6 s, measured
+   * 2026-09-15).
    *
    * A token the platform no longer has is deleted already: it answers `400
    * clientUserConnectionNotFound` for one, as a Mate's key is once the project it alone reached is
@@ -1807,50 +1751,6 @@ export class ZeropsApiClient {
     } catch (cause) {
       if (!isTokenGone(cause)) throw cause;
     }
-  }
-
-  /**
-   * `DELETE /client/{id}/integration-token/{tokenId}` for a throwaway, and for
-   * nothing else: a name that is not a throwaway's is refused before anything
-   * is sent (spec-mate C5b).
-   *
-   * An `account-write`: deleting a throwaway only takes authority away, so no
-   * access window gates it. It carries `token` — the access token the
-   * throwaway was minted with — and never reads the session this client holds,
-   * so after a sign-out and another sign-in it still acts as the person who
-   * minted, or fails; it never refreshes, never clears a session, and outlives
-   * the account epoch. It has its own {@link THROWAWAY_DELETE_TIMEOUT_MS} and
-   * no caller's signal: giving up an exchange never keeps its throwaway alive.
-   */
-  async deleteThrowaway(
-    input: { readonly clientId: string; readonly tokenId: string; readonly name: string },
-    options: { readonly token: string },
-  ): Promise<void> {
-    if (!isThrowawayName(input.name)) {
-      throw new ZeropsApiError(
-        `"${input.name}" is not a throwaway, so it is not deleted as one.`,
-        "invalid-input",
-      );
-    }
-    let response: Response;
-    try {
-      response = await this.#fetch(
-        `${this.#baseUrl}${PUBLIC_API_PREFIX}/client/${input.clientId}/integration-token/${input.tokenId}`,
-        {
-          method: "DELETE",
-          signal: AbortSignal.timeout(THROWAWAY_DELETE_TIMEOUT_MS),
-          headers: { Accept: "application/json", Authorization: `Bearer ${options.token}` },
-        },
-      );
-    } catch (cause) {
-      throw new ZeropsApiError(
-        cause instanceof Error
-          ? `Network error contacting Zerops: ${cause.message}`
-          : "Network error contacting Zerops.",
-        "network",
-      );
-    }
-    if (!response.ok) throw await apiErrorFromResponse(response);
   }
 
   /**
@@ -3721,7 +3621,6 @@ export class ZeropsApiClient {
         this.#assertGeneration(generation);
       }
       const session = this.#session;
-      if (authenticated && session) options.sentWith?.(session.accessToken);
       return this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}${path}`, {
         ...init,
         signal: init.signal ?? AbortSignal.timeout(15_000),

@@ -48,7 +48,6 @@ import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
 import { stopService } from "./stopService.ts";
 import { deleteService } from "./deleteService.ts";
-import { throwawaySweep } from "./throwawaySweep.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
 import { ADDRESS_WRITE_KINDS } from "./addressWrites.ts";
@@ -79,7 +78,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateSendTurn,
   ...MATE_ENGINE_KINDS,
   mateAction,
-  throwawaySweep,
   mateRestart,
   mateDeploy,
   mateUpdate,

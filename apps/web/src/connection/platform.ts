@@ -1,6 +1,7 @@
 import {
   ClientPresentation,
   EnvironmentOwnedDataCleanup,
+  MateTicketIssuer,
   PlatformConnectionSource,
   PrimaryEnvironmentAuth,
   RelayDeviceIdentity,
@@ -9,6 +10,7 @@ import {
 import {
   ConnectionBlockedError,
   Connectivity,
+  MatePresence,
   type PlatformConnectionRegistration,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
@@ -32,6 +34,10 @@ import {
 } from "../environments/primary/target";
 import { isHostedStaticApp } from "../hostedPairing";
 import { browserPlatformSignals } from "../zerops/browserSignals";
+import { mateTicketIssuer } from "@t3tools/client-runtime/data";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
+import { appBasePath } from "../basePath";
+import { environmentIdFromAddress } from "../routes/-environmentRoute";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
 import { connectionStorageLayer } from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";
@@ -118,6 +124,17 @@ function clientMetadata() {
   });
 }
 
+/** The open account's HQ API per organisation, for Mate tickets; none while no account is open. */
+let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket"> | null = () => null;
+
+/** Names where Mate tickets are asked for (`zerops/mateTickets.ts`), until the returned reset. */
+export function setMateTicketHq(hqOf: typeof mateTicketHq): () => void {
+  mateTicketHq = hqOf;
+  return () => {
+    if (mateTicketHq === hqOf) mateTicketHq = () => null;
+  };
+}
+
 const SSH_UNSUPPORTED_DETAIL =
   "SSH environments are not available in this client — connect to a Zerops environment instead.";
 
@@ -152,6 +169,16 @@ const capabilitiesLayer = Layer.effectContext(
       Context.add(RelayDeviceIdentity, identity),
       Context.add(ClientPresentation, presentation),
       Context.add(SshEnvironmentGateway, ssh),
+      Context.add(
+        MateTicketIssuer,
+        mateTicketIssuer((orgId) => mateTicketHq(orgId)),
+      ),
+      Context.add(MatePresence, {
+        // The Mate on screen is the one the address names.
+        onScreen: (environmentId) =>
+          environmentIdFromAddress(window.location.pathname, appBasePath()) === environmentId,
+        hidden: () => document.visibilityState === "hidden",
+      }),
     );
   }),
 );

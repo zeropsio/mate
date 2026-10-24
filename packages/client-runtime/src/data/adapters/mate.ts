@@ -16,10 +16,7 @@
  *   the platform's statuses, the processes, the probes, the socket and our intents.
  * - A target the person asked for — the route's, the one on screen, one an action of theirs holds,
  *   or one whose Connect they pressed — starts the moment it can. The background — the Mates a page
- *   draws, the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the door's mint
- *   pace, which every exchange that may mint spends. A session kept from an earlier load mints
- *   nothing, so it neither waits on the pace nor spends it. While a press is in flight in this
- *   browser, the background starts no exchange that mints.
+ *   draws, the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once.
  * - Our verbs' intents survive a reload in this tab's storage (C8): one restored for a target not
  *   listed yet waits for it.
  * - Everything that arrives in one turn of the event loop is taken in together, then the slots are
@@ -36,7 +33,6 @@ import {
   type DescriptorRead,
   type FetchLike,
 } from "../../zerops/containerHealth.ts";
-import { DOOR_MINT_PACE, makeMintPace } from "../../zerops/doorThrowaway.ts";
 import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {
@@ -132,8 +128,6 @@ export interface MateAdapterPorts<C> {
     readonly credential: C;
   }) => Promise<InstallOutcome>;
   readonly readDescriptor: (origin: string, signal: AbortSignal) => Promise<DescriptorFacts>;
-  /** Whether this target's exchange presents a session kept from an earlier load first. */
-  readonly kept?: (key: TargetKey) => boolean;
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
   /** The Mate is gone where the platform lists it, or its person removed it. */
@@ -174,8 +168,6 @@ export interface MateAdapter {
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   readonly setAccount: (guards: AccountGuards) => void;
-  /** A press is in flight in this browser: the background mints nothing until it ends. */
-  readonly holdBackground: (held: boolean) => void;
   readonly setVisible: (visible: boolean) => void;
   /** §6.4's coalesced wake: deadlines settle; a visible one retries and reads what is waited on. */
   readonly wake: (visible: boolean) => void;
@@ -427,8 +419,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     readIntents(ports.intents).map((record) => [record.target, record]),
   );
   let persisted = ports.intents.read();
-  const pace = makeMintPace(DOOR_MINT_PACE);
-  let cancelMintTimer: (() => void) | null = null;
   let cancelProbeWake: (() => void) | null = null;
   let account: AccountGuards = {
     verified: false,
@@ -436,7 +426,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   };
   let visible = false;
   let hiddenSince: number | null = null;
-  let holding = false;
   let disposed = false;
   let sequence = 0;
   /** The projects whose link is demanded, as the store was last told. */
@@ -503,7 +492,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     return top === undefined ? PRIORITY.length : PRIORITY.indexOf(top);
   };
   const asked = (key: TargetKey): boolean => rank(key) <= ASKED_RANK;
-  const kept = (key: TargetKey): boolean => ports.kept?.(key) ?? false;
   /** Something waits on the target's container: a demand, a lease, or our verb's intent. */
   const watched = (entry: Entry): boolean =>
     wantedBy(entry.key).length > 0 || entry.container.intent !== null;
@@ -560,7 +548,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         const controller = new AbortController();
         entry.inFlight.set(attempt, controller);
         const sentAt = clock.now();
-        if (!kept(key)) pace.spend(sentAt.mono);
         ports
           .exchange({
             key,
@@ -640,8 +627,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     // An exchange its attempt let go of read nothing of the container.
     if (entry.inFlight.has(attempt)) readAtDoor(entry, sentAt, answer);
     if (!answer.ok) {
-      const cause = answer.failure.class === "retryable" ? answer.failure.cause : null;
-      if (cause?.kind === "mint" && cause.status === 429) pace.throttled(clock.now().mono);
       step(entry, {
         type: "EXCHANGE_FAILED",
         attempt,
@@ -725,40 +710,22 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     };
   };
 
-  /** An exchange still reading a remembered Mate's descriptor: its mint is still to come (A16). */
-  const probingDescriptor = (machine: EnvironmentMachine): boolean =>
-    machine.credential.kind === "exchanging" &&
-    machine.probing?.attempt === machine.credential.attempt;
-
-  const owedMints = (): number =>
-    [...entries.values()].filter(
-      (entry) => probingDescriptor(entry.environment) && !kept(entry.key),
-    ).length;
-
   /**
    * Hands the free slots, in priority order, to the targets a slot would start, and takes the
    * budget back from every other one. An asked-for target is handed one whenever it would start;
-   * the background starts nothing past the concurrency or the mint pace, and nothing that mints
-   * while a press is in flight.
+   * the background starts nothing past the concurrency.
    */
   const allocate = (): void => {
-    const now = clock.now();
     const ordered = [...entries.values()].sort((left, right) => rank(left.key) - rank(right.key));
-    let paceBound = false;
     for (const entry of ordered) {
       const { key } = entry;
       const exchanging = [...entries.values()].filter(
         (other) => other.environment.credential.kind === "exchanging",
       ).length;
-      const paced = pace.readyAt(now.mono, owedMints()) <= now.mono;
       let budget = false;
-      const held = holding && !asked(key) && !kept(key);
       if (entry.environment.credential.kind === "exchanging") {
         budget = entry.environment.guards.budget;
-      } else if (
-        !held &&
-        (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && (paced || kept(key))))
-      ) {
+      } else if (asked(key) || exchanging < EXCHANGE_CONCURRENCY) {
         const trial = transitionEnvironment(
           entry.environment,
           { type: "GUARDS", guards: guardsFor(key, true) },
@@ -768,15 +735,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       }
       const guards = guardsFor(key, budget);
       if (!sameJson(guards, entry.environment.guards)) step(entry, { type: "GUARDS", guards });
-      const credential = entry.environment.credential;
-      if (credential.kind === "waiting" && credential.on === "budget" && !paced) paceBound = true;
-    }
-    cancelMintTimer?.();
-    cancelMintTimer = null;
-    if (paceBound) {
-      cancelMintTimer = clock.setTimer(pace.readyAt(now.mono, owedMints()) - now.mono, () =>
-        enqueue(() => undefined),
-      );
     }
   };
 
@@ -1405,10 +1363,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       enqueue(() => {
         account = guards;
       }),
-    holdBackground: (held) =>
-      enqueue(() => {
-        holding = held;
-      }),
     setVisible: (next) =>
       enqueue(() => {
         visible = next;
@@ -1514,7 +1468,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       disposed = true;
       queue.length = 0;
       for (const done of settlements) done();
-      cancelMintTimer?.();
       cancelProbeWake?.();
       for (const entry of entries.values()) endOps(entry);
       for (const origin of origins.values()) {

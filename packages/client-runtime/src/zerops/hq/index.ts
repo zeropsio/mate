@@ -118,4 +118,3 @@ export {
   type HqChiefCalls,
   type HqProposalDecisionWrite,
 } from "./chief.ts";
-export { mateTicketIssuer } from "./mateTicket.ts";

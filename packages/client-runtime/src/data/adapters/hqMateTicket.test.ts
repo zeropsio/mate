@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { HqError } from "./client.ts";
-import { mateTicketIssuer } from "./mateTicket.ts";
+import { HqError } from "../../zerops/hq/client.ts";
+import { mateTicketIssuer } from "./hqMateTicket.ts";
 
 const refusal = (kind: HqError["kind"], code: string, reason?: string) =>
   new HqError({ kind, code, reason, message: code });
@@ -11,10 +11,12 @@ describe("mateTicketIssuer", () => {
   it.effect("A Mate's ticket is the one HQ issued for its project, with the origin HQ named", () =>
     Effect.gen(function* () {
       const asked: string[] = [];
-      const issuer = mateTicketIssuer(async ({ orgId, projectId }) => {
-        asked.push(`${orgId}/${projectId}`);
-        return { ticket: "T1", expiresIn: 60, origin: "https://zcp-ada-8080.prg1.zerops.app" };
-      });
+      const issuer = mateTicketIssuer((orgId) => ({
+        mateTicket: async (projectId) => {
+          asked.push(`${orgId}/${projectId}`);
+          return { ticket: "T1", expiresIn: 60, origin: "https://zcp-ada-8080.prg1.zerops.app" };
+        },
+      }));
 
       expect(yield* issuer.issue({ orgId: "O1", projectId: "P1" })).toEqual({
         ticket: "T1",
@@ -61,11 +63,19 @@ describe("mateTicketIssuer", () => {
       tag: "ConnectionTransientError",
       reason: "remote-unavailable",
     },
+    {
+      case: "no HQ session yet",
+      error: null,
+      tag: "ConnectionTransientError",
+      reason: "endpoint-unavailable",
+    },
   ])(
     "Only HQ saying the person may not open the Mate ends its reconnecting: $case",
     ({ error, tag, reason }) =>
       Effect.gen(function* () {
-        const issuer = mateTicketIssuer(() => Promise.reject(error));
+        const issuer = mateTicketIssuer(() =>
+          error === null ? null : { mateTicket: () => Promise.reject(error) },
+        );
 
         expect(yield* Effect.flip(issuer.issue({ orgId: "O1", projectId: "P1" }))).toMatchObject({
           _tag: tag,

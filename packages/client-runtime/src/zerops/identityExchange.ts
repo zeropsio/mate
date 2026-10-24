@@ -1,47 +1,32 @@
+/**
+ * A Mate as the environment machine opens it (spec-mate §3.8): its descriptor is read at the
+ * container's `/mate` base, judged, and a registration made that asks HQ for a ticket on every
+ * connection attempt. Nothing is minted and no credential is kept.
+ *
+ * `servedApp` is passed only by a client that might itself be the bundle a container is serving
+ * (the web app, same-origin) — a client with no such notion (mobile) omits it and always gets the
+ * plain `/mate` prefix.
+ */
+import type { EnvironmentId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { BearerConnectionRegistration } from "../connection/catalog.ts";
-import { ConnectionBlockedError, ConnectionTransientError } from "../connection/model.ts";
-import { prepareZeropsIdentityRegistration } from "../connection/onboarding.ts";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import { ZeropsMateConnectionRegistration } from "../connection/catalog.ts";
+import {
+  ConnectionBlockedError,
+  ConnectionTransientError,
+  ZeropsMateConnectionTarget,
+} from "../connection/model.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
-/**
- * The container's `/mate` door, shared by every client.
- *
- * A throwaway is minted for this one Mate, handed to `connect`, and deleted
- * whatever the door answered (`doorThrowaway.ts`). The account's own Zerops
- * token stays in the app and reaches the Zerops API only.
- *
- * `servedApp` is passed only by a client that might itself be the bundle a
- * container is serving (the web app, same-origin) — a client with no such
- * notion (mobile) omits it and always gets the plain `/mate` prefix.
- */
-
-import type { EnvironmentId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
-
-import type {
-  ThrowawayOutcome,
-  ZeropsThrowawayPlatform,
-} from "../authorization/zeropsThrowaway.ts";
-import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runtime.ts";
-import { ZeropsApiError } from "./api.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import { diagnosticFailure, mateDiagnostics, type IdentityExchangeReason } from "./diagnostics.ts";
-import { connectThroughThrowaway } from "./doorThrowaway.ts";
-
-/**
- * Whether a Mate's door did not admit the throwaway: the connect failed, or never answered. A
- * Mate's door keeps no record of the throwaways it saw, so one it did not admit is held for its
- * next try, while young, and that try mints nothing (Example Org, 2026-10-03: a stall left one throwaway
- * per try).
- */
-const notAdmitted = <A, E>(outcome: ThrowawayOutcome<AtomCommandResult<A, E>>): boolean =>
-  !outcome.ok || outcome.value._tag === "Failure";
 import type { DescriptorFacts, ExchangeFailure } from "./environments/environmentMachine.ts";
-import { zeropsErrorMessage } from "./errors.ts";
 import { mateServerCompatibility } from "./serverCompatibility.ts";
 
 const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
 
+/** What the person's Connect of a Mate ended in, as the birth's connect loop reads it. */
 export type ZeropsIdentityExchangeResult =
   | { readonly _tag: "Success"; readonly environmentId: EnvironmentId }
   | {
@@ -61,126 +46,7 @@ export type ZeropsIdentityExchangeResult =
       readonly serverVersion?: string;
     };
 
-/**
- * The failure tags a retry might clear on its own — the descriptor read
- * timing out or never reaching the network, and the environment's own
- * internal error. Named by tag rather than `instanceof`: `RemoteEnvironment-
- * Auth*Error` are `Data.TaggedError`s from a package this one does not
- * depend on, and `EnvironmentInternalError` is a `Schema.TaggedError` from
- * the wire contract — the tag is the one thing both carry.
- */
-const RETRYABLE_IDENTITY_FAILURE_TAGS: ReadonlySet<string> = new Set([
-  "RemoteEnvironmentAuthTimeoutError",
-  "RemoteEnvironmentAuthFetchError",
-  "EnvironmentInternalError",
-]);
-
-function isRetryableIdentityFailure(cause: unknown): boolean {
-  // A verdict, never a fault to retry past: the door knows the caller and
-  // said no on purpose.
-  if (isConnectionBlockedError(cause)) return false;
-  const tag =
-    typeof cause === "object" && cause !== null && "_tag" in cause && typeof cause._tag === "string"
-      ? cause._tag
-      : undefined;
-  return tag !== undefined && RETRYABLE_IDENTITY_FAILURE_TAGS.has(tag);
-}
-
-/**
- * What it takes to mint one throwaway: the two platform calls, the org that
- * holds the token and the project it is named for. `null` when nobody is
- * signed in, which is the one case where there is nothing to mint with.
- */
-export interface ZeropsDoorThrowaway {
-  readonly platform: ZeropsThrowawayPlatform;
-  readonly clientId: string;
-  readonly projectId: string;
-  /** Tells this throwaway apart from another minted in the same second. */
-  readonly nonce: string;
-}
-
-export interface ZeropsIdentityExchangeDeps<E> {
-  readonly throwaway: ZeropsDoorThrowaway | null;
-  readonly connect: (input: {
-    readonly httpBaseUrl: string;
-    readonly doorToken: string;
-  }) => Promise<AtomCommandResult<EnvironmentId, E>>;
-  /** Told when a throwaway could not be taken back; never fails the connect. */
-  readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
-}
-
-export async function exchangeZeropsContainerIdentity<E>(
-  deps: ZeropsIdentityExchangeDeps<E>,
-  containerOrigin: string,
-  options: {
-    readonly reason: IdentityExchangeReason;
-    readonly servedApp?: {
-      readonly origin: string;
-      readonly basePath: string;
-    };
-  },
-): Promise<ZeropsIdentityExchangeResult> {
-  const span = mateDiagnostics.span("identity-exchange", {
-    origin: containerOrigin,
-    reason: options.reason,
-  });
-  const throwaway = deps.throwaway;
-  if (!throwaway) {
-    span.end({ outcome: "failure", retryable: false, code: "signed-out" });
-    return {
-      _tag: "Failure",
-      error: "Sign in to Zerops again to connect this container.",
-      retryable: false,
-    };
-  }
-  const httpBaseUrl = zeropsMateBaseUrl(containerOrigin, options.servedApp);
-  let result: AtomCommandResult<EnvironmentId, E>;
-  try {
-    result = await connectThroughThrowaway({
-      platform: throwaway.platform,
-      clientId: throwaway.clientId,
-      projectId: throwaway.projectId,
-      nonce: throwaway.nonce,
-      ...(deps.onOrphanedThrowaway === undefined ? {} : { onOrphaned: deps.onOrphanedThrowaway }),
-      keep: notAdmitted,
-      connect: (doorToken) => deps.connect({ httpBaseUrl, doorToken }),
-    });
-  } catch (cause) {
-    // The mint itself failed — the account is signed out, the platform is
-    // down, or the org refused. The door was never reached, so there is
-    // nothing to report about it. An "uncertain" mint (the write's own
-    // outcome was never learned) is worth trying again; every other kind is
-    // the platform's settled word.
-    const retryable = cause instanceof ZeropsApiError && cause.kind === "uncertain";
-    span.end({ outcome: "failure", retryable, ...diagnosticFailure(cause) });
-    return {
-      _tag: "Failure",
-      error: `Could not connect to this container. ${zeropsErrorMessage(cause)}`,
-      retryable,
-    };
-  }
-  if (result._tag === "Failure") {
-    const failure = squashAtomCommandFailure(result);
-    const reason = zeropsErrorMessage(failure);
-    const retryable = isRetryableIdentityFailure(failure);
-    span.end({ outcome: "failure", retryable, ...diagnosticFailure(failure) });
-    return {
-      _tag: "Failure",
-      error: `Could not connect to this container. ${reason}`,
-      retryable,
-      ...(isConnectionBlockedError(failure) && failure.reason === "unsupported"
-        ? {
-            upgradeRequired: true,
-            ...(failure.serverVersion ? { serverVersion: failure.serverVersion } : {}),
-          }
-        : {}),
-    };
-  }
-  span.end({ outcome: "success" });
-  return { _tag: "Success", environmentId: result.value };
-}
-
-// ── The door as the exchange driver reads it ──────────────────────────────────────────────────
+// ── The exchange as the environment machine reads it ─────────────────────────────────────────
 
 const isConnectionTransientError = Schema.is(ConnectionTransientError);
 
@@ -206,31 +72,11 @@ const retryableFailure = (cause: Extract<ExchangeFailure, { class: "retryable" }
 const refusalFailure = (reason: Extract<ExchangeFailure, { class: "refusal" }>["reason"]) =>
   ({ class: "refusal", reason }) as const;
 
-const SESSION_ENDED = refusalFailure({ kind: "access", reason: "epoch-closed" });
-
 /**
- * The failure class of anything an exchange can fail with (DESIGN §4.4's table): the mint's
- * `ZeropsApiError`, the door's and the token exchange's `ConnectionBlockedError` and
- * `ConnectionTransientError`, and a fetch that never reached anything.
+ * The failure class of anything an exchange or a connection can fail with (DESIGN §4.4's table):
+ * a `ConnectionBlockedError`, a `ConnectionTransientError`, and a fetch that never reached anything.
  */
 export function exchangeFailureOf(cause: unknown): ExchangeFailure {
-  if (cause instanceof ZeropsApiError) {
-    switch (cause.kind) {
-      case "network":
-        return retryableFailure({ kind: "network" });
-      case "expired-session":
-        return SESSION_ENDED;
-      case "forbidden":
-      case "not-found":
-        // The organization refused the mint: no later round changes that by itself.
-        return refusalFailure({ kind: "access", reason: "role-denies" });
-      case "uncertain":
-      case "server":
-      case "invalid-input":
-      case "unexpected":
-        return retryableFailure({ kind: "mint", status: cause.status ?? 0 });
-    }
-  }
   if (isConnectionBlockedError(cause)) {
     switch (cause.reason) {
       case "permission":
@@ -281,83 +127,25 @@ export function descriptorFacts(descriptor: ExecutionEnvironmentDescriptor): Des
   };
 }
 
-export interface DoorExchangeDeps<C, E> {
-  readonly throwaway: ZeropsDoorThrowaway | null;
-  /** `/.well-known/t3/environment` at the Mate's base URL. */
-  readonly readDescriptor: (httpBaseUrl: string) => Promise<ExecutionEnvironmentDescriptor>;
-  /**
-   * The door and the token exchange: a credential for the Mate, not yet installed anywhere. It is
-   * handed the descriptor the exchange judged the Mate on, so the door does not read it again.
-   */
-  readonly prepare: (input: {
-    readonly httpBaseUrl: string;
-    readonly doorToken: string;
-    readonly expectedProjectId: string;
-    readonly descriptor: ExecutionEnvironmentDescriptor;
-  }) => Promise<AtomCommandResult<C, E>>;
-  readonly environmentOf: (credential: C) => EnvironmentId;
-  readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
-  /** The session an earlier load kept for this target (`keptSessions.ts`); null when none. */
-  readonly kept?: KeptDoorSession<C> | null;
-}
-
-/** A kept session as one exchange may present it again. */
-export interface KeptDoorSession<C> {
-  readonly credential: C;
-  /**
-   * Whether the Mate the descriptor names, at this base URL, still holds the session: false is
-   * its word that it does not, and a throw is no word at all.
-   */
-  readonly check: (input: {
-    readonly httpBaseUrl: string;
-    readonly environmentId: EnvironmentId;
-  }) => Promise<boolean>;
-  /** Forgets the session: its Mate said it is not its own any more. */
-  readonly forget: () => void;
-  /** An earlier exchange got no word on it: one more silence mints a throwaway after all. */
-  readonly unanswered: boolean;
-  /** Whether the Mate gave its word on it this time, held or ended. */
-  readonly answered: (answered: boolean) => void;
-}
-
 /**
- * What the Mate says of a kept session: still its own, ended, or nothing this time. A session kept
- * for an environment this origin no longer serves has ended here, and is never presented.
- */
-async function keptSessionWord<C>(
-  kept: KeptDoorSession<C>,
-  environmentOf: (credential: C) => EnvironmentId,
-  at: { readonly httpBaseUrl: string; readonly environmentId: EnvironmentId },
-): Promise<"held" | "ended" | { readonly noWord: unknown }> {
-  if (environmentOf(kept.credential) !== at.environmentId) return "ended";
-  try {
-    return (await kept.check(at)) ? "held" : "ended";
-  } catch (cause) {
-    // No answer is no verdict: the session stays kept, and the exchange is tried again.
-    return { noWord: cause };
-  }
-}
-
-/**
- * One exchange for the exchange driver: the descriptor, the mint, the door and the token
- * exchange (DESIGN §4.4), with every answer read into a failure class and nothing installed.
- *
- * The descriptor is read first, so a Mate that cannot answer for the person
+ * One exchange for the environment machine: the Mate's descriptor, judged (DESIGN §4.4), and the
+ * registration that opens it through HQ. A Mate that cannot answer for the person
  * (`zerops.identity = "failed"`), runs a server below the client floor or belongs to another
- * project costs no throwaway. A session kept from an earlier load is presented next, once its
- * Mate says it still holds it. A throwaway is minted when no session is kept, when the Mate ended
- * the kept one (forgotten), or when the Mate gave no word on it twice running: the first silence
- * fails the exchange retryable so the next one asks again, and the session stays kept.
+ * project is not registered.
  */
-export async function exchangeAtDoor<C, E>(
-  deps: DoorExchangeDeps<C, E>,
+export async function exchangeAtMate(
+  deps: {
+    /** `/.well-known/t3/environment` at the Mate's base URL. */
+    readonly readDescriptor: (httpBaseUrl: string) => Promise<ExecutionEnvironmentDescriptor>;
+  },
   containerOrigin: string,
   options: {
     readonly reason: IdentityExchangeReason;
-    readonly expectedProjectId: string;
+    readonly orgId: string;
+    readonly projectId: string;
     readonly servedApp?: { readonly origin: string; readonly basePath: string };
   },
-): Promise<ExchangeAnswer<C>> {
+): Promise<ExchangeAnswer<ZeropsMateConnectionRegistration>> {
   const span = mateDiagnostics.span("identity-exchange", {
     origin: containerOrigin,
     reason: options.reason,
@@ -366,21 +154,20 @@ export async function exchangeAtDoor<C, E>(
     failure: ExchangeFailure,
     descriptor: DescriptorFacts | null,
     diagnostic: { readonly code: string } | ReturnType<typeof diagnosticFailure>,
-  ): ExchangeAnswer<C> => {
+  ): ExchangeAnswer<ZeropsMateConnectionRegistration> => {
     span.end({ outcome: "failure", retryable: failure.class === "retryable", ...diagnostic });
     return { ok: false, failure, descriptor };
   };
-  const throwaway = deps.throwaway;
-  if (!throwaway) return fail(SESSION_ENDED, null, { code: "signed-out" });
   const httpBaseUrl = zeropsMateBaseUrl(containerOrigin, options.servedApp);
 
-  let read: ExecutionEnvironmentDescriptor;
   let descriptor: DescriptorFacts;
   let projectId: string | undefined;
+  let label: string;
   try {
-    read = await deps.readDescriptor(httpBaseUrl);
+    const read = await deps.readDescriptor(httpBaseUrl);
     descriptor = descriptorFacts(read);
     projectId = read.zerops?.projectId;
+    label = read.label;
   } catch (cause) {
     return fail(
       retryableFailure({ kind: "descriptor-unreachable" }),
@@ -391,7 +178,7 @@ export async function exchangeAtDoor<C, E>(
   if (mateServerCompatibility(descriptor.serverVersion) === "too-old") {
     return fail(refusalFailure({ kind: "version" }), descriptor, { code: "server-too-old" });
   }
-  if (projectId !== options.expectedProjectId) {
+  if (projectId !== options.projectId) {
     return fail(refusalFailure({ kind: "project-mismatch" }), descriptor, {
       code: "project-mismatch",
     });
@@ -401,86 +188,38 @@ export async function exchangeAtDoor<C, E>(
       code: "identity-failed",
     });
   }
-
-  const kept = deps.kept ?? null;
-  if (kept !== null) {
-    const word = await keptSessionWord(kept, deps.environmentOf, {
-      httpBaseUrl,
-      environmentId: descriptor.environmentId,
-    });
-    kept.answered(word === "held" || word === "ended");
-    if (word === "held") {
-      span.end({ outcome: "success", kept: true });
-      return {
-        ok: true,
-        environmentId: deps.environmentOf(kept.credential),
-        descriptor,
-        credential: kept.credential,
-      };
-    }
-    if (word === "ended") kept.forget();
-    else if (!kept.unanswered) {
-      // A Mate that gave no word on its kept session is asked once more before a second session is
-      // opened beside it; a second silence mints, and the session stays kept.
-      const failure = exchangeFailureOf(word.noWord);
-      return fail(
-        failure.class === "retryable" ? failure : retryableFailure({ kind: "network" }),
-        descriptor,
-        diagnosticFailure(word.noWord),
-      );
-    }
-  }
-
-  let result: AtomCommandResult<C, E>;
-  try {
-    result = await connectThroughThrowaway({
-      platform: throwaway.platform,
-      clientId: throwaway.clientId,
-      projectId: throwaway.projectId,
-      nonce: throwaway.nonce,
-      ...(deps.onOrphanedThrowaway === undefined ? {} : { onOrphaned: deps.onOrphanedThrowaway }),
-      keep: notAdmitted,
-      connect: (doorToken) =>
-        deps.prepare({
-          httpBaseUrl,
-          doorToken,
-          expectedProjectId: options.expectedProjectId,
-          descriptor: read,
-        }),
-    });
-  } catch (cause) {
-    return fail(exchangeFailureOf(cause), descriptor, diagnosticFailure(cause));
-  }
-  if (result._tag === "Failure") {
-    const cause = squashAtomCommandFailure(result);
-    return fail(exchangeFailureOf(cause), descriptor, diagnosticFailure(cause));
-  }
   span.end({ outcome: "success" });
   return {
     ok: true,
-    environmentId: deps.environmentOf(result.value),
+    environmentId: descriptor.environmentId,
     descriptor,
-    credential: result.value,
+    credential: new ZeropsMateConnectionRegistration({
+      target: new ZeropsMateConnectionTarget({
+        environmentId: descriptor.environmentId,
+        label,
+        orgId: options.orgId,
+        projectId: options.projectId,
+        httpBaseUrl,
+      }),
+    }),
   };
 }
 
-// ── The door's steps as the connection runtime runs them ─────────────────────────────────────
-
-/** The door and the token exchange: a registration for the Mate, installed nowhere yet. */
-export const prepareDoorRegistration = prepareZeropsIdentityRegistration;
-
 /**
- * Installs a registration the exchange driver accepted. An environment already registered keeps
- * its supervisor, its install generation and its shell: only its credential rotates
- * (`registry.rotateCredential`, DESIGN §4.4). Anything else is registered.
+ * Installs a registration the environment machine accepted. A Mate already registered at the same
+ * place keeps its supervisor and its shell; anything else is registered.
  */
-export const installDoorRegistration = Effect.fn("zerops.identityExchange.installDoorRegistration")(
-  function* (registration: BearerConnectionRegistration) {
+export const installMateRegistration = Effect.fn("zerops.identityExchange.installMateRegistration")(
+  function* (registration: ZeropsMateConnectionRegistration) {
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-    yield* registry
-      .rotateCredential(registration.target.environmentId, registration.credential)
-      .pipe(
-        Effect.catchTags({ EnvironmentNotRegisteredError: () => registry.register(registration) }),
-      );
+    const held = (yield* SubscriptionRef.get(registry.entries)).get(
+      registration.target.environmentId,
+    );
+    const same =
+      held?.target._tag === "ZeropsMateConnectionTarget" &&
+      held.target.orgId === registration.target.orgId &&
+      held.target.projectId === registration.target.projectId &&
+      held.target.httpBaseUrl === registration.target.httpBaseUrl;
+    if (!same) yield* registry.register(registration);
   },
 );

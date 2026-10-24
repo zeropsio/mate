@@ -1,5 +1,4 @@
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
-import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   ZeropsAccountId,
@@ -9,9 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
-import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
-import { AsyncResult } from "effect/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -33,20 +30,8 @@ import {
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
-/** A throwaway the door tests hand over in place of a person's own token. */
-const TEST_THROWAWAY = {
-  platform: {
-    mint: async () => ({ id: "token-1", token: "a-throwaway-value" }),
-    remove: async () => undefined,
-  },
-  clientId: "an-org",
-  projectId: "a-project",
-  nonce: "n1",
-};
-
 const ZEROPS_DOOR_GATE = {
   status: "requires-auth",
   auth: {
@@ -247,57 +232,6 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     expect(connect).not.toHaveBeenCalled();
     expect(attempted.current).toBe(false);
-  });
-
-  it("surfaces the identity exchange failure reason", async () => {
-    const connect = vi
-      .fn()
-      .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Session token expired."))));
-
-    const result = await exchangeZeropsContainerIdentity(
-      { throwaway: TEST_THROWAWAY, connect },
-      APP_ORIGIN,
-      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
-    );
-
-    expect(connect).toHaveBeenCalledWith({
-      httpBaseUrl: `${APP_ORIGIN}/mate`,
-      doorToken: "a-throwaway-value",
-    });
-    expect(result).toEqual({
-      _tag: "Failure",
-      error: "Could not connect to this container. Session token expired.",
-      retryable: false,
-    });
-  });
-
-  it("does not attempt an exchange without the Zerops account token", async () => {
-    const connect = vi.fn();
-
-    const result = await exchangeZeropsContainerIdentity({ throwaway: null, connect }, APP_ORIGIN, {
-      reason: "user",
-      servedApp: { origin: APP_ORIGIN, basePath: "/mate/" },
-    });
-
-    expect(connect).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      _tag: "Failure",
-      error: "Sign in to Zerops again to connect this container.",
-      retryable: false,
-    });
-  });
-
-  it("returns the authenticated environment", async () => {
-    const environmentId = EnvironmentId.make("environment-1");
-    const connect = vi.fn().mockResolvedValue(AsyncResult.success(environmentId));
-
-    const result = await exchangeZeropsContainerIdentity(
-      { throwaway: TEST_THROWAWAY, connect },
-      APP_ORIGIN,
-      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
-    );
-
-    expect(result).toEqual({ _tag: "Success", environmentId });
   });
 });
 

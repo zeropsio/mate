@@ -239,7 +239,6 @@ export {
   type RecordedEnvironment,
 } from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
-export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
@@ -788,3 +787,4 @@ export {
   shownMateListProjectsAtom,
 } from "./reads.ts";
 export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";

@@ -1,15 +1,9 @@
 import {
-  BearerConnectionCredential,
-  BearerConnectionProfile,
-  BearerConnectionRegistration,
-  BearerConnectionTarget,
-} from "@t3tools/client-runtime/connection";
-import {
-  KEPT_SESSIONS_KEY,
+  HQ_SESSIONS,
+  KEPT_HQ_SESSIONS_KEY,
   makeKeptSessions,
-  MATE_SESSIONS,
+  type KeptHqSession,
 } from "@t3tools/client-runtime/zerops/keptSessions";
-import { AuthZeropsClientScopes, EnvironmentId, type AuthSessionState } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type * as AccountLifetimeModule from "./accountLifetime";
@@ -17,24 +11,12 @@ import type * as KeptSessionsModule from "./keptSessions";
 
 const DAY_MS = 86_400_000;
 
-function session(name: string, expiresAtEpochMs = Date.now() + DAY_MS) {
-  const environmentId = EnvironmentId.make(`env-${name}`);
-  const connectionId = `bearer:env-${name}`;
-  return new BearerConnectionRegistration({
-    target: new BearerConnectionTarget({ environmentId, label: name, connectionId }),
-    profile: new BearerConnectionProfile({
-      connectionId,
-      environmentId,
-      label: name,
-      httpBaseUrl: `https://${name}.example.test/mate/`,
-      wsBaseUrl: `wss://${name}.example.test/mate/`,
-    }),
-    credential: new BearerConnectionCredential({
-      token: ["session", name].join("-"),
-      expiresAtEpochMs,
-      origin: "zerops-identity",
-    }),
-  });
+function session(name: string, expiresAtEpochMs = Date.now() + DAY_MS): KeptHqSession {
+  return {
+    address: `https://${name}.example.test/hq/`,
+    token: ["session", name].join("-"),
+    expiresAtEpochMs,
+  };
 }
 
 let values: Map<string, string>;
@@ -77,41 +59,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe("a kept session's check", () => {
-  const state = (input: {
-    readonly authenticated?: boolean;
-    readonly scopes?: AuthSessionState["scopes"] | null;
-  }): AuthSessionState => {
-    const { scopes = [...AuthZeropsClientScopes], authenticated = true } = input;
-    return { authenticated, auth: {}, ...(scopes === null ? {} : { scopes }) } as never;
-  };
-  it.each([
-    ["live, with every scope the client asks for", state({}), true],
-    ["ended", state({ authenticated: false }), false],
-    [
-      "live but from before a release that added a scope",
-      state({ scopes: AuthZeropsClientScopes.slice(0, -1) }),
-      false,
-    ],
-    ["live, its scopes unsaid", state({ scopes: null }), false],
-  ] as const)("%s", (_name, answer, held) => {
-    expect(kept.keptSessionHeld(answer)).toBe(held);
-  });
-});
-
-// t10, 2026-10-03: a deleted project's kept session went on being read on every load.
-describe("a Mate gone from the platform's listing", () => {
-  it("has its kept session dropped where it is kept, with nothing sent to the Mate", () => {
-    lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("project-dan:zcp", session("dan"));
-
-    kept.forgetKeptMateSession("project-dan:zcp");
-
-    expect(kept.keptSessions.read("project-dan:zcp")).toBeNull();
-    expect(fetched).toEqual([]);
-  });
-});
-
 /**
  * An origin's Web Locks as the account's close uses them: shared holds, and an exclusive request
  * that answers at once whether anyone else holds the name.
@@ -139,70 +86,14 @@ function fakeLocks() {
       if (hold.count === 0) holders.delete(name);
     }
   };
-  /** Every hold now, one entry per holder, as `navigator.locks.query()` lists them. */
-  const query = async () => ({
-    held: [...holders].flatMap(([name, hold]) =>
-      Array.from({ length: hold.count }, () => ({ name, mode: hold.mode })),
-    ),
-  });
-  return { request, query };
+  return { request };
 }
-
-// L08: a Mate session one tab minted displaced the one a neighbouring tab of the account still used.
-describe("a Mate session this tab mints in place of a kept one", () => {
-  const logouts = () => fetched.map(({ authorization }) => authorization);
-  const holdAccount = (locks: ReturnType<typeof fakeLocks>) => {
-    let lets!: () => void;
-    void locks.request(
-      "mate:account-open:person-1",
-      { mode: "shared" },
-      () =>
-        new Promise<void>((resolve) => {
-          lets = resolve;
-        }),
-    );
-    return () => lets();
-  };
-
-  it.each([
-    ["another tab kept, while that tab holds the account", "other", true, []],
-    ["another tab kept, after that tab let the account go", "other", false, []],
-    ["this tab minted, while another tab holds the account", "mine", true, []],
-    ["this tab minted, alone on the account", "mine", false, ["Bearer session-old"]],
-  ] as const)("ends the one it displaced only where %s", async (_name, by, held, ended) => {
-    const locks = fakeLocks();
-    vi.stubGlobal("navigator", { locks });
-    if (held) holdAccount(locks);
-    lifetime.openAccountLifetime("person-1");
-    if (by === "mine") kept.keepMintedMateSession("p1:zcp", session("old"));
-    else kept.keptSessions.keep("p1:zcp", session("old"));
-
-    await kept.keepMintedMateSession("p1:zcp", session("new"));
-
-    expect(logouts()).toEqual(ended);
-    expect(kept.keptSessions.read("p1:zcp")?.credential.token).toBe("session-new");
-  });
-
-  it("ends a session set aside with the account's other kept sessions", async () => {
-    const locks = fakeLocks();
-    vi.stubGlobal("navigator", { locks });
-    const otherTabLets = holdAccount(locks);
-    lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("p1:zcp", session("old"));
-    await kept.keepMintedMateSession("p1:zcp", session("new"));
-
-    otherTabLets();
-    await lifetime.closeAccountLifetime();
-
-    expect(logouts().toSorted()).toEqual(["Bearer session-new", "Bearer session-old"]);
-  });
-});
 
 // A stored login the platform refused never opened its account here: its own kept sessions end.
 describe("a refused stored login's own kept sessions", () => {
   /** A session kept under an account no tab has open: written where that account keeps it. */
   const keepUnder = (accountId: string, key: string, name: string) => {
-    const storageKey = `mate:account:${accountId}:${KEPT_SESSIONS_KEY}`;
+    const storageKey = `mate:account:${accountId}:${KEPT_HQ_SESSIONS_KEY}`;
     makeKeptSessions(
       {
         getItem: () => values.get(storageKey) ?? null,
@@ -214,16 +105,16 @@ describe("a refused stored login's own kept sessions", () => {
         },
       },
       Date.now,
-      MATE_SESSIONS,
+      HQ_SESSIONS,
     ).keep(key, session(name));
   };
 
   it.each([
-    ["end at their Mate, and no other account's do", false, ["Bearer session-shop"]],
+    ["end where they were issued, and no other account's do", false, ["Bearer session-shop"]],
     ["wait for a tab that holds the account open", true, []],
   ] as const)("%s", async (_name, otherTabHolds, ended) => {
-    keepUnder("person-1", "p1:zcp", "shop");
-    keepUnder("person-2", "p2:zcp", "blog");
+    keepUnder("person-1", "c1:hq1:https://shop", "shop");
+    keepUnder("person-2", "c2:hq1:https://blog", "blog");
     const locks = fakeLocks();
     vi.stubGlobal("navigator", { locks });
     if (otherTabHolds)
@@ -237,7 +128,7 @@ describe("a refused stored login's own kept sessions", () => {
 
     expect(fetched.map(({ authorization }) => authorization)).toEqual(ended);
     lifetime.openAccountLifetime("person-2");
-    expect(kept.keptSessions.read("p2:zcp")).not.toBeNull();
+    expect(kept.keptHqSessions.read("c2:hq1:https://blog")).not.toBeNull();
   });
 });
 
@@ -256,24 +147,24 @@ describe("no kept session outlives the login it was opened under", () => {
         }),
     );
     lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("p1:zcp", session("shop"));
+    kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
 
     await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([]);
     lifetime.openAccountLifetime("person-1");
-    expect(kept.keptSessions.read("p1:zcp")).not.toBeNull();
+    expect(kept.keptHqSessions.read("c1:hq1:https://shop")).not.toBeNull();
 
     otherTabCloses();
     await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([
       {
-        url: "https://shop.example.test/mate/api/auth/logout",
+        url: "https://shop.example.test/hq/api/session",
         authorization: "Bearer session-shop",
       },
     ]);
-    expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
+    expect([...values.keys()].some((key) => key.endsWith(KEPT_HQ_SESSIONS_KEY))).toBe(false);
   });
 
   // L08: the connection catalog's Mate logouts follow the same rule, from a closer of their own.
@@ -308,33 +199,33 @@ describe("no kept session outlives the login it was opened under", () => {
     // happy-dom reports `navigator.locks` as null.
     vi.stubGlobal("navigator", { locks: null });
     lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("p1:zcp", session("shop"));
+    kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
 
     await lifetime.closeAccountLifetime();
 
     expect(fetched.map(({ authorization }) => authorization)).toEqual(["Bearer session-shop"]);
   });
 
-  it("the account's close ends every live kept session at its Mate, each once", async () => {
+  it("the account's close ends every live kept session where it was issued, each once", async () => {
     lifetime.openAccountLifetime("person-1");
-    kept.keptSessions.keep("p1:zcp", session("shop"));
-    kept.keptSessions.keep("p2:zcp", session("blog"));
-    kept.keptSessions.keep("p3:zcp", session("ended", Date.now() - DAY_MS));
+    kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
+    kept.keptHqSessions.keep("c2:hq1:https://blog", session("blog"));
+    kept.keptHqSessions.keep("c1:hq1:https://ended", session("ended", Date.now() - DAY_MS));
     // The tab's own closer already ended one of them.
-    kept.endKeptSession(session("shop"));
+    kept.endHqSession(session("shop"));
 
     await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([
       {
-        url: "https://shop.example.test/mate/api/auth/logout",
+        url: "https://shop.example.test/hq/api/session",
         authorization: "Bearer session-shop",
       },
       {
-        url: "https://blog.example.test/mate/api/auth/logout",
+        url: "https://blog.example.test/hq/api/session",
         authorization: "Bearer session-blog",
       },
     ]);
-    expect([...values.keys()].some((key) => key.endsWith(KEPT_SESSIONS_KEY))).toBe(false);
+    expect([...values.keys()].some((key) => key.endsWith(KEPT_HQ_SESSIONS_KEY))).toBe(false);
   });
 });

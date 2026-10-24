@@ -12,7 +12,7 @@ import {
   type ConnectionAttemptError,
 } from "../../connection/model.ts";
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
-import { HqError, type HqMateTicket } from "./client.ts";
+import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 
 const NOT_CONNECTED = "Mate not connected";
 
@@ -38,17 +38,26 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   });
 }
 
-/** The connection runtime's ticket issuer over HQ's `mateTicket`, in the Mate's organisation. */
+const NO_HQ = new HqError({
+  kind: "unavailable",
+  code: "no_session",
+  message: "HQ is not signed in to for this organisation yet.",
+});
+
+/**
+ * The connection runtime's ticket issuer over HQ's `mateTicket`, in the Mate's organisation: `hqOf`
+ * names the HQ API signed in to it, none while there is none yet.
+ */
 export function mateTicketIssuer(
-  mateTicket: (
-    mate: { readonly orgId: string; readonly projectId: string },
-    signal?: AbortSignal,
-  ) => Promise<HqMateTicket>,
+  hqOf: (orgId: string) => Pick<HqApi, "mateTicket"> | null,
 ): MateTicketIssuerService {
   return {
-    issue: (mate) =>
+    issue: ({ orgId, projectId }) =>
       Effect.tryPromise({
-        try: (signal) => mateTicket(mate, signal),
+        try: (signal) => {
+          const hq = hqOf(orgId);
+          return hq === null ? Promise.reject(NO_HQ) : hq.mateTicket(projectId, signal);
+        },
         catch: attemptErrorOf,
       }).pipe(
         Effect.map((issued): IssuedMateTicket => ({
