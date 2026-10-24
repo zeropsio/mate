@@ -271,7 +271,7 @@ const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZero
         httpBaseUrl,
         socketUrl: url.toString(),
         firstFrame: encodeTicketFrame({ ticket: issued.ticket }),
-        httpAuthorization: null,
+        httpAuthorization: { _tag: "Bearer", token: issued.ticket },
         target,
       } satisfies PreparedConnection;
     });

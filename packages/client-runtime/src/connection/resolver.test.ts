@@ -531,7 +531,7 @@ describe("ConnectionResolver", () => {
         expect(first).toMatchObject({
           environmentId: ENVIRONMENT_ID,
           httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
-          httpAuthorization: null,
+          httpAuthorization: { _tag: "Bearer", token: "ticket-1" },
           firstFrame: '{"ticket":"ticket-1"}',
           target,
         });

@@ -360,7 +360,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     lastFailure: ConnectionAttemptError | null,
     progress: ConnectionDriver.ConnectionDriverProgress,
   ) {
-    if ("prepared" in progress) {
+    // A ticket becomes an HTTP handle only once the Mate has admitted its socket.
+    if ("prepared" in progress && target._tag !== "ZeropsMateConnectionTarget") {
       yield* SubscriptionRef.set(prepared, Option.some(progress.prepared));
     }
     yield* setState(

@@ -159,14 +159,15 @@ export const makeMateImageWire = (
                 : { dimensions: metadata.imageDimensions }),
               ...(metadata.occurrence === undefined ? {} : { occurrence: metadata.occurrence }),
             };
-          const headers = modern
-            ? yield* buildEnvironmentAuthHeaders(
-                prepared.value.httpAuthorization,
-                "GET",
-                url,
-                signer,
-              ).pipe(Effect.mapError(() => classifyImageHttp(401)))
-            : {};
+          const headers =
+            modern || prepared.value.target._tag === "ZeropsMateConnectionTarget"
+              ? yield* buildEnvironmentAuthHeaders(
+                  prepared.value.httpAuthorization,
+                  "GET",
+                  url,
+                  signer,
+                ).pipe(Effect.mapError(() => classifyImageHttp(401)))
+              : {};
           const now = yield* Clock.currentTimeMillis;
           return yield* Effect.tryPromise({
             try: async (signal) => {
