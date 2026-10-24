@@ -20,63 +20,52 @@ describe("chiefRowLine", () => {
       "says nothing of a Chief at rest: the row is its name alone",
       {
         setup: null,
-        unfinished: false,
         mate: mate("idle", { kind: "reply", tone: "muted" }),
       },
       undefined,
     ],
     [
       "says nothing where the person has no Chief and none is being set up",
-      { setup: "offer", unfinished: false, mate: undefined },
+      { setup: "offer", mate: undefined },
       undefined,
     ],
     [
       "says what it works on while it works",
       {
         setup: null,
-        unfinished: false,
         mate: mate("working", { kind: "reply", tone: undefined }),
       },
       { kind: "mate", second: { kind: "reply", tone: undefined } },
     ],
     [
       "says what it asks the person, in ink",
-      { setup: null, unfinished: false, mate: mate("needs", { kind: "reply", tone: "ink" }) },
+      { setup: null, mate: mate("needs", { kind: "reply", tone: "ink" }) },
       { kind: "mate", second: { kind: "reply", tone: "ink" } },
     ],
     [
       "says it waits for the person's sign-in",
-      { setup: null, unfinished: false, mate: mate("idle", { kind: "sign-in" }) },
+      { setup: null, mate: mate("idle", { kind: "sign-in" }) },
       { kind: "mate", second: { kind: "sign-in" } },
     ],
     [
       "says it is coming up while its container comes up",
-      { setup: null, unfinished: false, mate: mate("idle", { kind: "coming" }) },
+      { setup: null, mate: mate("idle", { kind: "coming" }) },
       { kind: "mate", second: { kind: "coming" } },
     ],
     [
       "says nothing of its last error, an unread answer or what was last asked",
-      { setup: null, unfinished: false, mate: mate("failed", { kind: "reply", tone: "failed" }) },
+      { setup: null, mate: mate("failed", { kind: "reply", tone: "failed" }) },
       undefined,
     ],
     [
       "says it is being set up while its setup runs",
-      { setup: "running", unfinished: false, mate: undefined },
+      { setup: "running", mate: undefined },
       { kind: "setup", state: "running" },
     ],
     [
       "says its setup stopped",
-      { setup: "stopped", unfinished: false, mate: undefined },
+      { setup: "stopped", mate: undefined },
       { kind: "setup", state: "stopped" },
-    ],
-    [
-      "says its setup waits to be finished where its access never reached it",
-      {
-        setup: null,
-        unfinished: true,
-        mate: mate("idle", { kind: "reply", tone: "muted" }),
-      },
-      { kind: "setup", state: "unfinished" },
     ],
   ])("%s", (_title, input, line) => {
     expect(chiefRowLine(input)).toEqual(line);
@@ -89,7 +78,7 @@ describe("chiefRowOpens", () => {
     ["opens the Chief page while the person has none", { listed: false, line: undefined }, "page"],
     [
       "opens the Chief page while its setup runs, stopped or waits to be finished",
-      { listed: true, line: { kind: "setup", state: "unfinished" } },
+      { listed: true, line: { kind: "setup", state: "stopped" } },
       "page",
     ],
   ])("%s", (_title, input, opens) => {
@@ -105,7 +94,7 @@ const FAILED: ChiefSetup = {
   projectId: null,
   reason: "No room.",
 };
-const ready = { hq: "official", mayCreate: true, unfinished: false } as const;
+const ready = { hq: "official", mayCreate: true, mayMark: true } as const;
 
 describe("chiefPageView", () => {
   it.each<[string, Parameters<typeof chiefPageView>[0], ChiefPageView]>([
@@ -171,9 +160,12 @@ describe("chiefPageView", () => {
       { kind: "coming", projectId: "p-chief" },
     ],
     [
-      "offers to finish a Chief whose access never reached it",
-      { ...ready, own: "p-chief", unfinished: true, setup: { phase: "idle" } },
-      { kind: "finish", projectId: "p-chief" },
+      "says why where the person is not an Owner or Admin, who alone mark the organization's Chief",
+      { ...ready, mayMark: false, own: null, setup: { phase: "idle" } },
+      {
+        kind: "offer",
+        blocked: "Only an Owner or Admin of this organization can set one up.",
+      },
     ],
   ])("%s", (_title, input, view) => {
     expect(chiefPageView(input)).toEqual(view);

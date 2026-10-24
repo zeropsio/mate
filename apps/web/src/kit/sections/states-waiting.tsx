@@ -209,7 +209,7 @@ function WaitingCensus() {
         uses="5 sites in 2 files"
         places={["apps/web/src/components/zerops/chief/SidebarChiefRow.tsx:220 ChiefSetupRowLine"]}
       >
-        {(["running", "stopped", "unfinished"] as const).map((state) => (
+        {(["running", "stopped"] as const).map((state) => (
           <Specimen
             key={state}
             label={`<ChiefSetupRowLine state="${state}" />`}

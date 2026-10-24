@@ -24,7 +24,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   conversationsRead,
   timestampFormat,
   setup,
-  unfinished,
   currentMate,
   currentPage,
   onOpenMate,
@@ -32,15 +31,13 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   waiting,
   tile = false,
 }: {
-  /** The person's own Chief among the listed Mates; undefined while it is not listed. */
+  /** The organization's Chief among the listed Mates; undefined while it is not listed. */
   readonly chief: T | undefined;
   readonly coming: MateComing | undefined;
   readonly conversationsRead: boolean;
   readonly timestampFormat: TimestampFormat;
   /** `chiefSetupLine`. */
   readonly setup: "offer" | "running" | "stopped" | null;
-  /** Its Chief stands without its access (`useChiefUnfinished`). */
-  readonly unfinished: boolean;
   /** The Chief's conversation is open. */
   readonly currentMate: boolean;
   /** The Chief page is open. */
@@ -53,7 +50,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
 }) {
   const Row = tile ? SidebarChiefTile : SidebarChiefRow;
   if (chief === undefined) {
-    const line = chiefRowLine({ setup, unfinished: false, mate: undefined });
+    const line = chiefRowLine({ setup, mate: undefined });
     return (
       <Row
         current={currentPage}
@@ -71,7 +68,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
       timestampFormat={timestampFormat}
     >
       {(read) => {
-        const line = chiefRowLine({ setup, unfinished, mate: read });
+        const line = chiefRowLine({ setup, mate: read });
         const opens = chiefRowOpens({ listed: true, line });
         return (
           <Row

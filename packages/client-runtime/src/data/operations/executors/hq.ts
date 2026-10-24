@@ -279,14 +279,6 @@ export function makeHqExecutor(ports: {
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
   readonly gitStore?: AccountStore;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
-  /**
-   * Handed what a Chief's record answered for its project: the credential its zcp reaches the
-   * organization with, and the proxy. Told once, at HQ's answer; the receipt never holds it.
-   */
-  readonly chiefAccess?: (
-    projectId: string,
-    access: { readonly credential: string; readonly proxyUrl: string },
-  ) => void;
 }): HqExecutor {
   const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
   let gitClosed = false;
@@ -425,16 +417,13 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** A Chief's record and a proposal's decision: HQ's answer is their end. */
+  /** The Chief's mark and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
     switch (intent.kind) {
       case "set-chief":
         return Effect.map(
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
-          ({ chief, credential, proxyUrl }) => {
-            ports.chiefAccess?.(intent.projectId, { credential, proxyUrl });
-            return answered(requestId, intent.projectId, { chief });
-          },
+          ({ chief }) => answered(requestId, intent.projectId, { chief }),
         );
       case "decide-proposal":
         return Effect.map(

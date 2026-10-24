@@ -65,6 +65,10 @@ vi.mock("./useAskMate", () => ({ useAskMate: () => vi.fn() }));
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
 vi.mock("./orgChief", () => ({ useOrgChief: () => null }));
 vi.mock("./useHqOffers", () => ({ useOrgOffers: () => () => ({ kind: "allowed" }) }));
+vi.mock("./usePlatformCapabilities", () => ({
+  usePlatformCapabilities: () => ({ membershipKnown: true, manageOrganization: true }),
+  useRoleOffers: () => ({ newProject: true, setUpChief: true }),
+}));
 vi.mock("./creations", async (original) => ({
   ...(await original<typeof import("./creations")>()),
   useCreation: () => undefined,
@@ -78,9 +82,6 @@ vi.mock("./matePress", () => ({
   beginPress: source.begin,
   finishMateSetup: source.finish,
   whilePressing: <T,>(run: () => Promise<T>) => run(),
-}));
-vi.mock("../components/zerops/vault/VaultPanelContainer", () => ({
-  useVaultWriter: () => ({ run: vi.fn() }),
 }));
 vi.mock("../components/zerops/SidebarZeropsTree", () => ({ MenuMateLine: () => null }));
 vi.mock("../components/zerops/ZeropsMateComingPage", () => ({
@@ -211,5 +212,18 @@ describe("every Chief creation entry uses the same setup intent", () => {
       );
       expect(source.begin).toHaveBeenCalledWith(expect.objectContaining({ placement: null }));
     },
+  );
+});
+
+it("the Chief page says, before its mark is set, that everyone with access to the Chief's project sees its overview", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  openAccountLifetime("alex");
+  const container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root!.render(<ChiefPage />));
+  const offer = container.querySelector("[data-zerops-surface=chief-set-up]")?.parentElement;
+  expect(offer?.textContent).toContain(
+    "Everyone with access to the Chief's project sees its overview of your organization",
   );
 });

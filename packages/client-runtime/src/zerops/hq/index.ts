@@ -112,7 +112,7 @@ export {
 export { selectGitCredentials, type GitCredentialSnapshot } from "./gitCredentialStore.ts";
 export {
   HqChief,
-  HqChiefSetUp,
+  HqChiefMarkSet,
   HqProposalDecision,
   PROPOSAL_IDS_PER_READ,
   type HqChiefCalls,

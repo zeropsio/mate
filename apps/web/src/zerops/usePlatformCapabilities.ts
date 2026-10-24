@@ -52,8 +52,8 @@ export function usePlatformCapabilities(environmentId: EnvironmentId | null) {
 }
 
 /**
- * What the organization's surfaces offer by the viewer's role (`roleOffers`): New project and a
- * Chief of their own, each hidden once the role is known to forbid it.
+ * What the organization's surfaces offer by the viewer's role (`roleOffers`): New project and the
+ * organization's Chief, each hidden once the role is known to forbid it.
  */
 export function useRoleOffers() {
   const capabilities = usePlatformCapabilities(null);

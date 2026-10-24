@@ -56,16 +56,12 @@ const DECISION = {
 } as const;
 
 describe("the Chief at HQ", () => {
-  it("records a Chief by its project and hands back the credential and proxy its zcp uses", async () => {
-    const answer = {
-      chief: { projectId: "p-chief", since: "2026-10-12" },
-      credential: "opaque",
-      proxyUrl: `${ADDRESS}/api/chief/zerops`,
-    };
+  it("marks a project as the organisation's Chief and answers the mark HQ holds", async () => {
+    const answer = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
     const { api, seen } = hqAnswering(() => json(200, answer));
     await expect(api.setChief("p-chief")).resolves.toEqual(answer);
     expect(seen).toEqual([
-      { method: "POST", path: "/api/chief", ids: null, body: { projectId: "p-chief" } },
+      { method: "PUT", path: "/api/chief", ids: null, body: { projectId: "p-chief" } },
     ]);
   });
 
@@ -77,10 +73,8 @@ describe("the Chief at HQ", () => {
     await expect(api.setChief("p-chief")).rejects.toMatchObject({ kind: "refused", status });
   });
 
-  it("refuses an answer without its credential rather than set up half a Chief", async () => {
-    const { api } = hqAnswering(() =>
-      json(200, { chief: { projectId: "p-chief", since: "2026-10-12" } }),
-    );
+  it("refuses an answer without the mark rather than report a Chief HQ did not set", async () => {
+    const { api } = hqAnswering(() => json(200, {}));
     await expect(api.setChief("p-chief")).rejects.toMatchObject({ code: "unreadable" });
   });
 });
