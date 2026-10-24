@@ -29,6 +29,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   onOpenMate,
   onOpenPage,
   waiting,
+  onRemove,
   tile = false,
 }: {
   /** The organization's Chief among the listed Mates; undefined while it is not listed. */
@@ -45,6 +46,8 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   readonly onOpenMate: (chief: T) => void;
   readonly onOpenPage: () => void;
   readonly waiting: SidebarChiefRowProps["waiting"];
+  /** Removes the organization's mark from the listed Chief's ··· (`useChiefRemoval`). */
+  readonly onRemove?: (() => void) | undefined;
   /** Drawn as the closed menu's rail draws it (`SidebarChiefTile`). */
   readonly tile?: boolean;
 }) {
@@ -79,6 +82,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
             line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
             onOpen={opens === "mate" ? () => onOpenMate(chief) : onOpenPage}
             waiting={waiting}
+            {...(tile ? {} : { onRemove })}
           />
         );
       }}

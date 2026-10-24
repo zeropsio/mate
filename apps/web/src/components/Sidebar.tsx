@@ -226,7 +226,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
-import { useOrgChief } from "~/zerops/orgChief";
+import { useChiefRemoval, useOrgChief } from "~/zerops/orgChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
@@ -1989,6 +1989,7 @@ export default function Sidebar() {
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
   const orgChief = useOrgChief();
+  const removeChief = useChiefRemoval();
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2757,6 +2758,7 @@ export default function Sidebar() {
         waiting={
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }
+        onRemove={removeChief}
       />
     ) : undefined;
   // Search and the +, on the open menu's top row and under the rail's Chief.

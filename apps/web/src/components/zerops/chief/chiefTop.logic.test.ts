@@ -6,8 +6,10 @@ import {
   chiefNameParts,
   chiefPageView,
   chiefRowLine,
+  chiefRowName,
   chiefRowOpens,
   chiefTopShown,
+  mayRemoveChief,
   type ChiefPageView,
 } from "./chiefTop.logic";
 import { chiefSetupLine, type OrgChief } from "~/zerops/chief";
@@ -179,6 +181,29 @@ describe("chiefNameParts", () => {
     ["Chief Mate", { head: "", noun: "Chief Mate" }],
   ])("keeps the Chief's noun whole in %s: the words before it give way first", (title, parts) => {
     expect(chiefNameParts(title)).toEqual(parts);
+  });
+});
+
+describe("chiefRowName", () => {
+  it.each([
+    ["Acme", "Acme's Chief"],
+    [null, "Chief"],
+  ])("names the Chief by its organization, not by who reads it: %s", (organization, name) => {
+    expect(chiefRowName(organization)).toBe(name);
+  });
+});
+
+describe("mayRemoveChief", () => {
+  it.each([
+    ["an Owner or Admin", { membershipKnown: true, manageOrganization: true }, true],
+    [
+      "a member whose role is not read yet",
+      { membershipKnown: false, manageOrganization: false },
+      false,
+    ],
+    ["a known member below Admin", { membershipKnown: true, manageOrganization: false }, false],
+  ])("offers Remove as Chief only to an Owner or Admin: %s", (_who, capabilities, offered) => {
+    expect(mayRemoveChief(capabilities)).toBe(offered);
   });
 });
 

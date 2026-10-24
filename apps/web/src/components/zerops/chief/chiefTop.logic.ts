@@ -118,6 +118,19 @@ export function chiefPageView(input: {
   return { kind: "offer", blocked };
 }
 
+/** The Chief's one name in the menu, by its organization: "Acme's Chief"; "Chief" before it is known. */
+export function chiefRowName(organization: string | null): string {
+  return organization === null ? "Chief" : `${organization}'s Chief`;
+}
+
+/** Only an Owner or Admin, known as one, finds Remove as Chief on the Chief's menu. */
+export function mayRemoveChief(capabilities: {
+  readonly membershipKnown: boolean;
+  readonly manageOrganization: boolean;
+}): boolean {
+  return capabilities.membershipKnown && capabilities.manageOrganization;
+}
+
 /**
  * The Chief's row title in two parts: the words before its noun, which give way first when the
  * menu is narrow, and the noun itself — "Chief", "Chief Mate" — which always stays whole.

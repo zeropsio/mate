@@ -6101,6 +6101,34 @@ code {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
+  /* The Chief's ··· (`ChiefMenu`), an Owner's or Admin's: over the row's end on its middle, as a Mate
+     row's verbs come in, under the pointer or focus; left of what waits, where something does. */
+  .menu-chief-more {
+    position: relative;
+    z-index: 1;
+    grid-column: 1;
+    justify-self: end;
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
+    margin-inline-end: 4px;
+    opacity: 0;
+  }
+
+  .menu-top-chief:has(.menu-chief-count) .menu-chief-more {
+    margin-inline-end: 40px;
+  }
+
+  .menu-top:hover .menu-chief-more,
+  .menu-chief-more:focus-visible,
+  .menu-chief-more[data-popup-open] {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .menu-chief-more {
+      opacity: 1;
+    }
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .menu-chief-count:active {
       scale: 0.96;
