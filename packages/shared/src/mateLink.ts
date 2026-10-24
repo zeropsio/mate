@@ -365,28 +365,83 @@ export const MateLinkUp = Schema.Union([
 ]);
 export type MateLinkUp = typeof MateLinkUp.Type;
 
+/** HQ's answer to the Mate's `auto-update-policy` ask, by the ask's id. */
+const AutoUpdatePolicyDown = Schema.Struct({
+  type: Schema.Literal("auto-update-policy"),
+  requestId: Schema.String,
+  policy: HqAutoUpdatePolicy,
+});
+
+/** What a `state` frame carries beside the Mate: the org's update policy and the usage lane. */
+const StateExtras = {
+  autoUpdate: Schema.optionalKey(HqAutoUpdatePolicy),
+  usage: Schema.optionalKey(
+    Schema.Struct({
+      capture: Schema.Int,
+      report: Schema.Int,
+      mateId: TrimmedNonEmptyString,
+      /** The org HQ holds the Mate in; a Mate captures nothing until HQ names it. */
+      orgId: Schema.optionalKey(TrimmedNonEmptyString),
+    }),
+  ),
+};
+
+/** A task for an automated Mate to work: told again until the Mate says it took it. */
+const TaskDown = Schema.Struct({ type: Schema.Literal("task"), task: MateTask });
+
+/** Something said about a task its Mate took (`MateTaskMessage`): heard in its conversation. */
+const TaskMessageDown = Schema.Struct({
+  type: Schema.Literal("task-message"),
+  taskId: TrimmedNonEmptyString,
+  message: MateTaskMessage,
+  /**
+   * The task's change, where it opened one: its repository, number and branch on HQ's git, the
+   * branch a follow-up's working copy starts from. An older HQ names none; an older Mate reads
+   * past it.
+   */
+  change: Schema.optionalKey(
+    Schema.Struct({
+      repo: TrimmedNonEmptyString,
+      number: Schema.Int,
+      branch: TrimmedNonEmptyString,
+    }),
+  ),
+});
+
+/** People stopped a task its Mate took (issue closed, label removed): its run stops, it says so. */
+const TaskStopDown = Schema.Struct({
+  type: Schema.Literal("task-stop"),
+  taskId: TrimmedNonEmptyString,
+  reason: Schema.String,
+  /**
+   * HQ put the task back in line before it heard the Mate take it (the monthly budget was
+   * reached): its runs stop, and nothing of the stop is kept, so the Mate takes it again when
+   * HQ hands it again. Absent: people stopped it for good. A Mate that predates it stops it so.
+   */
+  requeued: Schema.optionalKey(Schema.Literal(true)),
+});
+
+/**
+ * The organization's API keys an automated Mate's agents run on, by the variable its provider
+ * reads (`NEBIUS_API_KEY`, `OPENCODE_KEY_PROVIDERS`); sent on each link to an automated Mate only,
+ * and again when one changes. An empty list: none set.
+ */
+const ProviderKeysDown = Schema.Struct({
+  type: Schema.Literal("provider-keys"),
+  keys: Schema.Array(Schema.Struct({ env: TrimmedNonEmptyString, value: Schema.String })),
+  /**
+   * The model the organization picked for its automated Mates, as an OpenCode slug
+   * (`nebius/zai-org/GLM-5.3-Flash`, one of `automatedModels`), told again when it changes.
+   * Absent: none picked, or an older HQ — the Mate's default. An older Mate reads past it.
+   */
+  model: Schema.optionalKey(TrimmedNonEmptyString),
+});
+
 export const MateLinkDown = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("auto-update-policy"),
-    requestId: Schema.String,
-    policy: HqAutoUpdatePolicy,
-  }),
+  AutoUpdatePolicyDown,
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
-  Schema.Struct({
-    type: Schema.Literal("state"),
-    mate: MateState,
-    autoUpdate: Schema.optionalKey(HqAutoUpdatePolicy),
-    usage: Schema.optionalKey(
-      Schema.Struct({
-        capture: Schema.Int,
-        report: Schema.Int,
-        mateId: TrimmedNonEmptyString,
-        /** The org HQ holds the Mate in; a Mate captures nothing until HQ names it. */
-        orgId: Schema.optionalKey(TrimmedNonEmptyString),
-      }),
-    ),
-  }),
+  Schema.Struct({ type: Schema.Literal("state"), mate: MateState, ...StateExtras }),
   Schema.Struct({
     type: Schema.Literal("access"),
     /** How long before it was sent Zerops answered the view it was computed from. */
@@ -395,55 +450,131 @@ export const MateLinkDown = Schema.Union([
     /** Explicitly null for an ordinary Mate; absent only on older HQs. */
     chief: Schema.optionalKey(Schema.NullOr(ChiefMateOwner)),
   }),
-  /** A task for an automated Mate to work: told again until the Mate says it took it. */
-  Schema.Struct({ type: Schema.Literal("task"), task: MateTask }),
-  /** Something said about a task its Mate took (`MateTaskMessage`): heard in its conversation. */
-  Schema.Struct({
-    type: Schema.Literal("task-message"),
-    taskId: TrimmedNonEmptyString,
-    message: MateTaskMessage,
-    /**
-     * The task's change, where it opened one: its repository, number and branch on HQ's git, the
-     * branch a follow-up's working copy starts from. An older HQ names none; an older Mate reads
-     * past it.
-     */
-    change: Schema.optionalKey(
-      Schema.Struct({
-        repo: TrimmedNonEmptyString,
-        number: Schema.Int,
-        branch: TrimmedNonEmptyString,
-      }),
-    ),
-  }),
-  /** People stopped a task its Mate took (issue closed, label removed): its run stops, it says so. */
-  Schema.Struct({
-    type: Schema.Literal("task-stop"),
-    taskId: TrimmedNonEmptyString,
-    reason: Schema.String,
-    /**
-     * HQ put the task back in line before it heard the Mate take it (the monthly budget was
-     * reached): its runs stop, and nothing of the stop is kept, so the Mate takes it again when
-     * HQ hands it again. Absent: people stopped it for good. A Mate that predates it stops it so.
-     */
-    requeued: Schema.optionalKey(Schema.Literal(true)),
-  }),
-  /**
-   * The organization's API keys an automated Mate's agents run on, by the variable its provider
-   * reads (`NEBIUS_API_KEY`, `OPENCODE_KEY_PROVIDERS`); sent on each link to an automated Mate only,
-   * and again when one changes. An empty list: none set.
-   */
-  Schema.Struct({
-    type: Schema.Literal("provider-keys"),
-    keys: Schema.Array(Schema.Struct({ env: TrimmedNonEmptyString, value: Schema.String })),
-    /**
-     * The model the organization picked for its automated Mates, as an OpenCode slug
-     * (`nebius/zai-org/GLM-5.3-Flash`, one of `automatedModels`), told again when it changes.
-     * Absent: none picked, or an older HQ — the Mate's default. An older Mate reads past it.
-     */
-    model: Schema.optionalKey(TrimmedNonEmptyString),
-  }),
+  TaskDown,
+  TaskMessageDown,
+  TaskStopDown,
+  ProviderKeysDown,
 ]);
 export type MateLinkDown = typeof MateLinkDown.Type;
+
+/*
+ * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"; spec-mate §3.5): the Mate dials
+ * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
+ * its state, then the organisation's access with a version and the time of the view it was
+ * computed from. Today's frames of tasks, usage and the update policy ride on it unchanged.
+ * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
+ * still read them.
+ */
+
+/** `GET /api/mate/self`, and the `mate` of a `state` frame: `chief` names the mark's project. */
+export const MateSelf = Schema.Struct({
+  projectId: Schema.String,
+  name: Schema.String,
+  face: Schema.String,
+  standupRequestedBy: Schema.NullOr(Schema.String),
+  closedOff: Schema.Boolean,
+  signers: Schema.Record(Schema.String, Schema.String),
+  automated: Schema.optionalKey(Schema.Boolean),
+  ...MateChanges.fields,
+  chief: Schema.NullOr(Schema.Struct({ projectId: Schema.String })),
+});
+export type MateSelf = typeof MateSelf.Type;
+
+/** The Mate as a `state` frame brings it: its self read, with its owner where HQ knows one. */
+export const LinkedMate = Schema.Struct({
+  ...MateSelf.fields,
+  ownerUserId: Schema.optionalKey(Schema.String),
+});
+export type LinkedMate = typeof LinkedMate.Type;
+
+/** A member's reach into the Mate's project; `none` removes the member in a delta. */
+export const LinkAccessMember = Schema.Struct({
+  userId: Schema.String,
+  role: Schema.Literals(["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER"]),
+  visibility: Schema.Literals(["open", "listed", "none"]),
+});
+export type LinkAccessMember = typeof LinkAccessMember.Type;
+
+const AccessVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
+const Ticket = Schema.String.check(Schema.isMinLength(1));
+
+export const KeyLinkUp = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("hello"),
+    key: Schema.String.check(Schema.isMinLength(1)),
+    serviceId: Schema.String,
+  }),
+  ...MateLinkUp.members,
+  Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),
+  Schema.Struct({ type: Schema.Literal("key-refused") }),
+]);
+export type KeyLinkUp = typeof KeyLinkUp.Type;
+
+/**
+ * The organisation's key was refused: the Mate admits nobody until a full frame without it.
+ * First in its union, so a frame marked `refused` never decodes as a snapshot.
+ */
+export const RefusedAccessFrame = Schema.Struct({
+  type: Schema.Literal("access"),
+  version: AccessVersion,
+  full: Schema.Literal(true),
+  refused: Schema.Literal(true),
+  members: Schema.Tuple([]),
+});
+
+/** Who the project opens for and lists: a full snapshot, or a delta of the entries that changed. */
+export const AccessFrame = Schema.Struct({
+  type: Schema.Literal("access"),
+  version: AccessVersion,
+  viewAt: Schema.String,
+  full: Schema.Boolean,
+  members: Schema.Array(LinkAccessMember),
+});
+
+export const KeyLinkDown = Schema.Union([
+  AutoUpdatePolicyDown,
+  ...UsageLinkDown.members,
+  Schema.Struct({ type: Schema.Literal("ping") }),
+  Schema.Struct({ type: Schema.Literal("state"), mate: LinkedMate, ...StateExtras }),
+  RefusedAccessFrame,
+  AccessFrame,
+  Schema.Struct({
+    type: Schema.Literal("ticket"),
+    ticket: Ticket,
+    userId: Schema.String,
+    sessionId: Schema.String,
+    expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  }),
+  Schema.Struct({ type: Schema.Literal("close-session"), sessionId: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("git-credential"),
+    credential: Schema.NullOr(Schema.String),
+  }),
+  TaskDown,
+  TaskMessageDown,
+  TaskStopDown,
+  ProviderKeysDown,
+]);
+export type KeyLinkDown = typeof KeyLinkDown.Type;
+/** An access frame as the Mate keeps it: a snapshot, a delta, or the refused one. */
+export type KeyLinkAccess = Extract<KeyLinkDown, { readonly type: "access" }>;
+
+/** A key HQ does not admit: the close reason of `4403`, and the code of the same refusal on a call. */
+export const KeyNotAdmitted = Schema.Literals([
+  "key_too_wide",
+  "key_not_sensitive",
+  "not_a_mate",
+  "org_not_started",
+]);
+export type KeyNotAdmitted = typeof KeyNotAdmitted.Type;
+
+/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1007` malformed, `1009` too big, `1011` unreadable. */
+export const MateLinkClosed = Schema.Union([
+  Schema.Struct({ code: Schema.Literal(4401), reason: Schema.Literal("key_refused") }),
+  Schema.Struct({ code: Schema.Literal(4403), reason: KeyNotAdmitted }),
+  Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 4408, 4409]) }),
+]);
+export type MateLinkClosed = typeof MateLinkClosed.Type;
 
 /**
  * A frame up the link as this build reads it: a message it knows, one it passes by, or none at
