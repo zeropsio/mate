@@ -23,6 +23,8 @@ export async function hqConnection(coreOrigin: string) {
     wsUpBytes: 0,
     wsDownBytes: 0,
   };
+  /** Requests that crossed to Core, by `METHOD /path`. */
+  const requests = new Map<string, number>();
   const ready = () => {
     received = true;
     events.emit("ready");
@@ -36,6 +38,8 @@ export async function hqConnection(coreOrigin: string) {
         counters.httpDownBytes += Buffer.byteLength(JSON.stringify(body));
         return { status: 503, body };
       }
+      const route = `${request.method} ${request.url.pathname}`;
+      requests.set(route, (requests.get(route) ?? 0) + 1);
       const response = await fetch(new URL(request.url.pathname + request.url.search, coreOrigin), {
         method: request.method,
         headers: Object.fromEntries(
@@ -107,6 +111,7 @@ export async function hqConnection(coreOrigin: string) {
     },
     links,
     counters,
+    requests,
     /** Transforms downstream text frames, for source protocol variants in area drivers. */
     mapFrames: (transform: (frame: string) => string) => {
       mapFrame = transform;
