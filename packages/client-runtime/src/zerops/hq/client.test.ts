@@ -2405,3 +2405,49 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
     expect(hq.seen.some((entry) => entry.path === path && entry.method === "POST")).toBe(true);
   });
 });
+
+describe("makeHqApi — a Mate's ticket", () => {
+  const ticketApi = (answer: Response) => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/mates/P1/ticket" ? answer.clone() : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: () => {
+        throw new Error("unused");
+      },
+    });
+    return { hq, api };
+  };
+
+  it("A Mate's ticket is asked of HQ under the session and answers where to open the socket", async () => {
+    const { hq, api } = ticketApi(
+      json(200, { ticket: "T-1", expiresIn: 30, origin: "https://mate.example" }),
+    );
+
+    await expect(api.mateTicket("P1")).resolves.toEqual({
+      ticket: "T-1",
+      expiresIn: 30,
+      origin: "https://mate.example",
+    });
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "POST",
+      path: "/api/mates/P1/ticket",
+      authorization: "Bearer session-1",
+    });
+  });
+
+  it.each([
+    [403, { code: "forbidden", reason: "not_mate_opener" }, "refused", "forbidden"],
+    [404, { code: "mate_not_found" }, "refused", "mate_not_found"],
+    [409, { code: "mate_not_connected" }, "refused", "mate_not_connected"],
+    [503, { code: "not_active" }, "unavailable", "not_active"],
+  ])("HQ's %i refusal of a ticket is told as its own kind", async (status, body, kind, code) => {
+    const { api } = ticketApi(json(status, body));
+
+    await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind, code });
+  });
+});

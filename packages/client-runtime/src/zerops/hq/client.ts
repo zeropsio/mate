@@ -307,6 +307,13 @@ export interface Asked<T> {
   readonly deploys: HqDeployAnswer | undefined;
 }
 
+/** What HQ hands for a Mate's socket: the ticket, its life in seconds and the origin to open. */
+export interface HqMateTicket {
+  readonly ticket: string;
+  readonly expiresIn: number;
+  readonly origin: string;
+}
+
 export interface HqApi {
   readonly gitTargetWrite: (
     requestId: string,
@@ -326,6 +333,12 @@ export interface HqApi {
   readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
   readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
+  /**
+   * A ticket to open the Mate of `projectId`'s socket with (`POST /api/mates/:projectId/ticket`):
+   * the connection's first frame is `{ticket}`, sent to `origin`. A Mate's connection is one per
+   * tab, and every reconnect asks again.
+   */
+  readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` of every text message and of its close code. A socket HQ
@@ -1277,6 +1290,13 @@ export function makeHqApi(input: {
   return {
     ...makeChiefCalls({ authorized, decoded }),
     structure: structureOf,
+    mateTicket: async (projectId, signal) =>
+      json<HqMateTicket>(
+        await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
+          method: "POST",
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      ),
     openScopeSocket: async (on, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),

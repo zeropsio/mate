@@ -31,6 +31,7 @@ export {
   readHqParts,
   type Asked,
   type HqApi,
+  type HqMateTicket,
   type HqAttach,
   type HqBirth,
   type HqMate,
