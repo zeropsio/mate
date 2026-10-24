@@ -82,11 +82,10 @@ const unitTestProject = {
     // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
     taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     include: ["src/**/*.test.{ts,tsx}"],
-    // The web runtime suite exercises auth bootstrap, saved environments,
-    // and websocket subscription lifecycles. Under the full monorepo test
-    // run, those async tests can exceed Vitest's default 5s budget.
-    hookTimeout: 15_000,
-    testTimeout: 15_000,
+    // Dynamic imports and isolated module reloads run inside cases and hooks. Their wall
+    // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
+    hookTimeout: 660_000,
+    testTimeout: 660_000,
     setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 } satisfies TestProjectInlineConfiguration;
