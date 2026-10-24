@@ -74,6 +74,9 @@ export const make = Effect.fnUntraced(function* (input: {
       url: `${environment.apiBaseUrl}/project/${encodeURIComponent(environment.projectId)}/process?limit=1000`,
       token,
     });
+    if (response.status === 401 && key.refusal !== undefined) {
+      yield* key.refusal.check(token, response.status);
+    }
     if (response.status !== 200)
       return yield* Effect.fail(unavailable("Zerops could not explain this restart."));
     const body = yield* readJson(response);
