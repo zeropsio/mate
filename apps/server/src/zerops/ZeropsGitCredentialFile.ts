@@ -3,7 +3,7 @@
  * C-7).
  *
  * HQ sends the credential down the Mate's link (`git-credential`, `ZeropsHqLink`); this keeps it
- * in the one file `T3CODE_ZEROPS_HQ_GIT_CREDENTIAL` names, readable by the server's own user only,
+ * in the one file `ZeropsEnvironment.hqGitCredentialPath` names, readable by the server's own user only,
  * written whole in a single rename so zcp's repository pass never reads half a value. HQ's `null`
  * (revoked) removes the file. Nothing else writes it, and the credential is never logged.
  *
@@ -60,7 +60,7 @@ export const makeGitCredentialFile = (at: string) =>
     });
   });
 
-/** The file zcp names (`ZeropsEnvironment.hqGitCredentialPath`); where it names none, nothing is kept. */
+/** The file `ZeropsEnvironment.hqGitCredentialPath` names; outside a Zerops container (and in a test that names none), nothing is kept. */
 export const layer = Layer.effect(
   ZeropsGitCredentialFile,
   Effect.gen(function* () {

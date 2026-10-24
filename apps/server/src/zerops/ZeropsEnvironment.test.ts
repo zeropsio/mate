@@ -5,9 +5,12 @@ import {
   DEFAULT_ZEROPS_API_HOST,
   DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS,
   DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS,
+  HQ_GIT_CREDENTIAL_ENV,
   HQ_ORIGIN_ENV,
   isZeropsEnvironment,
+  publishHqGitCredential,
   publishHqOrigin,
+  resolveHqGitCredentialPath,
   resolveZeropsApiBaseUrl,
   resolveZeropsEnvironment,
 } from "./ZeropsEnvironment.ts";
@@ -192,4 +195,24 @@ describe("the HQ a Mate links to", () => {
     assert.strictEqual(zerops?.hqOrigin, expected);
     assert.strictEqual(env[HQ_ORIGIN_ENV], expected);
   });
+});
+
+describe("the Git credential file a Mate keeps", () => {
+  it.each<[string, string | undefined, string]>([
+    [
+      "a file under the server's own secrets when none is named",
+      undefined,
+      "/state/secrets/hq-git-credential",
+    ],
+    ["the named file, for development", "/dev/git-credential", "/dev/git-credential"],
+  ])(
+    "the processes a Mate starts read the Git credential file it keeps: %s",
+    (_name, named, expected) => {
+      const path = resolveHqGitCredentialPath(named, "/state/secrets");
+      const env: Record<string, string | undefined> = { [HQ_GIT_CREDENTIAL_ENV]: named };
+      publishHqGitCredential(env, path);
+      assert.strictEqual(path, expected);
+      assert.strictEqual(env[HQ_GIT_CREDENTIAL_ENV], expected);
+    },
+  );
 });

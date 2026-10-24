@@ -25,7 +25,13 @@ import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
-import { publishHqOrigin, resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import {
+  HQ_GIT_CREDENTIAL_ENV,
+  publishHqGitCredential,
+  publishHqOrigin,
+  resolveHqGitCredentialPath,
+  resolveZeropsEnvironment,
+} from "../zerops/ZeropsEnvironment.ts";
 
 export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -182,8 +188,8 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  // The file the Mate's Git credential is kept in, which zcp reads (ZeropsGitCredentialFile).
-  zeropsHqGitCredential: Config.String("T3CODE_ZEROPS_HQ_GIT_CREDENTIAL").pipe(
+  // A development override of the file the Mate's Git credential is kept in (ZeropsGitCredentialFile).
+  zeropsHqGitCredential: Config.String(HQ_GIT_CREDENTIAL_ENV).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -447,6 +453,10 @@ export const resolveServerConfig = (
         zeropsFixtures,
       });
     }
+    const hqGitCredentialPath = resolveHqGitCredentialPath(
+      env.zeropsHqGitCredential,
+      derivedPaths.secretsDir,
+    );
     const zerops =
       zeropsFixtures === undefined
         ? resolveZeropsEnvironment({
@@ -457,7 +467,7 @@ export const resolveServerConfig = (
             roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
             sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
             hqOrigin: env.zeropsHqOrigin,
-            hqGitCredentialPath: env.zeropsHqGitCredential,
+            hqGitCredentialPath,
             serviceId: env.zeropsServiceId,
             hostname: env.zeropsHostname,
             statusFile: env.zcpStatusFile,
@@ -466,7 +476,10 @@ export const resolveServerConfig = (
         : undefined;
     // Every process the server starts (provider CLIs, and through them zcp) inherits this
     // environment, so they all reach the HQ this Mate links to.
-    if (zerops !== undefined) publishHqOrigin(process.env, zerops.hqOrigin);
+    if (zerops !== undefined) {
+      publishHqOrigin(process.env, zerops.hqOrigin);
+      publishHqGitCredential(process.env, hqGitCredentialPath);
+    }
     if (
       zerops !== undefined &&
       env.zeropsRoleRecheckSeconds !== undefined &&
