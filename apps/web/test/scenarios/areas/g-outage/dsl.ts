@@ -74,7 +74,7 @@ export const hqRefusalShown = (s: Scenario) =>
           !line.textContent.includes("not reachable")
         );
       },
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
     ),
   );
 
@@ -110,7 +110,7 @@ export const menuSays = (page: Page, words: string) =>
           (element) =>
             element.getBoundingClientRect().height > 0 && element.innerText.includes(words),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
       words,
     );
   });
@@ -123,7 +123,7 @@ export const menuRowGone = (page: Page, name: string) =>
         [
           ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]'),
         ].every((element) => element.innerText.split("\n").every((line) => line.trim() !== name)),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
       name,
     );
   });
@@ -136,7 +136,7 @@ const menuHolds = (page: Page, words: string) =>
         [
           ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]'),
         ].some((element) => element.textContent?.includes(words) === true),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
       words,
     ),
   );
@@ -148,7 +148,7 @@ export const caughtUp = (actor: Actor, name: string) =>
     yield* Effect.promise(() =>
       actor.page.waitForFunction(
         () => !document.querySelector('[data-zerops-surface="sidebar-hq-outage"]'),
-        { timeout: 10_000, polling: "raf" },
+        { polling: "raf" },
       ),
     );
   });
@@ -191,7 +191,7 @@ export const zeropsCatchesUp = (s: Scenario) =>
             element.getBoundingClientRect().height > 0 &&
             element.innerText.includes("Zerops isn't answering. Trying again…"),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
     );
   });
 
@@ -261,13 +261,13 @@ export const showsWokenTab = (s: Scenario) =>
     const cdp = await s.page.createCDPSession();
     s.drivers.cleanup.push(() => cdp.detach());
     await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-    await s.page.waitForFunction(() => !document.hidden, { timeout: 10_000, polling: "raf" });
+    await s.page.waitForFunction(() => !document.hidden, { polling: "raf" });
   });
 
 export const opensMate = (s: Scenario) =>
   Effect.promise(async () => {
     await s.page.bringToFront();
-    await s.page.locator('[data-zerops-surface="sidebar-mate"]').setTimeout(10_000).click();
+    await s.page.locator('[data-zerops-surface="sidebar-mate"]').click();
   });
 
 export const messageAppears = (s: Scenario, words: string) =>
@@ -289,7 +289,7 @@ export const messageAppears = (s: Scenario, words: string) =>
         }
         return false;
       },
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
       words,
     );
   });

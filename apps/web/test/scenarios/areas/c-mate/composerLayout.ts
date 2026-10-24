@@ -49,17 +49,16 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
   yield* chat.when.openReadOnly();
   if (claude)
     yield* Effect.promise(async () => {
-      await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
+      await s.page.locator('button[data-agent-id="claude-code"]').click();
       await s.page.waitForSelector(
         '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
-        { visible: true, timeout: 8000 },
+        { visible: true },
       );
-      await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
+      await s.page.waitForSelector("[data-sign-in-code]", { visible: true });
       await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
       await s.page.keyboard.press("Enter");
       await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
         visible: true,
-        timeout: 8000,
       });
     });
   yield* mate.provider.turn([{ kind: "say", text: exchanges[0]![1] }]);
@@ -68,7 +67,6 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
   yield* Effect.promise(() =>
     s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
       polling: "raf",
-      timeout: 8000,
     }),
   );
   const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
@@ -138,7 +136,7 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
           Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2
         );
       },
-      { polling: "raf", timeout: 8000 },
+      { polling: "raf" },
     ),
   );
   if (state === "notice") yield* chat.then.text("Resume with less context");
@@ -147,7 +145,6 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
     yield* Effect.promise(() =>
       s.page.waitForSelector('.chat-header-review [data-zerops-surface="sidebar-project-review"]', {
         visible: true,
-        timeout: 8000,
       }),
     );
 

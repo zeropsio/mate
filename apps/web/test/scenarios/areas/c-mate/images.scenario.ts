@@ -41,7 +41,6 @@ const pastePng = (page: Parameters<typeof mateChat>[0]["page"], encoded: string,
       .locator(
         '[role="textbox"]:not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
       )
-      .setTimeout(8000)
       .waitHandle();
     await page.evaluate(
       (encoded, name) => {
@@ -67,9 +66,6 @@ const pastePng = (page: Parameters<typeof mateChat>[0]["page"], encoded: string,
     );
     await page.waitForSelector(
       `button[aria-label$=", ${name}. Opens it to crop or add notes."], button[aria-label="Remove ${name} from this answer"]`,
-      {
-        timeout: 8000,
-      },
     );
   });
 const assetReads = (mate: RealMate) =>
@@ -198,7 +194,6 @@ describe("C: conversation images", () => {
             .waitForResponse(
               (response) =>
                 response.request().method() === "GET" && response.url().endsWith(answerPreview),
-              { timeout: 8000 },
             )
             .then((response) => response.buffer());
           answerPicture.release();
@@ -310,36 +305,31 @@ describe("C: conversation images", () => {
         yield* chat.when.press("Send message");
         const native = yield* mate.provider.received;
         yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () => {
-              const images = [
-                ...document.querySelectorAll<HTMLImageElement>("img[data-image-src]"),
-              ];
-              return (
-                images.length === 5 &&
-                images.every(
-                  (image) =>
-                    image.getBoundingClientRect().top >= 0 &&
-                    image.getBoundingClientRect().bottom <= innerHeight &&
-                    image.naturalWidth === 160 &&
-                    [
-                      image,
-                      ...Array.from(
-                        (function* () {
-                          for (
-                            let parent = image.parentElement;
-                            parent !== null;
-                            parent = parent.parentElement
-                          )
-                            yield parent;
-                        })(),
-                      ),
-                    ].every((node) => Number(getComputedStyle(node).opacity) === 1),
-                )
-              );
-            },
-            { timeout: 8000 },
-          ),
+          s.page.waitForFunction(() => {
+            const images = [...document.querySelectorAll<HTMLImageElement>("img[data-image-src]")];
+            return (
+              images.length === 5 &&
+              images.every(
+                (image) =>
+                  image.getBoundingClientRect().top >= 0 &&
+                  image.getBoundingClientRect().bottom <= innerHeight &&
+                  image.naturalWidth === 160 &&
+                  [
+                    image,
+                    ...Array.from(
+                      (function* () {
+                        for (
+                          let parent = image.parentElement;
+                          parent !== null;
+                          parent = parent.parentElement
+                        )
+                          yield parent;
+                      })(),
+                    ),
+                  ].every((node) => Number(getComputedStyle(node).opacity) === 1),
+              )
+            );
+          }),
         );
         const initialRequests = assetReads(mate).length;
         const frames = process.env.MATE_IMAGE_FRAMES;

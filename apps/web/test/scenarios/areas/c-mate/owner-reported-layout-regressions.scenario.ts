@@ -344,7 +344,7 @@ async function settledEnd(page: Page) {
         Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2
       );
     },
-    { polling: "raf", timeout: 8000 },
+    { polling: "raf" },
   );
   await waitForStillFrames(page);
   return page.evaluate(readEnd);
@@ -438,7 +438,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (text) => document.body.innerText.includes(text),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   step.thought.split("\n")[0]!,
                 ),
               );
@@ -457,7 +457,7 @@ describe("owner-reported layout regressions", () => {
                   [...document.querySelectorAll("[data-run-key]")].some((row) =>
                     row.getAttribute("data-run-key")?.includes(id),
                   ),
-                { polling: "raf", timeout: 8000 },
+                { polling: "raf" },
                 call,
               ),
             );
@@ -526,9 +526,7 @@ describe("owner-reported layout regressions", () => {
             .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
             .click(),
         );
-        yield* Effect.promise(() =>
-          s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
-        );
+        yield* Effect.promise(() => s.page.waitForSelector('[role="textbox"]', { visible: true }));
         const question = "Look into my organization.";
         const answer = "I will look into your organization.";
         const mate = s.drivers.realMates.get("Chief")!;
@@ -700,7 +698,7 @@ describe("owner-reported layout regressions", () => {
               .click(),
           );
           yield* Effect.promise(() =>
-            s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
+            s.page.waitForSelector('[role="textbox"]', { visible: true }),
           );
           const mate = s.drivers.realMates.get("Chief")!;
           yield* mate.provider.turn([
@@ -715,24 +713,18 @@ describe("owner-reported layout regressions", () => {
           yield* s.when.conversation.sends("Look into my organization.");
           yield* s.then.conversation.showsMessage("I will look into your organization.");
           yield* Effect.promise(async () => {
-            await s.page.waitForFunction(() => !location.pathname.includes("/draft/"), {
-              timeout: 8000,
-            });
+            await s.page.waitForFunction(() => !location.pathname.includes("/draft/"));
             await s.page.locator('[data-zerops-surface="chief-overview"]').click();
-            await s.page.waitForSelector('[data-preview-panel-mode="inline"]', { timeout: 8000 });
+            await s.page.waitForSelector('[data-preview-panel-mode="inline"]');
             await waitForStillFrames(s.page);
           });
           const frames = yield* Effect.promise(async () => {
             await s.page.evaluateOnNewDocument(recordChiefPage);
             await s.page.reload({ waitUntil: "domcontentloaded" });
-            await s.page.waitForFunction(
-              () => {
-                const frames = (window as unknown as { chiefFrames?: ChiefPageFrame[] })
-                  .chiefFrames;
-                return frames !== undefined && frames.filter((frame) => frame.shown).length > 0;
-              },
-              { timeout: 20_000 },
-            );
+            await s.page.waitForFunction(() => {
+              const frames = (window as unknown as { chiefFrames?: ChiefPageFrame[] }).chiefFrames;
+              return frames !== undefined && frames.filter((frame) => frame.shown).length > 0;
+            });
             await waitForStillFrames(s.page, { stillFrames: 30 });
             return s.page.evaluate(
               () => (window as unknown as { chiefFrames: ChiefPageFrame[] }).chiefFrames,
@@ -786,19 +778,14 @@ describe("owner-reported layout regressions", () => {
                   yield* Effect.promise(async () => {
                     await s.page.click('button[aria-label="Open picture 1"]');
                     await s.page
-                      .waitForFunction(
-                        () => {
-                          const image = document.querySelector<HTMLImageElement>(
-                            '[role="dialog"] img[data-image-src]',
-                          );
-                          return (
-                            image &&
-                            image.naturalWidth > 0 &&
-                            getComputedStyle(image).opacity === "1"
-                          );
-                        },
-                        { timeout: 8000 },
-                      )
+                      .waitForFunction(() => {
+                        const image = document.querySelector<HTMLImageElement>(
+                          '[role="dialog"] img[data-image-src]',
+                        );
+                        return (
+                          image && image.naturalWidth > 0 && getComputedStyle(image).opacity === "1"
+                        );
+                      })
                       .catch(async (cause) => {
                         throw new Error(
                           JSON.stringify(
@@ -824,7 +811,6 @@ describe("owner-reported layout regressions", () => {
                           () =>
                             document.querySelector('[role="dialog"] [aria-live]')?.textContent ===
                             "100% zoom",
-                          { timeout: 8000 },
                         );
                       }
                       await s.page.focus('[role="dialog"] [role="region"]');
@@ -842,7 +828,7 @@ describe("owner-reported layout regressions", () => {
                             (zoom) =>
                               document.querySelector('[role="dialog"] [aria-live]')?.textContent ===
                               `${zoom}% zoom`,
-                            { timeout: 8000 },
+                            {},
                             zoom,
                           )
                           .catch(async (cause) => {
@@ -903,15 +889,12 @@ describe("owner-reported layout regressions", () => {
             const s = yield* pictureConversation({ name: "square", width: 640, height: 640 });
             const cover = yield* Effect.promise(async () => {
               await s.page.click('button[aria-label="Open picture 1"]');
-              await s.page.waitForFunction(
-                () => {
-                  const image = document.querySelector<HTMLImageElement>(
-                    '[role="dialog"] img[data-image-src]',
-                  );
-                  return image && image.naturalWidth > 0 && getComputedStyle(image).opacity === "1";
-                },
-                { timeout: 8000 },
-              );
+              await s.page.waitForFunction(() => {
+                const image = document.querySelector<HTMLImageElement>(
+                  '[role="dialog"] img[data-image-src]',
+                );
+                return image && image.naturalWidth > 0 && getComputedStyle(image).opacity === "1";
+              });
               await waitForStillFrames(s.page);
               return s.page.evaluate(() => {
                 const picture = document
@@ -1007,7 +990,7 @@ describe("owner-reported layout regressions", () => {
                             animation.playState !== "running",
                         );
                     },
-                    { polling: "raf", timeout: 8000 },
+                    { polling: "raf" },
                     cardSelector,
                   );
                   return s.page.$eval(cardSelector, (card) => {
@@ -1107,7 +1090,7 @@ describe("owner-reported layout regressions", () => {
                 yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
                 yield* f.s.given.signedIn;
                 const mark = `[data-zerops-group="${f.appId}"] [data-zerops-surface="sidebar-project-release-mark"]`;
-                yield* Effect.promise(() => f.s.page.waitForSelector(mark, { timeout: 30_000 }));
+                yield* Effect.promise(() => f.s.page.waitForSelector(mark));
                 const readings: string[] = [];
                 for (let width = 435; width >= 256; width -= 9) {
                   yield* Effect.promise(() => menuAt(f.s.page, width));
@@ -1498,7 +1481,7 @@ describe("owner-reported layout regressions", () => {
                         ?.textContent !== witness.initialClock
                     );
                   },
-                  { timeout: 5_000 },
+                  {},
                   ROW,
                 ),
               );
@@ -1542,13 +1525,12 @@ describe("owner-reported layout regressions", () => {
                         `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
                       )
                       ?.textContent?.includes("Keep Wren's history"),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() =>
                 s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
                   polling: "raf",
-                  timeout: 8000,
                 }),
               );
               const wrenPath = new URL(s.page.url()).pathname;
@@ -1556,7 +1538,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (path) => location.pathname !== path,
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   wrenPath,
                 ),
               );
@@ -1573,13 +1555,12 @@ describe("owner-reported layout regressions", () => {
                         `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
                       )
                       ?.textContent?.includes("Keep Sage's history"),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() =>
                 s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
                   polling: "raf",
-                  timeout: 8000,
                 }),
               );
               const sagePath = new URL(s.page.url()).pathname;
@@ -1587,7 +1568,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (path) => location.pathname === path,
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   wrenPath,
                 ),
               );
@@ -1599,7 +1580,7 @@ describe("owner-reported layout regressions", () => {
                         `[data-timeline-thread="${location.pathname.slice(1).replace("/", ":")}"]`,
                       )
                       ?.textContent?.includes("Keep Wren's history"),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() => ownerMenu(s.page));
@@ -1630,7 +1611,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (path) => location.pathname === path,
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   sagePath,
                 ),
               );
@@ -1641,7 +1622,7 @@ describe("owner-reported layout regressions", () => {
                       document
                         .querySelector('[data-slot="toast-viewport"]')
                         ?.textContent?.includes(text),
-                    { polling: "raf", timeout: 8000 },
+                    { polling: "raf" },
                     text,
                   ),
                 );
@@ -1746,7 +1727,7 @@ describe("owner-reported layout regressions", () => {
               await s.page.mouse.wheel({ deltaY: -350 });
               await s.page.waitForFunction(
                 () => !document.querySelector("[data-timeline-follows-end]"),
-                { polling: "raf", timeout: 8000 },
+                { polling: "raf" },
               );
             });
             // The two pixel rows just above the card's top edge, across the card.
@@ -2625,7 +2606,7 @@ describe("owner-reported layout regressions", () => {
                     );
                     return text !== null && text.textContent!.startsWith("Next for tomorrow");
                   },
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 );
                 await waitForStillFrames(s.page);
                 return s.page.evaluate(() => {
@@ -2805,7 +2786,7 @@ describe("owner-reported layout regressions", () => {
         yield* Effect.promise(() => waitForStillFrames(s.page));
         engine.update(said, { text: "You've hit your weekly limit · resets 1pm (UTC)" });
         yield* Effect.promise(() =>
-          s.page.waitForSelector('[data-run-head][data-run-now="paused"]', { timeout: 8000 }),
+          s.page.waitForSelector('[data-run-head][data-run-now="paused"]'),
         );
         const frames = yield* Effect.promise(() => stopTrace(s.page));
         return { s, chat, engine, frames };
@@ -2855,9 +2836,7 @@ describe("owner-reported layout regressions", () => {
           Effect.gen(function* () {
             const { s, chat } = yield* pausedMilo;
             yield* chat.when.send(HELD);
-            yield* Effect.promise(() =>
-              s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
-            );
+            yield* Effect.promise(() => s.page.waitForSelector('[data-message-receipt="held"]'));
             yield* Effect.promise(() => waitForStillFrames(s.page));
             const band = yield* Effect.promise(() =>
               s.page.evaluate(() => {
@@ -2882,9 +2861,7 @@ describe("owner-reported layout regressions", () => {
             Effect.gen(function* () {
               const { s, chat, engine } = yield* pausedMilo;
               yield* chat.when.send(HELD);
-              yield* Effect.promise(() =>
-                s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
-              );
+              yield* Effect.promise(() => s.page.waitForSelector('[data-message-receipt="held"]'));
               yield* Effect.promise(() => waitForStillFrames(s.page));
               yield* Effect.promise(() => startTrace(s.page));
               engine.lift();
@@ -2923,7 +2900,7 @@ describe("owner-reported layout regressions", () => {
               const { s, chat, engine } = yield* pausedMilo;
               yield* chat.when.send(HELD);
               const receipt = yield* Effect.promise(() =>
-                s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
+                s.page.waitForSelector('[data-message-receipt="held"]'),
               );
               expect(
                 yield* Effect.promise(() => receipt!.evaluate((node) => node.ariaLabel)),
@@ -2952,7 +2929,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   () => !document.querySelector('[data-message-receipt="held"]'),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               const frames = (yield* Effect.promise(() => stopTrace(s.page))).filter(
@@ -3061,7 +3038,7 @@ describe("owner-reported layout regressions", () => {
                 )
             );
           },
-          { polling: "raf", timeout: 8000 },
+          { polling: "raf" },
           wanted,
         );
 
@@ -3329,7 +3306,7 @@ describe("owner-reported layout regressions", () => {
                       ) > end
                     );
                   },
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   words,
                 );
                 await started.dispose();
@@ -3531,7 +3508,7 @@ describe("owner-reported layout regressions", () => {
                   ]
                     .at(-1)
                     ?.textContent?.includes("Line 2 of"),
-                { polling: "raf", timeout: 8000 },
+                { polling: "raf" },
               ),
             );
             yield* Effect.promise(() => waitForStillFrames(s.page));
@@ -3594,7 +3571,7 @@ describe("owner-reported layout regressions", () => {
                       ?.querySelector('[data-chat-kind="note"]')
                       ?.textContent?.includes("Line 32");
                   },
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
@@ -3693,7 +3670,7 @@ describe("owner-reported layout regressions", () => {
                     ]
                       .at(-1)
                       ?.textContent?.includes("the very last line"),
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() => waitForStillFrames(s.page));
@@ -3943,7 +3920,7 @@ describe("owner-reported layout regressions", () => {
                         '[data-timeline-row-id][data-message-role="user"]',
                       ),
                     ].filter((row) => row.textContent?.includes(text)).length === 1,
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                   text,
                 ),
               );
@@ -4141,14 +4118,10 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => ownerMenu(s.page));
               yield* Effect.promise(async () => {
                 await s.page.locator('button[aria-label^="Toggle right panel"]').click();
-                await s.page.locator("::-p-text(Browser)").setTimeout(8000).click();
-                await s.page
-                  .locator('[data-mate-address="appdev"] button')
-                  .setTimeout(8000)
-                  .click();
+                await s.page.locator("::-p-text(Browser)").click();
+                await s.page.locator('[data-mate-address="appdev"] button').click();
                 await s.page.waitForSelector('iframe[title="appdev live preview"]', {
                   visible: true,
-                  timeout: 8000,
                 });
                 await waitForStillFrames(s.page);
               });
@@ -4156,9 +4129,7 @@ describe("owner-reported layout regressions", () => {
               modes.push(["side", yield* Effect.promise(() => siteGeometry(s.page))]);
               yield* Effect.promise(async () => {
                 await s.page.locator('button[aria-label="Maximize panel"]').click();
-                await s.page.waitForSelector('[data-preview-panel-maximized="true"]', {
-                  timeout: 8000,
-                });
+                await s.page.waitForSelector('[data-preview-panel-maximized="true"]');
                 await waitForStillFrames(s.page);
               });
               modes.push(["expanded", yield* Effect.promise(() => siteGeometry(s.page))]);
@@ -4167,7 +4138,6 @@ describe("owner-reported layout regressions", () => {
                 await s.page.setViewport({ width: 900, height: 800 });
                 await s.page.waitForSelector('[data-preview-panel-mode="sheet"] iframe', {
                   visible: true,
-                  timeout: 8000,
                 });
                 await waitForStillFrames(s.page);
               });
@@ -4238,10 +4208,9 @@ describe("owner-reported layout regressions", () => {
             engine.end(first);
             yield* Effect.promise(async () => {
               await s.page.locator('button[aria-label^="Toggle right panel"]').click();
-              await s.page.locator("::-p-text(Helpers)").setTimeout(8000).click();
+              await s.page.locator("::-p-text(Helpers)").click();
               await s.page.waitForFunction(
                 () => document.querySelectorAll(".helper-map > li").length >= 2,
-                { timeout: 8000 },
               );
               await waitForStillFrames(s.page);
             });
@@ -4319,7 +4288,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   () => !document.querySelector('button[aria-label="Stop generation"]'),
-                  { timeout: 8000, polling: 100 },
+                  { polling: 100 },
                 ),
               );
             }
@@ -4513,17 +4482,14 @@ describe("owner-reported layout regressions", () => {
           yield* Effect.promise(async () => {
             await s.page.click('button[aria-label="Collapse sidebar"]');
             await s.page.mouse.move(1200, 500);
-            await s.page.waitForFunction(
-              () => {
-                const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]');
-                if (face === null) return false;
-                const box = face.getBoundingClientRect();
-                return face.contains(
-                  document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
-                );
-              },
-              { timeout: 8000 },
-            );
+            await s.page.waitForFunction(() => {
+              const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]');
+              if (face === null) return false;
+              const box = face.getBoundingClientRect();
+              return face.contains(
+                document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+              );
+            });
             await waitForStillFrames(s.page);
           });
           return s;
@@ -4783,12 +4749,10 @@ describe("owner-reported layout regressions", () => {
               });
               yield* Effect.promise(async () => {
                 await ownerMenu(s.page);
-                await s.page.waitForFunction(
-                  () =>
-                    [...document.querySelectorAll('[data-slot="row-line"]')].some((line) =>
-                      line.textContent?.includes("The basket now survives a reload."),
-                    ),
-                  { timeout: 15_000 },
+                await s.page.waitForFunction(() =>
+                  [...document.querySelectorAll('[data-slot="row-line"]')].some((line) =>
+                    line.textContent?.includes("The basket now survives a reload."),
+                  ),
                 );
                 await waitForStillFrames(s.page);
               });
@@ -4984,7 +4948,7 @@ describe("owner-reported layout regressions", () => {
               const inner = document.querySelector<HTMLElement>(selector);
               return inner !== null && inner.scrollHeight > inner.clientHeight + 200;
             },
-            { polling: "raf", timeout: 8000 },
+            { polling: "raf" },
             INNER,
           ),
         );
@@ -5200,12 +5164,10 @@ describe("owner-reported layout regressions", () => {
             yield* s.then.conversation.showsMessage("That is the page.");
             yield* Effect.promise(() => startOpenTrace(s.page));
             yield* Effect.promise(() =>
-              s.page.waitForFunction(
-                () =>
-                  [...document.querySelectorAll<HTMLImageElement>("img")].some(
-                    (image) => image.alt === "The page" && image.complete && image.naturalWidth > 0,
-                  ),
-                { timeout: 8000 },
+              s.page.waitForFunction(() =>
+                [...document.querySelectorAll<HTMLImageElement>("img")].some(
+                  (image) => image.alt === "The page" && image.complete && image.naturalWidth > 0,
+                ),
               ),
             );
             yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 30 }));
@@ -5418,7 +5380,7 @@ describe("owner-reported layout regressions", () => {
                           '[data-run-chat][data-run-live] [data-chat-kind="note"]',
                         ),
                       ].some((element) => element.textContent?.includes(words)),
-                    { polling: "raf", timeout: 8000 },
+                    { polling: "raf" },
                     lastWords,
                   ),
                 );
@@ -5439,7 +5401,7 @@ describe("owner-reported layout regressions", () => {
                     [...document.querySelectorAll("[data-run-chat]")]
                       .at(-1)
                       ?.getAttribute("data-run-fold") === "folded",
-                  { polling: "raf", timeout: 8000 },
+                  { polling: "raf" },
                 ),
               );
               yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 30 }));

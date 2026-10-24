@@ -210,7 +210,7 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                   Math.abs(outer.scrollHeight - outer.clientHeight - outer.scrollTop) <= 2
                 );
               },
-              { polling: "raf", timeout: 8000 },
+              { polling: "raf" },
             ),
           );
           if (mode === "following")
@@ -226,7 +226,6 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                 .locator(
                   "[data-run-chat][data-run-live] [data-run-scroll] button ::-p-text(Read the build log)",
                 )
-                .setTimeout(8000)
                 .click();
               const inner = await s.page.$("[data-run-chat][data-run-live] [data-run-scroll]");
               const box = (await inner!.boundingBox())!;
@@ -354,7 +353,7 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                   report.parentElement!.style.height === ""
                 );
               },
-              { polling: "raf", timeout: 8000 },
+              { polling: "raf" },
               mode,
             ),
           );
@@ -410,7 +409,7 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                 (top) =>
                   document.querySelector<HTMLElement>(".timeline-legend-list")!.scrollTop <
                   top - 20,
-                { polling: "raf", timeout: 8000 },
+                { polling: "raf" },
                 outerTop,
               );
               expect(

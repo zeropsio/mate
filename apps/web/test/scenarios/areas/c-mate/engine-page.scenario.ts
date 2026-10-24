@@ -24,7 +24,7 @@ const loaded = (s: Scenario, count: number) =>
   Effect.promise(() =>
     s.page.waitForFunction(
       (count) => (window as unknown as { pageLoads: number[] }).pageLoads.length >= count,
-      { polling: "raf", timeout: 10_000 },
+      { polling: "raf" },
       count,
     ),
   );
@@ -37,7 +37,7 @@ const settled = (s: Scenario) =>
         document.querySelector('[data-run-now="worked"] button[aria-expanded="false"]') !== null &&
         document.querySelector("[data-timeline-placing]") === null &&
         document.getAnimations().every((animation) => animation.playState !== "running"),
-      { polling: "raf", timeout: 10_000 },
+      { polling: "raf" },
       ANSWER,
     ),
   );
@@ -90,9 +90,7 @@ describe("C: a page the Mate publishes", () => {
           Effect.gen(function* () {
             const { s, measured, publishLive, answer } = yield* journey(180);
             yield* Effect.sync(publishLive);
-            yield* Effect.promise(() =>
-              s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
-            );
+            yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
             yield* measured;
             yield* Effect.sync(answer);
             yield* settled(s);
@@ -162,13 +160,11 @@ describe("C: a page the Mate publishes", () => {
                   );
                   return tops.length > 0 && tops.every((top, i) => i === 0 || top >= tops[i - 1]!);
                 },
-                { polling: 100, timeout: 10_000 },
+                { polling: 100 },
               ),
             );
             yield* Effect.sync(publishLive);
-            yield* Effect.promise(() =>
-              s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
-            );
+            yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
             yield* loaded(s, 1);
             yield* measured;
             const beforeWork = yield* Effect.promise(() =>
@@ -185,7 +181,7 @@ describe("C: a page the Mate publishes", () => {
                   [...document.querySelectorAll("[data-run-now]")]
                     .map((row) => row.textContent)
                     .join("\n") !== before,
-                { polling: "raf", timeout: 10_000 },
+                { polling: "raf" },
                 beforeWork,
               ),
             );
@@ -207,9 +203,7 @@ describe("C: a page the Mate publishes", () => {
           yield* countLoads(s);
           yield* Effect.sync(publishLive);
           yield* Effect.sync(answer);
-          yield* Effect.promise(() =>
-            s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
-          );
+          yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
           yield* loaded(s, 1);
           yield* measured;
           yield* settled(s);
@@ -280,15 +274,13 @@ describe("C: a page the Mate publishes", () => {
                 script: `setTimeout(function(){${trick.script}},400);`,
               });
               publish();
-              yield* Effect.promise(() =>
-                s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
-              );
+              yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (title) =>
                     document.querySelector(`iframe[title="${title}"]`) === null &&
                     document.body.textContent?.includes("The page tried to open something else"),
-                  { polling: "raf", timeout: 10_000 },
+                  { polling: "raf" },
                   TITLE,
                 ),
               );

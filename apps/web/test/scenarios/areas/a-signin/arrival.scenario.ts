@@ -137,7 +137,7 @@ describe("owner-reported layout regressions", () => {
                 () =>
                   ((window as unknown as { arrivalFrames?: ArrivalFrame[] }).arrivalFrames?.at(-1)
                     ?.cards ?? 0) > 0,
-                { timeout: 15_000, polling: "raf" },
+                { polling: "raf" },
               );
               return s.page.evaluate(
                 () => (window as unknown as { arrivalFrames: ArrivalFrame[] }).arrivalFrames,

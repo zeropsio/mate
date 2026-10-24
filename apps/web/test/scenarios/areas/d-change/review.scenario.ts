@@ -17,7 +17,7 @@ const sheetSettled = (s: { readonly page: Page }) =>
         const sheet = document.querySelector(".rv");
         return sheet !== null && sheet.getAnimations().length === 0;
       },
-      { polling: "raf", timeout: 5_000 },
+      { polling: "raf" },
     ),
   );
 

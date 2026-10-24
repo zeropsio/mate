@@ -187,7 +187,6 @@ export const journey = (
     yield* Effect.promise(() =>
       s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
         polling: 100,
-        timeout: 10_000,
       }),
     );
     // Registered before the page can land: its first height may be recorded at once.
@@ -238,7 +237,7 @@ export const sampled = (
           const loadedAt = samples.findIndex((sample) => sample.loaded);
           return loadedAt !== -1 && samples.length - loadedAt > 40;
         },
-        { polling: 100, timeout: 15_000 },
+        { polling: 100 },
       );
       return s.page.evaluate(
         () => (window as unknown as { pageSamples: Sample[] }).pageSamples,

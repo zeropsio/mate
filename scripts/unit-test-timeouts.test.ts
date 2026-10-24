@@ -18,6 +18,7 @@ it.each([
     job: "test_hq",
     file: "../apps/hq/vite.config.ts",
     project: "unit",
+    polls: false,
   },
   {
     name: "web",
@@ -25,6 +26,7 @@ it.each([
     job: "test_web",
     file: "../apps/web/vite.config.ts",
     project: "unit",
+    polls: false,
   },
   {
     name: "Signal scenarios",
@@ -32,6 +34,7 @@ it.each([
     job: "chat_scenarios",
     file: "../apps/web/test/scenarios/vitest.config.ts",
     project: "scenarios",
+    polls: true,
   },
   {
     name: "scenario drivers",
@@ -39,6 +42,7 @@ it.each([
     job: "test_packages",
     file: "../apps/web/test/scenarios/vitest.config.ts",
     project: "scenario-drivers",
+    polls: true,
   },
   {
     name: "state smoke scenarios",
@@ -46,10 +50,11 @@ it.each([
     job: "state_smoke",
     file: "../apps/web/test/scenarios/vitest.config.ts",
     project: "scenarios",
+    polls: true,
   },
 ])(
   "$name incidental test and hook deadlines outlast CI's hang guard",
-  async ({ workflow, job, file, project }) => {
+  async ({ workflow, job, file, project, polls }) => {
     const loaded = await loadConfigFromFile(
       { command: "serve", mode: "test" },
       NodeURL.fileURLToPath(new URL(file, import.meta.url)),
@@ -66,5 +71,11 @@ it.each([
         `ASSERTION: ${job} ${phase} must outlast the ${hangGuard}ms CI hang guard; host load is not a test failure`,
       ).toBeGreaterThan(hangGuard);
     }
+    // Vitest's own default for `expect.poll` is one second.
+    if (polls)
+      expect(
+        config?.expect?.poll?.timeout,
+        `ASSERTION: ${job} expect.poll must outlast the ${hangGuard}ms CI hang guard; host load is not a test failure`,
+      ).toBeGreaterThan(hangGuard);
   },
 );

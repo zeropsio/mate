@@ -24,6 +24,6 @@ export async function openZeropsWindow(
 /** The person's answer on the consent page; the window closes after it. */
 export async function answerInZerops(window: Page, decision: "Approve" | "Deny") {
   const closed = new Promise<void>((resolve) => window.once("close", () => resolve()));
-  await window.locator(`::-p-aria(${decision}[role="button"])`).setTimeout(10_000).click();
+  await window.locator(`::-p-aria(${decision}[role="button"])`).click();
   await deadline(closed, "the Zerops window closing");
 }

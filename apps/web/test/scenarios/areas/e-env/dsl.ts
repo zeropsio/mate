@@ -19,7 +19,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
             [...document.querySelectorAll<HTMLElement>(selector)].some((element) =>
               element.innerText.includes(wanted),
             ),
-          { timeout: 30_000, polling: "raf" },
+          { polling: "raf" },
           wanted,
           selector,
         );
@@ -66,7 +66,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
           const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
           return dialog?.innerText.includes("What goes out") && dialog.innerText.includes(title);
         },
-        { timeout: 15_000, polling: "raf" },
+        { polling: "raf" },
         title,
       ),
     );
@@ -166,9 +166,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     zerops.writes.transition(processId, "FINISHED");
   });
   const click = (label: string) =>
-    Effect.promise(() =>
-      page.locator(`::-p-aria(${label}[role="button"])`).setTimeout(15_000).click(),
-    );
+    Effect.promise(() => page.locator(`::-p-aria(${label}[role="button"])`).click());
   const rowShows = (tag: string, words: string, options: { within?: number } = {}) =>
     Effect.promise(async () => {
       try {
@@ -221,7 +219,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         .locator(
           `::-p-xpath(//*[@data-zerops-surface="environment-name" and normalize-space(.)="${tag}"]/ancestor::*[@data-zerops-environment-row][1]//button[normalize-space(.)="Roll back to this"])`,
         )
-        .setTimeout(10_000)
         .click();
     });
   const editVersion = (value: string) =>
@@ -232,7 +229,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         [...document.querySelectorAll<HTMLButtonElement>("button")].some(
           (button) => button.innerText.startsWith("Release v") && button.disabled,
         ),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
     );
   });
   const keepsDocument = Effect.promise(async () => {

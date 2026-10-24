@@ -23,6 +23,7 @@ import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsW
 import { ZeropsFake } from "../fakes/zerops.ts";
 import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
+import { rendered } from "./completedHttp.ts";
 import { serve, type HttpHandler } from "./http.ts";
 import {
   startScenarioMate,
@@ -440,7 +441,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
                     '[data-zerops-surface="sidebar-account"]',
                   ),
                 ].some((element) => element.getBoundingClientRect().height > 0),
-              { timeout: 10_000, polling: "raf" },
+              { polling: "raf" },
             );
             const hasButton = await page.evaluate(() =>
               [...document.querySelectorAll<HTMLButtonElement>("button")].some(
@@ -448,10 +449,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
               ),
             );
             if (hasButton)
-              await page
-                .locator("::-p-aria(Continue with your Zerops account)")
-                .setTimeout(10_000)
-                .click();
+              await page.locator("::-p-aria(Continue with your Zerops account)").click();
           }
           await visibleText(page, "sidebar-account-organization", zerops.orgName);
           signedInDocument = await page.evaluate(() => performance.timeOrigin);
@@ -511,15 +509,17 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           // A lost link reads as an outage only once its reconnect grace runs out, counted from
           // when the tab noticed the loss. On a scenario clock that time passes only when
           // advanced, so it passes a grace at a time until the tab says so (about 10 s at most).
+          // Each look follows a renderer turn, so what the advance changed is drawn.
           for (let look = 0; clock.installed && look < 40; look++) {
-            const shown = await page
-              .waitForSelector(outage, { visible: true, timeout: 250 })
-              .then(() => true)
-              .catch(() => false);
+            await rendered(page);
+            const shown = await page.evaluate(
+              (outage) => (document.querySelector(outage)?.getBoundingClientRect().height ?? 0) > 0,
+              outage,
+            );
             if (shown) return;
             await clock.advance(STREAM_POLICY.reconnectGraceMs);
           }
-          await page.waitForSelector(outage, { visible: true, timeout: 10_000 });
+          await page.waitForSelector(outage, { visible: true });
         }),
       },
       menu: {
@@ -580,7 +580,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       conversation: {
         appears: Effect.promise(async () => {
           try {
-            await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 15_000 });
+            await page.waitForSelector('[role="textbox"]', { visible: true });
           } catch (error) {
             throw new Error(
               `${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}\nReal Mate requests: ${JSON.stringify([...realMates.values()].map(({ gate }) => gate.requests))}`,
@@ -612,7 +612,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
                     }
                     return false;
                   })(),
-                { timeout: 8000, polling: real ? 100 : "raf" },
+                { polling: real ? 100 : "raf" },
                 text,
                 real,
               )

@@ -62,7 +62,7 @@ const realLongConversation = Effect.gen(function* () {
     expect((yield* provider.received).input.input).toBe(`How did deploy ${round} go?`);
     if (round === 1) {
       yield* Effect.promise(() =>
-        s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), { timeout: 8000 }),
+        s.page.waitForFunction(() => !location.pathname.startsWith("/draft/")),
       );
       const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
       yield* server.engine.wire
@@ -239,7 +239,7 @@ const foldedCard = (page: import("puppeteer-core").Page) =>
       () =>
         [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset.runFold ===
         "folded",
-      { polling: "raf", timeout: 8000 },
+      { polling: "raf" },
     ),
   );
 
