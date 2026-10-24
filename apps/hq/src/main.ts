@@ -18,6 +18,10 @@
  * kept first (`/mnt/vol/restore/before-<time>.dump`, `/mnt/vol/git.before-<time>`); then `hq`
  * deploys as it was (vysledky/hq-backup.md §10).
  *
+ * `backup <dir> [--git <root>]` writes one set into `<dir>` (`oneShotBackup.ts`), records of every
+ * table included, for the shared HQ's legacy import, and ends. It only reads: the database, and the
+ * repositories of `<root>` (`/mnt/vol/git`). Nothing runs it on its own.
+ *
  * @module main
  */
 import * as NodeHttp from "node:http";
@@ -42,6 +46,7 @@ import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
 import { ChiefUpstream, makeChiefUpstreamHttp } from "./chiefProxy.ts";
 import { type CoreOptions, coreApp } from "./core.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
+import { takeOneShotSet } from "./oneShotBackup.ts";
 import { restoreSet } from "./restore.ts";
 import { ZeropsApi, ZeropsDeploy, ZeropsObservation } from "./zerops/api.ts";
 import {
@@ -137,6 +142,22 @@ const restore = (set: string, flags: ReadonlySet<string>) =>
     });
   });
 
+const oneShot = (dir: string, gitRoot: string) =>
+  Effect.gen(function* () {
+    const manifest = yield* takeOneShotSet({
+      databaseUrl: yield* Config.Redacted("DATABASE_URL"),
+      dir,
+      gitRoot,
+    });
+    yield* Effect.logInfo("backed up", {
+      set: manifest.id,
+      dir,
+      tables: manifest.records.length,
+      rows: manifest.records.reduce((sum, table) => sum + table.rows, 0),
+      repos: manifest.repos.length,
+    });
+  });
+
 /** Exact rows expire independently of permanent daily history and receipts. */
 const usageRetention = Effect.scoped(
   Effect.gen(function* () {
@@ -183,6 +204,23 @@ if (command === "sets") {
         }),
       )
     : restore(set, new Set(flags))
+  ).pipe(NodeRuntime.runMain);
+} else if (command === "backup") {
+  const [dir, ...flags] = args;
+  const gitRoot =
+    flags.length === 0
+      ? GIT_ROOT
+      : flags.length === 2 && flags[0] === "--git"
+        ? flags[1]
+        : undefined;
+  (dir === undefined || gitRoot === undefined
+    ? Effect.andThen(
+        Console.log("usage: main.mjs backup <dir> [--git <root>]"),
+        Effect.sync(() => {
+          process.exitCode = 2;
+        }),
+      )
+    : oneShot(dir, gitRoot)
   ).pipe(NodeRuntime.runMain);
 } else {
   Layer.launch(core).pipe(NodeRuntime.runMain);
