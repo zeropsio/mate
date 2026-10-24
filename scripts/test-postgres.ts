@@ -66,6 +66,119 @@ export function prepareClusterDirectory(
   }
   return "initialise";
 }
+
+const processAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+/** Whether a postmaster still runs on `data`: the PID its postmaster.pid names is alive. */
+function postmasterLive(data: string, alive: (pid: number) => boolean): boolean {
+  let pidFile: string;
+  try {
+    pidFile = NodeFS.readFileSync(NodePath.join(data, "postmaster.pid"), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  const pid = Number(pidFile.split("\n")[0]);
+  return Number.isInteger(pid) && pid > 0 && alive(pid);
+}
+
+/** The line of a failed start that names why: PostgreSQL's last PANIC or FATAL, else the error's first. */
+function startFailure(error: unknown): string {
+  const lines = String(error instanceof Error ? error.message : error).split("\n");
+  return (lines.findLast((line) => /\b(?:PANIC|FATAL):/u.test(line)) ?? lines[0] ?? "").trim();
+}
+
+/**
+ * Starts the test cluster in `data`, initialising it first when it has none. The cluster runs
+ * without fsync, so a crash (a full disk) can leave WAL it can never replay. It is disposable test
+ * data: a cluster that fails to start and leaves no postmaster behind is moved aside, removed and
+ * initialised again at once. A fresh cluster that fails to start fails the run.
+ */
+export function startCluster(
+  data: string,
+  io: {
+    readonly initialise: () => void;
+    readonly start: () => void;
+    readonly report: (line: string) => void;
+    readonly alive?: (pid: number) => boolean;
+  },
+): void {
+  if (prepareClusterDirectory(data, io.report) === "initialise") {
+    io.initialise();
+    io.start();
+    return;
+  }
+  try {
+    io.start();
+    return;
+  } catch (error) {
+    if (postmasterLive(data, io.alive ?? processAlive)) throw error;
+    const aside = `${data}.unstartable`;
+    NodeFS.rmSync(aside, { recursive: true, force: true });
+    NodeFS.renameSync(data, aside);
+    io.report(
+      `PostgreSQL test cluster ${data} could not start (${startFailure(error)}); moved it aside to ${aside}, removing it and re-initialising.`,
+    );
+    NodeFS.rmSync(aside, { recursive: true, force: true });
+  }
+  io.initialise();
+  io.start();
+}
+
+/** A prior supervisor's leases cannot survive its loss: drop every managed database on start. */
+export function reclaimLeasedDatabases(sql: (query: string) => string): void {
+  for (const name of sql("SELECT datname FROM pg_database WHERE datname LIKE 'mate_test_%'")
+    .trim()
+    .split("\n")
+    .filter(Boolean)) {
+    if (!/^mate_test_[a-f0-9]+$/u.test(name)) throw new Error(`Unexpected test database: ${name}`);
+    sql(`DROP DATABASE ${name} WITH (FORCE)`);
+  }
+}
+
+/** A test cluster home unused this long is abandoned, whether or not its checkout still exists. */
+export const STALE_CLUSTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Removes the test PostgreSQL homes beside `home` (named `mate-test-pg…` and owned by this user)
+ * that no run has started, stopped or written for STALE_CLUSTER_MS and that hold no live
+ * postmaster, so a killed or abandoned checkout's cluster is reclaimed by a later run.
+ */
+export function pruneStaleClusters(input: {
+  readonly home: string;
+  readonly now: number;
+  readonly alive?: (pid: number) => boolean;
+  readonly report: (line: string) => void;
+}): void {
+  const parent = NodePath.dirname(input.home);
+  const uid = process.getuid?.();
+  for (const name of NodeFS.readdirSync(parent)) {
+    const other = NodePath.join(parent, name);
+    if (!name.startsWith("mate-test-pg") || other === NodePath.resolve(input.home)) continue;
+    const stat = NodeFS.statSync(other, { throwIfNoEntry: false });
+    if (!stat?.isDirectory() || (uid !== undefined && stat.uid !== uid)) continue;
+    const lastUse = Math.max(
+      stat.mtimeMs,
+      ...NodeFS.readdirSync(other).map(
+        (entry) =>
+          NodeFS.statSync(NodePath.join(other, entry), { throwIfNoEntry: false })?.mtimeMs ?? 0,
+      ),
+    );
+    if (input.now - lastUse < STALE_CLUSTER_MS) continue;
+    if (postmasterLive(NodePath.join(other, "data"), input.alive ?? processAlive)) continue;
+    NodeFS.rmSync(other, { recursive: true, force: true });
+    input.report(
+      `Removed test PostgreSQL home ${other}: unused for over 24 h and no postmaster runs on it.`,
+    );
+  }
+}
 const socketPath = NodePath.join(postgresHome, "supervisor.sock");
 
 /** Serialize server election and idle shutdown, never test execution. The kernel releases on death. */
