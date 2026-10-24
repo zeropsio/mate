@@ -171,10 +171,9 @@ const EnvServerConfig = Config.all({
         .filter((entry) => entry.length > 0),
     ),
   ),
-  // Explicit override for this container's own public origin, consulted by
-  // the environment-link proof before falling back to the linking request's
-  // Origin/Host (see ZeropsEnvironment.publicOrigin).
-  zeropsPublicOrigin: Config.String("T3CODE_ZEROPS_PUBLIC_ORIGIN").pipe(
+  // This container's own public origin, as the platform names the service's subdomain
+  // (see ZeropsEnvironment.publicOrigin).
+  zeropsPublicOrigin: Config.String("zeropsSubdomain").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),

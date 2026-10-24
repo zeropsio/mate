@@ -268,6 +268,40 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "a Mate whose container zcp launched links to HQ without any variable set by hand",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-public-origin-" });
+        // What zcp's launch hands the server: the platform's live env store plus zcp's T3CODE_* file.
+        const resolved = yield* resolveServerConfig(
+          { ...noFlags, port: Option.some(0), baseDir: Option.some(baseDir) },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(
+                ConfigProvider.fromEnv({
+                  env: {
+                    T3CODE_ZEROPS_PROJECT_ID: "TEST000000000000000024",
+                    T3CODE_ZEROPS_API_HOST: "api.app-prg1.zerops.io",
+                    ZCP_API_KEY: "mate-key",
+                    serviceId: "TEST000000000000000025",
+                    hostname: "zcp",
+                    zeropsSubdomain: "https://zcp-3199-8080.prg1.zerops.app",
+                    zeropsSubdomainString: "https://zcp-3199-${port}.prg1.zerops.app",
+                  },
+                }),
+              ),
+              NetService.layer,
+            ),
+          ),
+        );
+        expect(resolved.zerops?.publicOrigin).toBe("https://zcp-3199-8080.prg1.zerops.app");
+      }).pipe(Effect.scoped),
+  );
+
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
     const fs = yield* FileSystem.FileSystem;
     const filePath = yield* fs.makeTempFileScoped({ prefix: "t3-bootstrap-", suffix: ".ndjson" });

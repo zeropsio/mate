@@ -30,11 +30,11 @@ export interface ZeropsEnvironment {
   /** Fully-qualified REST base, e.g. `https://api.app-prg1.zerops.io/api/rest/public`. */
   readonly apiBaseUrl: string;
   /**
-   * An explicit override for this container's own public origin (e.g.
-   * `https://zcp-26a7-8080.prg1.zerops.app`), set via `T3CODE_ZEROPS_PUBLIC_ORIGIN`.
-   * Undefined unless an operator configured it; the relay environment-link
-   * proof falls back to deriving the origin from the linking request when
-   * this is absent (`cloud/http.ts`'s `resolveZeropsLinkProofOrigin`).
+   * This container's own public origin (e.g. `https://zcp-26a7-8080.prg1.zerops.app`): the
+   * platform's `zeropsSubdomain`, which zcp's launch carries in from the live env store
+   * (spec-mate §2.8). The HQ link presents it in its hello; the relay environment-link proof
+   * falls back to the linking request when it is absent (`cloud/http.ts`'s
+   * `resolveZeropsLinkProofOrigin`).
    */
   readonly publicOrigin: string | undefined;
   /**
