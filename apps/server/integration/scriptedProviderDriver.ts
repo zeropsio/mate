@@ -105,6 +105,7 @@ export const makeScriptedProvider = (
     const emitters = new Map<ThreadId, (event: ScriptedEvent) => Effect.Effect<void>>();
     const answers: Array<ScriptedAnswer> = [];
     const pending = new Map<string, Deferred.Deferred<void>>();
+    let sessionsStarted = 0;
 
     const driver: AnyProviderDriver<never> = {
       driverKind: DRIVER_KIND,
@@ -311,6 +312,7 @@ export const makeScriptedProvider = (
             capabilities: { sessionModelSwitch: "in-session" },
             startSession: (input) =>
               Effect.gen(function* () {
+                sessionsStarted += 1;
                 const createdAt = yield* now;
                 const session: ProviderSession = {
                   provider: DRIVER_KIND,
@@ -502,6 +504,8 @@ export const makeScriptedProvider = (
       answers: answers as ReadonlyArray<ScriptedAnswer>,
       /** Scripted turns no send has taken yet. */
       unsent: () => turns.length,
+      /** How many provider sessions the engine has opened so far. */
+      sessionsStarted: () => sessionsStarted,
     };
   });
 
