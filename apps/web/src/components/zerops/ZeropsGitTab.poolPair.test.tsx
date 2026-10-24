@@ -2,9 +2,10 @@
 import { RegistryContext } from "@effect/atom-react";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { CODE_IN_POOL_LINE } from "@t3tools/client-runtime/zerops";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { ZeropsGitTab } from "./ZeropsGitTab";
 
@@ -14,11 +15,7 @@ import { ZeropsGitTab } from "./ZeropsGitTab";
  * the stage (zcp `envelope.pool-pair.json`).
  */
 const mate = vi.hoisted(() => ({
-  services: [
-    { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
-    { hostname: "appstage", group: "runtimes", type: "bun@1.3" },
-    { hostname: "api", group: "runtimes", type: "nodejs@22" },
-  ],
+  services: [] as Array<{ hostname: string; group: string; type: string }>,
   lifecycle: {
     state: "known",
     value: {
@@ -61,7 +58,17 @@ vi.mock("../../zerops/useZeropsChangeDetail", () => ({
   useZeropsChangeDetail: () => ({ readout: { kind: "none" }, retry: () => {} }),
 }));
 
-it("a part migrated to a dev pool lists no stage in the Git tab: its pair's dev half is the pool", async () => {
+const MIGRATED = [
+  { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+  { hostname: "appstage", group: "runtimes", type: "bun@1.3" },
+];
+
+afterEach(() => {
+  mate.services = [];
+});
+
+/** Renders the Git tab of a chat bound to no lease, and hands its root to `read`. */
+async function renderTab(read: (host: HTMLElement) => void) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const environmentId = EnvironmentId.make("env-pool");
   const host = document.body.appendChild(document.createElement("div"));
@@ -81,13 +88,29 @@ it("a part migrated to a dev pool lists no stage in the Git tab: its pair's dev 
         </RegistryContext.Provider>,
       ),
     );
-    const blocks = [...host.querySelectorAll("[data-zerops-git-block]")].map((node) =>
-      node.getAttribute("data-zerops-git-block"),
-    );
-    expect(blocks).toEqual(["api"]);
+    read(host);
   } finally {
     await act(() => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
   }
+}
+
+it("a part migrated to a dev pool lists no stage in the Git tab: its pair's dev half is the pool", async () => {
+  mate.services = [...MIGRATED, { hostname: "api", group: "runtimes", type: "nodejs@22" }];
+  await renderTab((host) => {
+    const blocks = [...host.querySelectorAll("[data-zerops-git-block]")].map((node) =>
+      node.getAttribute("data-zerops-git-block"),
+    );
+    expect(blocks).toEqual(["api"]);
+  });
+});
+
+it("a chat bound to no lease in a Mate whose code is all in a dev pool says so, and that taking a workspace reaches it", async () => {
+  mate.services = [...MIGRATED];
+  await renderTab((host) => {
+    expect(host.querySelectorAll("[data-zerops-git-block]")).toHaveLength(0);
+    expect(host.textContent).toContain(CODE_IN_POOL_LINE);
+    expect(host.textContent).not.toContain("The first service brings one.");
+  });
 });
