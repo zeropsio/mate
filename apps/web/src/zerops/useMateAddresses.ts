@@ -5,13 +5,16 @@
  * projects in the inventory. No request of its own — the topology's contents
  * are the same ones the conversation and project panel read. A thread bound to
  * a lease adds the dev servers zcp last read on each of its leases
- * (`threadLeasesOf`: the envelope's leases, never a service), under each one's name.
+ * (`threadLeasesOf`: the envelope's leases, never a service), under each one's name; a part
+ * migrated to a dev pool pairs its stage with the pool as the lifecycle's envelope keys it
+ * (`poolPairsOf`).
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { checkoutLabel, derivePublicRoutes } from "@t3tools/client-runtime/zerops";
 import {
   devServersOf,
   leaseDevServersOf,
+  poolPairsOf,
   threadLeasesOf,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -74,6 +77,7 @@ export function useMateAddresses(
         label: checkoutLabel(alias, leases),
         devServers: leaseDevServersOf(alias, lifecycle),
       })),
+      poolPairs: poolPairsOf(lifecycle),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });
