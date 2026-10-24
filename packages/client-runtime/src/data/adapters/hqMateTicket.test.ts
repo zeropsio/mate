@@ -26,6 +26,21 @@ describe("mateTicketIssuer", () => {
     }),
   );
 
+  it.effect(
+    "HQ's no-link refusal of a Mate's ticket is told as the Mate not being connected to HQ",
+    () =>
+      Effect.gen(function* () {
+        const issuer = mateTicketIssuer(() => ({
+          mateTicket: () => Promise.reject(refusal("refused", "mate_not_connected", "no-link")),
+        }));
+
+        expect(yield* Effect.flip(issuer.issue({ orgId: "O1", projectId: "P1" }))).toMatchObject({
+          _tag: "ConnectionTransientError",
+          reason: "mate-not-linked",
+        });
+      }),
+  );
+
   it.effect.each([
     {
       case: "not_mate_opener",

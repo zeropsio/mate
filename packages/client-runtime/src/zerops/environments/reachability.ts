@@ -22,7 +22,12 @@ import {
 } from "./environmentMachine.ts";
 
 /** What a connecting target waits on, for its copy. */
-export type ConnectingOn = Exclude<WaitingOn, "zerops"> | "descriptor" | "exchange";
+export type ConnectingOn =
+  | Exclude<WaitingOn, "zerops">
+  | "descriptor"
+  | "exchange"
+  /** HQ holds no live link to this Mate's container; it asks again on its own schedule. */
+  | "mate-link";
 
 /** The container levels that are a verdict of their own (row 7). */
 export type ContainerReachability = Exclude<
@@ -220,6 +225,9 @@ export function selectReachability(
   // 11
   if (presence.kind === "unknown") return { kind: "resolving" };
   // 12
+  if ((link.phase === "backoff" || link.phase === "connecting") && link.noLink === true) {
+    return { kind: "connecting", waitingOn: "mate-link" };
+  }
   return {
     kind: "connecting",
     ...unavailable,
@@ -279,6 +287,7 @@ const CONNECTING: Record<ConnectingOn, string> = {
   budget: "Connecting…",
   descriptor: "Connecting…",
   exchange: "Connecting…",
+  "mate-link": "This Mate is not connected to HQ.",
 };
 
 /**
@@ -368,6 +377,7 @@ export function reachabilityPhrase(
         verdict.unavailableReason === undefined
           ? CONNECTING[verdict.waitingOn]
           : `${verdict.unavailableReason} ${CONNECTING[verdict.waitingOn]}`,
+        verdict.waitingOn === "mate-link" ? ["try-now"] : [],
       );
     case "ready":
       return phrase(verdict.notice === null ? null : noticePhrase(verdict.notice));

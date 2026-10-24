@@ -104,6 +104,7 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
       case "endpoint-unavailable":
       case "relay-unavailable":
       case "remote-unavailable":
+      case "mate-not-linked":
         return retryableFailure({ kind: "server", status: 500 });
     }
   }

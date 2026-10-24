@@ -91,6 +91,13 @@ describe("linkPhaseOf: the supervisor's state as region L", () => {
       ),
       null,
     ],
+    [
+      connectionState(
+        "backoff",
+        new ConnectionTransientError({ reason: "mate-not-linked", detail: "no-link" }),
+      ),
+      { phase: "backoff", retryAtMs: 1_000, unavailableReason: "no-link", noLink: true },
+    ],
   ] as const)("%#", (state, phase) => {
     expect(linkPhaseOf(state)).toEqual(phase);
   });
@@ -301,11 +308,19 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
 
 describe("HQ ticket refusal on the Mate's state", () => {
   it.effect.each([
-    { reason: "no-link", detail: "Mate has no connection to HQ (no-link)." },
-    { reason: "no-ack", detail: "Mate did not acknowledge the ticket (no-ack)." },
+    {
+      reason: "no-link",
+      detail: "Mate has no connection to HQ (no-link).",
+      opening: "This Mate is not connected to HQ.",
+    },
+    {
+      reason: "no-ack",
+      detail: "Mate did not acknowledge the ticket (no-ack).",
+      opening: "Mate did not acknowledge the ticket (no-ack). Opening Quinn…",
+    },
   ])(
     "The Mate's state shows HQ's $reason reason and recovers when connected",
-    ({ reason, detail }) =>
+    ({ reason, detail, opening }) =>
       Effect.gen(function* () {
         const hq = makeHqApi({
           address: "https://hq.example",
@@ -360,7 +375,7 @@ describe("HQ ticket refusal on the Mate's state", () => {
             expect(voice).toMatchObject({
               text: previouslyConnected
                 ? `${detail} ${phase === "backoff" ? "Reconnecting to Quinn — next try in 1 s." : "Reconnecting to Quinn…"}`
-                : `${detail} Opening Quinn…`,
+                : opening,
             });
             expect(
               mateVoice({

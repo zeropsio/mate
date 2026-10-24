@@ -98,12 +98,14 @@ export type ContainerVerdict =
  */
 export type LinkPhase =
   | { readonly phase: "idle" }
-  | { readonly phase: "connecting"; readonly unavailableReason?: string }
+  | { readonly phase: "connecting"; readonly unavailableReason?: string; readonly noLink?: true }
   | { readonly phase: "connected" }
   | {
       readonly phase: "backoff";
       readonly retryAtMs: number | null;
       readonly unavailableReason?: string;
+      /** HQ holds no live link to this Mate's container (its ticket answer `no-link`). */
+      readonly noLink?: true;
     }
   | {
       readonly phase: "blocked";

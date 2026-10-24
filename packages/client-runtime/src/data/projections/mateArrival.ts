@@ -872,7 +872,9 @@ export function mateNoticeDecision(input: {
           ? notice.level
           : reachability === null ||
               reachability.kind === "resolving" ||
-              (reachability.kind === "connecting" && reachability.waitingOn !== "visible")
+              (reachability.kind === "connecting" &&
+                reachability.waitingOn !== "visible" &&
+                reachability.waitingOn !== "mate-link")
             ? input.conversationShown
               ? "none"
               : "opening"

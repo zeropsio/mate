@@ -539,6 +539,31 @@ describe("reachability over the machine's own transitions", () => {
     expect(selectReachability(blocked, ENV_A).kind).toBe(verdict);
   });
 
+  it("A Mate that never connected and whose ticket HQ refuses for no link waits on its link, not on the exchange", () => {
+    const opened = drive(initialEnvironment({ record: ENV_A }), OPENING).machine;
+    const held = drive(opened, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(opened),
+        environmentId: ENV_A,
+        descriptor: descriptor(),
+      },
+    ]).machine;
+    const refused = drive(held, [
+      { type: "LINK", link: { phase: "backoff", retryAtMs: 9_000, noLink: true } },
+    ]).machine;
+    expect(selectReachability(refused, ENV_A)).toEqual({
+      kind: "connecting",
+      waitingOn: "mate-link",
+    });
+    expect(
+      reachabilityPhrase(
+        { kind: "connecting", waitingOn: "mate-link" },
+        { nowMs: NOW, mateName: "shop" },
+      ).text,
+    ).toBe("This Mate is not connected to HQ.");
+  });
+
   it("blocked(configuration mismatch) → replaced (T-L22)", () => {
     const blocked = drive(connectedMachine(), [
       { type: "LINK", link: { phase: "blocked", reason: "configuration" } },

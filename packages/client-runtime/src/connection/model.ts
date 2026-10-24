@@ -83,6 +83,9 @@ export const ConnectionTransientReason = Schema.Literals([
   "endpoint-unavailable",
   "relay-unavailable",
   "remote-unavailable",
+  // HQ holds no live link to the Mate's container (an imported Mate): retried like any transient
+  // reason, but its own cause so the page can say so.
+  "mate-not-linked",
 ]);
 export type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 
