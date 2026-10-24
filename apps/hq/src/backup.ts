@@ -535,7 +535,10 @@ export const backupLayer = (
       );
 
       /** Where the database stands: the event log's last `seq` and the snapshot's `xmax`. */
-      const positionNow = Effect.map(sql.unsafe(POSITION_QUERY), ([row]) => positionOf(row));
+      const positionNow = Effect.map(
+        sql.unsafe<{ readonly seq: string; readonly xmax: string }>(POSITION_QUERY),
+        ([row]) => positionOf(row),
+      );
 
       /** The newest staged set's manifest, if the set is whole. */
       const newestStaged = Effect.gen(function* () {
