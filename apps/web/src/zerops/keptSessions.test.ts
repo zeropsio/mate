@@ -195,6 +195,60 @@ describe("no kept session outlives the login it was opened under", () => {
     expect(ends).toEqual(expected);
   });
 
+  it.each([[1], [2], [3]] as const)(
+    "the account's close ends its kept HQ sessions and every other closer's sessions once this tab let the account go",
+    async (others) => {
+      vi.stubGlobal("navigator", { locks: fakeLocks() });
+      lifetime.openAccountLifetime("person-1");
+      kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
+      kept.keptHqSessions.keep("c2:hq1:https://blog", session("blog"));
+      const ends: number[] = [];
+      const unregister = Array.from({ length: others }, (_, index) =>
+        lifetime.onAccountLifetimeClose(() =>
+          kept.endWhenAccountLeft(() => {
+            ends.push(index);
+          }),
+        ),
+      );
+
+      await lifetime.closeAccountLifetime();
+      for (const forget of unregister) forget();
+
+      expect(fetched.map(({ authorization }) => authorization)).toEqual([
+        "Bearer session-shop",
+        "Bearer session-blog",
+      ]);
+      expect(ends.toSorted()).toEqual(Array.from({ length: others }, (_, index) => index));
+      expect([...values.keys()].some((key) => key.endsWith(KEPT_HQ_SESSIONS_KEY))).toBe(false);
+    },
+  );
+
+  it("the account's close leaves every closer's sessions to another tab that holds it open", async () => {
+    const locks = fakeLocks();
+    vi.stubGlobal("navigator", { locks });
+    void locks.request(
+      "mate:account-open:person-1",
+      { mode: "shared" },
+      () => new Promise(() => {}),
+    );
+    lifetime.openAccountLifetime("person-1");
+    kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
+    const ends: string[] = [];
+    const unregister = [0, 1].map(() =>
+      lifetime.onAccountLifetimeClose(() =>
+        kept.endWhenAccountLeft(() => {
+          ends.push("ended");
+        }),
+      ),
+    );
+
+    await lifetime.closeAccountLifetime();
+    for (const forget of unregister) forget();
+
+    expect(fetched).toEqual([]);
+    expect(ends).toEqual([]);
+  });
+
   it("the account's close ends its kept sessions at once where the page has no Web Locks", async () => {
     // happy-dom reports `navigator.locks` as null.
     vi.stubGlobal("navigator", { locks: null });

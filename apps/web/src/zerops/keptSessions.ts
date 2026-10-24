@@ -99,19 +99,38 @@ export function endWhenAccountLeft(end: () => void): Promise<void> {
   return accountId === null ? Promise.resolve() : endWhenLeft(accountId, end);
 }
 
-/** Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. */
+/** The ends waiting on each account, run together in one lock check. */
+const pendingEnds = new Map<
+  string,
+  { readonly ends: Array<() => void>; readonly done: Promise<void> }
+>();
+
+/**
+ * Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. Ends asked
+ * for in the same wait share one check: the grant of one request never makes another's see the
+ * account as held.
+ */
 function endWhenLeft(accountId: string, end: () => void): Promise<void> {
   const locks = webLocks();
   if (locks === undefined) {
     end();
     return Promise.resolve();
   }
+  const pending = pendingEnds.get(accountId);
+  if (pending !== undefined) {
+    pending.ends.push(end);
+    return pending.done;
+  }
+  const ends = [end];
   const own = hold?.accountId === accountId ? hold.released : Promise.resolve();
-  return own.then(() =>
+  const done = own.then(() =>
     locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
-      if (lock !== null) end();
+      pendingEnds.delete(accountId);
+      if (lock !== null) for (const run of ends) run();
     }),
   );
+  pendingEnds.set(accountId, { ends, done });
+  return done;
 }
 
 /** The HQ sessions kept under `key`, still readable once their account has closed. */
