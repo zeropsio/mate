@@ -132,29 +132,20 @@ async function identify(next: HqProjectPeople) {
     source.listeners.forEach((listener) => listener());
   });
 }
-const person = (projectId: string | null, mine: boolean): HqProjectPeople => ({
+const person = (projectId: string | null): HqProjectPeople => ({
   owned: true,
   owner: null,
-  mine: undefined,
+  mine: false,
   waitsOnViewer: false,
   signedInNow: {},
   everSignedIn: {},
-  chief: { projectId, mine },
+  chief: { projectId },
 });
 describe("a Chief proposal's real card", () => {
-  it("a reader with a Chief cannot decide another person's Chief offer", async () => {
-    source.person = person("owners-chief", false);
+  it("any reader who may open the source Mate decides its ask of the organization's Chief, whoever's Mate it is", async () => {
     await draw();
     expect(decisions()).toHaveLength(0);
-    expect(document.body.textContent).toContain("Only this Mate's person can ask their Chief.");
-    expect(source.record).not.toHaveBeenCalled();
-  });
-  it("only offers decisions after HQ identifies the source Mate's person as the viewer", async () => {
-    await draw();
-    expect(decisions()).toHaveLength(0);
-    await identify(person("owners-chief", false));
-    expect(decisions()).toHaveLength(0);
-    await identify(person("owners-chief", true));
+    await identify(person("org-chief"));
     expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
     await act(async () => decisions()[1]!.click());
     expect(source.record).toHaveBeenCalledWith(expect.objectContaining({ state: "declined" }));
@@ -165,9 +156,9 @@ describe("a Mate can ask its Chief only when one exists", () => {
   it.each([false, true])(
     "with no Chief, the card offers no send and promises no recipient (arrives later: %s)",
     async (later) => {
-      if (!later) source.person = person(null, true);
+      if (!later) source.person = person(null);
       await draw();
-      if (later) await identify(person(null, true));
+      if (later) await identify(person(null));
       expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
         "This Mate has no Chief to ask.",
       );
@@ -184,12 +175,11 @@ describe("a Mate can ask its Chief only when one exists", () => {
     },
   );
   it("does not claim the reader has no Chief when the source Mate's person has none", async () => {
-    source.person = person(null, false);
+    source.person = person(null);
     await draw();
     expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
       "This Mate has no Chief to ask.",
     );
-    expect(decisions()).toHaveLength(0);
     expect(source.askMate).not.toHaveBeenCalled();
   });
   it("withholds the promised recipient until HQ identifies a Chief, then withdraws it if none exists", async () => {
@@ -197,12 +187,12 @@ describe("a Mate can ask its Chief only when one exists", () => {
     expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
       "Finding this Mate's Chief…",
     );
-    await identify(person("owners-chief", true));
+    await identify(person("org-chief"));
     expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
       "Ask your Chief who owns orders",
     );
     expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
-    await identify(person(null, true));
+    await identify(person(null));
     expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
       "This Mate has no Chief to ask.",
     );

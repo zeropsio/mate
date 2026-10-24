@@ -50,7 +50,7 @@ export interface ZeropsMateIdentity {
   readonly runsWithoutSignIn?: boolean | undefined;
   /** It takes tasks from outside, on the organization's API key: nobody signs it in. */
   readonly automated?: true | undefined;
-  /** It is its person's Chief, the organization's rather than one project's (`chief.ts`). */
+  /** It is the organization's Chief, rather than one project's Mate (`chief.ts`). */
   readonly chief?: boolean | undefined;
 }
 

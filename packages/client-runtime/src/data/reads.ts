@@ -572,7 +572,7 @@ export const shownHqMateIdentitiesAtom = Atom.make(
   },
 ).pipe(Atom.withLabel("data:shown-hq-mate-identities"));
 
-/** Personal Chief and ordinary Mate lists share the account's single partition. */
+/** The organization's Chief and ordinary Mate lists share the account's single partition. */
 export const shownHqMateDirectoryAtom = Atom.make((get) => {
   const account = get(accountReadsAtom);
   return account?.orgId == null

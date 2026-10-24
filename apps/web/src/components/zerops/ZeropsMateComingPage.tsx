@@ -288,7 +288,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     live: false,
   });
   const [cameUp, setCameUp] = useState(false);
-  // The person's own Chief, by HQ's word or before HQ names it.
+  // The organization's Chief, by HQ's word or before HQ names it.
   const orgChief = useOrgChief();
 
   // HQ names it as the menu does. Before registration, its creation or press names it.
@@ -900,7 +900,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   if (detailFailure !== null && !projectUnavailable && !chiefRefused)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
-    // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).
+    // The organization's Chief wears the product's mark here as in its conversation (`chief.ts`).
     <MateFaceAsMark.Provider value={isChief}>
       <MateComingFrame
         composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}

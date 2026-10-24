@@ -107,7 +107,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   Atom.withLabel("zerops:mates"),
 );
 
-/** Identities for explicit detail and action targets, including the viewer's own Chief. */
+/** Identities for explicit detail and action targets, including the organization's Chief. */
 export function useZeropsMateDirectory(): ZeropsMateDirectory {
   return useAtomValue(zeropsMatesAtom);
 }

@@ -1,7 +1,7 @@
 /**
  * What a Mate proposes, on its card: what it would do as its title, why in the Mate's words, what
  * exactly — the service, the value (hidden when it is secret), the words and attachment another
- * Mate, or the person's own Chief, would be sent, or the service and port a domain points at — and
+ * Mate, or the organization's Chief, would be sent, or the service and port a domain points at — and
  * Approve or Decline. Decided, the same card says how it went in place: running, done, failed in
  * the platform's words, or declined; an approved domain says how far it is from answering, and
  * opens the project's addresses. Nothing ran before the person approved it. Props only: the

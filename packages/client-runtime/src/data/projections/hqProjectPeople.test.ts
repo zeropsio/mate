@@ -164,7 +164,7 @@ describe("hqProjectPeople", () => {
         removals: [],
       },
     ]);
-    expect(people(next).ada?.chief).toEqual({ projectId: "jans-chief", mine: false });
+    expect(people(next).ada?.chief).toEqual({ projectId: "jans-chief" });
     const none = apply(next, [
       {
         kind: "delivery",
@@ -184,7 +184,7 @@ describe("hqProjectPeople", () => {
         removals: [],
       },
     ]);
-    expect(people(none).ada?.chief).toEqual({ projectId: null, mine: false });
+    expect(people(none).ada?.chief).toEqual({ projectId: null });
   });
 
   it("retains an owner's identity and picture with an unknown name", () => {

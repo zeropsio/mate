@@ -40,7 +40,7 @@ export function hqOrgChief(
  * Whether the account menu offers *Set up Chief*: a Chief is optional, offered once and quietly,
  * only to a person who may set one up and has none (`entry`, `chiefSetupEntry` and their role),
  * and only once it is useful — the organization holds a second project (an HQ app) besides any
- * person's Chief. Nothing while the projects are not read (`apps` undefined).
+ * Chief. Nothing while the projects are not read (`apps` undefined).
  */
 export function chiefOffered(input: {
   readonly entry: boolean;
@@ -79,7 +79,7 @@ export function othersChiefs(
   return hidden;
 }
 
-/** The viewer's own Chief among the listed projects: the menu's top row, as HQ names it. */
+/** The organization's Chief among the listed projects: the menu's top row, as HQ names it. */
 export function chiefAmong<T extends { readonly project: { readonly id: string } }>(
   candidates: ReadonlyArray<T>,
   own: OrgChief,
@@ -88,7 +88,7 @@ export function chiefAmong<T extends { readonly project: { readonly id: string }
   return candidates.find((candidate) => candidate.project.id === own);
 }
 
-/** The menu's list below its top row: every Mate but the viewer's own Chief, drawn once above. */
+/** The menu's list below its top row: every Mate but the organization's Chief, drawn once above. */
 export function withoutChief<T extends { readonly project: { readonly id: string } }>(
   candidates: ReadonlyArray<T>,
   own: OrgChief,

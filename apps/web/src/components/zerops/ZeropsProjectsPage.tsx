@@ -2038,7 +2038,7 @@ export function ZeropsProjectsContent({
     },
     nowMs,
   });
-  // The person's Chief is the organization's, not a project: no card of its own.
+  // The organization's Chief is the organization's, not a project: no card of its own.
   const projectGroups = useMemo(
     () =>
       groupTree.groups.filter(
