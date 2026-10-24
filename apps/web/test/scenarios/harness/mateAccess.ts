@@ -2,7 +2,7 @@
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { gitClient } from "../../../../hq/test/harness/gitClient.ts";
-import { remoteOf } from "../../../../hq/test/harness/mates.ts";
+import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
 import { sessionFor } from "../../../../hq/test/harness/runningCore.ts";
 import type { ScenarioCore } from "./hqCore.ts";
 
@@ -13,13 +13,14 @@ type Git = Effect.Success<typeof gitClient>;
  * person's Zerops access token (`definePerson` keeps it as `personal-<name>`), the embedded one
  * a hand-over token the fixture minted (`door-<name>`).
  */
-export const personDoor = (core: ScenarioCore, person: string) =>
+export const personDoor = (core: ScenarioCore, person: string, orgKey?: string) =>
   core.kind === "external"
     ? core
         .call("POST", "/api/door", {
           body: {
             accessToken: person === "owner" ? "personal" : `personal-${person}`,
             orgId: "ORG",
+            ...(orgKey === undefined ? {} : { orgKey }),
           },
         })
         .pipe(
@@ -64,3 +65,31 @@ export function mateAccess(core: ScenarioCore, owner: string, credential: string
       ]),
   };
 }
+
+/**
+ * The owner places `projectId` as a Mate in the application `appName`, made once per name in
+ * `appIds`; the embedded Core also enrolls it. The real Core links a Mate by its project key.
+ */
+export const placeMate = Effect.fn("scenarios.placeMate")(function* (
+  core: ScenarioCore,
+  owner: string,
+  projectId: string,
+  appName: string,
+  appIds: Map<string, string>,
+) {
+  if (core.kind !== "external")
+    return (yield* mateInApp(core.call, core.fake, owner, projectId, appName, appIds)).appId;
+  let appId = appIds.get(appName);
+  if (appId === undefined) {
+    const app = yield* core.call("POST", "/api/apps", { session: owner, body: { name: appName } });
+    expect(app.status, JSON.stringify(app.body)).toBe(201);
+    appId = (app.body as { id: string }).id;
+    appIds.set(appName, appId);
+  }
+  const attached = yield* core.call("POST", `/api/apps/${appId}/projects`, {
+    session: owner,
+    body: { projectId, kind: "mate", mate: { face: "face-1" } },
+  });
+  expect(attached.status, JSON.stringify(attached.body)).toBe(201);
+  return appId;
+});
