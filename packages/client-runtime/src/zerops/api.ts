@@ -1970,8 +1970,6 @@ export class ZeropsApiClient {
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
       readonly setupRuntimesYaml?: string;
-      /** A Chief's container: its zcp serves the organization `clientId` names. */
-      readonly chief?: boolean;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -2081,7 +2079,6 @@ export class ZeropsApiClient {
               ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
-              ...(input.chief === true ? { chiefOf: input.clientId } : {}),
             }),
           }),
         ),

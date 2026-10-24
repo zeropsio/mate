@@ -198,11 +198,6 @@ describe("buildZcpServiceImportYaml", () => {
 describe("a Chief's container", () => {
   const input = { serviceName: "zcp", vscodePassword: "pw" };
 
-  it("tells its zcp it is a Chief of the organization it was made in", () => {
-    const yaml = buildZcpServiceImportYaml({ ...input, chiefOf: "org-1" });
-    expect(yaml).toContain('      ZCP_CHIEF: "1"\n      ZCP_ORG_ID: "org-1"\n');
-  });
-
   it("tells any other Mate's zcp nothing of a Chief", () => {
     const yaml = buildZcpServiceImportYaml(input);
     expect(yaml).not.toContain("ZCP_CHIEF");
@@ -432,12 +427,6 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(body.createIntegrationToken).toBe(false);
     expect(body.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
     expect(body.serviceImportYaml).toContain("MATE_SETUP_RUNTIMES: ");
-  });
-
-  it("makes a Chief's container a Chief of the organization it imports into", async () => {
-    const { client, requests } = platformClient({});
-    await client.importDevelopmentContainer({ ...INPUT, chief: true });
-    expect(importOf(requests).serviceImportYaml).toContain('ZCP_ORG_ID: "org-1"');
   });
 
   // B5: the import's own process is the press's handle another browser follows.

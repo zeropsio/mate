@@ -1144,8 +1144,6 @@ export async function finishMateSetup(input: {
    */
   readonly container: {
     readonly agents: ReadonlyArray<ZeropsAgentType>;
-    /** A Chief's container (`importDevelopmentContainer`'s `chief`). */
-    readonly chief?: true;
   } | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
@@ -1253,7 +1251,6 @@ async function finishLocked(
           {
             kind: "import-container",
             agents: input.container.agents,
-            ...(input.container.chief === true ? { chief: true as const } : {}),
           } as const,
         ]),
     // Isolated a moment ago by the harden, which the close-off trusts where no container comes

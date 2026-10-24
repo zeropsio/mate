@@ -125,8 +125,6 @@ export type EnvironmentCreationStep =
   | {
       readonly kind: "import-container";
       readonly agents: ReadonlyArray<ZeropsAgentType>;
-      /** A Chief's container (`importDevelopmentContainer`'s `chief`). */
-      readonly chief?: true;
       /** The tier's runtimes, in one wave (`splitRecipeTier`); absent when it has none. */
       readonly runtimes?: RecipeRuntimes;
     }

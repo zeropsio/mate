@@ -78,8 +78,8 @@ export interface NewProjectAsk {
   /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The person's Chief (`chief.ts`): its project tagged a Chief's, its zcp told the organization
-   * it serves. Drawn in no group: the menu's top row shows it coming up instead.
+   * The organization's Chief (`chief.ts`): its project tagged a Chief's, for an Owner or Admin to
+   * mark. Drawn in no group: the menu's top row shows it coming up instead.
    */
   readonly chief?: true | undefined;
   /** Who reaches its first Mate's project beyond their organization role, as chosen at Create. */

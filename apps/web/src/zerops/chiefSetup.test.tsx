@@ -207,7 +207,7 @@ describe("every Chief creation entry uses the same setup intent", () => {
         expect.anything(),
       );
       expect(source.finish).toHaveBeenCalledWith(
-        expect.objectContaining({ container: { agents: [], chief: true } }),
+        expect.objectContaining({ container: { agents: [] } }),
       );
       expect(source.begin).toHaveBeenCalledWith(expect.objectContaining({ placement: null }));
     },
