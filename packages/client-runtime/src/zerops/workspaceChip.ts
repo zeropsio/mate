@@ -3,15 +3,28 @@
  * a release would lose there, and whether it is idle — from what zcp last read of the lease
  * (`leases[].activity`, `unsaved`; zcp `docs/spec-mate.md` §2.8a.3) and the conversation's own last
  * turn. Idle is a label and nothing else: nothing acts on it (zcp `docs/spec-mate.md` §0 rule 4).
+ *
+ * And its Release: the question Mate asks before a workspace is released, and the request a yes
+ * sends. Mate releases nothing and runs no zcp: the bound conversation's agent releases the lease
+ * with `zerops_lease`, whose guard refuses unsaved work, and the unbind fan-out does the rest (zcp
+ * `docs/spec-mate.md` §6.3).
  */
 import {
+  type CommandId,
   isZeropsLeaseHeld,
+  type MessageId,
+  type ModelSelection,
   type OrchestrationLatestTurn,
+  type ProviderInteractionMode,
+  type RuntimeMode,
+  type ThreadId,
   type ZeropsLease,
   zeropsLeaseGroupBranch,
   type ZeropsLifecycle,
 } from "@t3tools/contracts";
 
+import type { StartThreadTurnInput } from "../operations/commands.ts";
+import type { AtomCommandResult } from "../state/runtime.ts";
 import type { CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 
@@ -104,6 +117,36 @@ export interface WorkspaceChip {
   readonly idle: boolean;
 }
 
+interface WorkspaceRead {
+  /** What is known of the workspace: `idle`, `last active 26 h ago`, `2 unpushed`, … */
+  readonly facts: ReadonlyArray<string>;
+  readonly idle: boolean;
+}
+
+/** What the chip and the release question say of a workspace; none while nothing says anything. */
+function workspaceRead(input: {
+  readonly lease: LeaseRead | undefined;
+  readonly lastTurn: LastTurn | null | undefined;
+  readonly now: number;
+}): WorkspaceRead | undefined {
+  const { lease, now } = input;
+  const turn = turnActivityMs(input.lastTurn, now);
+  const last = newest([lease === undefined ? undefined : leaseActivityMs(lease), turn]);
+  if (last === undefined) return undefined;
+  const idle =
+    lease !== undefined &&
+    zeropsLeaseIdle(lease, now) &&
+    (turn === undefined || now - turn >= ZEROPS_LEASE_IDLE_AFTER_MS);
+  return {
+    facts: [
+      ...(idle ? ["idle"] : []),
+      `last active ${activeAgo(last, now)}`,
+      ...unsavedWords(lease?.unsaved),
+    ],
+    idle,
+  };
+}
+
 /**
  * The chip of a conversation bound to a lease: its workspace's last activity — the conversation's
  * own last turn or what zcp read of the lease, whichever is newer — what a release would lose
@@ -116,23 +159,9 @@ export function workspaceChip(input: {
   readonly lastTurn: LastTurn | null | undefined;
   readonly now: number;
 }): WorkspaceChip | undefined {
-  const { lease, now } = input;
-  const turn = turnActivityMs(input.lastTurn, now);
-  const last = newest([lease === undefined ? undefined : leaseActivityMs(lease), turn]);
-  if (last === undefined) return undefined;
-  const idle =
-    lease !== undefined &&
-    zeropsLeaseIdle(lease, now) &&
-    (turn === undefined || now - turn >= ZEROPS_LEASE_IDLE_AFTER_MS);
-  return {
-    words: [
-      "workspace",
-      ...(idle ? ["idle"] : []),
-      `last active ${activeAgo(last, now)}`,
-      ...unsavedWords(lease?.unsaved),
-    ].join(" · "),
-    idle,
-  };
+  const read = workspaceRead(input);
+  if (read === undefined) return undefined;
+  return { words: ["workspace", ...read.facts].join(" · "), idle: read.idle };
 }
 
 /**
@@ -166,10 +195,117 @@ export const workspaceChipOf = (input: {
   readonly now: number;
 }): WorkspaceChip | undefined =>
   workspaceChip({
-    lease: boundLeaseRead(
-      input.binding,
-      input.lifecycle?.state === "known" ? input.lifecycle.value.envelope?.leases : undefined,
-    ),
+    lease: boundLeaseRead(input.binding, knownLeases(input.lifecycle)),
     lastTurn: input.lastTurn,
     now: input.now,
   });
+
+/** zcp's leases as the conversation last read them; none while the lifecycle is not known. */
+const knownLeases = (
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsLease> | undefined =>
+  lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
+
+/**
+ * The question Mate asks before a workspace is released: on the archive of the conversation bound
+ * to it, and from its chip's Release. The owner approves its words.
+ */
+export const ZEROPS_RELEASE_QUESTION = (alias: string): string =>
+  `Release workspace ${alias}? Its agent will be asked to release it.`;
+
+/**
+ * The message a yes sends into the bound conversation: its agent releases the lease with zcp's own
+ * tool, whose guard refuses unpushed work; it is never asked to force. The owner approves its words.
+ */
+export const ZEROPS_RELEASE_REQUEST = (alias: string): string =>
+  `Please release this conversation's Zerops workspace \`${alias}\` with zerops_lease action=release lease=${alias}. If it has unpushed work, stop and tell me instead of forcing.`;
+
+/** Whether to release a bound conversation's workspace, as the person is asked it. */
+export interface ZeropsReleaseAsk {
+  readonly alias: string;
+  /** `ZEROPS_RELEASE_QUESTION`. */
+  readonly question: string;
+  /** What is known of the workspace — `idle · last active 26 h ago · all pushed` — none while nothing is. */
+  readonly facts: string | undefined;
+  /** Nothing happened there for 24 h: the question may stand out, and nothing acts on it. */
+  readonly idle: boolean;
+}
+
+/**
+ * The release question of a conversation bound to a lease zcp still holds — held, unmounted or
+ * parked — with what is known of its workspace (`workspaceChip`'s facts). None for a conversation
+ * bound to no lease, or once the conversation's last read of zcp's leases no longer holds the bound
+ * one. Before any read, the binding alone asks: it is Mate's record of a lease the conversation's
+ * agent acquired, unbound when the lease ends.
+ */
+export function zeropsReleaseAsk(input: {
+  readonly binding: CheckoutLease | null | undefined;
+  readonly lifecycle: Known<ZeropsLifecycle> | undefined;
+  readonly lastTurn: LastTurn | null | undefined;
+  readonly now: number;
+}): ZeropsReleaseAsk | undefined {
+  const { binding } = input;
+  if (binding === null || binding === undefined) return undefined;
+  const leases = knownLeases(input.lifecycle);
+  const lease = boundLeaseRead(binding, leases);
+  if (leases !== undefined && lease === undefined) return undefined;
+  const read = workspaceRead({ lease, lastTurn: input.lastTurn, now: input.now });
+  return {
+    alias: binding.alias,
+    question: ZEROPS_RELEASE_QUESTION(binding.alias),
+    facts: read === undefined ? undefined : read.facts.join(" · "),
+    idle: read?.idle ?? false,
+  };
+}
+
+/** The conversation a release request goes to: what its turn is sent with. */
+export interface ZeropsReleaseConversation {
+  readonly id: ThreadId;
+  readonly modelSelection: ModelSelection;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+}
+
+/**
+ * The turn a yes sends: `ZEROPS_RELEASE_REQUEST` as the person's own visible message, a normal turn
+ * in the conversation's own model and modes. Mate's words, not theirs, so it never names the
+ * conversation (`fromPanel`).
+ */
+export const zeropsReleaseTurn = (input: {
+  readonly conversation: ZeropsReleaseConversation;
+  readonly alias: string;
+  readonly ids: { readonly commandId: CommandId; readonly messageId: MessageId };
+  readonly createdAt: string;
+}): StartThreadTurnInput => ({
+  commandId: input.ids.commandId,
+  threadId: input.conversation.id,
+  message: {
+    messageId: input.ids.messageId,
+    role: "user",
+    text: ZEROPS_RELEASE_REQUEST(input.alias),
+    attachments: [],
+  },
+  modelSelection: input.conversation.modelSelection,
+  runtimeMode: input.conversation.runtimeMode,
+  interactionMode: input.conversation.interactionMode,
+  fromPanel: true,
+  createdAt: input.createdAt,
+});
+
+/**
+ * Sends a yes's request into the bound conversation, once. An archived conversation takes no
+ * message (the engine refuses it), so it is brought back first, and nothing is sent when it cannot
+ * be. Sending is all Mate does: the agent releases the lease.
+ */
+export async function sendZeropsReleaseRequest(input: {
+  readonly turn: StartThreadTurnInput;
+  readonly archived: boolean;
+  readonly unarchive: () => Promise<AtomCommandResult<unknown, unknown>>;
+  readonly startTurn: (turn: StartThreadTurnInput) => Promise<AtomCommandResult<unknown, unknown>>;
+}): Promise<AtomCommandResult<unknown, unknown>> {
+  if (input.archived) {
+    const back = await input.unarchive();
+    if (back._tag === "Failure") return back;
+  }
+  return input.startTurn(input.turn);
+}
