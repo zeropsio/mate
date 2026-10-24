@@ -68,7 +68,7 @@ describe("registry-free server releases", () => {
     expect(docs).toContain("zcp/docs/spec-mate.md");
 
     const workflow = read(".github/workflows/release.yml");
-    expect(workflow).toContain("VITE_BASE_PATH: /mate");
+    expect(workflow).not.toContain("VITE_BASE_PATH");
     expect(workflow).toContain("SHA256SUMS");
     expect(workflow).not.toMatch(/\b(?:npm|vp pm)\s+publish\b/);
     for (const releaseScript of [
