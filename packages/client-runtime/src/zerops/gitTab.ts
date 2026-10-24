@@ -42,16 +42,18 @@ import {
   ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
   zeropsLeaseGroupBranch,
   type ZeropsLease,
+  type ZeropsLifecycle,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
+import type { Known } from "./knowledge/index.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
-import { servicePairs, type PoolPair } from "./servicePairs.ts";
+import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
@@ -641,6 +643,44 @@ export function gitCheckoutHostnames(
         !sharesCodeWith.has(service.hostname),
     )
     .map((service) => service.hostname);
+}
+
+/** What the Git tab says while it lists no repository and no code is anywhere else either. */
+export const NO_REPOSITORY_LINE = "No code repository yet. The first service brings one.";
+
+/**
+ * What it says instead when the code is in a dev pool: a chat bound to no lease lists no checkout
+ * of a part migrated to a pool, and reaches the code by leasing one of the pool's containers,
+ * which a person calls a workspace.
+ */
+export const CODE_IN_POOL_LINE =
+  "The code lives in a dev pool. This chat reaches it by taking a workspace.";
+
+/**
+ * What the Git tab says while it lists no repository: the code is in a dev pool when the thread's
+ * last envelope says a pool the project holds keys a pair (`poolPairsIn`) or names the repository
+ * its pair keeps (`remoteUrl` on a pool's snapshot, which carries no stage for a part that had
+ * none) — else there is none yet. An envelope not read yet says nothing of a pool.
+ */
+export function gitEmptyLine(
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname">>,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): string {
+  if (lifecycle?.state !== "known") return NO_REPOSITORY_LINE;
+  const snapshots = lifecycle.value.envelope?.services ?? [];
+  const held = new Set(services.map((service) => service.hostname));
+  const pools = [
+    ...poolPairsIn(snapshots).map(({ pool }) => pool),
+    ...snapshots
+      .filter(
+        (snapshot) =>
+          snapshot.runtimeClass === "pool" &&
+          snapshot.remoteUrl !== undefined &&
+          snapshot.remoteUrl !== "",
+      )
+      .map((snapshot) => snapshot.hostname),
+  ];
+  return pools.some((pool) => held.has(pool)) ? CODE_IN_POOL_LINE : NO_REPOSITORY_LINE;
 }
 
 /** The pool container a thread's agent leased, as a checkout reads it (`ThreadLease`). */
