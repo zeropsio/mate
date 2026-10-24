@@ -30,7 +30,12 @@ it.effect.each([0, 23])(
         res.end(JSON.stringify({ api: process.env.HQ_ZEROPS_API }));
       });
       server.listen(0, "127.0.0.1", () => {
-        process.stdout.write(JSON.stringify({ origin: "http://127.0.0.1:" + server.address().port }) + "\\n");
+        // The readiness line of scripts/test-hq.ts: its database and the wait clock it honours.
+        process.stdout.write(JSON.stringify({
+          origin: "http://127.0.0.1:" + server.address().port,
+          database: "postgres://127.0.0.1/stub",
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
       });
       process.stdin.resume();
       process.stdin.once("end", async () => {
