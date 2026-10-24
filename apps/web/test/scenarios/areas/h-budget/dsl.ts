@@ -98,13 +98,15 @@ export function budgets(s: Scenario) {
           .setTimeout(15_000)
           .wait();
       }),
+      /** The overview lists `count` projects: cards, painted or standing in, and lines. */
       projectsAre: (count: number) =>
         Effect.promise(() =>
           s.page.waitForFunction(
             (expected) =>
-              document.querySelectorAll('[data-zerops-surface="projects-flow"] [data-zerops-group]')
-                .length === expected,
-            {},
+              document.querySelectorAll(
+                '[data-zerops-surface="projects-flow"] :is([data-zerops-group], [role="listitem"][aria-busy="true"])',
+              ).length === expected,
+            { timeout: 15_000, polling: "mutation" },
             count,
           ),
         ),

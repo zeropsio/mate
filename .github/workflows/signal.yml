@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  # The classifier reads the previous kh-next run's classification.
+  actions: read
 
 env:
   PNPM_CONFIG_FETCH_RETRIES: "2"
@@ -238,12 +240,30 @@ jobs:
           path: signal-reports
           merge-multiple: true
 
+      - name: Download the previous kh-next run's classification
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/kh-next' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # A listing that fails compares nothing this run; it never fails Classify on its own.
+          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow signal.yml --branch kh-next \
+            --event push --status completed -L 30 --json databaseId,conclusion \
+            --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID and (.conclusion == \"success\" or .conclusion == \"failure\"))][0].databaseId // empty" || true)
+          if [ -z "$previous" ] || ! gh run download "$previous" -R "$GITHUB_REPOSITORY" -n signal-failures -D signal-previous; then
+            echo "::notice title=Signal::No previous kh-next classification to compare"
+          fi
+
       - name: Rerun only failed files once on this commit and classify
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+          MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json
         run: node scripts/signal.ts classify
 
       - name: Upload failure classifications
+        # A standing red fails the classify step after it wrote its classification: the next run
+        # compares against it.
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: signal-failures
