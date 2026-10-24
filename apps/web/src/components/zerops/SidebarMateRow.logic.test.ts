@@ -292,6 +292,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       records: NOBODY,
       asked: false,
       hqSigners: undefined,
+      overview: "live",
       standUpBy: "user-petra",
       viewer: "user-petra",
       linked: true,
