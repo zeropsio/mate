@@ -233,59 +233,96 @@ describe("the Chief", () => {
         }),
     );
 
-    it.effect(
-      "registering my Chief publishes it to my second device while REST and other people's devices withhold it",
-      () =>
-        Effect.gen(function* () {
-          const core = yield* startCore(true, {
-            reconcileEvery: Duration.infinity,
-            streamRecheck: Duration.infinity,
-          });
-          seedChiefs(core.fake);
-          yield* untilHealth(core.call, "active");
-          const owner = yield* sessionFor(core.call, "door-owner");
-          const dev = yield* sessionFor(core.call, "door-dev");
-          yield* mateInApp(core.call, core.fake, owner, "P_CHIEF", "Chief · Dev");
-          const mine = yield* core.socket(
-            `/api/structure/ws?ticket=${yield* ticketFor(core.call, dev)}`,
+    it.effect("marking the organisation's Chief publishes it to every device of its readers", () =>
+      Effect.gen(function* () {
+        const core = yield* startCore(true, {
+          reconcileEvery: Duration.infinity,
+          streamRecheck: Duration.infinity,
+        });
+        seedChiefs(core.fake);
+        yield* untilHealth(core.call, "active");
+        const owner = yield* sessionFor(core.call, "door-owner");
+        const dev = yield* sessionFor(core.call, "door-dev");
+        yield* mateInApp(core.call, core.fake, owner, "P_CHIEF", "Chief · Dev");
+        const nav = { kind: "navigation" } as const;
+        const sockets = [];
+        for (const session of [dev, owner]) {
+          const socket = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, session)}`,
           );
-          const others = yield* core.socket(
-            `/api/structure/ws?ticket=${yield* ticketFor(core.call, owner)}`,
-          );
-          const nav = { kind: "navigation" } as const;
-          for (const socket of [mine, others])
-            assert.strictEqual(
-              (yield* scopeReset(socket, nav)).some((value) => value.key === "project:P_CHIEF"),
-              false,
-            );
           assert.strictEqual(
-            (yield* core.call("POST", "/api/chief", {
-              session: dev,
-              body: { projectId: "P_CHIEF" },
-            })).status,
-            200,
-          );
-          const [association] =
-            yield* core.sql`SELECT chief.app_id::text AS recorded, placement.app_id::text AS current
-            FROM hq_chief chief JOIN hq_app_project placement USING (project_id)
-            WHERE chief.project_id = 'P_CHIEF' AND chief.revoked_at IS NULL`;
-          assert.strictEqual(association!.recorded, association!.current);
-          const own = yield* nextScopeValue<{
-            person: { chief: string; chiefProjectId: string; ownerUserId: string };
-          }>(mine, nav, "project:P_CHIEF");
-          assert.strictEqual(own.person.chief, "mine");
-          assert.strictEqual(own.person.chiefProjectId, "P_CHIEF");
-          assert.strictEqual(own.person.ownerUserId, "dev");
-          assert.strictEqual(
-            (yield* scopeReset(others, nav)).some((value) => value.key === "project:P_CHIEF"),
+            (yield* scopeReset(socket, nav)).some((value) => value.key === "project:P_CHIEF"),
             false,
           );
-          assert.notInclude(
-            JSON.stringify((yield* core.call("GET", "/api/structure", { session: owner })).body),
+          sockets.push(socket);
+        }
+        const marked = yield* core.call("PUT", "/api/chief", {
+          session: owner,
+          body: { projectId: "P_CHIEF" },
+        });
+        assert.strictEqual(marked.status, 200);
+        assert.strictEqual(
+          (marked.body as { chief: { projectId: string } }).chief.projectId,
+          "P_CHIEF",
+        );
+        for (const socket of sockets) {
+          const entry = yield* nextScopeValue<{
+            person: { chief: string; chiefProjectId: string };
+          }>(socket, nav, "project:P_CHIEF");
+          assert.strictEqual(entry.person.chief, "org");
+          assert.strictEqual(entry.person.chiefProjectId, "P_CHIEF");
+        }
+        for (const session of [dev, owner])
+          assert.include(
+            JSON.stringify((yield* core.call("GET", "/api/structure", { session })).body),
             "P_CHIEF",
           );
+      }),
+    );
+
+    it.effect(
+      "only an Owner or Admin marks or removes the organisation's Chief, of a project the org has",
+      () =>
+        Effect.gen(function* () {
+          const { call, dev, owner } = yield* running;
+          const refusal = (answer: { status: number; body: unknown }) => [
+            answer.status,
+            (answer.body as { code?: string; reason?: string }).code,
+            (answer.body as { code?: string; reason?: string }).reason,
+          ];
+          assert.deepStrictEqual(
+            refusal(
+              yield* call("PUT", "/api/chief", { session: dev, body: { projectId: "P_CHIEF" } }),
+            ),
+            [403, "forbidden", "not_structure_writer"],
+          );
+          assert.deepStrictEqual(
+            refusal(
+              yield* call("PUT", "/api/chief", { session: owner, body: { projectId: "P_NONE" } }),
+            ),
+            [404, "project_not_found", "project_gone"],
+          );
+          const first = yield* call("PUT", "/api/chief", {
+            session: owner,
+            body: { projectId: "P_CHIEF" },
+          });
+          const again = yield* call("PUT", "/api/chief", {
+            session: owner,
+            body: { projectId: "P_CHIEF" },
+          });
+          assert.deepStrictEqual(again.body, first.body);
           assert.include(
-            JSON.stringify((yield* core.call("GET", "/api/structure", { session: dev })).body),
+            JSON.stringify((yield* call("GET", "/api/structure", { session: dev })).body),
+            "P_CHIEF",
+          );
+          assert.deepStrictEqual(refusal(yield* call("DELETE", "/api/chief", { session: dev })), [
+            403,
+            "forbidden",
+            "not_structure_writer",
+          ]);
+          assert.strictEqual((yield* call("DELETE", "/api/chief", { session: owner })).status, 204);
+          assert.notInclude(
+            JSON.stringify((yield* call("GET", "/api/structure", { session: dev })).body),
             "P_CHIEF",
           );
         }),

@@ -523,6 +523,23 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_structure_writer",
     ],
   ],
+  // The organisation's Chief: one mark, set, moved or removed by an Owner or Admin alone.
+  mark_chief: [
+    ["org owner", { orgRole: "OWNER" }, { verb: "mark_chief", target: null }, "allow"],
+    ["org admin", { orgRole: "ADMIN" }, { verb: "mark_chief", target: null }, "allow"],
+    [
+      "org Basic user",
+      { orgRole: "BASIC_USER" },
+      { verb: "mark_chief", target: null },
+      "not_structure_writer",
+    ],
+    [
+      "an admin of one project",
+      P_ADMIN,
+      { verb: "mark_chief", target: null },
+      "not_structure_writer",
+    ],
+  ],
   // An application with nothing in it, which a stopped New project leaves (E2E 2026-10-03, F5):
   // whoever writes the structure removes it, as they make and rename one.
   delete_app: [

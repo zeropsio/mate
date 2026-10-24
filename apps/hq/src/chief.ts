@@ -138,6 +138,18 @@ export class Chiefs extends Context.Service<
       sourceProjectId: string,
       chiefKind: boolean,
     ) => Effect.Effect<void, ChiefRefused | SqlError | ZeropsError>;
+    /**
+     * Marks `projectId` as the organisation's Chief, or moves the mark to it; its `since` stays
+     * while it names the same project. Only an Owner or Admin, of a project the org has.
+     */
+    readonly mark: (
+      userId: string,
+      projectId: string,
+    ) => Effect.Effect<ChiefRecord, ChiefRefused | NotLeader | SqlError | ZeropsError>;
+    /** Removes the organisation's mark: only an Owner or Admin. */
+    readonly unmark: (
+      userId: string,
+    ) => Effect.Effect<void, ChiefRefused | NotLeader | SqlError | ZeropsError>;
     /** One read through the proxy. */
     readonly proxy: (
       request: ProxyRequest,
@@ -356,6 +368,37 @@ export const chiefsLayer = (options: {
               ? null
               : { projectId: row.project_id, since: row.since };
           }),
+        mark: (userId, projectId) =>
+          confirmingChiefRefusal(
+            Effect.gen(function* () {
+              const view = yield* roles.forWrite;
+              const decision = can({ kind: "person", userId }, "mark_chief", null, view);
+              if (!decision.allow) return yield* refused("forbidden", decision.reason);
+              if (!view.projects.some((project) => project.id === projectId)) {
+                return yield* refused("project_not_found", "project_gone");
+              }
+              const [row] = yield* leader.write(
+                sql<{ readonly since: string }>`
+                  INSERT INTO hq_chief_mark (org_id, project_id) VALUES (${view.orgId}, ${projectId})
+                  ON CONFLICT (org_id) DO UPDATE SET project_id = EXCLUDED.project_id,
+                    since = CASE WHEN hq_chief_mark.project_id = EXCLUDED.project_id
+                      THEN hq_chief_mark.since ELSE now() END
+                  RETURNING ${since} AS since`,
+              );
+              yield* structure.touched;
+              return { projectId, since: row!.since };
+            }),
+          ),
+        unmark: (userId) =>
+          confirmingChiefRefusal(
+            Effect.gen(function* () {
+              const view = yield* roles.forWrite;
+              const decision = can({ kind: "person", userId }, "mark_chief", null, view);
+              if (!decision.allow) return yield* refused("forbidden", decision.reason);
+              yield* leader.write(sql`DELETE FROM hq_chief_mark WHERE org_id = ${view.orgId}`);
+              yield* structure.touched;
+            }),
+          ),
         register: (userId, projectId) =>
           confirmingChiefRefusal(
             Effect.gen(function* () {
@@ -449,8 +492,12 @@ export const chiefsLayer = (options: {
                 (row) => [row.project_id, row.user_id] as const,
               ),
             );
+            const mark =
+              (yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_chief_mark WHERE org_id = ${view.orgId}`)[0]?.project_id ??
+              null;
             const reaches = (projectId: string) =>
-              readsChiefProject(view, userId, projectId, chiefs);
+              readsChiefProject(view, userId, projectId, chiefs, mark);
             const read = chiefRead(request.method, request.path);
             if ("refused" in read) {
               return yield* read.refused === "method"

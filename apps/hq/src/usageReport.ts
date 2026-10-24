@@ -124,9 +124,13 @@ export const readUsageReport = Effect.fnUntraced(function* (
           (row) => [row.project_id, row.user_id] as const,
         ),
       );
+      const mark =
+        (yield* sql<{ readonly project_id: string }>`
+        SELECT project_id FROM hq_chief_mark WHERE org_id = ${current.facts.orgId}`)[0]
+          ?.project_id ?? null;
       const admitted = sources.filter(
         (source) =>
-          chiefProjectIsVisible(current.facts, userId, source.project_id, chiefs) &&
+          chiefProjectIsVisible(current.facts, userId, source.project_id, chiefs, mark) &&
           mayReadUsage(current.facts, userId, source.project_id, source.deleted),
       );
       const scoped = admitted.flatMap((source) => {
