@@ -32,17 +32,34 @@ const failedTests = (reports: ReadonlyArray<SignalReport>) => {
 export const failedFiles = (reports: ReadonlyArray<SignalReport>): string[] =>
   [...new Set(failedTests(reports).map((test) => test.file))].sort();
 
+export interface SignalFailure {
+  file: string;
+  title: string;
+  class: "fail-pass" | "fail-fail";
+  run: number;
+}
+
 export function classifyFailures(
   initial: ReadonlyArray<SignalReport>,
   rerun: SignalReport,
   run: number,
-) {
+): SignalFailure[] {
   return failedTests(initial).map(({ file, title }) => {
     const test = rerun.tests.find((test) => test.file === file && test.title === title);
     if (!test || !["passed", "failed"].includes(test.status))
       throw new Error(`Signal rerun did not execute ${file}: ${title}`);
     return { file, title, class: test.status === "passed" ? "fail-pass" : "fail-fail", run };
   });
+}
+
+/** Tests that failed and failed again on this run and on the previous one: a standing red. */
+export function standingReds(
+  previous: ReadonlyArray<SignalFailure>,
+  current: ReadonlyArray<SignalFailure>,
+): SignalFailure[] {
+  const key = (failure: SignalFailure) => JSON.stringify([failure.file, failure.title]);
+  const before = new Set(previous.filter((failure) => failure.class === "fail-fail").map(key));
+  return current.filter((failure) => failure.class === "fail-fail" && before.has(key(failure)));
 }
 
 const root = NodePath.resolve(import.meta.dirname, "..");
@@ -149,5 +166,17 @@ if (import.meta.main) {
     const failures = classifyFailures(initial, rerun, run);
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
+    // The previous kh-next run's classification, when the workflow fetched one.
+    const previous = process.env.MATE_SIGNAL_PREVIOUS;
+    if (previous !== undefined && NodeFS.existsSync(previous)) {
+      const reds = standingReds(
+        JSON.parse(NodeFS.readFileSync(previous, "utf8")) as SignalFailure[],
+        failures,
+      );
+      for (const red of reds)
+        console.log(`::error file=${red.file},title=Standing red::${red.title}`);
+      if (reds.length)
+        throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
+    } else console.log("Signal has no previous kh-next classification to compare");
   } else throw new Error("Usage: node scripts/signal.ts shard c|non-c <index/count> | classify");
 }
