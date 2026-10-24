@@ -38,11 +38,27 @@ export class SshConnectionTarget extends Schema.TaggedClass<SshConnectionTarget>
   },
 ) {}
 
+/**
+ * A Mate opened through HQ (spec-mate §3.8): it holds no credential of its own. Every attempt asks
+ * HQ for a ticket for the Mate's project and opens the socket at the origin HQ names, with the
+ * ticket as its first frame; the connection is the session.
+ */
+export class ZeropsMateConnectionTarget extends Schema.TaggedClass<ZeropsMateConnectionTarget>()(
+  "ZeropsMateConnectionTarget",
+  {
+    ...ConnectionTargetBase,
+    projectId: Schema.String,
+    /** The Mate's base URL as it was found; the socket goes where each ticket says. */
+    httpBaseUrl: Schema.String,
+  },
+) {}
+
 export const ConnectionTarget = Schema.Union([
   PrimaryConnectionTarget,
   BearerConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
 ]);
 export type ConnectionTarget = typeof ConnectionTarget.Type;
 
@@ -50,6 +66,7 @@ export const PersistedConnectionTarget = Schema.Union([
   BearerConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
 ]);
 export type PersistedConnectionTarget = typeof PersistedConnectionTarget.Type;
 

@@ -25,6 +25,7 @@ import {
   PrimaryConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
   type ConnectionTarget,
 } from "./model.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
@@ -58,6 +59,7 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
   readonly authorizeDpop?: RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]["authorizeDpop"];
   readonly primaryBearerToken?: string;
   readonly prepareSsh?: ClientCapabilities.SshEnvironmentGateway["Service"]["prepare"];
+  readonly issueMateTicket?: ClientCapabilities.MateTicketIssuerService["issue"];
 }) => {
   const profiles = new Map(
     (options?.profiles ?? []).map((profile) => [profile.connectionId, profile]),
@@ -141,6 +143,13 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
     ),
     Layer.succeed(RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization, remote),
     Layer.succeed(ClientCapabilities.SshEnvironmentGateway, ssh),
+    ...(options?.issueMateTicket === undefined
+      ? []
+      : [
+          Layer.succeed(ClientCapabilities.MateTicketIssuer, {
+            issue: options.issueMateTicket,
+          }),
+        ]),
   );
 
   return Effect.succeed(ConnectionResolver.layer.pipe(Layer.provide(dependencies)));
@@ -487,6 +496,69 @@ describe("ConnectionResolver", () => {
       ).toContain("wsTicket=bearer");
       expect(yield* Ref.get(preparedTargets)).toEqual([SSH_TARGET]);
       expect(yield* Ref.get(connectionMethods)).toEqual(["ssh"]);
+    }),
+  );
+
+  it.effect(
+    "A Mate connection asks HQ for a new ticket on every attempt and opens the socket at the ticket's origin with the ticket as its first frame",
+    () =>
+      Effect.gen(function* () {
+        const asked = yield* Ref.make<ReadonlyArray<string>>([]);
+        const brokerLayer = yield* makeDependencies({
+          issueMateTicket: (projectId) =>
+            Ref.updateAndGet(asked, (all) => [...all, projectId]).pipe(
+              Effect.map((all) => ({
+                ticket: `ticket-${all.length}`,
+                origin: "https://zcp-ada-8080.prg1.zerops.app",
+              })),
+            ),
+        });
+        const broker = yield* ConnectionResolver.ConnectionResolver.pipe(
+          Effect.provide(brokerLayer),
+        );
+        const target = new ZeropsMateConnectionTarget({
+          environmentId: ENVIRONMENT_ID,
+          label: "Ada",
+          projectId: "project-ada",
+          httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
+        });
+
+        const first = yield* broker.prepare(catalogEntry(target));
+        const second = yield* broker.prepare(catalogEntry(target));
+
+        expect(yield* Ref.get(asked)).toEqual(["project-ada", "project-ada"]);
+        expect(first).toMatchObject({
+          environmentId: ENVIRONMENT_ID,
+          httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
+          httpAuthorization: null,
+          firstFrame: '{"ticket":"ticket-1"}',
+          target,
+        });
+        expect(new URL(first.socketUrl).origin + new URL(first.socketUrl).pathname).toBe(
+          "wss://zcp-ada-8080.prg1.zerops.app/mate/ws",
+        );
+        expect(second.firstFrame).toBe('{"ticket":"ticket-2"}');
+      }),
+  );
+
+  it.effect("A client that opens no Mate through HQ refuses a Mate connection as unsupported", () =>
+    Effect.gen(function* () {
+      const brokerLayer = yield* makeDependencies();
+      const broker = yield* ConnectionResolver.ConnectionResolver.pipe(Effect.provide(brokerLayer));
+      const error = yield* Effect.flip(
+        broker.prepare(
+          catalogEntry(
+            new ZeropsMateConnectionTarget({
+              environmentId: ENVIRONMENT_ID,
+              label: "Ada",
+              projectId: "project-ada",
+              httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
+            }),
+          ),
+        ),
+      );
+
+      expect(error).toMatchObject({ _tag: "ConnectionBlockedError", reason: "unsupported" });
     }),
   );
 });
