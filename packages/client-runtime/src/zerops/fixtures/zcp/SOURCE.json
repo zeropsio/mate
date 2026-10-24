@@ -1,11 +1,11 @@
 {
-  "zcpCommit": "44e7a4794bc3ffc8c104d000b3e76e9c29000f27",
+  "zcpCommit": "f9d341fd13e6a4381f3d6264231c3f72d6c12d94",
   "files": {
     "dev-server.one-server.json": "49ac8aeef4a74b110a46d7dbcb65587882201a4fec654c68af36a45d5af7981c",
     "dev-server.running-http-404.json": "88bd0e180ac18c0ab4c6713d648f3605c2213929757289fdf491e27a1ac725ed",
     "dev-server.three-servers-one-crashed.json": "a90cf7f324d1c1ade67831abc2d78352e6b4608aa9ccc5aa6bce3e207c12d208",
     "dev-servers.declaration.json": "b0d9a8ce92cba3760959f3f492392ec62f59bd3921de6aa709db2c828443d3e2",
-    "envelope.lease-status.json": "c34d1c2a74463d5f2cdb7759ac05c93267bf3ccce0a7c7695cc97d2aa770e9bd",
+    "envelope.lease-status.json": "9a04e045c2800e9d4912f2d805d5f9def5e7bd34773d4eaaae7cc1cdc6f800fa",
     "envelope.pool-pair.json": "01a2007345c8bb27321d651add14fc26df61d75def2e50387d81878864bd9cf7",
     "envelope.single-pair.json": "e9ac1a56ba5f68944ea3dfdde2064a442d600acb9174b9e1c553ee68c62b474a",
     "envelope.single-pair.today.json": "b8171a75012d8985af51e7d00eea0c69495f0f1b114e47f53d543e8a8ff31bf6",
