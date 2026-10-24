@@ -98,6 +98,7 @@ import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
+import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
@@ -126,6 +127,7 @@ export type ConnectLinkSocket = (url: string) => LinkSocket;
 
 /** How a link closed: HQ's code and reason, or none where the socket failed without one. */
 export interface LinkClose {
+  readonly keyChanged?: true;
   readonly code?: number;
   readonly reason?: string;
 }
@@ -177,6 +179,7 @@ export interface ZeropsHqLinkOptions {
   readonly publicOrigin: string | undefined;
   /** The project's key as it stands now, read afresh for every dial; none while there is none. */
   readonly readKey: Effect.Effect<string | undefined>;
+  readonly keyRefusal?: ZeropsKeyRefusal;
   readonly connect: ConnectLinkSocket;
   /** The Mate's overview as it stands now; none when it cannot be read, tried again next round. */
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
@@ -299,6 +302,7 @@ export const makeZeropsHqLink = (
     const state = yield* SubscriptionRef.make<Option.Option<LinkedMate>>(Option.none());
     // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
     const refusal = yield* Ref.make<string | undefined>(undefined);
+    let reportedKey: string | undefined;
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
@@ -351,6 +355,30 @@ export const makeZeropsHqLink = (
         return Option.none<Link>();
       }
       yield* send({ type: "hello", key, serviceId: options.serviceId, origin });
+      const keyChanged = yield* Deferred.make<LinkClose>();
+      const keyRefusals = options.keyRefusal
+        ? Stream.runForEach(options.keyRefusal.changes, (notice) =>
+            Effect.gen(function* () {
+              // Notices are retained across reconnects; fence them with the live env value.
+              const currentKey = yield* options.readKey;
+              if (currentKey !== key) {
+                yield* Deferred.succeed(keyChanged, { keyChanged: true });
+                return;
+              }
+              // An old request cannot accuse a newer link's key.
+              if (notice.refusedKey !== key || notice.currentKey !== key) return;
+              yield* Effect.sync(() => {
+                if (reportedKey === key) return;
+                try {
+                  socket.send(encodeUp({ type: "key-refused" }));
+                  reportedKey = key;
+                } catch {
+                  // A failed send is still owed on the next link.
+                }
+              });
+            }),
+          )
+        : Effect.never;
 
       const usage = options.usage ? yield* options.usage.open(send) : undefined;
       // Whether HQ's latest state on this link says the Mate is automated: only then are tasks
@@ -502,7 +530,7 @@ export const makeZeropsHqLink = (
       });
       const relayed = yield* Effect.forkScoped(
         Effect.raceFirst(
-          relay,
+          Effect.raceFirst(relay, Deferred.await(keyChanged)),
           Effect.all(
             [
               onceAnswered(overviews),
@@ -511,6 +539,7 @@ export const makeZeropsHqLink = (
               onceAnswered(health),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
+              keyRefusals,
             ],
             { concurrency: "unbounded" },
           ).pipe(Effect.as(undefined)),
@@ -598,6 +627,10 @@ export const makeZeropsHqLink = (
             Effect.catchCause(() => Effect.succeed({ opened: false } as const)),
           );
           const close = "close" in ran ? ran.close : undefined;
+          if (close?.keyChanged) {
+            attempt = 0;
+            continue;
+          }
           const refused = refusalOf(close);
           if (refused !== undefined) yield* Ref.set(refusal, refused);
           // Only a link that stayed up, or one the Mate's own newer link superseded, resets the
@@ -786,6 +819,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         publicOrigin: zerops.publicOrigin,
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),
+        ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         connect: connectLinkSocket,
         access: connections.heard,
         ticket: tickets.heard,
