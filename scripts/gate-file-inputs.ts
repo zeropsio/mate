@@ -63,6 +63,13 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/integration/scenarioMate.integration.test.ts": [],
   "apps/server/integration/scriptedVocabulary.integration.test.ts": [],
   "apps/server/scripts/bundleNodePty.test.ts": [],
+  "apps/server/scripts/cli.test.ts": [
+    "apps/server/scripts/**",
+    "scripts/lib/**",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "apps/server/package.json",
+  ],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
   "apps/server/src/assets/ContentAssetHttp.test.ts": [],
