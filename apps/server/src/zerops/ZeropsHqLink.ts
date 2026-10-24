@@ -14,8 +14,8 @@
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
  *   each new revision; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
- *   `ZeropsAutomation` (whether the Mate is automated) and to whoever restarts on a moved Chief
- *   mark (`chief`); who its project opens for and lists (`access`), handed on to
+ *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
+ *   every session on a moved Chief mark (`chief`); who its project opens for and lists (`access`), handed on to
  *   `ZeropsMateAccessList`; the Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
@@ -93,6 +93,7 @@ import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
+import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
@@ -735,8 +736,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
+      const engine = yield* MateEngine;
       const chats = chatsSource(
-        yield* MateEngine,
+        engine,
         // The revision an engine row carries: the attention's source, as the engine wire's.
         Effect.map(attention.current, ({ source }) => source),
       );
@@ -763,6 +765,14 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         access: access.heard,
         gitCredential: credential.write,
+        // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
+        chief: (yield* makeChiefRestart({
+          conversations: Effect.map(engine.conversations, (list) => [
+            ...list.views.map((view) => view.conversationId),
+            ...list.unread,
+          ]),
+          deliver: engine.deliver,
+        })).heard,
         automation: yield* ZeropsAutomation,
         tasks: yield* ZeropsTasks,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
