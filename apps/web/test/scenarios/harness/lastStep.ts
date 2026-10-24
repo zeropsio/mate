@@ -1,12 +1,12 @@
 import { TestRunner } from "vite-plus/test";
 
-/** The test meta key the Signal reporter reads to name where a hung case stood. */
-export const LAST_STEP_META = "lastStep";
-
-/** Notes the scenario step the running case entered last; a no-op outside a test. */
+/**
+ * Notes the scenario step the running case entered last; a no-op outside a test. The Signal
+ * reporter reads the test meta's `lastStep` to name where a hung case stood.
+ */
 export function recordStep(step: string): void {
   const test = TestRunner.getCurrentTest();
-  if (test) test.meta[LAST_STEP_META] = step;
+  if (test) Reflect.set(test.meta, "lastStep", step);
 }
 
 const isPlain = (value: unknown): value is Record<string, unknown> =>

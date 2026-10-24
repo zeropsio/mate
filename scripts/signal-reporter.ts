@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- writes Vitest evidence for Signal classification.
 import * as NodeFS from "node:fs";
-import type { Reporter } from "vite-plus/test/node";
+import type { Reporter, TestCase } from "vite-plus/test/node";
 
 /** Test failures are evidence; setup, collection and unhandled errors break the workflow. */
 /** One line of `<report>.progress.jsonl`: a case starting, or ending with its status. */
@@ -33,25 +33,21 @@ export default class SignalReporter implements Reporter {
     if (path) NodeFS.appendFileSync(`${path}.progress.jsonl`, JSON.stringify(line) + "\n");
   }
 
-  onTestCaseReady(test: { fullName: string; module: { moduleId: string } }): void {
+  onTestCaseReady(test: TestCase): void {
     this.progress({ event: "start", file: test.module.moduleId, title: test.fullName });
   }
 
-  onTestCaseResult(test: {
-    fullName: string;
-    module: { moduleId: string };
-    meta(): { lastStep?: unknown };
-    result(): { state: string; errors?: ReadonlyArray<{ message: string }> };
-  }): void {
-    const { state, errors = [] } = test.result();
+  onTestCaseResult(test: TestCase): void {
+    const result = test.result();
+    const errors = result.state === "failed" ? result.errors : [];
     const reason = errors
-      .map((error) => hungReason(error.message, test.meta().lastStep))
+      .map((error) => hungReason(error.message, Reflect.get(test.meta(), "lastStep")))
       .find((found) => found !== undefined);
     this.progress({
       event: "end",
       file: test.module.moduleId,
       title: test.fullName,
-      status: state,
+      status: result.state,
       ...(reason === undefined ? {} : { reason }),
     });
   }
