@@ -246,16 +246,3 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(ZeropsProjectSigners, make);
-
-/**
- * Whether `body` claims the member list it carried is the whole thing: a finite `totalCount` must
- * be covered by the rows read; without it, the supplied array is taken as complete. No access
- * decision reads a member list any more (HQ's access list replaced the Mate's own read); it stays
- * here, beside the test that states it, until the owner rules on that test.
- */
-export function isMemberListComplete(body: unknown, entriesLength: number): boolean {
-  if (typeof body !== "object" || body === null) return true;
-  const totalCount = (body as Record<string, unknown>)["totalCount"];
-  if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return true;
-  return entriesLength >= totalCount;
-}

@@ -33,7 +33,6 @@ import {
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import {
-  isMemberListComplete,
   isTurnStartingCommand,
   make as makeProjectSigners,
   SIGN_IN_CHECK_WAIT,
@@ -250,24 +249,6 @@ describe("isTurnStartingCommand", () => {
     ),
   )("$title", ({ type }) => {
     assert.isFalse(isTurnStartingCommand({ type }));
-  });
-});
-
-describe("isMemberListComplete", () => {
-  it.each(
-    Array.from(
-      [
-        ["no totalCount at all", {}, 3, true],
-        ["body is not an object", null, 0, true],
-        ["totalCount matches the rows read", { totalCount: 2 }, 2, true],
-        ["totalCount is fewer than the rows read", { totalCount: 1 }, 2, true],
-        ["totalCount exceeds the rows read", { totalCount: 5 }, 2, false],
-        ["totalCount is not a finite number", { totalCount: "5" }, 2, true],
-      ] as const,
-      ([name, body, entriesLength, expected]) => ({ title: name, body, entriesLength, expected }),
-    ),
-  )("$title", ({ body, entriesLength, expected }) => {
-    assert.strictEqual(isMemberListComplete(body, entriesLength), expected);
   });
 });
 
