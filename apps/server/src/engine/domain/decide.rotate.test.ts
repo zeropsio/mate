@@ -290,6 +290,43 @@ describe("decide: a session rotates between turns", () => {
     expect(after.effects).toMatchObject([{ kind: "session.close", payload: { reason: "closed" } }]);
   });
 
+  it("a Chief rotation does not wait for the agent's background work: the next run closes its session and the work ends as lost", () => {
+    const working: Command = {
+      _tag: "ProviderSignals",
+      sessionId: "s1" as never,
+      signals: [
+        {
+          kind: "work-upserted",
+          work: "w1",
+          origin: T(1),
+          workKind: "helper",
+          status: "running",
+          title: "Explore",
+        },
+      ],
+    };
+    const rotated = [
+      send("task card"),
+      prepared(1),
+      opened(1, "s1"),
+      sent(1),
+      working,
+      ended(1),
+      rotate("chief", false, null),
+      send("next"),
+      prepared(2),
+    ];
+    expect(play(rotated).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "closed" } },
+    ]);
+    expect(play([...rotated, closed("s1")]).log).toContainEqual(
+      expect.objectContaining({
+        _tag: "ItemClosed",
+        body: expect.objectContaining({ kind: "work", status: "lost" }),
+      }),
+    );
+  });
+
   it("a rotation with no session open takes effect at the next open", () => {
     const next = play([rotate("cleared", true, PACKET), send("hello"), prepared(1)]);
     expect(next.effects).toMatchObject([
