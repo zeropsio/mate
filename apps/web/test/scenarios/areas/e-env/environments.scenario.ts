@@ -6,7 +6,7 @@ import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
-import { environmentActions } from "./dsl.ts";
+import { environmentActions, environmentJobs } from "./dsl.ts";
 
 const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
@@ -284,11 +284,23 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Roll back to v0.1.0");
           const process = yield* a.deployment("production");
           expect(submissions).toHaveLength(1);
-          const jobs = yield* inProcessCore(f.s.drivers.core).sql`
-          SELECT label, sha, process_id FROM hq_deploy_job
-          WHERE project_id = ${"Shop-production"} AND label = ${"v0.1.2"}`;
-          expect(jobs).toEqual([
-            expect.objectContaining({ label: "v0.1.2", sha: earlier, process_id: process.id }),
+          // The rollback is release v0.1.2 of the earlier commit, and its build is that release's job.
+          const releases = (yield* f.s.drivers.core.call("GET", `/api/apps/${f.appId}/releases`, {
+            session: f.s.owner,
+          })).body as {
+            releases: { tag: string; rollbackOf: string | null; entries: { sha: string }[] }[];
+          };
+          expect(releases.releases.filter((release) => release.tag === "v0.1.2")).toEqual([
+            expect.objectContaining({
+              rollbackOf: "v0.1.0",
+              entries: [expect.objectContaining({ sha: earlier })],
+            }),
+          ]);
+          const jobs = yield* environmentJobs(f, "production", (jobs) =>
+            jobs.some((job) => job.processId === process.id),
+          );
+          expect(jobs.filter((job) => job.processId === process.id)).toEqual([
+            expect.objectContaining({ cause: "release", sha: earlier, processId: process.id }),
           ]);
           yield* a.when.finish("production");
           yield* a.then.text("Rolled back to v0.1.0");

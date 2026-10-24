@@ -1,9 +1,8 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture } from "./fake.ts";
-import { environmentActions } from "./dsl.ts";
+import { environmentActions, environmentJobs } from "./dsl.ts";
 
 describe("E: deploy observation and the person's next action", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -19,9 +18,9 @@ describe("E: deploy observation and the person's next action", () => {
           const sha = yield* f.merge();
           yield* a.then.text("Waiting for Zerops to start the build.");
           yield* a.then.text("Check it in Zerops, or run it again.");
-          const before = yield* inProcessCore(f.s.drivers.core).sql<{
-            id: string;
-          }>`SELECT id::text AS id FROM hq_deploy_job WHERE project_id = ${"Shop-stage"} AND sha = ${sha}`;
+          const before = (yield* environmentJobs(f, "stage", (jobs) =>
+            jobs.some((job) => job.sha === sha),
+          )).filter((job) => job.sha === sha);
           expect(before).toHaveLength(1);
           answerBuilds();
           yield* Effect.promise(() =>
@@ -32,11 +31,9 @@ describe("E: deploy observation and the person's next action", () => {
               .click(),
           );
           yield* a.then.text(`Building ${sha.slice(0, 7)}`);
-          const after = yield* inProcessCore(f.s.drivers.core).sql<{
-            id: string;
-            state: string;
-            cause: string;
-          }>`SELECT j.id::text AS id, j.state, r.cause FROM hq_deploy_job j JOIN hq_rollout r ON r.id = j.rollout_id WHERE j.project_id = ${"Shop-stage"} AND j.sha = ${sha}`;
+          const after = (yield* environmentJobs(f, "stage", (jobs) =>
+            jobs.some((job) => job.sha === sha && job.id !== before[0]!.id),
+          )).filter((job) => job.sha === sha);
           expect(after).toHaveLength(2);
           const previous = after.find((job) => job.id === before[0]!.id);
           const successor = after.find((job) => job.id !== before[0]!.id);
