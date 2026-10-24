@@ -28,23 +28,23 @@ describe("overview filter history", () => {
         });
         const assertAll = () =>
           Effect.promise(async () => {
-            const expected = names.map((name) => s.appIds.get(name)!);
+            // Every project All lists, by name: a card out of sight stands in until it is seen.
             await expect
               .poll(() =>
                 s.page.$$eval(
-                  '[data-zerops-surface="project-cards"] [data-zerops-group]',
-                  (cards) => cards.map((card) => card.getAttribute("data-zerops-group")).sort(),
+                  '[data-zerops-surface="project-cards"] > [role="listitem"]',
+                  (items) => items.map((item) => item.getAttribute("aria-label")).sort(),
                 ),
               )
-              .toEqual([...expected].sort());
+              .toEqual([...names].sort());
             const row = await s.page.$eval('[data-zerops-surface="project-cards"]', (row) => ({
-              first: row.firstElementChild?.getAttribute("data-zerops-group"),
+              first: row.firstElementChild?.getAttribute("aria-label"),
               scroll: row.scrollLeft,
               width: row.clientWidth,
               total: row.scrollWidth,
               forward: row.parentElement?.hasAttribute("data-can-right"),
             }));
-            expect(row.first).toBe(s.appIds.get("Ada"));
+            expect(row.first).toBe("Ada");
             expect(row.scroll, "All starts with the first project").toBe(0);
             expect(row.total).toBeGreaterThan(row.width);
             expect(row.forward, "Every restored project remains reachable").toBe(true);
