@@ -90,8 +90,29 @@ jobs:
               printf 'Verified kh-next CI run(s): %s\n' "$verified"
             fi
           fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
+            # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
+            export GITHUB_TREE
+            GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --paginate --jq '
+              .workflow_runs[]
+              | select(.head_branch == "main")
+              | select(.event == "push" and .status == "completed" and .conclusion == "success")
+              | select(.head_commit.tree_id == env.GITHUB_TREE)
+              | .id')
+            for run in $candidates; do
+              # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
+              ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}/jobs?per_page=100" --paginate --jq '
+                [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
+              if [[ "$ran" =~ ^[1-9] ]]; then
+                skip=true
+                printf 'Verified main CI run: %s\n' "$run"
+                break
+              fi
+            done
+          fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
-          echo "Already verified on kh-next: ${skip}"
+          echo "Already verified: ${skip}"
 
   cache:
     name: Check cache (${{ matrix.os }})
@@ -534,7 +555,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next or main.'
 
       - name: Require every package test job to pass
         if: needs.prepare.outputs.skip != 'true'
@@ -1018,7 +1039,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next or main.'
 
       - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'

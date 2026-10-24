@@ -799,13 +799,6 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
 
 it.each([
   {
-    ref: "refs/heads/kh-next",
-    event: "push",
-    runs: [],
-    skip: false,
-    api: false,
-  },
-  {
     ref: "refs/heads/kh-bisect/abc1234",
     event: "push",
     runs: [],
@@ -1603,5 +1596,111 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
       jobs[id]!["timeout-minutes"],
       `ASSERTION: ${id} retains its measured execution headroom`,
     ).toBeGreaterThanOrEqual(measuredCeiling);
+  }
+});
+
+const mainRun = (id: number, tree: string) => ({
+  id,
+  head_branch: "main",
+  event: "push",
+  status: "completed",
+  conclusion: "success",
+  head_commit: { tree_id: tree },
+});
+const hqJob = (conclusion: string) => ({ name: "Test HQ 1", conclusion });
+
+it.each([
+  {
+    title: "a kh-next push skips when main verified the same tree in full",
+    runs: [mainRun(1, "same")],
+    jobs: { 1: [hqJob("success")] },
+    skip: true,
+  },
+  {
+    title: "a kh-next push whose tree differs from main's by one byte runs in full",
+    runs: [mainRun(1, "other")],
+    jobs: { 1: [hqJob("success")] },
+    skip: false,
+  },
+  {
+    title: "a main run that itself skipped does not count as verification",
+    runs: [mainRun(1, "same")],
+    jobs: { 1: [{ name: "CI promotion", conclusion: "success" }, hqJob("skipped")] },
+    skip: false,
+  },
+  {
+    title: "a later full main run of the tree counts when an earlier match was a reuse",
+    runs: [mainRun(1, "same"), mainRun(2, "same")],
+    jobs: { 1: [hqJob("skipped")], 2: [hqJob("success")] },
+    skip: true,
+  },
+  {
+    title: "a kh-next push finds no main run to reuse",
+    runs: [],
+    jobs: {},
+    skip: false,
+  },
+])("CI verification reuse: $title", ({ runs, jobs, skip }) => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const step = workflow.jobs.prepare.steps.find(
+    (candidate: { id?: string }) => candidate.id === "verdict",
+  );
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "ci-reuse-"));
+  try {
+    const bin = NodePath.join(dir, "bin");
+    NodeFS.mkdirSync(bin);
+    NodeFS.writeFileSync(NodePath.join(dir, "runs.json"), JSON.stringify({ workflow_runs: runs }));
+    for (const [id, list] of Object.entries(jobs))
+      NodeFS.writeFileSync(NodePath.join(dir, `jobs-${id}.json`), JSON.stringify({ jobs: list }));
+    // Stands in for `gh api <url> --paginate --jq <filter>`, applying the filter like gh does.
+    NodeFS.writeFileSync(
+      NodePath.join(bin, "gh"),
+      `#!/usr/bin/env bash
+url=$2
+filter=\${@: -1}
+case "$url" in
+  *"/jobs?"*) id=\${url#*/runs/}; id=\${id%%/*}; file="${dir}/jobs-$id.json" ;;
+  *"branch=main"*) file="${dir}/runs.json" ;;
+  *) echo '{"workflow_runs":[]}' > "${dir}/empty.json"; file="${dir}/empty.json" ;;
+esac
+jq -r "$filter" "$file"
+`,
+      { mode: 0o755 },
+    );
+    const repo = NodePath.join(dir, "repo");
+    NodeFS.mkdirSync(repo);
+    const git = (...args: string[]) =>
+      NodeChildProcess.execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+    git("init", "-q");
+    NodeFS.writeFileSync(NodePath.join(repo, "file"), "x");
+    git("add", "file");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x");
+    const tree = git("rev-parse", "HEAD^{tree}").trim();
+    const resolved = JSON.stringify(runs).replaceAll('"same"', JSON.stringify(tree));
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "runs.json"),
+      JSON.stringify({ workflow_runs: JSON.parse(resolved) }),
+    );
+    const output = NodePath.join(dir, "output");
+    NodeFS.writeFileSync(output, "");
+    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
+      cwd: repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_REF: "refs/heads/kh-next",
+        GITHUB_SHA: "0".repeat(40),
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        GITHUB_OUTPUT: output,
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(NodeFS.readFileSync(output, "utf8")).toBe(`skip=${skip}\n`);
+  } finally {
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 });
