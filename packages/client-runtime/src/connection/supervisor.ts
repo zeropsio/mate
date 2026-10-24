@@ -1,3 +1,4 @@
+import type { EnvironmentId } from "@t3tools/contracts";
 import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -31,6 +32,7 @@ import {
 import * as RpcSession from "../rpc/session.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
+import { reconnectWaitMs } from "./reconnectSchedule.logic.ts";
 
 const RETRY_BASE_DELAY_MS = 1_000;
 /**
@@ -159,6 +161,19 @@ export function retryDelayMs(failureCount: number, random: number): number {
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
+/**
+ * Where the person's attention is, for a Mate's reconnect schedule (spec-mate §3.8): whether the
+ * Mate is the one on screen (its steady wait is 60 s, else 5 min), and whether the tab is hidden
+ * (no ticket is asked for until it is seen again). A client that says nothing has its Mates on a
+ * visible screen.
+ */
+export class MatePresence extends Context.Reference<{
+  readonly onScreen: (environmentId: EnvironmentId) => boolean;
+  readonly hidden: () => boolean;
+}>("@t3tools/client-runtime/connection/supervisor/MatePresence", {
+  defaultValue: () => ({ onScreen: () => true, hidden: () => false }),
+}) {}
+
 function annotateTarget(target: ConnectionTarget) {
   return Effect.annotateCurrentSpan({
     "environment.id": target.environmentId,
@@ -284,6 +299,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   | ConnectionWakeups.ConnectionWakeups
 > {
   const target = entry.target;
+  const presence = yield* MatePresence;
   yield* annotateTarget(target);
 
   const connectivity = yield* Connectivity.Connectivity;
@@ -1197,7 +1213,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       failureCount += 1;
-      const delayMs = retryDelayMs(failureCount - 1, yield* Random.next);
+      const delayMs =
+        target._tag === "ZeropsMateConnectionTarget"
+          ? reconnectWaitMs(failureCount, presence.onScreen(target.environmentId))
+          : retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,
@@ -1215,7 +1234,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         lastFailure: error,
         retryAt: (yield* Clock.currentTimeMillis) + delayMs,
       });
-      const applicationActivated = yield* waitForRetrySignal(delayMs);
+      let applicationActivated = yield* waitForRetrySignal(delayMs);
+      // A hidden tab asks a Mate for no ticket: the wait holds until the tab is seen again.
+      while (
+        !applicationActivated &&
+        target._tag === "ZeropsMateConnectionTarget" &&
+        presence.hidden()
+      ) {
+        applicationActivated = yield* waitForSignal;
+      }
       if (applicationActivated) {
         resetRetryLadder();
       }
