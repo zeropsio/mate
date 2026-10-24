@@ -1128,7 +1128,13 @@ esac
     );
     NodeFS.writeFileSync(
       NodePath.join(root, "node_modules/.bin/vp"),
-      '#!/bin/sh\necho vp >> checks.log\nexit "${GATE_FIXTURE_FAIL:-0}"\n',
+      `#!/bin/sh
+echo vp >> checks.log
+case "$*" in
+  *test/scenarios/vitest.config.ts*) printf '%s' "\${MATE_HQ_TEST_COMMAND-<unset>}" > "$GATE_FIXTURE_HQ_COMMAND_LOG" ;;
+esac
+exit "\${GATE_FIXTURE_FAIL:-0}"
+`,
       { mode: 0o755 },
     );
     NodeFS.writeFileSync(NodePath.join(root, ".gitignore"), "node_modules/\nchecks.log\n");
@@ -1140,7 +1146,7 @@ esac
     git("commit", "-qm", "base");
     git("branch", "base");
     NodeFS.writeFileSync(NodePath.join(root, "README.md"), "after");
-    const run = (args: string[] = [], fail = false) =>
+    const run = (args: string[] = [], fail = false, hqCommand?: string) =>
       NodeChildProcess.spawnSync(
         process.execPath,
         ["scripts/gate-changed.ts", "--base", "base", ...args],
@@ -1150,6 +1156,8 @@ esac
           env: {
             ...process.env,
             GATE_FIXTURE_FAIL: fail ? "9" : "0",
+            GATE_FIXTURE_HQ_COMMAND_LOG: NodePath.join(root, "node_modules/hq-command.log"),
+            MATE_HQ_TEST_COMMAND: hqCommand,
             // Dozens of real CLI launches share compilation, never gate results or Git state.
             NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
           },
@@ -1331,6 +1339,18 @@ esac
       ),
     );
     expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
+    const commandLog = NodePath.join(root, "node_modules/hq-command.log");
+    for (const hqCommand of ["node /fixtures/hq-a.ts", "node /fixtures/hq-b.ts", undefined]) {
+      NodeFS.rmSync(commandLog);
+      const changedHq = run(["--scenarios", scenario], false, hqCommand);
+      expect(changedHq.status, changedHq.stderr).toBe(0);
+      expect(
+        changedHq.stdout,
+        "ASSERTION: changing the HQ test command runs scenarios against the selected backend",
+      ).toContain("ok edited scenario files");
+      expect(NodeFS.readFileSync(commandLog, "utf8")).toBe(hqCommand ?? "<unset>");
+      expect(run(["--scenarios", scenario], false, hqCommand).stdout).toContain("reused receipt");
+    }
     expect(run().stdout).not.toContain("reused receipt");
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
