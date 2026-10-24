@@ -10,8 +10,8 @@
  * work ends as lost (`decide.rotate.test.ts`).
  *
  * The first state a process hears restarts nothing: its sessions were spawned after it started.
- * Each delivery carries `chief:<conversation>:<new chief>`, so a delivery told again is answered by
- * its receipt. A conversation that refuses (archived) or cannot record now is passed over.
+ * Each delivery carries `chief:<conversation>:<millisecond this process began hearing>:<change number>`: one id per mark
+ * change, so a return to an earlier Chief rotates again and is not answered by the old receipt. A conversation that refuses (archived) or cannot record now is passed over.
  *
  * It reads and writes nothing of the engine itself: `ZeropsHqLink`, a wiring file, binds it to the
  * Mate's engine (the engine boundary, `scripts/mate-zone-architecture.test.ts`).
@@ -24,6 +24,7 @@ import {
   type Principal,
   type RotateSession,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -50,11 +51,16 @@ export const makeChiefRestart = (deps: ChiefRestartDeps) =>
   Effect.gen(function* () {
     // Per process: none until the first state, which only records.
     const lastChief = yield* Ref.make<Option.Option<string | null>>(Option.none());
+    // One id per mark change, across restarts of this process too: a return to an earlier Chief
+    // is a new change, never answered by the old change's receipt.
+    const run = yield* Clock.currentTimeMillis;
+    const changes = yield* Ref.make(0);
     return {
       heard: (projectId) =>
         Effect.gen(function* () {
           const last = yield* Ref.getAndSet(lastChief, Option.some(projectId));
           if (Option.isNone(last) || last.value === projectId) return;
+          const change = yield* Ref.updateAndGet(changes, (n) => n + 1);
           yield* Effect.logInfo("zerops chief mark moved: every session rotates", {
             from: last.value,
             to: projectId,
@@ -64,7 +70,7 @@ export const makeChiefRestart = (deps: ChiefRestartDeps) =>
               .deliver(
                 conversationId,
                 { _tag: "RotateSession", reason: "chief", fresh: false, seed: null },
-                CommandId.make(`chief:${conversationId}:${projectId ?? "none"}`),
+                CommandId.make(`chief:${conversationId}:${run}:${change}`),
                 { kind: "engine" },
               )
               .pipe(

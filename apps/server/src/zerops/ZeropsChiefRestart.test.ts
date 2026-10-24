@@ -10,7 +10,7 @@ const C2 = ConversationId.make("c2");
 
 /**
  * The engine as the test holds it: its conversations, and every command delivered through a fake
- * `MateEngineService.deliver`, as `<conversation> <command id> <reason> <fresh> <seed> <principal>`.
+ * `MateEngineService.deliver`, as `<conversation> <reason> <fresh> <seed> <principal>`.
  * A conversation in `refusing` answers `Rejected`; one in `unrecorded` fails to record.
  */
 const engineRig = () => {
@@ -18,13 +18,20 @@ const engineRig = () => {
   const refusing = new Set<ConversationId>();
   const unrecorded = new Set<ConversationId>();
   const delivered: Array<string> = [];
+  const receipts = new Set<string>();
+  /** The commands the engine acted on: a command id it already holds a receipt for is not acted on again. */
+  const acted: Array<string> = [];
   const restart = makeChiefRestart({
     conversations: Effect.sync(() => [...conversations]),
     deliver: (conversationId, command, commandId, principal) =>
       Effect.gen(function* () {
         delivered.push(
-          `${conversationId} ${commandId} ${command.reason} ${command.fresh} ${command.seed} ${principal.kind}`,
+          `${conversationId} ${command.reason} ${command.fresh} ${command.seed} ${principal.kind}`,
         );
+        if (!receipts.has(commandId)) {
+          receipts.add(commandId);
+          acted.push(`${conversationId} ${command.reason}`);
+        }
         if (unrecorded.has(conversationId))
           return yield* new DeliveryUnrecorded({ conversationId, message: "busy store" });
         return (
@@ -34,7 +41,7 @@ const engineRig = () => {
         ) satisfies CommandResult;
       }),
   });
-  return { restart, refusing, unrecorded, delivered };
+  return { restart, refusing, unrecorded, delivered, acted };
 };
 
 describe("ZeropsChiefRestart", () => {
@@ -47,8 +54,8 @@ describe("ZeropsChiefRestart", () => {
       assert.deepStrictEqual(delivered, []);
       yield* heard.heard(null);
       assert.deepStrictEqual(delivered, [
-        "c1 chief:c1:none chief false null engine",
-        "c2 chief:c2:none chief false null engine",
+        "c1 chief false null engine",
+        "c2 chief false null engine",
       ]);
     }),
   );
@@ -64,8 +71,8 @@ describe("ZeropsChiefRestart", () => {
         yield* heard.heard(null);
         yield* heard.heard("P_OTHER");
         assert.deepStrictEqual(delivered, [
-          "c1 chief:c1:P_OTHER chief false null engine",
-          "c2 chief:c2:P_OTHER chief false null engine",
+          "c1 chief false null engine",
+          "c2 chief false null engine",
         ]);
       }),
   );
@@ -82,9 +89,21 @@ describe("ZeropsChiefRestart", () => {
       yield* heard.heard("P_OTHER");
       yield* heard.heard("P_OTHER");
       assert.deepStrictEqual(delivered, [
-        "c1 chief:c1:P_OTHER chief false null engine",
-        "c2 chief:c2:P_OTHER chief false null engine",
+        "c1 chief false null engine",
+        "c2 chief false null engine",
       ]);
+    }),
+  );
+
+  it.effect("a Chief mark that returns to an earlier Chief rotates every session again", () =>
+    Effect.gen(function* () {
+      const { restart, acted } = engineRig();
+      const heard = yield* restart;
+      yield* heard.heard("P_A");
+      yield* heard.heard("P_B");
+      yield* heard.heard("P_A");
+      yield* heard.heard("P_B");
+      assert.strictEqual(acted.length, 6);
     }),
   );
 });
