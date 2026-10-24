@@ -5,11 +5,20 @@ import {
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
 import { makeAccountStore, makeMateAdapter, type MateAdapter } from "@t3tools/client-runtime/data";
-import { closedOffOf, type ExchangeClock } from "@t3tools/client-runtime/zerops/environments";
+import {
+  closedOffOf,
+  initialEnvironment,
+  selectReachability,
+  mateVoice,
+  type ExchangeClock,
+} from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { mateTicketIssuer } from "@t3tools/client-runtime/data";
+import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
+import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 
 import { zeropsSessionAtom } from "../state/zerops";
 import { closeOffPort, hqIndexPort, linkPhaseOf } from "./environmentPorts";
@@ -288,4 +297,85 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
     expect(told).toEqual(["p-vera"]);
     stop();
   });
+});
+
+describe("HQ ticket refusal on the Mate's state", () => {
+  it.effect.each([
+    { reason: "no-link", detail: "Mate has no connection to HQ (no-link)." },
+    { reason: "no-ack", detail: "Mate did not acknowledge the ticket (no-ack)." },
+  ])(
+    "The Mate's state shows HQ's $reason reason and recovers when connected",
+    ({ reason, detail }) =>
+      Effect.gen(function* () {
+        const hq = makeHqApi({
+          address: "https://hq.example",
+          orgId: "org-1",
+          accessToken: async () => "access",
+          openSocket: () => {
+            throw new Error("unexpected socket");
+          },
+          fetch: async (url) =>
+            new Response(
+              JSON.stringify(
+                url.endsWith("/api/door")
+                  ? { session: "session", expiresAt: "2099-01-01T00:00:00Z", userId: "user-1" }
+                  : { code: "mate_not_connected", reason },
+              ),
+              {
+                status: url.endsWith("/api/door") ? 200 : 409,
+                headers: { "content-type": "application/json" },
+              },
+            ),
+        });
+        const error = yield* Effect.flip(
+          mateTicketIssuer(() => hq).issue({ orgId: "org-1", projectId: "project-1" }),
+        );
+        for (const previouslyConnected of [false, true]) {
+          for (const phase of ["backoff", "connecting"] as const) {
+            const link = linkPhaseOf(connectionState(phase, error));
+            if (link?.phase !== "backoff" && link?.phase !== "connecting") {
+              throw new Error("A ticket refusal must retain its connection state");
+            }
+            const machine = {
+              ...initialEnvironment({ record: ENVIRONMENT_ID }),
+              presence: { kind: "present" as const, origin: ORIGIN },
+              credential: {
+                kind: "held" as const,
+                environmentId: ENVIRONMENT_ID,
+                installed: true,
+                staleBlock: false,
+                rereading: null,
+              },
+              container: { level: "ready" as const },
+              linkLostAt: previouslyConnected ? { wall: 0, mono: 0 } : null,
+              link,
+            };
+            const voice = mateVoice({
+              reachability: selectReachability(machine, ENVIRONMENT_ID),
+              conversationShown: previouslyConnected,
+              heldMs: 10_000,
+              nowMs: 0,
+              mateName: "Quinn",
+            });
+            expect(voice).toMatchObject({
+              text: previouslyConnected
+                ? `${detail} ${phase === "backoff" ? "Reconnecting to Quinn — next try in 1 s." : "Reconnecting to Quinn…"}`
+                : `${detail} Opening Quinn…`,
+            });
+            expect(
+              mateVoice({
+                reachability: selectReachability(
+                  { ...machine, link: { phase: "connected", since: { wall: 0, mono: 0 } } },
+                  ENVIRONMENT_ID,
+                ),
+                conversationShown: previouslyConnected,
+                heldMs: 10_000,
+                nowMs: 0,
+                mateName: "Quinn",
+              }),
+            ).toEqual({ surface: "none" });
+          }
+        }
+      }),
+  );
 });

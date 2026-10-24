@@ -98,9 +98,13 @@ export type ContainerVerdict =
  */
 export type LinkPhase =
   | { readonly phase: "idle" }
-  | { readonly phase: "connecting" }
+  | { readonly phase: "connecting"; readonly unavailableReason?: string }
   | { readonly phase: "connected" }
-  | { readonly phase: "backoff"; readonly retryAtMs: number | null }
+  | {
+      readonly phase: "backoff";
+      readonly retryAtMs: number | null;
+      readonly unavailableReason?: string;
+    }
   | {
       readonly phase: "blocked";
       readonly reason: ConnectionBlockedReason;

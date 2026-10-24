@@ -46,7 +46,11 @@ export type Reachability =
   | { readonly kind: "refused-credential" }
   | { readonly kind: "update-required"; readonly actual: string; readonly minimum: string }
   | { readonly kind: "update-unavailable" }
-  | { readonly kind: "connecting"; readonly waitingOn: ConnectingOn }
+  | {
+      readonly kind: "connecting";
+      readonly waitingOn: ConnectingOn;
+      readonly unavailableReason?: string;
+    }
   | { readonly kind: "ready"; readonly notice: ContainerNotice | null }
   | { readonly kind: "no-address"; readonly reason: NoOriginReason }
   | { readonly kind: "container"; readonly container: ContainerReachability }
@@ -64,7 +68,11 @@ export type Reachability =
    */
   | { readonly kind: "not-answering"; readonly overdue: boolean }
   /** `retryAtMs`: when its link tries again, where the supervisor said. */
-  | { readonly kind: "reconnecting"; readonly retryAtMs?: number }
+  | {
+      readonly kind: "reconnecting";
+      readonly retryAtMs?: number;
+      readonly unavailableReason?: string;
+    }
   | { readonly kind: "resolving" };
 
 const TERMINAL: ReadonlySet<Reachability["kind"]> = new Set([
@@ -127,6 +135,11 @@ export function selectReachability(
   asked: EnvironmentId | null,
 ): Reachability {
   const { presence, credential, link, container } = machine;
+  const unavailable =
+    (link.phase === "backoff" || link.phase === "connecting") &&
+    link.unavailableReason !== undefined
+      ? { unavailableReason: link.unavailableReason }
+      : {};
   // 1
   if (presence.kind === "gone") return { kind: "gone", because: presence.evidence };
   if (credential.kind === "retired") return { kind: "gone", because: credential.evidence };
@@ -201,14 +214,15 @@ export function selectReachability(
       credential.reconnect)
   ) {
     return held && link.phase === "backoff" && link.retryAtMs !== null
-      ? { kind: "reconnecting", retryAtMs: link.retryAtMs }
-      : { kind: "reconnecting" };
+      ? { kind: "reconnecting", retryAtMs: link.retryAtMs, ...unavailable }
+      : { kind: "reconnecting", ...unavailable };
   }
   // 11
   if (presence.kind === "unknown") return { kind: "resolving" };
   // 12
   return {
     kind: "connecting",
+    ...unavailable,
     // Row 8 has already taken a wait on Zerops.
     waitingOn:
       credential.kind === "waiting" && credential.on !== "zerops" ? credential.on : "exchange",
@@ -350,7 +364,11 @@ export function reachabilityPhrase(
     case "update-unavailable":
       return phrase("This project's Zerops tooling installs an older Mate than this app supports.");
     case "connecting":
-      return phrase(CONNECTING[verdict.waitingOn]);
+      return phrase(
+        verdict.unavailableReason === undefined
+          ? CONNECTING[verdict.waitingOn]
+          : `${verdict.unavailableReason} ${CONNECTING[verdict.waitingOn]}`,
+      );
     case "ready":
       return phrase(verdict.notice === null ? null : noticePhrase(verdict.notice));
     case "no-address":
@@ -371,9 +389,12 @@ export function reachabilityPhrase(
       );
     case "reconnecting":
       return verdict.retryAtMs === undefined
-        ? phrase("Reconnecting…", ["try-now"])
+        ? phrase(
+            `${verdict.unavailableReason === undefined ? "" : `${verdict.unavailableReason} `}Reconnecting…`,
+            ["try-now"],
+          )
         : phrase(
-            `Reconnecting — next try in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
+            `${verdict.unavailableReason === undefined ? "" : `${verdict.unavailableReason} `}Reconnecting — next try in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
             ["try-now"],
           );
     case "resolving":

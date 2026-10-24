@@ -273,6 +273,115 @@ describe("makeHqApi", () => {
     expect(deleted).toEqual([]);
   });
 
+  it.each([
+    { status: 403, code: "org_key_refused", mayStart: true, mints: 1 },
+    { status: 403, code: "org_key_refused", mayStart: false, mints: 0 },
+    { status: 503, code: "zerops_unavailable", mayStart: true, mints: 0 },
+  ])(
+    "An Owner replaces a refused organisation key, but a Zerops outage mints nothing: $code / $mayStart",
+    async ({ status, code, mayStart, mints }) => {
+      const minted: string[] = [];
+      const locks: string[] = [];
+      const hq = fakeHq((seen) => {
+        if (seen.path !== "/api/door") return undefined;
+        return (seen.body as { orgKey?: string }).orgKey === "new-org-key"
+          ? undefined
+          : json(status, { code });
+      });
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: NO_SOCKET,
+        startOrganisation: {
+          mayStart: async () => mayStart,
+          withLock: (name, run) => {
+            locks.push(name);
+            return run();
+          },
+          mintKey: async () => {
+            minted.push("new-org-key");
+            return { id: "key-2", token: "new-org-key" };
+          },
+          deleteKey: async () => undefined,
+        },
+      });
+      const result = await api.structure().catch((cause: unknown) => cause);
+      expect(minted).toHaveLength(mints);
+      if (mints === 1) {
+        expect(result).toEqual({ ungrouped: [], apps: [] });
+        expect(locks).toEqual(["mate.org-key.org-1"]);
+        expect(
+          hq.seen.filter((entry) => entry.path === "/api/door").map((entry) => entry.body),
+        ).toEqual([
+          { accessToken: "access-1", orgId: ORG },
+          { accessToken: "access-2", orgId: ORG },
+          { accessToken: "access-3", orgId: ORG, orgKey: "new-org-key" },
+        ]);
+      } else {
+        expect(result).toMatchObject({ code });
+        expect(locks).toEqual([]);
+      }
+    },
+  );
+
+  it.each([
+    { status: 403, code: "org_key_refused", minted: ["new-org-key"] },
+    { status: 503, code: "zerops_unavailable", minted: [] },
+  ])(
+    "An Owner renewing HQ replaces a refused key and keeps the session, but never mints on $code unavailability",
+    async ({ status, code, minted }) => {
+      const now = Date.parse("2026-10-24T12:00:00Z");
+      const keys: string[] = [];
+      const kept: string[] = [];
+      const requests: Array<{ authorization: string | null; body: unknown }> = [];
+      const api = makeHqApi({
+        address: ADDRESS,
+        orgId: ORG,
+        now: () => now,
+        accessToken: async () => "access",
+        openSocket: NO_SOCKET,
+        kept: {
+          read: () => ({ token: "kept-session", expiresAtMs: now + 10 * 60_000 }),
+          keep: ({ token }) => {
+            kept.push(token);
+          },
+          forget: () => undefined,
+        },
+        startOrganisation: {
+          mayStart: async () => true,
+          withLock: (_name, run) => run(),
+          mintKey: async () => {
+            keys.push("new-org-key");
+            return { id: "key-2", token: "new-org-key" };
+          },
+          deleteKey: async () => undefined,
+        },
+        fetch: async (url, init) => {
+          if (!url.endsWith("/api/door")) return json(200, { apps: [] });
+          const body = JSON.parse(String(init?.body)) as { orgKey?: string };
+          requests.push({ authorization: new Headers(init?.headers).get("authorization"), body });
+          return body.orgKey === "new-org-key"
+            ? json(200, {
+                session: "kept-session",
+                expiresAt: isoAt(now + 24 * 3_600_000),
+                userId: "u1",
+              })
+            : json(status, { code });
+        },
+      });
+      await api.structure();
+      expect(keys).toEqual(minted);
+      expect(requests.map((request) => request.authorization)).toEqual(
+        minted.length === 1
+          ? ["Bearer kept-session", "Bearer kept-session", "Bearer kept-session"]
+          : ["Bearer kept-session"],
+      );
+      expect(kept).toEqual(minted.length === 1 ? ["kept-session"] : []);
+    },
+  );
+
   it("asks Zerops for a new access token once when HQ refuses the one it sent as not a person's", async () => {
     const asked: boolean[] = [];
     let first = true;

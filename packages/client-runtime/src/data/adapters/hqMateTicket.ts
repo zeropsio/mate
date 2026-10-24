@@ -14,7 +14,16 @@ import {
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 
-const NOT_CONNECTED = "Mate not connected";
+const notConnected = (reason: string | undefined): string => {
+  switch (reason) {
+    case "no-link":
+      return "Mate has no connection to HQ (no-link).";
+    case "no-ack":
+      return "Mate did not acknowledge the ticket (no-ack).";
+    default:
+      return "Mate not connected";
+  }
+};
 
 function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   if (!(cause instanceof HqError)) {
@@ -34,7 +43,7 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   }
   return new ConnectionTransientError({
     reason: "remote-unavailable",
-    detail: cause.code === "mate_not_connected" ? NOT_CONNECTED : cause.message,
+    detail: cause.code === "mate_not_connected" ? notConnected(cause.reason) : cause.message,
   });
 }
 

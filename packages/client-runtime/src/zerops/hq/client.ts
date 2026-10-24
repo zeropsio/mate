@@ -1045,7 +1045,8 @@ export function makeHqApi(input: {
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
   /**
-   * The organization's key, for a sign-in HQ answers `409 org_not_started`: HQ serves an
+   * The organization's key, for a sign-in HQ answers `409 org_not_started` or
+   * `403 org_key_refused`: HQ serves an
    * organization once its Owner's or Admin's client hands it one as `orgKey`. Absent: that refusal
    * stands.
    */
@@ -1122,18 +1123,23 @@ export function makeHqApi(input: {
     input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
   };
 
-  const enter = () => {
+  const enterDoor = (renewing?: string) => {
     const start = input.startOrganisation;
-    const entering = (
-      start === undefined
-        ? signIn()
-        : signInStartingOrganisation<DoorAnswer>({
-            ...start,
-            orgId: input.orgId,
-            signIn: (orgKey) => signIn(orgKey),
-            isNotStarted: (cause) => cause instanceof HqError && cause.code === "org_not_started",
-          })
-    ).then((answer) => {
+    return start === undefined
+      ? signIn(undefined, renewing)
+      : signInStartingOrganisation<DoorAnswer>({
+          ...start,
+          orgId: input.orgId,
+          signIn: (orgKey) => signIn(orgKey, renewing),
+          needsOrgKey: (cause) =>
+            cause instanceof HqError &&
+            ((cause.status === 409 && cause.code === "org_not_started") ||
+              (cause.status === 403 && cause.code === "org_key_refused")),
+        });
+  };
+
+  const enter = () => {
+    const entering = enterDoor().then((answer) => {
       remember(answer);
       return answer.session;
     });
@@ -1156,7 +1162,7 @@ export function makeHqApi(input: {
    */
   const renewIfDue = async (token: string): Promise<void> => {
     if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
-    renewal ??= signIn(undefined, token)
+    renewal ??= enterDoor(token)
       .then(remember, () => undefined)
       .finally(() => {
         renewal = null;

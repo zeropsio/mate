@@ -44,7 +44,7 @@ function fakeHq(options: { readonly rejectKeys?: boolean } = {}) {
       started = true;
       return { session: "s", orgKeyKept: true };
     },
-    isNotStarted: (cause) => cause instanceof NotStarted,
+    needsOrgKey: (cause) => cause instanceof NotStarted,
     mintKey: async () => {
       const id = `key-${log.minted.length + 1}`;
       log.minted.push(id);
