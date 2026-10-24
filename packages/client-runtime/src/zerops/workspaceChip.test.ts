@@ -1,9 +1,27 @@
-import type { OrchestrationLatestTurn, ZeropsLease, ZeropsLifecycle } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  type OrchestrationLatestTurn,
+  ProviderInstanceId,
+  ThreadId,
+  type ZeropsLease,
+  type ZeropsLifecycle,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
+import type { AtomCommandResult } from "../state/runtime.ts";
 import type { Known } from "./knowledge/index.ts";
-import { boundLeaseRead, workspaceChip, workspaceChipOf } from "./workspaceChip.ts";
+import {
+  boundLeaseRead,
+  sendZeropsReleaseRequest,
+  workspaceChip,
+  workspaceChipOf,
+  ZEROPS_RELEASE_QUESTION,
+  ZEROPS_RELEASE_REQUEST,
+  zeropsReleaseAsk,
+  zeropsReleaseTurn,
+} from "./workspaceChip.ts";
 
 const NOW = Date.parse("2026-10-25T12:00:00Z");
 const ago = (minutes: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
@@ -270,5 +288,187 @@ describe("the workspace chip a conversation's lifecycle draws", () => {
     expect(
       workspaceChipOf({ binding: null, lifecycle: known, lastTurn: null, now: NOW }),
     ).toBeUndefined();
+  });
+});
+
+describe("the question a bound conversation's workspace is released by", () => {
+  const binding = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+  const leaseIn = (
+    state: string,
+    lastChangeHours = 3,
+    unsaved = { fileCount: 2, unpushedCommits: 2 },
+  ) => ({
+    alias: "webpool-3",
+    pool: "webpool",
+    branch: "feat-x",
+    state,
+    acquiredAt: hours(72),
+    activity: {
+      lastChangeAt: hours(lastChangeHours),
+      previewOpenConns: 0,
+      acquiredAt: hours(72),
+      readAt: hours(1),
+    },
+    unsaved,
+  });
+  const lifecycleOf = (leases: ReadonlyArray<unknown>) =>
+    ({
+      state: "known",
+      value: { threadId: "thread-1", recentTools: [], envelope: { leases } },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    }) as unknown as Known<ZeropsLifecycle>;
+
+  it("asks whether to release the workspace of a conversation bound to a held lease, with what is known of it", () => {
+    expect(
+      zeropsReleaseAsk({
+        binding,
+        lifecycle: lifecycleOf([leaseIn("held")]),
+        lastTurn: completedTurn(hours(5)),
+        now: NOW,
+      }),
+    ).toEqual({
+      alias: "webpool-3",
+      question: ZEROPS_RELEASE_QUESTION("webpool-3"),
+      facts: "last active 3 h ago · 2 unpushed · 2 uncommitted",
+      idle: false,
+    });
+  });
+
+  it.each([
+    ["held", true],
+    ["unmounted", true],
+    ["parked", true],
+    ["released", false],
+    ["lost", false],
+    ["unknown-holder", false],
+  ])("asks about a lease zcp read as %s: %s", (state, asked) => {
+    const ask = zeropsReleaseAsk({
+      binding,
+      lifecycle: lifecycleOf([leaseIn(state)]),
+      lastTurn: null,
+      now: NOW,
+    });
+    expect(ask?.alias).toBe(asked ? "webpool-3" : undefined);
+  });
+
+  it("asks nothing of a conversation bound to no lease", () => {
+    expect(
+      zeropsReleaseAsk({
+        binding: null,
+        lifecycle: lifecycleOf([leaseIn("held")]),
+        lastTurn: completedTurn(hours(5)),
+        now: NOW,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("names the lease before zcp read it, and says nothing it did not read", () => {
+    expect(zeropsReleaseAsk({ binding, lifecycle: undefined, lastTurn: null, now: NOW })).toEqual({
+      alias: "webpool-3",
+      question: ZEROPS_RELEASE_QUESTION("webpool-3"),
+      facts: undefined,
+      idle: false,
+    });
+  });
+
+  it("marks the question of a workspace nothing happened in for 24 h idle, which only makes it stand out", () => {
+    const ask = zeropsReleaseAsk({
+      binding,
+      lifecycle: lifecycleOf([leaseIn("held", 26, { fileCount: 0, unpushedCommits: 0 })]),
+      lastTurn: completedTurn(hours(30)),
+      now: NOW,
+    });
+    expect(ask).toEqual({
+      alias: "webpool-3",
+      question: ZEROPS_RELEASE_QUESTION("webpool-3"),
+      facts: "idle · last active 26 h ago · all pushed",
+      idle: true,
+    });
+  });
+
+  it("asks a plain question that names the workspace", () => {
+    expect(ZEROPS_RELEASE_QUESTION("webpool-3")).toMatch(/^Release workspace webpool-3\?/);
+  });
+});
+
+describe("the release request a yes sends", () => {
+  const conversation = {
+    id: ThreadId.make("thread-1"),
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+    runtimeMode: "full-access" as const,
+    interactionMode: "default" as const,
+  };
+  const ids = { commandId: CommandId.make("command-1"), messageId: MessageId.make("message-1") };
+  const turn = () =>
+    zeropsReleaseTurn({ conversation, alias: "webpool-3", ids, createdAt: hours(0) });
+  const success = { _tag: "Success", value: undefined } as unknown as AtomCommandResult<
+    unknown,
+    unknown
+  >;
+  const failure = {
+    _tag: "Failure",
+    cause: new Error("refused"),
+  } as unknown as AtomCommandResult<unknown, unknown>;
+
+  it("asks the conversation's agent to release the lease with zerops_lease, and never to force", () => {
+    const request = ZEROPS_RELEASE_REQUEST("webpool-3");
+    expect(request).toContain("zerops_lease action=release lease=webpool-3");
+    expect(request).not.toMatch(/force\s*=|force:\s*true/iu);
+  });
+
+  it("is one visible message of the person's in the bound conversation, in its own model and modes", () => {
+    expect(turn()).toEqual({
+      commandId: ids.commandId,
+      threadId: conversation.id,
+      message: {
+        messageId: ids.messageId,
+        role: "user",
+        text: ZEROPS_RELEASE_REQUEST("webpool-3"),
+        attachments: [],
+      },
+      modelSelection: conversation.modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      // Mate's words, not the person's: they never name the conversation.
+      fromPanel: true,
+      createdAt: hours(0),
+    });
+  });
+
+  it.each([
+    ["a conversation not archived gets the request straight away", false, ["send"]],
+    [
+      "an archived conversation, which takes no message, is brought back before the request is sent",
+      true,
+      ["unarchive", "send"],
+    ],
+  ])("%s", async (_title, archived, steps) => {
+    const order: Array<string> = [];
+    const unarchive = vi.fn(async () => {
+      order.push("unarchive");
+      return success;
+    });
+    const startTurn = vi.fn(async () => {
+      order.push("send");
+      return success;
+    });
+    const result = await sendZeropsReleaseRequest({ turn: turn(), archived, unarchive, startTurn });
+    expect(result._tag).toBe("Success");
+    expect(order).toEqual(steps);
+    expect(startTurn).toHaveBeenCalledExactlyOnceWith(turn());
+  });
+
+  it("sends nothing when an archived conversation could not be brought back", async () => {
+    const startTurn = vi.fn(async () => success);
+    const result = await sendZeropsReleaseRequest({
+      turn: turn(),
+      archived: true,
+      unarchive: async () => failure,
+      startTurn,
+    });
+    expect(result).toBe(failure);
+    expect(startTurn).not.toHaveBeenCalled();
   });
 });
