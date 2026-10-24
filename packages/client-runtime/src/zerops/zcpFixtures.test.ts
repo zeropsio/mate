@@ -16,6 +16,7 @@ import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
 import { buildDevServerFields } from "./model/builders/devServer.ts";
 import { flowChange } from "./projectFlow.ts";
+import { workspaceChip } from "./workspaceChip.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
@@ -194,6 +195,39 @@ describe("zcp contract fixtures", () => {
       ).toEqual([["Health check", "done", "Done", "HTTP 200"]]);
       expect(card.links).toEqual([]);
       expect(card.kicker).toBe("Dev server · appdev");
+    });
+  });
+
+  it("reads what a lease status read of each lease's checkout, a fact it did not read left out", () => {
+    const sent = json("envelope.lease-status.json") as { leases: ReadonlyArray<unknown> };
+    const [read, unread] = decodeEnvelope(sent).leases ?? [];
+    expect([read, unread]).toEqual(sent.leases);
+    expect(read?.activity).toEqual({
+      lastChangeAt: "2026-10-23T19:12:40Z",
+      acquiredAt: "2026-10-23T18:00:00Z",
+      readAt: "2026-10-23T20:04:00Z",
+    });
+    expect(read?.unsaved).toEqual({
+      files: [" M src/App.tsx", "?? notes.txt"],
+      fileCount: 2,
+      unpushedCommits: 2,
+    });
+    expect(unread?.activity).not.toHaveProperty("lastChangeAt");
+    expect(unread).not.toHaveProperty("unsaved");
+  });
+
+  it("draws the workspace chip from a lease status, never idle while its preview was not observed", () => {
+    const [read, unread] = decodeEnvelope(json("envelope.lease-status.json")).leases ?? [];
+    const chip = (lease: typeof read, at: string) =>
+      workspaceChip({ lease, lastTurn: null, now: Date.parse(at) });
+    expect(chip(read, "2026-10-23T20:04:00Z")).toEqual({
+      words: "workspace · last active 51 min ago · 2 unpushed · 2 uncommitted",
+      idle: false,
+    });
+    expect(chip(read, "2026-10-27T20:04:00Z")?.idle).toBe(false);
+    expect(chip(unread, "2026-10-27T20:04:00Z")).toEqual({
+      words: "workspace · last active 4 d ago",
+      idle: false,
     });
   });
 
