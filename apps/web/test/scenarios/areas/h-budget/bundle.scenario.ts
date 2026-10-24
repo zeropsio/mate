@@ -104,8 +104,19 @@ describe("H: production surface demand", () => {
             await s.page.keyboard.up("Shift");
             await s.page.keyboard.up("Alt");
             await s.page.keyboard.up(modifier);
-            await s.clock.advanceStepped(1_000);
-            await s.page.waitForSelector('[data-theme-editor-panel][role="dialog"]');
+            // The page takes the shortcut: the editor's stand-in opens while its chunk loads.
+            await s.page.waitForSelector(
+              '[data-theme-editor-loading][role="dialog"], [data-theme-editor-panel][role="dialog"]',
+            );
+            // The stand-in asked for the chunk itself, before anything else could.
+            await all([assets.theme]);
+            // The chunk has run: importing it again answers from the page's module map. A string,
+            // since the test's transform would rewrite an `import()` written as a function.
+            await s.page.evaluate(`import(${JSON.stringify(assets.theme)}).then(() => {})`);
+            // React shows a lazy surface no sooner than 300 ms after its stand-in, on the page's
+            // timers, so that time passes on the scenario clock until the editor says it is open.
+            while (!(await s.page.$('[data-theme-editor-panel][role="dialog"]')))
+              await s.clock.advanceStepped(300);
           });
           expect(requested.has(assets.theme), "The theme shortcut must load the editor").toBe(true);
 
