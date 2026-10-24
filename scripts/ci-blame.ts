@@ -34,13 +34,19 @@ export const checkJobIds = ["check", "check_guards", "check_types", "check_build
 type MatrixJob = keyof typeof blameMatrices;
 
 export function blameSelection(ref: string, manifest: string | undefined) {
-  const narrowed = ref.startsWith("refs/heads/kh-bisect/") && manifest !== undefined;
+  const bisect = ref.startsWith("refs/heads/kh-bisect/");
+  if (bisect && manifest === undefined) {
+    throw new Error(
+      'kh-bisect needs .ci-blame-jobs: name the jobs to run, "all", or leave it empty for none',
+    );
+  }
   const requested = new Set(
     manifest
       ?.split(/\r?\n/u)
       .map((name) => name.trim())
       .filter(Boolean),
   );
+  const narrowed = bisect && !requested.has("all");
   const selected = new Set<string>();
   const matrices: Record<string, { include: Record<string, string | number>[] }> = {};
   for (const [job, name] of Object.entries(jobNames)) {
@@ -74,7 +80,8 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (selected.has("state_smoke") || checkJobIds.some((job) => selected.has(job))) {
       selected.add("changes");
     }
-    if (!selected.size) throw new Error("No known failed CI job in .ci-blame-jobs");
+    if (requested.size && !selected.size)
+      throw new Error("No known failed CI job in .ci-blame-jobs");
   }
   return { narrowed, selected: [...selected], matrices };
 }

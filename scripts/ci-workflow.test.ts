@@ -1780,3 +1780,123 @@ jq -r "$filter" "$file"
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it.each([
+  {
+    title: "a main push skips when a kh-bisect run of the same tree ran everything",
+    manifest: "all\n",
+    hq: "success",
+    tree: "same",
+    skip: true,
+  },
+  {
+    title: "a main push runs when the kh-bisect run narrowed its jobs",
+    manifest: "Test Web 1\n",
+    hq: "success",
+    tree: "same",
+    skip: false,
+  },
+  {
+    title: "a main push runs when the kh-bisect run selected no job",
+    manifest: "",
+    hq: "skipped",
+    tree: "same",
+    skip: false,
+  },
+  {
+    title: "a main push runs when the all run did not run Test HQ 1",
+    manifest: "all\n",
+    hq: "skipped",
+    tree: "same",
+    skip: false,
+  },
+  {
+    title: "a main push runs when the kh-bisect run is of another tree",
+    manifest: "all\n",
+    hq: "success",
+    tree: "other",
+    skip: false,
+  },
+])("CI verification reuse: $title", ({ manifest, hq, tree: runTree, skip }) => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const step = workflow.jobs.prepare.steps.find(
+    (candidate: { id?: string }) => candidate.id === "verdict",
+  );
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "ci-bisect-reuse-"));
+  try {
+    const bin = NodePath.join(dir, "bin");
+    NodeFS.mkdirSync(bin);
+    const repo = NodePath.join(dir, "repo");
+    NodeFS.mkdirSync(repo);
+    const git = (...args: string[]) =>
+      NodeChildProcess.execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+    git("init", "-q");
+    NodeFS.writeFileSync(NodePath.join(repo, "file"), "x");
+    git("add", "file");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x");
+    const tree = runTree === "same" ? git("rev-parse", "HEAD^{tree}").trim() : "other";
+    const sha = "b".repeat(40);
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "runs.json"),
+      JSON.stringify({
+        workflow_runs: [
+          {
+            id: 5,
+            head_sha: sha,
+            head_branch: "kh-bisect/signal-x",
+            event: "push",
+            status: "completed",
+            conclusion: "success",
+            head_commit: { id: sha, tree_id: tree },
+          },
+        ],
+      }),
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "content.json"),
+      JSON.stringify({ content: Buffer.from(manifest).toString("base64") }),
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "jobs.json"),
+      JSON.stringify({ jobs: [{ name: "Test HQ 1", conclusion: hq }] }),
+    );
+    // Stands in for `gh api <url> --paginate --jq <filter>`, applying the filter like gh does.
+    NodeFS.writeFileSync(
+      NodePath.join(bin, "gh"),
+      `#!/usr/bin/env bash
+url=$2
+filter=\${@: -1}
+echo '{"workflow_runs":[]}' > "${dir}/empty.json"
+case "$url" in
+  *"/jobs?"*) file="${dir}/jobs.json" ;;
+  *"/contents/.ci-blame-jobs?ref=${sha}"*) file="${dir}/content.json" ;;
+  *"event=push&status=success"*) file="${dir}/runs.json" ;;
+  *) file="${dir}/empty.json" ;;
+esac
+jq -r "$filter" "$file"
+`,
+      { mode: 0o755 },
+    );
+    const output = NodePath.join(dir, "output");
+    NodeFS.writeFileSync(output, "");
+    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
+      cwd: repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_REF: "refs/heads/main",
+        GITHUB_SHA: "0".repeat(40),
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        GITHUB_OUTPUT: output,
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(NodeFS.readFileSync(output, "utf8")).toBe(`skip=${skip}\n`);
+  } finally {
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  }
+});
