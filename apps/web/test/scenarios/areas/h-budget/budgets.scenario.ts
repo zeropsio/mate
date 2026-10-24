@@ -37,11 +37,12 @@ describe("H: hosted client budgets", () => {
                 yield* b.when.projectsReady;
                 yield* b.when.projectsAre(count);
                 yield* b.when.browserSettled;
+                // A card in view holds its detail whether it is painted or still stands in.
                 const visibleApps = Effect.promise(() =>
                   s.page.evaluate(() => {
                     const row = document.querySelector('[data-zerops-surface="project-cards"]')!;
                     const viewport = row.getBoundingClientRect();
-                    return Array.from(row.querySelectorAll("[data-zerops-group]"))
+                    return Array.from(row.querySelectorAll(':scope > [role="listitem"]'))
                       .filter((card) => {
                         const box = card.getBoundingClientRect();
                         return (
@@ -51,30 +52,27 @@ describe("H: hosted client budgets", () => {
                           box.top < innerHeight
                         );
                       })
-                      .map((card) => card.getAttribute("data-zerops-group")!);
+                      .map((card) => card.getAttribute("aria-label")!);
                   }),
                 );
                 const expectVisibleDemand = Effect.gen(function* () {
-                  const ids = yield* visibleApps;
-                  const applications = [...s.appIds]
-                    .filter(([, id]) => ids.includes(id))
-                    .map(([name]) => name);
+                  const applications = yield* visibleApps;
                   yield* b.when.appDetailsAre(applications);
-                  expect(b.measure.appDetails().toSorted()).toEqual(ids.toSorted());
-                  return ids;
+                  expect(b.measure.appDetails().toSorted()).toEqual(
+                    applications.map((name) => s.appIds.get(name)).toSorted(),
+                  );
+                  return applications;
                 });
                 const before = yield* expectVisibleDemand;
                 const order = yield* Effect.promise(() =>
                   s.page.$$eval(
-                    '[data-zerops-surface="project-cards"] [data-zerops-group]',
-                    (cards) => cards.map((card) => card.getAttribute("data-zerops-group")!),
+                    '[data-zerops-surface="project-cards"] > [role="listitem"]',
+                    (cards) => cards.map((card) => card.getAttribute("aria-label")!),
                   ),
                 );
                 const cardNames =
                   count === 1 ? ["Shop"] : ["Shop", "App-1", "App-2", "App-3", "App-4"];
-                expect(order.toSorted()).toEqual(
-                  cardNames.map((name) => s.appIds.get(name)).toSorted(),
-                );
+                expect(order.toSorted()).toEqual(cardNames.toSorted());
                 expect(before).toContain(order[0]);
                 if (count > 1) {
                   expect(before.length).toBeLessThan(5);
