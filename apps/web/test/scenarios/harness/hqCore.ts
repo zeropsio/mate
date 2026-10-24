@@ -9,7 +9,7 @@ import { TempPostgres } from "../../../../hq/test/harness/tempPostgres.ts";
 import { startCore } from "../../../../hq/test/harness/runningCore.ts";
 import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
 import { deadline } from "./http.ts";
-import { startExternalCore } from "./externalCore.ts";
+import { startExternalCore, type GithubAddress } from "./externalCore.ts";
 
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
@@ -63,7 +63,7 @@ export interface HqTimings {
 }
 
 export function startScenarioCore(
-  zeropsHttp: { baseUrl: string; world: FakeWorld },
+  zeropsHttp: { baseUrl: string; world: FakeWorld; github?: GithubAddress },
   timings: HqTimings = {},
 ) {
   return Effect.gen(function* () {

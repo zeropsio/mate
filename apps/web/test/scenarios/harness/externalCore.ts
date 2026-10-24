@@ -123,6 +123,12 @@ const openLink = (origin: string, path: string) =>
     };
   });
 
+/** Where the Core reaches GitHub: its REST API and the Git host map (`HQ_GITHUB_API`, `HQ_GITHUB_GIT_URL`). */
+export interface GithubAddress {
+  readonly api: string;
+  readonly gitUrl: string;
+}
+
 /** The real Core's own periods, which a scenario's timings override (`HQ_*_MS` in its launch). */
 export const REAL_CORE_DEFAULTS = {
   pingEvery: 20_000,
@@ -194,7 +200,11 @@ const heldWaitClock = Effect.gen(function* () {
  */
 export const startExternalCore = (
   command: string,
-  zeropsHttp: { readonly baseUrl: string; readonly world: FakeWorld },
+  zeropsHttp: {
+    readonly baseUrl: string;
+    readonly world: FakeWorld;
+    readonly github?: GithubAddress;
+  },
   timings: { pingEvery?: number; reconcileEvery?: number; streamRecheck?: number } = {},
 ) =>
   Effect.gen(function* () {
@@ -203,6 +213,9 @@ export const startExternalCore = (
     const env = {
       ...globalThis.process.env,
       HQ_ZEROPS_API: zeropsHttp.baseUrl,
+      ...(zeropsHttp.github === undefined
+        ? {}
+        : { HQ_GITHUB_API: zeropsHttp.github.api, HQ_GITHUB_GIT_URL: zeropsHttp.github.gitUrl }),
       HQ_TEST_WAIT_CLOCK_FILE: clock.file,
       HQ_MATE_LINK_PING_MS: String(periods.pingEvery),
       HQ_STREAM_PING_MS: String(periods.pingEvery),

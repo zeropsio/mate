@@ -20,6 +20,7 @@ import { mateInApp } from "../../../../hq/test/harness/mates.ts";
 import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
 import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsWorld.ts";
 import { ZeropsFake } from "../fakes/zerops.ts";
+import { startGithubFake } from "../fakes/github.ts";
 import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
 import { serve, type HttpHandler } from "./http.ts";
@@ -56,6 +57,8 @@ export type ScenarioExtension = (drivers: ScenarioDrivers) => void | Promise<voi
 export interface ScenarioDrivers {
   hq: Awaited<ReturnType<typeof hqConnection>>;
   zerops: ZeropsFake;
+  /** The GitHub the external Core probes and fetches Git from. */
+  github: Awaited<ReturnType<typeof startGithubFake>>;
   mates: Map<string, MateFake>;
   core: ScenarioCore;
   routes: Record<string, string>;
@@ -125,8 +128,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const api = yield* Effect.promise(() => serve(handle, zerops.socket));
   zerops.origin = api.origin;
   cleanup.push(api.close);
+  const github = yield* Effect.acquireRelease(Effect.promise(startGithubFake), (github) =>
+    Effect.promise(github.close),
+  );
   const core = yield* startScenarioCore(
-    { baseUrl: `${api.origin}/api/rest/public`, world },
+    { baseUrl: `${api.origin}/api/rest/public`, world, github },
     options.hq,
   );
   if (core.kind === "in-process") yield* untilHealth(core.call, "active");
@@ -171,6 +177,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     owner,
     appIds,
     zerops,
+    github,
     mates,
     core,
     routes,
