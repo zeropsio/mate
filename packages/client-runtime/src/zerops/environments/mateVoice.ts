@@ -117,10 +117,8 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
           reachability.waitingOn === "mate-link");
       if (!own) return opening();
       if (conversationShown ? !slow : quiet) return conversationShown ? NONE : speak(null);
-      return speak(
-        reachabilityPhrase(reachability, { nowMs, mateName }).text,
-        reachability.waitingOn === "mate-link" ? ["try-now"] : [],
-      );
+      const phrase = reachabilityPhrase(reachability, { nowMs, mateName });
+      return speak(phrase.text, phrase.actions);
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);

@@ -102,7 +102,7 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
     state.lastFailure?.reason === "remote-unavailable"
       ? { unavailableReason: state.lastFailure.detail }
       : state.lastFailure?.reason === "mate-not-linked"
-        ? { noLink: true as const }
+        ? { unavailableReason: state.lastFailure.detail, noLink: true as const }
         : {};
   switch (state.phase) {
     case "available":

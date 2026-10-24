@@ -377,6 +377,7 @@ export function reachabilityPhrase(
         verdict.unavailableReason === undefined
           ? CONNECTING[verdict.waitingOn]
           : `${verdict.unavailableReason} ${CONNECTING[verdict.waitingOn]}`,
+        verdict.waitingOn === "mate-link" ? ["try-now"] : [],
       );
     case "ready":
       return phrase(verdict.notice === null ? null : noticePhrase(verdict.notice));
