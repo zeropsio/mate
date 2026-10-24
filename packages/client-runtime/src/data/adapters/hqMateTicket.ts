@@ -16,8 +16,6 @@ import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 
 const notConnected = (reason: string | undefined): string => {
   switch (reason) {
-    case "no-link":
-      return "Mate has no connection to HQ (no-link).";
     case "no-ack":
       return "Mate did not acknowledge the ticket (no-ack).";
     default:
@@ -40,6 +38,12 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   }
   if (cause.kind === "unavailable") {
     return new ConnectionTransientError({ reason: "endpoint-unavailable", detail: cause.message });
+  }
+  if (cause.code === "mate_not_connected" && cause.reason === "no-link") {
+    return new ConnectionTransientError({
+      reason: "mate-not-linked",
+      detail: "Mate has no connection to HQ (no-link).",
+    });
   }
   return new ConnectionTransientError({
     reason: "remote-unavailable",

@@ -112,10 +112,15 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
       // A wait with a cause of its own says it; the link itself being made says the Mate opens.
       const own =
         reachability.kind === "connecting" &&
-        (reachability.waitingOn === "access" || reachability.waitingOn === "visible");
+        (reachability.waitingOn === "access" ||
+          reachability.waitingOn === "visible" ||
+          reachability.waitingOn === "mate-link");
       if (!own) return opening();
       if (conversationShown ? !slow : quiet) return conversationShown ? NONE : speak(null);
-      return speak(reachabilityPhrase(reachability, { nowMs, mateName }).text);
+      return speak(
+        reachabilityPhrase(reachability, { nowMs, mateName }).text,
+        reachability.waitingOn === "mate-link" ? ["try-now"] : [],
+      );
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);
@@ -144,7 +149,9 @@ export function mateVoiceQuietKey(reachability: Reachability | null): string {
     case "resolving":
       return "opening";
     case "connecting":
-      return reachability.waitingOn === "access" || reachability.waitingOn === "visible"
+      return reachability.waitingOn === "access" ||
+        reachability.waitingOn === "visible" ||
+        reachability.waitingOn === "mate-link"
         ? `connecting:${reachability.waitingOn}`
         : "opening";
     case "container":

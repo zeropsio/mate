@@ -91,6 +91,13 @@ describe("linkPhaseOf: the supervisor's state as region L", () => {
       ),
       null,
     ],
+    [
+      connectionState(
+        "backoff",
+        new ConnectionTransientError({ reason: "mate-not-linked", detail: "no-link" }),
+      ),
+      { phase: "backoff", retryAtMs: 1_000, noLink: true },
+    ],
   ] as const)("%#", (state, phase) => {
     expect(linkPhaseOf(state)).toEqual(phase);
   });
