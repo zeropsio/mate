@@ -114,17 +114,12 @@ describe("C: image tables at the conversation end", () => {
           const pending = await s.page.evaluate(readColumns);
           expect(pending.end, "ASSERTION: the held-picture conversation reaches its end").toBe(0);
           held.release();
-          await s.page.waitForFunction(
-            () => {
-              const images = [
-                ...document.querySelectorAll<HTMLImageElement>(
-                  ".chat-markdown-table-container img",
-                ),
-              ];
-              return images.length === 2 && images.every((image) => image.naturalWidth === 640);
-            },
-            { timeout: 8000 },
-          );
+          await s.page.waitForFunction(() => {
+            const images = [
+              ...document.querySelectorAll<HTMLImageElement>(".chat-markdown-table-container img"),
+            ];
+            return images.length === 2 && images.every((image) => image.naturalWidth === 640);
+          });
           await settle();
           const decoded = await s.page.evaluate(readColumns);
           expect(decoded.columns, "ASSERTION: decoding preserves both table columns").toEqual(

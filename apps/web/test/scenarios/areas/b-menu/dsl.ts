@@ -40,7 +40,7 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
           });
           return JSON.stringify(rows) === JSON.stringify(expected);
         },
-        { timeout: 15_000, polling: "raf" },
+        { polling: "raf" },
         expected,
       )
       .catch(async (cause) => {
@@ -85,14 +85,14 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
           (row) => row.firstChild?.textContent?.trim() === name,
         );
       },
-      { timeout: 15_000, polling: "raf" },
+      { polling: "raf" },
       name,
     );
     await (button.asElement() as ElementHandle<HTMLElement>).click();
     await page
       .waitForFunction(
         (path) => location.pathname === path,
-        { timeout: 15_000, polling: "raf" },
+        { polling: "raf" },
         `/group/${appId}/${id}`,
       )
       .catch((cause) => {
@@ -116,7 +116,6 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         await s.page.locator(`[data-zerops-mate-row="${name}"]`).click({ button: "right" });
         await s.page.waitForSelector('[data-zerops-mate-menu="open"]', {
           visible: true,
-          timeout: 8_000,
         });
         const mutations = ["rename", "face", "assign", "move", "delete"];
         await s.page.waitForFunction(
@@ -128,7 +127,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
             [...document.querySelectorAll("[data-zerops-mate-menu]")].filter((entry) =>
               mutations.includes(entry.getAttribute("data-zerops-mate-menu")!),
             ).length === expected.length,
-          { timeout: 8_000, polling: "raf" },
+          { polling: "raf" },
           expected,
           mutations,
         );
@@ -256,7 +255,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                 row.getBoundingClientRect().height > 0 &&
                 row.innerText.split(/\n|\s·\s/).some((line) => line.trim() === name),
             ),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
           name,
         );
       }),
@@ -290,26 +289,26 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
             });
             return row?.querySelector<HTMLElement>('button[aria-label^="More for"]') ?? null;
           },
-          { timeout: 8_000, polling: "raf" },
+          { polling: "raf" },
           name,
         );
         await (more.asElement() as ElementHandle<HTMLElement>).click();
-        await s.page.locator("::-p-aria(Open project)").setTimeout(8_000).click();
+        await s.page.locator("::-p-aria(Open project)").click();
         await s.page.waitForFunction(
           (name) =>
             [...document.querySelectorAll("h1")].some((heading) => heading.textContent === name),
-          { timeout: 8_000, polling: "raf" },
+          { polling: "raf" },
           name,
         );
       }),
     movesMate: (name: string, app: string) =>
       Effect.promise(async () => {
         await s.page.locator(`[data-zerops-mate-row="${name}"]`).click({ button: "right" });
-        await s.page.locator('[data-zerops-mate-menu="move"]').setTimeout(8_000).click();
+        await s.page.locator('[data-zerops-mate-menu="move"]').click();
         const form = '[data-zerops-surface="move-to-group-form"]';
-        await s.page.locator(`${form} ::-p-aria(${app})`).setTimeout(8_000).click();
-        await s.page.locator(`${form} ::-p-aria(Move)`).setTimeout(8_000).click();
-        await s.page.waitForSelector(form, { hidden: true, timeout: 8_000 });
+        await s.page.locator(`${form} ::-p-aria(${app})`).click();
+        await s.page.locator(`${form} ::-p-aria(Move)`).click();
+        await s.page.waitForSelector(form, { hidden: true });
       }),
     environmentSlots: (words: string, offered: ReadonlyArray<"Add stage" | "Put it live">) =>
       Effect.promise(async () => {
@@ -326,7 +325,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                 offered.every((name) => buttons.includes(name))
               );
             },
-            { timeout: 8_000, polling: "raf" },
+            { polling: "raf" },
             words,
             offered,
           );

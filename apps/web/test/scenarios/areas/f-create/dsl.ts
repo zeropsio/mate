@@ -20,7 +20,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       try {
         await page.waitForFunction(
           (value) => document.body.innerText.includes(value),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
           value,
         );
       } catch (cause) {
@@ -33,7 +33,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
   const click = (name: string) =>
     Effect.promise(async () => {
       try {
-        await page.locator(`::-p-aria(${name})`).setTimeout(15_000).click();
+        await page.locator(`::-p-aria(${name})`).click();
       } catch (cause) {
         throw new Error(
           `Cannot press ${name}\n${await page.evaluate(() => document.body.innerText)}`,
@@ -43,7 +43,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
     });
   const fill = (name: string, value: string) =>
     Effect.promise(async () => {
-      await page.locator(`::-p-aria(${name})`).setTimeout(15_000).click({ clickCount: 3 });
+      await page.locator(`::-p-aria(${name})`).click({ clickCount: 3 });
       await page.keyboard.press("Backspace");
       await page.keyboard.type(value);
       await rendered(page);
@@ -63,7 +63,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           response.request().method() === "PUT" &&
           /^\/api\/births\/[^/]+\/project$/u.test(new URL(response.url()).pathname) &&
           response.status() === 200,
-        { timeout: 15_000 },
       );
       return Effect.promise(() => bound);
     },
@@ -163,7 +162,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
                   button.closest('[data-sidebar="sidebar"]') === null &&
                   button.getBoundingClientRect().width > 0,
               ),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           );
           await (more.asElement() as ElementHandle<Element>).click();
         });
@@ -186,14 +185,11 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           : "Use a branch in your Git repository instead…",
       ),
     withAgent: Effect.promise(() =>
-      page
-        .locator('[data-zerops-surface="environment-creation-form"] [role="switch"]')
-        .setTimeout(15_000)
-        .click(),
+      page.locator('[data-zerops-surface="environment-creation-form"] [role="switch"]').click(),
     ),
     agentIsOff: Effect.promise(async () => {
       const selector = '[data-zerops-surface="environment-creation-form"] [role="switch"]';
-      await page.locator(selector).setTimeout(15_000).wait();
+      await page.locator(selector).wait();
       expect(await page.$eval(selector, (toggle) => toggle.getAttribute("aria-checked"))).toBe(
         "false",
       );
@@ -203,7 +199,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       Effect.promise(async () => {
         await page.waitForSelector('[data-zerops-surface="environment-creation-form"]', {
           hidden: true,
-          timeout: 15_000,
         });
         // Its project, as Zerops accepted it.
         let projectId = control.accepted.find((project) => project.name === name)?.id;
@@ -233,7 +228,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
                 ? words.has("Production") && !words.has("Put it live")
                 : words.has(name);
             },
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
             name,
             tag,
           );
@@ -254,7 +249,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           () =>
             document.querySelector('[data-zerops-place="stage"]') !== null &&
             document.querySelector('[data-zerops-place="stage"][data-zerops-setting-up]') === null,
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
         );
       } catch (cause) {
         throw new Error(
@@ -276,7 +271,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
                   (mate) => mate.innerText.split("\n").some((line) => line.trim() === name),
                 ),
               ),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
           name,
           group,
         );

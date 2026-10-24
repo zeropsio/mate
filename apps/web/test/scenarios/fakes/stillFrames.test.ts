@@ -94,3 +94,34 @@ it.each([
     await NodeFSP.rm(dist, { recursive: true, force: true });
   }
 });
+
+it("a still-frame wait stopped before the layout settles names what still moves", async () => {
+  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-still-"));
+  await NodeFSP.writeFile(dist + "/index.html", `<!doctype html><div id="surface">slides</div>`);
+  const web = await openBrowser(dist, {});
+  try {
+    await web.page.goto(web.origin);
+    await web.page.evaluate(() => {
+      document
+        .querySelector("#surface")!
+        .animate([{ width: "100px" }, { width: "200px" }], { duration: 3_600_000, id: "slide" });
+    });
+    const stop = new AbortController();
+    const waited = waitForStillFrames(web.page, { selector: "#surface", signal: stop.signal }).then(
+      () => "settled",
+      (error: Error) => error.message,
+    );
+    // Two frames after the wait's own setup was sent, its trace has sampled the page.
+    await web.page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    stop.abort();
+    expect(await waited).toContain("slide");
+  } finally {
+    await web.close();
+    await NodeFSP.rm(dist, { recursive: true, force: true });
+  }
+});

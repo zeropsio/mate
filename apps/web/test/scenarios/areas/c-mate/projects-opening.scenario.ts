@@ -19,7 +19,6 @@ describe("opening a Mate from the projects page", () => {
         yield* s.then.conversation.showsMessage("Ada's conversation");
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
-            timeout: 8000,
             polling: 100,
           }),
         );
@@ -28,27 +27,23 @@ describe("opening a Mate from the projects page", () => {
           await s.page.goto(`${s.web.origin}/zerops`);
           const chip = '[data-zerops-surface="project-cards"] [aria-label="Open Ada"]';
           await expect
-            .poll(
-              () =>
-                s.page.evaluate(
-                  (selector) => ({
-                    found: document.querySelector(selector) !== null,
-                    text:
-                      document.querySelector('[data-zerops-surface="project-cards"]')
-                        ?.textContent ?? document.body.innerText,
-                  }),
-                  chip,
-                ),
-              { timeout: 8_000 },
+            .poll(() =>
+              s.page.evaluate(
+                (selector) => ({
+                  found: document.querySelector(selector) !== null,
+                  text:
+                    document.querySelector('[data-zerops-surface="project-cards"]')?.textContent ??
+                    document.body.innerText,
+                }),
+                chip,
+              ),
             )
             .toMatchObject({ found: true })
             .catch(async (cause: unknown) => {
               throw new Error(await s.page.evaluate(() => document.body.innerText), { cause });
             });
           await s.page.locator(chip).click();
-          await expect
-            .poll(() => new URL(s.page.url()).pathname, { timeout: 8_000 })
-            .toBe(conversationPath);
+          await expect.poll(() => new URL(s.page.url()).pathname).toBe(conversationPath);
         });
         yield* s.then.noExternalNetwork;
       }),
@@ -69,7 +64,6 @@ describe("Projects source states", () => {
             await s.page.reload();
             await s.page.waitForSelector("::-p-text(Could not verify your account)", {
               visible: true,
-              timeout: 15_000,
             });
             const geometry = await s.page.evaluate(() => {
               const buttons = [...document.querySelectorAll("button")];

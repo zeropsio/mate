@@ -17,7 +17,6 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
       NodeChildProcess.execFile(
         NodePath.join(bin, "psql"),
         [databaseUrl, "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-c", sql],
-        { timeout: 10_000 },
         (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
       );
     });

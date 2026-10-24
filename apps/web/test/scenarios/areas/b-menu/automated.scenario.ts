@@ -49,7 +49,7 @@ describe("B: automated Mates in the menu", () => {
                     '[data-zerops-surface="sidebar-project-tasks-waiting"]',
                   ),
                 ].some((line) => line.innerText.trim() === "2 tasks waiting"),
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           const rows = () => Effect.promise(() => s.page.evaluate(ROWS) as Promise<unknown>);

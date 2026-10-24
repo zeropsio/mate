@@ -43,7 +43,7 @@ export function mateChat(
             const found = visible(document.body);
             return found === present;
           },
-          { timeout: 8000, polling: "raf" },
+          { polling: "raf" },
           value,
           present,
         );
@@ -71,13 +71,13 @@ export function mateChat(
         yield* Effect.promise(() =>
           page.waitForFunction(
             (name) => location.pathname === `/env-${name}/thread-${name}`,
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             name,
           ),
         );
       yield* Effect.promise(async () => {
         try {
-          await page.waitForSelector(composer, { visible: true, timeout: 8000 });
+          await page.waitForSelector(composer, { visible: true });
         } catch (cause) {
           throw new Error(
             `Composer missing for ${name}: ${await page.evaluate(() =>
@@ -116,7 +116,7 @@ export function mateChat(
   const click = (label: string) =>
     Effect.promise(async () => {
       try {
-        await page.locator(`button ::-p-text(${label})`).setTimeout(8000).click();
+        await page.locator(`button ::-p-text(${label})`).click();
       } catch (cause) {
         throw new Error(`Click ${label}: ${await page.evaluate(() => document.body.innerText)}`, {
           cause,
@@ -163,16 +163,11 @@ export function mateChat(
       visit: (path: string) => Effect.promise(() => page.goto(`${s.web.origin}${path}`)),
       click,
       pressEnding: (suffix: string) =>
-        Effect.promise(() =>
-          page.locator(`button[aria-label$="${suffix}"]`).setTimeout(8000).click(),
-        ),
+        Effect.promise(() => page.locator(`button[aria-label$="${suffix}"]`).click()),
       press: (name: string, role = "button") =>
         Effect.promise(async () => {
           try {
-            await page
-              .locator(`::-p-aria([name="${name}"][role="${role}"])`)
-              .setTimeout(8000)
-              .click();
+            await page.locator(`::-p-aria([name="${name}"][role="${role}"])`).click();
           } catch (cause) {
             throw new Error(
               `Cannot press ${name}\n${await page.evaluate(
@@ -195,7 +190,7 @@ export function mateChat(
               [...document.querySelectorAll('button[aria-label^="Open picture "]')].filter(
                 (button) => button.getBoundingClientRect().height > 0,
               ).length === expected,
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             expected,
           );
           const pictures = await page.$$('button[aria-label^="Open picture "]');
@@ -204,7 +199,7 @@ export function mateChat(
         }),
       type: (value: string) =>
         Effect.promise(async () => {
-          await (await page.locator(composer).setTimeout(8000).waitHandle()).focus();
+          await (await page.locator(composer).waitHandle()).focus();
           await page.keyboard.type(value);
         }),
       read: (value: string) =>
@@ -222,7 +217,7 @@ export function mateChat(
       mention: (token: string) =>
         Effect.promise(async () => {
           try {
-            await page.locator(`::-p-text(${token})`).setTimeout(8000).click();
+            await page.locator(`::-p-text(${token})`).click();
           } catch (cause) {
             throw new Error(
               `Mention ${token}: ${await page.evaluate(() => document.body.innerText)}`,
@@ -233,7 +228,7 @@ export function mateChat(
       agent: (name: string) =>
         Effect.promise(async () => {
           try {
-            await page.locator(`button[aria-label^="${name}"]`).setTimeout(8000).click();
+            await page.locator(`button[aria-label^="${name}"]`).click();
           } catch (cause) {
             throw new Error(
               `Agent ${name}: ${await page.evaluate(() =>
@@ -267,7 +262,6 @@ export function mateChat(
         Effect.promise(async () => {
           const button = await page.waitForSelector(`::-p-aria([name="${name}"][role="button"])`, {
             visible: true,
-            timeout: 8000,
           });
           await button!.focus();
           await page.keyboard.press("Enter");
@@ -277,7 +271,6 @@ export function mateChat(
         Effect.promise(async () => {
           await page.waitForSelector(`::-p-aria([name="${name}"][role="button"])`, {
             visible: true,
-            timeout: 8000,
           });
           const buttons = await page.$$(`::-p-aria([name="${name}"][role="button"])`);
           const button = buttons.at(-1)!;
@@ -286,7 +279,7 @@ export function mateChat(
         }),
       pasteFile: (name: string, content: string) =>
         Effect.promise(async () => {
-          await (await page.locator(composer).setTimeout(8000).waitHandle()).focus();
+          await (await page.locator(composer).waitHandle()).focus();
           await page.evaluate(
             (name, content) => {
               const clipboard = new DataTransfer();
@@ -305,7 +298,7 @@ export function mateChat(
         }),
       pastePicture: (name: string, colour = "#c34b34") =>
         Effect.promise(async () => {
-          await (await page.locator(composer).setTimeout(8000).waitHandle()).focus();
+          await (await page.locator(composer).waitHandle()).focus();
           await page.evaluate(
             async (name, colour) => {
               const canvas = document.createElement("canvas");
@@ -332,9 +325,7 @@ export function mateChat(
           );
         }),
       fill: (name: string, value: string) =>
-        Effect.promise(() =>
-          page.locator(`::-p-aria([name="${name}"])`).setTimeout(8000).fill(value),
-        ),
+        Effect.promise(() => page.locator(`::-p-aria([name="${name}"])`).fill(value)),
       notePicture: (note: string) =>
         Effect.promise(async () => {
           const dialog = await page.waitForSelector('[role="dialog"]', { visible: true });
@@ -380,7 +371,7 @@ export function mateChat(
                 );
               return JSON.stringify(shown) === JSON.stringify(names);
             },
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             names,
           );
         }),
@@ -403,7 +394,7 @@ export function mateChat(
               }
               return false;
             },
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             value,
           ),
         ),
@@ -414,7 +405,7 @@ export function mateChat(
               [...document.querySelectorAll("img")].some(
                 (image) => image.getBoundingClientRect().height > 0 && image.src.endsWith(data),
               ) === present,
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             data,
             present,
           ),
@@ -427,7 +418,7 @@ export function mateChat(
                 (element) =>
                   element.getBoundingClientRect().height > 0 && element.textContent === value,
               ),
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             value,
           ),
         ),
@@ -440,7 +431,7 @@ export function mateChat(
                   element.getBoundingClientRect().height > 0 &&
                   element.textContent?.includes(value),
               ),
-            { timeout: 8000 },
+            {},
             value,
           ),
         ),
@@ -449,10 +440,7 @@ export function mateChat(
           try {
             return await page.waitForSelector(
               `::-p-aria([name="${name}"]${role ? `[role="${role}"]` : ""})`,
-              {
-                ...(present ? { visible: true } : { hidden: true }),
-                timeout: 8000,
-              },
+              present ? { visible: true } : { hidden: true },
             );
           } catch (cause) {
             throw new Error(
@@ -485,10 +473,7 @@ export function mateChat(
           // The words may still be in the composer before the conversation draws them: wait until
           // the conversation shows them, then count.
           yield* Effect.promise(() =>
-            page
-              .waitForFunction(shown, { timeout: 8000 }, value, true)
-              .then(() => undefined)
-              .catch(() => undefined),
+            page.waitForFunction(shown, {}, value, true).then(() => undefined),
           );
           expect(yield* Effect.promise(() => page.evaluate(shown, value, false))).toBe(1);
         }),
@@ -498,7 +483,6 @@ export function mateChat(
             .locator(`::-p-aria([name="${name}"][role="button"])`)
             .filter((button) => !button.closest('[data-zerops-surface="sidebar-environments"]'))
             .setVisibility("visible")
-            .setTimeout(10_000)
             .waitHandle();
           await header.dispose();
         }),
@@ -511,7 +495,7 @@ export function mateChat(
                   element.textContent?.trim() === name &&
                   element.getAttribute("aria-checked") === "true",
               ),
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             name,
           ),
         ),
@@ -532,7 +516,6 @@ export function mateChat(
         Effect.promise(async () => {
           const control = await page
             .locator(`::-p-aria([name="${name}"][role="button"])`)
-            .setTimeout(8000)
             .waitHandle();
           try {
             await page.waitForFunction(
@@ -540,7 +523,7 @@ export function mateChat(
                 element instanceof HTMLButtonElement &&
                 !element.disabled &&
                 element.getBoundingClientRect().height > 0,
-              { timeout: 8000, polling: "raf" },
+              { polling: "raf" },
               control,
             );
           } finally {
@@ -558,11 +541,9 @@ export function mateChat(
       ),
       path: (path: string) =>
         Effect.promise(async () => {
-          await page.waitForFunction((path) => location.pathname === path, { timeout: 8000 }, path);
+          await page.waitForFunction((path) => location.pathname === path, {}, path);
         }),
-      noComposer: Effect.promise(() =>
-        page.waitForSelector(composer, { hidden: true, timeout: 8000 }),
-      ),
+      noComposer: Effect.promise(() => page.waitForSelector(composer, { hidden: true })),
       blockedPromptRemains: (message: string) =>
         Effect.promise(async () => {
           await page.waitForFunction(
@@ -584,7 +565,7 @@ export function mateChat(
                   button.disabled &&
                   (button.getAttribute("aria-label") ?? "").includes("not recorded"),
               ),
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
             message,
           );
         }),
@@ -609,7 +590,7 @@ export function mateChat(
                 (button) =>
                   button.disabled && /sign.*in/iu.test(button.getAttribute("aria-label") ?? ""),
               ),
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
           );
         } catch (cause) {
           throw new Error(
@@ -627,7 +608,7 @@ export function mateChat(
                 button.disabled &&
                 button.getBoundingClientRect().height > 0,
             ),
-          { timeout: 8000, polling: "raf" },
+          { polling: "raf" },
         );
       }),
     },

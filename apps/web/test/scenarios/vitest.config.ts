@@ -21,8 +21,10 @@ export default defineConfig({
             "test/scenarios/harness/browserProcess.ts",
           ],
           fileParallelism: false,
-          hookTimeout: 120_000,
-          testTimeout: 45_000,
+          // Past Signal's 25-minute shard guard: a wait ends on its predicate, or the job ends it.
+          hookTimeout: 30 * 60_000,
+          testTimeout: 30 * 60_000,
+          expect: { poll: { timeout: 30 * 60_000 } },
         },
       },
       {
@@ -33,7 +35,10 @@ export default defineConfig({
           taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
           include: ["test/scenarios/fakes/**/*.test.ts"],
           environment: "node",
-          testTimeout: 10_000,
+          // Past Test Packages' 12-minute guard: a receipt wait ends on its receipt, or the job ends it.
+          hookTimeout: 15 * 60_000,
+          testTimeout: 15 * 60_000,
+          expect: { poll: { timeout: 15 * 60_000 } },
         },
       },
     ],

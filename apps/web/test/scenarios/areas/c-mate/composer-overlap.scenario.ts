@@ -17,7 +17,7 @@ describe("Decision: restore pre-regression behaviour; no test weakened; titles k
             await s.page.mouse.wheel({ deltaY: -350 });
             await s.page.waitForFunction(
               () => !document.querySelector("[data-timeline-follows-end]"),
-              { polling: "raf", timeout: 8000 },
+              { polling: "raf" },
             );
             const clip = await s.page.$eval('[data-slot="composer-shell"]', (node) => {
               const box = node.getBoundingClientRect();

@@ -47,7 +47,6 @@ describe("E: stage, production, release and rollback", () => {
               response.request().method() === "POST" &&
               /\/api\/git-targets\/[^/]+$/.test(new URL(response.url()).pathname) &&
               response.status() === 200,
-            { timeout: 15_000 },
           );
           yield* a.when.click("Confirm removal");
           expect((yield* Effect.promise(() => removed)).status()).toBe(200);

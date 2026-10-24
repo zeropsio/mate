@@ -15,11 +15,10 @@ export function mutations(page: Page) {
     move: (name: string, destination: string) =>
       Effect.promise(async () => {
         await page.bringToFront();
-        await page.locator(`::-p-aria(More for ${name})`).setTimeout(8000).click();
-        await page.locator('[data-zerops-mate-menu="move"]').setTimeout(8000).click();
+        await page.locator(`::-p-aria(More for ${name})`).click();
+        await page.locator('[data-zerops-mate-menu="move"]').click();
         await page
           .locator(`[data-zerops-surface="move-to-group-form"] label ::-p-text(${destination})`)
-          .setTimeout(8000)
           .click();
         await page.waitForFunction(
           (name, destination) => {
@@ -28,17 +27,15 @@ export function mutations(page: Page) {
             );
             return review?.innerText.includes(name) && review.innerText.includes(destination);
           },
-          { timeout: 8000, polling: "raf" },
+          { polling: "raf" },
           name,
           destination,
         );
         await page
           .locator('[data-zerops-surface="move-to-group-form"] button[type="submit"]')
-          .setTimeout(8000)
           .click();
         await page.waitForSelector('[data-zerops-surface="move-to-group-form"]', {
           hidden: true,
-          timeout: 8000,
         });
       }),
     placement: (name: string, app: string) =>

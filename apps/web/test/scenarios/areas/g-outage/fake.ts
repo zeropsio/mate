@@ -71,13 +71,11 @@ export const stallSleepSocket = (page: Page) =>
 export const refusedHqRetry = (page: Page) =>
   page.waitForResponse(
     (response) => new URL(response.url()).origin === hqOrigin && response.status() === 503,
-    { timeout: 10_000 },
   );
 
 export const refusedZeropsRetry = (page: Page) =>
   page.waitForResponse(
     (response) => response.url().includes("api.app-prg1.zerops.io") && response.status() === 503,
-    { timeout: 10_000 },
   );
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);

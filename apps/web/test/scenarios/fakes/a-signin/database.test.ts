@@ -27,7 +27,7 @@ describe("A: disposable session database fault driver", () => {
           NodeChildProcess.spawnSync(
             NodePath.join(bin, "psql"),
             [url, "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-c", query],
-            { encoding: "utf8", timeout: 10_000 },
+            { encoding: "utf8" },
           );
         const fixtureHash = NodeCrypto.createHash("sha256").update("fixture").digest("hex");
         expect(

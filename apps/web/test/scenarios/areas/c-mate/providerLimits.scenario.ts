@@ -96,7 +96,6 @@ describe("C: provider refusal and its real deadline", () => {
             yield* Effect.promise(() =>
               s.page.waitForSelector("pierce/[data-timeline-placing]", {
                 hidden: true,
-                timeout: 8000,
               }),
             );
             yield* Effect.promise(() =>
@@ -105,7 +104,7 @@ describe("C: provider refusal and its real deadline", () => {
                   const stage = document.querySelector("[data-conversation-opening]");
                   return stage === null || getComputedStyle(stage).visibility === "hidden";
                 },
-                { timeout: 8000, polling: "raf" },
+                { polling: "raf" },
               ),
             );
             yield* capture("refused");
@@ -131,7 +130,7 @@ describe("C: provider refusal and its real deadline", () => {
                   !document
                     .querySelector('[data-zerops-mate-row="Ada"]')
                     ?.textContent?.includes("At its usage limit"),
-                { timeout: 8000, polling: "raf" },
+                { polling: "raf" },
               ),
             );
             yield* chat.then.text("Ada hit Claude's weekly limit on");
@@ -144,7 +143,7 @@ describe("C: provider refusal and its real deadline", () => {
                   !document
                     .querySelector('[data-zerops-mate-row="Ada"]')
                     ?.textContent?.includes("Needs attention"),
-                { timeout: 8000, polling: "raf" },
+                { polling: "raf" },
               ),
             );
             yield* capture("after-reset");

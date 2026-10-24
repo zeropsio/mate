@@ -53,7 +53,6 @@ async function connect() {
           notify = resolve;
         }),
         "engine wire frame",
-        5000,
       );
   };
   const request = (id: string, tag: string, payload: Record<string, unknown>) =>

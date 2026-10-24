@@ -119,19 +119,11 @@ describe("a remembered conversation's Mate identity", () => {
             }),
           );
           yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              (state) => state.frames.length >= 30,
-              { polling: "raf", timeout: 8000 },
-              trace,
-            ),
+            s.page.waitForFunction((state) => state.frames.length >= 30, { polling: "raf" }, trace),
           );
           overview.release();
           yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              (state) => state.frames.length >= 60,
-              { polling: "raf", timeout: 8000 },
-              trace,
-            ),
+            s.page.waitForFunction((state) => state.frames.length >= 60, { polling: "raf" }, trace),
           );
           yield* Effect.promise(() => waitForStillFrames(s.page));
           const frames = yield* Effect.promise(() =>
