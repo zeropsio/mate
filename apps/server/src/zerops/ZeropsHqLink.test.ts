@@ -153,8 +153,13 @@ const STATE: LinkedMate = {
   chief: null,
 };
 
-/** The hello a link opens with: the project's key, and the service it is labelled by. */
-const hello = (key: string) => ({ type: "hello", key, serviceId: "svc-mate" });
+/** The hello a link opens with: the project's key, the service it is labelled by, and the Mate's public origin. */
+const hello = (key: string) => ({
+  type: "hello",
+  key,
+  serviceId: "svc-mate",
+  origin: "https://mate-1234.prg1.zerops.app",
+});
 
 /** HQ admits the key: its first state on the link. */
 const admit = (socket: FakeSocket, mate: LinkedMate = STATE) =>
@@ -174,6 +179,8 @@ const rig = (
     readonly health?: Stream.Stream<MateHealth>;
     readonly overview?: Effect.Effect<Option.Option<MateOverview>>;
     readonly reconnectDelaysMs?: ReadonlyArray<number>;
+    /** The Mate's public origin; its container's own unless a test takes it away. */
+    readonly publicOrigin?: string | undefined;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -199,6 +206,8 @@ const rig = (
       autoUpdatePolicy,
       hqOrigin: "https://hq.test/",
       serviceId: "svc-mate",
+      publicOrigin:
+        "publicOrigin" in options ? options.publicOrigin : "https://mate-1234.prg1.zerops.app",
       readKey: Ref.get(key),
       connect: (url) => {
         const socket = new FakeSocket(url);
@@ -397,6 +406,20 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(second.sent, [hello("zk-2")]);
         }),
       ),
+  );
+
+  it.effect("says it does not link while its public origin is unknown, and dials nothing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { link, sockets } = yield* rig({ publicOrigin: undefined });
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.lengthOf(sockets, 0);
+        assert.deepStrictEqual(yield* link.standing, {
+          kind: "not-linked",
+          withheld: "no_public_origin",
+        });
+      }),
+    ),
   );
 
   it.effect("dials nothing while the container holds no key, and links once it does", () =>
@@ -1037,6 +1060,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       yield* makeZeropsHqLink({
         hqOrigin: "https://hq.test",
         serviceId: "svc-mate",
+        publicOrigin: "https://mate-1234.prg1.zerops.app",
         readKey: Effect.succeed("zk-1"),
         connect: (url) => {
           const socket = new FakeSocket(url);

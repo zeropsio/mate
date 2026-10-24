@@ -451,7 +451,7 @@ describe("the keys model's link", () => {
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
-      { type: "hello", key: "zcp-key", serviceId: "S_ZCP" },
+      { type: "hello", key: "zcp-key", serviceId: "S_ZCP", origin: "https://mate.zerops.app" },
       { type: "pong" },
       { type: "ticket-ack", ticket: "tk-1" },
       { type: "key-refused" },
@@ -507,9 +507,11 @@ describe("the keys model's link", () => {
 
   it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
-    expect(decodeKeyUp(JSON.stringify({ type: "hello", key: "", serviceId: "S" }))._tag).toBe(
-      "Failure",
-    );
+    for (const hello of [
+      { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
+      { key: "zcp-key", serviceId: "S" },
+    ])
+      expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
     const down = [
       {
         type: "access",

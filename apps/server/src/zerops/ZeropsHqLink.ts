@@ -131,8 +131,15 @@ export interface LinkClose {
 
 /** Where the Mate stands with its HQ. */
 export type HqStanding =
-  /** HQ has not sent the Mate yet; or it refused the key, why as HQ's close reason. */
-  | { readonly kind: "not-linked"; readonly refusal?: string }
+  /**
+   * HQ has not sent the Mate yet; or it refused the key, why as HQ's close reason; or the Mate
+   * does not dial because it does not know its public origin (`withheld`).
+   */
+  | {
+      readonly kind: "not-linked";
+      readonly refusal?: string;
+      readonly withheld?: "no_public_origin";
+    }
   /** The Mate as HQ last sent it. */
   | { readonly kind: "linked"; readonly mate: LinkedMate };
 
@@ -165,6 +172,8 @@ export interface ZeropsHqLinkOptions {
   readonly hqOrigin: string;
   /** The label HQ shows the link by: this container's service. */
   readonly serviceId: string;
+  /** This container's public origin, told to HQ in the hello; none: the Mate does not link. */
+  readonly publicOrigin: string | undefined;
   /** The project's key as it stands now, read afresh for every dial; none while there is none. */
   readonly readKey: Effect.Effect<string | undefined>;
   readonly connect: ConnectLinkSocket;
@@ -299,7 +308,10 @@ export const makeZeropsHqLink = (
      */
     const openLink = Effect.gen(function* () {
       const key = yield* options.readKey;
-      if (key === undefined || key === "") return Option.none<Link>();
+      if (key === undefined || key === "" || options.publicOrigin === undefined) {
+        return Option.none<Link>();
+      }
+      const origin = options.publicOrigin;
       const events = yield* Queue.unbounded<SocketEvent>();
       const socket = options.connect(url);
       socket.addEventListener("open", () => Queue.offerUnsafe(events, { _tag: "open" }));
@@ -335,7 +347,7 @@ export const makeZeropsHqLink = (
         yield* quit;
         return Option.none<Link>();
       }
-      yield* send({ type: "hello", key, serviceId: options.serviceId });
+      yield* send({ type: "hello", key, serviceId: options.serviceId, origin });
 
       const usage = options.usage ? yield* options.usage.open(send) : undefined;
       // Whether HQ's latest state on this link says the Mate is automated: only then are tasks
@@ -596,6 +608,9 @@ export const makeZeropsHqLink = (
 
     return ZeropsHqLink.of({
       standing: Effect.gen(function* () {
+        if (options.publicOrigin === undefined) {
+          return { kind: "not-linked", withheld: "no_public_origin" } as const;
+        }
         const refused = yield* Ref.get(refusal);
         if (refused !== undefined) return { kind: "not-linked", refusal: refused } as const;
         const held = yield* SubscriptionRef.get(state);
@@ -760,6 +775,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
         serviceId: zerops.serviceId ?? zerops.hostname ?? "",
+        publicOrigin: zerops.publicOrigin,
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),
         connect: connectLinkSocket,

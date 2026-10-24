@@ -503,6 +503,8 @@ export const KeyLinkUp = Schema.Union([
     type: Schema.Literal("hello"),
     key: Schema.String.check(Schema.isMinLength(1)),
     serviceId: Schema.String,
+    /** The Mate's public origin, `https://host`: HQ hands it to a client that asks for a ticket. */
+    origin: Schema.String.check(Schema.isMinLength(1)),
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),

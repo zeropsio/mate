@@ -878,9 +878,8 @@ const gitAccessOf = (standing: HqStanding, at: string | undefined): GitAccess =>
 /** Why a stand-up nothing started waits, from where the Mate stands with its HQ. */
 const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {
   if (hq.kind === "linked") return undefined;
-  return hq.refusal === undefined
-    ? { reason: "not_linked" }
-    : { reason: "not_linked", code: hq.refusal };
+  const code = hq.refusal ?? hq.withheld;
+  return code === undefined ? { reason: "not_linked" } : { reason: "not_linked", code };
 };
 
 /* ------------------------------------------------------------ the live reads */
