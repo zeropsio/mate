@@ -51,6 +51,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/hq/src/deploys.test.ts": [],
   "apps/hq/src/gitHost.test.ts": [],
   "apps/hq/src/gitPush.integration.test.ts": [],
+  "apps/hq/src/oneShotBackup.test.ts": [],
   "apps/hq/src/personGit.test.ts": [],
   "apps/hq/src/restore.test.ts": [],
   "apps/hq/src/zerops/contract.test.ts": [],
