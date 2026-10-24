@@ -43,7 +43,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { serverEnvironment } from "~/state/server";
-import { hqMatesAtom, hqNavigationAtom, hqProjectOf } from "~/state/zerops";
+import { hqMatesAtom, hqNavigationAtom, hqProjectOrRemembered } from "~/state/zerops";
 
 import { accountStorageKey } from "./accountLifetime";
 import { mateDescriptors } from "./mateDescriptors";
@@ -246,7 +246,7 @@ export function hqIndexPort(
   registry: AtomRegistry.AtomRegistry,
 ): NonNullable<AccountEnvironmentPorts["hqIndex"]> {
   return {
-    projectOf: (environmentId) => hqProjectOf(registry.get(hqMatesAtom), environmentId),
+    projectOf: (environmentId) => hqProjectOrRemembered(registry.get(hqMatesAtom), environmentId),
     // Read once as it mounts, so the listener hears HQ's next word, not the atom's own first read.
     subscribe: (listener) => {
       let mounted = false;
