@@ -1,4 +1,5 @@
 import type { Page } from "puppeteer-core";
+import { TestRunner } from "vite-plus/test";
 
 // Layout owners, rather than their continuously animated decorative descendants.
 const layoutSurfaces = [
@@ -18,7 +19,11 @@ const layoutSurfaces = [
   '[role="dialog"]',
 ].join(", ");
 
-/** Call after the phase's input is visible; a deferred phase supplies its own start predicate. */
+/**
+ * Call after the phase's input is visible; a deferred phase supplies its own start predicate.
+ * Waits until the layout is still, or until `signal` (the running test's, by default) stops it,
+ * and then names what still moves.
+ */
 export async function waitForStillFrames(
   page: Page,
   {
@@ -26,16 +31,19 @@ export async function waitForStillFrames(
     stillFrames = 6,
     phaseStarted,
     sample,
+    signal = TestRunner.getCurrentTest()?.context.signal,
   }: {
     selector?: string;
     stillFrames?: number;
     phaseStarted?: () => boolean;
     sample?: () => Promise<void>;
+    signal?: AbortSignal | undefined;
   } = {},
 ) {
-  if (phaseStarted) await page.waitForFunction(phaseStarted, { polling: "raf", timeout: 8000 });
+  const polling = { polling: "raf" as const, ...(signal && { signal }) };
+  if (phaseStarted) await page.waitForFunction(phaseStarted, polling);
   const trace = await page.evaluateHandle((selector) => {
-    const state = { active: true, still: 0, previous: "" };
+    const state = { active: true, still: 0, previous: "", moving: "" };
     const sample = () => {
       if (!state.active) return;
       const reading = JSON.stringify(
@@ -45,7 +53,7 @@ export async function waitForStillFrames(
         }),
       );
       // Include delayed finite animations, but never wait for a working spinner to stop.
-      const moving = document.getAnimations().some((animation) => {
+      const moving = document.getAnimations().filter((animation) => {
         const timing = animation.effect?.getComputedTiming();
         return (
           timing?.iterations !== Infinity &&
@@ -55,7 +63,19 @@ export async function waitForStillFrames(
       const placing = document.querySelector(
         '[data-timeline-placing], [data-conversation-opening]:not([data-conversation-opening="complete"]), [data-run-fold="folding"], [data-folding]',
       );
-      state.still = !moving && !placing && reading === state.previous ? state.still + 1 : 0;
+      const describe = (node: Element | null | undefined) =>
+        node ? node.outerHTML.slice(0, node.outerHTML.indexOf(">") + 1) : "?";
+      state.moving = [
+        ...moving.map(
+          (animation) =>
+            `animation ${(animation as CSSAnimation).animationName ?? animation.id} on ${describe(
+              (animation.effect as KeyframeEffect | null)?.target,
+            )}`,
+        ),
+        ...(placing ? [`placing ${describe(placing)}`] : []),
+        ...(reading !== state.previous ? ["geometry"] : []),
+      ].join(", ");
+      state.still = state.moving === "" ? state.still + 1 : 0;
       state.previous = reading;
       requestAnimationFrame(sample);
     };
@@ -64,26 +84,28 @@ export async function waitForStillFrames(
   }, selector);
   try {
     if (sample) {
-      const deadline = performance.now() + 8000;
       for (;;) {
+        signal?.throwIfAborted();
         const still = await trace.evaluate(async (state) => {
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
           return state.still;
         });
         await sample();
         if (still >= stillFrames) break;
-        if (performance.now() >= deadline)
-          throw new Error("Layout did not reach still frames in 8000ms");
       }
     } else {
       const done = await page.waitForFunction(
         (state, count) => state.still >= count,
-        { polling: "raf", timeout: 8000 },
+        polling,
         trace,
         stillFrames,
       );
       await done.dispose();
     }
+  } catch (error) {
+    if (!signal?.aborted) throw error;
+    const moving = await trace.evaluate((state) => state.moving).catch(() => "unknown");
+    throw new Error(`Layout still moved when the wait stopped: ${moving}`, { cause: error });
   } finally {
     await trace.evaluate((state) => {
       state.active = false;
