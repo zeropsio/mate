@@ -12,8 +12,9 @@
  * - **the latest envelope**, from every tool that carries one — through either
  *   carrier, the trailing fenced block on a prose result or the top-level
  *   `envelope` key on a JSON one (zcp `docs/spec-mate.md` §1). Latest wins; a
- *   result with no readable envelope leaves the previous one alone, and a
- *   snapshot without `devServers` keeps the last read of that service (§2.8a.3).
+ *   result with no readable envelope leaves the previous one alone, a snapshot
+ *   without `devServers` keeps the last read of that service, and a lease still
+ *   held keeps its last read dev servers, activity and unsaved work (§2.8a.3).
  * - **the recent `zerops_*` tool calls**, from ALL of them, carrier or not.
  *   The envelope says where the agent IS; it cannot say what is happening right
  *   now. A tool that has started and not finished has no result to carry an
@@ -151,11 +152,43 @@ const withLastDevServers = (
   };
 };
 
+/** Whether zcp read the lease's checkout for this activity: one with no `readAt` says only why not. */
+const readCheckout = (activity: ZeropsLease["activity"]): boolean => activity?.readAt !== undefined;
+
+/**
+ * What a lease keeps of its last read where this call did not read it: the dev servers last read
+ * on it where this call did not read its supervisor (only a `zerops_dev_server` call for its alias
+ * does), and what zcp last read of its checkout — its activity and unsaved work — where this call
+ * did not (only `zerops_lease action=status` does; one that could not read a lease says why and
+ * clears nothing). A read of the checkout is one whole: a newer one replaces both, so unsaved work
+ * it could not read is not known rather than an older read's beside newer activity. The checkout
+ * read is the same lease's only: the alias acquired at another time is another lease.
+ */
+const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
+  const devServers = lease.devServers ?? last.devServers;
+  if (lease.acquiredAt !== last.acquiredAt) {
+    return devServers === undefined ? lease : { ...lease, devServers };
+  }
+  const newer = readCheckout(lease.activity);
+  const activity = newer
+    ? lease.activity
+    : readCheckout(last.activity)
+      ? last.activity
+      : (lease.activity ?? last.activity);
+  const unsaved = newer ? lease.unsaved : (lease.unsaved ?? last.unsaved);
+  return {
+    ...lease,
+    ...(devServers === undefined ? {} : { devServers }),
+    ...(activity === undefined ? {} : { activity }),
+    ...(unsaved === undefined ? {} : { unsaved }),
+  };
+};
+
 /**
  * The newest envelope, with the last read of zcp's leases carried over where this call did not
- * read them: absent `leases` means "not read", never "none". A lease still held keeps the dev
- * servers last read on it where this call did not read its supervisor (only a `zerops_dev_server`
- * call for its alias does); a lease that ended, or is gone from the read, keeps none.
+ * read them: absent `leases` means "not read", never "none". A lease still held keeps what was
+ * last read of it where this call did not read it (`withLastRead`); a lease that ended, or is gone
+ * from the read, keeps none.
  */
 const withLastLeases = (
   next: ZeropsStateEnvelope,
@@ -164,21 +197,15 @@ const withLastLeases = (
   if (next.leases === undefined) {
     return previous?.leases === undefined ? next : { ...next, leases: previous.leases };
   }
-  const lastRead = new Map(
-    (previous?.leases ?? []).flatMap((lease) =>
-      lease.devServers === undefined ? [] : [[lease.alias, lease.devServers] as const],
-    ),
-  );
+  const lastRead = new Map((previous?.leases ?? []).map((lease) => [lease.alias, lease] as const));
   if (lastRead.size === 0) return next;
   return {
     ...next,
     leases: next.leases.map((lease) => {
-      const devServers = lastRead.get(lease.alias);
-      return lease.devServers !== undefined ||
-        devServers === undefined ||
-        !isZeropsLeaseHeld(lease.state)
+      const last = lastRead.get(lease.alias);
+      return last === undefined || !isZeropsLeaseHeld(lease.state)
         ? lease
-        : { ...lease, devServers };
+        : withLastRead(lease, last);
     }),
   };
 };

@@ -816,6 +816,133 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     ),
   );
 
+  /** What a `zerops_lease action=status` call read of a lease's checkout (spec-mate §2.8a.3). */
+  const read = (readAt: string, lastChangeAt: string) => ({
+    lastChangeAt,
+    previewOpenConns: 0,
+    acquiredAt: "2026-10-23T18:00:00Z",
+    readAt,
+  });
+  const acquiredAt = "2026-10-23T18:00:00Z";
+  const unsaved = { files: [" M src/App.tsx"], fileCount: 1, unpushedCommits: 2 };
+  /** A `zerops_lease action=status` call, whose envelope carries what it read of each lease. */
+  const leaseStatus = (leases: ReadonlyArray<unknown>) =>
+    leaseCall({ input: { action: "status" }, leases, envelope: leases });
+
+  it.effect(
+    "keeps a held lease's last activity and unsaved work until a read of its checkout replaces them",
+    () =>
+      withLeases((lifecycle) =>
+        Effect.gen(function* () {
+          const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+          const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
+            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          );
+          yield* lifecycle.ingest(
+            leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
+          );
+          expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+          yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3"), acquiredAt }]));
+          expect(yield* leaseOf, "a call that did not read the checkout keeps them").toMatchObject({
+            activity: first,
+            unsaved,
+          });
+          yield* lifecycle.ingest(statusReading(undefined));
+          expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+          yield* lifecycle.ingest(
+            leaseStatus([
+              {
+                ...lease("webpool-3"),
+                acquiredAt,
+                unverified: true,
+                activity: { acquiredAt, note: "not read: the pool's orchestrator did not answer" },
+              },
+            ]),
+          );
+          expect(
+            yield* leaseOf,
+            "a status that could not read the checkout clears nothing it read before",
+          ).toMatchObject({ activity: first, unsaved });
+          const second = read("2026-10-24T09:00:00Z", "2026-10-24T08:30:00Z");
+          yield* lifecycle.ingest(
+            leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: second }]),
+          );
+          const leaseRead = yield* leaseOf;
+          expect(leaseRead?.activity, "a newer read of the checkout replaces the last").toEqual(
+            second,
+          );
+          expect(
+            leaseRead,
+            "unsaved work the newer read could not read is not known, never the older read's",
+          ).not.toHaveProperty("unsaved");
+        }),
+      ),
+  );
+
+  it.effect("a lease that ended, left zcp's leases or was acquired again starts unread", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+        const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
+          state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+        );
+        const readLease = { ...lease("webpool-3"), acquiredAt, activity: first, unsaved };
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+        yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3", "released"), acquiredAt }]));
+        expect(yield* leaseOf).not.toHaveProperty("activity");
+        expect(yield* leaseOf).not.toHaveProperty("unsaved");
+
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        yield* lifecycle.ingest(statusReading([]));
+        yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3"), acquiredAt }]));
+        expect(yield* leaseOf, "gone from the read, then held again").not.toHaveProperty(
+          "activity",
+        );
+
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        yield* lifecycle.ingest(
+          statusReading([{ ...lease("webpool-3"), acquiredAt: "2026-10-24T07:00:00Z" }]),
+        );
+        expect(
+          yield* leaseOf,
+          "the same alias acquired at another time is another lease",
+        ).not.toHaveProperty("activity");
+        expect(yield* leaseOf).not.toHaveProperty("unsaved");
+      }),
+    ),
+  );
+
+  it.effect("a lease's last activity and unsaved work are read back after a restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const lifecycle = yield* ZeropsLifecycle.make({
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+              repository,
+              threadOwner: conversationOfThread,
+            });
+            yield* lifecycle.ingest(
+              leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
+            );
+          }),
+        );
+        const restarted = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+        });
+        expect((yield* restarted.get(OWNER)).envelope?.leases?.[0]).toMatchObject({
+          activity: first,
+          unsaved,
+        });
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
   it.effect("a successful acquire binds its conversation to the container it leased", () =>
     withLeases((lifecycle, told) =>
       Effect.gen(function* () {
