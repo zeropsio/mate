@@ -1,3 +1,4 @@
+import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -18,7 +19,7 @@ describe("E: deploy observation and the person's next action", () => {
           const sha = yield* f.merge();
           yield* a.then.text("Waiting for Zerops to start the build.");
           yield* a.then.text("Check it in Zerops, or run it again.");
-          const before = yield* f.s.drivers.core.sql<{
+          const before = yield* inProcessCore(f.s.drivers.core).sql<{
             id: string;
           }>`SELECT id::text AS id FROM hq_deploy_job WHERE project_id = ${"Shop-stage"} AND sha = ${sha}`;
           expect(before).toHaveLength(1);
@@ -31,7 +32,7 @@ describe("E: deploy observation and the person's next action", () => {
               .click(),
           );
           yield* a.then.text(`Building ${sha.slice(0, 7)}`);
-          const after = yield* f.s.drivers.core.sql<{
+          const after = yield* inProcessCore(f.s.drivers.core).sql<{
             id: string;
             state: string;
             cause: string;

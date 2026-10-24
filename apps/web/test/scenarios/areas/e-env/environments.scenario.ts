@@ -1,3 +1,4 @@
+import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -19,7 +20,7 @@ describe("E: stage, production, release and rollback", () => {
           const a = environmentActions(f);
           yield* f.s.given.signedIn;
           yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
-          yield* f.s.drivers.core
+          yield* inProcessCore(f.s.drivers.core)
             .sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-admit','git',${f.appId}::uuid,'stage','git-witness','{main}','staging','direct','owner')`;
           yield* f.s.drivers.core.call("PATCH", `/api/apps/${f.appId}`, {
             session: f.s.owner,
@@ -51,7 +52,7 @@ describe("E: stage, production, release and rollback", () => {
           );
           yield* a.when.click("Confirm removal");
           expect((yield* Effect.promise(() => removed)).status()).toBe(200);
-          const accepted = yield* f.s.drivers.core.sql<{
+          const accepted = yield* inProcessCore(f.s.drivers.core).sql<{
             readonly receipt: {
               readonly executor: string;
               readonly requestId: string;
@@ -63,7 +64,8 @@ describe("E: stage, production, release and rollback", () => {
           expect(accepted[0]!.receipt.requestId).not.toBe("");
           expect(accepted[0]!.receipt.acceptance.kind).toBe("accepted");
           expect(
-            yield* f.s.drivers.core.sql`SELECT 1 FROM hq_environment WHERE id='git-admit'`,
+            yield* inProcessCore(f.s.drivers.core)
+              .sql`SELECT 1 FROM hq_environment WHERE id='git-admit'`,
           ).toHaveLength(0);
           yield* f.s.then.noExternalNetwork;
         }),
@@ -282,7 +284,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Roll back to v0.1.0");
           const process = yield* a.deployment("production");
           expect(submissions).toHaveLength(1);
-          const jobs = yield* f.s.drivers.core.sql`
+          const jobs = yield* inProcessCore(f.s.drivers.core).sql`
           SELECT label, sha, process_id FROM hq_deploy_job
           WHERE project_id = ${"Shop-production"} AND label = ${"v0.1.2"}`;
           expect(jobs).toEqual([

@@ -1,19 +1,24 @@
+import { inProcessCore } from "../../harness/hqCore.ts";
 import type { WebSocket } from "ws";
 import { expect } from "@effect/vitest";
 import { deadline } from "../../harness/http.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import { sessionDatabase } from "../../fakes/a-signin/database.ts";
 
-const controls = new WeakMap<ScenarioDrivers, ReturnType<typeof sessionDatabase>>();
+const controls = new WeakMap<ScenarioDrivers, () => ReturnType<typeof sessionDatabase>>();
 
 export const installSignIn: ScenarioExtension = (drivers) => {
-  controls.set(drivers, sessionDatabase(drivers.core.url, drivers.owner));
+  let database: ReturnType<typeof sessionDatabase> | undefined;
+  controls.set(
+    drivers,
+    () => (database ??= sessionDatabase(inProcessCore(drivers.core).url, drivers.owner)),
+  );
 };
 
 export function signInFaults(drivers: ScenarioDrivers) {
   const installed = controls.get(drivers);
   if (!installed) throw new Error("Install sign-in before creating fixtures");
-  return installed;
+  return installed();
 }
 
 export function secondOrganization(drivers: ScenarioDrivers) {

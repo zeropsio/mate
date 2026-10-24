@@ -10,7 +10,6 @@ import { STREAM_POLICY } from "../../../../../packages/client-runtime/src/data/s
 import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import {
-  startCore,
   seedCoreWorld,
   sessionFor,
   enrollMate,
@@ -35,7 +34,12 @@ import {
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
-import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
+import {
+  openScenarioNavigation,
+  startScenarioCore,
+  type HqTimings,
+  type ScenarioCore,
+} from "./hqCore.ts";
 import {
   openBrowser,
   menuMateRow,
@@ -53,7 +57,7 @@ export interface ScenarioDrivers {
   hq: Awaited<ReturnType<typeof hqConnection>>;
   zerops: ZeropsFake;
   mates: Map<string, MateFake>;
-  core: Effect.Success<ReturnType<typeof startCore>>;
+  core: ScenarioCore;
   routes: Record<string, string>;
   onMate: ((mate: MateFake) => void)[];
   links: Map<string, Effect.Success<ReturnType<ScenarioDrivers["core"]["socket"]>>>;
@@ -125,7 +129,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     { baseUrl: `${api.origin}/api/rest/public`, world },
     options.hq,
   );
-  yield* untilHealth(core.call, "active");
+  if (core.kind === "in-process") yield* untilHealth(core.call, "active");
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,
@@ -133,7 +137,19 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     name: "Scenario personal access token",
   });
   zerops.people.set("personal", "owner");
-  const owner = yield* sessionFor(core.call, "door-owner");
+  const external = core.kind === "external";
+  const owner = external
+    ? yield* core
+        .call("POST", "/api/door", {
+          body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
+        })
+        .pipe(
+          Effect.map((response) => {
+            expect(response.status, JSON.stringify(response.body)).toBe(200);
+            return (response.body as { session: string }).session;
+          }),
+        )
+    : yield* sessionFor(core.call, "door-owner");
   const mates = new Map<string, MateFake>();
   const realMates = new Map<string, RealMate>();
   if (real)
@@ -216,6 +232,21 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
   };
   const enroll = Effect.fn("scenarios.given.enroll")(function* (name: string, inApp?: string) {
+    if (external) {
+      const appId = inApp ? yield* app(inApp) : undefined;
+      const response = yield* core.call(
+        "POST",
+        appId ? `/api/apps/${appId}/projects` : "/api/mates",
+        {
+          session: owner,
+          body: appId
+            ? { projectId: name, kind: "mate", mate: { face: "face-1" } }
+            : { projectId: name, face: "face-1" },
+        },
+      );
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      return `mate-key-${name}`;
+    }
     if (inApp) {
       const placed = yield* mateInApp(core.call, core.fake, owner, name, inApp, appIds);
       appIds.set(inApp, placed.appId);
@@ -228,8 +259,24 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     expect(created.status).toBe(201);
     return yield* enrollMate(core.call, core.fake, name);
   });
-  // The real Mate: its own server, engine and database, linked to the scenario's HQ by an
-  // enrollment file and reached by the browser through the container's proxy.
+  const seedProjectKey = (name: string) => {
+    const key = `mate-key-${name}`;
+    zerops.world.tokens.set(key, {
+      id: key,
+      name: `Mate ${name}`,
+      orgId: "ORG",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [{ projectId: name, roleCode: "ADMIN" }],
+      createdMs: zerops.clock.currentTimeMillis(),
+      createdByUser: "owner",
+    });
+    return key;
+  };
+  // The real Mate: its own server, engine and database, linked to the scenario's HQ by a
+  // project key and reached by the browser through the container's proxy.
   const realMate = Effect.fn("scenarios.given.realMate")(function* (
     name: string,
     options: {
@@ -240,19 +287,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       claudeSignIn?: boolean;
     },
   ) {
-    const key = `mate-key-${name}`;
-    zerops.world.tokens.set(key, {
-      id: key,
-      name: `Mate ${name}`,
-      orgId: "ORG",
-      roleCode: "NO_ACCESS",
-      canCreateProjects: false,
-      canViewFinances: false,
-      canEditFinances: false,
-      projects: [{ projectId: name, roleCode: "OWNER" }],
-      createdMs: zerops.clock.currentTimeMillis(),
-      createdByUser: "owner",
-    });
+    const key = seedProjectKey(name);
     putMateService(name);
     const credential = options.registered === false ? undefined : yield* enroll(name, options.app);
     const provider = yield* makeScriptedProvider(options.provider);
@@ -266,6 +301,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         zeropsApiBaseUrl: `${zerops.origin}/api/rest/public`,
         zeropsApiToken: key,
         publicOrigin,
+        ...(external ? { allowedOrigins: [web.origin] } : {}),
         ...(credential ? { hq: { origin: core.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
@@ -349,11 +385,27 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* Effect.promise(() => web.setRoutes());
     putMateService(name);
     if (options.registered === false) return;
+    const key = external ? seedProjectKey(name) : undefined;
     const credential = yield* enroll(name, options.app);
-    const { ticket } = (yield* core.call("POST", "/api/mate/link-ticket", {
-      headers: { authorization: `Mate ${credential}` },
-    })).body as { ticket: string };
-    const link = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
+    const path = external
+      ? "/api/mate/link"
+      : yield* core
+          .call("POST", "/api/mate/link-ticket", {
+            headers: { authorization: `Mate ${credential}` },
+          })
+          .pipe(
+            Effect.map(
+              (response) => `/api/mate/link?ticket=${(response.body as { ticket: string }).ticket}`,
+            ),
+          );
+    const link = yield* core.socket(path);
+    if (external)
+      yield* link.send({
+        type: "hello",
+        key,
+        serviceId: `service-${name}`,
+        origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
+      });
     drivers.links.set(name, link);
     yield* link.next("state");
     const overview = yield* decodeOverview({

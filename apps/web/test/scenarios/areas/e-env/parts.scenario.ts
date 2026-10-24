@@ -1,3 +1,4 @@
+import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -19,7 +20,7 @@ describe("E: an application of several parts", () => {
           const s = yield* createScenario([installArea]);
           const change = yield* changeFixture(s);
           const r = review(s);
-          const [row] = yield* s.drivers.core.sql<{ readonly head: string }>`
+          const [row] = yield* inProcessCore(s.drivers.core).sql<{ readonly head: string }>`
             SELECT head FROM hq_change WHERE repo = 'appdev' AND number = 1`;
           const head = row!.head;
           const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
@@ -44,7 +45,7 @@ describe("E: an application of several parts", () => {
               ),
             ],
           };
-          yield* s.drivers.core.sql`
+          yield* inProcessCore(s.drivers.core).sql`
             UPDATE hq_change SET receipt = ${encodeReceipt(receipt)}::jsonb
             WHERE repo = 'appdev' AND number = 1`;
 

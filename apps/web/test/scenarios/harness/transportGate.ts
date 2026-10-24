@@ -194,6 +194,9 @@ export async function transportGate(target: () => string, prefix = "/mate") {
   return {
     /** What the browser asked the Mate, with each answer's status, for failure messages. */
     requests: requests as ReadonlyArray<string>,
+    get openedConnections() {
+      return connectionCount;
+    },
     origin: `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`,
     /** Holds the Mate's answers to requests whose RPC tag matches, until released. */
     hold: (match: (tag: string) => boolean): HeldReads => {

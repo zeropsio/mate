@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- temporary git checkout for a real Mate push.
+import { inProcessCore } from "../../harness/hqCore.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
@@ -31,7 +32,7 @@ export const changeFixture = Effect.fn(function* (s: Scenario) {
       expect(response.status).toBe(200);
       const record = yield* decodeDetail(response.body);
       expect(record.change.state).toBe("closed");
-      const git = yield* s.drivers.core.gitHost.git;
+      const git = yield* inProcessCore(s.drivers.core).gitHost.git;
       const branches = yield* git.branches({ appId, id: "appdev" });
       expect(branches.items.find((branch) => branch.ref === "refs/heads/mate/Ada/1")?.sha).toBe(
         record.change.head,
