@@ -788,9 +788,9 @@ describe("reachabilityPhrase", () => {
       text: "Reconnecting…",
       actions: ["try-now"],
     });
-    // Its link said when it tries again: its server is not answering, counted down, with Try now.
+    // Its link said when it asks for its next ticket: counted down to it, with Try now.
     expect(phrase({ kind: "reconnecting", retryAtMs: NOW + 4_000 })).toEqual({
-      text: "This Mate isn't answering. Trying again in 4 s.",
+      text: "Reconnecting — next try in 4 s.",
       actions: ["try-now"],
     });
     expect(phrase({ kind: "not-answering", overdue: true })).toEqual({

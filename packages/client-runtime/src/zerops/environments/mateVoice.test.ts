@@ -115,6 +115,13 @@ describe("mateVoice — the one voice of a Mate's link", () => {
       voice: banner("Reconnecting to Quinn…", ["try-now"]),
     },
     {
+      state: "reconnecting on the ticket schedule: when it asks next, and Try now",
+      reachability: { kind: "reconnecting", retryAtMs: NOW + 7_200 },
+      shown: true,
+      held: LONG,
+      voice: banner("Reconnecting to Quinn — next try in 8 s.", ["try-now"]),
+    },
+    {
       state: "Zerops restarting it, conversation shown",
       reachability: RESTARTING,
       shown: true,

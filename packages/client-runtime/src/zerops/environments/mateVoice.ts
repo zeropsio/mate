@@ -15,8 +15,9 @@
  * | updating it                      | "Quinn is updating."     | the same words on the stage    |
  * | anything else on its way         | its cause, in the banner | its cause, on the stage        |
  *
- * Its face is asleep on the stage until the link is up. A terminal verdict (gone, replaced) is the
- * route's own view, not the link's voice. Pure.
+ * A lost link whose next ticket is timed counts down to it: "Reconnecting to Quinn — next try in
+ * 8 s.", with Try now. Its face is asleep on the stage until the link is up. A terminal verdict
+ * (gone, replaced) is the route's own view, not the link's voice. Pure.
  */
 import {
   reachabilityPhrase,
@@ -113,11 +114,11 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);
-      // Where its link said when it tries again, the wait is its server not answering.
+      // Where its link said when it asks for its next ticket, the line counts down to it.
       return reachability.retryAtMs === undefined
         ? speak(`Reconnecting to ${mateName}…`, ["try-now"])
         : speak(
-            `${mateName} isn't answering. Trying again in ${Math.max(1, Math.ceil((reachability.retryAtMs - nowMs) / 1_000))} s.`,
+            `Reconnecting to ${mateName} — next try in ${Math.max(1, Math.ceil((reachability.retryAtMs - nowMs) / 1_000))} s.`,
             ["try-now"],
           );
     default: {

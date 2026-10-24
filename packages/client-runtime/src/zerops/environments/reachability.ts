@@ -373,7 +373,7 @@ export function reachabilityPhrase(
       return verdict.retryAtMs === undefined
         ? phrase("Reconnecting…", ["try-now"])
         : phrase(
-            `This Mate isn't answering. Trying again in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
+            `Reconnecting — next try in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
             ["try-now"],
           );
     case "resolving":
