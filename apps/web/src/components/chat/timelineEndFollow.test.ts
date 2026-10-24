@@ -573,6 +573,49 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop).toBe(600);
   });
 
+  // The scenarios' still-frame probe reads the list's geometry, and the browser hands back a
+  // rounded top: a glide's last stretch is sub-pixel a frame, so six frames can read alike while
+  // the view is still 2 px off its end. Only the mark says it is still on its way.
+  it.each([2, 4])(
+    "a glide whose rounded top reads alike for six frames still says it glides while the view is more than 1 px from its end (%i ms frames)",
+    (gap) => {
+      const { scroll, follow } = atItsEnd();
+      // The browser hands back a whole-pixel top; the follower's own `at` stays fractional.
+      let exact = scroll.element.scrollTop;
+      Object.defineProperty(scroll.element, "scrollTop", {
+        get: () => Math.round(exact),
+        set: (next: number) => {
+          exact = Math.max(
+            0,
+            Math.min(next, scroll.element.scrollHeight - scroll.element.clientHeight),
+          );
+        },
+      });
+      scroll.element.scrollHeight += 300;
+      follow.follow();
+      const reads: Array<{ top: number; away: number; gliding: boolean }> = [];
+      for (let guard = 0; frames.length > 0 && guard < 600; guard += 1) {
+        now += gap;
+        for (const frame of frames.splice(0)) frame(now);
+        reads.push({
+          top: Math.round(scroll.element.scrollTop),
+          away: endOf(scroll) - exact,
+          gliding: scroll.element.hasAttribute(GLIDING_ATTRIBUTE),
+        });
+      }
+      let alike = 0;
+      let stalled = 0;
+      reads.forEach((read, index) => {
+        alike = index > 0 && read.top === reads[index - 1]!.top ? alike + 1 : 0;
+        if (alike < 5 || read.away <= 1) return;
+        stalled += 1;
+        expect(read.gliding, "ASSERTION: a view still on its way says so").toBe(true);
+      });
+      expect(stalled, "ASSERTION: the probe saw the stall it guards").toBeGreaterThan(0);
+      expect(scroll.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(false);
+    },
+  );
+
   // Re-review F5: a kept list shown or hidden swaps the list the follower
   // reads; stopping, the old follower must clear what it said on its own list.
   it("clears its gliding mark on the list it glided, though another list took its place", () => {
