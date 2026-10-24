@@ -2,7 +2,6 @@ import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import packageJson from "../../package.json" with { type: "json" };
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
@@ -20,7 +19,6 @@ import {
   RELAY_URL_SECRET,
 } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
-import * as ZeropsIdentityStatus from "../zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsMateUpdate from "../zerops/ZeropsMateUpdate.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
 
@@ -264,8 +262,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
                   apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
                   publicOrigin: undefined,
                   apiToken: undefined,
-                  roleRecheckInterval: Duration.seconds(300),
-                  sessionMaxAge: Duration.hours(24),
                   hqOrigin: "https://hq.zerops.io",
                   serviceId: undefined,
                   hostname: undefined,
@@ -279,109 +275,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         ),
       );
       expect(insideZerops.zerops).toEqual({ projectId: "TEST000000000000000023" });
-    }),
-  );
-
-  const zeropsConfigLayer = (baseDir: string) =>
-    Effect.gen(function* () {
-      const config = yield* makeServerConfig(baseDir);
-      return {
-        ...config,
-        zerops: {
-          projectId: "TEST000000000000000023",
-          apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
-          publicOrigin: undefined,
-          apiToken: undefined,
-          roleRecheckInterval: Duration.seconds(300),
-          sessionMaxAge: Duration.hours(24),
-          hqOrigin: "https://hq.zerops.io",
-          serviceId: undefined,
-          hostname: undefined,
-          statusFile: undefined,
-          mateUpdateStateFile: undefined,
-          envStorePath: "/etc/zerops-zembed/env.json",
-        },
-      } satisfies ServerConfig.ServerConfig["Service"];
-    });
-
-  // S4: the descriptor reports the door/watch's last own-project read, never
-  // a probe of its own.
-  it.effect(
-    "the descriptor says the identity check failed after the door could not read its own project",
-    () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-server-environment-identity-failed-",
-        });
-        const config = yield* zeropsConfigLayer(baseDir);
-
-        const descriptor = yield* Effect.gen(function* () {
-          const status = yield* ZeropsIdentityStatus.ZeropsIdentityStatus;
-          yield* status.record({ ok: false, keySource: "store" });
-          return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
-        }).pipe(
-          Effect.provide(
-            ServerEnvironment.layer.pipe(
-              Layer.provide(ServerSecretStore.layer),
-              Layer.provide(ServerConfig.layer(config)),
-              Layer.provideMerge(ZeropsIdentityStatus.layer),
-            ),
-          ),
-        );
-        expect(descriptor.zerops?.identity).toBe("failed");
-        expect(descriptor.zerops?.identityCheckedAt).toBeDefined();
-      }),
-  );
-
-  it.effect("the descriptor says which source the key came from", () =>
-    Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-identity-source-",
-      });
-      const config = yield* zeropsConfigLayer(baseDir);
-
-      const descriptor = yield* Effect.gen(function* () {
-        const status = yield* ZeropsIdentityStatus.ZeropsIdentityStatus;
-        yield* status.record({ ok: true, keySource: "snapshot" });
-        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
-      }).pipe(
-        Effect.provide(
-          ServerEnvironment.layer.pipe(
-            Layer.provide(ServerSecretStore.layer),
-            Layer.provide(ServerConfig.layer(config)),
-            Layer.provideMerge(ZeropsIdentityStatus.layer),
-          ),
-        ),
-      );
-      expect(descriptor.zerops?.identity).toBe("ok");
-      expect(descriptor.zerops?.keySource).toBe("snapshot");
-    }),
-  );
-
-  it.effect("the descriptor says the identity is unknown before any own-project read has run", () =>
-    Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-identity-unknown-",
-      });
-      const config = yield* zeropsConfigLayer(baseDir);
-
-      const descriptor = yield* Effect.gen(function* () {
-        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
-      }).pipe(
-        Effect.provide(
-          ServerEnvironment.layer.pipe(
-            Layer.provide(ServerSecretStore.layer),
-            Layer.provide(ServerConfig.layer(config)),
-            Layer.provideMerge(ZeropsIdentityStatus.layer),
-          ),
-        ),
-      );
-      expect(descriptor.zerops?.identity).toBe("unknown");
-      expect(descriptor.zerops?.identityCheckedAt).toBeUndefined();
-      expect(descriptor.zerops?.keySource).toBeUndefined();
     }),
   );
 
@@ -422,8 +315,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           publicOrigin: undefined,
           apiToken: undefined,
-          roleRecheckInterval: Duration.seconds(300),
-          sessionMaxAge: Duration.hours(24),
           hqOrigin: "https://hq.zerops.io",
           serviceId: undefined,
           hostname: undefined,

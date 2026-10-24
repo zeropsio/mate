@@ -1,10 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Duration from "effect/Duration";
 
 import {
   DEFAULT_ZEROPS_API_HOST,
-  DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS,
-  DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS,
   HQ_GIT_CREDENTIAL_ENV,
   HQ_ORIGIN_ENV,
   isZeropsEnvironment,
@@ -55,67 +52,6 @@ describe("resolveZeropsEnvironment — the one detection rule", () => {
         ?.apiBaseUrl,
       "https://api.app-tatami.zerops.dev/api/rest/public",
     );
-  });
-
-  it("defaults the re-check interval and the session cap, and honours overrides", () => {
-    const defaults = resolveZeropsEnvironment(input({ projectId: "abc" }))!;
-    assert.isTrue(
-      Duration.equals(
-        defaults.roleRecheckInterval,
-        Duration.seconds(DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
-      ),
-    );
-    assert.isTrue(
-      Duration.equals(
-        defaults.sessionMaxAge,
-        Duration.seconds(DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
-      ),
-    );
-
-    const overridden = resolveZeropsEnvironment(
-      input({ projectId: "abc", roleRecheckSeconds: 60, sessionMaxAgeSeconds: 3_600 }),
-    )!;
-    assert.isTrue(Duration.equals(overridden.roleRecheckInterval, Duration.seconds(60)));
-    assert.isTrue(Duration.equals(overridden.sessionMaxAge, Duration.seconds(3_600)));
-  });
-
-  it("a configured interval above 300 s is clamped", () => {
-    for (const [configured, effective] of [
-      [60, 60],
-      [300, 300],
-      [301, 300],
-      [3_600, 300],
-    ] as const) {
-      const resolved = resolveZeropsEnvironment(
-        input({ projectId: "abc", roleRecheckSeconds: configured }),
-      )!;
-      assert.isTrue(
-        Duration.equals(resolved.roleRecheckInterval, Duration.seconds(effective)),
-        `roleRecheckSeconds=${String(configured)}`,
-      );
-    }
-  });
-
-  it("falls back to the defaults for a non-positive or non-finite override", () => {
-    for (const seconds of [0, -1, Number.NaN]) {
-      const resolved = resolveZeropsEnvironment(
-        input({ projectId: "abc", roleRecheckSeconds: seconds, sessionMaxAgeSeconds: seconds }),
-      )!;
-      assert.isTrue(
-        Duration.equals(
-          resolved.roleRecheckInterval,
-          Duration.seconds(DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
-        ),
-        `roleRecheckSeconds=${String(seconds)}`,
-      );
-      assert.isTrue(
-        Duration.equals(
-          resolved.sessionMaxAge,
-          Duration.seconds(DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
-        ),
-        `sessionMaxAgeSeconds=${String(seconds)}`,
-      );
-    }
   });
 
   it("leaves the public origin undefined unless configured", () => {

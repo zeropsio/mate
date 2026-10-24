@@ -1,3 +1,5 @@
+import { ZeropsConnections } from "./ZeropsConnections.ts";
+import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (spec-mate §3.5, `@t3tools/shared/mateLink`, the keys model): one
@@ -95,11 +97,10 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
-import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";
@@ -184,6 +185,8 @@ export interface ZeropsHqLinkOptions {
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
   /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`). */
+  readonly ticket?: (frame: TicketFrame) => Effect.Effect<void>;
+  readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
@@ -476,10 +479,14 @@ export const makeZeropsHqLink = (
             return tasks === undefined
               ? Effect.void
               : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
-          // A person's ticket and the end of their HQ session are the person door's (K7).
           case "ticket":
+            return options.ticket === undefined
+              ? Effect.void
+              : options
+                  .ticket(frame)
+                  .pipe(Effect.andThen(send({ type: "ticket-ack", ticket: frame.ticket })));
           case "close-session":
-            return Effect.void;
+            return options.closeSession?.(frame.sessionId) ?? Effect.void;
           default:
             return usage?.receive(frame) ?? Effect.void;
         }
@@ -746,7 +753,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         return ZeropsHqLink.of({ standing: Effect.succeed({ kind: "not-linked" }) });
       }
       const key = yield* ZeropsMateKey;
-      const access = yield* ZeropsMateAccessList;
+      const connections = yield* ZeropsConnections;
+      const tickets = yield* ZeropsTicketDoor;
       const credential = yield* ZeropsGitCredentialFile;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
@@ -779,7 +787,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),
         connect: connectLinkSocket,
-        access: access.heard,
+        access: connections.heard,
+        ticket: tickets.heard,
+        closeSession: connections.closeSession,
         gitCredential: credential.write,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({

@@ -27,6 +27,7 @@ import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -1478,6 +1479,38 @@ const turnRow = (database: string, threadId: string, messageId: string, state: s
   }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database })), Effect.orDie);
 
 describe("ZeropsSetup: the git step reads HQ's credential as the Mate keeps it", () => {
+  it.effect(
+    "a missing HQ Git credential is unavailable after 30 seconds and recovers when it arrives",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.gitCredential, false);
+        yield* Ref.set(world.variables, []);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            const git = Effect.map(setup.document, (document) =>
+              document.steps.find((step) => step.id === "git"),
+            );
+            for (const [advance, expected] of [
+              [29_999, "waiting"],
+              [1, "failed"],
+            ] as const) {
+              yield* TestClock.adjust(advance);
+              assert.strictEqual((yield* git)?.state, expected);
+            }
+            assert.deepStrictEqual(yield* git, {
+              id: "git",
+              state: "failed",
+              at: "",
+              reason: "credential_unavailable",
+            });
+            yield* Ref.set(world.gitCredential, true);
+            assert.strictEqual((yield* git)?.state, "done");
+          }),
+        );
+      }),
+  );
+
   const steps: ReadonlyArray<[string, HqStanding, boolean, Record<string, string>]> = [
     ["HQ sent its credential and the Mate", ASKED, true, { state: "done" }],
     [

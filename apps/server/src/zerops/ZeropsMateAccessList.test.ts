@@ -81,6 +81,18 @@ describe("nextAccessList", () => {
 });
 
 describe("ZeropsMateAccessList", () => {
+  it.effect("TC-13 a view within 60 seconds of the Mate clock caps the hold from receipt", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(AT));
+      const list = yield* makeAccessList;
+      yield* list.heard({ ...full(1, [JAN]), viewAt: "2026-10-24T09:59:00.000Z" });
+      yield* TestClock.adjust("14 minutes");
+      assert.isTrue(Option.isSome(yield* list.current));
+      yield* TestClock.adjust(1);
+      assert.isTrue(Option.isNone(yield* list.current));
+    }),
+  );
+
   it.effect("answers from HQ's relay while it is fresh, reading nothing of Zerops", () =>
     Effect.gen(function* () {
       // The list is built from nothing but the frames: no Zerops reader, no key.

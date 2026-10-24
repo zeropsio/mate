@@ -162,6 +162,15 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  zeropsAllowedOrigins: Config.String("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
+    Config.withDefault(""),
+    Config.map((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ),
   // Explicit override for this container's own public origin, consulted by
   // the environment-link proof before falling back to the linking request's
   // Origin/Host (see ZeropsEnvironment.publicOrigin).
@@ -169,17 +178,8 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  // The Mate's own Zerops key, as zcp already sets it in this container. The
-  // door never asks the caller for rights; it looks them up with this.
+  // The project key HQ verifies when this Mate links.
   zeropsApiToken: Config.String("ZCP_API_KEY").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  zeropsRoleRecheckSeconds: Config.Int("T3CODE_ZEROPS_ROLE_RECHECK_SECONDS").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  zeropsSessionMaxAgeSeconds: Config.Int("T3CODE_ZEROPS_SESSION_MAX_AGE_SECONDS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -461,11 +461,10 @@ export const resolveServerConfig = (
       zeropsFixtures === undefined
         ? resolveZeropsEnvironment({
             projectId: env.zeropsProjectId,
+            allowedOrigins: env.zeropsAllowedOrigins,
             apiHost: env.zeropsApiHost,
             publicOrigin: env.zeropsPublicOrigin,
             apiToken: env.zeropsApiToken,
-            roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
-            sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
             hqOrigin: env.zeropsHqOrigin,
             hqGitCredentialPath,
             serviceId: env.zeropsServiceId,
@@ -479,16 +478,6 @@ export const resolveServerConfig = (
     if (zerops !== undefined) {
       publishHqOrigin(process.env, zerops.hqOrigin);
       publishHqGitCredential(process.env, hqGitCredentialPath);
-    }
-    if (
-      zerops !== undefined &&
-      env.zeropsRoleRecheckSeconds !== undefined &&
-      Duration.toSeconds(zerops.roleRecheckInterval) < env.zeropsRoleRecheckSeconds
-    ) {
-      yield* Effect.logWarning("Zerops role re-check interval is clamped.", {
-        configuredSeconds: env.zeropsRoleRecheckSeconds,
-        effectiveSeconds: Duration.toSeconds(zerops.roleRecheckInterval),
-      });
     }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 

@@ -1,5 +1,7 @@
 import {
   AuthAccessTokenType,
+  AuthZeropsClientScopes,
+  AuthSessionId,
   AuthAccessWriteScope,
   AuthAdministrativeScopes,
   AuthStandardClientScopes,
@@ -8,7 +10,6 @@ import {
   type AuthClientSession,
   type AuthEnvironmentScope,
   type AuthPairingLink,
-  type AuthSessionId,
   type AuthSessionState,
   type ServerAuthBootstrapMethod,
   type ServerAuthDescriptor,
@@ -26,6 +27,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
+import { ZeropsConnections } from "../zerops/ZeropsConnections.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../zerops/zeropsSubject.ts";
 import * as EnvironmentAuthPolicy from "./EnvironmentAuthPolicy.ts";
 import * as PairingGrantStore from "./PairingGrantStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
@@ -712,17 +715,12 @@ export const make = Effect.gen(function* () {
             if (!grantedScopes.every((scope) => grant.scopes.includes(scope))) {
               return yield* new ServerAuthScopeNotGrantedError({});
             }
-            // Nothing here is ever re-presented: the server re-reads roles
-            // itself (`ZeropsMembershipWatch`) and ends the sessions whose
-            // answer changed. So this cap is not a security window — it is the
-            // promise that nothing runs forever on one proof.
-            const sessionTtl = serverConfig.zerops.sessionMaxAge;
             return yield* sessions
               .issue({
                 method: input?.proofKeyThumbprint ? "dpop-access-token" : "bearer-access-token",
                 subject: grant.subject,
                 scopes: grantedScopes,
-                ttl: sessionTtl,
+                ttl: Duration.hours(24),
                 ...(input?.proofKeyThumbprint
                   ? { proofKeyThumbprint: input.proofKeyThumbprint }
                   : {}),
@@ -975,3 +973,66 @@ export const layer = Layer.effect(EnvironmentAuth, make).pipe(
 const storageLayer = Layer.mergeAll(ServerSecretStore.layer, SqlitePersistenceLayer);
 
 export const runtimeLayer = layer.pipe(Layer.provideMerge(storageLayer));
+
+/** A ticket's live connection is the only authority for a Zerops HTTP request. */
+export const zeropsLayer = Layer.effect(
+  EnvironmentAuth,
+  Effect.gen(function* () {
+    const connections = yield* ZeropsConnections;
+    const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
+    const descriptor = yield* policy.getDescriptor();
+    const authenticateHttpRequest = Effect.fn("EnvironmentAuth.connection")(function* (
+      request: HttpServerRequest.HttpServerRequest,
+    ) {
+      const handle = parseBearerToken(request);
+      if (!handle) return yield* new ServerAuthMissingCredentialError({});
+      const current = yield* connections.current(handle);
+      if (Option.isNone(current)) return yield* new ServerAuthInvalidCredentialError({});
+      return {
+        sessionId: AuthSessionId.make(current.value.connectionId),
+        subject: `${ZEROPS_SUBJECT_PREFIX}${current.value.userId}`,
+        method: "bearer-access-token" as const,
+        scopes: AuthZeropsClientScopes,
+      };
+    });
+    const unavailable = new Error("Open this Mate through HQ.");
+    return EnvironmentAuth.of({
+      getDescriptor: () => Effect.succeed(descriptor),
+      authenticateHttpRequest,
+      authenticateWebSocketUpgrade: () => Effect.fail(new ServerAuthInvalidCredentialError({})),
+      getSessionState: (request) =>
+        authenticateHttpRequest(request).pipe(
+          Effect.map((session): AuthSessionState => ({
+            authenticated: true,
+            auth: descriptor,
+            scopes: session.scopes,
+            sessionMethod: session.method,
+          })),
+          Effect.catch(() =>
+            Effect.succeed({ authenticated: false, auth: descriptor } satisfies AuthSessionState),
+          ),
+        ),
+      exchangeBootstrapCredentialForAccessToken: () =>
+        Effect.fail(new ServerAuthInvalidCredentialError({})),
+      createPairingLink: () =>
+        Effect.fail(new ServerAuthPairingLinkCreationError({ cause: unavailable })),
+      listPairingLinks: () => Effect.succeed([]),
+      revokePairingLink: () => Effect.succeed(false),
+      issueSession: () => Effect.fail(new ServerAuthSessionTokenIssueError({ cause: unavailable })),
+      listSessions: () => Effect.succeed([]),
+      listClientSessions: () => Effect.succeed([]),
+      revokeSession: () =>
+        Effect.fail(new ServerAuthSessionRevocationError({ cause: unavailable })),
+      revokeOtherSessionsExcept: () =>
+        Effect.fail(new ServerAuthSessionRevocationError({ cause: unavailable })),
+      revokeBySubject: () =>
+        Effect.fail(new ServerAuthSessionRevocationError({ cause: unavailable })),
+      revokeClientSession: () =>
+        Effect.fail(new ServerAuthSessionRevocationError({ cause: unavailable })),
+      revokeOtherClientSessions: () =>
+        Effect.fail(new ServerAuthSessionRevocationError({ cause: unavailable })),
+      issueWebSocketTicket: () =>
+        Effect.fail(new ServerAuthWebSocketTokenIssueError({ cause: unavailable })),
+    });
+  }),
+).pipe(Layer.provideMerge(EnvironmentAuthPolicy.layer));

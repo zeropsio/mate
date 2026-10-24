@@ -1,6 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -661,8 +660,6 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           publicOrigin: undefined,
           apiToken: undefined,
-          roleRecheckInterval: Duration.seconds(300),
-          sessionMaxAge: Duration.hours(24),
           hqOrigin: "https://hq.zerops.io",
           serviceId: undefined,
           hostname: undefined,

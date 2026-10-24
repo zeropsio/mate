@@ -92,7 +92,7 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
+import { zeropsUserIdOf } from "./zeropsSubject.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomeTarget } from "./zeropsLoginHomes.ts";

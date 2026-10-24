@@ -135,8 +135,8 @@ export class ZeropsProjectSigners extends Context.Service<
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether this project opens for `userId`, as HQ's latest access list says — the answer that
-     * keeps a session open (`ZeropsMembershipWatch`). What admits a turn no session stands behind:
-     * the crew's, the stand-up's (X3). The list holds 15 min from the frame that brought it
+     * keeps a connection open (`ZeropsConnections`). What admits a turn no session stands behind:
+     * the crew's, the stand-up's (X3). The list holds at most 15 min from the frame that brought it
      * (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says the organisation's key was
      * refused, `undefined`: nobody is vouched for, and nobody's logins are taken on a guess.
      */

@@ -69,7 +69,7 @@ import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
 import { isTurnStartingCommand, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 
 /**

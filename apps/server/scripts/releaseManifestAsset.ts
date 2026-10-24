@@ -29,7 +29,7 @@ import {
 } from "./releaseRollbackCompatibility.ts";
 
 /** `contract` today (spec-mate.md §2.8: C-1…C-6). Bumped only alongside a zcp-side change. */
-export const RELEASE_MANIFEST_CONTRACT = 1;
+export const RELEASE_MANIFEST_CONTRACT = 2;
 
 export const StableManifest = Schema.Struct({
   version: Schema.String,

@@ -245,14 +245,17 @@ export const rpcReadAlongError = (requiredScope: AuthEnvironmentScope) =>
  * an acting call while `readsAlong` says the session's person is not the Mate's owner.
  */
 export const rpcScopeAuthorizationLayer = (
-  scopes: ReadonlyArray<AuthEnvironmentScope>,
+  scopes: ReadonlyArray<AuthEnvironmentScope> | Effect.Effect<ReadonlyArray<AuthEnvironmentScope>>,
   readsAlong: Effect.Effect<boolean>,
 ) =>
   Layer.succeed(RpcScopeAuthorization)((effect, { rpc }) => {
     const requiredScope = requiredScopeForRpcMethod(rpc._tag);
-    if (!scopes.includes(requiredScope)) return Effect.fail(rpcAuthorizationError(requiredScope));
-    if (!ownerOnlyRpcMethod(rpc._tag)) return effect;
-    return Effect.flatMap(readsAlong, (along) =>
-      along ? Effect.fail(rpcReadAlongError(requiredScope)) : effect,
-    );
+    return Effect.flatMap(Effect.isEffect(scopes) ? scopes : Effect.succeed(scopes), (current) => {
+      if (!current.includes(requiredScope))
+        return Effect.fail(rpcAuthorizationError(requiredScope));
+      if (!ownerOnlyRpcMethod(rpc._tag)) return effect;
+      return Effect.flatMap(readsAlong, (along) =>
+        along ? Effect.fail(rpcReadAlongError(requiredScope)) : effect,
+      );
+    });
   });

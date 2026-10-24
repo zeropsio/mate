@@ -278,6 +278,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const environment = config.zerops;
     const projectId = environment?.projectId ?? "";
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+    const startedAtMs = yield* Clock.currentTimeMillis;
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
@@ -435,7 +436,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const document = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       const standing = yield* reads.hq;
-      const git = gitAccessOf(standing, yield* latch(gitAt, yield* reads.gitCredentialHeld));
+      const git = gitAccessOf(
+        standing,
+        yield* latch(gitAt, yield* reads.gitCredentialHeld),
+        (yield* Clock.currentTimeMillis) - startedAtMs,
+      );
       const marked = variables !== undefined && hasSetupMarker(variables);
       const record = yield* Effect.flatMap(recordOf, seenOnEngine);
       const ran = record !== undefined && RAN.has(record.source);
@@ -866,13 +871,20 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 /**
  * The Mate's Git access: granted since `at` once its credential file holds HQ's credential — and
  * still, once granted, whatever the standing says later (`at` is latched) — else failed where HQ
- * refused the project's key, its close reason the code, else on its way.
+ * refused the project's key, its close reason the code. After 30 seconds without a credential,
+ * report it unavailable; a later credential still completes the step.
  */
-const gitAccessOf = (standing: HqStanding, at: string | undefined): GitAccess => {
+const gitAccessOf = (
+  standing: HqStanding,
+  at: string | undefined,
+  elapsedMs: number,
+): GitAccess => {
   if (at !== undefined) return { state: "done", at };
   return standing.kind === "not-linked" && standing.refusal !== undefined
     ? { state: "failed", reason: "refused", code: standing.refusal }
-    : { state: "waiting" };
+    : elapsedMs >= 30_000
+      ? { state: "failed", reason: "credential_unavailable" }
+      : { state: "waiting" };
 };
 
 /** Why a stand-up nothing started waits, from where the Mate stands with its HQ. */

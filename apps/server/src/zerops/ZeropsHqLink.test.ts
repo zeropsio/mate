@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationRow,
@@ -24,6 +25,9 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as Access from "./ZeropsMateAccessList.ts";
+import * as Tickets from "./ZeropsTicketDoor.ts";
+import * as Connections from "./ZeropsConnections.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import {
@@ -460,6 +464,89 @@ describe("ZeropsHqLink", () => {
         assert.deepStrictEqual(relayed, [snapshot, refused]);
       }),
     ),
+  );
+
+  it.effect(
+    "TC-6 and TC-8 the HQ link holds tickets before acknowledging and forwards sign-out to live connections",
+    () =>
+      Effect.gen(function* () {
+        const access = yield* Access.make;
+        const tickets = yield* Tickets.make;
+        const connections = yield* Connections.make.pipe(
+          Effect.provideService(Access.ZeropsMateAccessList, access),
+          Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
+          Effect.provide(NodeCrypto.layer),
+        );
+        const sockets: Array<FakeSocket> = [];
+        const pongs = yield* Queue.unbounded<void>();
+        const closed: Array<string> = [];
+        const heldAtAcknowledgement: Array<boolean> = [];
+        let ticketHeld = false;
+        yield* makeZeropsHqLink({
+          hqOrigin: "https://hq.test",
+          serviceId: "svc-mate",
+          publicOrigin: "https://mate.example",
+          readKey: Effect.succeed("project-key"),
+          connect: (url) => {
+            const socket = new FakeSocket(url);
+            socket.over = "IPv6";
+            socket.onSent = (message) => {
+              if (message.type === "ticket-ack") heldAtAcknowledgement.push(ticketHeld);
+              if (message.type === "pong") Queue.offerUnsafe(pongs, undefined);
+            };
+            sockets.push(socket);
+            return socket;
+          },
+          overview: Effect.succeed(Option.none()),
+          changes: Stream.never,
+          attention: Stream.never,
+          access: connections.heard,
+          ticket: (frame) =>
+            tickets.heard(frame).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  ticketHeld = true;
+                }),
+              ),
+            ),
+          closeSession: connections.closeSession,
+          gitCredential: () => Effect.void,
+        });
+        const socket = yield* linked(sockets, 0);
+        socket.hear({
+          type: "access",
+          version: 1,
+          full: true,
+          viewAt: "2026-10-24T10:00:00.000Z",
+          members: [{ userId: "jan", role: "OWNER", visibility: "open" }],
+        });
+        socket.hear({
+          type: "ticket",
+          ticket: "browser-ticket",
+          userId: "jan",
+          sessionId: "hq-session",
+          expiresIn: 60,
+        });
+        socket.hear({ type: "ping" });
+        yield* Queue.take(pongs);
+        assert.deepEqual(heldAtAcknowledgement, [true]);
+        assert.deepEqual(
+          socket.sent.filter((message) => message.type === "ticket-ack"),
+          [{ type: "ticket-ack", ticket: "browser-ticket" }],
+        );
+        const admission = yield* connections.admit(
+          { ticket: "browser-ticket" },
+          Effect.sync(() => {
+            closed.push("browser");
+          }),
+        );
+        assert.strictEqual(Option.getOrThrow(admission).sessionId, "hq-session");
+        socket.hear({ type: "close-session", sessionId: "hq-session" });
+        socket.hear({ type: "ping" });
+        yield* Queue.take(pongs);
+        assert.deepEqual(closed, ["browser"]);
+        assert.isTrue(Option.isNone(yield* connections.current("browser-ticket")));
+      }).pipe(Effect.scoped),
   );
 
   it.effect("keeps the Git credential HQ sends, and lets it go when HQ revokes it", () =>

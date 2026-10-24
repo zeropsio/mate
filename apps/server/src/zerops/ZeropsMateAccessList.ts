@@ -9,7 +9,8 @@
  * for access and never runs the role function.
  *
  * The list holds {@link ACCESS_LIST_HOLDS} from when this Mate received the frame that last
- * brought it: HQ sends one after every fresh view, changed or not, so only a link that is down or
+ * brought it, capped by the view time when the clocks differ by at most sixty seconds.
+ * HQ sends one after every fresh view, changed or not, so only a link that is down or
  * a Zerops that fails transiently lets it age. Past that it answers nothing, and whoever asks
  * vouches for nobody. A frame saying the organisation's key was refused holds no members until a
  * full frame without it.
@@ -44,6 +45,8 @@ export interface AccessList {
   readonly refused: boolean;
   /** When this Mate received the frame that last brought the list (its own clock, ms). */
   readonly heardAtMs: number;
+  /** Receipt plus fifteen minutes, capped by a view within sixty seconds of this clock. */
+  readonly expiresAtMs: number;
 }
 
 const named = (members: ReadonlyArray<LinkAccessMember>): ReadonlyArray<ListedMember> =>
@@ -58,12 +61,16 @@ export function nextAccessList(
   frame: KeyLinkAccess,
   nowMs: number,
 ): AccessList | undefined {
+  const viewAtMs = "viewAt" in frame ? Date.parse(frame.viewAt) : Number.NaN;
+  const baseMs = Math.abs(nowMs - viewAtMs) <= 60_000 ? Math.min(nowMs, viewAtMs) : nowMs;
+  const expiresAtMs = baseMs + Duration.toMillis(ACCESS_LIST_HOLDS);
   if (frame.full)
     return {
       version: frame.version,
       members: named(frame.members),
       refused: "refused" in frame,
       heardAtMs: nowMs,
+      expiresAtMs,
     };
   if (list === undefined || frame.version <= list.version) return list;
   const members = new Map(list.members.map((member) => [member.userId, member] as const));
@@ -76,6 +83,7 @@ export function nextAccessList(
     members: named([...members.values()]),
     refused: list.refused,
     heardAtMs: nowMs,
+    expiresAtMs,
   };
 }
 
@@ -103,7 +111,6 @@ export class ZeropsMateAccessList extends Context.Service<
 export const make = Effect.gen(function* () {
   const held = yield* Ref.make<AccessList | undefined>(undefined);
   const moved = yield* PubSub.unbounded<void>();
-  const holdsMs = Duration.toMillis(ACCESS_LIST_HOLDS);
   return ZeropsMateAccessList.of({
     heard: (frame) =>
       Effect.gen(function* () {
@@ -116,7 +123,7 @@ export const make = Effect.gen(function* () {
     current: Effect.gen(function* () {
       const list = yield* Ref.get(held);
       const now = yield* Clock.currentTimeMillis;
-      return list !== undefined && now - list.heardAtMs <= holdsMs
+      return list !== undefined && now <= list.expiresAtMs
         ? Option.some(list)
         : Option.none<AccessList>();
     }),

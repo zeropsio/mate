@@ -1,3 +1,9 @@
+import * as Deferred from "effect/Deferred";
+import * as Socket from "effect/socket/Socket";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
+import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zerops/zeropsSubject.ts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
@@ -19,6 +25,7 @@ import {
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
   AuthSessionId,
+  AuthZeropsClientScopes,
   ClientSurface,
   type EditorId,
   type FileManagerRevealKind,
@@ -466,8 +473,8 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       );
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
-      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
-      const sessions = yield* SessionStore.SessionStore;
+      const bootstrapCredentials = yield* Effect.serviceOption(PairingGrantStore.PairingGrantStore);
+      const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
@@ -1878,7 +1885,12 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               const revisionRef = yield* Ref.make(1);
               const accessChanges: Stream.Stream<
                 PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange
-              > = Stream.merge(bootstrapCredentials.streamChanges, sessions.streamChanges);
+              > = Stream.merge(
+                Option.isSome(bootstrapCredentials)
+                  ? bootstrapCredentials.value.streamChanges
+                  : Stream.empty,
+                Option.isSome(sessions) ? sessions.value.streamChanges : Stream.empty,
+              );
 
               const liveEvents: Stream.Stream<AuthAccessStreamEvent> = accessChanges.pipe(
                 Stream.mapEffect((change) =>
@@ -1925,23 +1937,107 @@ export const WS_RPC_SERVER_OPTIONS = {
   disableFatalDefects: true,
 } as const;
 
+const decodeFirstWebSocketFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+
 export const websocketRpcRouteLayer = HttpRouter.add(
   "GET",
   "/ws",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const sessions = yield* SessionStore.SessionStore;
-    const session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
-      Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-        failEnvironmentCredentialRejected(error),
-      ),
-      Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-        failEnvironmentInternal("internal_error", error),
-      ),
-    );
-    const clientOrigin = readClientConnectionOrigin(request);
-    yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
+    const config = yield* ServerConfig.ServerConfig;
+    if (!isAllowedWebSocketOrigin(config, request.headers.origin)) {
+      return HttpServerResponse.text("Forbidden origin", { status: 403 });
+    }
+    const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
+    const connections = yield* Effect.serviceOption(ZeropsConnections);
+    const connectionEnded = yield* Deferred.make<void>();
+    let rpcRequest = request;
+    let handle: string | undefined;
+    let session: EnvironmentAuth.AuthenticatedSession;
+    if (config.zerops !== undefined && config.zeropsFixtures === undefined) {
+      if (Option.isNone(connections)) return HttpServerResponse.empty({ status: 503 });
+      const socket = yield* Effect.orDie(request.upgrade);
+      const reader = yield* Effect.orDie(socket.reader);
+      const writer = yield* socket.writer;
+      const first = yield* reader.pull.pipe(
+        Effect.timeoutOption(Duration.seconds(5)),
+        Effect.orDie,
+      );
+      const frame = Option.isSome(first)
+        ? yield* decodeFirstWebSocketFrame(
+            typeof first.value[0] === "string"
+              ? first.value[0]
+              : new TextDecoder().decode(first.value[0]),
+          ).pipe(Effect.orElseSucceed(() => undefined))
+        : undefined;
+      const registry = connections.value;
+      const terminals = yield* TerminalManager.TerminalManager;
+      const admitted = yield* Effect.acquireRelease(
+        registry.admit(
+          frame,
+          writer
+            .write(new Socket.CloseEvent(4401, "Access ended"))
+            .pipe(Effect.ignore, Effect.ensuring(Deferred.succeed(connectionEnded, undefined))),
+        ),
+        (identity) =>
+          Option.isNone(identity)
+            ? Effect.void
+            : registry
+                .close(identity.value.ticket)
+                .pipe(
+                  Effect.andThen(
+                    terminals.closeOpenedBy(AuthSessionId.make(identity.value.connectionId)),
+                  ),
+                  Effect.asVoid,
+                ),
+      );
+      if (Option.isNone(admitted)) {
+        yield* writer.write(new Socket.CloseEvent(4401, "Ticket refused")).pipe(Effect.ignore);
+        return HttpServerResponse.empty();
+      }
+      handle = admitted.value.ticket;
+      session = {
+        sessionId: AuthSessionId.make(admitted.value.connectionId),
+        subject: `${ZEROPS_SUBJECT_PREFIX}${admitted.value.userId}`,
+        method: "bearer-access-token",
+        scopes: AuthZeropsClientScopes,
+      };
+      let buffered = Option.isSome(first) ? first.value.slice(1) : [];
+      const restReader: Socket.Reader = {
+        ...reader,
+        pull: Effect.suspend(() => {
+          if (buffered.length === 0) return reader.pull;
+          const batch = buffered;
+          buffered = [];
+          return Effect.succeed([batch[0]!, ...batch.slice(1)] as const);
+        }),
+      };
+      rpcRequest = Object.defineProperty(request.modify({}), "upgrade", {
+        value: Effect.succeed({ ...socket, reader: Effect.succeed(restReader) }),
+      });
+    } else {
+      session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
+        Effect.catchIf(
+          EnvironmentAuth.isServerAuthCredentialError,
+          failEnvironmentCredentialRejected,
+        ),
+        Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+          failEnvironmentInternal("internal_error", error),
+        ),
+      );
+      if (Option.isSome(sessions))
+        yield* sessions.value.recordClientConnection(
+          session.sessionId,
+          readClientConnectionOrigin(request),
+        );
+    }
+    const currentScopes =
+      handle !== undefined && Option.isSome(connections)
+        ? connections.value
+            .current(handle)
+            .pipe(Effect.map((current) => (Option.isSome(current) ? AuthZeropsClientScopes : [])))
+        : Effect.succeed(session.scopes);
     // Asked on every acting call: HQ may name another owner while the socket stays open.
     const hqLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
     const readsAlong =
@@ -1956,7 +2052,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.provide(
           Layer.merge(
-            rpcScopeAuthorizationLayer(session.scopes, readsAlong),
+            rpcScopeAuthorizationLayer(currentScopes, readsAlong),
             rpcInstrumentationLayer,
           ),
         ),
@@ -1998,26 +2094,28 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         ),
       ),
     );
-    // The session is verified at this door and never again for the life of
-    // the socket, so without this the membership window bounds only the
-    // NEXT connect and a revocation never reaches an open connection.
-    const endWhenSessionEnds = awaitSessionEnd({
-      sessionId: session.sessionId,
-      expiresAt: session.expiresAt,
-      changes: sessions.streamChanges,
-    }).pipe(
-      Effect.tap((reason) =>
-        Effect.logInfo("Ending a websocket whose session is no longer valid.", {
-          sessionId: session.sessionId,
-          reason,
-        }),
+    const endWhenSessionEnds =
+      handle !== undefined
+        ? Deferred.await(connectionEnded).pipe(Effect.andThen(Effect.interrupt))
+        : Option.isSome(sessions)
+          ? awaitSessionEnd({
+              sessionId: session.sessionId,
+              expiresAt: session.expiresAt,
+              changes: sessions.value.streamChanges,
+            }).pipe(Effect.andThen(Effect.interrupt))
+          : Effect.never;
+    const serve = Effect.raceFirst(
+      rpcWebSocketHttpEffect.pipe(
+        Effect.provideService(HttpServerRequest.HttpServerRequest, rpcRequest),
       ),
-      Effect.andThen(Effect.interrupt),
+      endWhenSessionEnds,
     );
+    if (handle !== undefined || Option.isNone(sessions)) return yield* serve;
+    const store = sessions.value;
     return yield* Effect.acquireUseRelease(
-      sessions.markConnected(session.sessionId),
-      () => Effect.raceFirst(rpcWebSocketHttpEffect, endWhenSessionEnds),
-      () => sessions.markDisconnected(session.sessionId),
+      store.markConnected(session.sessionId),
+      () => serve,
+      () => store.markDisconnected(session.sessionId),
     );
   }).pipe(
     Effect.catchTags({

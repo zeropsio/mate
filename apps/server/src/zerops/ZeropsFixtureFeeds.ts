@@ -648,25 +648,16 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ),
       Layer.provide(admission),
     ),
-    // A fixture scene has no live env store either: the reader answers
-    // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
-    // is not provided here — it is supplied once, live or fixture alike, in
-    // `server.ts`'s `RuntimeBaseDependenciesLive`, above the point where
-    // this layer is selected; a second instance here would shadow it for
-    // nothing that needs it.
+    // A fixture scene has no live env store: its reader explicitly answers undefined.
     Layer.succeed(
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
-    // The project and the member list the door would read with that key
-    // answer the same, and reach for no platform: there is no key to read
-    // them with.
+    // The project read reaches no platform: there is no key to read it with.
     Layer.succeed(
       ZeropsOrgReadModule.ZeropsOrgRead,
       ZeropsOrgReadModule.ZeropsOrgRead.of({
-        forgetAccess: () => Effect.void,
         project: () => Effect.succeed({ kind: "no-key" }),
-        members: () => Effect.succeed({ kind: "no-key" }),
       }),
     ),
     // No HQ sends a fixture scene an access list: the list stays empty.

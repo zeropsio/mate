@@ -295,7 +295,12 @@ export interface SetupStep {
    * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
    * access failed ({@link GitAccess}).
    */
-  readonly reason?: StandUpWait["reason"] | StandUpShort | "refused" | "send_failed";
+  readonly reason?:
+    | StandUpWait["reason"]
+    | StandUpShort
+    | "refused"
+    | "credential_unavailable"
+    | "send_failed";
   /** HQ's refusal of the project's key, its close reason, with `not_linked` or `refused`. */
   readonly code?: string;
 }
@@ -322,7 +327,11 @@ export type StandUpWait = { readonly reason: "not_linked"; readonly code?: strin
 export type GitAccess =
   | { readonly state: "done"; readonly at: string }
   | { readonly state: "waiting" }
-  | { readonly state: "failed"; readonly reason: "refused"; readonly code?: string };
+  | {
+      readonly state: "failed";
+      readonly reason: "refused" | "credential_unavailable";
+      readonly code?: string;
+    };
 
 export interface SetupDocument {
   readonly version: 1;

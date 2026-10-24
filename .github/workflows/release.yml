@@ -153,17 +153,6 @@ jobs:
           PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.event_name == 'push' }}
         run: vp install --frozen-lockfile
 
-      # /mate is deliberately baked in: it is the only supported Zerops mount,
-      # and Vite's client base path cannot be supplied by the server at runtime.
-      # Containers sign in by Zerops device login, like mate.zerops.io: the
-      # tab polls for its session, so nothing is delivered to the origin.
-      - name: Build web client
-        env:
-          VITE_BASE_PATH: /mate
-          VITE_ZEROPS_SIGN_IN: device-login
-          VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
-        run: vp run --filter @t3tools/web build
-
       - name: Build server bundle
         run: node apps/server/scripts/cli.ts build
 
@@ -300,7 +289,7 @@ jobs:
             --out "$release_dir/stable.json"
           cat "$release_dir/stable.json"
 
-      - name: Verify serve --help advertises contract 1
+      - name: Verify serve --help advertises contract 2
         env:
           TARBALL: ${{ steps.pack.outputs.tarball }}
           TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
@@ -313,11 +302,11 @@ jobs:
           help_output="$(./node_modules/.bin/mate serve --help)"
           for flag in --mode --host --port --base-path --base-dir --no-browser --auto-bootstrap-project-from-cwd; do
             if ! grep -q -- "$flag" <<<"$help_output"; then
-              echo "serve --help does not advertise contract-1 flag '$flag'." >&2
+              echo "serve --help does not advertise contract-2 flag '$flag'." >&2
               exit 1
             fi
           done
-          echo "serve --help advertises every contract-1 flag."
+          echo "serve --help advertises every contract-2 flag."
 
       - name: Stage verified release assets
         if: github.event_name == 'push'

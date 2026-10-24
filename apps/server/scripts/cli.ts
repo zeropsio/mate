@@ -89,7 +89,6 @@ const buildCmd = Command.make(
   (config) =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const fs = yield* FileSystem.FileSystem;
       const repoRoot = yield* RepoRoot;
       const serverDir = path.join(repoRoot, "apps/server");
 
@@ -102,18 +101,8 @@ const buildCmd = Command.make(
           shell: false,
         }),
       );
-
-      const webDist = path.join(repoRoot, "apps/web/dist");
-      const clientTarget = path.join(serverDir, "dist/client");
-
-      if (yield* fs.exists(webDist)) {
-        yield* fs.copy(webDist, clientTarget);
-        yield* Effect.log("[cli] Bundled web app into dist/client");
-      } else {
-        yield* Effect.logWarning("[cli] Web dist not found — skipping client bundle.");
-      }
     }),
-).pipe(Command.withDescription("Build the server package (tsdown + bundle web client)."));
+).pipe(Command.withDescription("Build the server package (tsdown)."));
 
 /**
  * Fail the pack when the emitted bundle statically imports something the pruned
@@ -162,7 +151,7 @@ const withReleaseAssets = <A, E, R>(
     const packageJsonPath = path.join(serverDir, "package.json");
 
     // Assert build assets exist
-    for (const relPath of ["dist/bin.mjs", "dist/client/index.html"]) {
+    for (const relPath of ["dist/bin.mjs"]) {
       const abs = path.join(serverDir, relPath);
       if (!(yield* fs.exists(abs))) {
         return yield* new ServerCliBuildAssetMissingError({ assetPath: abs });
