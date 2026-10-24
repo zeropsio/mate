@@ -11,52 +11,17 @@
  * a missing value fail silently rather than loudly.
  *
  * Every Zerops-specific behaviour in this server keys off `config.zerops`
- * being defined - the identity door, the origin allowlist, the session
- * lifetime, the startup pairing link. Callers outside this module must use
+ * being defined - the ticket door and the origin allowlist. Callers outside this module must use
  * `isZeropsEnvironment` rather than re-deriving the rule.
  *
  * @module ZeropsEnvironment
  */
-import * as Duration from "effect/Duration";
 
 /** The public Zerops API host every project answers on unless told otherwise. */
 export const DEFAULT_ZEROPS_API_HOST = "api.app-prg1.zerops.io";
 
 /** The REST prefix every public Zerops endpoint sits behind. */
 export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
-
-/**
- * How often the server re-reads who may still be here.
- *
- * A session minted at the throwaway door carries no credential of the caller's
- * to re-present, so nothing about it expires on its own. Instead the server
- * asks the platform on this interval — with its own key, or HQ's relay while
- * it holds (`ZeropsProjectAccess`) — and ends the sessions whose answer
- * changed. While Zerops answers, a removed colleague keeps their screen at
- * most one interval past the newest answer that still named them, and no
- * answer is trusted longer than this interval: a minute at worst. The two
- * reads a pass makes are the two the door already makes, cached across both
- * (`ZeropsOrgRead`).
- */
-export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 30;
-
-/**
- * The longest re-check interval any configuration gets.
- *
- * A configured interval stretches the window a removed person keeps their
- * screen for, so it is cut down to this.
- */
-export const MAX_ZEROPS_ROLE_RECHECK_SECONDS = 300;
-
-/**
- * The longest a session lives on one proof.
- *
- * Role changes end a session within one re-check, so this is not a security
- * window — it is the promise that nothing runs forever on a credential nobody
- * has looked at since. A day, because a working day is the unit a person
- * notices, and signing in again costs one throwaway.
- */
-export const DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 /** Resolved Zerops settings; present only inside a Zerops project container. */
 export interface ZeropsEnvironment {
@@ -77,31 +42,24 @@ export interface ZeropsEnvironment {
    * this container and which the platform scopes to this one project at
    * `BASIC_USER`.
    *
-   * It is what lets the server answer questions about *other* people without
-   * holding anything of theirs: who is an `ACTIVE` member of the org, and what
-   * role this project's `userRoles` gives them. A caller proves who they are
-   * with a throwaway that has no rights at all
-   * ({@link ./ZeropsThrowawayIdentity.ts}); every right is then looked up with
-   * this key.
-   *
-   * Undefined outside a Zerops container, and on a container old enough not to
-   * pass it through. Both the door and the re-check treat that as "cannot
-   * answer" — never as "admit".
+   * HQ verifies it when this Mate links. Project reads use the same key; people
+   * enter with HQ tickets and receive rights from HQ's access list.
    */
   readonly apiToken: string | undefined;
   /**
-   * See {@link DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS}; never above
-   * {@link MAX_ZEROPS_ROLE_RECHECK_SECONDS}.
+   * The HQ the Mate links to (`ZeropsHqLink`): `T3CODE_ZEROPS_HQ_ORIGIN` in development, else
+   * {@link DEFAULT_HQ_ORIGIN}. Nothing discovers it (spec-mate §3.5).
    */
-  readonly roleRecheckInterval: Duration.Duration;
-  /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
-  readonly sessionMaxAge: Duration.Duration;
+  readonly hqOrigin: string;
+  /** Additional exact browser origins admitted in development. */
+  readonly allowedOrigins?: ReadonlyArray<string>;
   /**
-   * The file zcp keeps the Mate's HQ enrollment in (`T3CODE_ZEROPS_HQ_ENROLLMENT`): HQ's address
-   * and the Mate credential the link to HQ opens with (`ZeropsHqLink`). Absent on a zcp that does
-   * not enroll: no link.
+   * The file the Mate's Git credential is kept in (`ZeropsGitCredentialFile`): `T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`
+   * in development, else a file under the server's own secrets. Every process the server starts
+   * is told it ({@link publishHqGitCredential}), so zcp reads it from its environment alone.
+   * `mate serve` always resolves one; only a hand-built environment in a test leaves it out.
    */
-  readonly hqEnrollmentPath?: string | undefined;
+  readonly hqGitCredentialPath?: string | undefined;
   /** This container's service id and hostname, as the platform sets `serviceId` and `hostname`. */
   readonly serviceId: string | undefined;
   readonly hostname: string | undefined;
@@ -119,14 +77,48 @@ export interface ZeropsEnvironmentInput {
   readonly apiHost: string | undefined;
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
-  readonly roleRecheckSeconds?: number | undefined;
-  readonly sessionMaxAgeSeconds?: number | undefined;
-  readonly hqEnrollmentPath?: string | undefined;
+  readonly hqOrigin?: string | undefined;
+  readonly allowedOrigins?: ReadonlyArray<string>;
+  readonly hqGitCredentialPath?: string | undefined;
   readonly serviceId?: string | undefined;
   readonly hostname?: string | undefined;
   readonly statusFile?: string | undefined;
   readonly mateUpdateStateFile?: string | undefined;
 }
+
+/** The HQ every Mate links to unless development names another (`T3CODE_ZEROPS_HQ_ORIGIN`). */
+export const DEFAULT_HQ_ORIGIN = "https://hq.zerops.io";
+
+/** The variable that names HQ's origin, to the server and to every process it starts. */
+export const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";
+
+/**
+ * Puts the HQ the Mate links to into `env`, the environment every process the server starts
+ * inherits (provider CLIs, and through them zcp, which has no default of its own): one origin
+ * for the server and everything it runs.
+ */
+export const publishHqOrigin = (env: Record<string, string | undefined>, origin: string): void => {
+  env[HQ_ORIGIN_ENV] = origin;
+};
+
+/** The variable that names the Git credential file, to the server and to every process it starts. */
+export const HQ_GIT_CREDENTIAL_ENV = "T3CODE_ZEROPS_HQ_GIT_CREDENTIAL";
+
+/**
+ * The file the Mate keeps its Git credential in: the one development names
+ * (`T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`), else a file in the server's own secrets directory, which
+ * only its user reaches. Nothing outside the server has to name it.
+ */
+export const resolveHqGitCredentialPath = (named: string | undefined, secretsDir: string): string =>
+  named?.trim() || `${secretsDir.replace(/\/+$/u, "")}/hq-git-credential`;
+
+/** Puts the Git credential file into `env`, as {@link publishHqOrigin} does the HQ origin. */
+export const publishHqGitCredential = (
+  env: Record<string, string | undefined>,
+  path: string,
+): void => {
+  env[HQ_GIT_CREDENTIAL_ENV] = path;
+};
 
 /**
  * The container's live service-environment snapshot (`../zcp/internal/mate/mate.go:113-125`):
@@ -162,30 +154,22 @@ export const resolveZeropsEnvironment = (
   if (projectId.length === 0) {
     return undefined;
   }
-  const positive = (value: number | undefined, fallback: number): number =>
-    value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
-  const hqEnrollmentPath = input.hqEnrollmentPath?.trim();
   const present = (value: string | undefined) => {
     const trimmed = value?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : undefined;
   };
   return {
     projectId,
+    allowedOrigins: input.allowedOrigins ?? [],
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
-    roleRecheckInterval: Duration.seconds(
-      Math.min(
-        positive(input.roleRecheckSeconds, DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
-        MAX_ZEROPS_ROLE_RECHECK_SECONDS,
-      ),
-    ),
-    sessionMaxAge: Duration.seconds(
-      positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
-    ),
-    ...(hqEnrollmentPath && hqEnrollmentPath.length > 0 ? { hqEnrollmentPath } : {}),
+    hqOrigin: (present(input.hqOrigin) ?? DEFAULT_HQ_ORIGIN).replace(/\/+$/u, ""),
+    ...(present(input.hqGitCredentialPath) === undefined
+      ? {}
+      : { hqGitCredentialPath: present(input.hqGitCredentialPath) }),
     serviceId: present(input.serviceId),
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),

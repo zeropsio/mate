@@ -9,18 +9,18 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientResponse } from "effect/http";
 
 import type {
   TerminalAttachStreamEvent,
   TerminalSessionSnapshot,
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
+import type { KeyLinkAccess, LinkAccessMember } from "@t3tools/shared/mateLink";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
 import { makeLoginHomes } from "./zeropsLoginHomes.ts";
 import {
   fileSignInStore,
@@ -31,10 +31,7 @@ import {
   type SignInStore,
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
-import { isMemberListComplete } from "./ZeropsProjectAccess.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import {
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -255,63 +252,11 @@ describe("isTurnStartingCommand", () => {
   });
 });
 
-describe("isMemberListComplete", () => {
-  it.each(
-    Array.from(
-      [
-        ["no totalCount at all", {}, 3, true],
-        ["body is not an object", null, 0, true],
-        ["totalCount matches the rows read", { totalCount: 2 }, 2, true],
-        ["totalCount is fewer than the rows read", { totalCount: 1 }, 2, true],
-        ["totalCount exceeds the rows read", { totalCount: 5 }, 2, false],
-        ["totalCount is not a finite number", { totalCount: "5" }, 2, true],
-      ] as const,
-      ([name, body, entriesLength, expected]) => ({ title: name, body, entriesLength, expected }),
-    ),
-  )("$title", ({ body, entriesLength, expected }) => {
-    assert.strictEqual(isMemberListComplete(body, entriesLength), expected);
-  });
-});
-
-const PROJECT_ID = "TEST000000000000000023";
-const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
-const MATE_KEY = "the-mates-own-zerops-key";
-
 const environment = resolveZeropsEnvironment({
-  projectId: PROJECT_ID,
+  projectId: "TEST000000000000000023",
   apiHost: undefined,
-  apiToken: MATE_KEY,
+  apiToken: "the-mates-own-zerops-key",
 })!;
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-
-const httpLayer = (
-  route: (url: string) => Response,
-  mateKey: ZeropsMateKeyModule.ZeropsMateKeyReader = ZeropsMateKeyModule.snapshotOnlyReader(
-    MATE_KEY,
-  ),
-) => {
-  const seen: Array<string | undefined> = [];
-  const layer = ZeropsOrgReadModule.layer.pipe(
-    Layer.provideMerge(
-      Layer.mergeAll(
-        Layer.succeed(
-          HttpClient.HttpClient,
-          HttpClient.make((request) => {
-            seen.push(request.headers.authorization);
-            return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-          }),
-        ),
-        Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-      ),
-    ),
-  );
-  return { layer, seen } as const;
-};
 
 describe("the turn gate", () => {
   const signedIn = {
@@ -322,22 +267,18 @@ describe("the turn gate", () => {
   } as const;
 
   /**
-   * The service over the sign-ins this server saw. The member list is unreadable, so the leave
-   * check never signs anybody out.
+   * The service over the sign-ins this server saw. HQ has sent no access list, so the leave check
+   * never signs anybody out.
    */
   const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
-          ZeropsProjectAccessModule.layer.pipe(
-            Layer.provideMerge(
-              Layer.mergeAll(
-                httpLayer(() => json({ message: "down" }, 500)).layer,
-                ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-                NodeServices.layer,
-                Layer.succeed(ZeropsSignIns, signIns),
-              ),
-            ),
+          Layer.mergeAll(
+            ZeropsMateAccessListModule.layer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+            Layer.succeed(ZeropsSignIns, signIns),
           ),
         ),
       );
@@ -638,179 +579,108 @@ describe("the turn gate", () => {
 });
 
 // X3, D7: a turn no live session stands behind — the crew's, the stand-up's — is admitted by the
-// same answer that keeps a session open: this project's door, by the person's role here.
+// same answer that keeps a session open: HQ's access list, by the person's entry in it.
 describe("hasProjectAccess", () => {
-  /** The service over this project and the org's member list, both of which the test changes. */
-  const access = (initial: { readonly project: unknown; readonly members: unknown }) =>
-    Effect.gen(function* () {
-      let project = initial.project;
-      let members = initial.members;
-      let status = 200;
-      const signIns = yield* memorySignInStore();
-      const zerops = httpLayer((url) =>
-        url.endsWith("/user/list") ? json(members, status) : json(project, status),
-      );
-      const { signers, projectAccess } = yield* Effect.all({
-        signers: makeProjectSigners,
-        projectAccess: ZeropsProjectAccessModule.ZeropsProjectAccess,
-      }).pipe(
-        Effect.provide(
-          ZeropsProjectAccessModule.layer.pipe(
-            Layer.provideMerge(
-              Layer.mergeAll(
-                zerops.layer,
-                ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-                NodeServices.layer,
-                Layer.succeed(ZeropsSignIns, signIns),
-              ),
+  /** The service over HQ's access list, whose frames the test sends. */
+  const access = Effect.gen(function* () {
+    const signIns = yield* memorySignInStore();
+    const { signers, list } = yield* Effect.all({
+      signers: makeProjectSigners,
+      list: ZeropsMateAccessListModule.ZeropsMateAccessList,
+    }).pipe(
+      Effect.provide(
+        ZeropsMateAccessListModule.layer.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+              NodeServices.layer,
+              Layer.succeed(ZeropsSignIns, signIns),
             ),
           ),
         ),
-      );
-      yield* TestClock.adjust(Duration.zero);
-      return {
-        signers,
-        relayed: projectAccess.relayed,
-        seen: zerops.seen,
-        set: (next: {
-          readonly project?: unknown;
-          readonly members?: unknown;
-          status?: number;
-        }) => {
-          project = next.project ?? project;
-          members = next.members ?? members;
-          status = next.status ?? status;
-        },
-      };
-    });
-
-  const member = (userId: string, roleCode: string, status = "ACTIVE") => ({
-    id: `cu-${userId}`,
-    userId,
-    roleCode,
-    status,
+      ),
+    );
+    let version = 0;
+    /** HQ's full list, naming `members`. */
+    const listed = (members: KeyLinkAccess["members"]) =>
+      list.heard({ type: "access", version: ++version, viewAt: AT, full: true, members });
+    return { signers, list, listed };
   });
-  const projectWith = (userRoles: ReadonlyArray<{ clientUserId: string; roleCode: string }>) => ({
-    id: PROJECT_ID,
-    clientId: CLIENT_ID,
-    userRoles,
-  });
+  const AT = "2026-10-24T10:00:00.000Z";
+  const entry = (userId: string, role: LinkAccessMember["role"], visibility: "open" | "listed") =>
+    ({ userId, role, visibility }) as const;
 
   it.effect.each(
     Array.from(
       [
-        ["an org member who builds", "BASIC_USER", undefined, "ACTIVE", true],
+        ["an org member who builds", [entry(JAN, "BASIC_USER", "open")], true],
         // Kept in the org, taken out of this project: their crew stops with their session (X3).
-        ["an org member this project shuts out", "BASIC_USER", "NO_ACCESS", "ACTIVE", false],
-        ["a member let in here alone", "NO_ACCESS", "BASIC_USER", "ACTIVE", true],
-        ["a read-only member", "READ_ONLY", undefined, "ACTIVE", false],
-        ["an admin who is not active", "ADMIN", undefined, "WAITING_AUTHORIZATION", false],
+        ["an org member this project shuts out", [], false],
+        ["a member let in here alone", [entry(JAN, "BASIC_USER", "open")], true],
+        ["a read-only member", [entry(JAN, "READ_ONLY", "listed")], false],
+        ["an admin who is not active", [], false],
       ] as const,
-      ([name, roleCode, override, status, expected]) => ({
+      ([name, entries, expected]) => ({
         title: `answers by this project's door: ${name}, ${String(expected)}`,
-        roleCode,
-        override,
-        status,
+        entries,
         expected,
       }),
     ),
-  )("$title", ({ roleCode, override, status, expected }) =>
+  )("$title", ({ entries, expected }) =>
     Effect.gen(function* () {
-      const { signers } = yield* access({
-        project: projectWith(
-          override === undefined ? [] : [{ clientUserId: `cu-${JAN}`, roleCode: override }],
-        ),
-        members: { clientUserList: [member(JAN, roleCode, status), member(EVA, "OWNER")] },
-      });
+      const { signers, listed } = yield* access;
+      yield* listed([...entries, entry(EVA, "OWNER", "open")]);
       assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
-    }).pipe(Effect.scoped),
+    }),
   );
 
-  // R6: HQ's relay answers while it holds, and Zerops is not read for it.
   it.effect("answers from HQ's relay while it holds, reading nothing of Zerops", () =>
     Effect.gen(function* () {
-      const { signers, relayed, seen } = yield* access({
-        project: projectWith([]),
-        members: { clientUserList: [member(EVA, "OWNER")] },
-      });
-      yield* relayed({
-        members: [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
-        ageMs: 0,
-      });
+      // Nothing of Zerops is provided: the list is the only answer.
+      const { signers, listed } = yield* access;
+      yield* listed([entry(JAN, "BASIC_USER", "open"), entry(EVA, "READ_ONLY", "listed")]);
       assert.isTrue(yield* signers.hasProjectAccess(JAN));
       assert.isFalse(yield* signers.hasProjectAccess(EVA));
-      assert.deepStrictEqual(seen, []);
-    }).pipe(Effect.scoped),
+    }),
   );
 
-  // HQ's answer holds five minutes from HQ's read of Zerops, never from when it arrived.
-  it.effect(
-    "holds HQ's answer five minutes from HQ's read while nothing answers, then nothing",
-    () =>
-      Effect.gen(function* () {
-        const { signers, relayed, set } = yield* access({ project: projectWith([]), members: {} });
-        set({ status: 500 });
-        yield* relayed({
-          members: [{ userId: JAN, role: "BASIC_USER", visibility: "open" }],
-          ageMs: 10_000,
-        });
-        assert.isTrue(yield* signers.hasProjectAccess(JAN));
-        yield* TestClock.adjust(Duration.seconds(4 * 60 + 50));
-        assert.isTrue(yield* signers.hasProjectAccess(JAN));
-        yield* TestClock.adjust(Duration.millis(1));
-        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-      }).pipe(Effect.scoped),
+  it.effect("holds HQ's list 15 minutes from the frame that brought it, then answers nothing", () =>
+    Effect.gen(function* () {
+      const { signers, listed } = yield* access;
+      yield* listed([entry(JAN, "BASIC_USER", "open")]);
+      yield* TestClock.adjust(ZeropsMateAccessListModule.ACCESS_LIST_HOLDS);
+      assert.isTrue(yield* signers.hasProjectAccess(JAN));
+      yield* TestClock.adjust(Duration.millis(1));
+      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+    }),
   );
 
   it.effect("answers no for somebody the org does not list", () =>
     Effect.gen(function* () {
-      const { signers } = yield* access({
-        project: projectWith([]),
-        members: { clientUserList: [member(EVA, "OWNER")] },
-      });
+      const { signers, listed } = yield* access;
+      yield* listed([entry(EVA, "OWNER", "open")]);
       assert.isFalse(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
+    }),
   );
 
-  // D7: while reads fail, the last answer holds five minutes from its read, then nothing does.
-  it.effect("answers from the last read for five minutes while reads fail, then nothing", () =>
-    Effect.gen(function* () {
-      const { signers, set } = yield* access({
-        project: projectWith([]),
-        members: { clientUserList: [member(JAN, "BASIC_USER")] },
-      });
-      assert.isTrue(yield* signers.hasProjectAccess(JAN));
-      set({ status: 500 });
-      yield* TestClock.adjust(Duration.minutes(5));
-      assert.isTrue(yield* signers.hasProjectAccess(JAN));
-      yield* TestClock.adjust(Duration.seconds(1));
-      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
-  );
-
-  // An empty list is an outage dressed as an answer, and a page is not the whole org (S6): acting
-  // on either would take somebody's access, and with it their logins (`ZeropsOffboarding`).
-  it.effect.each(
-    Array.from(
-      [
-        ["comes back empty", { clientUserList: [] }],
-        ["is not a list", { members: [] }],
-        ["is a partial page", { clientUserList: [member(JAN, "BASIC_USER")], totalCount: 2 }],
-      ] as const,
-      ([name, members]) => ({ title: `answers nothing when the member list ${name}`, members }),
-    ),
-  )("$title", ({ members }) =>
-    Effect.gen(function* () {
-      const { signers } = yield* access({ project: projectWith([]), members });
-      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
+  // Answering no would sign every signer's logins out (`ZeropsOffboarding`); running work goes on.
+  it.effect(
+    "vouches for nobody while HQ says the organisation's key was refused, and takes nobody's access",
+    () =>
+      Effect.gen(function* () {
+        const { signers, list, listed } = yield* access;
+        yield* listed([entry(JAN, "BASIC_USER", "open")]);
+        yield* list.heard({ type: "access", version: 9, full: true, refused: true, members: [] });
+        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+        yield* listed([entry(JAN, "BASIC_USER", "open")]);
+        assert.isTrue(yield* signers.hasProjectAccess(JAN));
+      }),
   );
 
   it.effect("answers nothing when nothing could be read", () =>
     Effect.gen(function* () {
-      const { signers, set } = yield* access({ project: projectWith([]), members: {} });
-      set({ status: 500 });
+      const { signers } = yield* access;
       assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
+    }),
   );
 });

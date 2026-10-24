@@ -39,23 +39,16 @@ export const make = Effect.gen(function* () {
         ? "remote-reachable"
         : "loopback-browser";
 
-  // One Zerops door, and it takes nothing of the caller's: a throwaway with no
-  // rights, minted for this Mate and deleted seconds later. There is no door
-  // here that accepts a person's own Zerops token any more (guide 3.5).
-  const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = isZerops
-    ? ["zerops-throwaway"]
-    : [];
+  const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = isZerops ? ["ticket"] : [];
 
   const descriptor: ServerAuthDescriptor = {
     accountLifecycleVersion: 1,
     policy,
     bootstrapMethods,
-    // A cookie is the one credential a browser attaches to a cross-origin
-    // request by itself. Inside a Zerops project this server is published on
-    // the public internet, so it issues none: the hosted client is bearer or
-    // DPoP only, and CSRF stops being a category of bug rather than a thing to
-    // defend against.
-    sessionMethods: ["bearer-access-token", "dpop-access-token"],
+    // Zerops HTTP carries the live connection handle explicitly; it issues no cookie or DPoP token.
+    sessionMethods: isZerops
+      ? ["bearer-access-token"]
+      : ["bearer-access-token", "dpop-access-token"],
     sessionCookieName: resolveSessionCookieName({
       mode: config.mode,
       port: config.port,

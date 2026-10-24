@@ -141,11 +141,12 @@ import { makeEngineWorld, mate as imageConversation } from "./engine/testing/pum
 import { contentAssetsAt } from "./assets/ContentAssets.ts";
 import sharp from "sharp";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
-import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./zerops/ZeropsProjectAccess.ts";
+import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
+import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
+import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -173,7 +174,6 @@ import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
@@ -377,6 +377,28 @@ const testAuth = Effect.gen(function* () {
   return auth;
 });
 
+const testTicketStateByPort = new Map<
+  number,
+  {
+    connections: ZeropsConnectionsModule.ZeropsConnections["Service"];
+    tickets: ZeropsTicketDoorModule.ZeropsTicketDoor["Service"];
+  }
+>();
+const testTicketState = Effect.gen(function* () {
+  const server = yield* HttpServer.HttpServer;
+  const state = testTicketStateByPort.get((server.address as NetAddress.InetAddress).port);
+  if (!state) return yield* Effect.die(new Error("Missing ticket test fixture"));
+  return state;
+});
+const ticketAuthTestLayer = EnvironmentAuth.zeropsLayer.pipe(
+  Layer.provideMerge(
+    ZeropsConnectionsModule.layer.pipe(
+      Layer.provideMerge(ZeropsTicketDoorModule.layer),
+      Layer.provideMerge(ZeropsMateAccessListModule.layer),
+    ),
+  ),
+);
+
 const makeAuthTestLayer = () =>
   EnvironmentAuth.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
@@ -495,7 +517,7 @@ const unavailableZeropsAgentLogin = {
 } as const;
 
 const buildAppUnderTest = (options?: {
-  onPairingChangesSubscribed?: Effect.Effect<void>;
+  ticketAuth?: boolean;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   fixtureZeropsLayer?: Layer.Layer<
     | ZeropsLifecycle.ZeropsLifecycle
@@ -633,6 +655,13 @@ const buildAppUnderTest = (options?: {
       ...options?.config,
     };
     const layerConfig = ServerConfig.layer(config);
+    const storedAuth = makeAuthTestLayer();
+    const authLayer: Layer.Layer<
+      Layer.Success<typeof EnvironmentAuth.zeropsLayer>,
+      Layer.Error<typeof ticketAuthTestLayer> | Layer.Error<typeof storedAuth>,
+      Layer.Services<typeof ticketAuthTestLayer> | Layer.Services<typeof storedAuth>
+    > = options?.ticketAuth ? ticketAuthTestLayer : storedAuth;
+
     const defaultVcsDriver: VcsDriver.VcsDriver["Service"] = {
       capabilities: {
         kind: "git",
@@ -1037,8 +1066,8 @@ const buildAppUnderTest = (options?: {
           // test machine has no live env store either, so the reader
           // answers the boot snapshot (`undefined`, same as `config.zerops`
           // being unset), the member list has no key to be read with, no HQ
-          // relays who the project lets in, and the status starts `"unknown"`.
-          ZeropsProjectAccessModule.layer.pipe(
+          // sends who the project opens for, and the status starts `"unknown"`.
+          ZeropsMateAccessListModule.layer.pipe(
             Layer.provideMerge(
               ZeropsOrgReadModule.layer.pipe(
                 Layer.provideMerge(
@@ -1050,7 +1079,6 @@ const buildAppUnderTest = (options?: {
               ),
             ),
           ),
-          ZeropsIdentityStatusModule.layer,
         ),
       ),
       Layer.provide(
@@ -1358,25 +1386,7 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.cloudCliTokenManager,
         }),
       ),
-      Layer.updateService(PairingGrantStore.PairingGrantStore, (grants) => {
-        const subscribed = options?.onPairingChangesSubscribed;
-        if (!subscribed) return grants;
-        return {
-          ...grants,
-          streamChanges: Stream.unwrap(
-            Effect.gen(function* () {
-              const changes = yield* Queue.unbounded<PairingGrantStore.BootstrapCredentialChange>();
-              yield* grants.streamChanges.pipe(
-                Stream.runForEach((change) => Queue.offer(changes, change)),
-                Effect.forkScoped({ startImmediately: true }),
-              );
-              yield* subscribed;
-              return Stream.fromQueue(changes);
-            }),
-          ),
-        };
-      }),
-      Layer.provideMerge(makeAuthTestLayer()),
+      Layer.provideMerge(authLayer),
       Layer.provideMerge(AssetSigningKey.layer.pipe(Layer.provideMerge(ServerSecretStore.layer))),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(
@@ -1391,9 +1401,19 @@ const buildAppUnderTest = (options?: {
     const server = yield* HttpServer.HttpServer;
     const port = (server.address as NetAddress.InetAddress).port;
     testAuthByPort.set(port, Context.get(context, EnvironmentAuth.EnvironmentAuth));
+    if (options?.ticketAuth)
+      testTicketStateByPort.set(port, {
+        connections: Option.getOrThrow(
+          Context.getOption(context, ZeropsConnectionsModule.ZeropsConnections),
+        ),
+        tickets: Option.getOrThrow(
+          Context.getOption(context, ZeropsTicketDoorModule.ZeropsTicketDoor),
+        ),
+      });
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
         testAuthByPort.delete(port);
+        testTicketStateByPort.delete(port);
       }),
     );
     return config;
@@ -1413,7 +1433,11 @@ const parseAuthorizationFromWsUrl = (
   };
 };
 
-const wsRpcProtocolLayer = (wsUrl: string, onMessage?: (message: string) => void) => {
+const wsRpcProtocolLayer = (
+  wsUrl: string,
+  onMessage?: (message: string) => void,
+  ticket?: string,
+) => {
   const { cookie, url } = parseAuthorizationFromWsUrl(wsUrl);
   const webSocketConstructorLayer = Layer.succeed(
     Socket.WebSocketConstructor,
@@ -1422,8 +1446,13 @@ const wsRpcProtocolLayer = (wsUrl: string, onMessage?: (message: string) => void
       const socket = new NodeSocket.NodeWS.WebSocket(
         socketUrl,
         protocols as string | string[] | undefined,
-        cookie ? { headers: { authorization: cookie } } : undefined,
+        ticket
+          ? { origin: "https://mate.zerops.io" }
+          : cookie
+            ? { headers: { authorization: cookie } }
+            : undefined,
       );
+      if (ticket) socket.once("open", () => socket.send(JSON.stringify({ ticket })));
       if (onMessage) socket.on("message", (data) => onMessage(data.toString()));
       return socket as unknown as globalThis.WebSocket;
     },
@@ -1443,7 +1472,12 @@ const withWsRpcClient = <A, E, R>(
   wsUrl: string,
   f: (client: WsRpcClient) => Effect.Effect<A, E, R>,
   onMessage?: (message: string) => void,
-) => makeWsRpcClient.pipe(Effect.flatMap(f), Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage)));
+  ticket?: string,
+) =>
+  makeWsRpcClient.pipe(
+    Effect.flatMap(f),
+    Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage, ticket)),
+  );
 
 const withFirstWsAckHeld = (
   wsUrl: string,
@@ -1813,6 +1847,8 @@ const zeropsTestEnvironment = (publicOrigin?: string) =>
     projectId: "TEST000000000000000023",
     apiHost: undefined,
     publicOrigin,
+    // A test server links to no HQ that answers: never production's.
+    hqOrigin: "http://127.0.0.1:9",
   });
 
 /**
@@ -1865,6 +1901,96 @@ const NodeHttpServerTestWithWsDeflate = HttpServer.layerTestClient.pipe(
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
+  it.effect(
+    "an exact first-frame HQ ticket opens RPC and authorizes HTTP only for its live connection",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* buildAppUnderTest({
+          ticketAuth: true,
+          config: { zerops: zeropsTestEnvironment() },
+          layers: { terminalManager: { closeOpenedBy: () => Effect.succeed(0) } },
+        });
+        const { connections, tickets } = yield* testTicketState;
+        yield* connections.heard({
+          type: "access",
+          version: 1,
+          full: true,
+          viewAt: "1970-01-01T00:00:00.000Z",
+          members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
+        });
+        const ticket = "ticket-on-the-first-frame";
+        yield* tickets.heard({
+          type: "ticket",
+          ticket,
+          userId: "owner",
+          sessionId: "hq-owner",
+          expiresIn: 60,
+        });
+        const before = yield* HttpClient.get("/api/auth/session", {
+          headers: { authorization: `Bearer ${ticket}` },
+        });
+        assert.deepInclude(yield* before.json, { authenticated: false });
+        const wsUrl = yield* getWsServerUrl("/ws", { authenticated: false });
+        yield* withWsRpcClient(
+          wsUrl,
+          (client) =>
+            Effect.gen(function* () {
+              const remote = yield* client[WS_METHODS.serverGetConfig]({});
+              assert.equal(remote.cwd, config.cwd);
+              const active = yield* HttpClient.get("/api/auth/session", {
+                headers: { authorization: `Bearer ${ticket}` },
+              });
+              assert.deepInclude(yield* active.json, { authenticated: true });
+              yield* connections.closeSession("hq-owner");
+              const ended = yield* HttpClient.get("/api/auth/session", {
+                headers: { authorization: `Bearer ${ticket}` },
+              });
+              assert.deepInclude(yield* ended.json, { authenticated: false });
+            }),
+          undefined,
+          ticket,
+        ).pipe(Effect.scoped);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses a foreign Origin before upgrading the ticket WebSocket (MS1-5)", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      const url = yield* getWsServerUrl("/ws", { authenticated: false });
+      const status = yield* Effect.callback<number | undefined, Error>((resume) => {
+        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+          origin: "https://foreign.example.test",
+        });
+        socket.once("unexpected-response", (_request, response) => {
+          response.resume();
+          resume(Effect.succeed(response.statusCode));
+        });
+        socket.once("open", () => resume(Effect.succeed(101)));
+        socket.once("error", (error) => resume(Effect.fail(error)));
+        return Effect.sync(() => socket.terminate());
+      });
+      assert.equal(status, 403);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves no client bundle from a Zerops Mate even when static files exist (C-6)", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "mate-no-client-" });
+      yield* fileSystem.writeFileString(
+        path.join(staticDir, "index.html"),
+        "<html>retired-client</html>",
+      );
+      yield* buildAppUnderTest({ config: { staticDir, zerops: zeropsTestEnvironment() } });
+      for (const route of ["/", "/mate/", "/thread/example"]) {
+        const response = yield* HttpClient.get(route);
+        assert.equal(response.status, 404, route);
+        assert.notInclude(yield* response.text, "retired-client", route);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("parks HTTP ingress until command readiness", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -4731,19 +4857,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("does not allow management-only access tokens to operate the environment", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      yield* buildAppUnderTest();
 
-      const { response: exchangeResponse, body: tokenBody } = yield* exchangeAccessToken(
-        defaultDesktopBootstrapToken,
-        { scope: "access:write" },
-      );
-      assert.equal(exchangeResponse.status, 200);
-      assert.equal(tokenBody.scope, "access:write");
-      assert.isDefined(tokenBody.access_token);
+      const session = yield* issueFixtureSession(["access:write"]);
 
       const wsTicketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
         headers: {
-          authorization: `Bearer ${tokenBody.access_token ?? ""}`,
+          authorization: `Bearer ${session.token}`,
         },
       });
       const wsTicketBody = (yield* wsTicketResponse.json) as { readonly ticket: string };
@@ -4932,7 +5052,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("refuses to open a cookie session inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const response = yield* HttpClient.post("/api/auth/browser-session", {
         body: yield* HttpBody.json({ credential: defaultDesktopBootstrapToken }),
@@ -4944,44 +5064,34 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("ignores a session cookie on Zerops HTTP and websocket routes", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
-
-      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
-      const sessionStateResponse = yield* fetchEffect(sessionUrl);
-      const sessionState = yield* responseJsonEffect<{
-        readonly auth: { readonly sessionCookieName: string };
-      }>(sessionStateResponse);
-      const token = yield* getAuthenticatedBearerSessionToken();
-      const cookie = `${sessionState.auth.sessionCookieName}=${token}`;
-
-      const ticketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
-      const ticketResponse = yield* fetchEffect(ticketUrl, {
-        method: "POST",
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
+      const cookie = "t3.session=untrusted-cookie";
+      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
         headers: { cookie },
       });
-      const ticketBody = yield* responseJsonEffect<{ readonly reason?: string }>(ticketResponse);
-
-      const websocketUrl = yield* getHttpServerUrl("/ws");
-      const websocketResponse = yield* fetchEffect(websocketUrl, { headers: { cookie } });
-      const websocketBody = yield* responseJsonEffect<{ readonly reason?: string }>(
-        websocketResponse,
-      );
-
       assert.equal(ticketResponse.status, 401);
-      assert.equal(ticketBody.reason, "missing_credential");
-      assert.equal(websocketResponse.status, 401);
-      assert.equal(websocketBody.reason, "missing_credential");
+      assert.deepInclude(yield* ticketResponse.json, { reason: "missing_credential" });
+      const url = yield* getWsServerUrl("/ws", { authenticated: false });
+      const code = yield* Effect.callback<number, Error>((resume) => {
+        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+          origin: "https://mate.zerops.io",
+          headers: { cookie },
+        });
+        socket.once("open", () => socket.send("{}"));
+        socket.once("close", (closeCode) => resume(Effect.succeed(closeCode)));
+        socket.once("error", (error) => resume(Effect.fail(error)));
+        return Effect.sync(() => socket.terminate());
+      });
+      assert.equal(code, 4401);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  // Inside a Zerops project the server is published on the public internet, and
-  // it still answers every origin: the door is bearer/DPoP or a short-lived ticket,
-  // never a cookie, so a foreign page holds nothing a browser would attach.
+  // HTTP remains bearer-only across origins; a WebSocket also checks its exact Origin.
   const ARBITRARY_ORIGIN = "https://mate.dev-team.example.org";
 
   it.effect("answers a preflight from any origin without credentials inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
       const response = yield* fetchEffect(sessionUrl, {
@@ -5000,8 +5110,26 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("serves a bearer call from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
-      const session = yield* issueFixtureSession();
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
+      const { connections, tickets } = yield* testTicketState;
+      yield* connections.heard({
+        type: "access",
+        version: 1,
+        full: true,
+        viewAt: "1970-01-01T00:00:00.000Z",
+        members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
+      });
+      const session = { token: "http-origin-ticket" };
+      yield* tickets.heard({
+        type: "ticket",
+        ticket: session.token,
+        userId: "owner",
+        sessionId: "hq-owner",
+        expiresIn: 60,
+      });
+      assert.isTrue(
+        Option.isSome(yield* connections.admit({ ticket: session.token }, Effect.void)),
+      );
 
       const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
       const response = yield* fetchEffect(sessionUrl, {
@@ -5017,7 +5145,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("refuses a call without a bearer from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const ticketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
       const response = yield* fetchEffect(ticketUrl, {
@@ -5031,39 +5159,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("opens the websocket from any origin with a valid ticket inside a Zerops project", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
-      const session = yield* issueFixtureSession();
-      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
-        headers: { authorization: `Bearer ${session.token}` },
-      });
-      const { ticket } = (yield* ticketResponse.json) as { readonly ticket: string };
-      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
-
-      const socket = yield* Effect.acquireRelease(
-        Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
-          const opened = new NodeSocket.NodeWS.WebSocket(wsUrl, { origin: ARBITRARY_ORIGIN });
-          opened.on("open", () => resume(Effect.succeed(opened)));
-          opened.on("error", (error) => resume(Effect.fail(error)));
-        }),
-        (opened) => Effect.sync(() => opened.close()),
-      );
-
-      assert.equal(socket.readyState, NodeSocket.NodeWS.WebSocket.OPEN);
-    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
-  );
-
   it.effect("refuses a websocket from any origin without a ticket inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const wsUrl = yield* getHttpServerUrl("/ws");
       const response = yield* fetchEffect(wsUrl, { headers: { origin: ARBITRARY_ORIGIN } });
-      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
 
-      assert.equal(response.status, 401);
-      assert.equal(body.reason, "missing_credential");
+      assert.equal(response.status, 403);
+      assert.equal(yield* response.text, "Forbidden origin");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -6062,7 +6166,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       let installStarts = 0;
       let authCalls = 0;
       yield* buildAppUnderTest({
-        config: { zerops: zeropsTestEnvironment() },
         layers: {
           providerInstanceRegistry: {
             getInstance: (instanceId) =>
@@ -6093,12 +6196,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         },
       });
-      const token = yield* exchangeAccessToken(defaultDesktopBootstrapToken, {
-        scope: "orchestration:read",
-      });
-      assert.equal(token.response.status, 200);
+      const session = yield* issueFixtureSession(["orchestration:read"]);
       const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
-        headers: { authorization: `Bearer ${token.body.access_token ?? ""}` },
+        headers: { authorization: `Bearer ${session.token}` },
       });
       const { ticket } = yield* responseJsonEffect<{ readonly ticket: string }>(ticketResponse);
       const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;

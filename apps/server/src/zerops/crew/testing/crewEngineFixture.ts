@@ -35,7 +35,7 @@ import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../../zeropsSubject.ts";
 import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";

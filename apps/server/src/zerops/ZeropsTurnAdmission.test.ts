@@ -31,7 +31,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 

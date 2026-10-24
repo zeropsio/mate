@@ -12,7 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../zeropsSubject.ts";
 import { inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually } from "./testing/crewEngineFixture.ts";

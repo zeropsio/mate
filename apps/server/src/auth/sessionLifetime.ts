@@ -12,11 +12,8 @@ export type SessionEndReason = "expired" | "revoked";
 /**
  * Completes when the session behind a live connection stops being valid.
  *
- * Both halves exist because the session is only ever checked at the door:
- * `authenticateWebSocketUpgrade` verifies it once, and the scopes captured
- * there are never re-read for the life of the socket. A session the Zerops
- * membership re-check revokes (`ZeropsMembershipWatch`) or that reaches its
- * deadline ends its open sockets here, not at the next connect.
+ * Outside Zerops, a stored session's revocation or expiry ends its open sockets.
+ * Zerops connections use the HQ access list and close-session frames instead.
  *
  * A session with no stored deadline is left alone rather than closed on a
  * guess; a pairing session legitimately has none.

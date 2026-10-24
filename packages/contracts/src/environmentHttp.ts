@@ -11,13 +11,11 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import {
   AuthAccessTokenResult,
   AuthClientSession,
-  AuthPairingCredentialResult,
   AuthRevokeClientSessionInput,
   AuthEnvironmentScope,
   AuthTokenExchangeRequest,
   AuthSessionState,
   AuthWebSocketTicketResult,
-  AuthZeropsIdentityRequest,
   ServerAuthSessionMethod,
 } from "./auth.ts";
 import { AuthSessionId, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -321,15 +319,6 @@ const EnvironmentScopedOperationErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
 ] as const;
-// The Zerops door answers the platform's own three-way verdict: a bad token is
-// 401, a valid token from someone outside the project is 403, and an
-// environment that is not inside a Zerops project has no such route at all.
-const EnvironmentZeropsIdentityErrors = [
-  EnvironmentAuthInvalidError,
-  EnvironmentOperationForbiddenError,
-  EnvironmentResourceNotFoundError,
-  EnvironmentInternalError,
-] as const;
 const EnvironmentSessionRevokeErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentOperationForbiddenError,
@@ -562,18 +551,8 @@ class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
-export class EnvironmentZeropsHttpApi extends HttpApiGroup.make("zerops").add(
-  HttpApiEndpoint.post("throwawayIdentity", "/api/auth/zerops-throwaway", {
-    headers: OptionalDpopProofHeaders,
-    payload: AuthZeropsIdentityRequest,
-    success: AuthPairingCredentialResult,
-    error: EnvironmentZeropsIdentityErrors,
-  }),
-) {}
-
 export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentMetadataHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)
-  .add(EnvironmentConnectHttpApi)
-  .add(EnvironmentZeropsHttpApi) {}
+  .add(EnvironmentConnectHttpApi) {}
