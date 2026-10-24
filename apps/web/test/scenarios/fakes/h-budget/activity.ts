@@ -25,7 +25,6 @@ export async function settled(
         activity();
       }),
       label,
-      15_000,
     );
   } finally {
     clearTimeout(timer);

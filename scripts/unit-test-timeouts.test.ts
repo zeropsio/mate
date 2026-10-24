@@ -34,6 +34,13 @@ it.each([
     project: "scenarios",
   },
   {
+    name: "scenario drivers",
+    workflow: "ci.yml",
+    job: "test_packages",
+    file: "../apps/web/test/scenarios/vitest.config.ts",
+    project: "scenario-drivers",
+  },
+  {
     name: "state smoke scenarios",
     workflow: "ci.yml",
     job: "state_smoke",

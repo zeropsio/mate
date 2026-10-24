@@ -7,5 +7,5 @@ export function creationNetwork(page: Page) {
     page,
     (request) => new URL(request.url()).hostname === "api.app-prg1.zerops.io",
   );
-  return { settled: () => settle(15_000), close: settle.close };
+  return { settled: () => settle(), close: settle.close };
 }

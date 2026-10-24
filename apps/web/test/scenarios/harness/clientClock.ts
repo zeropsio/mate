@@ -4,7 +4,6 @@ import { completedHttp } from "./completedHttp.ts";
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
   settle?: () => Promise<void>;
-  timeout?: number;
 }
 
 export interface ScenarioWallClock {
@@ -186,7 +185,7 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
           (window as unknown as { scenarioClock: { now(): number } }).scenarioClock.now() + ms,
         ms,
       );
-      const settle = options.settle ?? (() => settleHttp(options.timeout));
+      const settle = options.settle ?? settleHttp;
       let turns = 0;
       while (
         await page.evaluate(

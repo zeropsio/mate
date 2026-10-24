@@ -430,7 +430,7 @@ export class MateEngineFake {
     const held = { sends: [] as Array<() => void>, arrived, rows };
     this.held = held;
     return {
-      requested: () => deadline(requested, "Conversation subscription", 8000),
+      requested: () => deadline(requested, "Conversation subscription"),
       release: () => {
         if (this.held === held) this.held = null;
         for (const send of held.sends.splice(0)) send();
@@ -546,7 +546,6 @@ export class MateEngineFake {
           this.receipts.on("message", listener);
         }),
         `Mate's engine accepted message: ${text}`,
-        8000,
       );
     } finally {
       this.receipts.off("message", listener);
