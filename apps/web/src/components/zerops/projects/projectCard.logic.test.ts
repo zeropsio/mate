@@ -1,6 +1,7 @@
 import {
   canonicalEnvironmentRow,
   canonicalEnvironmentRowInputsOf,
+  groupFlow,
   placeAddresses,
   type GroupFlowProduction,
   type GroupFlowStop,
@@ -13,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { MateRowView } from "../SidebarMateRow.logic";
 import { entry, pull, WREN } from "./flowTestFixtures";
+import { groupFlowInputOf } from "./projectsView.logic";
 import {
   broughtBy,
   cardChangeRows,
@@ -181,6 +183,120 @@ describe("production's line at a card's foot", () => {
         addresses: [],
       },
     ]);
+  });
+
+  it("An application whose environments deliver to Git says each environment's push on its card, never Not released yet", () => {
+    const at = "2026-10-13T10:00:00Z";
+    const sha = "a".repeat(40);
+    const remote = {
+      url: "https://github.com/acme/app.git",
+      repositoryId: "1",
+      keptAt: at,
+      keptBy: "custodian",
+      expiresAt: null,
+      invalidSince: null,
+    };
+    const gitEnvironment = (
+      id: string,
+      tier: "stage" | "production",
+      name: string,
+      branch: string,
+      order: number,
+      tag: string,
+    ): HqGitNavigationEnvironment => {
+      const target = { kind: "git", branch, delivery: "direct" } as const;
+      const attachment = { environmentId: HqEnvironmentId.make(id), createdAt: at, target };
+      return {
+        id: attachment.environmentId,
+        target,
+        tier,
+        name,
+        sources: tier === "production" ? ["release"] : ["main"],
+        order,
+        keyHeld: false,
+        keyInvalid: false,
+        can: {},
+        birth: null,
+        release: {
+          id: `rollout-${id}`,
+          target: "git",
+          releaseTarget: attachment,
+          tag,
+          planned: true,
+          ended: true,
+          endedAt: at,
+          landed: false,
+          leftOut: [],
+        },
+        jobs: [
+          {
+            id: `push-${id}`,
+            kind: "push",
+            service: "app",
+            sha,
+            state: "pushed",
+            cause: "release",
+            ref: tag,
+            reason: null,
+            appVersionId: null,
+            processId: null,
+            requestedBy: "releaser",
+            at,
+            endedAt: at,
+            supersededBy: null,
+            evidence: {
+              confirmed: {
+                remote,
+                ref: `refs/heads/${branch}`,
+                before: null,
+                after: sha,
+                at,
+                via: "answer",
+              },
+              nextActor: "none",
+              nextAction: "",
+            },
+          },
+        ],
+      };
+    };
+    const rows = canonicalEnvironmentRowInputsOf({
+      environments: [
+        gitEnvironment("git-prod", "production", "Production", "main", 1, "v2.0.0"),
+        gitEnvironment("git-stage", "stage", "Stage", "mate-stage", 2, "v2.1.0-rc"),
+      ],
+      projectNames: new Map(),
+      services: [],
+      versions: new Map(),
+    }).map((input) => canonicalEnvironmentRow(input));
+    const flow = groupFlow(
+      groupFlowInputOf({
+        groupId: "g",
+        members: [],
+        flow: {
+          environments: rows,
+          pullRequests: [],
+          merged: [],
+          release: {
+            gate: { allowed: false, reason: "" },
+            suggestion: "",
+            untold: [],
+            contents: [],
+          },
+        },
+        deployments: new Map(),
+        pending: [],
+      }),
+    );
+    const lines = placeLines({ flow, nowMs: NOW });
+    const lineOf = (tier: "stage" | "production") =>
+      rows.find((row) => row.tier === tier)?.git?.line;
+    expect(lines.map((line) => [line.name, line.git?.line])).toEqual([
+      ["Stage", lineOf("stage")],
+      ["prod", lineOf("production")],
+    ]);
+    expect(lines.flatMap((line) => line.words)).not.toContain("Not released yet");
+    expect(lines).toHaveLength(2);
   });
 
   const since = sinceWords("2026-10-09T08:00:00Z", NOW);
