@@ -67,14 +67,18 @@ export const coreRechecks = (drivers: ScenarioDrivers) =>
     : Promise.resolve();
 
 /**
- * The Core's next recheck, kept by each of the browser's `open` sockets: both of its rechecks (the
- * session's, the roles') the real Core waited out came back to wait the next one, so none of them
- * ended its socket.
+ * The Core's next recheck, kept by every one of the browser's sockets in `links`: both rechecks of
+ * each socket (the session's, the roles') ran and the real Core waited out the next ones, and every
+ * socket open before it is still open, none ended and reopened.
  */
-export const everySocketRechecked = (drivers: ScenarioDrivers, open: number) => {
+export const everySocketRechecked = (
+  drivers: ScenarioDrivers,
+  links: ReadonlyMap<WebSocket, WebSocket>,
+) => {
   const core = drivers.core;
   if (core.kind !== "external") return Promise.resolve();
-  if (open === 0) throw new Error("No socket of the browser reaches the Core");
+  const open = [...links.keys()];
+  if (open.length === 0) throw new Error("No socket of the browser reaches the Core");
   const rechecks = (waits: ReadonlyArray<number>) =>
     waits.filter((ms) => ms === core.periods.streamRecheck).length;
   const before = rechecks(core.clock.waits());
@@ -84,11 +88,18 @@ export const everySocketRechecked = (drivers: ScenarioDrivers, open: number) => 
       .pipe(
         Effect.andThen(
           core.clock.until(
-            (waits) => rechecks(waits) >= before + 2 * open,
+            (waits) => rechecks(waits) >= before + 2 * open.length,
             "every socket waiting out the Core's next recheck",
           ),
         ),
-        Effect.asVoid,
+        Effect.andThen(
+          Effect.sync(() =>
+            expect(
+              open.filter((socket) => !links.has(socket)).length,
+              "A socket ended at the Core's recheck",
+            ).toBe(0),
+          ),
+        ),
       ),
   );
 };

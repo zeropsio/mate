@@ -135,7 +135,7 @@ export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
 
 /** HQ looks at every socket's session again, and every one stays open. */
 export const hqKeepsEverySession = Effect.fn("signin.hqKeepsEverySession")(function* (s: Scenario) {
-  yield* Effect.promise(() => everySocketRechecked(s.drivers, s.hq.links.size));
+  yield* Effect.promise(() => everySocketRechecked(s.drivers, s.hq.links));
 });
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
