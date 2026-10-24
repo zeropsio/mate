@@ -36,7 +36,7 @@ import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
-import { servicePairs } from "./servicePairs.ts";
+import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
@@ -564,6 +564,15 @@ export const threadLeasesOf = (
 ): ReadonlyArray<CheckoutLease> =>
   threadLeases(lease, lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined);
 
+/**
+ * The pairs a known lifecycle's envelope keys by a dev pool (`poolPairsIn`), stale or not; none
+ * while it is not known.
+ */
+export const poolPairsOf = (
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<PoolPair> =>
+  lifecycle?.state === "known" ? poolPairsIn(lifecycle.value.envelope?.services ?? []) : [];
+
 /** The dev servers one envelope read on a lease, by alias; none when it did not read them. */
 export const leaseDevServersIn = (
   alias: string,
@@ -590,14 +599,25 @@ export function buildZeropsServiceMap(
   }
 
   // A preview folds into its dev row and does not also stand on its own: it holds no checkout
-  // — it is where its dev partner's code is deployed, built, unmounted.
-  const { devOf } = servicePairs({ services: topology.services });
+  // — it is where its dev partner's code is deployed, built, unmounted. A part migrated to a dev
+  // pool folds its stage under the pool, as zcp's envelope pairs them. A row folds one stage, so
+  // each stage of a pair of several stands on its own rather than be hidden.
+  const { pairs } = servicePairs({
+    services: topology.services,
+    poolPairs: poolPairsOf(lifecycle),
+  });
+  const stageOf = new Map(
+    pairs.flatMap(({ dev, previews: [only, ...more] }) =>
+      only === undefined || more.length > 0 ? [] : [[dev, only.hostname] as const],
+    ),
+  );
+  const folded = new Set(stageOf.values());
 
   const groups = GROUP_ORDER.map(({ group, title }) => ({
     group,
     title,
     rows: topology.services
-      .filter((entry) => entry.group === group && !devOf.has(entry.hostname))
+      .filter((entry) => entry.group === group && !folded.has(entry.hostname))
       // Total order within a section: the control plane leads Infrastructure
       // (it is not a service the user created), then hostname,
       // locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames`
@@ -612,7 +632,7 @@ export function buildZeropsServiceMap(
       )
       .map((entry): ZeropsServiceRow => {
         const stage = topology.services.find(
-          (candidate) => devOf.get(candidate.hostname) === entry.hostname,
+          (candidate) => candidate.hostname === stageOf.get(entry.hostname),
         );
         const crew = crewPorts?.get(entry.hostname);
         const portLabel = zeropsPortLabel(entry, crew);

@@ -706,6 +706,37 @@ describe("gitCheckoutHostnames", () => {
       ]),
     ).toEqual(["backstage", "cachedev"]);
   });
+
+  describe("a part migrated to a dev pool", () => {
+    // After the migration the dev service is gone, the tier on main still names it, and zcp keys
+    // the pair by the pool, whose snapshot carries the stage (zcp spec-mate §2.8a.3).
+    const services = [
+      { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+      { hostname: "appstage", group: "runtimes", type: "ubuntu/nodejs@22" },
+      { hostname: "api", group: "runtimes", type: "ubuntu/nodejs@22" },
+      { hostname: "db", group: "data", type: "postgresql@17" },
+    ] as const;
+    const tier = [
+      "services:",
+      "  - hostname: appdev",
+      "    type: nodejs@22",
+      "    zeropsSetup: dev",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      "  - hostname: appstage",
+      "    type: nodejs@22",
+      "    zeropsSetup: prod",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      "",
+    ].join("\n");
+    const poolPairs = [{ pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] }];
+
+    it.each([
+      { read: "the tier on main naming the dead dev", tier },
+      { read: "no tier", tier: undefined },
+    ])("never lists its stage as a checkout, with $read", ({ tier: read }) => {
+      expect(gitCheckoutHostnames(services, read, poolPairs)).toEqual(["api"]);
+    });
+  });
 });
 
 describe("the second dev service of a pair is not shown as a repository in the Git tab", () => {

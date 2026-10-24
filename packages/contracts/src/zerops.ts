@@ -134,7 +134,8 @@ export const ZeropsServiceSnapshot = Schema.Struct({
   stageSetupName: Schema.optional(Schema.String),
   /**
    * The pair's stages, which replace `stageHostname`/`stageSetupName` once zcp
-   * emits them. Mate never pairs from them (§2.8a.3).
+   * emits them. Mate pairs from them only on a pool's snapshot, a part migrated
+   * to a dev pool; a dev service's pair comes from the tier (§2.8a.3).
    */
   stages: Schema.optional(Schema.Array(ZeropsStageRef)),
   /**

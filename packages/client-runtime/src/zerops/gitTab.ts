@@ -51,7 +51,7 @@ import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
-import { servicePairs } from "./servicePairs.ts";
+import { servicePairs, type PoolPair } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
@@ -619,13 +619,18 @@ export function gitActionAllowed(
  * and a row for it said "no repository yet" about something that will never
  * have one (the owner, 2026-09-17). Managed data services hold no repository
  * either. One repository per pair, whatever the number of dev services: a further dev
- * service built from the same repository shares the first one's code volume.
+ * service built from the same repository shares the first one's code volume. A part migrated
+ * to a dev pool lists nothing: the pool holds no checkout (its leases do), and its stage is the
+ * pool's pair's stage once zcp's envelope says so (`poolPairs`), even while the tier on `main`
+ * still names the retired dev service.
  */
 export function gitCheckoutHostnames(
   services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group"> & { type?: string }>,
   tier?: string,
+  /** The pairs the thread's last envelope keys by a dev pool (`poolPairsIn`). */
+  poolPairs?: ReadonlyArray<PoolPair>,
 ): ReadonlyArray<string> {
-  const { devOf, sharesCodeWith } = servicePairs({ services, tier });
+  const { devOf, sharesCodeWith } = servicePairs({ services, tier, poolPairs });
   return services
     .filter(
       (service) =>

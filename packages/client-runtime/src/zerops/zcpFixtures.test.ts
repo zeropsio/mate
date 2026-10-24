@@ -15,7 +15,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
 import { buildDevServerFields } from "./model/builders/devServer.ts";
+import { gitCheckoutHostnames } from "./gitTab.ts";
 import { flowChange } from "./projectFlow.ts";
+import { poolPairsIn, servicePairs } from "./servicePairs.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
@@ -195,6 +197,29 @@ describe("zcp contract fixtures", () => {
       expect(card.links).toEqual([]);
       expect(card.kicker).toBe("Dev server · appdev");
     });
+  });
+
+  it("pairs a migrated part's stage with its dev pool, never listing the stage as a checkout", () => {
+    const envelope = decodeEnvelope(json("envelope.pool-pair.json"));
+    const [pool, stage] = envelope.services;
+    expect([pool?.hostname, pool?.runtimeClass, pool?.mode]).toEqual([
+      "apppool",
+      "pool",
+      undefined,
+    ]);
+    const poolPairs = poolPairsIn(envelope.services);
+    expect(poolPairs).toEqual([
+      { pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] },
+    ]);
+    const services = [
+      { hostname: "apppool", group: "infrastructure" as const, type: pool?.typeVersion ?? "" },
+      { hostname: "appstage", group: "runtimes" as const, type: stage?.typeVersion ?? "" },
+    ];
+    expect(servicePairs({ services, poolPairs }).devOf).toEqual(new Map([["appstage", "apppool"]]));
+    expect(gitCheckoutHostnames(services, undefined, poolPairs)).toEqual([]);
+    expect(envelope.leases?.map((lease) => [lease.alias, lease.pool])).toEqual([
+      ["apppool-1", "apppool"],
+    ]);
   });
 
   it("reads a receipt whose web preview is older than the change head", () => {

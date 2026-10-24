@@ -425,6 +425,72 @@ describe("buildZeropsServiceMap", () => {
   });
 });
 
+describe("buildZeropsServiceMap — a part migrated to a dev pool", () => {
+  const pool = service({ hostname: "apppool", type: "swarm@1", group: "infrastructure" });
+  /** The envelope zcp computes from the re-keyed pair: the pool's snapshot carries its stages. */
+  const envelope = (stages: ReadonlyArray<{ hostname: string; setup?: string }>) =>
+    lifecycle({
+      envelope: {
+        services: [
+          { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool", stages },
+          ...stages.map(({ hostname }) => ({
+            hostname,
+            typeVersion: "bun@1.3",
+            runtimeClass: "dynamic",
+            mode: "stage",
+          })),
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+  const placed = (view: ReturnType<typeof buildZeropsServiceMap>) =>
+    view?.groups.map((group) => [
+      group.group,
+      group.rows.map((row) => [row.service.hostname, row.stage?.hostname]),
+    ]);
+
+  it("folds the stage under its pool, never standing alone", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "appstage" })]),
+      envelope([{ hostname: "appstage", setup: "prod" }]),
+    );
+
+    expect(placed(view)).toEqual([["infrastructure", [["apppool", "appstage"]]]]);
+  });
+
+  it("leaves the stage on its own while the lifecycle is not known", () => {
+    const view = buildZeropsServiceMap(topology([pool, service({ hostname: "appstage" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+
+    expect(placed(view)).toEqual([
+      ["runtimes", [["appstage", undefined]]],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
+  });
+
+  it("a pair of several stages leaves each on its own: a row folds one stage, and no service is hidden", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "webstage" }), service({ hostname: "apistage" })]),
+      envelope([
+        { hostname: "webstage", setup: "web" },
+        { hostname: "apistage", setup: "api" },
+      ]),
+    );
+
+    expect(placed(view)).toEqual([
+      [
+        "runtimes",
+        [
+          ["apistage", undefined],
+          ["webstage", undefined],
+        ],
+      ],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
+  });
+});
+
 describe("buildZeropsServiceMap — the row's identity", () => {
   const rowFor = (entry: ZeropsTopologyService) =>
     buildZeropsServiceMap(topology([entry]))?.groups[0]?.rows[0];

@@ -10,20 +10,27 @@
  *    the part its `zeropsSetup` names.
  * 2. **The Mate's open recipe change** — the same tier as zcp proposed it, not merged yet: a
  *    preview only it pairs is one that waits for recipe approval (`source: "recipe"`).
- * 3. **The hostname stem** — `{name}stage` beside `{name}dev`, or beside `{name}` when zcp later
+ * 3. **zcp's envelope** — a part whose dev service was migrated to a dev pool is keyed by the pool,
+ *    whose snapshot carries the pair's stages (zcp `docs/spec-mate.md` §2.8a.3, `poolPairsIn`). The
+ *    tier on `main` still names the retired dev service, so a tier naming a dev that no longer
+ *    stands yields to it.
+ * 4. **The hostname stem** — `{name}stage` beside `{name}dev`, or beside `{name}` when zcp later
  *    expanded a single service into a pair (Dara's `todoapp` with `todoappstage`, 2026-09-17) —
- *    only for a preview neither tier declares: a pair zcp has not proposed to a tier yet, whose
+ *    only for a preview no source declares: a pair zcp has not proposed to a tier yet, whose
  *    pairing a person had before the tier read it (the model's §11.3; it goes once zcp proposes
  *    every pair as it wires it).
  *
  * Pairing is within a group: a `cachestage` data service is not the stage half of a `cachedev`
  * runtime, whatever the names suggest. A preview a tier declares never falls to the stem: when no
- * source's dev half stands beside it, it is in no pair.
+ * source's dev half stands beside it, it is in no pair. A pool stands in Infrastructure, so the
+ * envelope's pair is the one that crosses groups: zcp says which stages the pool's leases deploy.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module servicePairs
  */
+import type { ZeropsServiceSnapshot } from "@t3tools/contracts";
+
 import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import {
   isStageHostname,
@@ -34,8 +41,11 @@ import {
 
 export { isStageHostname };
 
-/** Where a preview's pairing comes from: the tier on `main`, an open recipe change, the stem. */
-export type ServicePairSource = "tier" | "recipe" | "stem";
+/**
+ * Where a preview's pairing comes from: the tier on `main`, an open recipe change, zcp's envelope,
+ * the stem.
+ */
+export type ServicePairSource = "tier" | "recipe" | "envelope" | "stem";
 
 export interface ServicePreview {
   readonly hostname: string;
@@ -64,6 +74,47 @@ export interface ServicePairing {
   readonly sharesCodeWith: ReadonlyMap<string, string>;
 }
 
+/**
+ * A pair zcp keys by its dev pool: the pool and the stages its envelope snapshot carries, in zcp's
+ * order, each with the `zeropsSetup` zcp resolved for it.
+ */
+export interface PoolPair {
+  readonly pool: string;
+  readonly stages: ReadonlyArray<{
+    readonly hostname: string;
+    readonly setup?: string | undefined;
+  }>;
+}
+
+/**
+ * The pairs an envelope keys by a dev pool: each pool's snapshot that carries stages — `stages[]`,
+ * or the one `stageHostname` zcp sends until it sends `stages[]` (spec-mate §2.8a.3, field order).
+ * Only a pool's: a dev service's stages pair nothing here, since Mate pairs a dev from the tier.
+ */
+export function poolPairsIn(
+  services: ReadonlyArray<
+    Pick<
+      ZeropsServiceSnapshot,
+      "hostname" | "runtimeClass" | "stages" | "stageHostname" | "stageSetupName"
+    >
+  >,
+): ReadonlyArray<PoolPair> {
+  return services.flatMap((snapshot) => {
+    if (snapshot.runtimeClass !== "pool") return [];
+    const stages =
+      snapshot.stages ??
+      (snapshot.stageHostname === undefined
+        ? []
+        : [
+            {
+              hostname: snapshot.stageHostname,
+              ...(snapshot.stageSetupName === undefined ? {} : { setup: snapshot.stageSetupName }),
+            },
+          ]);
+    return stages.length === 0 ? [] : [{ pool: snapshot.hostname, stages }];
+  });
+}
+
 export interface ServicePairsInput {
   /** The project's services, in its order; a service without a group pairs with another without. */
   readonly services: ReadonlyArray<{
@@ -80,6 +131,8 @@ export interface ServicePairsInput {
   readonly tier?: string | undefined;
   /** The Mate tier as the Mate's open recipe change holds it. */
   readonly proposal?: string | undefined;
+  /** The pairs zcp's envelope keys by a dev pool (`poolPairsIn`); a pool the services do not list pairs nothing. */
+  readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
 }
 
 const STAGE_SUFFIX = "stage";
@@ -136,10 +189,14 @@ function sharedDevs(
   return shared;
 }
 
-/** The pairs among a project's services, from the tier on `main`, the open recipe change, the stem. */
+/**
+ * The pairs among a project's services, from the tier on `main`, the open recipe change, zcp's
+ * envelope, the stem.
+ */
 export function servicePairs(input: ServicePairsInput): ServicePairing {
   // A pool or a Box stands outside every pair: it is in no group to pair within, so it is neither
   // a dev half nor a preview half, and a tier that declares it as a runtime pairs nothing for it.
+  // The one exception is the envelope's: a pool zcp keys a migrated part by is its pair's dev half.
   const pairable = input.services.filter(
     (service) => service.type === undefined || !isPoolOrSandboxServiceType(service.type),
   );
@@ -150,6 +207,14 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
     ["tier", declaredPairs(input.tier)],
     ["recipe", declaredPairs(input.proposal)],
   ];
+  // A pool the project no longer holds pairs nothing; the first link naming a stage wins.
+  const held = new Set(input.services.map((service) => service.hostname));
+  const linked = new Map<string, Declared>();
+  for (const { pool, stages } of input.poolPairs ?? []) {
+    if (!held.has(pool)) continue;
+    for (const { hostname, setup } of stages)
+      if (hostname !== pool && !linked.has(hostname)) linked.set(hostname, { dev: pool, setup });
+  }
 
   const pairOf = (hostname: string): { dev: string; preview: ServicePreview } | undefined => {
     let declared = false;
@@ -160,6 +225,9 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
       if (beside(hostname, pair.dev))
         return { dev: pair.dev, preview: { hostname, setup: pair.setup, source } };
     }
+    const link = linked.get(hostname);
+    if (link !== undefined)
+      return { dev: link.dev, preview: { hostname, setup: link.setup, source: "envelope" } };
     if (declared || !isStageHostname(hostname)) return undefined;
     const stem = hostname.slice(0, -STAGE_SUFFIX.length);
     const dev = [`${stem}${DEV_SUFFIX}`, stem].find((candidate) => beside(hostname, candidate));
@@ -179,7 +247,7 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
     previewsByDev.set(paired.dev, previews);
   }
   const sharesCodeWith = sharedDevs(input.tier, pairable, groupOf);
-  const pairs = pairable.flatMap(({ hostname }) => {
+  const pairs = input.services.flatMap(({ hostname }) => {
     const previews = previewsByDev.get(hostname);
     return previews === undefined ? [] : [{ name: pairName(hostname), dev: hostname, previews }];
   });
