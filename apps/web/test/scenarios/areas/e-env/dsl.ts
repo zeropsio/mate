@@ -1,5 +1,5 @@
 // @effect-diagnostics preferSchemaOverJson:off nodeBuiltinImport:off -- human-readable failure diagnostics.
-import { randomUUID } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -100,7 +100,7 @@ export const addGitEnvironment = Effect.fn("e-env.addGitEnvironment")(function* 
   const repository = github.addRepository("acme/shop");
   const common = { orgId: "ORG", appId: f.appId, hqProjectId: "ignored" };
   const post = Effect.fn("e-env.gitTarget")(function* (body: unknown) {
-    const answer = yield* core.call("POST", `/api/git-targets/${randomUUID()}`, {
+    const answer = yield* core.call("POST", `/api/git-targets/${NodeCrypto.randomUUID()}`, {
       session: owner,
       body,
     });
