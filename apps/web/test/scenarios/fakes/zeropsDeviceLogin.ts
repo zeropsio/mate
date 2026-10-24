@@ -14,8 +14,8 @@ import { definePerson, type ScenarioWorld } from "./zeropsWorld.ts";
 export const CONSENT_ORIGIN = "https://app.zerops.io";
 const CONSENT_PATH = "/authorize-login";
 const REQUEST_LIFETIME_S = 300;
-// The platform's access token lives five days (measured 2026-10-13).
-const SESSION_LIFETIME_S = 432_000;
+// The platform's access token lives six hours (measured 2026-10-24; five days on 2026-10-13).
+const SESSION_LIFETIME_S = 21_600;
 const SUDO_MS = 2 * 3_600_000;
 
 interface DeviceRequest {
