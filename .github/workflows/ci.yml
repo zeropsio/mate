@@ -61,15 +61,15 @@ jobs:
         id: blame
         run: node scripts/ci-blame.ts
 
-      - name: Check verified CI runs
+      - name: Check kh-next verification
         id: verdict
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           skip=false
-          # A reused run has no Test HQ 1 job; reuse must not rest on another reuse.
-          ran_in_full() {
+          # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
+          main_ran() {
             local ran
             ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --paginate --jq '
               [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
@@ -93,24 +93,9 @@ jobs:
                 | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
                 | .id')
             fi
-            if [[ -z "$verified" ]]; then
-              # A kh-bisect run of the same tree counts only when its manifest was "all"
-              # and it ran every job.
-              candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?event=push&status=success&per_page=100" --paginate --jq '
-                .workflow_runs[]
-                | select((.head_branch // "") | startswith("kh-bisect/"))
-                | select(.event == "push" and .status == "completed" and .conclusion == "success")
-                | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
-                | "\(.id) \(.head_sha)"')
-              while read -r run sha; do
-                [[ -n "$run" ]] || continue
-                manifest=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.ci-blame-jobs?ref=${sha}" --jq .content | base64 -d | tr -d '[:space:]') || continue
-                if [[ "$manifest" == all ]] && ran_in_full "$run"; then verified="${verified:+$verified }${run}"; fi
-              done <<< "$candidates"
-            fi
             if [[ -n "$verified" ]]; then
               skip=true
-              printf 'Verified CI run(s): %s\n' "$verified"
+              printf 'Verified kh-next CI run(s): %s\n' "$verified"
             fi
           fi
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
@@ -124,7 +109,7 @@ jobs:
               | select(.head_commit.tree_id == env.GITHUB_TREE)
               | .id')
             for run in $candidates; do
-              if ran_in_full "$run"; then
+              if main_ran "$run"; then
                 skip=true
                 printf 'Verified main CI run: %s\n' "$run"
                 break
@@ -145,7 +130,7 @@ jobs:
                   | .id')
                 for run in $pending; do
                   if gh run watch "$run" --exit-status >/dev/null; then
-                    if ran_in_full "$run"; then
+                    if main_ran "$run"; then
                       skip=true
                       printf 'Verified main CI run: %s\n' "$run"
                       break 2
