@@ -187,8 +187,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           apiBaseUrl: options.zeropsApiBaseUrl,
           publicOrigin: options.publicOrigin,
           apiToken: options.zeropsApiToken,
-          roleRecheckInterval: Duration.minutes(5),
-          sessionMaxAge: Duration.days(30),
           // A scene without an HQ links to none that answers: never production's.
           hqOrigin: options.hq?.origin ?? "http://127.0.0.1:9",
           hqGitCredentialPath: NodePath.join(root, "hq", "git-credential"),
