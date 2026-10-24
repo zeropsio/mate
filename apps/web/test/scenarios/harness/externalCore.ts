@@ -225,8 +225,11 @@ export const startExternalCore = (
     const process = yield* Effect.acquireRelease(
       Effect.sync(() => {
         // exec makes the captured child PID the command itself, including during cancellation.
+        // Detached, it leads its own process group, which is how stop reaches every process the
+        // launcher started, not only the launcher.
         const child = NodeChildProcess.spawn("/bin/sh", ["-c", `exec ${command}`], {
           env,
+          detached: true,
           stdio: ["pipe", "pipe", "pipe"],
         });
         let stderr = "";
@@ -268,6 +271,16 @@ export const startExternalCore = (
             reject,
           );
         });
+        // Only the group of the PID captured above is signalled; never a process-name match.
+        // The group id stays reserved while any member lives, so a launcher that already exited
+        // still leaves a group to signal; an empty group is the success case.
+        const killGroup = () => {
+          try {
+            globalThis.process.kill(-child.pid!, "SIGKILL");
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          }
+        };
         let stopping: Promise<void> | undefined;
         const stop = Effect.promise(
           () =>
@@ -276,13 +289,12 @@ export const startExternalCore = (
               try {
                 await deadline(exit, "External Core shutdown", 30_000);
               } catch (error) {
-                // Only the PID created above is signalled; never a process-name match.
-                if (child.exitCode === null && child.signalCode === null) {
-                  child.kill("SIGKILL");
-                  await exit.catch(() => {});
-                }
+                killGroup();
+                await exit.catch(() => {});
                 throw error;
               } finally {
+                // The launcher may exit while the processes it started live on.
+                killGroup();
                 lines.close();
               }
             })()),
