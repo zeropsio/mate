@@ -95,11 +95,34 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
   },
 );
 
-it("Bisect refs without a selection retain full CI and unknown selections fail explicitly", () => {
-  expect(blameSelection("refs/heads/kh-bisect/abc1234", undefined).narrowed).toBe(false);
+it("A kh-bisect push without a manifest is refused naming the file, and unknown selections fail explicitly", () => {
+  expect(() => blameSelection("refs/heads/kh-bisect/abc1234", undefined)).toThrow(
+    "kh-bisect needs .ci-blame-jobs",
+  );
   expect(() => blameSelection("refs/heads/kh-bisect/abc1234", "unknown\n")).toThrow(
     "No known failed CI job",
   );
+});
+
+it.each([["\n"], [""], ["  \n\n"]])(
+  "A kh-bisect push with an empty manifest %j selects no job",
+  (manifest) => {
+    const selection = blameSelection("refs/heads/kh-bisect/signal-x", manifest);
+    expect(selection.narrowed).toBe(true);
+    expect(selection.selected).toEqual([]);
+    for (const matrix of Object.values(selection.matrices)) expect(matrix.include).toEqual([]);
+  },
+);
+
+it("A kh-bisect manifest of all selects every job at full partition size", () => {
+  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "all\n");
+  expect(selection.narrowed).toBe(false);
+  expect(selection.selected.sort()).toEqual(
+    Object.keys(workflow.jobs)
+      .filter((job) => job !== "prepare" && job !== "cache")
+      .sort(),
+  );
+  expect(selection.matrices.test_server!.include).toHaveLength(6);
 });
 
 it("CI's real selector command publishes its narrowed job and matrix outputs", () => {
