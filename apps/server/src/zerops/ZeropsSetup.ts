@@ -39,7 +39,7 @@ import {
   type ConversationAgent,
   wakeId as standUpWakeIdOf,
 } from "@t3tools/contracts";
-import type { MateState } from "@t3tools/shared/mateLink";
+import type { LinkedMate } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
@@ -450,7 +450,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const mate =
         marked && (pending || (!ran && signedInAt === undefined)) && standing.kind === "linked"
           ? Option.some(standing.mate)
-          : Option.none<MateState>();
+          : Option.none<LinkedMate>();
       const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
       const signers = yield* reads.signers;
       const readyWithoutSignIn =
