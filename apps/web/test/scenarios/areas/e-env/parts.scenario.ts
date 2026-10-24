@@ -1,15 +1,12 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import { ChangeReceipt, type ChangeReceiptPart } from "@t3tools/shared/hqChanges";
+import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "../d-change/fake.ts";
 import { changeFixture, review } from "../d-change/dsl.ts";
 
 const OLDER = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
-const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(ChangeReceipt));
 
 describe("E: an application of several parts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -20,9 +17,7 @@ describe("E: an application of several parts", () => {
           const s = yield* createScenario([installArea]);
           const change = yield* changeFixture(s);
           const r = review(s);
-          const [row] = yield* inProcessCore(s.drivers.core).sql<{ readonly head: string }>`
-            SELECT head FROM hq_change WHERE repo = 'appdev' AND number = 1`;
-          const head = row!.head;
+          const head = change.head;
           const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
             setup,
             previewHostname: `${setup}stage`,
@@ -45,9 +40,7 @@ describe("E: an application of several parts", () => {
               ),
             ],
           };
-          yield* inProcessCore(s.drivers.core).sql`
-            UPDATE hq_change SET receipt = ${encodeReceipt(receipt)}::jsonb
-            WHERE repo = 'appdev' AND number = 1`;
+          yield* change.reports(receipt);
 
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.signedIn;
