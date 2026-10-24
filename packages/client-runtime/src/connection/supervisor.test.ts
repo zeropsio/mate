@@ -47,6 +47,7 @@ const MATE_ENTRY: ConnectionCatalogEntry = {
   target: new ZeropsMateConnectionTarget({
     environmentId: EnvironmentId.make("environment-1"),
     label: "Ada",
+    orgId: "org-1",
     projectId: "project-ada",
     httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
   }),

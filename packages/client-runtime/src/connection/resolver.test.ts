@@ -505,8 +505,8 @@ describe("ConnectionResolver", () => {
       Effect.gen(function* () {
         const asked = yield* Ref.make<ReadonlyArray<string>>([]);
         const brokerLayer = yield* makeDependencies({
-          issueMateTicket: (projectId) =>
-            Ref.updateAndGet(asked, (all) => [...all, projectId]).pipe(
+          issueMateTicket: ({ orgId, projectId }) =>
+            Ref.updateAndGet(asked, (all) => [...all, `${orgId}/${projectId}`]).pipe(
               Effect.map((all) => ({
                 ticket: `ticket-${all.length}`,
                 origin: "https://zcp-ada-8080.prg1.zerops.app",
@@ -519,6 +519,7 @@ describe("ConnectionResolver", () => {
         const target = new ZeropsMateConnectionTarget({
           environmentId: ENVIRONMENT_ID,
           label: "Ada",
+          orgId: "org-1",
           projectId: "project-ada",
           httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
         });
@@ -526,7 +527,7 @@ describe("ConnectionResolver", () => {
         const first = yield* broker.prepare(catalogEntry(target));
         const second = yield* broker.prepare(catalogEntry(target));
 
-        expect(yield* Ref.get(asked)).toEqual(["project-ada", "project-ada"]);
+        expect(yield* Ref.get(asked)).toEqual(["org-1/project-ada", "org-1/project-ada"]);
         expect(first).toMatchObject({
           environmentId: ENVIRONMENT_ID,
           httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
@@ -551,6 +552,7 @@ describe("ConnectionResolver", () => {
             new ZeropsMateConnectionTarget({
               environmentId: ENVIRONMENT_ID,
               label: "Ada",
+              orgId: "org-1",
               projectId: "project-ada",
               httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
             }),

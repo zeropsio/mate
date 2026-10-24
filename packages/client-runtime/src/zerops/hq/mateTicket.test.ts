@@ -11,16 +11,16 @@ describe("mateTicketIssuer", () => {
   it.effect("A Mate's ticket is the one HQ issued for its project, with the origin HQ named", () =>
     Effect.gen(function* () {
       const asked: string[] = [];
-      const issuer = mateTicketIssuer(async (projectId) => {
-        asked.push(projectId);
+      const issuer = mateTicketIssuer(async ({ orgId, projectId }) => {
+        asked.push(`${orgId}/${projectId}`);
         return { ticket: "T1", expiresIn: 60, origin: "https://zcp-ada-8080.prg1.zerops.app" };
       });
 
-      expect(yield* issuer.issue("P1")).toEqual({
+      expect(yield* issuer.issue({ orgId: "O1", projectId: "P1" })).toEqual({
         ticket: "T1",
         origin: "https://zcp-ada-8080.prg1.zerops.app",
       });
-      expect(asked).toEqual(["P1"]);
+      expect(asked).toEqual(["O1/P1"]);
     }),
   );
 
@@ -67,7 +67,10 @@ describe("mateTicketIssuer", () => {
       Effect.gen(function* () {
         const issuer = mateTicketIssuer(() => Promise.reject(error));
 
-        expect(yield* Effect.flip(issuer.issue("P1"))).toMatchObject({ _tag: tag, reason });
+        expect(yield* Effect.flip(issuer.issue({ orgId: "O1", projectId: "P1" }))).toMatchObject({
+          _tag: tag,
+          reason,
+        });
       }),
   );
 });

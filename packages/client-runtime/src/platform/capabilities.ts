@@ -81,7 +81,10 @@ const NO_MATE_TICKETS = "This client opens no Mate through HQ.";
  * A client without an HQ account opens no Mate this way.
  */
 export interface MateTicketIssuerService {
-  readonly issue: (projectId: string) => Effect.Effect<IssuedMateTicket, ConnectionAttemptError>;
+  readonly issue: (mate: {
+    readonly orgId: string;
+    readonly projectId: string;
+  }) => Effect.Effect<IssuedMateTicket, ConnectionAttemptError>;
 }
 
 export class MateTicketIssuer extends Context.Reference<MateTicketIssuerService>(

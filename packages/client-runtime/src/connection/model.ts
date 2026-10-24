@@ -47,6 +47,8 @@ export class ZeropsMateConnectionTarget extends Schema.TaggedClass<ZeropsMateCon
   "ZeropsMateConnectionTarget",
   {
     ...ConnectionTargetBase,
+    /** The organisation whose HQ session asks for the tickets. */
+    orgId: Schema.String,
     projectId: Schema.String,
     /** The Mate's base URL as it was found; the socket goes where each ticket says. */
     httpBaseUrl: Schema.String,

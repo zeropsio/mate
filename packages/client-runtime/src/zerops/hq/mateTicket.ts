@@ -38,14 +38,17 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   });
 }
 
-/** The connection runtime's ticket issuer over HQ's `mateTicket`. */
+/** The connection runtime's ticket issuer over HQ's `mateTicket`, in the Mate's organisation. */
 export function mateTicketIssuer(
-  mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>,
+  mateTicket: (
+    mate: { readonly orgId: string; readonly projectId: string },
+    signal?: AbortSignal,
+  ) => Promise<HqMateTicket>,
 ): MateTicketIssuerService {
   return {
-    issue: (projectId) =>
+    issue: (mate) =>
       Effect.tryPromise({
-        try: (signal) => mateTicket(projectId, signal),
+        try: (signal) => mateTicket(mate, signal),
         catch: attemptErrorOf,
       }).pipe(
         Effect.map((issued): IssuedMateTicket => ({
