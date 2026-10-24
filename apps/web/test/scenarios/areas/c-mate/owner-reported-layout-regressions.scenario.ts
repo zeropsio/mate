@@ -503,22 +503,14 @@ describe("owner-reported layout regressions", () => {
           ...zerops.rows("project").find((project) => project.id === "Chief")!,
           tagList: ["chief"],
         });
-        zerops.put("user-data", {
-          id: "chief-token",
-          clientId: "ORG",
-          serviceStackId: "service-Chief",
-          projectId: "Chief",
-          key: "ZCP_ORG_TOKEN",
-          type: "USER",
-          sensitive: true,
-          editable: true,
-          content: "scenario-chief-token",
-        });
-        const registered = yield* core.call("POST", "/api/chief", {
+        const registered = yield* core.call("PUT", "/api/chief", {
           session: owner,
           body: { projectId: "Chief" },
         });
-        expect(registered.status, "ASSERTION: HQ names the person's Chief").toBe(200);
+        expect(
+          registered.status,
+          "ASSERTION: an Owner marks the project as the organization's Chief",
+        ).toBe(200);
         yield* s.given.signedIn;
         yield* Effect.promise(() => ownerMenu(s.page));
         yield* Effect.promise(() =>
@@ -676,22 +668,14 @@ describe("owner-reported layout regressions", () => {
             ...zerops.rows("project").find((project) => project.id === "Chief")!,
             tagList: ["chief"],
           });
-          zerops.put("user-data", {
-            id: "chief-token",
-            clientId: "ORG",
-            serviceStackId: "service-Chief",
-            projectId: "Chief",
-            key: "ZCP_ORG_TOKEN",
-            type: "USER",
-            sensitive: true,
-            editable: true,
-            content: "scenario-chief-token",
-          });
-          const registered = yield* core.call("POST", "/api/chief", {
+          const registered = yield* core.call("PUT", "/api/chief", {
             session: owner,
             body: { projectId: "Chief" },
           });
-          expect(registered.status, "ASSERTION: HQ names the person's Chief").toBe(200);
+          expect(
+            registered.status,
+            "ASSERTION: an Owner marks the project as the organization's Chief",
+          ).toBe(200);
           yield* s.given.signedIn;
           yield* Effect.promise(() => ownerMenu(s.page));
           yield* Effect.promise(() =>
