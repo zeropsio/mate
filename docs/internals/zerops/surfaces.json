@@ -1261,7 +1261,6 @@
         "apps/web/src/components/zerops/ZeropsProjectRenameMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.tsx",
         "apps/web/src/components/zerops/ZeropsDeletionRecovery.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/zerops/RestartMateConfirmation.tsx",
@@ -1368,7 +1367,7 @@
       "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops",
-        "apps/web/src/connection/onboarding:connectZeropsIdentity"
+        "apps/web/src/zerops/environmentPorts:webEnvironmentPorts"
       ],
       "reverseStates": [
         {
@@ -1449,7 +1448,6 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
-        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.test.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
         "apps/web/src/components/zerops/AddAutomatedMatesForm.test.tsx",
@@ -1696,7 +1694,7 @@
       "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops",
-        "apps/web/src/connection/onboarding:connectZeropsIdentity"
+        "apps/web/src/zerops/environmentPorts:webEnvironmentPorts"
       ],
       "reverseStates": [
         {
