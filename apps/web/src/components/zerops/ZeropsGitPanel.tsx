@@ -15,7 +15,7 @@
  * comes down HQ's stream. Nothing here decides anything — `gitTab.ts` does, and
  * this renders what it produced (R5).
  */
-import type { GitBlock } from "@t3tools/client-runtime/zerops";
+import { NO_REPOSITORY_LINE, type GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -24,6 +24,8 @@ import { ZeropsGitBlock } from "./ZeropsGitBlock";
 
 export interface ZeropsGitPanelModel {
   readonly blocks: ReadonlyArray<GitBlock>;
+  /** What it says while there is no block (`gitEmptyLine`); no repository yet when absent. */
+  readonly emptyLine?: string;
 }
 
 export interface ZeropsGitPanelProps {
@@ -54,7 +56,7 @@ export function ZeropsGitPanel({
             a heading for a list of one is a line that repeats the tab. */}
         {model.blocks.length === 0 ? (
           <span className="text-sm text-muted-foreground">
-            No code repository yet. The first service brings one.
+            {model.emptyLine ?? NO_REPOSITORY_LINE}
           </span>
         ) : (
           <ul className="flex flex-col gap-5">
