@@ -69,7 +69,7 @@ export function completedHttp(
     for (const resolve of rendererWaiters) resolve();
   };
   page.once("close", close);
-  const settle = async (timeout = 10_000) => {
+  const settle = async () => {
     let activeWaiter: (() => void) | undefined;
     try {
       await deadline(
@@ -110,7 +110,6 @@ export function completedHttp(
           }
         })(),
         "completed browser HTTP and renderer continuations",
-        timeout,
       );
     } finally {
       if (activeWaiter) waiters.delete(activeWaiter);

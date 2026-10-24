@@ -383,12 +383,9 @@ describe("ZeropsLifecycle", () => {
             );
           }
 
-          const next = yield* Stream.runHead(subscription.changes).pipe(
-            Effect.timeoutOption("1 second"),
-            Effect.forkChild,
-          );
+          const next = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
           yield* TestClock.adjust("1 second");
-          const delivered = Option.flatten(yield* Fiber.join(next));
+          const delivered = yield* Fiber.join(next);
 
           expect(Option.map(delivered, (state) => state.threadId)).toEqual(Option.some(THREAD));
           expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
@@ -480,11 +477,10 @@ describe("ZeropsLifecycle", () => {
         ).pipe(
           Stream.filter((state) => state.envelope !== undefined),
           Stream.runHead,
-          Effect.timeoutOption("1 second"),
           Effect.forkChild,
         );
         yield* TestClock.adjust("1 second");
-        const delivered = Option.flatten(yield* Fiber.join(seen));
+        const delivered = yield* Fiber.join(seen);
 
         expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
           Option.some("develop-active"),
@@ -512,13 +508,10 @@ describe("ZeropsLifecycle", () => {
         });
 
         const subscription = yield* lifecycle.subscribe(THREAD);
-        const next = yield* Stream.runHead(subscription.changes).pipe(
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
+        const next = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
         yield* Queue.offer(bus, claudeEvent({}));
         yield* TestClock.adjust("1 minute");
-        const delivered = Option.flatten(yield* Fiber.join(next));
+        const delivered = yield* Fiber.join(next);
 
         expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
           Option.some("develop-active"),
@@ -592,15 +585,12 @@ describe("ZeropsLifecycle", () => {
           });
 
           const subscription = yield* lifecycle.subscribe(THREAD);
-          const next = yield* Stream.runHead(subscription.changes).pipe(
-            Effect.timeoutOption("1 minute"),
-            Effect.forkChild,
-          );
+          const next = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
           yield* Deferred.await(subscribed);
           yield* PubSub.publish(bus, claudeEvent({ threadId: OTHER_THREAD }));
           yield* PubSub.publish(bus, claudeEvent({}));
           yield* TestClock.adjust("1 minute");
-          const delivered = Option.flatten(yield* Fiber.join(next));
+          const delivered = yield* Fiber.join(next);
 
           expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
             Option.some("develop-active"),
@@ -640,15 +630,12 @@ describe("ZeropsLifecycle", () => {
         } as SpiEvent;
 
         const subscription = yield* lifecycle.subscribe(THREAD);
-        const next = yield* Stream.runHead(subscription.changes).pipe(
-          Effect.timeoutOption("1 minute"),
-          Effect.forkChild,
-        );
+        const next = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
         yield* Deferred.await(subscribed);
         yield* PubSub.publish(bus, malformed);
         yield* PubSub.publish(bus, claudeEvent({}));
         yield* TestClock.adjust("1 minute");
-        const delivered = Option.flatten(yield* Fiber.join(next));
+        const delivered = yield* Fiber.join(next);
 
         expect(Option.map(delivered, (state) => state.envelope?.phase)).toEqual(
           Option.some("develop-active"),

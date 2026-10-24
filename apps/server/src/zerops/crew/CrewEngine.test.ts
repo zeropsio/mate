@@ -5,6 +5,8 @@ import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
 import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -568,7 +570,7 @@ describe("CrewEngine", () => {
         yield* eventually(
           Effect.map(turnsSent(world), (turns) => turns.length === turnsBefore + 1),
         );
-        yield* Effect.sleep("300 millis");
+        yield* world.settled;
         assert.strictEqual((yield* turnsSent(world)).length, turnsBefore + 1);
       }),
     ),
@@ -674,9 +676,16 @@ describe("CrewEngine", () => {
         });
         yield* world.snapshotWhere((current) => current.attention.length === 1);
         const tries = (yield* world.admissions).length;
+        const reconciled = yield* world.signInReconciliations;
         yield* world.signedIn("codex");
         yield* world.signedIn({ extra: "work" });
-        yield* Effect.sleep("300 millis");
+        // The extra login's first appearance leaves no receipt; its signer changing does, and
+        // that receipt shows the crew read the extra login's sign-ins past the first.
+        yield* world.signedIn({ extra: "work" });
+        yield* eventually(
+          Effect.map(world.signInReconciliations, (count) => count >= reconciled + 2),
+        );
+        yield* world.settled;
         assert.deepStrictEqual(
           [(yield* world.admissions).length, (yield* world.snapshot).board.tasks[0]!.state],
           [tries, "queued"],
@@ -1142,7 +1151,7 @@ describe("CrewEngine", () => {
           yield* world.snapshotWhere(
             (snapshot) => snapshot.lastError?.includes("still redeploying") === true,
           );
-          yield* Effect.sleep("500 millis");
+          yield* world.settled;
           const head = git(copy, ["rev-parse", "HEAD"]);
           assert.deepStrictEqual(
             [(yield* turnsSent(world)).length, git(copy, ["status", "--porcelain"])],
@@ -1172,8 +1181,12 @@ describe("CrewEngine", () => {
           );
           // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
           assert.isAtMost(yield* world.deployReads, 8);
+          const observed = yield* Deferred.make<void>();
           const frames = yield* world.frames.pipe(
-            Stream.interruptWhen(Effect.sleep("700 millis")),
+            Stream.tap(() => Deferred.succeed(observed, undefined)),
+            Stream.interruptWhen(
+              Deferred.await(observed).pipe(Effect.andThen(world.advanceTime(700))),
+            ),
             Stream.runCount,
           );
           // Nothing moved meanwhile: the feed holds still, its current frame alone.
@@ -1190,7 +1203,7 @@ describe("CrewEngine", () => {
           );
           // Thawed, it stops asking.
           const after = yield* world.deployReads;
-          yield* Effect.sleep("600 millis");
+          yield* world.advanceTime(600);
           assert.strictEqual(yield* world.deployReads, after);
         }),
     ]),
@@ -1207,6 +1220,8 @@ describe("CrewEngine", () => {
           const hold = yield* world.hold({ step: "recover" });
           yield* world.deploy("finished");
           yield* hold.reached;
+          const waiting = yield* Deferred.make<void>();
+          const clock = yield* Clock.Clock;
           const press = yield* world
             .press({
               _tag: "message",
@@ -1214,8 +1229,20 @@ describe("CrewEngine", () => {
               text: "Work",
               attachments: [],
             })
-            .pipe(Effect.forkChild);
-          yield* Effect.sleep("300 millis");
+            .pipe(
+              Effect.provideService(Clock.Clock, {
+                currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
+                currentTimeMillis: clock.currentTimeMillis,
+                currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
+                currentTimeNanos: clock.currentTimeNanos,
+                monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
+                monotonicTimeNanos: clock.monotonicTimeNanos,
+                sleep: (duration) =>
+                  Deferred.succeed(waiting, undefined).pipe(Effect.andThen(clock.sleep(duration))),
+              }),
+              Effect.forkChild({ startImmediately: true }),
+            );
+          yield* Effect.raceFirst(Deferred.await(waiting), Fiber.await(press));
           assert.isTrue(press.pollUnsafe() === undefined);
           yield* hold.release;
           yield* Fiber.join(press);
@@ -1245,7 +1272,7 @@ describe("CrewEngine", () => {
         (world) =>
           Effect.gen(function* () {
             assert.strictEqual(yield* world.profileInstalls, 2);
-            yield* Effect.sleep("300 millis");
+            yield* world.settled;
             assert.strictEqual((yield* turnsSent(world)).length, turnsBefore);
             yield* world.serverReady;
             yield* eventually(
@@ -1281,13 +1308,7 @@ describe("CrewEngine", () => {
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* eventually(
-          Effect.gen(function* () {
-            const settled = yield* world.serviceSessions;
-            yield* Effect.sleep("200 millis");
-            return settled === (yield* world.serviceSessions);
-          }),
-        );
+        yield* world.settled;
         const before = yield* world.serviceSessions;
         const frames = yield* world.frames.pipe(Stream.take(1), Stream.runCollect);
         assert.deepStrictEqual([frames.length, (yield* world.serviceSessions) - before], [1, 0]);
@@ -1299,7 +1320,7 @@ describe("CrewEngine", () => {
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* world.frames.pipe(Stream.take(1), Stream.runCollect);
-        yield* Effect.sleep("300 millis");
+        yield* world.settled;
         assert.strictEqual(yield* world.serviceSessions, 0);
       }),
     ),

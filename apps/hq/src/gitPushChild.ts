@@ -45,6 +45,7 @@ async function supervise() {
       }
     }
   };
+  const attemptMs = () => Math.max(1, Math.min(request.deadlineMs, 60_000));
   // Bounds even a parent that dies before finishing the input handoff.
   let timer = setTimeout(kill, 60_000);
   process.on("SIGTERM", kill);
@@ -67,7 +68,9 @@ async function supervise() {
         try {
           stat = await fs.readFile(`/proc/${entry}/stat`, "utf8");
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          // A process that exits mid-scan is gone, not a live member.
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ENOENT" || code === "ESRCH") continue;
           return false;
         }
         const fields = stat
@@ -84,7 +87,7 @@ async function supervise() {
       try {
         const states = cp.execFileSync("/bin/ps", ["-A", "-o", "pgid=", "-o", "stat="], {
           encoding: "utf8",
-          timeout: Math.max(1, Math.min(request.deadlineMs, 60_000)),
+          timeout: attemptMs(),
           maxBuffer: 64 * 1024,
           stdio: ["ignore", "pipe", "ignore"],
         });
@@ -98,6 +101,17 @@ async function supervise() {
         return false;
       }
     }
+  };
+  // SIGKILL is delivered before it is acted on: a member between the signal and its exit still
+  // reads live. Re-read the kernel until the group is gone; the attempt's own deadline bounds a
+  // member stuck in uninterruptible sleep, which stays recorded undrained.
+  const drain = async (pid: number) => {
+    const bound = Date.now() + attemptMs();
+    while (!(await stopped(pid))) {
+      if (Date.now() >= bound) return false;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return true;
   };
   // A reader racing Git (recovery, the parent, a remote under test) sees a whole record or the
   // previous one, never the empty file a truncating write leaves for a moment.
@@ -176,7 +190,7 @@ async function supervise() {
     // A helper that detached its output is still a writer. Stop only this captured group
     // before proving there are no live members, including on kernels retaining exited PIDs.
     if (lastPid !== null && exists(lastPid)) kill();
-    drained = lastPid === null || (await stopped(lastPid));
+    drained = lastPid === null || (await drain(lastPid));
     active = undefined;
     return {
       code,
@@ -196,7 +210,7 @@ async function supervise() {
     }
     request = JSON.parse(input) as GitChildRequest;
     clearTimeout(timer);
-    timer = setTimeout(kill, Math.max(1, Math.min(request.deadlineMs, 60_000)));
+    timer = setTimeout(kill, attemptMs());
     secret = await fs.readFile(
       path.join(path.dirname(request.credential.env.GIT_ASKPASS), "credential"),
       "utf8",

@@ -14,7 +14,8 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
  *
  * A person enters HQ as they enter a Mate: the app mints a throwaway named for HQ's project
- * (`mate-door:<hqProjectId>:<nonce>`), presents it once at `POST /api/door`, and deletes it
+ * (`mate-door:<hqProjectId>:<nonce>`; `mate-door:hq:<nonce>` for an HQ every organization shares,
+ * `SHARED_HQ_DOOR`), presents it once at `POST /api/door`, and deletes it
  * (`withThrowaway`). HQ answers a session of its own, which this client sends as `Authorization:
  * Bearer` until HQ stops taking it; then it comes through the door once more. Where the account
  * keeps it (`kept`, audit K7), a load presents the kept session before any door.
@@ -1001,7 +1002,7 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
 };
 
 export function makeHqApi(input: {
-  /** HQ's origin, as its anchor names it. */
+  /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
   readonly fetch: FetchImplementation;
   /** Mints a throwaway for HQ's door, hands its value to `use` alone, and deletes it. */
@@ -1019,6 +1020,17 @@ export function makeHqApi(input: {
   readonly beforeWrite?: () => Promise<void>;
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
+  /**
+   * The organization's key, for a door HQ answers `409 org_not_started`: HQ serves an organization
+   * once its Owner's or Admin's client hands it one as `orgKey` (mate-hq `spec/protocol.md`
+   * "Doors"). Absent: that refusal stands.
+   */
+  readonly orgKey?: {
+    /** Whether this person may start the organization: an active Owner or Admin. */
+    readonly mayStart: () => Promise<boolean>;
+    /** Mints the key, hands its value to `use` alone, and takes it back where HQ refused it. */
+    readonly handOver: <T>(use: (orgKey: string) => Promise<T>) => Promise<T>;
+  };
   readonly kept?: {
     /** The kept session's token; null when none is kept, or it ends too soon to present. */
     readonly read: () => string | null;
@@ -1047,21 +1059,33 @@ export function makeHqApi(input: {
   /** The sessions the door opened that HQ has not yet taken on any call: none renews. */
   const unproven = new WeakSet<Promise<string>>();
 
+  const door = async (body: { readonly token: string; readonly orgKey?: string }) =>
+    json<{ readonly session: string; readonly expiresAt: string }>(
+      await send(input.fetch, `${origin}/api/door`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+      }),
+    );
+
+  /**
+   * Through the door with the throwaway; an organization HQ has not started, started by an Owner
+   * or Admin with the same throwaway — HQ did not take it — and the organization's key.
+   */
+  const admitted = (token: string) =>
+    door({ token }).catch(async (cause: unknown) => {
+      const orgKey = input.orgKey;
+      if (!(cause instanceof HqError && cause.code === "org_not_started") || orgKey === undefined)
+        throw cause;
+      if (!(await orgKey.mayStart())) throw cause;
+      return orgKey.handOver((key) => door({ token, orgKey: key }));
+    });
+
   const enter = () => {
-    const entering = input
-      .throughDoor(async (token) =>
-        json<{ readonly session: string; readonly expiresAt: string }>(
-          await send(input.fetch, `${origin}/api/door`, {
-            method: "POST",
-            body: JSON.stringify({ token }),
-            signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
-          }),
-        ),
-      )
-      .then((answer) => {
-        input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
-        return answer.session;
-      });
+    const entering = input.throughDoor(admitted).then((answer) => {
+      input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
+      return answer.session;
+    });
     // A door that refused is not a session: the next call asks again.
     entering.catch(() => {
       if (session === entering) session = null;

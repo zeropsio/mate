@@ -30,6 +30,11 @@ export const HQ_ORG_TOKEN_ENV = "HQ_ORG_TOKEN";
 /** Core's key for its environments' deploy tokens, as Core reads it: an AES-256 key's 32 bytes. */
 export const HQ_KEY_SECRET_ENV = "HQ_KEY_SECRET";
 export const HQ_KEY_SECRET_BYTES = 32;
+/**
+ * The source of HQ's serving database password, apart from its key so rotating the key keeps the
+ * database login; HQ's bootstrap derives the password from it (mate-hq `runtimeDatabase.ts`).
+ */
+export const HQ_SERVING_DATABASE_SECRET_ENV = "HQ_SERVING_DATABASE_SECRET";
 /** The `zerops.yml` entry Core deploys from (`apps/hq/zerops.yml`). */
 export const HQ_SETUP = "hq";
 /** The app version a birth or an update names after the Core it deploys (`update.ts`). */

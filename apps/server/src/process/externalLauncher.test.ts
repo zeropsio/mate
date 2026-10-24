@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -351,7 +352,6 @@ it.effect("reveals a file in File Explorer through PowerShell on Windows", () =>
 // oxlint-disable-next-line t3code/no-global-process-runtime -- the skip decision needs the real host platform, outside any Effect runtime.
 it.skipIf(process.platform !== "win32")(
   "delivers the raw /select switch for spaced paths through real PowerShell",
-  { timeout: 60_000 },
   async () => {
     const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-reveal-smoke-"));
     try {
@@ -366,31 +366,32 @@ it.skipIf(process.platform !== "win32")(
       const target = "C:\\workspace with spaces\\media\\author's clip.mp4";
       const source = ExternalLauncher.buildFileExplorerRevealPowerShellSource(recorderPath, target);
       const powerShellPath = `${process.env.SYSTEMROOT ?? "C:\\Windows"}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-      NodeChildProcess.execFileSync(
-        powerShellPath,
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-EncodedCommand",
-          Buffer.from(source, "utf16le").toString("base64"),
-        ],
-        { timeout: 30_000 },
-      );
-
-      // Start-Process returns before the recorder runs; wait for its output.
-      // The waits run outside the Effect runtime on purpose: the test
-      // exercises the real Windows process chain in real time.
-      // @effect-diagnostics-next-line globalTimers:off
-      const sleep = (millis: number) => new Promise((resolve) => setTimeout(resolve, millis));
-      // @effect-diagnostics-next-line globalDate:off
-      const deadline = Date.now() + 20_000;
-      // @effect-diagnostics-next-line globalDate:off
-      while (!NodeFS.existsSync(completedPath) && Date.now() < deadline) {
-        await sleep(100);
+      // Subscribe before launching: Start-Process returns before the recorder runs.
+      const completed = Promise.withResolvers<void>();
+      const watcher = NodeFS.watch(tempDir, () => {
+        if (NodeFS.existsSync(completedPath)) completed.resolve();
+      });
+      watcher.on("error", completed.reject);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          NodeChildProcess.execFile(
+            powerShellPath,
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-EncodedCommand",
+              Buffer.from(source, "utf16le").toString("base64"),
+            ],
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await completed.promise;
+      } finally {
+        watcher.close();
       }
-      assert.isTrue(NodeFS.existsSync(completedPath), "the recorder finished before its deadline");
+      assert.isTrue(NodeFS.existsSync(completedPath), "the recorder finished");
       const recorded = NodeFS.readFileSync(outputPath, "utf8").trim();
       assert.equal(recorded, `/select,"${target}"`);
     } finally {
@@ -845,9 +846,8 @@ it.effect.skipIf(windowsHost)(
 
 // The handler probe carries its own timeout because the editor scan's outer
 // timeout in server.getConfig degrades to an EMPTY editor list: a wedged
-// xdg-mime must cost only the file manager, never the other editors. Runs on
-// the live clock so the probe's real timeout fires.
-it.live.skipIf(windowsHost)("a stalled handler probe drops only the file manager", () =>
+// xdg-mime must cost only the file manager, never the other editors.
+it.effect.skipIf(windowsHost)("a stalled handler probe drops only the file manager", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -858,7 +858,8 @@ it.live.skipIf(windowsHost)("a stalled handler probe drops only the file manager
       yield* fileSystem.chmod(filePath, 0o755);
     }
 
-    const editors = yield* Effect.gen(function* () {
+    const probeStarted = yield* Deferred.make<void>();
+    const editorsFiber = yield* Effect.gen(function* () {
       const launcher = yield* ExternalLauncher.ExternalLauncher;
       return yield* launcher.resolveAvailableEditors();
     }).pipe(
@@ -866,10 +867,18 @@ it.live.skipIf(windowsHost)("a stalled handler probe drops only the file manager
         testLayer({
           platform: "linux",
           env: { PATH: binDir, DISPLAY: ":0" },
-          spawnResult: (command) => (command.command === "xdg-mime" ? { stall: true } : undefined),
+          spawnResult: (command) => {
+            if (command.command !== "xdg-mime") return undefined;
+            Deferred.doneUnsafe(probeStarted, Effect.void);
+            return { stall: true };
+          },
         }),
       ),
+      Effect.forkChild,
     );
+    yield* Deferred.await(probeStarted);
+    yield* TestClock.adjust("2 seconds");
+    const editors = yield* Fiber.join(editorsFiber);
 
     assert.equal(editors.includes("vscode"), true);
     assert.equal(editors.includes("file-manager"), false);

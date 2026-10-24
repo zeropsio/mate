@@ -149,9 +149,7 @@ describe("owner-reported layout regressions", () => {
           yield* Effect.promise(() => resizeMenu(s.page, 435));
           const frames = yield* Effect.promise(async () => {
             await s.page.goto(`${s.web.origin}/zerops`);
-            await s.page.waitForSelector('[data-zerops-surface="project-cards"]', {
-              timeout: 15_000,
-            });
+            await s.page.waitForSelector('[data-zerops-surface="project-cards"]');
             await s.page.evaluateOnNewDocument(recordOverviewFrames);
             if (hqBlinks) s.drivers.hq.drops();
             await s.page.reload({ waitUntil: "domcontentloaded" });
@@ -163,7 +161,7 @@ describe("owner-reported layout regressions", () => {
               () =>
                 (window as unknown as { overviewFrames?: OverviewFrame[] }).overviewFrames?.at(-1)
                   ?.cards === 2,
-              { timeout: 20_000, polling: 100 },
+              { polling: 100 },
             );
             // What a settled page might still take back shows within a beat of the cards.
             await new Promise((resolve) => setTimeout(resolve, 1_500));

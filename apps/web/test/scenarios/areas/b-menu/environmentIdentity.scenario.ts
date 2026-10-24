@@ -55,7 +55,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
   yield* Effect.promise(() =>
     f.s.page.waitForFunction(
       (path) => location.pathname === path,
-      { timeout: 15000 },
+      {},
       `/group/${f.appId}/Shop-production`,
     ),
   );
@@ -136,7 +136,6 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
     yield* Effect.promise(() =>
       f.s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
         hidden: true,
-        timeout: 15_000,
       }),
     );
     yield* a.then.text(sha.slice(0, 7));
@@ -182,7 +181,6 @@ describe("B: environment identity compatibility", () => {
           s.page.waitForFunction(
             () => document.querySelector("h1")?.textContent === "Shop partial",
             {
-              timeout: 15_000,
               polling: "raf",
             },
           ),
@@ -195,7 +193,6 @@ describe("B: environment identity compatibility", () => {
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop");
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => document.querySelector("h1")?.textContent === "Shop", {
-            timeout: 15_000,
             polling: "raf",
           }),
         );
@@ -205,7 +202,6 @@ describe("B: environment identity compatibility", () => {
         yield* Effect.promise(() =>
           s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
             hidden: true,
-            timeout: 15_000,
           }),
         );
         yield* environmentRows(
@@ -216,7 +212,7 @@ describe("B: environment identity compatibility", () => {
         yield* Effect.promise(() =>
           s.page.waitForFunction(
             () => document.querySelector("main")?.innerText.includes("stage-existing"),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
         yield* s.then.noExternalNetwork;
@@ -257,7 +253,7 @@ describe("B: environment identity compatibility", () => {
           yield* Effect.promise(() =>
             f.s.page.waitForFunction(
               () => document.querySelector("h1")?.textContent === "production",
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           for (const id of ["independent-preview", "git-production"]) {
@@ -284,7 +280,7 @@ describe("B: environment identity compatibility", () => {
             s.page.waitForFunction(
               // The page stands in shaped like its cards while the project is read.
               () => document.querySelector('main [data-slot="loading"][aria-busy="true"]') !== null,
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           wire.set("refused");
@@ -293,7 +289,7 @@ describe("B: environment identity compatibility", () => {
             s.page.waitForFunction(
               () =>
                 document.querySelector("main")?.textContent?.includes("identity fixture refused"),
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           wire.set("modern");
@@ -308,7 +304,7 @@ describe("B: environment identity compatibility", () => {
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => document.querySelector("main")?.innerText.includes("stage-existing"),
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           expect(s.drivers.zerops.requests.get("GET /project/unknown-environment") ?? 0).toBe(0);
@@ -331,7 +327,7 @@ describe("B: environment identity compatibility", () => {
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => document.querySelector("main")?.innerText.includes("stage-existing"),
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           expect(s.drivers.zerops.world.appVersions.get("version-preview")).toMatchObject({

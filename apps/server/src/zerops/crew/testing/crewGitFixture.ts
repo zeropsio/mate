@@ -10,6 +10,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeTimersPromises from "node:timers/promises";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -334,15 +335,12 @@ export const supervisorDown = (root: string): void => {
   write(root, ".git/devsup/down", "");
 };
 
-/** Blocks until `ready` holds or `timeoutMs` passes; for a process the far side started. */
-export const waitUntil = (ready: () => boolean, timeoutMs = 5_000): boolean => {
-  const tick = new Int32Array(new SharedArrayBuffer(4));
-  for (let waited = 0; waited < timeoutMs; waited += 50) {
-    if (ready()) return true;
-    Atomics.wait(tick, 0, 0, 50);
-  }
-  return ready();
-};
+/** Waits for an external process while leaving the test runner's hang guard responsive. */
+export const waitUntil = (ready: () => boolean): Effect.Effect<true> =>
+  Effect.promise(async (signal) => {
+    while (!ready()) await NodeTimersPromises.setTimeout(50, undefined, { signal });
+    return true as const;
+  });
 
 /** Whether a process is alive on this machine. */
 export const alive = (pid: number): boolean => {

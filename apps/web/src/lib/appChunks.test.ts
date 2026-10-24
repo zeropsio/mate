@@ -7,6 +7,7 @@ function page() {
   const slices: Array<() => void> = [];
   const declared: Array<() => Promise<unknown>> = [];
   const loads: string[] = [];
+  const drains: number[] = [];
   const surface = (name: string, options: { fails?: boolean; declares?: string } = {}) => {
     const load = async () => {
       loads.push(name);
@@ -16,7 +17,11 @@ function page() {
     };
     return load;
   };
-  const warmer = makeChunkWarmer({ loaders: () => declared, idle: (then) => slices.push(then) });
+  const warmer = makeChunkWarmer({
+    loaders: () => declared,
+    idle: (then) => slices.push(then),
+    drained: () => drains.push(loads.length),
+  });
   /** Runs idle slices until none is waiting, letting each load settle in between. */
   const settle = async () => {
     while (slices.length > 0) {
@@ -24,7 +29,7 @@ function page() {
       for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
     }
   };
-  return { declared, loads, surface, warmer, settle, slices };
+  return { declared, drains, loads, surface, warmer, settle, slices };
 }
 
 describe("warming the app's surfaces", () => {
@@ -56,6 +61,17 @@ describe("warming the app's surfaces", () => {
     p.warmer.warm();
     await p.settle();
     expect(p.loads).toEqual(loads);
+  });
+
+  // The page's receipt that warming finished: what waits on a warmed surface waits on it, never on
+  // a window of time.
+  it("a pass says it is done once every surface it loaded has settled", async () => {
+    const p = page();
+    p.declared.push(p.surface("Crew"), p.surface("Review", { declares: "Data" }));
+    p.warmer.warm();
+    expect(p.drains).toEqual([]);
+    await p.settle();
+    expect(p.drains).toEqual([3]);
   });
 
   it("surfaces load one per idle slice, never all at once", async () => {
@@ -91,7 +107,11 @@ describe("warming the app's surfaces", () => {
       return { default: "Crew" };
     });
     const slices: Array<() => void> = [];
-    const warmer = makeChunkWarmer({ loaders: () => [open], idle: (then) => slices.push(then) });
+    const warmer = makeChunkWarmer({
+      loaders: () => [open],
+      idle: (then) => slices.push(then),
+      drained: () => {},
+    });
     warmer.warm();
     slices.shift()!();
     for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();

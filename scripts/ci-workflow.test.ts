@@ -277,6 +277,7 @@ it.each([
   "apps/web/test/scenarios/fakes/g-outage/outage.ts",
   "apps/web/test/scenarios/harness/scenario.ts",
   "scripts/test-postgres.ts",
+  "scripts/test-ports.ts",
   "apps/server/src/engine/engine.ts",
   "packages/client-runtime/src/data.ts",
 ])("PR scenarios run when their input %s changes", (path) => {
@@ -797,13 +798,6 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
 });
 
 it.each([
-  {
-    ref: "refs/heads/kh-next",
-    event: "push",
-    runs: [],
-    skip: false,
-    api: false,
-  },
   {
     ref: "refs/heads/kh-bisect/abc1234",
     event: "push",
@@ -1574,7 +1568,10 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     string,
     { needs?: string | string[]; "timeout-minutes": number }
   >;
+  // prepare waits for main's in-flight run of the same tree; a wait followed by a full run happens
+  // only after main's run was cancelled, so the wait is not counted as execution.
   const budget = (id: string): number => {
+    if (id === "prepare") return 0;
     const job = jobs[id]!;
     return job["timeout-minutes"] + Math.max(0, ...[job.needs ?? []].flat().map(budget));
   };
@@ -1585,7 +1582,7 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     ).toBeLessThanOrEqual(15);
   }
   for (const [id, measuredCeiling] of Object.entries({
-    prepare: 1,
+    prepare: 9,
     changes: 1,
     check: 9,
     state_smoke: 3,
@@ -1602,5 +1599,184 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
       jobs[id]!["timeout-minutes"],
       `ASSERTION: ${id} retains its measured execution headroom`,
     ).toBeGreaterThanOrEqual(measuredCeiling);
+  }
+});
+
+const mainRun = (id: number, tree: string) => ({
+  id,
+  head_branch: "main",
+  event: "push",
+  status: "completed",
+  conclusion: "success",
+  head_commit: { tree_id: tree },
+});
+const pendingRun = (id: number, tree: string, status: "in_progress" | "queued") => ({
+  id,
+  head_branch: "main",
+  event: "push",
+  status,
+  conclusion: null,
+  head_commit: { tree_id: tree },
+});
+const hqJob = (conclusion: string) => ({ name: "Test HQ 1", conclusion });
+
+it.each([
+  {
+    title: "a kh-next push skips when main verified the same tree in full",
+    runs: [mainRun(1, "same")],
+    jobs: { 1: [hqJob("success")] },
+    skip: true,
+  },
+  {
+    title: "a kh-next push whose tree differs from main's by one byte runs in full",
+    runs: [mainRun(1, "other")],
+    jobs: { 1: [hqJob("success")] },
+    skip: false,
+  },
+  {
+    title: "a main run that itself skipped does not count as verification",
+    runs: [mainRun(1, "same")],
+    jobs: { 1: [{ name: "CI promotion", conclusion: "success" }, hqJob("skipped")] },
+    skip: false,
+  },
+  {
+    title: "a later full main run of the tree counts when an earlier match was a reuse",
+    runs: [mainRun(1, "same"), mainRun(2, "same")],
+    jobs: { 1: [hqJob("skipped")], 2: [hqJob("success")] },
+    skip: true,
+  },
+  {
+    title: "a kh-next push finds no main run to reuse",
+    runs: [],
+    jobs: {},
+    skip: false,
+  },
+  {
+    title:
+      "a kh-next push waits for main's in-progress run of the same tree and skips when it passes",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: true,
+  },
+  {
+    title: "a kh-next push waits for main's queued run of the same tree and skips when it passes",
+    runs: [pendingRun(1, "same", "queued")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: true,
+  },
+  {
+    title: "main failed on the same tree, so kh-next fails without running",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("failure")] },
+    watch: { 1: 1 },
+    conclusions: { 1: "failure" },
+    skip: "red",
+  },
+  {
+    title: "a kh-next push runs in full when main's in-progress run of the same tree was cancelled",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: {},
+    watch: { 1: 1 },
+    conclusions: { 1: "cancelled" },
+    skip: false,
+  },
+  {
+    title: "a kh-next push does not wait for an in-progress main run of another tree",
+    runs: [pendingRun(1, "other", "in_progress")],
+    jobs: { 1: [hqJob("success")] },
+    watch: { 1: 0 },
+    skip: false,
+  },
+  {
+    title: "a kh-next push does not take a waited main run that itself skipped as verification",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: { 1: [hqJob("skipped")] },
+    watch: { 1: 0 },
+    skip: false,
+  },
+])("CI verification reuse: $title", ({ runs, jobs, skip, ...rest }) => {
+  const watch: Record<number, number> = "watch" in rest ? rest.watch : {};
+  const conclusions: Record<number, string> = "conclusions" in rest ? rest.conclusions : {};
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const step = workflow.jobs.prepare.steps.find(
+    (candidate: { id?: string }) => candidate.id === "verdict",
+  );
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "ci-reuse-"));
+  try {
+    const bin = NodePath.join(dir, "bin");
+    NodeFS.mkdirSync(bin);
+    NodeFS.writeFileSync(NodePath.join(dir, "runs.json"), JSON.stringify({ workflow_runs: runs }));
+    for (const [id, list] of Object.entries(jobs))
+      NodeFS.writeFileSync(NodePath.join(dir, `jobs-${id}.json`), JSON.stringify({ jobs: list }));
+    for (const [id, code] of Object.entries(watch))
+      NodeFS.writeFileSync(NodePath.join(dir, `watch-${id}`), String(code));
+    for (const [id, conclusion] of Object.entries(conclusions))
+      NodeFS.writeFileSync(NodePath.join(dir, `conclusion-${id}`), conclusion);
+    // Stands in for `gh api <url> --paginate --jq <filter>`, applying the filter like gh does.
+    NodeFS.writeFileSync(
+      NodePath.join(bin, "gh"),
+      `#!/usr/bin/env bash
+if [[ "$1 $2" == "run watch" ]]; then
+  [[ "$4" == "--exit-status" ]] || exit 98
+  exit "$(cat "${dir}/watch-$3")"
+fi
+if [[ "$1 $2" == "run view" ]]; then
+  cat "${dir}/conclusion-$3"
+  exit 0
+fi
+url=$2
+filter=\${@: -1}
+case "$url" in
+  *"/jobs?"*) id=\${url#*/runs/}; id=\${id%%/*}; file="${dir}/jobs-$id.json" ;;
+  *"branch=main"*) file="${dir}/runs.json" ;;
+  *) echo '{"workflow_runs":[]}' > "${dir}/empty.json"; file="${dir}/empty.json" ;;
+esac
+jq -r "$filter" "$file"
+`,
+      { mode: 0o755 },
+    );
+    const repo = NodePath.join(dir, "repo");
+    NodeFS.mkdirSync(repo);
+    const git = (...args: string[]) =>
+      NodeChildProcess.execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+    git("init", "-q");
+    NodeFS.writeFileSync(NodePath.join(repo, "file"), "x");
+    git("add", "file");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x");
+    const tree = git("rev-parse", "HEAD^{tree}").trim();
+    const resolved = JSON.stringify(runs).replaceAll('"same"', JSON.stringify(tree));
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "runs.json"),
+      JSON.stringify({ workflow_runs: JSON.parse(resolved) }),
+    );
+    const output = NodePath.join(dir, "output");
+    NodeFS.writeFileSync(output, "");
+    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
+      cwd: repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_EVENT_NAME: "push",
+        GITHUB_REF: "refs/heads/kh-next",
+        GITHUB_SHA: "0".repeat(40),
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        GITHUB_OUTPUT: output,
+      },
+    });
+    if (skip === "red") {
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Main CI run 1 failed on this tree");
+      expect(NodeFS.readFileSync(output, "utf8")).toBe("");
+    } else {
+      expect(result.status, result.stderr).toBe(0);
+      expect(NodeFS.readFileSync(output, "utf8")).toBe(`skip=${skip}\n`);
+    }
+  } finally {
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 });

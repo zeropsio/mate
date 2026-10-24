@@ -174,10 +174,9 @@ const services = Layer.effect(
  */
 const advancing = <A>(receipt: Effect.Effect<A>): Effect.Effect<A> =>
   Effect.gen(function* () {
-    const waiting = yield* Effect.forkChild(
-      receipt.pipe(Effect.timeout("5 seconds"), Effect.orDie, TestClock.withLive),
-      { startImmediately: true },
-    );
+    const waiting = yield* Effect.forkChild(receipt.pipe(Effect.orDie, TestClock.withLive), {
+      startImmediately: true,
+    });
     while (waiting.pollUnsafe() === undefined) yield* TestClock.adjust("100 millis");
     return yield* Fiber.join(waiting);
   });

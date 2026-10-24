@@ -19,7 +19,7 @@ describe("B: navigation protocol", () => {
           s.page.waitForFunction(
             () =>
               document.body.innerText.includes("HQ needs an update to show all navigation facts."),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
         yield* Effect.promise(() =>
@@ -28,16 +28,14 @@ describe("B: navigation protocol", () => {
               [...document.querySelectorAll("button")].some(
                 (button) => button.textContent?.trim() === "Update HQ",
               ),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
-        yield* Effect.promise(() =>
-          s.page.locator('::-p-aria(Update HQ[role="button"])').setTimeout(15_000).click(),
-        );
+        yield* Effect.promise(() => s.page.locator('::-p-aria(Update HQ[role="button"])').click());
         yield* Effect.promise(() =>
           s.page.waitForFunction(
             () => document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ"),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
         s.drivers.hq.mapFrames((frame) => frame);
@@ -49,12 +47,10 @@ describe("B: navigation protocol", () => {
               !document.body.innerText.includes(
                 "HQ needs an update to show all navigation facts.",
               ) && document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ"),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
-        yield* Effect.promise(() =>
-          s.page.locator('::-p-aria(Close[role="button"])').setTimeout(15_000).click(),
-        );
+        yield* Effect.promise(() => s.page.locator('::-p-aria(Close[role="button"])').click());
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),

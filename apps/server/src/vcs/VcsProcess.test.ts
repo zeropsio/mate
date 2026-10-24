@@ -384,7 +384,7 @@ describe("VcsProcess.run", () => {
       const errorFiber = yield* run({
         operation: "test.timeout",
         command: "node",
-        args: ["-e", "setTimeout(() => {}, 5000)"],
+        args: ["-e", "setInterval(() => {}, 60000)"],
         cwd: process.cwd(),
         timeoutMs: 50,
       }).pipe(Effect.flip, Effect.forkScoped);

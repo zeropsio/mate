@@ -57,7 +57,7 @@ describe("owner-reported layout regressions", () => {
             await page.reload({ waitUntil: "domcontentloaded" });
             await page.waitForFunction(
               (at) => document.querySelector(at)?.textContent?.includes("v0.1.0") === true,
-              { timeout: 20_000, polling: 100 },
+              { polling: 100 },
               cardAt,
             );
             // What a settled card might still move shows within a beat.

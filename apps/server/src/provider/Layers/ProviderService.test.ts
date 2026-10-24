@@ -2103,7 +2103,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         provider.sendTurn({ threadId: session.threadId, input: "first", attachments: [file] }),
         { startImmediately: true },
       );
-      yield* Deferred.await(admitted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+      yield* Deferred.await(admitted).pipe(Effect.orDie);
       const second = yield* Effect.forkChild(
         provider.sendTurn({ threadId: session.threadId, input: "second" }),
         { startImmediately: true },

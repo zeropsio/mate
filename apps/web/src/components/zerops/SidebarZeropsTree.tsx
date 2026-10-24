@@ -96,7 +96,7 @@ import {
   type ZeropsPublicRoute,
   formatRunClock,
 } from "@t3tools/client-runtime/zerops";
-import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
+import { birthFaceOf, hqZeropsProject } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateIdentitiesAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
@@ -739,6 +739,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
   const accountOrgId = useAccountOrgId();
   const carried = useCarriedCoreBuild();
+  // HQ's update deploys to its own Zerops project; an HQ every organization shares has none here.
+  const hqProject = hqZeropsProject(accountHq.hq);
   const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
@@ -2271,10 +2273,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           {session !== null &&
           session !== undefined &&
           mayBearHq(session.activeOrganization ?? undefined) &&
-          accountHq.hq.kind === "official" &&
+          hqProject !== undefined &&
           carried !== undefined ? (
             <ZeropsHqUpdate
-              projectId={accountHq.hq.projectId}
+              projectId={hqProject}
               carried={carried}
               answering={structureView.coreBuild}
               trigger="Update HQ"

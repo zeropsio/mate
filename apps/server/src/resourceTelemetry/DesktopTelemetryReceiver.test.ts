@@ -53,7 +53,7 @@ describe("DesktopTelemetryReceiver", () => {
         const subscription = yield* PubSub.subscribe(healthChanges);
 
         yield* recordDesktopTelemetrySampleHealth(health, healthChanges, nextSample);
-        const published = yield* PubSub.take(subscription).pipe(Effect.timeout("1 second"));
+        const published = yield* PubSub.take(subscription);
 
         expect(DateTime.toEpochMillis(Option.getOrThrow(published.lastSampleAt))).toBe(2_000);
       }),

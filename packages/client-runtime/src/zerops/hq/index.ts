@@ -3,7 +3,10 @@ export {
   hqAnchorName,
   hqOrgTokenName,
   hqProjectsOf,
+  hqZeropsProject,
   ownersAndAdmins,
+  SHARED_HQ_DOOR,
+  sharedHq,
   type OfficialHq,
 } from "./anchor.ts";
 export {

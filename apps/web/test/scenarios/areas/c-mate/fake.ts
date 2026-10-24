@@ -428,7 +428,6 @@ export class ChatDriver {
           this.receipts.once("browser-subscription", received);
         }),
         "Browser stream subscription",
-        8000,
       );
     } finally {
       this.receipts.off("browser-subscription", received);
@@ -671,7 +670,6 @@ export class ChatDriver {
           this.receipts.on("wire", listener);
         }),
         `Crew command ${tag}`,
-        8000,
       );
       return found()!;
     } finally {
@@ -782,7 +780,6 @@ export class ChatDriver {
           timer = setInterval(check, 25);
         }),
         `Mate's engine applied ${op}`,
-        8000,
       );
     } finally {
       clearInterval(timer);
@@ -889,7 +886,6 @@ export class ChatDriver {
           timer = setInterval(check, 25);
         }),
         `Mate received "${text}"`,
-        8000,
       );
     } finally {
       clearInterval(timer);
@@ -914,7 +910,6 @@ export class ChatDriver {
           timer = setInterval(check, 25);
         }),
         `Mate applied an answer to ${requestId}`,
-        8000,
       );
     } finally {
       clearInterval(timer);

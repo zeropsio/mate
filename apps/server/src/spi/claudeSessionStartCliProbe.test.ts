@@ -103,7 +103,7 @@ describe.runIf(process.env.T3_CLAUDE_CLI_PROBE === "1")("Claude CLI probe: sessi
           input: "What is the crew's secret word? Reply with the word only.",
           attachments: [],
         });
-        yield* Deferred.await(completed).pipe(Effect.timeout("90 seconds"));
+        yield* Deferred.await(completed);
         yield* adapter.stopSession(THREAD_ID);
 
         assert.strictEqual(starts.length, 1, "the extension saw no session start");

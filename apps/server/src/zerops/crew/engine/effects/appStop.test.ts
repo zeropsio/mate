@@ -43,11 +43,11 @@ describe("crew.app.stop", () => {
           const app = yield* CrewApp.CrewApp;
           yield* createLane("backend");
           const started = yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 });
-          waitUntil(() => exists(root, ".crew/backend.child"));
+          yield* waitUntil(() => exists(root, ".crew/backend.child"));
           const pid = started.state === "running" ? started.pid : -1;
           const child = Number(read(root, ".crew/backend.child"));
           const stopped = okValue(yield* attempt(handler, row()));
-          waitUntil(() => !alive(pid) && !alive(child));
+          yield* waitUntil(() => !alive(pid) && !alive(child));
           assert.deepStrictEqual(
             { stopped, gone: [alive(pid), alive(child)] },
             { stopped: { state: "stopped" }, gone: [false, false] },

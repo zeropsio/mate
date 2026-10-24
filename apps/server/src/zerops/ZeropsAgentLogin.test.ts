@@ -158,7 +158,6 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
     const writeWhere = (predicate: (write: WriteRecord) => boolean) =>
       Stream.runHead(Stream.fromQueue(written).pipe(Stream.filter(predicate))).pipe(
         Effect.map(Option.getOrThrow),
-        Effect.timeout("5 seconds"),
         Effect.orDie,
       );
     return {
@@ -1387,7 +1386,7 @@ const realFeed = (home: string, { signedIn, ...options }: RealFeedOptions = {}) 
       loginChecks,
       signIns,
       feed,
-      waitingCredential: Deferred.await(pending).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      waitingCredential: Deferred.await(pending).pipe(Effect.orDie),
     };
   });
 

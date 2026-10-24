@@ -21,7 +21,7 @@ export class MergeGate {
     await this.held;
   }
   received() {
-    return deadline(this.receipt, "Person pressed Merge", 15_000);
+    return deadline(this.receipt, "Person pressed Merge");
   }
   resume() {
     this.release?.();
@@ -53,7 +53,7 @@ export class HqFrameHold {
     this.arrived?.();
   }
   received() {
-    return deadline(this.receipt, "HQ socket frame buffered", 15_000);
+    return deadline(this.receipt, "HQ socket frame buffered");
   }
   resume() {
     this.holding = false;

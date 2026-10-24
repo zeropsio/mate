@@ -54,7 +54,7 @@ import {
 export * from "./doorThrowawayState.ts";
 import { THROWAWAY_SWEEP_AGE_MS, type OwedThrowaway } from "./doorThrowawayState.ts";
 
-export { zeropsThrowawayPlatform } from "../data/adapters/doorThrowaway.ts";
+export { zeropsHqOrgKey, zeropsThrowawayPlatform } from "../data/adapters/doorThrowaway.ts";
 
 export interface ConnectThroughThrowawayInput<T> {
   readonly platform: ZeropsThrowawayPlatform;

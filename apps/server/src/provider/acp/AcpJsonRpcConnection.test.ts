@@ -103,12 +103,10 @@ describe("AcpSessionRuntime", () => {
         runtime.getEvents().pipe(Stream.filter((event) => event._tag === "ConfigOptionsUpdated")),
       );
 
-      yield* runtime.request("_test/startup-metadata", {}).pipe(Effect.timeout("5 seconds"));
+      yield* runtime.request("_test/startup-metadata", {});
       expect(handlerCalls.length).toBeGreaterThan(0);
       expect((yield* updates)[0]?.configOptions).toEqual(yield* runtime.getConfigOptions);
-      const selected = yield* runtime
-        .setConfigOption("model", "composer-2")
-        .pipe(Effect.timeout("5 seconds"));
+      const selected = yield* runtime.setConfigOption("model", "composer-2");
       expect((yield* updates)[0]?.configOptions).toEqual(selected.configOptions);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
@@ -1147,16 +1145,28 @@ describe("AcpSessionRuntime", () => {
   it.effect("completes session/load after replay becomes idle while its RPC stays pending", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
-      const started = yield* runtime.start().pipe(Effect.timeout("2 seconds"));
+      const replayReceived = yield* Deferred.make<void>();
+      yield* runtime.handleSessionUpdate((notification) =>
+        notification.update.sessionUpdate === "user_message_chunk"
+          ? Deferred.succeed(replayReceived, undefined).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      const startup = yield* runtime.start().pipe(Effect.forkChild);
+      yield* Deferred.await(replayReceived);
+      yield* TestClock.adjust("50 millis");
+      const started = yield* Fiber.join(startup);
 
       expect(started.sessionId).toBe("mock-session-1");
       expect(started.sessionSetupResult._meta).toMatchObject({
         t3SessionLoadReady: "replay_idle",
       });
 
-      const unexpectedReplayEvent = yield* Stream.runHead(runtime.getEvents()).pipe(
+      const replayEvent = yield* Stream.runHead(runtime.getEvents()).pipe(
         Effect.timeoutOption("100 millis"),
+        Effect.forkChild,
       );
+      yield* TestClock.adjust("100 millis");
+      const unexpectedReplayEvent = yield* Fiber.join(replayEvent);
       expect(Option.isNone(unexpectedReplayEvent)).toBe(true);
     }).pipe(
       Effect.provide(
@@ -1167,7 +1177,6 @@ describe("AcpSessionRuntime", () => {
             args: mockAgentArgs,
             env: {
               T3_ACP_HANG_LOAD_SESSION_AFTER_REPLAY: "1",
-              T3_ACP_LOAD_SESSION_DELAY_MS: "10000",
             },
           },
           cwd: process.cwd(),
@@ -1179,7 +1188,6 @@ describe("AcpSessionRuntime", () => {
       ),
       Effect.scoped,
       Effect.provide(NodeServices.layer),
-      TestClock.withLive,
     ),
   );
 

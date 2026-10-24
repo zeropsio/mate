@@ -43,7 +43,7 @@ const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", histo
       s.web.setPerson(page, "personal");
       await s.web.gotoWithSession(page, "personal");
       await (await menuMateRow(page, name, 8000)).click();
-      await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 });
+      await page.waitForSelector('[role="textbox"]', { visible: true });
     });
     for (const [question, answer] of exchanges) {
       yield* mate.provider.turn([{ kind: "say", text: answer! }]);
@@ -55,7 +55,7 @@ const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", histo
             document.body.innerText.includes(answer) &&
             !location.pathname.startsWith("/draft/") &&
             !document.querySelector('button[aria-label="Stop generation"]'),
-          { timeout: 8000, polling: 100 },
+          { polling: 100 },
           answer!,
         ),
       );
@@ -89,9 +89,7 @@ const realChat = (s: Scenario) => {
   const ready = (name = "Ada") =>
     Effect.gen(function* () {
       yield* ui.then.path(route(s, name));
-      yield* Effect.promise(() =>
-        s.page.waitForSelector('[role="textbox"]', { visible: true, timeout: 8000 }),
-      );
+      yield* Effect.promise(() => s.page.waitForSelector('[role="textbox"]', { visible: true }));
     });
   const open = (name = "Ada", text = history) =>
     Effect.gen(function* () {
@@ -869,7 +867,6 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.type("Inspect the preview shown here");
         const upload = s.page.waitForResponse(
           (response) => response.url().includes("/api/attachments/upload/") && response.ok(),
-          { timeout: 8000 },
         );
         yield* chat.when.pastePicture("question-preview.png");
         yield* Effect.promise(() => upload);

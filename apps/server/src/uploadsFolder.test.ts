@@ -8,6 +8,7 @@ import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 
 import {
@@ -23,6 +24,7 @@ const fsGuard = vi.hoisted(() => ({
   syncBanned: false,
   heldCopy: null as Promise<void> | null,
   admitted: null as (() => void) | null,
+  cleaned: null as (() => void) | null,
   copying: 0,
   peakCopying: 0,
 }));
@@ -54,7 +56,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       fsGuard.copying -= 1;
     }
   };
-  return { ...actual, copyFile, default: { ...actual, copyFile } };
+  const rm: typeof actual.rm = async (...args) => {
+    await actual.rm(...args);
+    fsGuard.cleaned?.();
+  };
+  return { ...actual, copyFile, rm, default: { ...actual, copyFile, rm } };
 });
 
 const bytes = (text: string) => Buffer.byteLength(text, "utf8");
@@ -138,6 +144,7 @@ describe("keepSentFiles", () => {
     fsGuard.syncBanned = false;
     fsGuard.heldCopy = null;
     fsGuard.admitted = null;
+    fsGuard.cleaned = null;
     fsGuard.peakCopying = 0;
     NodeFS.rmSync(root, { recursive: true, force: true });
   });
@@ -317,7 +324,7 @@ describe("keepSentFiles", () => {
     }),
   );
 
-  it.live("lets other work run while a copy is slow, and stops waiting at its bound", () =>
+  it.effect("lets other work run while a copy is slow, and stops waiting at its bound", () =>
     Effect.gen(function* () {
       const storedPath = stored("thread-a", "spec v1");
       let release!: () => void;
@@ -332,21 +339,17 @@ describe("keepSentFiles", () => {
           Effect.tap(() => Effect.sync(() => (settled = true))),
         ),
       );
-      yield* Deferred.await(admitted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+      yield* Deferred.await(admitted).pipe(Effect.orDie);
       expect(settled).toBe(false);
+      yield* TestClock.adjust("50 millis");
       const place = yield* Fiber.join(keeping);
       expect(place.path).toBe(storedPath);
       expect(place.note).toMatch(/took longer than/u);
       expect(NodeFS.existsSync(NodePath.join(uploadsDir, "spec.pdf"))).toBe(false);
       release();
       fsGuard.heldCopy = null;
-      yield* Effect.promise(() =>
-        vi.waitFor(() => {
-          expect(NodeFS.readFileSync(NodePath.join(uploadsDir, "spec.pdf"), "utf8")).toBe(
-            "spec v1",
-          );
-        }),
-      );
+      yield* drainUploads;
+      expect(NodeFS.readFileSync(NodePath.join(uploadsDir, "spec.pdf"), "utf8")).toBe("spec v1");
       expect(NodeFS.readdirSync(uploadsDir)).toEqual(["spec.pdf"]);
       expect(yield* keepOne("spec.pdf", storedPath)).toEqual({
         path: NodePath.join(uploadsDir, "spec.pdf"),
@@ -367,7 +370,7 @@ describe("keepSentFiles", () => {
     }),
   );
 
-  it.live(
+  it.effect(
     "waits for all of a send's copies until one deadline, and never starts one after it",
     () =>
       Effect.gen(function* () {
@@ -375,20 +378,37 @@ describe("keepSentFiles", () => {
         fsGuard.heldCopy = new Promise<void>((resolve) => {
           release = resolve;
         });
+        const admitted = yield* Deferred.make<void>();
+        const cleaned = yield* Deferred.make<void>();
+        let copiesCleaned = 0;
+        fsGuard.cleaned = () => {
+          copiesCleaned += 1;
+          if (copiesCleaned === 5) Deferred.doneUnsafe(cleaned, Effect.void);
+        };
+        let copiesAdmitted = 0;
+        fsGuard.admitted = () => {
+          copiesAdmitted += 1;
+          if (copiesAdmitted === 2) Deferred.doneUnsafe(admitted, Effect.void);
+        };
         const startedAt = yield* Clock.currentTimeMillis;
-        const places = yield* keepSentFiles({
+        const keeping = yield* keepSentFiles({
           uploadsDir,
           indexDir,
           items: many(5),
           timeoutMs: 60,
-        });
+        }).pipe(Effect.forkChild);
+        yield* Deferred.await(admitted);
+        yield* TestClock.adjust("60 millis");
+        const places = yield* Fiber.join(keeping);
         expect((yield* Clock.currentTimeMillis) - startedAt).toBeLessThan(400);
         expect(places.every((place) => /took longer than/u.test(place.note ?? ""))).toBe(true);
         release();
         fsGuard.heldCopy = null;
         const kept = () => NodeFS.readdirSync(uploadsDir).filter((name) => !name.startsWith("."));
-        yield* Effect.promise(() => vi.waitFor(() => expect(kept()).toHaveLength(2)));
-        yield* drainUploads.pipe(Effect.timeout("5 seconds"), Effect.orDie);
+        yield* Deferred.await(cleaned);
+        // Let the copy promises observe their completed finalizers before draining.
+        yield* Effect.yieldNow;
+        yield* drainUploads;
         expect(kept()).toHaveLength(2);
       }),
   );

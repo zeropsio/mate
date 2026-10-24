@@ -41,7 +41,7 @@ describe("CrewApp", () => {
             env: { MODE: "it's dev" },
           });
           const lane = `${root}/.crew/backend`;
-          waitUntil(() => exists(lane, "child.pid"));
+          yield* waitUntil(() => exists(lane, "child.pid"));
           const again = yield* app.run({
             ...LANE,
             command: DEV_SERVER,
@@ -52,7 +52,7 @@ describe("CrewApp", () => {
           const child = Number(read(lane, "child.pid"));
           const entry = supervisedApps(root)["crew-backend"];
           const stopped = yield* app.stop(LANE);
-          waitUntil(() => !alive(pid) && !alive(child));
+          yield* waitUntil(() => !alive(pid) && !alive(child));
           assert.deepStrictEqual(
             {
               again,
@@ -91,7 +91,7 @@ describe("CrewApp", () => {
             port: 3002,
             env: { MODE: "it's dev" },
           });
-          waitUntil(() => exists(`${root}/.crew/backend`, "env.txt"));
+          yield* waitUntil(() => exists(`${root}/.crew/backend`, "env.txt"));
           const [call] = supervisorCalls(root);
           yield* app.stop(LANE);
           assert.deepStrictEqual(
@@ -149,7 +149,7 @@ describe("CrewApp", () => {
                 if (row.down) supervisorDown(root);
                 const lane = `${root}/.crew/backend`;
                 const started = yield* app.run({ ...LANE, command: DEV_SERVER, port: 3001 });
-                waitUntil(() => exists(lane, "child.pid"));
+                yield* waitUntil(() => exists(lane, "child.pid"));
                 const pid = started.state === "running" ? started.pid : 0;
                 const child = exists(lane, "child.pid") ? Number(read(lane, "child.pid")) : 0;
                 const live = (each: number) => each > 0 && alive(each);
@@ -160,7 +160,7 @@ describe("CrewApp", () => {
                   port: exists(lane, "port.txt") ? read(lane, "port.txt") : undefined,
                 };
                 const stopped = yield* app.stop(LANE);
-                waitUntil(() => !live(pid) && !live(child));
+                yield* waitUntil(() => !live(pid) && !live(child));
                 return {
                   dev: row.dev,
                   ...running,

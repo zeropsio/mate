@@ -44,5 +44,6 @@ zerops:
       envVariables:
         PORT: "8080"
         # The direct connection (5432): an advisory lock does not survive the pooler on 6432.
-        DATABASE_URL: ${db_connectionString}
+        # `${db_connectionString}` names no database.
+        DATABASE_URL: postgresql://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
       start: node dist/main.mjs

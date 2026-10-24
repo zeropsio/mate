@@ -318,6 +318,17 @@ interface Usage {
 
 type Position = Pick<Manifest, "eventSeq" | "xmax">;
 
+/** Where the database stands: the event log's last `seq` and the snapshot's `xmax`, as text. */
+export const POSITION_QUERY = `
+  SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
+         pg_snapshot_xmax(pg_current_snapshot())::text AS xmax`;
+
+/** A position from the row {@link POSITION_QUERY} answers. */
+export const positionOf = (row: { readonly [column: string]: unknown } | undefined): Position => ({
+  eventSeq: Number(row?.["seq"] ?? 0),
+  xmax: String(row?.["xmax"] ?? ""),
+});
+
 /**
  * Backup as `/health` tells it, the newest set's outcome: `off` with no store, `pending` before a
  * first set (on a volume with none staged), `ok` with the newest set kept, `degraded` when a set the retention targets keep went to
@@ -389,7 +400,7 @@ export class Backup extends Context.Service<
  * A set's id: when it was taken, to the millisecond, sortable as text. Two sets never share one:
  * a set that fails removes its own staging, which must not be a kept set's.
  */
-const idOf = (takenAt: string) => takenAt.replace(/[-:]/gu, "");
+export const idOf = (takenAt: string) => takenAt.replace(/[-:]/gu, "");
 
 /** How long each target keeps sets, and the part of an id that names its hour, day, month. */
 const TARGETS: ReadonlyArray<{
@@ -525,10 +536,8 @@ export const backupLayer = (
 
       /** Where the database stands: the event log's last `seq` and the snapshot's `xmax`. */
       const positionNow = Effect.map(
-        sql<{ readonly seq: string; readonly xmax: string }>`
-          SELECT COALESCE((SELECT max(seq) FROM hq_git_event), 0)::text AS seq,
-                 pg_snapshot_xmax(pg_current_snapshot())::text AS xmax`,
-        ([row]): Position => ({ eventSeq: Number(row?.seq ?? 0), xmax: row?.xmax ?? "" }),
+        sql.unsafe<{ readonly seq: string; readonly xmax: string }>(POSITION_QUERY),
+        ([row]) => positionOf(row),
       );
 
       /** The newest staged set's manifest, if the set is whole. */

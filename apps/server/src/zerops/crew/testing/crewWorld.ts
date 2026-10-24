@@ -296,6 +296,13 @@ export interface CrewWorld {
   readonly profileInstalls: Effect.Effect<number>;
   /** The crew's service as the server serves it, for its RPCs. */
   readonly service: Effect.Effect<CrewEngineService>;
+  /** All already-recorded crew work has produced its durable receipts. */
+  readonly settled: Effect.Effect<void>;
+  /** Accepted sign-in inputs, including inputs that leave the crew unchanged. */
+  readonly signInReconciliations: Effect.Effect<number>;
+  /** The engine's injected wall clock, including time advanced by the journey. */
+  readonly currentTimeMillis: Effect.Effect<number>;
+  readonly advanceTime: (millis: number) => Effect.Effect<void>;
   /** The Mate engine's own update drain. */
   readonly engineUpdateDrain: Effect.Effect<MateUpdateDrain | undefined>;
   /** How many sessions the crew opened on its services (git and shell). */

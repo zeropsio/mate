@@ -323,6 +323,20 @@ const isRemoteRefusal = Schema.is(HqRemoteRefusalReason);
 const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
 const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
 
+/**
+ * HQ serves an organization once an Owner or Admin started it by signing in (`409
+ * org_not_started`); until then, its other people wait for one.
+ */
+const HQ_ORG_NOT_STARTED =
+  "An Owner or Admin of this organization must sign in to Mate first. Then try again.";
+
+/**
+ * HQ checks the key an Owner's or Admin's sign-in starts it with — the organization's, read-only —
+ * and the person's role, and refuses either (`403 forbidden` `org_key_rejected`).
+ */
+const HQ_ORG_KEY_REJECTED =
+  "HQ did not accept the organization's key. Sign in again as an Owner or Admin.";
+
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
 export function hqRefusalWords(refusal: {
   readonly code: string;
@@ -336,6 +350,8 @@ export function hqRefusalWords(refusal: {
       ? remoteRefusalWords(refusal.remote ?? { reason })
       : "Mate could not change this repository connection. Review its settings and try again.";
   }
+  if (refusal.code === "org_not_started") return HQ_ORG_NOT_STARTED;
+  if (reason === "org_key_rejected") return HQ_ORG_KEY_REJECTED;
   if (isGitRequestRefusal(reason)) return GIT_REQUEST_WORDS[reason];
   if (
     refusal.gitSetup &&

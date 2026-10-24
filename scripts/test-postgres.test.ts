@@ -110,3 +110,157 @@ it("re-initialises a cluster directory whose PG_VERSION is gone and says why", a
     NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
+
+const writeCluster = (data: string, marker: string) => {
+  NodeFS.mkdirSync(data, { recursive: true });
+  NodeFS.writeFileSync(NodePath.join(data, "PG_VERSION"), "17\n");
+  NodeFS.writeFileSync(NodePath.join(data, marker), "");
+};
+const redoPanic = new Error(
+  "pg_ctl failed: \n\npg_ctl: could not start server\n2026-10-24 09:00:00 LOG:  redo starts at 21/AD000000\n2026-10-24 09:00:01 PANIC:  failed to add new item\n2026-10-24 09:00:01 LOG:  startup process (PID 7) was terminated by signal 6: Abort trap",
+);
+
+it.each([
+  {
+    name: "a cluster whose WAL redo panics is moved aside and recreated at once",
+    starts: [redoPanic, undefined],
+    postmaster: undefined,
+    outcome: "started",
+    calls: ["start", "initialise", "start"],
+    cluster: "fresh",
+    notices: [
+      "PostgreSQL test cluster {data} could not start (2026-10-24 09:00:01 PANIC:  failed to add new item); moved it aside to {data}.unstartable, removing it and re-initialising.",
+    ],
+  },
+  {
+    name: "a cluster that starts is reused untouched",
+    starts: [undefined],
+    postmaster: undefined,
+    outcome: "started",
+    calls: ["start"],
+    cluster: "old",
+    notices: [],
+  },
+  {
+    name: "a failed start whose postmaster still runs is no unstartable cluster and is kept",
+    starts: [redoPanic],
+    postmaster: 4242,
+    outcome: "failed",
+    calls: ["start"],
+    cluster: "old",
+    notices: [],
+  },
+  {
+    name: "a recreated cluster that cannot start either fails the run once",
+    starts: [redoPanic, new Error("pg_ctl failed: could not bind IPv4 address")],
+    postmaster: undefined,
+    outcome: "failed",
+    calls: ["start", "initialise", "start"],
+    cluster: "fresh",
+    notices: [
+      "PostgreSQL test cluster {data} could not start (2026-10-24 09:00:01 PANIC:  failed to add new item); moved it aside to {data}.unstartable, removing it and re-initialising.",
+    ],
+  },
+])("$name", async ({ starts, postmaster, outcome, calls, cluster, notices }) => {
+  const { startCluster } = await import("./test-postgres.ts");
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-heal-"));
+  try {
+    const data = NodePath.join(home, "data");
+    writeCluster(data, "old");
+    if (postmaster !== undefined)
+      NodeFS.writeFileSync(NodePath.join(data, "postmaster.pid"), `${postmaster}\n${data}\n`);
+    const seen: string[] = [];
+    const reported: string[] = [];
+    const run = () =>
+      startCluster(data, {
+        initialise: () => {
+          seen.push("initialise");
+          writeCluster(data, "fresh");
+        },
+        start: () => {
+          seen.push("start");
+          const failure = starts.shift();
+          if (failure) throw failure;
+        },
+        report: (line) => reported.push(line),
+        alive: (pid) => pid === 4242,
+      });
+    if (outcome === "started") run();
+    else expect(run).toThrow("pg_ctl failed");
+    expect(seen).toEqual(calls);
+    expect(NodeFS.existsSync(NodePath.join(data, cluster))).toBe(true);
+    expect(NodeFS.existsSync(NodePath.join(data, cluster === "old" ? "fresh" : "old"))).toBe(false);
+    expect(NodeFS.existsSync(`${data}.unstartable`)).toBe(false);
+    expect(reported).toEqual(notices.map((line) => line.replaceAll("{data}", data)));
+  } finally {
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
+  const { reclaimLeasedDatabases } = await import("./test-postgres.ts");
+  const dropped: string[] = [];
+  reclaimLeasedDatabases((query) => {
+    if (query.startsWith("SELECT")) return "mate_test_0a1b\nmate_test_ff00\n";
+    dropped.push(query);
+    return "";
+  });
+  expect(dropped).toEqual([
+    "DROP DATABASE mate_test_0a1b WITH (FORCE)",
+    "DROP DATABASE mate_test_ff00 WITH (FORCE)",
+  ]);
+  expect(() => reclaimLeasedDatabases(() => "mate_test_x; DROP TABLE y\n")).toThrow(
+    "Unexpected test database: mate_test_x; DROP TABLE y",
+  );
+});
+
+it("a later run removes test PostgreSQL homes unused for a day unless a postmaster still runs on them", async () => {
+  const { pruneStaleClusters } = await import("./test-postgres.ts");
+  const parent = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-prune-"));
+  try {
+    const now = Date.parse("2026-10-24T12:00:00Z");
+    const hours = (count: number) => (now - count * 60 * 60 * 1000) / 1000;
+    const home = (name: string, idleHours: number, postmaster?: number) => {
+      const path = NodePath.join(parent, name);
+      writeCluster(NodePath.join(path, "data"), "base");
+      NodeFS.writeFileSync(NodePath.join(path, "postgres.log"), "");
+      if (postmaster !== undefined)
+        NodeFS.writeFileSync(
+          NodePath.join(path, "data", "postmaster.pid"),
+          `${postmaster}\n${path}\n`,
+        );
+      for (const entry of ["data", "postgres.log", "."])
+        NodeFS.utimesSync(NodePath.join(path, entry), hours(idleHours), hours(idleHours));
+      return path;
+    };
+    const self = home("mate-test-pg-501", 48);
+    home("mate-test-pg-501-0a1b2c3d4e5f", 25);
+    home("mate-test-pg-501-111111111111", 25, 4242);
+    home("mate-test-pg-501-222222222222", 25, 4343);
+    home("mate-test-pg-501-333333333333", 23);
+    home("another-cache", 72);
+    const reported: string[] = [];
+
+    pruneStaleClusters({
+      home: self,
+      now,
+      alive: (pid) => pid === 4242,
+      report: (line) => reported.push(line),
+    });
+
+    expect(NodeFS.readdirSync(parent).toSorted()).toEqual([
+      "another-cache",
+      "mate-test-pg-501",
+      "mate-test-pg-501-111111111111",
+      "mate-test-pg-501-333333333333",
+    ]);
+    expect(reported).toEqual(
+      ["mate-test-pg-501-0a1b2c3d4e5f", "mate-test-pg-501-222222222222"].map(
+        (name) =>
+          `Removed test PostgreSQL home ${NodePath.join(parent, name)}: unused for over 24 h and no postmaster runs on it.`,
+      ),
+    );
+  } finally {
+    NodeFS.rmSync(parent, { recursive: true, force: true });
+  }
+});

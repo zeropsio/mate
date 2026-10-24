@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { CrewRunOptions } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -486,23 +485,23 @@ describe("CrewEngine runs", () => {
   it.live("a run's time is the time its crew works: sitting idle never reaches the limit", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
-        const startedAt = yield* Clock.currentTimeMillis;
+        const startedAt = yield* world.currentTimeMillis;
         const runId = yield* started(world, { landing: "person" });
         // Nothing to do yet: the crew sits idle.
-        yield* Effect.sleep("400 millis");
+        yield* world.advanceTime(400);
         const thread = yield* firstTurn(world, () =>
           write(world.root, ".crew/backend/ok.txt", "ok\n"),
         );
-        yield* Effect.sleep("400 millis");
+        yield* world.advanceTime(400);
         yield* reportDone(world, thread);
         yield* ended(world, thread, 0.1);
         yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
         // Its work waits for your review: idle again.
-        yield* Effect.sleep("400 millis");
+        yield* world.advanceTime(400);
         yield* world.press({ _tag: "pause", runId });
         const paused = (yield* world.snapshotWhere((current) => current.run?.state === "paused"))
           .run!;
-        const wallMs = (yield* Clock.currentTimeMillis) - startedAt;
+        const wallMs = (yield* world.currentTimeMillis) - startedAt;
         // The turn's 400 ms count; the two idle stretches around it do not.
         assert.isAtLeast(paused.elapsedMs, 350);
         assert.isAtMost(paused.elapsedMs, wallMs - 750);
@@ -520,7 +519,7 @@ describe("CrewEngine runs", () => {
         yield* reportDone(world, thread);
         yield* ended(world, thread, 0.1);
         yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
-        yield* Effect.sleep("300 millis");
+        yield* world.settled;
         assert.strictEqual((yield* world.snapshotWhere(() => true)).board.tasks[0]?.state, "ready");
       }),
     ),

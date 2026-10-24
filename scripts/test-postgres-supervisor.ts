@@ -11,8 +11,11 @@ import {
   lifecycleLock,
   postgresBinDir,
   postgresHome,
-  prepareClusterDirectory,
+  pruneStaleClusters,
+  reclaimLeasedDatabases,
+  startCluster,
 } from "./test-postgres.ts";
+import { reservePort } from "./test-ports.ts";
 
 const pgBinDir = postgresBinDir();
 const data = NodePath.join(postgresHome, "data");
@@ -30,50 +33,55 @@ const run = (command: string, args: string[]) => {
   return result.stdout;
 };
 const urlOf = (port: number, name: string) => `postgres://postgres@127.0.0.1:${port}/${name}`;
-const freePort = () =>
-  new Promise<number>((resolve, reject) => {
-    const server = NodeNet.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("No PostgreSQL TCP address"));
-        return;
-      }
-      server.close(() => resolve(address.port));
-    });
-  });
 
 async function guardPostgres() {
-  if (prepareClusterDirectory(data, (line) => process.stderr.write(`${line}\n`)) === "initialise")
-    run("initdb", [
-      "-D",
-      data,
-      "-U",
-      "postgres",
-      "--auth=trust",
-      "--no-sync",
-      "--locale=C",
-      "-E",
-      "UTF8",
-    ]);
-  const port = await freePort();
-  NodeFS.writeFileSync(
-    NodePath.join(data, "postgresql.auto.conf"),
-    [
-      `port = ${port}`,
-      "listen_addresses = '127.0.0.1'",
-      "unix_socket_directories = ''",
-      "max_connections = 400",
-      "fsync = off",
-      "synchronous_commit = off",
-      "full_page_writes = off",
-      "",
-    ].join("\n"),
-  );
-  let running = false;
-  run("pg_ctl", ["-D", data, "-l", NodePath.join(postgresHome, "postgres.log"), "-w", "start"]);
-  running = true;
+  // The guard holds the reservation until it ends, so no other test is handed PostgreSQL's port.
+  const { port, release } = await reservePort();
+  try {
+    startCluster(data, {
+      initialise: () =>
+        run("initdb", [
+          "-D",
+          data,
+          "-U",
+          "postgres",
+          "--auth=trust",
+          "--no-sync",
+          "--locale=C",
+          "-E",
+          "UTF8",
+        ]),
+      start: () => {
+        NodeFS.writeFileSync(
+          NodePath.join(data, "postgresql.auto.conf"),
+          [
+            `port = ${port}`,
+            "listen_addresses = '127.0.0.1'",
+            "unix_socket_directories = ''",
+            "max_connections = 400",
+            "fsync = off",
+            "synchronous_commit = off",
+            "full_page_writes = off",
+            "",
+          ].join("\n"),
+        );
+        run("pg_ctl", [
+          "-D",
+          data,
+          "-l",
+          NodePath.join(postgresHome, "postgres.log"),
+          "-w",
+          "start",
+        ]);
+      },
+      report: (line) => process.stderr.write(`${line}\n`),
+    });
+  } catch (error) {
+    // The held socket would keep a guard whose PostgreSQL never started alive.
+    await release();
+    throw error;
+  }
+  let running = true;
   const stop = () => {
     if (!running) return;
     run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
@@ -93,6 +101,11 @@ async function guardPostgres() {
 }
 
 async function supervise() {
+  pruneStaleClusters({
+    home: postgresHome,
+    now: Date.now(),
+    report: (line) => process.stderr.write(`${line}\n`),
+  });
   let bootstrapOwner = process.connected;
   let onIdle: (() => void) | undefined;
   process.once("disconnect", () => {
@@ -176,15 +189,8 @@ async function supervise() {
         END LOOP; END $$`,
       ]);
     };
-    // A prior supervisor's leases cannot survive its loss. Reclaim its managed databases on start.
-    for (const name of sql("SELECT datname FROM pg_database WHERE datname LIKE 'mate_test_%'")
-      .trim()
-      .split("\n")
-      .filter(Boolean)) {
-      if (!/^mate_test_[a-f0-9]+$/u.test(name))
-        throw new Error(`Unexpected test database: ${name}`);
-      sql(`DROP DATABASE ${name} WITH (FORCE)`);
-    }
+    // A healed cluster has none; a reused one still holds the leases its killed supervisor left.
+    reclaimLeasedDatabases(sql);
     const owners = new Set<NodeNet.Socket>();
     let shutdown: Promise<void> | undefined;
     const idle = (): Promise<void> => {

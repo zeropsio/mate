@@ -431,17 +431,13 @@ export const makeFixtureWorld = Effect.gen(function* () {
  */
 export const CREW_ENGINE_TEST_TIMEOUT = Number(process.env.CREW_JOURNEY_TIMEOUT ?? 120_000);
 
-/** Polls `check` until it holds, for work the engine runs in the background; dies when it never does. */
-export const eventually = <E, R>(
-  check: Effect.Effect<boolean, E, R>,
-  timeoutMs = 10_000,
-): Effect.Effect<void, E, R> =>
+/** Waits for background work; the test runner owns the hang guard. */
+export const eventually = <E, R>(check: Effect.Effect<boolean, E, R>): Effect.Effect<void, E, R> =>
   Effect.gen(function* () {
-    for (let waited = 0; waited < timeoutMs; waited += 25) {
+    while (true) {
       if (yield* check) return;
       yield* Effect.sleep("25 millis");
     }
-    if (!(yield* check)) return yield* Effect.die("eventually: the condition never held");
   });
 
 /** The crew home files a test starts from: one writer `backend` on the test service. */
