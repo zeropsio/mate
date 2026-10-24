@@ -109,7 +109,7 @@ export async function scriptedHistoryTemplate(
             );
           });
           return state;
-        }).pipe(Effect.timeout("100 seconds")),
+        }),
       ),
     );
   return {

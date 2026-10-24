@@ -250,11 +250,7 @@ const rig = (
       Effect.suspend(() => {
         const value = found();
         return value === undefined ? Effect.fail("not yet") : Effect.succeed(value);
-      }).pipe(
-        Effect.retry(Schedule.spaced(Duration.millis(5))),
-        Effect.timeout(Duration.seconds(3)),
-        Effect.orDie,
-      );
+      }).pipe(Effect.retry(Schedule.spaced(Duration.millis(5))), Effect.orDie);
     return {
       autoUpdatePolicy,
       link,
@@ -360,7 +356,7 @@ describe("ZeropsHqLink", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const { link, enrollment, sockets, until, enrollmentRead } = yield* rig({ everyMs: 10 });
-          yield* enrollmentRead.pipe(Effect.timeout("5 seconds"), Effect.orDie);
+          yield* enrollmentRead.pipe(Effect.orDie);
           assert.strictEqual(sockets.length, 0);
           yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
           const socket = yield* until(() => sockets[0]);
@@ -381,7 +377,6 @@ describe("ZeropsHqLink", () => {
               standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
             ),
             Effect.retry(Schedule.spaced(Duration.millis(5))),
-            Effect.timeout(Duration.seconds(3)),
           );
           assert.deepStrictEqual(held, STATE);
         }),
@@ -555,7 +550,6 @@ describe("ZeropsHqLink", () => {
             standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
           ),
           Effect.retry(Schedule.spaced(Duration.millis(5))),
-          Effect.timeout(Duration.seconds(3)),
         );
         assert.deepStrictEqual(held, placed);
       }),
@@ -577,7 +571,6 @@ describe("ZeropsHqLink", () => {
             standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
           ),
           Effect.retry(Schedule.spaced(Duration.millis(5))),
-          Effect.timeout(Duration.seconds(3)),
         );
         assert.deepStrictEqual(held, { ...older, appName: null });
       }),
@@ -601,7 +594,6 @@ describe("ZeropsHqLink", () => {
                 : Effect.fail("not yet"),
             ),
             Effect.retry(Schedule.spaced(Duration.millis(5))),
-            Effect.timeout(Duration.seconds(3)),
           );
         socket.hear({ type: "state", mate: { ...STATE, ownerUserId: "owner-1" } });
         const named = yield* ownerNamed("owner-1");

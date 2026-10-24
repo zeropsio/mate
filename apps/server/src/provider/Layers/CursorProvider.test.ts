@@ -1,5 +1,7 @@
 import * as NodeOS from "node:os";
 
+import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
 import type * as Crypto from "effect/Crypto";
@@ -116,25 +118,6 @@ const makeMockAgentWithAboutWrapper = Effect.fn("makeMockAgentWithAboutWrapper")
       execScriptSource({ scriptPath: mockAgentPath }),
     ].join("\n"),
   });
-});
-
-const waitForFileContent = Effect.fn("waitForFileContent")(function* (
-  filePath: string,
-  attempts = 40,
-) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const content = yield* fileSystem
-      .readFileString(filePath)
-      .pipe(Effect.catch(() => Effect.void));
-    if (content !== undefined) {
-      if (content.trim().length > 0) {
-        return content;
-      }
-    }
-    yield* Effect.sleep("50 millis");
-  }
-  return yield* Effect.die(`Timed out waiting for file content at ${filePath}`);
 });
 
 const makeProviderStatusEnvFixture = Effect.fn("makeProviderStatusEnvFixture")(function* () {

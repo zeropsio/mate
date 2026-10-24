@@ -1,6 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
@@ -134,15 +137,28 @@ it.layer(NodeServices.layer)("runExecCommand", (it) => {
   );
 });
 
-// Outside the layer block so the live clock is available: the deadline is a
-// real wall-clock timeout, and a virtual clock would never reach it.
-it.live("kills a command that outlives its deadline", () =>
+it.effect("kills a command that outlives its deadline", () =>
   Effect.gen(function* () {
-    const result = yield* runExecCommand({
+    const started = yield* Deferred.make<void>();
+    const runner = yield* ProcessRunner.ProcessRunner;
+    const running = yield* runExecCommand({
       command: "node",
-      args: ["-e", "setTimeout(() => {}, 60000)"],
+      args: ["-e", "process.stdout.write('ready'); setInterval(() => {}, 60000)"],
       timeoutMs: 250,
-    });
+    }).pipe(
+      Effect.provideService(ProcessRunner.ProcessRunner, {
+        ...runner,
+        run: (input) =>
+          runner.run({
+            ...input,
+            onStdoutChunk: () => Deferred.doneUnsafe(started, Effect.void),
+          }),
+      }),
+      Effect.forkChild,
+    );
+    yield* Deferred.await(started);
+    yield* TestClock.adjust(250);
+    const result = yield* Fiber.join(running);
 
     assert.isTrue(result.timedOut);
     assert.isNull(result.exitCode);

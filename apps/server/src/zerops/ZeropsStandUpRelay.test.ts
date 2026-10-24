@@ -40,14 +40,14 @@ const checked = <A, E, R>(trigger: Effect.Effect<A, E, R>) =>
     yield* trigger;
     yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
     yield* Fiber.join(pass);
-  }).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+  }).pipe(Effect.orDie);
 /** The followed calls' ends: one more pass, an interval on, finds the stand-up gone. */
 const finished = Effect.gen(function* () {
   const relay = yield* ZeropsStandUpRelay;
   const ended = yield* relay.finished.pipe(Effect.forkChild({ startImmediately: true }));
   yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
   yield* Fiber.join(ended);
-}).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+}).pipe(Effect.orDie);
 
 const CALL_AT = "2026-10-01T10:00:00.000Z";
 

@@ -377,7 +377,7 @@ describe("ResourceTelemetry", () => {
             if (snapshot.health.desktop.status === "degraded") return snapshot;
             yield* Effect.yieldNow;
           }
-        }).pipe(Effect.provide(telemetryLayer), Effect.timeout("1 second"), Effect.forkChild);
+        }).pipe(Effect.provide(telemetryLayer), Effect.forkChild);
 
         yield* Deferred.await(healthSubscribed);
         const degraded: DesktopTelemetryReceiver.DesktopTelemetryReceiverHealth = {

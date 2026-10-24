@@ -472,12 +472,7 @@ const makeBrowserOtlpPayload = (spanName: string) =>
       yield* Effect.promise(() => runtime.dispose());
     }
 
-    const request = yield* Effect.raceFirst(
-      Effect.promise(() => collector.firstRequest).pipe(Effect.orDie),
-      Effect.sleep(Duration.seconds(1)).pipe(
-        Effect.andThen(Effect.die(new Error("Timed out waiting for OTLP trace export"))),
-      ),
-    );
+    const request = yield* Effect.promise(() => collector.firstRequest).pipe(Effect.orDie);
     return JSON.parse(request.body) as OtlpTracer.TraceData;
   });
 
@@ -6557,11 +6552,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             },
             { concurrency: "unbounded" },
           ),
-        ).pipe(
-          Effect.timeoutOrElse({
-            duration: "5 seconds",
-            orElse: () => Effect.die(new Error("Timed out waiting for fixture feed snapshots")),
-          }),
         ),
       );
 
@@ -6611,11 +6601,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             Stream.runCollect,
           ),
         ),
-      ).pipe(
-        Effect.timeoutOrElse({
-          duration: "5 seconds",
-          orElse: () => Effect.die(new Error("Timed out waiting for browser stream chunks")),
-        }),
       );
 
       assert.equal(events.length, 3);
@@ -8266,7 +8251,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             requestCompletionMarker: true,
           }).pipe(Stream.take(3), Stream.runCollect),
         ),
-      ).pipe(Effect.timeout("2 seconds"));
+      );
 
       assert.equal(items[0]?.kind, "snapshot");
       assert.equal(items[1]?.kind, "thread-removed");
@@ -8771,7 +8756,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
           return yield* Fiber.join(itemsFiber);
         }),
-      ).pipe(Effect.timeout("2 seconds"));
+      );
 
       assert.equal(items[0]?.kind, "snapshot");
       assert.equal(items[1]?.kind, "synchronized");

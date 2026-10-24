@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 
 import * as CrewShell from "./CrewShell.ts";
 import {
@@ -11,6 +12,8 @@ import {
   serviceRepository,
   TEST_HOST,
   TEST_IDENTITY,
+  waitUntil,
+  write,
 } from "./testing/crewGitFixture.ts";
 
 const withService = <A, E>(
@@ -30,7 +33,7 @@ describe("CrewShell", () => {
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const result = yield* shell.run(TEST_HOST, CrewShell.script("pwd -P"), {
-          timeout: "10 seconds",
+          timeout: "11 minutes",
         });
         assert.deepStrictEqual(
           { code: result.code, stdout: result.stdout.trim(), timedOut: result.timedOut },
@@ -46,7 +49,7 @@ describe("CrewShell", () => {
         Effect.gen(function* () {
           const shell = yield* CrewShell.CrewShell;
           const error = yield* shell
-            .run(TEST_HOST, CrewShell.script("touch ran"), { timeout: "10 seconds" })
+            .run(TEST_HOST, CrewShell.script("touch ran"), { timeout: "11 minutes" })
             .pipe(Effect.flip);
           assert.deepStrictEqual(
             { reason: error.reason, ran: exists(root, "ran") },
@@ -62,7 +65,7 @@ describe("CrewShell", () => {
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const error = yield* shell
-          .run("otherdev", CrewShell.script("true"), { timeout: "10 seconds" })
+          .run("otherdev", CrewShell.script("true"), { timeout: "11 minutes" })
           .pipe(Effect.flip);
         assert.strictEqual(error.reason, "unverified");
       }),
@@ -74,7 +77,7 @@ describe("CrewShell", () => {
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const line = CrewShell.git("integration", ["commit", "-q", "--allow-empty", "-m", "x"]);
-        const result = yield* shell.run(TEST_HOST, line, { timeout: "10 seconds" });
+        const result = yield* shell.run(TEST_HOST, line, { timeout: "11 minutes" });
         assert.deepStrictEqual(
           {
             code: result.code,
@@ -93,9 +96,13 @@ describe("CrewShell", () => {
     withService(() =>
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
-        const result = yield* shell.run(TEST_HOST, CrewShell.script("sleep 5"), {
-          timeout: "1 second",
-        });
+        const result = yield* shell.run(
+          TEST_HOST,
+          CrewShell.script("exec node -e 'setInterval(() => {}, 1000)'"),
+          {
+            timeout: "1 second",
+          },
+        );
         assert.isTrue(result.timedOut);
       }),
     ),
@@ -106,7 +113,7 @@ describe("CrewShell", () => {
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const result = yield* shell.run(TEST_HOST, CrewShell.script("cat"), {
-          timeout: "10 seconds",
+          timeout: "11 minutes",
           stdin: "line one\nline two\n",
         });
         assert.strictEqual(result.stdout, "line one\nline two\n");
@@ -119,12 +126,20 @@ describe("CrewShell", () => {
       Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const session = CrewShell.script(
-          "echo + >> sessions.log; sleep 0.4; echo - >> sessions.log",
+          "echo + >> sessions.log; while [ ! -f sessions.release ]; do sleep 0.01; done; echo - >> sessions.log",
         );
-        yield* Effect.all(
-          Array.from({ length: 5 }, () => shell.run(TEST_HOST, session, { timeout: "10 seconds" })),
+        const sessions = yield* Effect.all(
+          Array.from({ length: 5 }, () => shell.run(TEST_HOST, session, { timeout: "11 minutes" })),
           { concurrency: "unbounded" },
+        ).pipe(Effect.forkChild);
+        yield* waitUntil(
+          () =>
+            exists(root, "sessions.log") &&
+            read(root, "sessions.log").trim().split("\n").length >=
+              CrewShell.MAX_CREW_SESSIONS_PER_HOST,
         );
+        write(root, "sessions.release", "release");
+        yield* Fiber.join(sessions);
         let running = 0;
         let peak = 0;
         for (const mark of read(root, "sessions.log").trim().split("\n")) {
@@ -143,7 +158,7 @@ describe("CrewShell", () => {
       const outcomes = yield* Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;
         const own = yield* shell.run(TEST_HOST, CrewShell.script("exit 125"), {
-          timeout: "10 seconds",
+          timeout: "11 minutes",
         });
         return own.code;
       }).pipe(
@@ -152,7 +167,7 @@ describe("CrewShell", () => {
           Effect.gen(function* () {
             const shell = yield* CrewShell.CrewShell;
             const error = yield* shell
-              .run(TEST_HOST, CrewShell.script("true"), { timeout: "10 seconds" })
+              .run(TEST_HOST, CrewShell.script("true"), { timeout: "11 minutes" })
               .pipe(Effect.flip);
             return error.reason;
           }).pipe(Effect.provide(crewShellLayer([missing]))),

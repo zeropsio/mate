@@ -690,7 +690,7 @@ const rows: ReadonlyArray<Row> = [
           crewPort: 3001,
           env: {},
         });
-        waitUntil(() => exists(root, ".crew/backend.port"));
+        yield* waitUntil(() => exists(root, ".crew/backend.port"));
         const stopped = yield* value("crew.app.stop", { handle: "backend", host: TEST_HOST });
         return { running, port: read(root, ".crew/backend.port").trim(), stopped };
       }),

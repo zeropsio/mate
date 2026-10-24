@@ -109,7 +109,7 @@ describe("stageNodePty", () => {
 });
 
 describe("bundleNodePtyIntoTarball", () => {
-  it("an npm-installed release supplies the headers bundled node-pty needs to compile", () => {
+  it("an npm-installed release supplies the headers bundled node-pty needs to compile", async () => {
     const packageDir = NodePath.join(root, "package");
     NodeFS.mkdirSync(packageDir);
     const manifest = buildReleaseManifest({
@@ -139,21 +139,31 @@ describe("bundleNodePtyIntoTarball", () => {
     bundleNodePtyIntoTarball({ tarballPath, nodePtyDir, linuxPrebuildDir });
     const installed = NodePath.join(root, "installed");
     NodeFS.mkdirSync(installed);
-    const result = NodeChildProcess.spawnSync(
-      "npm",
-      [
-        "install",
-        "--prefix",
-        installed,
-        "--no-audit",
-        "--no-fund",
-        "--package-lock=false",
-        tarballPath,
-      ],
-      {
-        encoding: "utf8",
-        timeout: 90_000,
-        env: { ...process.env, npm_config_build_from_source: "true" },
+    const result = await new Promise<{ status: number | null; stderr: string }>(
+      (resolve, reject) => {
+        const child = NodeChildProcess.spawn(
+          "npm",
+          [
+            "install",
+            "--prefix",
+            installed,
+            "--no-audit",
+            "--no-fund",
+            "--package-lock=false",
+            tarballPath,
+          ],
+          {
+            stdio: ["ignore", "ignore", "pipe"],
+            env: { ...process.env, npm_config_build_from_source: "true" },
+          },
+        );
+        let stderr = "";
+        child.stderr!.setEncoding("utf8");
+        child.stderr!.on("data", (chunk: string) => {
+          stderr += chunk;
+        });
+        child.on("error", reject);
+        child.on("close", (status) => resolve({ status, stderr }));
       },
     );
     assert.strictEqual(

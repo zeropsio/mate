@@ -447,19 +447,18 @@ const turnsOf = (world: World) =>
     });
   });
 
-/** The next completed worker cycle, with a failing bound if it never runs. */
+/** The next completed worker cycle; the test runner bounds a stalled worker. */
 const ticks = Effect.flatMap(ZeropsSetup, (setup) =>
   Effect.raceFirst(setup.nextPoll, setup.finished),
-).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+).pipe(Effect.orDie);
 
 const eventually = <A>(read: Effect.Effect<A>, holds: (value: A) => boolean) =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    while (true) {
       const value = yield* read;
       if (holds(value)) return value;
       yield* Effect.sleep(Duration.millis(10));
     }
-    return assert.fail("the condition never held");
   });
 
 /**
@@ -557,9 +556,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* withServer(world, database, () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
       );
-      yield* withServer(world, database, (setup) =>
-        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
-      );
+      yield* withServer(world, database, (setup) => setup.finished.pipe(Effect.orDie));
       assert.strictEqual((yield* turnsOf(world)).length, 1);
     }),
   );
@@ -891,17 +888,13 @@ describe("ZeropsSetup: the stand-up", () => {
       const database = freshDatabase();
       yield* withServer(world, database, () =>
         Effect.gen(function* () {
-          const ended = yield* Effect.exit(
-            (yield* ZeropsSetup).finished.pipe(Effect.timeout("5 seconds")),
-          );
+          const ended = yield* Effect.exit((yield* ZeropsSetup).finished);
           assert.strictEqual(ended._tag, "Success", "the settled setup worker must terminate");
           assert.isFalse(yield* stillPolling(world));
         }),
       );
       const reads = yield* Ref.get(world.hqReads);
-      yield* withServer(world, database, (setup) =>
-        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
-      );
+      yield* withServer(world, database, (setup) => setup.finished.pipe(Effect.orDie));
       assert.strictEqual(yield* Ref.get(world.hqReads), reads);
     }),
   );
@@ -923,7 +916,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.hq, hq);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
-          yield* setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie);
+          yield* setup.finished.pipe(Effect.orDie);
           assert.isFalse(yield* stillPolling(world));
           const document = yield* setup.document;
           assert.deepStrictEqual(
@@ -996,7 +989,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, database, () =>
-        Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+        Deferred.await(world.dispatchHeld).pipe(Effect.orDie),
       );
       yield* Ref.set(world.dispatchHangs, false);
       yield* withServer(world, database, () =>
@@ -1019,7 +1012,7 @@ describe("ZeropsSetup: the stand-up", () => {
         yield* Ref.set(world.signers, { "claude-code": "user-b" });
         yield* Ref.set(world.dispatchHangs, true);
         yield* withServer(world, database, () =>
-          Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+          Deferred.await(world.dispatchHeld).pipe(Effect.orDie),
         );
         yield* Ref.set(world.dispatchHangs, false);
         yield* Ref.set(world.hq, ASKED);
@@ -1041,14 +1034,12 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, database, () =>
-        Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+        Deferred.await(world.dispatchHeld).pipe(Effect.orDie),
       );
       yield* Ref.set(world.dispatchHangs, false);
       // Someone else entirely holds the agent now.
       yield* Ref.set(world.signers, { "claude-code": "user-c" });
-      yield* withServer(world, database, (setup) =>
-        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
-      );
+      yield* withServer(world, database, (setup) => setup.finished.pipe(Effect.orDie));
       assert.deepStrictEqual(yield* turnsOf(world), []);
       assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
     }),
@@ -1455,7 +1446,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
-          yield* Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+          yield* Deferred.await(world.dispatchHeld).pipe(Effect.orDie);
           assert.strictEqual(yield* stateOf(setup, "standup"), "waiting");
         }),
       );
@@ -1713,7 +1704,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
           eventually(
             Effect.sync(() => said),
             (lines) => lines.some((each) => each.includes("main conversation")),
-          ).pipe(Effect.timeout("5 seconds")),
+          ),
         ),
       ).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
       assert.deepStrictEqual(

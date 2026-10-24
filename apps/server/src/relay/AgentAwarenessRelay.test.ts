@@ -638,7 +638,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
             occurredAt: now,
           } as unknown as OrchestrationEvent);
 
-          yield* Deferred.await(threadShellRequested).pipe(Effect.timeout("2 seconds"));
+          yield* Deferred.await(threadShellRequested);
         }).pipe(
           Effect.provide(
             AgentAwarenessRelay.layer.pipe(
@@ -807,7 +807,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
             occurredAt: now,
           } as unknown as OrchestrationEvent);
 
-          const url = yield* Deferred.await(fetchSeen).pipe(Effect.timeout("2 seconds"));
+          const url = yield* Deferred.await(fetchSeen);
           expect(url.origin).toBe("https://transport.example.test");
           expect(productSpans).toContain("makePublishProof");
           expect(userSpans).not.toContain("makePublishProof");

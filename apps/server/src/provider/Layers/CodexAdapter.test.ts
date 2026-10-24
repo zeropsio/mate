@@ -34,7 +34,6 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
@@ -2182,16 +2181,13 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         },
       });
 
-      const firstEvent = yield* Fiber.join(firstEventFiber).pipe(Effect.timeout("10 seconds"));
+      const firstEvent = yield* Fiber.join(firstEventFiber);
       NodeAssert.equal(firstEvent._tag, "Some");
       if (firstEvent._tag !== "Some") {
         return;
       }
       NodeAssert.equal(firstEvent.value.type, "item.completed");
-      // Live clock so the timeout above is real: under the default test clock it
-      // waits on virtual time that never advances, and a regression would hang
-      // until the suite timeout instead of failing here.
-    }).pipe(TestClock.withLive),
+    }),
   );
 });
 

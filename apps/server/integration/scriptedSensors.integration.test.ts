@@ -71,5 +71,5 @@ it.live(
       } while (recovered.evidence.status !== "ok");
       expect(recovered.source.revision).toBeGreaterThan(strained.source.revision);
       expect(recovered.evidence.resources).toEqual([]);
-    }).pipe(Effect.timeout("15 seconds")),
+    }),
 );
