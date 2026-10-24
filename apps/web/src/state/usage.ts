@@ -2,12 +2,7 @@
 import { useMemo } from "react";
 import { Atom } from "effect/reactivity";
 import { agentUsage, agentUsageOwner, type AgentUsageRead } from "@t3tools/client-runtime/data";
-import {
-  EnvironmentId,
-  type UsageReport,
-  type UsageReportQuery,
-  type UsageSummaryInput,
-} from "@t3tools/contracts";
+import { EnvironmentId, type UsageReport, type UsageReportQuery } from "@t3tools/contracts";
 import type { MergedUsage, ModelTotals, ProviderTotals } from "@t3tools/shared/usageMerge";
 import {
   useAccountDataOptional,
@@ -15,7 +10,12 @@ import {
   useProjection,
 } from "../zerops/ZeropsAccountData";
 import type { UsageScope } from "../components/usage/usageDimensions";
-import { usageReportQuery, usageReportTotals } from "./usage.logic";
+import {
+  UNDATED_PERIOD,
+  usageReportQuery,
+  usageReportTotals,
+  type UsageWindow,
+} from "./usage.logic";
 
 const READING: AgentUsageRead = { kind: "reading" };
 const UNREAD = Atom.make<AgentUsageRead>(READING);
@@ -40,7 +40,7 @@ const sameGeneration = (left: UsageReport | null, right: UsageReport | null) =>
 const matchedRead = (report: UsageReport | null, read: AgentUsageRead): AgentUsageRead =>
   read.kind === "read" && !sameGeneration(report, read.report) ? READING : read;
 export function useAgentUsage(
-  input: UsageSummaryInput,
+  input: UsageWindow,
   scope: UsageScope,
   enabled = true,
   provenance: NonNullable<UsageReportQuery["provenance"]> = "live-responses",
@@ -177,7 +177,8 @@ export function usageReportView(
     }
   >();
   for (const row of periods?.groups ?? []) {
-    if (row.period === undefined || row.provider === undefined) continue;
+    if (row.period === undefined || row.provider === undefined || row.period === UNDATED_PERIOD)
+      continue;
     const bucket = buckets.get(row.period) ?? {
       day: row.period.slice(0, 10),
       hourStart: row.period,

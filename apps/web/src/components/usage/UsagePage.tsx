@@ -22,7 +22,7 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
-import { usageNativeCosts } from "../../state/usage.logic";
+import { usageChartDays, usageNativeCosts, type UsageWindow } from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   isAutomatedMatesOwner,
@@ -31,7 +31,6 @@ import {
 } from "../../zerops/usageEnvironmentIdentities";
 import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import {
-  enumerateDays,
   enumerateHourStarts,
   formatCount,
   formatDateTimeShort,
@@ -63,7 +62,7 @@ import {
 } from "./usageDimensions";
 import { UsageAutomatedBudget } from "./UsageAutomated";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
-import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
+import { createUsageIdentityIndex, undatedHistoryLine, usagePageState } from "./usagePage.logic";
 import { UsageReadStatus } from "./UsageReadStatus";
 import { UsageCoverage } from "./UsageCoverage";
 import { UsageLimitsSection } from "./UsageLimits";
@@ -99,6 +98,9 @@ const DIMENSION_OPTIONS = [
   { value: "mate", label: "Mate" },
 ] as const satisfies readonly { value: UsageDimension; label: string }[];
 const ALL = "all";
+/** Earlier history alone offers the window that counts history recorded without a day. */
+const ALL_HISTORY_VALUE = "all-history";
+const ALL_HISTORY_LABEL = "All";
 
 function scopeOwner(
   identities: UsageEnvironmentIdentities,
@@ -130,7 +132,10 @@ export function UsagePage({
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const shortcutOf = (option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number]) =>
     shortcutLabelForCommand(keybindings, option.command, { context: { usagePageOpen: true } });
-  const [windowSelection, setWindowSelection] = useState(() => ({
+  const [windowSelection, setWindowSelection] = useState<{
+    readonly days: number;
+    readonly window: UsageWindow;
+  }>(() => ({
     days: preferences.windowDays,
     window: makeWindow(
       preferences.windowDays,
@@ -145,7 +150,8 @@ export function UsagePage({
   );
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
-  const isPast24Hours = windowDays === 1;
+  const allHistory = window.allTime === true;
+  const isPast24Hours = windowDays === 1 && !allHistory;
   const identityRead = useUsageEnvironmentIdentities();
   const { listed, baseline, projects } = identityRead;
   const permitted = useMemo(
@@ -229,10 +235,9 @@ export function UsagePage({
     state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";
   const sessionsLabel = `${formatCount(merged.records)} ${provenance === "legacy-scanner" ? "records" : merged.records === 1 ? "turn" : "turns"}`;
 
-  const days = useMemo(
-    () => enumerateDays(window.sinceDay, window.untilDay),
-    [window.sinceDay, window.untilDay],
-  );
+  const days = useMemo(() => usageChartDays(window, merged.daily), [window, merged.daily]);
+  const periodsReport = sections.periods.kind === "read" ? sections.periods.report : null;
+  const undatedLine = allHistory ? undatedHistoryLine(periodsReport) : null;
   const hours = useMemo(
     () =>
       window.sinceTime === undefined || window.untilTime === undefined
@@ -258,6 +263,14 @@ export function UsagePage({
   const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
 
   const limitsNow = useNowMs();
+  const windowValue = allHistory ? ALL_HISTORY_VALUE : String(windowDays);
+  const selectPeriod = (value: string) =>
+    value === ALL_HISTORY_VALUE ? selectAllHistory() : selectWindow(Number(value));
+  const selectAllHistory = () =>
+    setWindowSelection({
+      days: windowDays,
+      window: { ...makeWindow(windowDays, undefined, "day"), allTime: true },
+    });
   const selectWindow = (days: number) => {
     if (!isUsageWindowDays(days) || (provenance === "legacy-scanner" && days === 1)) return;
     const nextPreferences = { metric, windowDays: days };
@@ -311,7 +324,10 @@ export function UsagePage({
       void Promise.allSettled(refreshes);
       return;
     }
-    const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
+    const nextWindow: UsageWindow = {
+      ...makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day"),
+      ...(allHistory ? { allTime: true as const } : {}),
+    };
     if (
       nextWindow.sinceDay === window.sinceDay &&
       nextWindow.untilDay === window.untilDay &&
@@ -323,8 +339,9 @@ export function UsagePage({
       setWindowSelection({ days: windowDays, window: nextWindow });
     }
   };
-  const windowLabel =
-    isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
+  const windowLabel = allHistory
+    ? "All recorded history"
+    : isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
       ? `${formatDateTimeShort(window.sinceTime, window.timeZone)} to ${formatDateTimeShort(window.untilTime, window.timeZone)}`
       : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)} · UTC days`;
   const topbarContent = (
@@ -380,11 +397,11 @@ export function UsagePage({
         <ToggleGroup
           aria-label="Usage period"
           variant="segmented"
-          value={[String(windowDays)]}
+          value={[windowValue]}
           disabled={showingLimits}
           onValueChange={(next) => {
             const value = next[0];
-            if (value) selectWindow(Number(value));
+            if (value) selectPeriod(value);
           }}
         >
           {WINDOW_OPTIONS.map((option) => (
@@ -397,6 +414,9 @@ export function UsagePage({
               </Toggle>
             </ShortcutHint>
           ))}
+          {provenance === "legacy-scanner" ? (
+            <Toggle value={ALL_HISTORY_VALUE}>{ALL_HISTORY_LABEL}</Toggle>
+          ) : null}
         </ToggleGroup>
         <Button
           onClick={refreshWindow}
@@ -432,11 +452,7 @@ export function UsagePage({
             ))}
           </SelectPopup>
         </Select>
-        <Select
-          value={String(windowDays)}
-          disabled={showingLimits}
-          onValueChange={(value) => selectWindow(Number(value))}
-        >
+        <Select value={windowValue} disabled={showingLimits} onValueChange={selectPeriod}>
           <SelectTrigger
             aria-label="Usage period"
             size="compact"
@@ -444,7 +460,9 @@ export function UsagePage({
             className="w-auto min-w-0"
           >
             <SelectValue>
-              {WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
+              {allHistory
+                ? ALL_HISTORY_LABEL
+                : WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -457,6 +475,9 @@ export function UsagePage({
                 {option.label}
               </SelectItem>
             ))}
+            {provenance === "legacy-scanner" ? (
+              <SelectItem value={ALL_HISTORY_VALUE}>{ALL_HISTORY_LABEL}</SelectItem>
+            ) : null}
           </SelectPopup>
         </Select>
         <Button
@@ -501,6 +522,7 @@ export function UsagePage({
                   const next = values[0];
                   if (next !== "live-responses" && next !== "legacy-scanner") return;
                   if (next === "legacy-scanner" && windowDays === 1) selectWindow(7);
+                  if (next === "live-responses" && allHistory) selectWindow(windowDays);
                   setProvenance(next);
                 }}
               >
@@ -690,6 +712,15 @@ export function UsagePage({
                         timeZone={window.timeZone}
                       />
                     )}
+                    {undatedLine === null ? null : (
+                      <p className="text-xs text-muted-foreground">{undatedLine}</p>
+                    )}
+                    {allHistory && periodsReport?.groupsMore === true ? (
+                      <p className="text-xs text-muted-foreground">
+                        The chart shows only the earliest days HQ returned; the totals count all of
+                        it.
+                      </p>
+                    ) : null}
                   </div>
                 </section>
 

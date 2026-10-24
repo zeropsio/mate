@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { USAGE_AUTOMATED_OWNER } from "@t3tools/contracts";
 import { AUTOMATED_MATES_OWNER } from "../../zerops/usageEnvironmentIdentities";
-import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
+import { createUsageIdentityIndex, undatedHistoryLine, usagePageState } from "./usagePage.logic";
 import { recordedReport, statistics } from "./usageTestFixtures";
 const projects = new Map([
   ["a", "Shop"],
@@ -87,4 +87,36 @@ describe("Automated work is its own line", () => {
       },
     ]);
   });
+});
+
+describe("Earlier history recorded without a day", () => {
+  const undated = (tokens: string, extra = {}) =>
+    recordedReport({
+      provenance: "legacy-scanner",
+      totals: statistics(tokens, "5"),
+      groups: [
+        {
+          key: "x",
+          provider: "claude",
+          period: "unallocated",
+          totals: statistics(tokens, "5"),
+          costUsdNanos: null,
+        },
+      ],
+      ...extra,
+    });
+  it("reads as recorded, never as no earlier history, and says the tokens it holds", () => {
+    const report = undated("14217292");
+    expect(
+      usagePageState({ read: { kind: "read", stale: false, report }, projects, scope: {} }),
+    ).toMatchObject({ kind: "ready", message: null });
+    expect(undatedHistoryLine(report)).toBe("14,217,292 tokens recorded without a day");
+  });
+  it.each([
+    {
+      name: "dated days only say nothing",
+      report: recordedReport({ provenance: "legacy-scanner" }),
+    },
+    { name: "no answer says nothing", report: null },
+  ])("$name", ({ report }) => expect(undatedHistoryLine(report)).toBeNull());
 });
