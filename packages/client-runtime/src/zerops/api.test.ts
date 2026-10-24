@@ -634,6 +634,26 @@ describe("ZeropsApiClient.renewHeldSession — the data layer's one repair", () 
   });
 });
 
+describe("ZeropsApiClient.accessToken — the token HQ's sign-in reads", () => {
+  it("hands out the held access token, and a refreshed one when asked", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { accessToken: "access-2", refreshToken: "refresh-2", userId: "user-1" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(client.accessToken(false)).resolves.toBe("access-1");
+    expect(stub.requests).toEqual([]);
+    await expect(client.accessToken(true)).resolves.toBe("access-2");
+    await expect(client.accessToken(false)).resolves.toBe("access-2");
+  });
+
+  it("has none to hand out once signed out", async () => {
+    const client = new ZeropsApiClient({ fetch: async () => jsonResponse(200, {}) });
+    await expect(client.accessToken(false)).rejects.toMatchObject({ kind: "expired-session" });
+  });
+});
+
 describe("a throttled answer's Retry-After", () => {
   const NOW = Date.UTC(2026, 8, 30, 12, 0, 0);
   it.each<[string | null, number | null]>([

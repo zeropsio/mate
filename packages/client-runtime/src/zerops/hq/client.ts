@@ -13,12 +13,10 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
  *
- * A person enters HQ as they enter a Mate: the app mints a throwaway named for HQ's project
- * (`mate-door:<hqProjectId>:<nonce>`; `mate-door:hq:<nonce>` for an HQ every organization shares,
- * `SHARED_HQ_DOOR`), presents it once at `POST /api/door`, and deletes it
- * (`withThrowaway`). HQ answers a session of its own, which this client sends as `Authorization:
- * Bearer` until HQ stops taking it; then it comes through the door once more. Where the account
- * keeps it (`kept`, audit K7), a load presents the kept session before any door.
+ * A person signs in with their Zerops access token (`POST /api/door {accessToken, orgId}`, in the
+ * body only) and HQ answers a session of its own, which this client sends as `Authorization:
+ * Bearer` and renews before it ends with the same request and a current token, keeping its id.
+ * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
  * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
@@ -37,6 +35,7 @@ import {
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
 import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
+import { signInStartingOrganisation, type OrgStartPorts } from "./orgKeyMint.logic.ts";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
@@ -609,6 +608,15 @@ const CALL_TIMEOUT_MS = 20_000;
  */
 const WRITE_TIMEOUT_MS = 45_000;
 
+/** A session is renewed once it is this close to its end. */
+const RENEW_BEFORE_MS = 15 * 60_000;
+
+interface DoorAnswer {
+  readonly session: string;
+  readonly expiresAt: string;
+  readonly orgKeyKept?: boolean;
+}
+
 /**
  * A lost answer can mean the write landed. Keep an uncertain receipt rather than repeat it
  * without checking what HQ accepted.
@@ -1005,14 +1013,17 @@ export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
   readonly fetch: FetchImplementation;
-  /** Mints a throwaway for HQ's door, hands its value to `use` alone, and deletes it. */
-  readonly throughDoor: <T>(use: (token: string) => Promise<T>) => Promise<T>;
-  readonly openSocket: OpenHqSocket;
   /**
-   * HQ's session as the account keeps it for this organization and HQ across loads (audit K7):
-   * the first call presents the kept one before any door, every session the door opens is kept,
-   * and one HQ no longer takes is forgotten. Absent: the session lives in this page only.
+   * The person's Zerops access token; `refresh` asks Zerops for a new one first, which a sign-in
+   * does once when HQ answers `401 zerops_person_required` to the one it was given. HQ reads it
+   * once at sign-in and at each renewal and keeps nothing of it.
    */
+  readonly accessToken: (refresh: boolean) => Promise<string>;
+  /** The organisation this client signs in to. */
+  readonly orgId: string;
+  /** The instant, for the renewal of a session; the wall clock where absent. */
+  readonly now?: () => number;
+  readonly openSocket: OpenHqSocket;
   /**
    * Waits until a write may be sent to this HQ, or fails it before anything is sent: the page may
    * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
@@ -1021,19 +1032,18 @@ export function makeHqApi(input: {
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
   /**
-   * The organization's key, for a door HQ answers `409 org_not_started`: HQ serves an organization
-   * once its Owner's or Admin's client hands it one as `orgKey` (mate-hq `spec/protocol.md`
-   * "Doors"). Absent: that refusal stands.
+   * The organization's key, for a sign-in HQ answers `409 org_not_started`: HQ serves an
+   * organization once its Owner's or Admin's client hands it one as `orgKey`. Absent: that refusal
+   * stands.
    */
-  readonly orgKey?: {
-    /** Whether this person may start the organization: an active Owner or Admin. */
-    readonly mayStart: () => Promise<boolean>;
-    /** Mints the key, hands its value to `use` alone, and takes it back where HQ refused it. */
-    readonly handOver: <T>(use: (orgKey: string) => Promise<T>) => Promise<T>;
-  };
+  readonly startOrganisation?: Pick<
+    OrgStartPorts<DoorAnswer>,
+    "mayStart" | "mintKey" | "deleteKey" | "withLock"
+  >;
+  /** HQ's session as the account keeps it for this organization and HQ across loads. */
   readonly kept?: {
-    /** The kept session's token; null when none is kept, or it ends too soon to present. */
-    readonly read: () => string | null;
+    /** The kept session; null when none is kept, or it ends too soon to present. */
+    readonly read: () => { readonly token: string; readonly expiresAtMs: number } | null;
     readonly keep: (session: { readonly token: string; readonly expiresAt: string }) => void;
     readonly forget: (token: string) => void;
   };
@@ -1042,57 +1052,103 @@ export function makeHqApi(input: {
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 
-  /** The session the account kept, presented before any door; null when it keeps none. */
+  /** When the session in hand ends; null where it is not known. */
+  let expiresAtMs: number | null = null;
+  const now = input.now ?? Date.now;
+
+  /** The session the account kept, presented before any sign-in; null when it keeps none. */
   const restore = (): Promise<string> | null => {
-    const token = input.kept?.read() ?? null;
-    if (token === null) return null;
-    session = Promise.resolve(token);
+    const kept = input.kept?.read() ?? null;
+    if (kept === null) return null;
+    expiresAtMs = kept.expiresAtMs;
+    session = Promise.resolve(kept.token);
     return session;
   };
 
   /** HQ no longer takes this session: it is dropped here, and forgotten where it was kept. */
   const drop = (held: Promise<string> | null, token: string) => {
-    if (session === held) session = null;
+    if (session === held) {
+      session = null;
+      expiresAtMs = null;
+    }
     input.kept?.forget(token);
   };
 
-  /** The sessions the door opened that HQ has not yet taken on any call: none renews. */
+  /** The sessions sign-in opened that HQ has not yet taken on any call: none renews. */
   const unproven = new WeakSet<Promise<string>>();
 
-  const door = async (body: { readonly token: string; readonly orgKey?: string }) =>
-    json<{ readonly session: string; readonly expiresAt: string }>(
-      await send(input.fetch, `${origin}/api/door`, {
-        method: "POST",
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
-      }),
-    );
-
   /**
-   * Through the door with the throwaway; an organization HQ has not started, started by an Owner
-   * or Admin with the same throwaway — HQ did not take it — and the organization's key.
+   * `POST /api/door` with the person's access token; with a session as its bearer it renews that
+   * session, which keeps its id.
    */
-  const admitted = (token: string) =>
-    door({ token }).catch(async (cause: unknown) => {
-      const orgKey = input.orgKey;
-      if (!(cause instanceof HqError && cause.code === "org_not_started") || orgKey === undefined)
-        throw cause;
-      if (!(await orgKey.mayStart())) throw cause;
-      return orgKey.handOver((key) => door({ token, orgKey: key }));
-    });
+  const signIn = async (orgKey?: string, renewing?: string): Promise<DoorAnswer> => {
+    const attempt = async (refresh: boolean) =>
+      json<DoorAnswer>(
+        await send(input.fetch, `${origin}/api/door`, {
+          method: "POST",
+          ...(renewing === undefined ? {} : { headers: { Authorization: `Bearer ${renewing}` } }),
+          body: JSON.stringify({
+            accessToken: await input.accessToken(refresh),
+            orgId: input.orgId,
+            ...(orgKey === undefined ? {} : { orgKey }),
+          }),
+          signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+        }),
+      );
+    try {
+      return await attempt(false);
+    } catch (cause) {
+      if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
+      return attempt(true);
+    }
+  };
+
+  const remember = (answer: DoorAnswer) => {
+    const ends = Date.parse(answer.expiresAt);
+    expiresAtMs = Number.isFinite(ends) ? ends : null;
+    input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
+  };
 
   const enter = () => {
-    const entering = input.throughDoor(admitted).then((answer) => {
-      input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
+    const start = input.startOrganisation;
+    const entering = (
+      start === undefined
+        ? signIn()
+        : signInStartingOrganisation<DoorAnswer>({
+            ...start,
+            orgId: input.orgId,
+            signIn: (orgKey) => signIn(orgKey),
+            isNotStarted: (cause) => cause instanceof HqError && cause.code === "org_not_started",
+          })
+    ).then((answer) => {
+      remember(answer);
       return answer.session;
     });
-    // A door that refused is not a session: the next call asks again.
+    // A sign-in that refused is not a session: the next call asks again.
     entering.catch(() => {
       if (session === entering) session = null;
     });
     unproven.add(entering);
     session = entering;
     return entering;
+  };
+
+  /** The renewal under way, shared by the calls that meet it. */
+  let renewal: Promise<void> | null = null;
+
+  /**
+   * Renews a session close to its end, silently: the same request with a current access token and
+   * the session as its bearer, which keeps the session's id. A renewal that fails leaves the
+   * session as it was; its own end is met by the call that finds it ended.
+   */
+  const renewIfDue = async (token: string): Promise<void> => {
+    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
+    renewal ??= signIn(undefined, token)
+      .then(remember, () => undefined)
+      .finally(() => {
+        renewal = null;
+      });
+    await renewal;
   };
 
   /**
@@ -1111,6 +1167,7 @@ export function makeHqApi(input: {
     for (;;) {
       const held = session ?? restore() ?? enter();
       const token = await held;
+      if (!unproven.has(held)) await renewIfDue(token);
       if (write && input.isCurrent?.() === false)
         throw new HqError({
           kind: "refused",

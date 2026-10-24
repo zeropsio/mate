@@ -1006,6 +1006,17 @@ export class ZeropsApiClient {
     await this.#refreshSession(true);
   }
 
+  /**
+   * The held session's access token, for the one call that hands it to HQ's sign-in; `refresh`
+   * renews the session with Zerops first, as a request does after a 401.
+   */
+  async accessToken(refresh: boolean): Promise<string> {
+    if (refresh && this.#session !== null) return (await this.#refreshSession(true)).accessToken;
+    const held = this.#session;
+    if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
+    return held.accessToken;
+  }
+
   /** Adopts a session read back from storage without re-notifying the owner. */
   restoreSession(session: ZeropsSession): void {
     this.#nextGeneration();

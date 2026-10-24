@@ -11,7 +11,8 @@ describe("personal Git credential client", () => {
     const seen: Array<{ url: string; init?: RequestInit }> = [];
     const api = makeHqApi({
       address: "https://hq.example",
-      throughDoor: async (use) => use("door"),
+      accessToken: async () => "access",
+      orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
       },
@@ -54,7 +55,8 @@ describe("personal Git credential client", () => {
     let attempts = 0;
     const api = makeHqApi({
       address: "https://hq.example",
-      throughDoor: async (use) => use("door"),
+      accessToken: async () => "access",
+      orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
       },

@@ -787,3 +787,4 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
+export { zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";

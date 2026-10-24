@@ -165,7 +165,8 @@ describe("Git environment setup's real form", () => {
   ])("a token refusal shows the host's reason and fix: %s", async (reason, message) => {
     const api = makeHqApi({
       address: "https://hq.example.test",
-      throughDoor: (use) => use("door"),
+      accessToken: async () => "access",
+      orgId: "org-1",
       openSocket: () => {
         throw new Error("No socket expected");
       },

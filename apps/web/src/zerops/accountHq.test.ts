@@ -389,84 +389,6 @@ describe("useAccountHq — the official HQ this page holds", () => {
     ]);
   });
 
-  it("an HQ that refuses as not official reads the member list once", async () => {
-    const OLD = { projectId: "P_OLD", address: "https://old.example.test" };
-    keepHqVerdict({ account: scope.account, clientId: "org-moved" }, OLD);
-    // An admin moved the anchor: the member list names another HQ now.
-    const hq = await rendered("org-moved", [anchor("P_NEW", "https://new.example.test")]);
-    expect(hq.reads()).toBe(0);
-
-    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
-      String(input).endsWith("/health")
-        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
-        : Response.json({ code: "not_active" }, { status: 503 }),
-    );
-    const client = {
-      accountEpoch: 1,
-      mintThrowaway: async (
-        _input: unknown,
-        options: { readonly beforeMint?: () => Promise<void> },
-      ) => {
-        await options.beforeMint?.();
-        return { id: "t-1", token: "door-token", mintingToken: "minting" };
-      },
-      deleteThrowaway: async () => {},
-    } as unknown as ZeropsApiClient;
-    await act(async () => {
-      await accountHqApi(client, "org-moved", OLD)
-        .structure()
-        .catch(() => undefined);
-    });
-    await reconciled(() =>
-      expect(hq.last().hq).toMatchObject({ address: "https://new.example.test" }),
-    );
-    expect([hq.reads(), hq.last().hq]).toEqual([
-      1,
-      { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
-    ]);
-  });
-
-  it("an HQ that refuses as not official reads a member list read this session again", async () => {
-    const OLD = { projectId: "P_OLD", address: "https://old.example.test" };
-    // This session read the member list, which named the old HQ, and keeps that verdict.
-    const members = [anchor(OLD.projectId, OLD.address)];
-    const hq = await rendered("org-moved-read", members);
-    expect([hq.reads(), hq.last().hq]).toEqual([1, { kind: "official", ...OLD }]);
-    // An admin moved the anchor: the member list names another HQ now.
-    members.splice(0, 1, anchor("P_NEW", "https://new.example.test"));
-
-    // The kept HQ's door: not serving, and its health says it is not the organization's HQ.
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL) =>
-      String(input).endsWith("/health")
-        ? Response.json({ state: "standby", official: "anchor_elsewhere", build: "b1" })
-        : Response.json({ code: "not_active" }, { status: 503 }),
-    );
-    const client = {
-      accountEpoch: 1,
-      mintThrowaway: async (
-        _input: unknown,
-        options: { readonly beforeMint?: () => Promise<void> },
-      ) => {
-        await options.beforeMint?.();
-        return { id: "t-1", token: "door-token", mintingToken: "minting" };
-      },
-      deleteThrowaway: async () => {},
-    } as unknown as ZeropsApiClient;
-    await act(async () => {
-      await accountHqApi(client, "org-moved-read", OLD)
-        .structure()
-        .catch(() => undefined);
-    });
-    await reconciled(() =>
-      expect(hq.last().hq).toMatchObject({ address: "https://new.example.test" }),
-    );
-    expect([hq.reads(), hq.last().hq]).toEqual([
-      2,
-      { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
-    ]);
-  });
-
   it("a stream outage does not silently change the kept HQ verdict", async () => {
     const HQ = { projectId: "P_HQ", address: "https://hq.example.test" };
     keepHqVerdict({ account: scope.account, clientId: "org-out" }, HQ);
@@ -641,11 +563,10 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     let mints = 0;
     const client = {
       accountEpoch: 901,
-      mintThrowaway: async () => {
+      accessToken: async () => {
         mints += 1;
-        return { id: "t-1", token: "door-1", mintingToken: "minting" };
+        return "access";
       },
-      deleteThrowaway: async () => {},
     } as unknown as ZeropsApiClient;
     await act(async () => {
       await expect(accountHqApi(client, "org-kept-r", KEPT).structure()).rejects.toMatchObject({
@@ -709,11 +630,10 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     let mints = 0;
     const client = {
       accountEpoch: 900,
-      mintThrowaway: async () => {
+      accessToken: async () => {
         mints += 1;
-        return { id: "t-1", token: "door-1", mintingToken: "minting" };
+        return "access";
       },
-      deleteThrowaway: async () => {},
     } as unknown as ZeropsApiClient;
     await expect(accountHqApi(client, "org-unverified", KEPT).structure()).rejects.toMatchObject({
       kind: "unavailable",
@@ -770,7 +690,9 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
         authorization: new Headers(init?.headers).get("authorization"),
       });
       if (url.pathname === "/api/door") {
-        presented.push((JSON.parse(String(init?.body)) as { readonly token: unknown }).token);
+        presented.push(
+          (JSON.parse(String(init?.body)) as { readonly accessToken: unknown }).accessToken,
+        );
         if (notServing > 0) {
           notServing -= 1;
           return Response.json({ code: "not_active" }, { status: 503 });
@@ -778,6 +700,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
         return Response.json({
           session: issuedSession(++issued),
           expiresAt: new Date(Date.now() + lifetimeMs).toISOString(),
+          orgId: "org-1",
           userId: "u1",
         });
       }
@@ -804,21 +727,16 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 
   /** The page's account epochs only grow, across tests too: the mint budget is fenced by them. */
   let epoch = 0;
-  /** A load's client: each load builds its own, and mints a throwaway for every door. */
+  /** A load's client: each load builds its own, and reads the access token for every door. */
   const load = () => {
     let mints = 0;
     epoch += 1;
     const client = {
       accountEpoch: epoch,
-      mintThrowaway: async (
-        _input: unknown,
-        options: { readonly beforeMint?: () => Promise<void> },
-      ) => {
-        await options.beforeMint?.();
+      accessToken: async () => {
         mints += 1;
-        return { id: `t-${mints}`, token: `door-${mints}`, mintingToken: "minting" };
+        return "access";
       },
-      deleteThrowaway: async () => {},
     } as unknown as ZeropsApiClient;
     return { client, doors: () => mints };
   };
@@ -856,18 +774,14 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
   });
 
-  // Example Org, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
-  // throwaways in 21 s, one per try. A door HQ did not answer is tried again with the same one.
-  it("a door HQ is not serving is tried again with the throwaway it already minted", async () => {
+  it("a door HQ is not serving is tried again with the access token, minting nothing", async () => {
     notServing = 1;
     const first = load();
     const api = accountHqApi(first.client, "org-1", HQ);
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable" });
     await api.structure();
 
-    expect(first.doors()).toBe(1);
-    expect(presented).toHaveLength(2);
-    expect(presented[1]).toBe(presented[0]);
+    expect(presented).toEqual(["access", "access"]);
   });
 
   it("a sign-out revokes HQ's session and forgets it", async () => {
@@ -1052,7 +966,11 @@ describe("readOfficialHqNow", () => {
 describe("a web built with an HQ origin — one shared HQ every organization signs in to", () => {
   const SHARED = "https://hq.shared.test";
   /** What the shared HQ's door was handed, in order. */
-  let doors: Array<{ readonly token: unknown; readonly orgKey?: unknown }>;
+  let doors: Array<{
+    readonly accessToken: unknown;
+    readonly orgId: unknown;
+    readonly orgKey?: unknown;
+  }>;
   /** What HQ was asked, by path, in order. */
   let paths: Array<string>;
   /** Whether an Owner or Admin has started the organization at HQ. */
@@ -1082,10 +1000,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
       const url = new URL(String(input));
       paths.push(`${url.origin}${url.pathname}`);
       if (url.pathname === "/api/door") {
-        const body = JSON.parse(String(init?.body)) as {
-          readonly token: unknown;
-          readonly orgKey?: unknown;
-        };
+        const body = JSON.parse(String(init?.body)) as (typeof doors)[number];
         doors.push(body);
         if (!started && body.orgKey === undefined)
           return Response.json({ code: "org_not_started" }, { status: 409 });
@@ -1095,6 +1010,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
         return Response.json({
           session: `shared-session-${String(++issued)}`,
           expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          orgId: "org-1",
           userId: "u1",
         });
       }
@@ -1111,22 +1027,12 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
 
   /** A signed-in person's client in `org-1` with `roleCode` there, counting what it mints. */
   const person = (roleCode: string) => {
-    const throwaways: Array<string> = [];
     const keys: Array<unknown> = [];
     const taken: Array<string> = [];
     epoch += 1;
     const client = {
       accountEpoch: epoch,
-      mintThrowaway: async (
-        input: { readonly name: string },
-        options: { readonly beforeMint?: () => Promise<void> },
-      ) => {
-        await options.beforeMint?.();
-        throwaways.push(input.name);
-        const n = String(throwaways.length);
-        return { id: `t-${n}`, token: `door-${n}`, mintingToken: "minting" };
-      },
-      deleteThrowaway: async () => {},
+      accessToken: async () => "access",
       verifiedUser: () => ({
         user: { clientUserList: [{ id: "m-1", clientId: "org-1", roleCode, status: "ACTIVE" }] },
         atMs: 0,
@@ -1139,7 +1045,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
         taken.push(input.tokenId);
       },
     } as unknown as ZeropsApiClient;
-    return { client, throwaways, keys, taken };
+    return { client, keys, taken };
   };
 
   const sharedApi = (client: ZeropsApiClient) => {
@@ -1206,13 +1112,12 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     });
   });
 
-  it("Signing in to a shared HQ presents a throwaway named mate-door:hq:<nonce>", async () => {
-    const { client, throwaways } = person("BASIC_USER");
+  it("Signing in to a shared HQ presents the person's Zerops access token and the organisation", async () => {
+    const { client, keys } = person("BASIC_USER");
     await sharedApi(client).structure();
 
-    expect(throwaways).toHaveLength(1);
-    expect(throwaways[0]).toMatch(/^mate-door:hq:[0-9a-f-]{36}$/u);
-    expect(doors).toEqual([{ token: "door-1" }]);
+    expect(doors).toEqual([{ accessToken: "access", orgId: "org-1" }]);
+    expect(keys).toEqual([]);
   });
 
   it("An Owner's first sign-in to an organisation the HQ has not started hands it a read-only key and then signs in", async () => {
@@ -1221,9 +1126,15 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     await sharedApi(client).structure();
 
     expect(keys).toEqual([
-      { clientId: "org-1", name: "mate-hq-org:hq", roleCode: "READ_ONLY", projects: [] },
+      { clientId: "org-1", name: "mate-hq-org-key", roleCode: "READ_ONLY", projects: [] },
     ]);
-    expect(doors).toEqual([{ token: "door-1" }, { token: "door-1", orgKey: "org-key-1" }]);
+    // The second plain sign-in is the one inside the lock, which finds the organisation started
+    // by another tab when there is one.
+    expect(doors).toEqual([
+      { accessToken: "access", orgId: "org-1" },
+      { accessToken: "access", orgId: "org-1" },
+      { accessToken: "access", orgId: "org-1", orgKey: "org-key-1" },
+    ]);
     expect(paths.at(-1)).toBe(`${SHARED}/api/structure`);
     // HQ keeps the key it took: nothing here takes it back.
     expect(taken).toEqual([]);
@@ -1241,7 +1152,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
 
     expect(refusal).toMatchObject({ kind: "refused", code: "org_not_started" });
     expect(keys).toEqual([]);
-    expect(doors).toEqual([{ token: "door-1" }]);
+    expect(doors).toEqual([{ accessToken: "access", orgId: "org-1" }]);
     // The menu says it, with Try again as the way out once an Owner or Admin has signed in.
     const navigation = {
       live: false,
@@ -1269,7 +1180,13 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
       );
 
     expect(refusal).toMatchObject({ kind: "refused", code: "forbidden" });
-    expect(doors).toEqual([{ token: "door-1" }, { token: "door-1", orgKey: "org-key-1" }]);
+    // The second plain sign-in is the one inside the lock, which finds the organisation started
+    // by another tab when there is one.
+    expect(doors).toEqual([
+      { accessToken: "access", orgId: "org-1" },
+      { accessToken: "access", orgId: "org-1" },
+      { accessToken: "access", orgId: "org-1", orgKey: "org-key-1" },
+    ]);
     const navigation = {
       live: false,
       refusal: classifyHqCall(refusal).message,
