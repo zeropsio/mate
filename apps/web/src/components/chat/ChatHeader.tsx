@@ -681,7 +681,8 @@ export const ChatHeader = memo(function ChatHeader({
               />
             )}
             {/* A conversation bound to a lease: when its workspace was last active, what a
-              release would lose there, and whether it is idle — where the header has room. */}
+              release would lose there, whether it is idle, and a Release that asks first —
+              where the header has room. */}
             {activeThreadShell?.lease == null ? null : (
               <span className="hidden shrink-0 @3xl/header-actions:block">
                 <ZeropsWorkspaceChip
