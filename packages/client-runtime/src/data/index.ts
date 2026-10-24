@@ -84,6 +84,7 @@ export {
 } from "../zerops/data/zeropsWire.ts";
 export {
   makeZeropsSessionCalls,
+  ZEROPS_RENEWAL_MARGIN_MS,
   probeZeropsPrincipal,
   unavailableVerdict,
   type ZeropsPrincipalVerdict,

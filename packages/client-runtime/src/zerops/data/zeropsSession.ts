@@ -30,6 +30,14 @@ export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
     : { kind: "unavailable" };
 }
 
+/**
+ * How long before its expiry a device-login session renews itself. The platform issues a device
+ * login six hours of life and revokes the previous access token on every refresh, so a margin
+ * near that life renews a session at sign-in and at every load, under the requests still
+ * carrying the revoked token. Two hours leaves the hourly check two chances before the end.
+ */
+export const ZEROPS_RENEWAL_MARGIN_MS = 2 * 60 * 60_000;
+
 export interface ZeropsSessionCalls {
   /** The client the session holds its token in; the app's other readers share it. */
   readonly client: ZeropsApiClient;
