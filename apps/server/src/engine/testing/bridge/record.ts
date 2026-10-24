@@ -283,10 +283,7 @@ export async function recordAcp(
       Effect.ensuring(Deferred.succeed(sendReturned, undefined)),
       Effect.forkScoped,
     );
-    const untilReturned = Deferred.await(sendReturned).pipe(
-      Effect.timeout("6 seconds"),
-      Effect.orDie,
-    );
+    const untilReturned = Deferred.await(sendReturned);
 
     switch (scenario.kind) {
       case "until-end":

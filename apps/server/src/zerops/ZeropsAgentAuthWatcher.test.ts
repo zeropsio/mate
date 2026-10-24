@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-// @effect-diagnostics globalDate:off
 // @effect-diagnostics globalTimers:off
 // Exercises watchWithFallback's own plain-Node behavior directly — see that
 // module's header comment for why it deliberately bypasses Effect's
@@ -19,9 +18,7 @@ import {
 
 let root: string;
 
-const filesystemEventTimeoutMs = 10_000;
-const singleEventTestTimeoutMs = 15_000;
-const doubleEventTestTimeoutMs = 25_000;
+const changes = new NodeEvents.EventEmitter();
 
 const startWatcher = (
   target: string,
@@ -29,10 +26,18 @@ const startWatcher = (
   onChange: () => void,
   options: WatchWithFallbackOptions = {},
 ) =>
-  watchWithFallback(target, fallbackDir, onChange, {
-    logWarning: () => undefined,
-    ...options,
-  });
+  watchWithFallback(
+    target,
+    fallbackDir,
+    () => {
+      onChange();
+      changes.emit("change");
+    },
+    {
+      logWarning: () => undefined,
+      ...options,
+    },
+  );
 
 beforeEach(() => {
   root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-agent-auth-watcher-"));
@@ -43,44 +48,17 @@ afterEach(() => {
   NodeFS.rmSync(root, { recursive: true, force: true });
 });
 
-const waitFor = async (
-  predicate: () => boolean,
-  timeoutMs = filesystemEventTimeoutMs,
-): Promise<void> => {
-  const start = Date.now();
-  while (!predicate()) {
-    if (Date.now() - start > timeoutMs) {
-      throw new Error("waitFor: timed out");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  while (!predicate()) await new Promise<void>((resolve) => changes.once("change", resolve));
 };
 
-/**
- * Polls for `predicate`, firing `nudge()` once if it hasn't happened by
- * `nudgeAfterMs`. A single fs write's "change" notification can be delayed
- * or dropped entirely under system load — macOS FSEvents coalescing is not
- * fully deterministic — so this gives the watcher a second, distinctly
- * payloaded event to react to well before giving up, rather than trusting
- * one write alone against a longer fixed wait.
- */
-const waitForWithNudge = async (
-  predicate: () => boolean,
-  nudge: () => void,
-  { nudgeAfterMs = 1500, timeoutMs = 5000 }: { nudgeAfterMs?: number; timeoutMs?: number } = {},
-): Promise<void> => {
-  const start = Date.now();
-  let nudged = false;
-  while (!predicate()) {
-    const elapsed = Date.now() - start;
-    if (!nudged && elapsed >= nudgeAfterMs) {
-      nudge();
-      nudged = true;
-    }
-    if (elapsed > timeoutMs) {
-      throw new Error("waitForWithNudge: timed out");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+/** A distinct second write covers filesystem event coalescing without bounding delivery. */
+const waitForWithNudge = async (predicate: () => boolean, nudge: () => void): Promise<void> => {
+  const timer = setTimeout(nudge, 1500);
+  try {
+    await waitFor(predicate);
+  } finally {
+    clearTimeout(timer);
   }
 };
 
@@ -143,67 +121,59 @@ describe("watchWithFallback", () => {
     }
   });
 
-  it(
-    "tolerates a missing target directory, firing once it is created",
-    { timeout: singleEventTestTimeoutMs },
-    async () => {
-      const dir = NodePath.join(root, ".codex");
-      const target = NodePath.join(dir, "auth.json");
-      let fired = 0;
-      const handle = startWatcher(dir, root, () => {
+  it("tolerates a missing target directory, firing once it is created", async () => {
+    const dir = NodePath.join(root, ".codex");
+    const target = NodePath.join(dir, "auth.json");
+    let fired = 0;
+    const handle = startWatcher(dir, root, () => {
+      fired += 1;
+    });
+    try {
+      // dir does not exist yet — the fallback watch (root) must catch its creation.
+      NodeFS.mkdirSync(dir);
+      NodeFS.writeFileSync(target, "{}");
+      await waitFor(() => fired > 0);
+      expect(fired).toBeGreaterThan(0);
+    } finally {
+      handle.dispose();
+    }
+  });
+
+  it("keeps reporting changes to the target after it re-attaches", async () => {
+    const dir = NodePath.join(root, ".codex");
+    let targetWatchArms = 0;
+    const dropTargetWatchEvents: WatchFactory = (path, listener) => {
+      if (path === dir) {
+        targetWatchArms += 1;
+        return NodeFS.watch(path, () => undefined);
+      }
+      return NodeFS.watch(path, listener);
+    };
+    let fired = 0;
+    const handle = startWatcher(
+      dir,
+      root,
+      () => {
         fired += 1;
-      });
-      try {
-        // dir does not exist yet — the fallback watch (root) must catch its creation.
-        NodeFS.mkdirSync(dir);
-        NodeFS.writeFileSync(target, "{}");
-        await waitFor(() => fired > 0);
-        expect(fired).toBeGreaterThan(0);
-      } finally {
-        handle.dispose();
-      }
-    },
-  );
+      },
+      { watch: dropTargetWatchEvents },
+    );
+    try {
+      NodeFS.mkdirSync(dir);
+      NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), "{}");
+      await waitFor(() => fired > 0);
+      expect(targetWatchArms).toBeGreaterThan(0);
+      const afterAttach = fired;
 
-  it(
-    "keeps reporting changes to the target after it re-attaches",
-    { timeout: doubleEventTestTimeoutMs },
-    async () => {
-      const dir = NodePath.join(root, ".codex");
-      let targetWatchArms = 0;
-      const dropTargetWatchEvents: WatchFactory = (path, listener) => {
-        if (path === dir) {
-          targetWatchArms += 1;
-          return NodeFS.watch(path, () => undefined);
-        }
-        return NodeFS.watch(path, listener);
-      };
-      let fired = 0;
-      const handle = startWatcher(
-        dir,
-        root,
-        () => {
-          fired += 1;
-        },
-        { watch: dropTargetWatchEvents },
-      );
-      try {
-        NodeFS.mkdirSync(dir);
-        NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), "{}");
-        await waitFor(() => fired > 0);
-        expect(targetWatchArms).toBeGreaterThan(0);
-        const afterAttach = fired;
-
-        // The target watch is armed and healthy but its callback is suppressed,
-        // modeling an OS delivery silently dropped without an "error" event.
-        NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), '{"again":true}');
-        await waitFor(() => fired > afterAttach);
-        expect(fired).toBeGreaterThan(afterAttach);
-      } finally {
-        handle.dispose();
-      }
-    },
-  );
+      // The target watch is armed and healthy but its callback is suppressed,
+      // modeling an OS delivery silently dropped without an "error" event.
+      NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), '{"again":true}');
+      await waitFor(() => fired > afterAttach);
+      expect(fired).toBeGreaterThan(afterAttach);
+    } finally {
+      handle.dispose();
+    }
+  });
 
   it("polls without throwing when the fallback directory itself does not exist", async () => {
     vi.useFakeTimers();

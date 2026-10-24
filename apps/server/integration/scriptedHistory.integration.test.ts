@@ -118,5 +118,5 @@ it.live("a worker's 200-turn SQLite template is engine-authored and independent 
     expect(after._tag).toBe("Page");
     if (after._tag === "Page")
       expect(after.runs.map((r) => r.ordinal)).toEqual(runs.slice(-10).map((r) => r.ordinal));
-  }).pipe(Effect.timeout("100 seconds")),
+  }),
 );

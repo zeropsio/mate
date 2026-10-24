@@ -42,7 +42,7 @@ const firstTask = (world: CrewWorld) =>
 const turnsAfter = (world: CrewWorld, before: number, count: number) =>
   Effect.gen(function* () {
     yield* eventually(Effect.map(turnsSent(world), (all) => all.length >= before + count));
-    yield* Effect.sleep("300 millis");
+    yield* world.settled;
     return (yield* turnsSent(world)).slice(before);
   });
 

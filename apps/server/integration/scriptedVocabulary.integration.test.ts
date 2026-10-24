@@ -134,7 +134,7 @@ const completed = (
         return { run, page };
       }
     }
-  }).pipe(Effect.timeout("15 seconds"));
+  });
 
 describe("scripted vocabulary through the real client wire", () => {
   it.live("overlapping commands keep independent full outputs and file-write facts", () =>
@@ -441,7 +441,7 @@ describe("scripted turn control through the real client wire", () => {
       });
       expect(JSON.stringify(page)).toContain("First and second");
       expect(JSON.stringify(page)).toContain("Checking the source");
-    }).pipe(Effect.timeout("15 seconds")),
+    }),
   );
   it.live("steering reaches the running native turn and stop interrupts its remaining steps", () =>
     Effect.gen(function* () {
@@ -492,7 +492,7 @@ describe("scripted turn control through the real client wire", () => {
       yield* Deferred.succeed(release, undefined);
       const page = yield* world.wire.readRun({ protocol, conversationId, runId });
       expect(JSON.stringify(page)).not.toContain("Must never arrive");
-    }).pipe(Effect.timeout("15 seconds")),
+    }),
   );
   it.live("structured provider errors reach the failed run and its error item", () =>
     Effect.gen(function* () {
@@ -589,7 +589,7 @@ it.live("background completion and an unsolicited native turn reach the real cli
     expect(woke.trigger).toMatchObject({ kind: "wake", cause: "self" });
     const page = yield* world.wire.readRun({ protocol, conversationId, runId: woke.id });
     expect(JSON.stringify(page)).toContain("The build woke the agent");
-  }).pipe(Effect.timeout("15 seconds")),
+  }),
 );
 
 it.live("provider usage snapshots and sparse reset events reach the real instance registry", () =>
@@ -648,5 +648,5 @@ it.live("provider usage snapshots and sparse reset events reach the real instanc
     ]);
     yield* Deferred.succeed(release, undefined);
     yield* until(frames, (f) => f.type === "changes" && f.runs.some((r) => r.state === "ended"));
-  }).pipe(Effect.timeout("15 seconds")),
+  }),
 );

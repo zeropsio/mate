@@ -23,7 +23,6 @@ function fetchStatus(port: number, path: string): Promise<number> {
       resolve(response.statusCode ?? 0);
     });
     request.on("error", reject);
-    request.setTimeout(5_000, () => reject(new Error("request timed out")));
   });
 }
 

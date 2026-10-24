@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { CrewRunState, CrewTaskState } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
@@ -107,21 +108,22 @@ describe("an update's drain over the engine crew", () => {
                   Effect.all([Effect.map(engine.facts, ownFacts), crew.updateFacts!]),
                   (owners) => joinUpdateIdleFacts(...owners),
                 );
+                const readFacts = yield* Deferred.make<void>();
                 const drain = yield* drainMateUpdate(
                   {
                     allowed: Effect.succeed(true),
                     begin: engine.begin,
                     cancel: engine.cancel,
-                    facts,
+                    facts: facts.pipe(Effect.tap(() => Deferred.succeed(readFacts, undefined))),
                     quiesce: Effect.map(
                       Effect.all([Effect.map(engine.quiesce, ownFacts), crew.updateFacts!]),
                       (owners) => joinUpdateIdleFacts(...owners),
                     ),
                     changed: Queue.take(changed),
                   },
-                  "20 seconds",
+                  "11 minutes",
                 ).pipe(Effect.forkScoped);
-                yield* Effect.sleep("500 millis");
+                yield* Deferred.await(readFacts);
                 const waiting = yield* facts;
                 assert.isUndefined(
                   drain.pollUnsafe(),

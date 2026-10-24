@@ -2,6 +2,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { EDITED_AFTER_CHECK } from "./crewMachines.ts";
@@ -376,6 +378,8 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
         const hold = yield* world.hold({ step: "sweep" });
         yield* world.serverReady;
         yield* hold.reached;
+        const waiting = yield* Deferred.make<void>();
+        const clock = yield* Clock.Clock;
         const press = yield* world
           .press({
             _tag: "message",
@@ -383,8 +387,20 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
             text: "Work",
             attachments: [],
           })
-          .pipe(Effect.forkChild);
-        yield* Effect.sleep("300 millis");
+          .pipe(
+            Effect.provideService(Clock.Clock, {
+              currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
+              currentTimeMillis: clock.currentTimeMillis,
+              currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
+              currentTimeNanos: clock.currentTimeNanos,
+              monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
+              monotonicTimeNanos: clock.monotonicTimeNanos,
+              sleep: (duration) =>
+                Deferred.succeed(waiting, undefined).pipe(Effect.andThen(clock.sleep(duration))),
+            }),
+            Effect.forkChild({ startImmediately: true }),
+          );
+        yield* Effect.raceFirst(Deferred.await(waiting), Fiber.await(press));
         assert.strictEqual(press.pollUnsafe() === undefined, true);
         yield* hold.release;
         yield* Fiber.join(press);
@@ -424,7 +440,7 @@ it.live("untracked files never stop a checked task, nor get committed or landed"
         yield* world.turnStarts(thread);
         write(copy, "build.log", "untracked\n");
         yield* world.turnEnds(thread);
-        yield* Effect.sleep("200 millis");
+        yield* world.settled;
         assert.strictEqual((yield* world.snapshot).board.tasks[0]!.state, "ready");
       }),
     (world) =>

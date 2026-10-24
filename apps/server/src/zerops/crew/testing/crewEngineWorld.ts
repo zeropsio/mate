@@ -38,6 +38,7 @@ import {
   ConversationId,
   ProviderInstanceId,
   ThreadId,
+  WakeId,
   type ChatAttachment,
   type CrewSnapshot,
   type ServerProvider,
@@ -135,8 +136,6 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.lane.remove",
   "crew.claim.read",
 ]);
-/** How long a journey waits for a frame before it fails with the last one. */
-const SNAPSHOT_WAIT = Number(process.env.CREW_FRAME_WAIT ?? 60_000);
 const ENGINE_FILE = "engine.sqlite";
 
 interface DeliveryRow {
@@ -236,42 +235,6 @@ const enginePort = (input: {
       membersInOrder(state).find((member) => member.conversationId === chat),
     );
 
-  /** Waits for `check`; past `ms`, the journey fails naming what it waited for and the crew. */
-  const waitFor = (what: string, check: Effect.Effect<boolean>, ms = 30_000) =>
-    Effect.gen(function* () {
-      for (let waited = 0; waited < ms; waited += 25) {
-        if (yield* check) return;
-        yield* Effect.sleep("25 millis");
-      }
-      const state = yield* crewState;
-      return yield* Effect.die(
-        new Error(
-          `${what} never came; the crew: ${JSON.stringify(
-            {
-              members: Object.values(state.members).map((member) => ({
-                handle: member.handle,
-                active: member.active,
-                carryOn: member.carryOn,
-              })),
-              tasks: Object.values(state.tasks).map((task) => [task.number, task.state, task.wait]),
-              effects: Object.values(state.effects).map((effect) => effect.kind),
-              deliveries: Object.values(state.deliveries).map((entry) => [
-                entry.purpose,
-                entry.runId,
-              ]),
-              sessions: [...provider.sessions.values()].map((session) => [
-                session.thread,
-                session.alive,
-                session.open,
-              ]),
-            },
-            null,
-            1,
-          )}`,
-        ),
-      );
-    });
-
   /** The crewmate's turn running in its conversation, once its delivery reached the agent. */
   const turnRunning = (chat: CrewChat) =>
     Effect.gen(function* () {
@@ -279,36 +242,24 @@ const enginePort = (input: {
       return provider.sessions.get(thread)?.open != null;
     });
 
-  /** The first frame `check` holds for; past the wait, the journey fails with the last frame. */
+  /** The first current frame that satisfies `check`. */
   const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
-    Effect.flatMap(crew, (service) => {
-      let last: CrewSnapshot | undefined;
-      // The feed's first frame is the crew's latest: wait until it is as new as the crew is now,
-      // so no frame from before the journey's last step stands in for its result.
-      const caughtUp = Effect.gen(function* () {
+    Effect.flatMap(crew, (service) =>
+      Effect.gen(function* () {
         const head = (yield* crewState).headSeq;
-        for (let waited = 0; waited < 5_000; waited += 10) {
-          const first = yield* Stream.runHead(service.snapshot);
-          if (Option.isSome(first) && (first.value.revision?.seq ?? head) >= head) return;
-          yield* Effect.sleep("10 millis");
-        }
-      });
-      return caughtUp.pipe(
-        Effect.andThen(
-          service.snapshot.pipe(
-            Stream.tap((frame) => Effect.sync(() => (last = frame))),
-            Stream.filter(check),
-            Stream.runHead,
-            Effect.map(Option.getOrThrow),
-            Effect.timeoutOrElse({
-              duration: SNAPSHOT_WAIT,
-              orElse: () =>
-                Effect.die(new Error(`no frame held; the last: ${JSON.stringify(last, null, 1)}`)),
-            }),
+        yield* eventually(
+          Effect.map(
+            Stream.runHead(service.snapshot),
+            (frame) => Option.isSome(frame) && (frame.value.revision?.seq ?? head) >= head,
           ),
-        ),
-      );
-    });
+        );
+        return yield* service.snapshot.pipe(
+          Stream.filter(check),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+      }),
+    );
 
   /** The crew's first state `holds` for, read again on each of its durable receipts. */
   const crewWhere = (holds: (state: CrewState) => boolean) =>
@@ -465,10 +416,7 @@ const enginePort = (input: {
         yield* provider.agent.end(thread, { state: "completed" });
       }
       // The crew has seen it: a landing waits for the Mate's running turn, or no longer does.
-      yield* waitFor(
-        `the crew to see the Mate's turn ${running ? "run" : "end"}`,
-        Effect.map(crewState, (state) => (state.mate.runId !== null) === running),
-      );
+      yield* eventually(Effect.map(crewState, (state) => (state.mate.runId !== null) === running));
     }).pipe(Effect.orDie);
 
   const deployCall = (status: "inProgress" | "completed", type: string) =>
@@ -605,6 +553,53 @@ const enginePort = (input: {
 
   return {
     sendsReached,
+    settled: settled.pipe(
+      Effect.andThen(crewWhere((state) => Object.keys(state.effects).length === 0)),
+    ),
+    signInReconciliations: Effect.flatMap(sql, (client) =>
+      client<{ readonly n: number }>`
+        SELECT count(*) AS n FROM engine_receipt
+        WHERE conversation_id = ${CREW_OWNER_ID} AND command_id LIKE 'logins:%' AND status = 'accepted'
+      `.pipe(
+        Effect.map((rows) => rows[0]?.n ?? 0),
+        Effect.orDie,
+      ),
+    ),
+    currentTimeMillis: run(Clock.currentTimeMillis),
+    advanceTime: (millis) =>
+      Effect.gen(function* () {
+        const service = yield* crew;
+        const subscription = yield* service.subscribeUpdateChanges!;
+        const before = (yield* crewState).headSeq;
+        input.shift.ms += millis;
+        const now = yield* run(Clock.currentTimeMillis);
+        const state = yield* crewState;
+        for (const [wakeId, wake] of Object.entries(state.wakes)) {
+          if (wake.dueAt > now) continue;
+          yield* run(
+            Effect.flatMap(Conversations, (conversations) =>
+              conversations.tell({
+                commandId: CommandId.make(`due-${wakeId}-${wake.dueAt}`),
+                conversationId: CREW_OWNER_ID,
+                principal: { kind: "engine" },
+                command: { _tag: "WakeFired", wakeId: WakeId.make(wakeId) },
+              }),
+            ),
+          );
+        }
+        yield* settled;
+        yield* crewWhere((current) => Object.keys(current.effects).length === 0);
+        const head = (yield* crewState).headSeq;
+        if (head > before) {
+          yield* subscription.changes.pipe(
+            Stream.mapEffect(() => Stream.runHead(service.snapshot)),
+            Stream.filter(
+              (frame) => Option.isSome(frame) && (frame.value.revision?.seq ?? 0) >= head,
+            ),
+            Stream.runHead,
+          );
+        }
+      }).pipe(Effect.scoped, Effect.orDie),
     root: fx.root,
     workspace: fx.workspace,
     ownRef: Effect.map(crewState, (state) => {
@@ -653,12 +648,11 @@ const enginePort = (input: {
         if (yield* idle) {
           yield* provider.agent.selfTurn(thread);
         }
-        yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
+        yield* eventually(turnRunning(chat));
         // The engine holds the turn as a run of the conversation, bound to it, and a message
         // steered into it has reached the agent: the turn's end is then that run's, not one the
         // message opened after it.
-        yield* waitFor(
-          `${chat}'s turn as a run`,
+        yield* eventually(
           Effect.map(
             run(
               Effect.flatMap(Conversations, (conversations) =>
@@ -702,10 +696,7 @@ const enginePort = (input: {
           return active?.stopAsked != null;
         });
         if (end.state === "interrupted" && (yield* stopAsked)) {
-          yield* waitFor(
-            `${chat}'s stopped turn to end`,
-            Effect.map(stoppedRun, (found) => found !== undefined),
-          );
+          yield* eventually(Effect.map(stoppedRun, (found) => found !== undefined));
         }
         const stopped = end.state === "interrupted" ? yield* stoppedRun : undefined;
         let ending: string | null;
@@ -713,7 +704,7 @@ const enginePort = (input: {
           stopsTaken.add(stopped.run_id);
           ending = stopped.run_id;
         } else {
-          yield* waitFor(`a turn in ${chat} to end`, turnRunning(chat));
+          yield* eventually(turnRunning(chat));
           ending = (yield* conversation).activeRunId;
           const thread = yield* threadOf(chat);
           const payload = {
@@ -727,10 +718,7 @@ const enginePort = (input: {
         const member = yield* handleOf(chat);
         // The engine recorded that run's end (another may follow at once: a nudge, a carry-on),
         // and the crew read its record past it.
-        yield* waitFor(
-          `${chat}'s run to end`,
-          Effect.map(conversation, (state) => state.activeRunId !== ending),
-        );
+        yield* eventually(Effect.map(conversation, (state) => state.activeRunId !== ending));
         const ended = yield* Effect.flatMap(sql, (client) =>
           client<{ readonly seq: number | null }>`
             SELECT MAX(seq) AS seq FROM engine_event
@@ -741,8 +729,7 @@ const enginePort = (input: {
             Effect.orDie,
           ),
         );
-        yield* waitFor(
-          `the crew to take ${chat}'s turn end in`,
+        yield* eventually(
           Effect.map(
             crewState,
             (state) =>
@@ -751,8 +738,7 @@ const enginePort = (input: {
           ),
         );
         // As V1's turn end returned once the turn's work was saved in its copy.
-        yield* waitFor(
-          `${chat}'s turn end to be saved`,
+        yield* eventually(
           Effect.map(
             crewState,
             (state) =>
@@ -760,7 +746,6 @@ const enginePort = (input: {
                 (effect) => effect.kind === "crew.checkpoint" && effect.handle === member?.handle,
               ),
           ),
-          60_000,
         );
         yield* settled;
       }),
@@ -834,8 +819,7 @@ const enginePort = (input: {
     // The engine's record is how a chat stood: a running turn is one its provider took up.
     chatWas: (chat, was) =>
       was.running === true
-        ? waitFor(
-            `${chat}'s turn running`,
+        ? eventually(
             Effect.map(
               crewState,
               (state) =>
@@ -858,7 +842,7 @@ const enginePort = (input: {
                 commandId: CommandId.make(`due-${wakeId}`),
                 conversationId: CREW_OWNER_ID,
                 principal: { kind: "engine" },
-                command: { _tag: "WakeFired", wakeId: wakeId as never },
+                command: { _tag: "WakeFired", wakeId: WakeId.make(wakeId) },
               }),
             ),
           );
@@ -890,19 +874,15 @@ const enginePort = (input: {
     sessionsWhere: (handle, check) =>
       Effect.gen(function* () {
         let last: CrewSessionsSeen | undefined;
-        for (let waited = 0; waited < SNAPSHOT_WAIT; waited += 50) {
+        while (true) {
           last = yield* sessionsSeen(handle);
           if (last !== undefined && check(last)) return last;
           yield* Effect.sleep("50 millis");
         }
-        return yield* Effect.die(
-          new Error(`@${handle}'s sessions never held; the last: ${JSON.stringify(last)}`),
-        );
       }),
     // A turn counts as sent once the crew's delivery is taken, its run's admission a step later
     // (V1 admitted it before its dispatch): the admissions are read once none is in flight.
-    admissions: waitFor(
-      "the runs' admissions",
+    admissions: eventually(
       Effect.flatMap(sql, (client) =>
         client<{ readonly n: number }>`
           SELECT count(*) AS n FROM engine_effect

@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodePath from "node:path";
+
+import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
@@ -26,6 +28,7 @@ import {
 } from "@t3tools/contracts";
 
 import { ServerConfig } from "../../config.ts";
+import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
@@ -94,34 +97,19 @@ async function readJsonLines(filePath: string) {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-async function waitForFileContent(filePath: string, attempts = 40) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const raw = await NodeFSP.readFile(filePath, "utf8");
-      if (raw.trim().length > 0) {
-        return raw;
-      }
-    } catch {}
-    await Effect.runPromise(Effect.yieldNow);
-  }
-  throw new Error(`Timed out waiting for file content at ${filePath}`);
-}
-
 function waitForJsonLogMatch(
   filePath: string,
   predicate: (entry: Record<string, unknown>) => boolean,
-  attempts = 40,
 ) {
-  return Effect.gen(function* () {
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const requests = yield* Effect.promise(() => readJsonLines(filePath));
-      if (requests.some(predicate)) {
-        return requests;
-      }
-      yield* Effect.yieldNow;
-    }
-    return yield* Effect.promise(() => readJsonLines(filePath));
-  });
+  const parse = (content: string) =>
+    content
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  return waitForFileContent(filePath, (content) => parse(content).some(predicate)).pipe(
+    Effect.map(parse),
+  );
 }
 
 // Tests mutate `ServerSettingsService` mid-flight (e.g. setting
@@ -152,6 +140,7 @@ const cursorAdapterTestLayer = it.layer(
     }),
   ).pipe(
     Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(ThreadToolPolicyRegistry.layer),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), {
         prefix: "t3code-cursor-adapter-test-",
@@ -248,8 +237,15 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const adapter = yield* CursorAdapter;
       const settings = yield* ServerSettingsService;
       const threadId = ThreadId.make("cursor-send-interrupted");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-prompt-receipt-")),
+      );
+      const promptStartedPath = NodePath.join(tempDir, "prompt-started");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1" }),
+        makeMockAgentWrapper({
+          T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+          T3_ACP_PROMPT_STARTED_PATH: promptStartedPath,
+        }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const endsFiber = yield* adapter.streamEvents.pipe(
@@ -262,16 +258,9 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const sending = yield* adapter
         .sendTurn({ threadId, input: "work on it", attachments: [] })
         .pipe(Effect.forkChild);
-      yield* Effect.gen(function* () {
-        for (let attempt = 0; attempt < 200; attempt += 1) {
-          const session = (yield* adapter.listSessions()).find(
-            (entry) => entry.threadId === threadId,
-          );
-          if (session?.activeTurnId !== undefined) return;
-          yield* TestClock.adjust("10 millis");
-        }
-        throw new Error("Timed out waiting for the prompt to be in flight.");
-      });
+      // Raw input can be logged before the RPC handler starts. Cancellation
+      // must see the first handler admitted, or the follow-up can become first.
+      yield* waitForFileContent(promptStartedPath, (content) => content === "1\n");
 
       // The person's Stop reaches the send before the agent answers.
       yield* Fiber.interrupt(sending);
@@ -483,8 +472,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const adapter = yield* CursorAdapter;
       const settings = yield* ServerSettingsService;
       const threadId = ThreadId.make("cursor-steer-fails");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-prompt-receipt-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const promptReleasePath = NodePath.join(tempDir, "release-prompt");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_PROMPT_DELAY_MS: "1500", T3_ACP_FAIL_SECOND_PROMPT: "1" }),
+        makeMockAgentWrapper({
+          T3_ACP_PROMPT_RELEASE_PATH: promptReleasePath,
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
+          T3_ACP_FAIL_SECOND_PROMPT: "1",
+        }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
@@ -503,15 +501,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const firstTurnFiber = yield* adapter
         .sendTurn({ threadId, input: "run 5 commands", attachments: [] })
         .pipe(Effect.forkChild);
-      yield* Effect.gen(function* () {
-        for (let attempt = 0; attempt < 200; attempt += 1) {
-          const session = (yield* adapter.listSessions()).find(
-            (entry) => entry.threadId === threadId,
-          );
-          if (session?.activeTurnId !== undefined) return;
-          yield* TestClock.adjust("10 millis");
-        }
-        throw new Error("Timed out waiting for the first prompt to be in flight.");
+      yield* waitForFileContent(requestLogPath, (content) =>
+        content.includes('"method":"session/prompt"'),
+      );
+      // The adapter reads the turn's policy after admitting the steer. Release
+      // the first response there, so both sends share a turn without a timer.
+      const policies = yield* ThreadToolPolicyRegistry;
+      yield* policies.install({
+        profileFor: () =>
+          Effect.promise(() => NodeFSP.writeFile(promptReleasePath, "release")).pipe(
+            Effect.as(undefined),
+          ),
       });
 
       const error = yield* adapter
@@ -536,9 +536,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const settings = yield* ServerSettingsService;
       const threadId = ThreadId.make("cursor-steer-thread");
 
-      // Keep the first prompt in flight long enough for the steer to land.
+      // The first prompt remains held until the adapter admits the steer.
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-prompt-receipt-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const promptReleasePath = NodePath.join(tempDir, "release-prompt");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_PROMPT_DELAY_MS: "1500" }),
+        makeMockAgentWrapper({
+          T3_ACP_PROMPT_RELEASE_PATH: promptReleasePath,
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
+        }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -565,20 +573,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         })
         .pipe(Effect.forkChild);
 
-      // Poll until the first prompt is in flight — sendTurn binds the active
-      // turn id before prompting. The mock agent runs on the real clock, so
-      // each TestClock.adjust just provides the scheduler hops for its stdio
-      // responses to land.
-      yield* Effect.gen(function* () {
-        for (let attempt = 0; attempt < 200; attempt += 1) {
-          const sessions = yield* adapter.listSessions();
-          const session = sessions.find((entry) => entry.threadId === threadId);
-          if (session?.activeTurnId !== undefined) {
-            return;
-          }
-          yield* TestClock.adjust("10 millis");
-        }
-        throw new Error("Timed out waiting for the first prompt to be in flight.");
+      yield* waitForFileContent(requestLogPath, (content) =>
+        content.includes('"method":"session/prompt"'),
+      );
+      // The adapter reads the turn's policy after admitting the steer. Release
+      // the first response there, so both sends share a turn without a timer.
+      const policies = yield* ThreadToolPolicyRegistry;
+      yield* policies.install({
+        profileFor: () =>
+          Effect.promise(() => NodeFSP.writeFile(promptReleasePath, "release")).pipe(
+            Effect.as(undefined),
+          ),
       });
 
       // Steer: a second sendTurn while the first prompt is still in flight
@@ -633,7 +638,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       yield* adapter.stopSession(threadId);
 
-      const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+      const exitLog = yield* waitForFileContent(exitLogPath);
       assert.include(exitLog, "SIGTERM");
     }),
   );
@@ -685,7 +690,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
         yield* adapter.stopSession(threadId);
 
-        const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+        const exitLog = yield* waitForFileContent(exitLogPath);
         assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);
       }),
   );
@@ -839,7 +844,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           modelSelection,
         });
 
-        yield* Effect.promise(() => waitForFileContent(requestLogPath));
+        yield* waitForFileContent(requestLogPath);
 
         const requestsAfterStart = yield* Effect.promise(() => readJsonLines(requestLogPath));
         const configIdsAfterStart = requestsAfterStart.flatMap((entry) =>
@@ -1039,6 +1044,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             }),
           ).pipe(
             Layer.provideMerge(ServerSettingsService.layerTest()),
+            Layer.provideMerge(ThreadToolPolicyRegistry.layer),
             Layer.provideMerge(
               ServerConfig.layerTest(process.cwd(), {
                 prefix: "t3code-cursor-adapter-test-",
@@ -1689,6 +1695,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         }),
       ).pipe(
         Layer.provideMerge(ServerSettingsService.layerTest()),
+        Layer.provideMerge(ThreadToolPolicyRegistry.layer),
         Layer.provideMerge(
           ServerConfig.layerTest(process.cwd(), {
             prefix: "t3code-cursor-adapter-custom-instance-",
@@ -1797,16 +1804,15 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
         })
         .pipe(Effect.forkChild);
-      yield* Fiber.join(startSessionFiber).pipe(Effect.timeout("10 seconds"));
+      yield* Fiber.join(startSessionFiber);
 
-      // Forked, and the assertion waits on the projected event rather than on
-      // sendTurn: with the consumer dead the turn never settles, so awaiting it
-      // directly would hang until the suite timeout instead of failing here.
+      // Wait for the projected event after startSession's fiber has completed:
+      // its consumer must still process notifications for this turn.
       const sendTurnFiber = yield* adapter
         .sendTurn({ threadId, input: "hello mock", attachments: [] })
         .pipe(Effect.forkChild);
-      yield* Deferred.await(sawContentDelta).pipe(Effect.timeout("10 seconds"));
-      yield* Fiber.join(sendTurnFiber).pipe(Effect.timeout("10 seconds"));
+      yield* Deferred.await(sawContentDelta);
+      yield* Fiber.join(sendTurnFiber);
 
       const delta = runtimeEvents.find(
         (event) => event.type === "content.delta" && String(event.threadId) === String(threadId),
@@ -1818,9 +1824,6 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       yield* Fiber.interrupt(runtimeEventsFiber);
       yield* adapter.stopSession(threadId);
-      // Live clock so the timeouts above are real: under the default test clock
-      // they wait on virtual time that never advances, and a regression would
-      // hang until the suite timeout instead of failing here.
     }).pipe(TestClock.withLive),
   );
 });

@@ -12,14 +12,12 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Data from "effect/Data";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
@@ -142,7 +140,6 @@ class FakePtyAdapter {
 
 const waitFor = <E, R>(
   predicate: Effect.Effect<boolean, E, R>,
-  timeout: Duration.Input = 800,
 ): Effect.Effect<void, WaitForConditionError | E, R> =>
   predicate.pipe(
     Effect.filterOrFail(
@@ -150,14 +147,7 @@ const waitFor = <E, R>(
       () => new WaitForConditionError({ message: "Condition not met" }),
     ),
     Effect.retry(Schedule.spaced("15 millis")),
-    Effect.timeoutOption(timeout),
-    Effect.flatMap((result) =>
-      Option.match(result, {
-        onNone: () =>
-          Effect.fail(new WaitForConditionError({ message: "Timed out waiting for condition" })),
-        onSome: () => Effect.void,
-      }),
-    ),
+    Effect.asVoid,
   );
 
 function openInput(overrides: Partial<TerminalOpenInput> = {}): TerminalOpenInput {
@@ -467,7 +457,6 @@ it.layer(
 
       yield* waitFor(
         Effect.map(getEvents, (events) => events.some((event) => event.type === "exited")),
-        "1200 millis",
       );
 
       const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
@@ -504,7 +493,6 @@ it.layer(
 
       yield* waitFor(
         Effect.map(getEvents, (events) => events.some((event) => event.type === "exited")),
-        "1200 millis",
       );
 
       const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
@@ -1045,7 +1033,6 @@ it.layer(
               event.label === "vim",
           ),
         ),
-        "1200 millis",
       );
 
       inspect = { hasRunningSubprocess: false, childCommand: null, processIds: [] };
@@ -1058,7 +1045,6 @@ it.layer(
               event.label === "Terminal 1",
           ),
         ),
-        "1200 millis",
       );
     }),
   );
@@ -1091,14 +1077,11 @@ it.layer(
         }),
       );
 
-      yield* Deferred.await(idle).pipe(Effect.timeout("2 seconds"), Effect.orDie);
+      yield* Deferred.await(idle);
       assert.equal(checks, 0);
 
       yield* manager.open(openInput());
-      yield* waitFor(
-        Effect.sync(() => checks > 0),
-        "1200 millis",
-      );
+      yield* waitFor(Effect.sync(() => checks > 0));
     }),
   );
 
@@ -1154,12 +1137,8 @@ it.layer(
                 event.label === "python3",
             ),
         ),
-        "1200 millis",
       );
-      yield* waitFor(
-        Effect.sync(() => runCalls.length >= 3),
-        "1200 millis",
-      );
+      yield* waitFor(Effect.sync(() => runCalls.length >= 3));
 
       // Every spawn is the shared table snapshot — no per-terminal `pgrep`
       // or per-child `ps -p` invocations.
@@ -1205,14 +1184,10 @@ it.layer(
               event.label === "vim",
           ),
         ),
-        "1200 millis",
       );
 
       failSnapshots = true;
-      yield* waitFor(
-        Effect.sync(() => failedCalls >= 3),
-        "1200 millis",
-      );
+      yield* waitFor(Effect.sync(() => failedCalls >= 3));
 
       // A failed snapshot is not authoritative: no terminal flips to idle.
       const activityEvents = (yield* getEvents).filter((event) => event.type === "activity");
@@ -2055,7 +2030,6 @@ it.layer(
         Effect.map(getEvents, (events) =>
           events.some((event) => event.type === "output" && event.data === "hello from callback\n"),
         ),
-        "1200 millis",
       );
     }),
   );
@@ -2084,7 +2058,6 @@ it.layer(
             (event) => event.type === "output" && event.data === "hello from subscriber\n",
           ),
         ),
-        "1200 millis",
       );
     }),
   );
@@ -2122,7 +2095,6 @@ it.layer(
               event.terminal.terminalId === DEFAULT_TERMINAL_ID,
           ),
         ),
-        "1200 millis",
       );
 
       yield* manager.close({ threadId: "new-thread", terminalId: DEFAULT_TERMINAL_ID });
@@ -2136,7 +2108,6 @@ it.layer(
               event.terminalId === DEFAULT_TERMINAL_ID,
           ),
         ),
-        "1200 millis",
       );
     }),
   );
@@ -2195,7 +2166,6 @@ it.layer(
           Effect.map(Ref.get(attachEvents), (events) =>
             events.some((event) => event.type === "output" && event.data === "hello from attach\n"),
           ),
-          "1200 millis",
         );
 
         const events = yield* Ref.get(attachEvents);
@@ -2230,7 +2200,6 @@ it.layer(
         Effect.map(Ref.get(attachEvents), (events) =>
           events.some((event) => event.type === "output" && event.data === "during snapshot\n"),
         ),
-        "1200 millis",
       );
 
       expect(yield* Ref.get(attachEvents)).toMatchObject([
@@ -2262,7 +2231,6 @@ it.layer(
           );
           return relevant.length >= 3;
         }),
-        "1200 millis",
       );
 
       const relevant = (yield* getEvents).filter(

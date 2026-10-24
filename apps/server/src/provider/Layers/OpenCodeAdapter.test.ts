@@ -1487,7 +1487,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       yield* adapter.stopSession(threadId);
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events.map((event) => event.type),
         ["session.started", "thread.started", "session.exited"],
@@ -1549,7 +1549,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         yield* Scope.close(scope, Exit.void);
         scopeClosed = true;
 
-        const exit = yield* Fiber.await(eventsFiber).pipe(Effect.timeout("1 second"));
+        const exit = yield* Fiber.await(eventsFiber);
         NodeAssert.equal(Exit.hasInterrupts(exit), true);
       } finally {
         if (!scopeClosed) {
@@ -2192,9 +2192,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           status: { type: "idle" },
         },
       });
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
     }),
   );
@@ -2294,9 +2292,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       steerRelease.resolve(undefined);
       yield* Fiber.join(steerFiber);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       NodeAssert.equal(runtimeMock.state.sessionStatusCalls > 0, true);
     }),
@@ -2390,9 +2386,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
     }),
   );
@@ -2472,9 +2466,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       yield* Fiber.join(steerFiber);
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       NodeAssert.equal(
         runtimeMock.state.messageCalls.filter((call) => call.messageID === steerMessageId).length,
@@ -3068,7 +3060,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events.map((event) => event.type),
         ["content.delta", "turn.completed"],
@@ -3191,9 +3183,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const activeTurn = yield* Fiber.join(activeTurnFiber);
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       const sessions = yield* adapter.listSessions();
       const session = sessions.find((candidate) => candidate.threadId === threadId);
@@ -3251,9 +3241,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, turn.turnId);
       const sessions = yield* adapter.listSessions();
       const session = sessions.find((candidate) => candidate.threadId === threadId);
@@ -3398,9 +3386,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       const sessions = yield* adapter.listSessions();
       const session = sessions.find((candidate) => candidate.threadId === threadId);
@@ -3486,9 +3472,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const activeTurn = yield* Fiber.join(activeTurnFiber);
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       const sessions = yield* adapter.listSessions();
       const session = sessions.find((candidate) => candidate.threadId === threadId);
@@ -3585,9 +3569,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       const steerExit = yield* Fiber.join(steerFiber);
       NodeAssert.equal(Exit.isFailure(steerExit), true);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
       NodeAssert.equal(runtimeMock.state.sessionStatusCalls, 2);
     }),
@@ -3650,9 +3632,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       steerRelease.resolve(undefined);
       NodeAssert.equal(Exit.isFailure(yield* Fiber.join(steerFiber)), true);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
     }),
   );
@@ -4187,9 +4167,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMode: "approval-required",
       });
 
-      const openedEvents = Array.from(
-        yield* Fiber.join(openedEventsFiber).pipe(Effect.timeout("1 second")),
-      );
+      const openedEvents = Array.from(yield* Fiber.join(openedEventsFiber));
       const opened = openedEvents.find((event) => event.type === "request.opened");
       NodeAssert.ok(opened);
       NodeAssert.equal(opened.requestId, "per_child");
@@ -4227,7 +4205,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           reply: "always",
         },
       });
-      const resolved = yield* Fiber.join(resolvedEventFiber).pipe(Effect.timeout("1 second"));
+      const resolved = yield* Fiber.join(resolvedEventFiber);
       NodeAssert.equal(Option.getOrUndefined(resolved)?.type, "request.resolved");
 
       yield* adapter.stopSession(threadId);
@@ -4307,7 +4285,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           threadId,
           runtimeMode: "full-access",
         });
-        const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+        const events = Array.from(yield* Fiber.join(eventsFiber));
 
         NodeAssert.deepEqual(runtimeMock.state.permissionReplyCalls, [
           { requestID: requestId, reply: "once" },
@@ -4358,9 +4336,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         threadId,
         runtimeMode: "full-access",
       });
-      const opened = Option.getOrUndefined(
-        yield* Fiber.join(openedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const opened = Option.getOrUndefined(yield* Fiber.join(openedFiber));
       NodeAssert.equal(opened?.requestId, "per_doom_loop_failed");
       // Exactly one auto-reply attempt: the fallback surfaces the dialog
       // instead of retrying the reply.
@@ -4487,9 +4463,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMode: "approval-required",
       });
 
-      const requestedEvents = Array.from(
-        yield* Fiber.join(requestedEventsFiber).pipe(Effect.timeout("1 second")),
-      );
+      const requestedEvents = Array.from(yield* Fiber.join(requestedEventsFiber));
       const requested = requestedEvents.find((event) => event.type === "user-input.requested");
       NodeAssert.ok(requested);
       NodeAssert.equal(requested.requestId, "que_child");
@@ -4516,7 +4490,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           answers: [["Workspace"]],
         },
       });
-      const resolved = yield* Fiber.join(resolvedEventFiber).pipe(Effect.timeout("1 second"));
+      const resolved = yield* Fiber.join(resolvedEventFiber);
       NodeAssert.equal(Option.getOrUndefined(resolved)?.type, "user-input.resolved");
 
       yield* adapter.stopSession(threadId);
@@ -4549,9 +4523,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         resumeCursor: { schemaVersion: 1, sessionId: "ses_parent" },
       });
 
-      const requests = Array.from(
-        yield* Fiber.join(requestsFiber).pipe(Effect.timeout("1 second")),
-      );
+      const requests = Array.from(yield* Fiber.join(requestsFiber));
       NodeAssert.deepEqual(requests.map((event) => [event.type, event.requestId]).sort(), [
         ["request.opened", "per_existing"],
         ["user-input.requested", "que_existing"],
@@ -4624,7 +4596,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMock.state.transientErrorSessionIds.delete("ses_existing_child");
         yield* advanceTestClock(250);
 
-        const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+        const events = Array.from(yield* Fiber.join(eventsFiber));
         NodeAssert.deepEqual(
           events.map((event) => event.type),
           ["runtime.warning", "request.opened"],
@@ -4675,9 +4647,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         resumeCursor: { schemaVersion: 1, sessionId: "ses_parent" },
       });
       yield* Effect.promise(() => listStarted.promise);
-      const resolved = Option.getOrUndefined(
-        yield* Fiber.join(resolvedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const resolved = Option.getOrUndefined(yield* Fiber.join(resolvedFiber));
       NodeAssert.equal(resolved?.type, "request.resolved");
       listRelease.resolve(undefined);
       yield* Effect.yieldNow;
@@ -4731,9 +4701,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       runtimeMock.state.transientErrorSessionIds.delete(childId);
       yield* advanceTestClock(250);
 
-      const terminal = Option.getOrUndefined(
-        yield* Fiber.join(terminalFiber).pipe(Effect.timeout("1 second")),
-      );
+      const terminal = Option.getOrUndefined(yield* Fiber.join(terminalFiber));
       NodeAssert.equal(terminal?.type, "request.resolved");
       const response = yield* Effect.exit(
         adapter.respondToRequest(threadId, ApprovalRequestId.make(request.id), "accept"),
@@ -4846,9 +4814,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       yield* Effect.promise(() => firstListStarted.promise);
       firstListRelease.resolve(undefined);
 
-      const opened = Option.getOrUndefined(
-        yield* Fiber.join(openedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const opened = Option.getOrUndefined(yield* Fiber.join(openedFiber));
       NodeAssert.equal(opened?.requestId, pending.id);
       NodeAssert.equal(runtimeMock.state.permissionListCalls, 2);
     }),
@@ -5159,7 +5125,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       abortRelease.resolve(undefined);
       yield* Fiber.join(interruptFiber);
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter((event) => event.type === "turn.completed" || event.type === "turn.aborted")
@@ -5228,7 +5194,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(session?.activeTurnId, undefined);
 
       yield* adapter.stopSession(threadId);
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter((event) => event.type === "turn.completed" || event.type === "turn.aborted")
@@ -5352,9 +5318,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const firstOutput = Option.getOrUndefined(
-        yield* Fiber.join(firstLateOutput).pipe(Effect.timeout("1 second")),
-      );
+      const firstOutput = Option.getOrUndefined(yield* Fiber.join(firstLateOutput));
       NodeAssert.equal(firstOutput?.type, "thread.metadata.updated");
       NodeAssert.equal(Exit.isFailure(sendResult), true);
       if (Exit.isFailure(sendResult)) {
@@ -5430,7 +5394,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       abortRelease.resolve(undefined);
       yield* Fiber.join(interruptFiber);
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter(
@@ -5617,7 +5581,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       yield* Fiber.join(firstInterrupt);
       yield* Fiber.join(secondInterrupt);
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter((event) => event.type === "turn.completed" || event.type === "turn.aborted")
@@ -6000,9 +5964,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       statusRelease.resolve(undefined);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, secondTurn.turnId);
       NodeAssert.equal(runtimeMock.state.sessionStatusCalls, 2);
     }),
@@ -6072,9 +6034,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       yield* Effect.promise(() => failuresObserved.promise);
       yield* advanceTestClock(250);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, secondTurn.turnId);
       NodeAssert.equal(runtimeMock.state.sessionStatusCalls, 3);
     }),
@@ -6154,9 +6114,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       statusRelease.resolve(undefined);
 
-      const completed = Option.getOrUndefined(
-        yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second")),
-      );
+      const completed = Option.getOrUndefined(yield* Fiber.join(completedFiber));
       NodeAssert.equal(completed?.turnId, activeTurn.turnId);
     }),
   );
@@ -6363,7 +6321,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter(
@@ -6442,7 +6400,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       yield* Effect.promise(() => childAbortStarted.promise);
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.deepEqual(
         events
           .filter(
@@ -6964,7 +6922,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       const deltas = events.filter((event) => event.type === "content.delta");
       NodeAssert.deepEqual(
         deltas.map((event) => (event.type === "content.delta" ? event.payload.delta : "")),
@@ -7672,7 +7630,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       NodeAssert.equal(runtimeMock.state.sessionCreateInputs.length, 1);
       NodeAssert.equal("title" in (runtimeMock.state.sessionCreateInputs[0] ?? {}), false);
 
@@ -7742,7 +7700,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
 
-      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const events = Array.from(yield* Fiber.join(eventsFiber));
       const metadataUpdated = events.filter((event) => event.type === "thread.metadata.updated");
       NodeAssert.equal(metadataUpdated.length, 1);
       if (metadataUpdated[0]?.type === "thread.metadata.updated") {

@@ -31,29 +31,6 @@ const defaultModelSelection = {
   model: "gpt-5-codex",
 } as const;
 
-async function waitFor(
-  predicate: () => boolean | Promise<boolean>,
-  timeoutMs = 2_000,
-): Promise<void> {
-  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
-  const poll = async (): Promise<void> => {
-    if (await predicate()) {
-      return;
-    }
-    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
-      throw new Error("Timed out waiting for expectation.");
-    }
-    await Effect.runPromise(Effect.yieldNow);
-    return poll();
-  };
-
-  return poll();
-}
-
-const drainFibers = Effect.forEach(Array.from({ length: 10 }), () => Effect.yieldNow, {
-  discard: true,
-});
-
 const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
 
 function makeReadModel(
@@ -143,7 +120,22 @@ describe("ProviderSessionReaper", () => {
       Effect.gen(function* () {
         const reaper = yield* ProviderSessionReaper;
         scope = yield* Scope.make("sequential");
-        yield* reaper.start().pipe(Scope.provide(scope));
+        const clock = yield* Clock.Clock;
+        const swept = yield* Deferred.make<void>();
+        yield* reaper.start().pipe(
+          Effect.provideService(Clock.Clock, {
+            currentTimeMillis: clock.currentTimeMillis,
+            currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
+            currentTimeNanos: clock.currentTimeNanos,
+            currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
+            monotonicTimeNanos: clock.monotonicTimeNanos,
+            monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
+            // The next sweep is scheduled only after all work in this one settles.
+            sleep: () => Deferred.succeed(swept, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+          Scope.provide(scope),
+        );
+        yield* Deferred.await(swept);
       }),
     );
   }
@@ -305,7 +297,7 @@ describe("ProviderSessionReaper", () => {
 
     await startReaper();
 
-    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    expect(harness.stopSession.mock.calls).toHaveLength(1);
 
     expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ threadId });
     expect(harness.stoppedThreadIds.has(threadId)).toBe(true);
@@ -352,7 +344,6 @@ describe("ProviderSessionReaper", () => {
     );
 
     await startReaper();
-    await Effect.runPromise(drainFibers);
 
     expect(harness.stopSession).not.toHaveBeenCalled();
     const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
@@ -400,7 +391,6 @@ describe("ProviderSessionReaper", () => {
     );
 
     await startReaper();
-    await Effect.runPromise(drainFibers);
 
     expect(harness.stopSession).not.toHaveBeenCalled();
     const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
@@ -553,7 +543,6 @@ describe("ProviderSessionReaper", () => {
     );
 
     await startReaper();
-    await Effect.runPromise(drainFibers);
 
     expect(harness.stopSession).not.toHaveBeenCalled();
     const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
@@ -638,7 +627,7 @@ describe("ProviderSessionReaper", () => {
 
     await startReaper();
 
-    await waitFor(() => harness.stopSession.mock.calls.length === 2);
+    expect(harness.stopSession.mock.calls).toHaveLength(2);
 
     expect(harness.stopSession.mock.calls.map(([request]) => request.threadId)).toEqual([
       failedThreadId,
@@ -719,7 +708,7 @@ describe("ProviderSessionReaper", () => {
 
     await startReaper();
 
-    await waitFor(() => harness.stopSession.mock.calls.length === 2);
+    expect(harness.stopSession.mock.calls).toHaveLength(2);
 
     expect(harness.stopSession.mock.calls.map(([request]) => request.threadId)).toEqual([
       defectThreadId,

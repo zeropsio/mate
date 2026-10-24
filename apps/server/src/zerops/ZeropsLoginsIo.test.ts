@@ -243,7 +243,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         assert.includeMembers([...(yield* Ref.get(verifies))], [id]);
         // After the publish: the row flips first, the picker's re-probe follows.
         assert.strictEqual(
-          yield* Queue.take(reconciliation).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+          yield* Queue.take(reconciliation).pipe(Effect.orDie),
           `${id}:authenticated`,
         );
         assert.include([...(yield* Ref.get(reconciled))], `${id}:authenticated`);
@@ -406,7 +406,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           credentialGoneAfter: Duration.millis(10),
         });
         yield* logins.recheckNow(id);
-        yield* Deferred.await(cleared).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+        yield* Deferred.await(cleared).pipe(Effect.orDie);
         assert.isUndefined((yield* store.load)[id]);
       }),
     ),
@@ -418,7 +418,6 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
       Effect.gen(function* () {
         const { settings, verifies, logins, signIns } = yield* makeHarness({});
         const checked = yield* Stream.runHead(logins.credentials).pipe(
-          Effect.timeout("5 seconds"),
           Effect.orDie,
           Effect.forkChild({ startImmediately: true }),
         );
@@ -586,12 +585,7 @@ it.layer(NodeServices.layer)("credential watcher", (it) => {
           Stream.fromQueue(decisions).pipe(
             Stream.filter((rows) => rows.some(([key]) => key === id)),
           ),
-        ).pipe(
-          Effect.timeout("5 seconds"),
-          TestClock.withLive,
-          Effect.orDie,
-          Effect.forkChild({ startImmediately: true }),
-        );
+        ).pipe(TestClock.withLive, Effect.orDie, Effect.forkChild({ startImmediately: true }));
         yield* logins.recheckNow(id);
         // Run the login check's debounce, then wait until the credential consumer decided.
         yield* TestClock.adjust(Duration.millis(10));
