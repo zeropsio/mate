@@ -1253,7 +1253,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               yield* s.given.project("Ada", { mate: true, app: "Shop" });
               yield* s.given.project("Bea", { mate: true, app: "Northwind" });
-              yield* s.stage("Northwind stage", "Northwind");
+              yield* s.stage("Northwind-stage", "Northwind");
               yield* s.given.signedIn;
               yield* Effect.promise(async () => {
                 await s.page.goto(`${s.web.origin}/zerops`);
