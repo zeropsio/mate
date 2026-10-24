@@ -14,7 +14,8 @@
  * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
  * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A part
  * migrated to a dev pool lists no checkout: its stage is the pool's pair's, as the
- * thread's last envelope says (`useThreadPoolPairs`). A thread
+ * thread's last envelope says (`useThreadPoolPairs`); a tab that lists nothing then says the
+ * code lives in the pool, which the chat reaches by taking a workspace (`gitEmptyLine`). A thread
  * whose agent leased a pool container reads that lease's repository and every
  * other of its branch zcp holds, alone (`threadLeases`, `threadCheckoutHostnames`),
  * each at `/var/www/{alias}`.
@@ -32,7 +33,9 @@ import {
   gitActionAllowed,
   gitBlock,
   gitCheckoutHostnames,
+  gitEmptyLine,
   mateChangeIn,
+  NO_REPOSITORY_LINE,
   threadCheckoutHostnames,
   type CheckoutLease,
   type FlowPullRequest,
@@ -51,6 +54,7 @@ import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { checkoutPathFor, useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
@@ -206,6 +210,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     useThreadShell(props.threadRef)?.lease ?? null,
   );
   const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
+  const lifecycle = useZeropsLifecycle(leases.length === 0 ? environmentId : null, threadId);
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;
@@ -219,6 +224,10 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       ),
     [topology.view, tierYaml, poolPairs, leases],
   );
+  const emptyLine =
+    topology.view === undefined
+      ? NO_REPOSITORY_LINE
+      : gitEmptyLine(topology.view.services, lifecycle);
   if (repositories === undefined)
     return (
       <div role="status">
@@ -233,6 +242,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       ) : null}
       <KnownGitTab
         {...props}
+        emptyLine={emptyLine}
         leases={leases}
         repositories={repositories}
         key={props.threadRef?.environmentId}
@@ -244,10 +254,13 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
 function KnownGitTab({
   repositories,
   leases,
+  emptyLine,
   ...props
 }: ZeropsGitTabProps & {
   readonly repositories: ReadonlyArray<string>;
   readonly leases: ReadonlyArray<CheckoutLease>;
+  /** What the tab says while it lists no repository (`gitEmptyLine`). */
+  readonly emptyLine: string;
 }) {
   const environmentId = props.threadRef?.environmentId;
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
@@ -417,7 +430,7 @@ function KnownGitTab({
       )}
       <ZeropsGitPanel
         {...(openCommit === null ? {} : { className: "hidden" })}
-        model={{ blocks }}
+        model={{ blocks, emptyLine }}
         renderBlockAction={renderBlockVerbs}
         renderBlockCommits={(block) => (
           <ZeropsGitBlockCommits

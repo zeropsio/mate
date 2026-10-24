@@ -1,9 +1,11 @@
-import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
+import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS, type ZeropsLifecycle } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CODE_IN_POOL_LINE,
   checkoutLabel,
   gitCheckoutHostnames,
+  gitEmptyLine,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
@@ -20,6 +22,7 @@ import {
 } from "./gitTab.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import type { Known } from "./knowledge/index.ts";
 import { mateNextStep } from "./mateNextStep.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
@@ -737,6 +740,72 @@ describe("gitCheckoutHostnames", () => {
       expect(gitCheckoutHostnames(services, read, poolPairs)).toEqual(["api"]);
     });
   });
+});
+
+describe("what the Git tab says while it lists no repository", () => {
+  // A Mate whose every part was migrated to a dev pool: a chat bound to no lease lists no checkout,
+  // yet the project has code — in the pool, which a chat reaches by leasing one of its containers.
+  const services = [{ hostname: "apppool" }, { hostname: "appstage" }];
+  const pool = { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool" };
+  const known = (snapshots: ReadonlyArray<Record<string, unknown>>) =>
+    ({
+      state: "known",
+      value: { threadId: "thread-1", recentTools: [], envelope: { services: snapshots } },
+    }) as unknown as Known<ZeropsLifecycle>;
+  type Case = {
+    readonly when: string;
+    readonly services?: ReadonlyArray<{ readonly hostname: string }>;
+    readonly lifecycle: Known<ZeropsLifecycle> | undefined;
+  };
+
+  it.each<Case>([
+    {
+      when: "the thread's last envelope pairs a stage with a pool the project holds",
+      lifecycle: known([{ ...pool, stages: [{ hostname: "appstage", setup: "prod" }] }]),
+    },
+    {
+      when: "it names the one stage zcp sends as stageHostname",
+      lifecycle: known([{ ...pool, stageHostname: "appstage" }]),
+    },
+    {
+      when: "it names a pool's repository, though the pool carries no stage",
+      services: [{ hostname: "apppool" }],
+      lifecycle: known([{ ...pool, remoteUrl: "https://hq.example.com/git/app-1/appdev.git" }]),
+    },
+  ])(
+    "says the code lives in a dev pool, reached by taking a workspace, when $when",
+    ({ services: held = services, lifecycle }) => {
+      expect(gitEmptyLine(held, lifecycle)).toBe(CODE_IN_POOL_LINE);
+    },
+  );
+
+  it.each<Case>([
+    {
+      when: "the envelope's pool is one the project no longer holds",
+      services: [{ hostname: "appstage" }],
+      lifecycle: known([{ ...pool, stages: [{ hostname: "appstage" }] }]),
+    },
+    {
+      when: "only a dev service names a repository",
+      services: [{ hostname: "appdev" }],
+      lifecycle: known([
+        { hostname: "appdev", runtimeClass: "dynamic", remoteUrl: "https://example.com/app.git" },
+      ]),
+    },
+    { when: "the pool carries neither a stage nor a repository", lifecycle: known([pool]) },
+    {
+      when: "the thread carries no envelope yet",
+      lifecycle: { state: "unread", waitingFor: null },
+    },
+    { when: "nothing is asked of the thread", lifecycle: undefined },
+  ])(
+    "says there is no code repository yet when $when",
+    ({ services: held = services, lifecycle }) => {
+      expect(gitEmptyLine(held, lifecycle)).toBe(
+        "No code repository yet. The first service brings one.",
+      );
+    },
+  );
 });
 
 describe("the second dev service of a pair is not shown as a repository in the Git tab", () => {

@@ -254,8 +254,10 @@ export {
   type ZeropsTokenDelegation,
 } from "./groupReach.ts";
 export {
+  CODE_IN_POOL_LINE,
   checkoutLabel,
   gitCheckoutHostnames,
+  gitEmptyLine,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
@@ -263,6 +265,7 @@ export {
   gitTrouble,
   gitVerdict,
   mateChangeIn,
+  NO_REPOSITORY_LINE,
   pullRequestBlocked,
   pullRequestBlockedReason,
   threadCheckoutHostnames,

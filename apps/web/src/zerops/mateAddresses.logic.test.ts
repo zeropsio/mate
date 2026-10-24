@@ -426,3 +426,29 @@ describe("a thread's lease's addresses", () => {
     ]);
   });
 });
+
+describe("a part migrated to a dev pool", () => {
+  // The dev service is gone and zcp keys the pair by the pool, whose envelope snapshot carries the
+  // stage (zcp spec-mate §2.8a.3): the stage is still the Mate's preview.
+  const STAGE_URL = "https://appstage-1df2-3000.prg1.zerops.app";
+  const services = [
+    {
+      ...svc("apppool", ["https://apppool-1df2-3000.prg1.zerops.app"], "infrastructure"),
+      type: "swarm@1",
+    },
+    { ...svc("appstage", [STAGE_URL]), type: "bun@1.3" },
+  ];
+
+  it("its stage is the Mate's preview, paired with the pool, and the pool's own address is never listed", () => {
+    expect(
+      brief({
+        services,
+        poolPairs: [{ pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] }],
+      }),
+    ).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
+  });
+
+  it("before the envelope pairs it, its stage stands alone, by its name", () => {
+    expect(brief({ services })).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+  });
+});

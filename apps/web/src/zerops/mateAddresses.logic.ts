@@ -17,6 +17,10 @@
  * part of the application: "web :3000", "api :8080" (the monorepo model, §6).
  * The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
+ * A part migrated to a dev pool keeps its preview: its stage pairs with the pool, as the
+ * conversation's last envelope keys the pair (`poolPairs`), though the pool stands in
+ * Infrastructure and lists no address of its own.
+ *
  * A thread bound to a lease also lists the dev servers zcp read on each of its
  * leases — the one it is bound to and every other of its branch — under the
  * lease's name (`<pool> · <branch>`). A lease has no address but those: the
@@ -26,7 +30,7 @@
  */
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
+import { servicePairs, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
@@ -68,6 +72,8 @@ export interface MateAddressInput {
   readonly services: ReadonlyArray<{
     readonly hostname: string;
     readonly group: ZeropsTopologyGroup;
+    /** The type-version, which tells a pool or a Box from a runtime (`servicePairs`). */
+    readonly type?: string;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
     /** The dev servers zcp last read on it (`ZeropsServiceRow.devServers`); absent while unread. */
     readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
@@ -84,6 +90,11 @@ export interface MateAddressInput {
         readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
       }>
     | undefined;
+  /**
+   * The pairs the conversation's last envelope keys by a dev pool (`poolPairsOf`); none before it
+   * carries one.
+   */
+  readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
   /** The Mate's group's stage and production projects the account holds, with their routes. */
@@ -112,7 +123,9 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u,
 
 export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddress> {
   const own = input.services.filter((service) => service.group !== "infrastructure");
-  const { devOf } = servicePairs({ services: own });
+  // Every service is handed to the pairing: a pool keying a migrated part's pair stands in
+  // Infrastructure, and a pool the services do not list pairs nothing.
+  const { devOf } = servicePairs({ services: input.services, poolPairs: input.poolPairs });
   const devs = new Set(devOf.values());
 
   const addresses: Array<MateAddress> = [];
