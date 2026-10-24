@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -17,8 +17,10 @@ const mate = vi.hoisted(() => {
   return {
     statuses,
     atoms,
-    services: [] as Array<{ hostname: string; group: string }>,
+    services: [] as Array<{ hostname: string; group: string; type?: string }>,
     crew: null as unknown,
+    /** The thread's lifecycle, whose last envelope may key a migrated part's pair by its pool. */
+    lifecycle: undefined as unknown,
   };
 });
 
@@ -59,8 +61,12 @@ vi.mock("../zerops/useProjectTopology", () => ({
 vi.mock("../state/zerops", () => ({
   zeropsFeeds: { crew: () => Atom.make(mate.crew) },
 }));
+vi.mock("../zerops/useZeropsFeeds", () => ({
+  useZeropsLifecycle: () => mate.lifecycle,
+}));
 
 const ENVIRONMENT = "mate" as EnvironmentId;
+const THREAD = "thread-1" as ThreadId;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -68,6 +74,7 @@ beforeEach(() => {
   mate.atoms.clear();
   mate.services = [{ hostname: "apidev", group: "runtimes" }];
   mate.crew = null;
+  mate.lifecycle = undefined;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -79,7 +86,7 @@ async function readRepositories(
 ) {
   let latest: ReadonlyArray<DiffRepositoryRead> | null = null;
   function Probe() {
-    latest = useDiffRepositories(ENVIRONMENT, "/var/www", crew, leases).reads;
+    latest = useDiffRepositories(ENVIRONMENT, "/var/www", crew, leases, THREAD).reads;
     return null;
   }
   const container = document.createElement("div");
@@ -161,5 +168,34 @@ it("a thread bound to no lease diffs the Mate's checkouts, never another thread'
     expect(latest()?.map(({ repository }) => repository)).toEqual([
       { name: "apidev", cwd: "/var/www/apidev" },
     ]);
+  });
+});
+
+it("a part migrated to a dev pool is never read as a checkout: Diff asks git nothing of its stage", async () => {
+  mate.services = [
+    { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+    { hostname: "appstage", group: "runtimes", type: "bun@1.3" },
+    { hostname: "apidev", group: "runtimes", type: "nodejs@22" },
+  ];
+  mate.lifecycle = {
+    state: "known",
+    value: {
+      envelope: {
+        services: [
+          {
+            hostname: "apppool",
+            runtimeClass: "pool",
+            stages: [{ hostname: "appstage", setup: "prod" }],
+          },
+        ],
+      },
+    },
+  };
+  mate.statuses.set("/var/www/apidev", { isRepo: true, refName: "main" });
+  await readRepositories(null, async (latest) => {
+    expect(latest()?.map(({ repository }) => repository)).toEqual([
+      { name: "apidev", cwd: "/var/www/apidev" },
+    ]);
+    expect(mate.atoms.has("/var/www/appstage")).toBe(false);
   });
 });

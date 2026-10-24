@@ -1039,7 +1039,11 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
     threadRef.threadId,
     serverThread?.lease ?? null,
   );
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    leases,
+    threadRef.threadId,
+  );
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
@@ -1327,7 +1331,11 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     threadRef.threadId,
     serverThread?.lease ?? null,
   );
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    leases,
+    threadRef.threadId,
+  );
   const cwd = useMemo(
     () =>
       project
@@ -3264,7 +3272,11 @@ function ConversationView(props: ChatViewProps) {
     activeThreadId,
     activeThread?.lease ?? null,
   );
-  const mateRepositories = useMateRepositories(activeProject ? environmentId : null, mateLeases);
+  const mateRepositories = useMateRepositories(
+    activeProject ? environmentId : null,
+    mateLeases,
+    activeThreadId,
+  );
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,

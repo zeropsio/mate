@@ -12,7 +12,9 @@
  * Which repositories there are comes from the project's own topology: a runtime
  * service is a codebase, its hostname is the name of its repository in the
  * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
- * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A thread
+ * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A part
+ * migrated to a dev pool lists no checkout: its stage is the pool's pair's, as the
+ * thread's last envelope says (`useThreadPoolPairs`). A thread
  * whose agent leased a pool container reads that lease's repository and every
  * other of its branch zcp holds, alone (`threadLeases`, `threadCheckoutHostnames`),
  * each at `/var/www/{alias}`.
@@ -45,6 +47,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useThreadShell } from "../../state/entities";
 import { useThreadLeases } from "../../zerops/useThreadLeases";
+import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
@@ -194,12 +197,15 @@ export interface ZeropsGitTabProps {
 }
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
-  const topology = useProjectTopology(props.threadRef?.environmentId ?? null);
+  const environmentId = props.threadRef?.environmentId ?? null;
+  const threadId = props.threadRef?.threadId ?? null;
+  const topology = useProjectTopology(environmentId);
   const leases = useThreadLeases(
-    props.threadRef?.environmentId ?? null,
-    props.threadRef?.threadId ?? null,
+    environmentId,
+    threadId,
     useThreadShell(props.threadRef)?.lease ?? null,
   );
+  const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;
@@ -208,10 +214,10 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       threadCheckoutHostnames(
         topology.view === undefined
           ? undefined
-          : gitCheckoutHostnames(topology.view.services, tierYaml),
+          : gitCheckoutHostnames(topology.view.services, tierYaml, poolPairs),
         leases,
       ),
-    [topology.view, tierYaml, leases],
+    [topology.view, tierYaml, poolPairs, leases],
   );
   if (repositories === undefined)
     return (

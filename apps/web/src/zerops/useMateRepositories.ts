@@ -1,12 +1,13 @@
 /**
  * A Mate's checkouts that are Git repositories on disk now, in the Git tab's order: the runtime
- * services its topology lists (`gitCheckoutHostnames`), or a bound thread's leases alone
+ * services its topology lists (`gitCheckoutHostnames`, a migrated part's stage paired with its
+ * pool as the thread's last envelope says: `useThreadPoolPairs`), or a bound thread's leases alone
  * (`threadCheckoutHostnames`), each read as the Git tab reads it (the server's status of
  * `/var/www/{hostname}`). Empty off Zerops, after a failed read, or not asked (`environmentId`
  * null: a hidden terminal reads nothing).
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   gitCheckoutHostnames,
   threadCheckoutHostnames,
@@ -19,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import { vcsStatus } from "../state/workspace";
 import { repositoriesOnDisk } from "./terminalCwd.logic";
 import { useProjectTopology } from "./useProjectTopology";
+import { useThreadPoolPairs } from "./useThreadPoolPairs";
 
 const NONE: ReadonlyArray<string> = [];
 const NONE_ATOM = Atom.make<ReadonlyArray<string> | null>(NONE);
@@ -31,11 +33,14 @@ export function useMateCheckouts(
   environmentId: EnvironmentId | null,
   /** The thread's leases (`useThreadLeases`); none for a thread bound to none. */
   leases: ReadonlyArray<CheckoutLease>,
+  /** The thread, whose last envelope pairs a migrated part's stage with its pool. */
+  threadId: ThreadId | null,
 ): ReadonlyArray<string> | null {
   const { view, error } = useProjectTopology(environmentId);
+  const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
   const key =
     threadCheckoutHostnames(
-      view === undefined ? undefined : gitCheckoutHostnames(view.services),
+      view === undefined ? undefined : gitCheckoutHostnames(view.services, undefined, poolPairs),
       leases,
     )?.join("\n") ?? null;
   const atom = useMemo(() => {
@@ -60,8 +65,9 @@ export function useMateCheckouts(
 export function useMateRepositories(
   environmentId: EnvironmentId | null,
   leases: ReadonlyArray<CheckoutLease>,
+  threadId: ThreadId | null,
 ): ReadonlyArray<string> | null {
-  const repositories = useMateCheckouts(environmentId, leases);
+  const repositories = useMateCheckouts(environmentId, leases, threadId);
   const unread = repositories === null;
   const [waited, setWaited] = useState(false);
   useEffect(() => {

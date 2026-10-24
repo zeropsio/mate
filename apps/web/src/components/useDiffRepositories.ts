@@ -8,7 +8,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { crewFeedRead } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { CheckoutLease } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ThreadCrewOrigin } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadCrewOrigin, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useMemo } from "react";
@@ -28,8 +28,10 @@ export function useDiffRepositories(
   crew: ThreadCrewOrigin | null,
   /** The thread's leases (`useThreadLeases`); none for a thread bound to none. */
   leases: ReadonlyArray<CheckoutLease>,
+  /** The thread, whose last envelope pairs a migrated part's stage with its pool. */
+  threadId: ThreadId | null,
 ): { readonly reads: ReadonlyArray<DiffRepositoryRead> | null; readonly gitPage: boolean } {
-  const checkouts = useMateCheckouts(environmentId, leases);
+  const checkouts = useMateCheckouts(environmentId, leases, threadId);
   const { view } = useProjectTopology(environmentId);
   const crewRead = useAtomValue(
     environmentId === null || crew === null
