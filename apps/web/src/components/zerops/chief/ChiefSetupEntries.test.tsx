@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { chiefSetupEntry, hqOwnChief } from "~/zerops/chief";
+import { chiefSetupEntry, hqOrgChief } from "~/zerops/chief";
 import { Menu } from "../../ui/menu";
 import { SidebarZeropsAccountMenu } from "../SidebarZeropsAccount";
 import { ZeropsProjectsHeader } from "../ZeropsProjectsPage";
@@ -65,10 +65,10 @@ it("the overview offers no Chief: the account menu is its only entry", async () 
 });
 
 it.each([
-  ["a viewer with a Chief never sees the setup entry", true, { chief: { chief: "mine" } }],
+  ["a viewer with a Chief never sees the setup entry", true, { chief: { chief: "org" } }],
   ["unknown Chief state shows neither setup entry", false, {}],
 ] as const)("%s", async (_title, read, facts) => {
-  const { container } = await mount(chiefSetupEntry(hqOwnChief(facts, read), "idle"));
+  const { container } = await mount(chiefSetupEntry(hqOrgChief(facts, read), "idle"));
   expect(container.textContent).not.toContain("Set up");
 });
 

@@ -10,7 +10,7 @@ import {
   chiefTopShown,
   type ChiefPageView,
 } from "./chiefTop.logic";
-import { chiefSetupLine, type OwnChief } from "~/zerops/chief";
+import { chiefSetupLine, type OrgChief } from "~/zerops/chief";
 
 const mate = (state: MateRowState, second: MateRowSecond) => ({ state, second });
 
@@ -192,7 +192,7 @@ describe("chiefNameParts", () => {
 
 describe("chiefTopShown", () => {
   it("the Chief's row stays from setup until HQ reports it", () => {
-    const steps: ReadonlyArray<[OwnChief, "running" | "done" | "idle"]> = [
+    const steps: ReadonlyArray<[OrgChief, "running" | "done" | "idle"]> = [
       [null, "running"],
       [null, "done"],
       [undefined, "done"],

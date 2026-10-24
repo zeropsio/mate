@@ -1,4 +1,4 @@
-import { ownChiefCandidateAtom } from "~/zerops/useZeropsCandidates";
+import { chiefCandidateAtom } from "~/zerops/useZeropsCandidates";
 import {
   shownHqMateDirectoryAtom,
   isListedMateEnvironment,
@@ -226,7 +226,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
-import { useOwnChief } from "~/zerops/ownChief";
+import { useOrgChief } from "~/zerops/orgChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
@@ -1877,7 +1877,7 @@ export default function Sidebar() {
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
   const newProjectRoute = useMatch({ from: "/_chat/mate/new/$birthId", shouldThrow: false });
   // The person's Chief, kept out of the listing for a top of its own.
-  const zeropsChief = useAtomValue(ownChiefCandidateAtom);
+  const zeropsChief = useAtomValue(chiefCandidateAtom);
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
@@ -1988,7 +1988,7 @@ export default function Sidebar() {
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
-  const ownChief = useOwnChief();
+  const orgChief = useOrgChief();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
@@ -2737,7 +2737,7 @@ export default function Sidebar() {
     zeropsSignedIn &&
     zeropsHoldsChief &&
     chiefTopShown({
-      own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
+      own: zeropsChief === undefined ? orgChief : zeropsChief.project.id,
       setup: chiefSetupLine,
     });
   const zeropsChiefTop = (tile: boolean) =>

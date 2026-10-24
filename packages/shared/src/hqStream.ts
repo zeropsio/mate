@@ -283,13 +283,13 @@ export const HqPersonFacts = Schema.Struct({
   mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
-  /** This Mate's person's registered Chief; absent from an older HQ. */
+  /** The project the organisation's Chief mark names, or none; absent from an older HQ. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
-  /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
-  chief: Schema.optionalKey(Schema.Literals(["mine", "another"])),
+  /** `org` on the organisation's Chief, for every reader alike; absent on any other project. */
+  chief: Schema.optionalKey(Schema.Literal("org")),
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 

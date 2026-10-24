@@ -6,12 +6,12 @@ import {
   chiefQuestion,
   chiefSetupLine,
   chiefSetupEntry,
-  hqOwnChief,
+  hqOrgChief,
   isChief,
   othersChiefs,
-  ownChiefAmong,
-  type OwnChief,
-  withoutOwnChief,
+  chiefAmong,
+  type OrgChief,
+  withoutChief,
 } from "./chief";
 
 describe("isChief", () => {
@@ -42,7 +42,7 @@ describe("whose Chief", () => {
   const theirs = { id: "p-theirs", tagList: ["mate", "chief"] };
   const shop = { id: "p-shop", tagList: ["mate"] };
 
-  it.each<[string, OwnChief, ReadonlyArray<string>]>([
+  it.each<[string, OrgChief, ReadonlyArray<string>]>([
     ["the viewer's own Chief shows, every other person's is hidden", "p-own", ["p-theirs"]],
     ["with no Chief of their own, every Chief is someone else's", null, ["p-own", "p-theirs"]],
     [
@@ -50,11 +50,11 @@ describe("whose Chief", () => {
       undefined,
       ["p-own", "p-theirs"],
     ],
-  ])("%s", (_title, ownChief, hidden) => {
-    expect([...othersChiefs([own, theirs, shop], ownChief)].toSorted()).toEqual(hidden);
+  ])("%s", (_title, orgChief, hidden) => {
+    expect([...othersChiefs([own, theirs, shop], orgChief)].toSorted()).toEqual(hidden);
   });
 
-  it.each<[string, OwnChief, string | undefined]>([
+  it.each<[string, OrgChief, string | undefined]>([
     ["the menu's top row is the viewer's own Chief", "p-own", "p-own"],
     [
       "a project HQ names as the viewer's Chief is theirs even before its tag is read",
@@ -64,12 +64,12 @@ describe("whose Chief", () => {
     ["someone else's Chief is never the top row", null, undefined],
     ["nothing is the top row while whose is not known", undefined, undefined],
     ["a Chief HQ names but the listing does not hold yet is not drawn", "p-gone", undefined],
-  ])("%s", (_title, ownChief, expected) => {
+  ])("%s", (_title, orgChief, expected) => {
     const candidates = [own, theirs, shop].map((project) => ({ project }));
-    expect(ownChiefAmong(candidates, ownChief)?.project.id).toBe(expected);
+    expect(chiefAmong(candidates, orgChief)?.project.id).toBe(expected);
   });
 
-  it.each<[string, OwnChief, ReadonlyArray<string>]>([
+  it.each<[string, OrgChief, ReadonlyArray<string>]>([
     [
       "the menu's list leaves out the viewer's own Chief, drawn once as its top row",
       "p-own",
@@ -85,9 +85,9 @@ describe("whose Chief", () => {
       undefined,
       ["p-own", "p-theirs", "p-shop"],
     ],
-  ])("%s", (_title, ownChief, expected) => {
+  ])("%s", (_title, orgChief, expected) => {
     const candidates = [own, theirs, shop].map((project) => ({ project }));
-    expect(withoutOwnChief(candidates, ownChief).map((candidate) => candidate.project.id)).toEqual(
+    expect(withoutChief(candidates, orgChief).map((candidate) => candidate.project.id)).toEqual(
       expected,
     );
   });
@@ -152,7 +152,7 @@ describe("Chief setup entry", () => {
     [
       "a viewer with a Chief never sees the setup entry",
       true,
-      { chief: { chief: "mine" } },
+      { chief: { chief: "org" } },
       "idle",
       false,
     ],
@@ -161,7 +161,7 @@ describe("Chief setup entry", () => {
     ["Chief setup keeps its failed state", true, {}, "failed", false],
     ["Chief setup keeps its coming state", true, {}, "done", false],
   ] as const)("%s", (_title, read, facts, setup, expected) => {
-    expect(chiefSetupEntry(hqOwnChief(facts, read), setup)).toBe(expected);
+    expect(chiefSetupEntry(hqOrgChief(facts, read), setup)).toBe(expected);
   });
 });
 

@@ -777,7 +777,7 @@ export {
   isListedMateProject,
   isListedMateEnvironment,
   type HqMateDirectory,
-  type MyChief,
+  type DirectoryChief,
 } from "./projections/hqMateDirectory.ts";
 export {
   shownHqMateDirectoryAtom,

@@ -17,7 +17,7 @@ vi.mock("@effect/atom-react", () => ({
   useAtomValue: (atom: unknown) =>
     atom === shownHqMateDirectoryAtom
       ? ({
-          myChief: { kind: "absent" },
+          chief: { kind: "absent" },
           mates: {},
           chiefProjectIds: [],
           chiefEnvironmentIds: [],

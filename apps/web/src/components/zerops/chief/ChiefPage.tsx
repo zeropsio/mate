@@ -15,7 +15,7 @@ import {
   useChiefUnfinished,
 } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
-import { useOwnChief } from "~/zerops/ownChief";
+import { useOrgChief } from "~/zerops/orgChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -43,7 +43,7 @@ const CHIEF_DRAWN = {
 } as const;
 
 export function ChiefPage() {
-  const own = useOwnChief();
+  const own = useOrgChief();
   const { setup, startedAtMs } = useChiefSetup();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
