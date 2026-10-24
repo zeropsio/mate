@@ -11,6 +11,7 @@
  */
 import {
   type CommandId,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   isZeropsLeaseHeld,
   type MessageId,
   type ModelSelection,
@@ -268,8 +269,11 @@ export interface ZeropsReleaseConversation {
 
 /**
  * The turn a yes sends: `ZEROPS_RELEASE_REQUEST` as the person's own visible message, a normal turn
- * in the conversation's own model and modes. Mate's words, not theirs, so it never names the
- * conversation (`fromPanel`).
+ * in the conversation's own model and runtime mode. It runs in the default interaction mode even in
+ * a conversation set to plan: the person asked for the release, and a plan turn would only plan it.
+ * The mode rides this one message (the engine keeps no conversation-wide mode), so the
+ * conversation's next message is planned as before. Mate's words, not theirs, so it never names
+ * the conversation (`fromPanel`).
  */
 export const zeropsReleaseTurn = (input: {
   readonly conversation: ZeropsReleaseConversation;
@@ -287,7 +291,7 @@ export const zeropsReleaseTurn = (input: {
   },
   modelSelection: input.conversation.modelSelection,
   runtimeMode: input.conversation.runtimeMode,
-  interactionMode: input.conversation.interactionMode,
+  interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
   fromPanel: true,
   createdAt: input.createdAt,
 });

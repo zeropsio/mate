@@ -437,6 +437,19 @@ describe("the release request a yes sends", () => {
     });
   });
 
+  it("is a turn that acts even in a conversation set to plan, since the person asked for the release", () => {
+    // The engine keeps no conversation-wide mode: the mode rides each message, so this turn alone
+    // runs in the default mode and the conversation's next message is planned as before.
+    const planned = zeropsReleaseTurn({
+      conversation: { ...conversation, interactionMode: "plan" as const },
+      alias: "webpool-3",
+      ids,
+      createdAt: hours(0),
+    });
+    expect(planned.interactionMode).toBe("default");
+    expect(planned.runtimeMode).toBe("full-access");
+  });
+
   it.each([
     ["a conversation not archived gets the request straight away", false, ["send"]],
     [
