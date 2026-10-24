@@ -1,4 +1,5 @@
-// @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
+// @effect-diagnostics preferSchemaOverJson:off nodeBuiltinImport:off -- human-readable failure diagnostics.
+import { randomUUID } from "node:crypto";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -52,6 +53,80 @@ export const environmentJobs = Effect.fn("e-env.environmentJobs")(function* (
     return true;
   }).pipe(Effect.scoped);
   return seen!;
+});
+
+const decodeGitEnvironments = Schema.decodeUnknownOption(
+  Schema.Struct({
+    environments: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        target: Schema.Struct({ kind: Schema.String }),
+      }),
+    ),
+  }),
+);
+
+/** The application's Git environments as HQ's navigation delivers them, once `ready` holds. */
+export const gitEnvironments = Effect.fn("e-env.gitEnvironments")(function* (
+  f: Pick<Fixture, "s" | "appId">,
+  ready: (environments: ReadonlyArray<{ readonly id: string; readonly name: string }>) => boolean,
+) {
+  const { core, owner } = f.s.drivers;
+  let seen: ReadonlyArray<{ readonly id: string; readonly name: string }> | undefined;
+  yield* openScenarioNavigation(core.origin, yield* ticketFor(core.call, owner), (message) => {
+    if (message.type !== "scope-reset" && message.type !== "scope-values") return false;
+    const value = message.values.find((entry) => entry.key === `app:${f.appId}`)?.value;
+    const git = Option.getOrUndefined(decodeGitEnvironments(value))?.environments.filter(
+      (environment) => environment.target.kind === "git",
+    );
+    if (git === undefined || !ready(git)) return false;
+    seen = git;
+    return true;
+  }).pipe(Effect.scoped);
+  return seen!;
+});
+
+/**
+ * Attaches a Git environment through HQ's API: the application's `web` repository gets a remote on
+ * the scenario's GitHub, then the environment is previewed and added as the owner would. Returns
+ * the environment's id.
+ */
+export const addGitEnvironment = Effect.fn("e-env.addGitEnvironment")(function* (
+  f: Pick<Fixture, "s" | "appId">,
+  input: { readonly tier: "stage" | "production"; readonly name: string },
+) {
+  const { core, github, owner } = f.s.drivers;
+  const repository = github.addRepository("acme/shop");
+  const common = { orgId: "ORG", appId: f.appId, hqProjectId: "ignored" };
+  const post = Effect.fn("e-env.gitTarget")(function* (body: unknown) {
+    const answer = yield* core.call("POST", `/api/git-targets/${randomUUID()}`, {
+      session: owner,
+      body,
+    });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    return answer.body as { acceptance: { result: unknown } };
+  });
+  yield* post({
+    intent: { kind: "connect-git-remote", ...common, repo: "web", url: repository.url },
+    candidate: repository.token,
+  });
+  const target = { kind: "git", branch: "main", delivery: "direct" };
+  const previewed = yield* post({
+    intent: { kind: "preview-git-environment", ...common, request: { target } },
+  });
+  yield* post({
+    intent: {
+      kind: "add-git-environment",
+      ...common,
+      request: { ...input, target, adoption: previewed.acceptance.result },
+    },
+  });
+  expect(github.unmatched()).toEqual([]);
+  const added = yield* gitEnvironments(f, (environments) =>
+    environments.some((environment) => environment.name === input.name),
+  );
+  return added.find((environment) => environment.name === input.name)!.id;
 });
 
 export function environmentActions(f: Fixture, page: Page = f.s.page) {
