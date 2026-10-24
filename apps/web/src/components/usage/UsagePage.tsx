@@ -133,7 +133,7 @@ export function UsagePage({
   const shortcutOf = (option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number]) =>
     shortcutLabelForCommand(keybindings, option.command, { context: { usagePageOpen: true } });
   const [windowSelection, setWindowSelection] = useState<{
-    readonly days: number;
+    readonly days: UsagePagePreferences["windowDays"];
     readonly window: UsageWindow;
   }>(() => ({
     days: preferences.windowDays,
@@ -264,8 +264,11 @@ export function UsagePage({
 
   const limitsNow = useNowMs();
   const windowValue = allHistory ? ALL_HISTORY_VALUE : String(windowDays);
-  const selectPeriod = (value: string) =>
-    value === ALL_HISTORY_VALUE ? selectAllHistory() : selectWindow(Number(value));
+  const selectPeriod = (value: string | null) => {
+    if (value === null) return;
+    if (value === ALL_HISTORY_VALUE) selectAllHistory();
+    else selectWindow(Number(value));
+  };
   const selectAllHistory = () =>
     setWindowSelection({
       days: windowDays,
