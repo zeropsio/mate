@@ -268,6 +268,32 @@ const completeInitialConfig = Effect.fn("TestRpcSessionFactory.completeInitialCo
 });
 
 describe("RpcSessionFactory", () => {
+  it.effect("A Mate connection's first frame is the ticket, sent before any request", () =>
+    Effect.gen(function* () {
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect({
+        ...PREPARED,
+        socketUrl: "wss://environment.example.test",
+        firstFrame: JSON.stringify({ ticket: "T-1" }),
+      });
+      const readyFiber = yield* Effect.forkChild(session.ready);
+      const socket = yield* awaitSocket(sockets);
+
+      socket.open();
+      yield* completeInitialConfig(socket);
+      yield* Fiber.join(readyFiber);
+
+      expect(socket.url).toBe("wss://environment.example.test");
+      expect(socket.sent[0]).toBe(JSON.stringify({ ticket: "T-1" }));
+      expect(
+        socket.sent
+          .slice(1)
+          .map((message) => decodeJson(message))
+          .filter(isRpcRequest),
+      ).toHaveLength(1);
+    }),
+  );
+
   it.effect("owns one scoped websocket attempt and exposes readiness and closure", () =>
     Effect.gen(function* () {
       const { factory, sockets } = yield* makeFactory();

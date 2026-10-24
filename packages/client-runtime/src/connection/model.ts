@@ -138,6 +138,8 @@ export interface PreparedConnection {
   readonly label: string;
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
+  /** Sent as the socket's first frame: a Mate connection's ticket (`{"ticket": …}`). */
+  readonly firstFrame?: string;
   readonly httpAuthorization: PreparedHttpAuthorization | null;
   readonly target: ConnectionTarget;
 }
