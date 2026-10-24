@@ -5,7 +5,12 @@ import type { createScenario } from "../../harness/scenario.ts";
 import { openAccountMenu, visibleText } from "../../harness/browser.ts";
 import { deadline } from "../../harness/http.ts";
 import { answerInZerops, openZeropsWindow } from "../../harness/deviceLogin.ts";
-import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
+import {
+  secondOrganization,
+  endSessionCheck,
+  everySocketRechecked,
+  handoverCount,
+} from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -126,6 +131,11 @@ export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
 ) {
   yield* Effect.promise(() => s.hq.ready());
   yield* Effect.promise(() => endSessionCheck(s.drivers, [...s.hq.links.values()], fault));
+});
+
+/** HQ looks at every socket's session again, and every one stays open. */
+export const hqKeepsEverySession = Effect.fn("signin.hqKeepsEverySession")(function* (s: Scenario) {
+  yield* Effect.promise(() => everySocketRechecked(s.drivers, s.hq.links.size));
 });
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {

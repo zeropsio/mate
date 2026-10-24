@@ -1,4 +1,4 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
+import * as Effect from "effect/Effect";
 import type { WebSocket } from "ws";
 import { expect } from "@effect/vitest";
 import { deadline } from "../../harness/http.ts";
@@ -9,10 +9,7 @@ const controls = new WeakMap<ScenarioDrivers, () => ReturnType<typeof sessionDat
 
 export const installSignIn: ScenarioExtension = (drivers) => {
   let database: ReturnType<typeof sessionDatabase> | undefined;
-  controls.set(
-    drivers,
-    () => (database ??= sessionDatabase(inProcessCore(drivers.core).url, drivers.owner)),
-  );
+  controls.set(drivers, () => (database ??= sessionDatabase(drivers.core.url, drivers.owner)));
 };
 
 export function signInFaults(drivers: ScenarioDrivers) {
@@ -37,6 +34,7 @@ export async function endSessionCheck(
   if (fault === "outage") {
     await database.unavailable();
     try {
+      await coreRechecks(drivers);
       await database.sawSessionRead();
     } finally {
       await database.returns();
@@ -54,9 +52,46 @@ export async function endSessionCheck(
     expect(await deadline(closed, "HQ refused-source close")).toContain(4403);
   } else {
     await database.expires();
+    await coreRechecks(drivers);
     expect(await deadline(closed, "Core expired-session close")).toContain(4401);
   }
 }
+
+/**
+ * The Core's next session and role recheck of every socket: the real Core's comes when its wait
+ * clock passes the recheck period; the embedded Core's runs on its own short period.
+ */
+export const coreRechecks = (drivers: ScenarioDrivers) =>
+  drivers.core.kind === "external"
+    ? Effect.runPromise(drivers.core.clock.advance(drivers.core.periods.streamRecheck))
+    : Promise.resolve();
+
+/**
+ * The Core's next recheck, kept by each of the browser's `open` sockets: both of its rechecks (the
+ * session's, the roles') the real Core waited out came back to wait the next one, so none of them
+ * ended its socket.
+ */
+export const everySocketRechecked = (drivers: ScenarioDrivers, open: number) => {
+  const core = drivers.core;
+  if (core.kind !== "external") return Promise.resolve();
+  if (open === 0) throw new Error("No socket of the browser reaches the Core");
+  const rechecks = (waits: ReadonlyArray<number>) =>
+    waits.filter((ms) => ms === core.periods.streamRecheck).length;
+  const before = rechecks(core.clock.waits());
+  return Effect.runPromise(
+    core.clock
+      .advance(core.periods.streamRecheck)
+      .pipe(
+        Effect.andThen(
+          core.clock.until(
+            (waits) => rechecks(waits) >= before + 2 * open,
+            "every socket waiting out the Core's next recheck",
+          ),
+        ),
+        Effect.asVoid,
+      ),
+  );
+};
 
 export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
