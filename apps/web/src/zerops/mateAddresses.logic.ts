@@ -73,7 +73,7 @@ export interface MateAddressInput {
     readonly hostname: string;
     readonly group: ZeropsTopologyGroup;
     /** The type-version, which tells a pool or a Box from a runtime (`servicePairs`). */
-    readonly type?: string | undefined;
+    readonly type?: string;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
     /** The dev servers zcp last read on it (`ZeropsServiceRow.devServers`); absent while unread. */
     readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
