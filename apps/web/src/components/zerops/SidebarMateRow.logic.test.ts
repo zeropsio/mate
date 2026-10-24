@@ -272,8 +272,8 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
   // "Nobody has signed in yet" of Mates in use): the line stands only where HQ says nobody did,
   // never while HQ has not said.
   it.each([
-    { case: "HQ names a signer: no line", hqSigners: "some", overview: "live", line: undefined },
-    { case: "HQ names nobody: the line", hqSigners: "none", overview: "live", line: LINE },
+    { case: "HQ names a signer: no line", hqSigners: "some", line: undefined },
+    { case: "HQ names nobody: the line", hqSigners: "none", line: LINE },
     { case: "HQ has not said: nothing", hqSigners: undefined, line: undefined },
   ] as const)("$case", ({ hqSigners, line }) => {
     const view = mateOwnerView({
@@ -281,6 +281,7 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
       records: OWNED_UNSIGNED,
       asked: false,
       hqSigners,
+      overview: "live",
     });
     expect(view.signInLine).toBe(line);
   });
