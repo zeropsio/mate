@@ -1,7 +1,7 @@
 /**
  * Settings → Zerops: which Zerops account this browser holds, the orgs it can
  * see, and the way out — and the organization's inner workings the overview
- * does not carry: its HQ, and the person's sign-in tokens. Signing in happens
+ * does not carry: its HQ. Signing in happens
  * on the Zerops landing, not here.
  *
  * The page's breadcrumb already says "Zerops"; the rows say what they are
@@ -27,7 +27,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { signInTokensWords, type SignInTokensCleanup } from "./zeropsSettings.logic";
 
 export function ZeropsSettings() {
   const {
@@ -45,30 +44,6 @@ export function ZeropsSettings() {
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const account = status === "signed-in" ? zeropsAccountDisplay(user) : null;
-  // The person's own sign-in tokens, cleaned up as the account's `throwaway-sweep` operation, by
-  // the organization it ran for: another organization's row starts from its first words.
-  const [cleaned, setCleaned] = useState<{
-    readonly orgId: string;
-    readonly state: SignInTokensCleanup;
-  } | null>(null);
-  const orgId = activeOrganization?.id;
-  const cleanup: SignInTokensCleanup =
-    cleaned !== null && cleaned.orgId === orgId ? cleaned.state : "idle";
-  const cleanUp = () => {
-    if (orgId === undefined || user === null) return;
-    setCleaned({ orgId, state: "running" });
-    void operations
-      .submit({ kind: "throwaway-sweep", clientId: orgId, userId: user.id, explicit: true })
-      .then(({ progress }) => {
-        setCleaned({
-          orgId,
-          state: progress.stage === "done" && progress.outcome === "succeeded" ? "done" : "failed",
-        });
-      })
-      .catch(() => {
-        setCleaned({ orgId, state: "failed" });
-      });
-  };
 
   return (
     <SettingsPageContainer>
@@ -220,23 +195,6 @@ export function ZeropsSettings() {
                   Retry read
                 </Button>
               ) : null
-            }
-          />
-        ) : null}
-        {activeOrganization && account !== null ? (
-          <SettingsRow
-            {...searchableSetting("zerops-sign-in-tokens")}
-            title="Sign-in tokens"
-            description="Each time Mate opens HQ it makes a short-lived Zerops token, and deletes it once used. Clean up any left over, your expired ones included."
-            control={
-              <Button
-                disabled={cleanup === "running"}
-                onClick={cleanUp}
-                size="sm"
-                variant="secondary"
-              >
-                {signInTokensWords(cleanup)}
-              </Button>
             }
           />
         ) : null}

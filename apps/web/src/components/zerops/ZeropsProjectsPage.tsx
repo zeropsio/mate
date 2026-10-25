@@ -15,7 +15,6 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";
 
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
-import { throwawayCleanupSpeaks, ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
@@ -109,7 +108,6 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -1915,13 +1913,6 @@ export function ZeropsProjectsContent({
     useMemo(() => candidates.map(({ project }) => project.id), [candidates]),
   );
 
-  // Persisted cleanup debt is restored after a crash, once inventory admits the account.
-  const throwawayCleanup = useZeropsThrowawaySweep({
-    clientId: activeOrganization?.id,
-    // Cleanup waits for the account inventory; its operation fences every write on sign-in.
-    enabled: status === "signed-in" && !inventory.isLoading,
-  });
-
   useEffect(() => {
     autoConnectServedZeropsEnvironment({
       attempted: autoConnectingRef,
@@ -2047,7 +2038,7 @@ export function ZeropsProjectsContent({
     },
     nowMs,
   });
-  // The person's Chief is the organization's, not a project: no card of its own.
+  // The organization's Chief is the organization's, not a project: no card of its own.
   const projectGroups = useMemo(
     () =>
       groupTree.groups.filter(
@@ -2592,12 +2583,7 @@ export function ZeropsProjectsContent({
       status === "signed-in" &&
       activeOrganization !== null &&
       !inventory.isLoading ? (
-        <>
-          {throwawayCleanupSpeaks(throwawayCleanup.state) ? (
-            <ZeropsThrowawayCleanup view={throwawayCleanup} />
-          ) : null}
-          <ZeropsDeletionRecovery />
-        </>
+        <ZeropsDeletionRecovery />
       ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
         // Nothing read yet: the cards' shape, where they will stand.

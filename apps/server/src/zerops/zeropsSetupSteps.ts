@@ -4,7 +4,7 @@
  *
  * Pure. `ZeropsSetup` gathers the facts — zcp's status file
  * (`ZCP_STATUS_FILE`), who asked for the stand-up (HQ), who signed an agent in
- * here, the Mate's enrollment with HQ, the durable stand-up record — and these
+ * here, the Mate's link to HQ and its Git credential, the durable stand-up record — and these
  * functions decide what they mean.
  *
  * The document is public, so it carries steps and times only: no names, no
@@ -295,8 +295,13 @@ export interface SetupStep {
    * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
    * access failed ({@link GitAccess}).
    */
-  readonly reason?: StandUpWait["reason"] | StandUpShort | "refused" | "send_failed";
-  /** HQ's refusal code, with `not_enrolled` or `refused`. */
+  readonly reason?:
+    | StandUpWait["reason"]
+    | StandUpShort
+    | "refused"
+    | "credential_unavailable"
+    | "send_failed";
+  /** HQ's refusal of the project's key, its close reason, with `not_linked` or `refused`. */
   readonly code?: string;
 }
 
@@ -308,25 +313,25 @@ export interface SetupStep {
 export type StandUpShort = "process_gone" | "stage_not_built";
 
 /**
- * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
- * zcp holds no enrollment (with HQ's refusal code, where it refused); HQ has not sent the Mate.
- * A stand-up asked for waits on its asker's sign-in, which the sign-in step says.
+ * Why a stand-up nothing started waits, as far as the server knows: HQ has not sent the Mate, with
+ * HQ's refusal of the project's key where it refused it. A stand-up asked for waits on its
+ * asker's sign-in, which the sign-in step says.
  */
-export type StandUpWait =
-  | { readonly reason: "no_hq" }
-  | { readonly reason: "not_enrolled"; readonly code?: string }
-  | { readonly reason: "not_linked" };
+export type StandUpWait = { readonly reason: "not_linked"; readonly code?: string };
 
 /**
- * The Mate's Git access: its enrollment with HQ, whose credential reaches its application's
- * repositories there. Granted once zcp holds an enrollment, since `at`; on its way while zcp has
- * said nothing; failed where zcp said why not (`~/.zcp/hq/outcome.json`, spec-mate §2.8 C-7): no
- * official HQ in the org, or HQ's refusal with its code.
+ * The Mate's Git access: the credential HQ sends down the link, which reaches its application's
+ * repositories there. Granted once the credential file holds it, since `at`; on its way until
+ * then; failed where HQ refused the project's key, its close reason the code.
  */
 export type GitAccess =
   | { readonly state: "done"; readonly at: string }
   | { readonly state: "waiting" }
-  | { readonly state: "failed"; readonly reason: "no_hq" | "refused"; readonly code?: string };
+  | {
+      readonly state: "failed";
+      readonly reason: "refused" | "credential_unavailable";
+      readonly code?: string;
+    };
 
 export interface SetupDocument {
   readonly version: 1;
@@ -338,7 +343,7 @@ export interface SetupFacts {
   readonly now: string;
   /** When this server started: the container is up. */
   readonly startedAt: string;
-  /** The Mate's Git access, as its enrollment with HQ stands. */
+  /** The Mate's Git access, as HQ's credential and the link stand. */
   readonly git: GitAccess;
   /** zcp's status file; `undefined` when absent (an older zcp) or unreadable. */
   readonly status: ZcpStatus | undefined;

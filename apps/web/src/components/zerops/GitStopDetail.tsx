@@ -320,7 +320,11 @@ export function GitEnvironmentRemoval({
   );
 }
 
-const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({ environments: undefined, refused: null });
+const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({
+  environments: undefined,
+  refused: null,
+  unread: [],
+});
 
 /** Menu and Settings read the same authoritative environment and its removal verdict. */
 export function ProductionRemoval({

@@ -12,7 +12,6 @@ import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
-import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";
 import type { HqCoreArtifact } from "../../../zerops/hq/birth.ts";
 import {
   makeProjectTagWriter,
@@ -49,7 +48,6 @@ import {
   startServiceExecutor,
   stopServiceExecutor,
 } from "./serviceWrites.ts";
-import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 import { addressWritesExecutor } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
 import { teamExecutor } from "./team.ts";
@@ -129,7 +127,6 @@ export function makeZeropsExecutor(input: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Our successful write invalidates its organization's sampled detail. */
   readonly revalidate: (orgId: string, demand: DetailDemand) => void;
-  readonly debtOf: (clientId: string) => ThrowawayDebt;
   readonly nowMs: () => number;
   readonly run: RunToEnd;
   readonly makeId: () => string;
@@ -183,20 +180,6 @@ export function makeZeropsExecutor(input: {
       createAppVersion: (serviceId, name) => client.createAppVersion(serviceId, name),
       uploadAppVersionArchive: (id, archive) => client.uploadAppVersionArchive(id, archive),
       buildAndDeployAppVersion: (id, deploy) => client.buildAndDeployAppVersion(id, deploy),
-    });
-    const sweep = throwawaySweepExecutor({
-      platform: {
-        listIntegrationTokens: async (clientId) =>
-          (await client.listIntegrationTokens(clientId)).map((token) => ({
-            id: token.id,
-            name: token.name,
-            created: token.created,
-            createdByUser: token.createdByUser,
-          })),
-        deleteIntegrationToken: (target) => client.deleteIntegrationToken(target),
-      },
-      debtOf: input.debtOf,
-      nowMs: input.nowMs,
     });
     const publish = enableSubdomainAccessExecutor({
       enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
@@ -343,8 +326,6 @@ export function makeZeropsExecutor(input: {
               return remove(requestId, intent);
             case "retire-mate-key":
               return retireKey(requestId, intent);
-            case "throwaway-sweep":
-              return sweep(requestId, intent);
             case "enable-subdomain-access":
               return publish(requestId, intent);
             case "start-service":
@@ -454,10 +435,7 @@ export function makeZeropsExecutor(input: {
         admitPlatformOperation({
           intent,
           store: input.store,
-          viewer:
-            intent.kind === "throwaway-sweep"
-              ? undefined
-              : input.viewerOf("orgId" in intent ? intent.orgId : ""),
+          viewer: input.viewerOf("orgId" in intent ? intent.orgId : ""),
           active: input.active,
           readDetail: input.readDetail,
         });

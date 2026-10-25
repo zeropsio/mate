@@ -9,6 +9,7 @@ import { TempPostgres } from "../../../../hq/test/harness/tempPostgres.ts";
 import { startCore } from "../../../../hq/test/harness/runningCore.ts";
 import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
 import { deadline } from "./http.ts";
+import { startExternalCore, type GithubAddress } from "./externalCore.ts";
 
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
@@ -62,17 +63,35 @@ export interface HqTimings {
 }
 
 export function startScenarioCore(
-  zeropsHttp: { baseUrl: string; world: FakeWorld },
+  zeropsHttp: { baseUrl: string; world: FakeWorld; github?: GithubAddress },
   timings: HqTimings = {},
 ) {
   return Effect.gen(function* () {
+    const command = process.env.MATE_HQ_TEST_COMMAND;
+    if (command)
+      return {
+        ...(yield* startExternalCore(command, zeropsHttp, timings)),
+        kind: "external" as const,
+      };
     const url = yield* (yield* TempPostgres).createMigratedDatabase;
-    return yield* startCore(true, {
+    const core = yield* startCore(true, {
       url,
       zeropsHttp,
       pingEvery: Duration.millis(timings.pingEvery ?? 20_000),
       reconcileEvery: Duration.millis(timings.reconcileEvery ?? 60_000),
       streamRecheck: Duration.millis(timings.streamRecheck ?? 30_000),
     });
+    return { ...core, kind: "in-process" as const };
   });
+}
+
+export type ScenarioCore = Effect.Success<ReturnType<typeof startScenarioCore>>;
+
+/** These older cases inspect the embedded Core; the process protocol exposes no SQL or services. */
+export function inProcessCore(core: ScenarioCore) {
+  if (core.kind !== "in-process")
+    throw new Error(
+      "This scenario requires in-process Core internals; use an HQ API witness before running it with MATE_HQ_TEST_COMMAND",
+    );
+  return core;
 }

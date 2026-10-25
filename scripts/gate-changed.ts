@@ -1060,10 +1060,16 @@ function stageHashes(
           ...stage,
           args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
         };
+        // A receipt from the in-process Core cannot prove scenarios against an external HQ.
+        const hqCommand = stage.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts"))
+          ? (process.env.MATE_HQ_TEST_COMMAND ?? null)
+          : null;
         return [
           stage.name,
           NodeCrypto.createHash("sha256")
-            .update(JSON.stringify([selection, command, digest(files, baseline), trailers]))
+            .update(
+              JSON.stringify([selection, command, digest(files, baseline), trailers, hqCommand]),
+            )
             .digest("hex"),
         ];
       }),

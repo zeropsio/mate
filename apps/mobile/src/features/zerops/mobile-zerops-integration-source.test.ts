@@ -114,7 +114,6 @@ describe("mobile Zerops integration", () => {
 
     expect(stack).toContain("screen: ZeropsConnectRouteScreen");
     expect(stack).toContain("ConnectionsPairing: createNativeStackScreen");
-    expect(onboarding).toContain("onboarding.registerZeropsIdentity(input)");
     expect(onboarding).toContain("onboarding.registerPairing({ pairingUrl })");
   });
 

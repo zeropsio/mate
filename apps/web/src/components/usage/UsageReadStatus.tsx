@@ -15,7 +15,7 @@ export function UsageReadStatus({
   return (
     <p role="status" className="text-sm text-muted-foreground">
       {read.kind === "reading"
-        ? `Reading ${label}…`
+        ? (read.line ?? `Reading ${label}…`)
         : read.kind === "unavailable"
           ? `${label[0]!.toUpperCase()}${label.slice(1)} could not be read.`
           : `Showing last known ${label}.`}

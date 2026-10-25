@@ -131,9 +131,6 @@ function leaveForSignIn(): void {
   window.dispatchEvent(new Event("popstate"));
 }
 
-/** How long before its expiry a device-login session renews itself. */
-const RENEW_AHEAD_MS = 24 * 60 * 60_000;
-
 /** A sudo request asked of a session about to expire would die with it: it renews first. */
 const SUDO_RENEWAL_MARGIN_MS = 15 * 60_000;
 
@@ -334,27 +331,6 @@ export function ZeropsSessionProvider({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [client, driver]);
-
-  // A device-login session renews ahead of its expiry while the tab is in use, so a long-open tab
-  // never meets a refused token first. A personal token from the hand-over never expires.
-  useEffect(() => {
-    if (status !== "signed-in") return;
-    const renewSoon = () => {
-      // A refusal ends the session through the client; a renewal that never reached the platform
-      // leaves it held, and the next wake tries again.
-      void calls.freshBearer(RENEW_AHEAD_MS, Date.now()).catch(() => null);
-    };
-    renewSoon();
-    const onVisible = () => {
-      if (window.document.visibilityState === "visible") renewSoon();
-    };
-    window.document.addEventListener("visibilitychange", onVisible);
-    const hourly = window.setInterval(renewSoon, 60 * 60_000);
-    return () => {
-      window.document.removeEventListener("visibilitychange", onVisible);
-      window.clearInterval(hourly);
-    };
-  }, [calls, status]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(

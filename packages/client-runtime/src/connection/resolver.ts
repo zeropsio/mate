@@ -11,6 +11,7 @@ import * as Schema from "effect/Schema";
 import { appendClientConnectionParams } from "../authorization/remote.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
+import { zeropsMateBaseUrl } from "../zerops/candidates.ts";
 import {
   BearerConnectionCredential,
   BearerConnectionProfile,
@@ -32,6 +33,7 @@ import type {
   PrimaryConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
 } from "./model.ts";
 import { ConnectionBlockedError, type ConnectionAttemptError } from "./model.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
@@ -242,11 +244,46 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
   });
 });
 
+/** A Mate connection's first frame (spec-mate §3.8). */
+const encodeTicketFrame = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Struct({ ticket: Schema.String })),
+);
+
+/**
+ * A Mate through HQ (spec-mate §3.8): a new ticket on every attempt — a reconnect is a new ticket —
+ * and the socket at the origin HQ names, the ticket its first frame. Nothing is kept between
+ * attempts, so a used or expired ticket is never presented again.
+ */
+const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZeropsMate")(
+  function* () {
+    const presentation = yield* ClientCapabilities.ClientPresentation;
+    const issuer = yield* ClientCapabilities.MateTicketIssuer;
+    return Effect.fn("clientRuntime.connection.broker.zeropsMate")(function* (
+      target: ZeropsMateConnectionTarget,
+    ) {
+      const issued = yield* issuer.issue({ orgId: target.orgId, projectId: target.projectId });
+      const httpBaseUrl = zeropsMateBaseUrl(issued.origin);
+      const url = socketUrlFromWsBaseUrl(httpBaseUrl.replace(/^http/u, "ws"));
+      appendClientConnectionParams(url, presentation.metadata, "direct");
+      return {
+        environmentId: target.environmentId,
+        label: target.label,
+        httpBaseUrl,
+        socketUrl: url.toString(),
+        firstFrame: encodeTicketFrame({ ticket: issued.ticket }),
+        httpAuthorization: { _tag: "Bearer", token: issued.ticket },
+        target,
+      } satisfies PreparedConnection;
+    });
+  },
+);
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const primary = yield* makePrimaryBroker();
   const bearer = yield* makeBearerBroker();
   const ssh = yield* makeSshBroker();
+  const zeropsMate = yield* makeZeropsMateBroker();
 
   const prepare = Effect.fn("clientRuntime.connection.broker.prepare")(function* (
     entry: ConnectionCatalogEntry,
@@ -265,6 +302,8 @@ export const make = Effect.gen(function* () {
         return yield* relayBroker(target);
       case "SshConnectionTarget":
         return yield* ssh({ ...entry, target });
+      case "ZeropsMateConnectionTarget":
+        return yield* zeropsMate(target);
     }
   });
 

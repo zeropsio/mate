@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
@@ -12,6 +13,7 @@ const socketClosing = (messages: ReadonlyArray<string>, code: number) => {
   const api: Pick<HqApi, "openScopeSocket"> = {
     openScopeSocket: async (on) => {
       queueMicrotask(() => {
+        on.open();
         for (const message of messages) on.message(message);
         on.close(code);
       });
@@ -57,6 +59,45 @@ describe("makeHqWire", () => {
         ),
       );
       expect(fault.outcome).toBe(outcome);
+    }),
+  );
+});
+
+describe("an HQ socket opening", () => {
+  /** A socket the test opens or closes by hand. */
+  const socketHeld = () => {
+    let on: Parameters<HqApi["openScopeSocket"]>[0] | undefined;
+    const api: Pick<HqApi, "openScopeSocket"> = {
+      openScopeSocket: async (handlers) => {
+        on = handlers;
+        return { send: () => {}, close: () => {} };
+      },
+    };
+    return { api, on: () => on! };
+  };
+
+  it.effect("a segment begins only once its socket is open: until then nothing is connected", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(Effect.scoped(makeHqWire(socket.api).open));
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      expect(opening.pollUnsafe()).toBeUndefined();
+      socket.on().open();
+      const opened = yield* Fiber.await(opening);
+      expect(opened._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(Effect.scoped(makeHqWire(socket.api).open));
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      socket.on().close(4403);
+      const fault = yield* Effect.flip(Fiber.join(opening));
+      expect(fault.outcome).toBe("definitive-refusal");
     }),
   );
 });

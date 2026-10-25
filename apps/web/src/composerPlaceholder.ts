@@ -25,7 +25,7 @@ export function resolveComposerPlaceholders(input: {
   /** Who lives where this conversation runs, as the directory has read it. */
   readonly whoLivesHere: "mate" | "nobody" | "unknown";
   readonly zeropsAvailable: boolean;
-  /** The Mate living here is the person's Chief (`chief.ts`). */
+  /** The Mate living here is the organization's Chief (`chief.ts`). */
   readonly chief?: boolean;
   /** The conversation works a task (`conversationTask`), for the Mate named, when known. */
   readonly task?: { readonly mate: string | null };

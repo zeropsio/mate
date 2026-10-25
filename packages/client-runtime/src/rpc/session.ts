@@ -181,9 +181,19 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
         Effect.asVoid,
       ),
     });
+    const firstFrame = connection.firstFrame;
+    const constructor: typeof webSocketConstructor =
+      firstFrame === undefined
+        ? webSocketConstructor
+        : (url, protocols) => {
+            const socket = webSocketConstructor(url, protocols);
+            // Registered before the protocol's own listeners: the ticket is the connection's first frame.
+            socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
+            return socket;
+          };
     const socketLayer = Socket.layerWebSocket(connection.socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
-    }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, webSocketConstructor)));
+    }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, constructor)));
     const protocolLayer = Layer.effect(
       RpcClient.Protocol,
       RpcClient.makeProtocolSocket({

@@ -539,6 +539,31 @@ describe("reachability over the machine's own transitions", () => {
     expect(selectReachability(blocked, ENV_A).kind).toBe(verdict);
   });
 
+  it("A Mate that never connected and whose ticket HQ refuses for no link waits on its link, not on the exchange", () => {
+    const opened = drive(initialEnvironment({ record: ENV_A }), OPENING).machine;
+    const held = drive(opened, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(opened),
+        environmentId: ENV_A,
+        descriptor: descriptor(),
+      },
+    ]).machine;
+    const refused = drive(held, [
+      { type: "LINK", link: { phase: "backoff", retryAtMs: 9_000, noLink: true } },
+    ]).machine;
+    expect(selectReachability(refused, ENV_A)).toEqual({
+      kind: "connecting",
+      waitingOn: "mate-link",
+    });
+    expect(
+      reachabilityPhrase(
+        { kind: "connecting", waitingOn: "mate-link" },
+        { nowMs: NOW, mateName: "shop" },
+      ).text,
+    ).toBe("This Mate is not connected to HQ.");
+  });
+
   it("blocked(configuration mismatch) → replaced (T-L22)", () => {
     const blocked = drive(connectedMachine(), [
       { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
@@ -658,6 +683,26 @@ describe("reachability over the machine's own transitions", () => {
     ]).machine;
     expect(selectReachability(again, ENV_A)).toEqual({ kind: "refused-role" });
   });
+
+  it.each([
+    { name: "its link still blocked", link: { phase: "blocked", reason: "not-found" } },
+    { name: "its link idle", link: { phase: "idle" } },
+  ] as const)(
+    "a Mate HQ says is not there for the person reads as no longer available, never as restarting: $name",
+    ({ link }) => {
+      const refused = machine({
+        credential: { kind: "refused", reason: { kind: "not-found" } },
+        link,
+        linkLostAt: at(NOW - 1_000),
+      });
+      const verdict = selectReachability(refused, ENV_A);
+      expect(verdict).toEqual({ kind: "gone", because: "direct-not-found" });
+      expect(isTerminalReachability(verdict)).toBe(true);
+      expect(reachabilityPhrase(verdict, { nowMs: NOW, mateName: "Ada" }).text).not.toMatch(
+        /restarting/i,
+      );
+    },
+  );
 
   it("a Chief owner's refusal closes an existing session without another exchange", () => {
     const blocked = transitionEnvironment(
@@ -788,9 +833,9 @@ describe("reachabilityPhrase", () => {
       text: "Reconnecting…",
       actions: ["try-now"],
     });
-    // Its link said when it tries again: its server is not answering, counted down, with Try now.
+    // Its link said when it asks for its next ticket: counted down to it, with Try now.
     expect(phrase({ kind: "reconnecting", retryAtMs: NOW + 4_000 })).toEqual({
-      text: "This Mate isn't answering. Trying again in 4 s.",
+      text: "Reconnecting — next try in 4 s.",
       actions: ["try-now"],
     });
     expect(phrase({ kind: "not-answering", overdue: true })).toEqual({

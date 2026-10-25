@@ -1,18 +1,39 @@
-import { formatUsageCurrency } from "@t3tools/shared/usageFormat";
+import { enumerateDays, formatUsageCurrency } from "@t3tools/shared/usageFormat";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { UsageReport, UsageReportQuery, UsageSummaryInput } from "@t3tools/contracts";
 import type { UsageScope } from "../components/usage/usageDimensions";
 
+/** A day HQ gives history that was imported without one. */
+export const UNDATED_PERIOD = "unallocated";
+
+/** `allTime` asks for every recorded row, including the ones recorded without a day. */
+export type UsageWindow = UsageSummaryInput & { readonly allTime?: true };
+
+/** Every day a chart draws: the window's own, or from the first recorded day when it is all of it. */
+export function usageChartDays(
+  input: UsageWindow,
+  daily: readonly { readonly day: string }[],
+): readonly string[] {
+  return enumerateDays(
+    input.allTime === true ? (daily[0]?.day ?? input.untilDay) : input.sinceDay,
+    input.untilDay,
+  );
+}
+
 export function usageReportQuery(
-  input: UsageSummaryInput,
+  input: UsageWindow,
   scope: UsageScope,
   provenance: NonNullable<UsageReportQuery["provenance"]> = "live-responses",
 ): UsageReportQuery {
   const exact = input.resolution === "hour" && provenance === "live-responses";
   return {
     since:
-      exact && input.sinceTime !== undefined ? input.sinceTime : `${input.sinceDay}T00:00:00.000Z`,
+      input.allTime === true
+        ? null
+        : exact && input.sinceTime !== undefined
+          ? input.sinceTime
+          : `${input.sinceDay}T00:00:00.000Z`,
     until:
       exact && input.untilTime !== undefined
         ? input.untilTime

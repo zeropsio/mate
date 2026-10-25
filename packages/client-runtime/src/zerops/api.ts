@@ -12,7 +12,6 @@
  * persisted server-side.
  */
 
-import { isThrowawayName } from "../authorization/zeropsThrowaway.ts";
 import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
@@ -66,8 +65,6 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
-/** A throwaway delete's own deadline; it never runs on a caller's signal. */
-export const THROWAWAY_DELETE_TIMEOUT_MS = 15_000;
 /** How long an app version's archive may take to upload. */
 const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
 
@@ -701,6 +698,12 @@ export interface ZeropsApiClientOptions {
     refresh: () => Promise<ZeropsSession>,
   ) => Promise<ZeropsSession>;
   /**
+   * Renews the held session before a request once it expires within `withinMs` of `nowMs()`
+   * (wall-clock milliseconds), so no request carries a token that renewal is about to revoke.
+   * Without it, a session renews only after a request is refused.
+   */
+  readonly renewAhead?: { readonly withinMs: number; readonly nowMs: () => number };
+  /**
    * Holds one integration token's read-then-write at a time (`mate:token:{id}`), shared with
    * every other writer of the account's tokens in this browser. Without it, this client's own
    * writes queue per token in memory.
@@ -740,8 +743,6 @@ interface RequestOptions {
    * out from under whatever else is using it.
    */
   readonly clearSessionOnUnauthorized?: boolean;
-  /** Told the access token each attempt carries, just before it is sent. */
-  readonly sentWith?: (accessToken: string) => void;
   /**
    * Whether a request lost in transport may still have been carried out, so
    * its failure is `uncertain` rather than `network`. Defaults to whether it
@@ -946,6 +947,9 @@ export class ZeropsApiClient {
   readonly #fetch: FetchImplementation;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   readonly #renewSession: NonNullable<ZeropsApiClientOptions["renewSession"]>;
+  readonly #renewAhead: ZeropsApiClientOptions["renewAhead"];
+  /** The session whose renewal ahead failed: it stays in use, and renews only once refused. */
+  #renewAheadFailed: ZeropsSession | null = null;
   #session: ZeropsSession | null = null;
   #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
@@ -960,6 +964,7 @@ export class ZeropsApiClient {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
+    this.#renewAhead = options.renewAhead;
     this.#holdToken = options.holdToken ?? makeTokenWriteLock();
   }
 
@@ -1004,6 +1009,20 @@ export class ZeropsApiClient {
    */
   async renewHeldSession(): Promise<void> {
     await this.#refreshSession(true);
+  }
+
+  /**
+   * The held session's access token, for the one call that hands it to HQ's sign-in, once no
+   * renewal stands in front of it. `refused`, a token HQ refused, renews the session first, as a
+   * request does after a 401, unless a renewal has already replaced it.
+   */
+  async accessToken(refused?: string): Promise<string> {
+    const current = await this.#currentSession(null);
+    if (current !== null && current.accessToken === refused)
+      return (await this.#refreshSession(true)).accessToken;
+    if (current === null)
+      throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
+    return current.accessToken;
   }
 
   /** Adopts a session read back from storage without re-notifying the owner. */
@@ -1688,53 +1707,6 @@ export class ZeropsApiClient {
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly id: string; readonly token: string }> {
-    const { id, token } = await this.#mintIntegrationToken(input, signal, beforeWrite);
-    return { id, token };
-  }
-
-  /**
-   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door
-   * (`authorization/zeropsThrowaway.ts`).
-   *
-   * It carries no rights, so it is an `account-write` that a closed account
-   * window does not hold up (spec-mate C6): the door decides what it opens,
-   * with its own key, when it is presented.
-   *
-   * `beforeMint` is a wait of the caller's own — a rate budget — that the
-   * mint queues behind. The wait belongs to the account epoch the mint was
-   * asked in: one that ends meanwhile refuses the mint with
-   * `expired-session`, so nothing is minted as whoever signed in since.
-   *
-   * `mintingToken` is the session access token the mint carried. The
-   * throwaway is deleted with that token and no other
-   * ({@link deleteThrowaway}), so its deletion never acts as whoever holds
-   * this client by then.
-   */
-  async mintThrowaway(
-    input: { readonly clientId: string; readonly name: string },
-    options: { readonly signal?: AbortSignal; readonly beforeMint?: () => Promise<void> } = {},
-  ): Promise<{ readonly id: string; readonly token: string; readonly mintingToken: string }> {
-    const generation = this.#generation;
-    await options.beforeMint?.();
-    this.#assertGeneration(generation);
-    return this.#mintIntegrationToken(
-      { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
-      options.signal,
-      undefined,
-    );
-  }
-
-  async #mintIntegrationToken(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly roleCode: ZeropsProjectRole;
-      readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
-    },
-    signal: AbortSignal | undefined,
-    beforeWrite: (() => Promise<void>) | undefined,
-  ): Promise<{ readonly id: string; readonly token: string; readonly mintingToken: string }> {
-    let mintingToken: string | undefined;
     const response = await this.#request<{ readonly id?: string; readonly token?: string }>(
       `/client/${input.clientId}/integration-token`,
       {
@@ -1754,26 +1726,22 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
         // A token exists whether or not its answer arrives.
         mayHaveWritten: true,
-        sentWith: (accessToken) => {
-          mintingToken = accessToken;
-        },
       },
     );
-    if (!response.token || !response.id || mintingToken === undefined) {
+    if (!response.token || !response.id) {
       throw new ZeropsApiError(
         "Zerops accepted the token but did not return it in full, so it can neither be used nor taken back.",
         "uncertain",
       );
     }
-    return { id: response.id, token: response.token, mintingToken };
+    return { id: response.id, token: response.token };
   }
 
   /**
    * `DELETE /client/{id}/integration-token/{tokenId}` — takes a token back.
    *
-   * The other half of every throwaway: one is minted for a single call and
-   * deleted seconds later, and a deletion is immediate at the platform (the
-   * value answers `401` within about 0.6 s, measured 2026-09-15).
+   * A deletion is immediate at the platform (the value answers `401` within about 0.6 s, measured
+   * 2026-09-15).
    *
    * A token the platform no longer has is deleted already: it answers `400
    * clientUserConnectionNotFound` for one, as a Mate's key is once the project it alone reached is
@@ -1796,50 +1764,6 @@ export class ZeropsApiClient {
     } catch (cause) {
       if (!isTokenGone(cause)) throw cause;
     }
-  }
-
-  /**
-   * `DELETE /client/{id}/integration-token/{tokenId}` for a throwaway, and for
-   * nothing else: a name that is not a throwaway's is refused before anything
-   * is sent (spec-mate C5b).
-   *
-   * An `account-write`: deleting a throwaway only takes authority away, so no
-   * access window gates it. It carries `token` — the access token the
-   * throwaway was minted with — and never reads the session this client holds,
-   * so after a sign-out and another sign-in it still acts as the person who
-   * minted, or fails; it never refreshes, never clears a session, and outlives
-   * the account epoch. It has its own {@link THROWAWAY_DELETE_TIMEOUT_MS} and
-   * no caller's signal: giving up an exchange never keeps its throwaway alive.
-   */
-  async deleteThrowaway(
-    input: { readonly clientId: string; readonly tokenId: string; readonly name: string },
-    options: { readonly token: string },
-  ): Promise<void> {
-    if (!isThrowawayName(input.name)) {
-      throw new ZeropsApiError(
-        `"${input.name}" is not a throwaway, so it is not deleted as one.`,
-        "invalid-input",
-      );
-    }
-    let response: Response;
-    try {
-      response = await this.#fetch(
-        `${this.#baseUrl}${PUBLIC_API_PREFIX}/client/${input.clientId}/integration-token/${input.tokenId}`,
-        {
-          method: "DELETE",
-          signal: AbortSignal.timeout(THROWAWAY_DELETE_TIMEOUT_MS),
-          headers: { Accept: "application/json", Authorization: `Bearer ${options.token}` },
-        },
-      );
-    } catch (cause) {
-      throw new ZeropsApiError(
-        cause instanceof Error
-          ? `Network error contacting Zerops: ${cause.message}`
-          : "Network error contacting Zerops.",
-        "network",
-      );
-    }
-    if (!response.ok) throw await apiErrorFromResponse(response);
   }
 
   /**
@@ -1915,8 +1839,11 @@ export class ZeropsApiClient {
    * else using the session.
    */
   async exchangeWebSocketToken(signal?: AbortSignal): Promise<{ readonly webSocketToken: string }> {
-    const attempt = (): Promise<{ readonly webSocketToken: string }> => {
-      const session = this.#session;
+    /** The access token the last attempt carried. */
+    let sentToken: string | undefined;
+    const attempt = async (): Promise<{ readonly webSocketToken: string }> => {
+      const session = await this.#currentSession(signal);
+      sentToken = session?.accessToken;
       if (!session) {
         throw new ZeropsApiError(
           "Sign in to Zerops before opening a live connection.",
@@ -1949,7 +1876,9 @@ export class ZeropsApiClient {
       ) {
         throw cause;
       }
-      await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+      // A renewal that replaced the token this login carried leaves nothing to renew again.
+      if (this.#session.accessToken === sentToken)
+        await waitForPromiseOrAbort(this.#refreshSession(false), signal);
       return attempt();
     }
   }
@@ -2059,8 +1988,6 @@ export class ZeropsApiClient {
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
       readonly setupRuntimesYaml?: string;
-      /** A Chief's container: its zcp serves the organization `clientId` names. */
-      readonly chief?: boolean;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -2170,7 +2097,6 @@ export class ZeropsApiClient {
               ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
-              ...(input.chief === true ? { chiefOf: input.clientId } : {}),
             }),
           }),
         ),
@@ -3679,6 +3605,45 @@ export class ZeropsApiClient {
     return this.#refreshPromise;
   }
 
+  /**
+   * The held session once no renewal stands in front of it: a renewal already under way is
+   * waited for, and one that is due runs first. A renewal that fails here leaves the held session
+   * in use and says nothing: the platform's refusal of it, if any, is the request's to answer.
+   */
+  #currentSession(
+    signal: AbortSignal | null | undefined,
+  ): ZeropsSession | null | Promise<ZeropsSession | null> {
+    const held = this.#session;
+    // Without a renewal in front, the request leaves in this same tick.
+    if (this.#refreshPromise === null && !this.#renewalDue(held)) return held;
+    return this.#afterRenewal(held, signal);
+  }
+
+  async #afterRenewal(
+    held: ZeropsSession | null,
+    signal: AbortSignal | null | undefined,
+  ): Promise<ZeropsSession | null> {
+    const generation = this.#generation;
+    try {
+      await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+      if (this.#session === held) this.#renewAheadFailed = held;
+    }
+    this.#assertGeneration(generation);
+    return this.#session;
+  }
+
+  #renewalDue(held: ZeropsSession | null): boolean {
+    if (this.#renewAhead === undefined || held?.refreshToken === undefined) return false;
+    if (held === this.#renewAheadFailed || held.expiresAt === undefined) return false;
+    const expiresAtMs = Date.parse(held.expiresAt);
+    return (
+      Number.isFinite(expiresAtMs) &&
+      expiresAtMs - this.#renewAhead.nowMs() < this.#renewAhead.withinMs
+    );
+  }
+
   async #request<T = unknown>(
     path: string,
     init: RequestInit = {},
@@ -3695,6 +3660,8 @@ export class ZeropsApiClient {
 
     /** A refusal before anything was sent reaches the caller as one: never as maybe written. */
     let refusedBeforeSending = false;
+    /** The access token the last attempt carried. */
+    let sentToken: string | undefined;
     const run = async () => {
       if (mutatesProject || options.beforeProjectWrite !== undefined) {
         try {
@@ -3709,8 +3676,16 @@ export class ZeropsApiClient {
         // resolves is not necessarily who asked for the write.
         this.#assertGeneration(generation);
       }
-      const session = this.#session;
-      if (authenticated && session) options.sentWith?.(session.accessToken);
+      const current = authenticated ? this.#currentSession(init.signal) : null;
+      let session: ZeropsSession | null;
+      try {
+        session = current instanceof Promise ? await current : current;
+      } catch (cause) {
+        // Given up on while it waited for a renewal: nothing was sent.
+        refusedBeforeSending = true;
+        throw cause;
+      }
+      sentToken = session?.accessToken;
       return this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}${path}`, {
         ...init,
         signal: init.signal ?? AbortSignal.timeout(15_000),
@@ -3730,10 +3705,13 @@ export class ZeropsApiClient {
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
         if (session?.refreshToken) {
-          await waitForPromiseOrAbort(
-            this.#refreshSession(clearSessionOnUnauthorized),
-            init.signal,
-          );
+          // A renewal that replaced the token this request carried revoked it: the request
+          // repeats with the renewed one, and renewing again would revoke that under others.
+          if (session.accessToken === sentToken)
+            await waitForPromiseOrAbort(
+              this.#refreshSession(clearSessionOnUnauthorized),
+              init.signal,
+            );
           response = await run();
           this.#assertGeneration(generation);
         }

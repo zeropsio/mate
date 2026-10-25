@@ -1,7 +1,7 @@
 /**
- * The person's Chief recorded at HQ, and one decision on a proposal, as the account's operations
- * send them: HQ answers each at once, the credential a Chief's record answers reaches the set-up
- * alone, and a proposal HQ holds another decision of already is refused as decided.
+ * The organisation's Chief mark set at HQ, and one decision on a proposal, as the account's
+ * operations send them: HQ answers each at once, and a proposal HQ holds another decision of
+ * already is refused as decided.
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -15,11 +15,7 @@ import type { HqProposalDecision } from "../../zerops/hq/chief.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
-const SET_UP = {
-  chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" },
-  credential: "zcp-credential-value",
-  proxyUrl: "https://hq.example/proxy",
-};
+const MARK = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
 
 const DECIDED: HqProposalDecision = {
   id: "prop-1",
@@ -34,17 +30,15 @@ const DECIDED: HqProposalDecision = {
 function account(api: Partial<HqWrites>) {
   const store = makeAccountStore(AtomRegistry.make());
   liveZerops({ running: [] }).forEach(store.dispatch);
-  const handed: Array<[string, unknown]> = [];
   const executor = makeHqExecutor({
     apiOf: () => api as HqWrites,
     zerops: {
       mintIntegrationToken: () => Promise.reject(new Error("not expected")),
       deleteIntegrationToken: () => Promise.reject(new Error("not expected")),
     },
-    chiefAccess: (projectId, access) => handed.push([projectId, access]),
   });
   const operations = makeOperations({ store, executors: { hq: executor }, makeId: () => "r1" });
-  return { store, operations, handed };
+  return { store, operations };
 }
 
 const progress = (store: AccountStore) =>
@@ -52,13 +46,13 @@ const progress = (store: AccountStore) =>
 const receipt = (store: AccountStore) => store.state().operations.get("r1")?.receipt;
 
 describe("a Chief recorded at HQ", () => {
-  it.effect("hands its credential to the set-up alone, never into the account's records", () =>
+  it.effect("ends with the organisation's mark HQ answered", () =>
     Effect.gen(function* () {
       const asked: string[] = [];
-      const { store, operations, handed } = account({
+      const { store, operations } = account({
         setChief: async (projectId) => {
           asked.push(projectId);
-          return SET_UP;
+          return MARK;
         },
       });
       yield* operations.submit({ kind: "set-chief", orgId: ORG, projectId: "p-chief" });
@@ -66,20 +60,14 @@ describe("a Chief recorded at HQ", () => {
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
       expect(receipt(store)?.acceptance).toEqual({
         kind: "accepted",
-        result: { chief: SET_UP.chief },
+        result: MARK,
       });
-      expect(handed).toEqual([
-        ["p-chief", { credential: SET_UP.credential, proxyUrl: SET_UP.proxyUrl }],
-      ]);
-      expect(JSON.stringify([...store.state().operations.values()])).not.toContain(
-        SET_UP.credential,
-      );
     }),
   );
 
   it.effect("keeps HQ's words where it refused the Chief, and hands nothing", () =>
     Effect.gen(function* () {
-      const { store, operations, handed } = account({
+      const { store, operations } = account({
         setChief: async () => {
           throw new HqError({
             kind: "refused",
@@ -93,7 +81,22 @@ describe("a Chief recorded at HQ", () => {
         stage: "refused",
         reason: "Only the project's admin can make it a Chief.",
       });
-      expect(handed).toEqual([]);
+    }),
+  );
+});
+
+describe("a Chief mark removed at HQ", () => {
+  it.effect("ends when HQ answers it holds no mark", () =>
+    Effect.gen(function* () {
+      let removed = 0;
+      const { store, operations } = account({
+        removeChief: async () => {
+          removed += 1;
+        },
+      });
+      yield* operations.submit({ kind: "remove-chief", orgId: ORG });
+      expect(removed).toBe(1);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
   );
 });

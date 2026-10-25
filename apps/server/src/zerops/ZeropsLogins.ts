@@ -67,7 +67,7 @@ import {
 } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
+import { zeropsUserIdOf } from "./zeropsSubject.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";

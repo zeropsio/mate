@@ -10,6 +10,7 @@ import { useProjectsActivityRead } from "./activity/useProjectActivity";
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
+import type { MatePresence } from "@t3tools/shared/hqMates";
 import {
   applyProjectCreationVerdict,
   type ZeropsCandidate,
@@ -78,6 +79,22 @@ const mateLinkedInHqAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
     const read = get(hqMatePresenceAtom(projectId));
     return read.live && read.presence?.online === true;
+  }),
+);
+
+/**
+ * What HQ holds of a Mate's overview (its presence's `overview`), `undefined` while HQ relays no
+ * presence of it: whether HQ has ever heard the Mate, which decides if its row may speak of a
+ * sign-in (`mateOwnerView`).
+ */
+export function useMateOverviewInHq(projectId: string): MatePresence["overview"] | undefined {
+  return useAtomValue(mateOverviewInHqAtom(projectId));
+}
+
+const mateOverviewInHqAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => {
+    const read = get(hqMatePresenceAtom(projectId));
+    return read.live ? read.presence?.overview : undefined;
   }),
 );
 

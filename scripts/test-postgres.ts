@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- host-only test process supervisor protocol.
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off -- host-only test process supervisor protocol.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
@@ -52,11 +52,87 @@ export function postgresBinDir(): string {
   return "/opt/homebrew/bin";
 }
 
-/** A data directory without PG_VERSION cannot start; replace it instead of failing in pg_ctl. */
+/**
+ * The guard writes its postmaster's PID here once PostgreSQL starts and removes it once PostgreSQL
+ * stops cleanly, so a record found at start means the last run crashed or was killed.
+ */
+export const startRecord = (data: string) =>
+  NodePath.join(NodePath.dirname(data), "postmaster.started");
+
+/** Whether `pid` is this user's `postgres -D <data>`; the command line confirms one PID, never selects. */
+function runsCluster(pid: number, data: string): boolean {
+  const shown = NodeChildProcess.spawnSync(
+    "ps",
+    ["-ww", "-o", "uid=,command=", "-p", String(pid)],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (shown.status !== 0) return false;
+  const [uid, ...command] = shown.stdout.trim().split(/\s+/u);
+  const server = command.findIndex(
+    (token, index) => NodePath.basename(token) === "postgres" && command[index + 1] === "-D",
+  );
+  return (
+    Number(uid) === process.getuid?.() &&
+    server >= 0 &&
+    command.slice(server + 2).join(" ") === data
+  );
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * A postmaster whose supervisor died keeps postmaster.pid and wedges every later start. Only the
+ * PID this cluster's guard recorded is stopped, and only while it still runs this data directory.
+ * There is no exit notification for a non-child, so the wait is a bounded check of the PID.
+ */
+function stopRecordedPostmaster(pid: number, data: string, report: (line: string) => void) {
+  if (!runsCluster(pid, data)) return;
+  report(`PostgreSQL ${pid} outlived its supervisor on ${data}; stopping it with SIGQUIT.`);
+  process.kill(pid, "SIGQUIT");
+  const deadline = Date.now() + 10_000;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  while (alive(pid)) {
+    if (Date.now() > deadline)
+      throw new Error(`PostgreSQL ${pid} on ${data} did not exit within 10 s of SIGQUIT`);
+    Atomics.wait(pause, 0, 0, 20);
+  }
+}
+
+/**
+ * The cluster is a cache, never data: with fsync and full_page_writes off a crashed cluster cannot
+ * be trusted, so it is rebuilt rather than recovered. A data directory without PG_VERSION cannot
+ * start either; both are replaced instead of failing in pg_ctl.
+ */
 export function prepareClusterDirectory(
   data: string,
   report: (line: string) => void,
 ): "reuse" | "initialise" {
+  const record = startRecord(data);
+  const recorded = NodeFS.existsSync(record);
+  if (recorded) stopRecordedPostmaster(Number(NodeFS.readFileSync(record, "utf8")), data, report);
+  const pidFile = NodePath.join(data, "postmaster.pid");
+  const postmaster = NodeFS.existsSync(pidFile)
+    ? Number(NodeFS.readFileSync(pidFile, "utf8").split("\n")[0])
+    : undefined;
+  if (postmaster !== undefined && alive(postmaster) && runsCluster(postmaster, data))
+    throw new Error(
+      `PostgreSQL ${postmaster} runs ${data}, but no supervisor recorded it; check that nothing uses it, stop it with kill -QUIT ${postmaster}, and run again.`,
+    );
+  if (recorded) {
+    report(`PostgreSQL test cluster ${data} was not stopped cleanly; rebuilding it.`);
+    NodeFS.rmSync(data, { recursive: true, force: true });
+    NodeFS.rmSync(record, { force: true });
+    return "initialise";
+  }
   if (NodeFS.existsSync(NodePath.join(data, "PG_VERSION"))) return "reuse";
   if (NodeFS.existsSync(data)) {
     report(
@@ -202,6 +278,44 @@ function connect(): Promise<NodeNet.Socket | undefined> {
   });
 }
 
+const mebibytes = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+
+/**
+ * A full disk fails PostgreSQL, mkdtemp and vite's cache deep inside a run, and an ENOSPC crash
+ * costs the cluster; refuse before a supervisor starts and say what fills the disk.
+ */
+function refuseFullDisk(home: string) {
+  const floor = Number(process.env["MATE_TEST_PG_MIN_FREE_BYTES"] ?? 1024 ** 3);
+  const disk = NodeFS.statfsSync(home);
+  const free = disk.bavail * disk.bsize;
+  if (free >= floor) return;
+  const parent = NodePath.dirname(home);
+  const sizes = NodeChildProcess.spawnSync(
+    "du",
+    ["-sk", ...NodeFS.readdirSync(parent).map((name) => NodePath.join(parent, name))],
+    { encoding: "utf8" },
+  );
+  const largest = sizes.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [kibibytes, ...path] = line.split("\t");
+      return { name: NodePath.basename(path.join("\t")), bytes: Number(kibibytes) * 1024 };
+    })
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 5)
+    .map((entry) => `${entry.name} (${mebibytes(entry.bytes)})`);
+  const volume = NodeChildProcess.spawnSync("df", ["-P", home], { encoding: "utf8" })
+    .stdout.trim()
+    .split("\n")
+    .at(-1)!
+    .split(/\s+/u)
+    .at(-1)!;
+  throw new Error(
+    `The disk ${volume} holding the PostgreSQL test cluster is full: ${mebibytes(free)} free, below the ${mebibytes(floor)} a run needs. Largest under ${parent}: ${largest.join(", ")}.`,
+  );
+}
+
 interface SupervisorReply {
   readonly url?: string;
   readonly capabilities?: ReadonlyArray<string>;
@@ -226,6 +340,7 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const existing = await connect();
     if (existing) socket = existing;
     else {
+      refuseFullDisk(postgresHome);
       NodeFS.rmSync(socketPath, { force: true });
       const diagnosticsPath = NodePath.join(postgresHome, "supervisor.log");
       const diagnostics = NodeFS.openSync(diagnosticsPath, "w", 0o600);

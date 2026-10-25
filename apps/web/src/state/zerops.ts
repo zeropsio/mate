@@ -42,6 +42,7 @@ import {
 
 import { sameValue } from "../lib/sameValue";
 import type { HqStanding } from "../zerops/accountHq";
+import { readMateMemory, type MateMemory } from "../zerops/mateIdentityMemory";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 export { zeropsFeeds } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "@t3tools/client-runtime/data";
@@ -187,9 +188,22 @@ export function hqProjectOf(view: HqMatesView | null, environmentId: Environment
   return null;
 }
 
-/** `hqProjectOf` for one environment: re-read only when HQ moves the project it names. */
+/**
+ * `hqProjectOf`, else the project the last visit remembered for the environment: navigation names
+ * a Mate and its project before the overview names its environment, and a conversation's route
+ * holds only the environment.
+ */
+export function hqProjectOrRemembered(
+  view: HqMatesView | null,
+  environmentId: EnvironmentId,
+  memory: MateMemory = readMateMemory(),
+): string | null {
+  return hqProjectOf(view, environmentId) ?? memory[environmentId]?.projectId ?? null;
+}
+
+/** `hqProjectOrRemembered` for one environment: re-read only when HQ moves the project it names. */
 export const hqProjectAtom = Atom.family((environmentId: EnvironmentId) =>
-  Atom.make((get) => hqProjectOf(get(hqMatesAtom), environmentId)).pipe(
+  Atom.make((get) => hqProjectOrRemembered(get(hqMatesAtom), environmentId)).pipe(
     Atom.withLabel(`zerops:hq-project:${environmentId}`),
   ),
 );

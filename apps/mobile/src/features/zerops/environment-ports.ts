@@ -3,7 +3,7 @@
  * and probes through data-layer projections (`mateContainerReads`). The shared adapter owns
  * connection decisions.
  */
-import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
+import type { ZeropsMateConnectionRegistration } from "@t3tools/client-runtime/connection";
 import {
   ConnectionBlockedError,
   CredentialStore,
@@ -11,7 +11,6 @@ import {
   connectionCatalogDisplayUrl,
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type {
   AccountEnvironmentPorts,
   AccountRuntimePorts,
@@ -20,28 +19,21 @@ import type {
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import { mateContainerReads } from "@t3tools/client-runtime/data";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import {
   descriptorFacts,
-  exchangeAtDoor,
-  installDoorRegistration,
-  prepareDoorRegistration,
+  exchangeAtMate,
+  installMateRegistration,
 } from "@t3tools/client-runtime/zerops/identityExchange";
-import {
-  createAtomCommandScheduler,
-  createRuntimeCommand,
-  runAtomCommand,
-} from "@t3tools/client-runtime/state/runtime";
+import { createRuntimeCommand, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { AsyncResult, type AtomRegistry } from "effect/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
-import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { hqAbsent, memoryIntents } from "./account-ports";
 import { closeOffFacts } from "./close-off";
@@ -51,25 +43,9 @@ import { mobilePlatformSignals } from "./platform-signals";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
-const doorScheduler = createAtomCommandScheduler();
-
-/**
- * The Zerops door. Single-flight on the container's base URL so two exchanges can never mint
- * two credentials for the same environment at once.
- */
-const prepareCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "mobile:zerops:prepare-door-registration",
-  scheduler: doorScheduler,
-  concurrency: {
-    mode: "singleFlight",
-    key: (input: { readonly httpBaseUrl: string }) => input.httpBaseUrl,
-  },
-  execute: prepareDoorRegistration,
-});
-
 const installCommand = createRuntimeCommand(connectionAtomRuntime, {
-  label: "mobile:zerops:install-door-registration",
-  execute: installDoorRegistration,
+  label: "mobile:zerops:install-mate-registration",
+  execute: installMateRegistration,
 });
 
 const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
@@ -105,7 +81,7 @@ const credentialOriginCommand = createRuntimeCommand(connectionAtomRuntime, {
 const quiet = { reportFailure: false } as const;
 
 /** An accepted registration, installed through `registry.rotateCredential` or `register`. */
-function doorCredential(registration: BearerConnectionRegistration): DoorCredential {
+function doorCredential(registration: ZeropsMateConnectionRegistration): DoorCredential {
   return {
     install: async () => {
       const result = await runAtomCommand(appAtomRegistry, installCommand, registration, quiet);
@@ -211,40 +187,24 @@ export type MobileAccountPorts = Pick<AccountRuntimePorts, "signals" | "environm
 /**
  * The Mate adapter's ports for one verified account, using the session's REST client.
  */
-export async function mobileAccountPorts(input: {
-  readonly client: ZeropsApiClient;
-  /** The account's registry, where its store says where each project stands. */
-  readonly registry: AtomRegistry.AtomRegistry;
-}): Promise<MobileAccountPorts> {
-  const { client } = input;
+export async function mobileAccountPorts(): Promise<MobileAccountPorts> {
   return {
     signals: mobilePlatformSignals(),
     environments: {
       clock: systemExchangeClock,
       door: {
         exchange: async (request) => {
-          const answer = await exchangeAtDoor(
+          const answer = await exchangeAtMate(
             {
-              // The token is minted in the organization that lists the Mate's project.
-              throwaway: client.session?.accessToken
-                ? {
-                    platform: zeropsThrowawayPlatform(client, {
-                      signal: request.signal,
-                      asked: request.asked,
-                    }),
-                    clientId: request.organizationId,
-                    projectId: request.projectId,
-                    nonce: uuidv4(),
-                  }
-                : null,
               readDescriptor: (httpBaseUrl) =>
                 mateDescriptors.descriptor(httpBaseUrl, request.signal),
-              prepare: (prepared) =>
-                runAtomCommand(appAtomRegistry, prepareCommand, prepared, quiet),
-              environmentOf: (registration) => registration.target.environmentId,
             },
             request.origin,
-            { reason: request.reason, expectedProjectId: request.projectId },
+            {
+              reason: request.reason,
+              orgId: request.organizationId,
+              projectId: request.projectId,
+            },
           );
           return answer.ok ? { ...answer, credential: doorCredential(answer.credential) } : answer;
         },

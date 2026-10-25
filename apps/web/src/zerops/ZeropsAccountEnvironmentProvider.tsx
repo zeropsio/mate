@@ -24,6 +24,7 @@ import { webEnvironmentPorts } from "./environmentPorts";
 import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
+import { openMateTickets } from "./mateTickets";
 import { Button } from "../components/ui/button";
 import { Failure } from "../components/ui/failure";
 
@@ -74,9 +75,11 @@ export function ZeropsAccountEnvironmentProvider({
       return closing;
     };
     let unbind = () => undefined as void;
+    const closeTickets = openMateTickets(client);
     const close = () => {
       if (closed) return;
       closed = true;
+      closeTickets();
       unbind();
       if (built !== null) void shutdown(built);
     };
@@ -86,7 +89,7 @@ export function ZeropsAccountEnvironmentProvider({
         account: scope,
         signals,
         atomRegistry: registry,
-        environments: webEnvironmentPorts({ client, registry }),
+        environments: webEnvironmentPorts(registry),
         store,
       }),
     ).then(

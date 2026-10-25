@@ -151,6 +151,8 @@ export function connectionCatalogDisplayUrl(entry: ConnectionCatalogEntry): stri
       return entry.target.httpBaseUrl;
     case "RelayConnectionTarget":
       return null;
+    case "ZeropsMateConnectionTarget":
+      return entry.target.httpBaseUrl;
     case "BearerConnectionTarget":
       return Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
         ? entry.profile.value.httpBaseUrl

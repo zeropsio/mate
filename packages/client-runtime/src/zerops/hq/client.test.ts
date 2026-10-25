@@ -19,6 +19,11 @@ const NO_SOCKET: OpenHqSocket = () => {
   throw new Error("no socket in this test");
 };
 
+import * as DateTime from "effect/DateTime";
+
+const isoAt = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+const ORG = "org-1";
+const FAR = Date.parse("2099-01-01T00:00:00.000Z");
 const ADDRESS = "https://hq-30db-8080.prg1.zerops.app";
 
 interface Seen {
@@ -33,8 +38,11 @@ interface Seen {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-/** An HQ that admits every throwaway `door-<n>` and answers each session's calls. */
-function fakeHq(answer: (seen: Seen) => Response | undefined = () => undefined) {
+/** An HQ that admits every access token `access-<n>` and answers each session's calls. */
+function fakeHq(
+  answer: (seen: Seen) => Response | undefined = () => undefined,
+  endsAt: () => string = () => "2099-01-01T00:00:00.000Z",
+) {
   const seen: Seen[] = [];
   let sessions = 0;
   const live = new Set<string>();
@@ -53,9 +61,11 @@ function fakeHq(answer: (seen: Seen) => Response | undefined = () => undefined) 
     const custom = answer(request);
     if (custom !== undefined) return custom;
     if (request.path === "/api/door") {
-      const session = `session-${++sessions}`;
+      // A renewal presents a live session and keeps its id.
+      const presented = request.authorization?.replace("Bearer ", "") ?? "";
+      const session = live.has(presented) ? presented : `session-${++sessions}`;
       live.add(session);
-      return json(200, { session, expiresAt: "2026-10-02T20:00:00.000Z", userId: "u1" });
+      return json(200, { session, expiresAt: endsAt(), userId: "u1" });
     }
     if (!live.has(request.authorization?.replace("Bearer ", "") ?? "")) {
       return json(401, { code: "session_required" });
@@ -76,10 +86,10 @@ function doors() {
   const minted: string[] = [];
   return {
     minted,
-    throughDoor: async <T>(use: (token: string) => Promise<T>) => {
-      const token = `door-${minted.length + 1}`;
+    accessToken: async () => {
+      const token = `access-${minted.length + 1}`;
       minted.push(token);
-      return use(token);
+      return token;
     },
   };
 }
@@ -104,7 +114,8 @@ describe("makeHqApi — a connection that drops", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
@@ -118,7 +129,8 @@ describe("makeHqApi — a connection that drops", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
@@ -134,7 +146,8 @@ describe("makeHqApi — a connection that drops", () => {
       address: ADDRESS,
       fetch: async (input, init) =>
         new URL(input).pathname === "/api/door" ? fakeHq().fetch(input, init) : answering(),
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable" });
@@ -150,7 +163,8 @@ describe("makeHqApi — a connection that drops", () => {
         tried += 1;
         throw new DOMException("aborted", "AbortError");
       },
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(aborting.structure(stopped.signal)).rejects.toBeInstanceOf(HqError);
@@ -165,20 +179,232 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
 
     await api.structure();
     await api.createApp("Acme");
 
-    expect(door.minted).toEqual(["door-1"]);
+    expect(door.minted).toEqual(["access-1"]);
     expect(hq.seen.map((entry) => [entry.method, entry.path, entry.authorization])).toEqual([
       ["POST", "/api/door", null],
       ["GET", "/api/structure", "Bearer session-1"],
       ["POST", "/api/apps", "Bearer session-1"],
     ]);
-    expect(hq.seen[0]?.body).toEqual({ token: "door-1" });
+    expect(hq.seen[0]?.body).toEqual({ accessToken: "access-1", orgId: "org-1" });
+  });
+
+  describe("renewal", () => {
+    const renewing = (endsAt: () => string) => fakeHq(() => undefined, endsAt);
+
+    it("renews a session near its end with a current access token and the session as bearer, keeping its id", async () => {
+      let clock = Date.parse("2026-10-24T08:00:00.000Z");
+      const hq = renewing(() => isoAt(clock + 12 * 3_600_000));
+      const door = doors();
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: door.accessToken,
+        orgId: ORG,
+        now: () => clock,
+        openSocket: NO_SOCKET,
+      });
+      await api.structure();
+      clock += 11 * 3_600_000 + 50 * 60_000;
+      await api.structure();
+      expect(
+        hq.seen.map((entry) => [entry.path, entry.authorization, (entry.body as any)?.accessToken]),
+      ).toEqual([
+        ["/api/door", null, "access-1"],
+        ["/api/structure", "Bearer session-1", undefined],
+        ["/api/door", "Bearer session-1", "access-2"],
+        ["/api/structure", "Bearer session-1", undefined],
+      ]);
+    });
+
+    it("does not renew a session with time left", async () => {
+      const clock = Date.parse("2026-10-24T08:00:00.000Z");
+      const hq = renewing(() => isoAt(clock + 12 * 3_600_000));
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        now: () => clock + 3_600_000,
+        openSocket: NO_SOCKET,
+      });
+      await api.structure();
+      await api.structure();
+      expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
+    });
+  });
+
+  it("starts an organisation HQ has not started with the key an Owner mints", async () => {
+    let started = false;
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/door") return undefined;
+      const body = seen.body as { orgKey?: string };
+      if (body.orgKey === undefined && !started) return json(409, { code: "org_not_started" });
+      started = true;
+      return undefined;
+    });
+    const deleted: string[] = [];
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+      startOrganisation: {
+        mayStart: async () => true,
+        withLock: (_name, run) => run(),
+        mintKey: async () => ({ id: "key-1", token: "org-key-token" }),
+        deleteKey: async (id) => void deleted.push(id),
+      },
+    });
+    await api.structure();
+    expect(hq.seen.filter((e) => e.path === "/api/door").map((e) => e.body)).toMatchObject([
+      { orgId: ORG },
+      { orgId: ORG },
+      { orgId: ORG, orgKey: "org-key-token" },
+    ]);
+    expect(deleted).toEqual([]);
+  });
+
+  it.each([
+    { status: 403, code: "org_key_refused", mayStart: true, mints: 1 },
+    { status: 403, code: "org_key_refused", mayStart: false, mints: 0 },
+    { status: 503, code: "zerops_unavailable", mayStart: true, mints: 0 },
+  ])(
+    "An Owner replaces a refused organisation key, but a Zerops outage mints nothing: $code / $mayStart",
+    async ({ status, code, mayStart, mints }) => {
+      const minted: string[] = [];
+      const locks: string[] = [];
+      const hq = fakeHq((seen) => {
+        if (seen.path !== "/api/door") return undefined;
+        return (seen.body as { orgKey?: string }).orgKey === "new-org-key"
+          ? undefined
+          : json(status, { code });
+      });
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: NO_SOCKET,
+        startOrganisation: {
+          mayStart: async () => mayStart,
+          withLock: (name, run) => {
+            locks.push(name);
+            return run();
+          },
+          mintKey: async () => {
+            minted.push("new-org-key");
+            return { id: "key-2", token: "new-org-key" };
+          },
+          deleteKey: async () => undefined,
+        },
+      });
+      const result = await api.structure().catch((cause: unknown) => cause);
+      expect(minted).toHaveLength(mints);
+      if (mints === 1) {
+        expect(result).toEqual({ ungrouped: [], apps: [] });
+        expect(locks).toEqual(["mate.org-key.org-1"]);
+        expect(
+          hq.seen.filter((entry) => entry.path === "/api/door").map((entry) => entry.body),
+        ).toEqual([
+          { accessToken: "access-1", orgId: ORG },
+          { accessToken: "access-2", orgId: ORG },
+          { accessToken: "access-3", orgId: ORG, orgKey: "new-org-key" },
+        ]);
+      } else {
+        expect(result).toMatchObject({ code });
+        expect(locks).toEqual([]);
+      }
+    },
+  );
+
+  it.each([
+    { status: 403, code: "org_key_refused", minted: ["new-org-key"] },
+    { status: 503, code: "zerops_unavailable", minted: [] },
+  ])(
+    "An Owner renewing HQ replaces a refused key and keeps the session, but never mints on $code unavailability",
+    async ({ status, code, minted }) => {
+      const now = Date.parse("2026-10-24T12:00:00Z");
+      const keys: string[] = [];
+      const kept: string[] = [];
+      const requests: Array<{ authorization: string | null; body: unknown }> = [];
+      const api = makeHqApi({
+        address: ADDRESS,
+        orgId: ORG,
+        now: () => now,
+        accessToken: async () => "access",
+        openSocket: NO_SOCKET,
+        kept: {
+          read: () => ({ token: "kept-session", expiresAtMs: now + 10 * 60_000 }),
+          keep: ({ token }) => {
+            kept.push(token);
+          },
+          forget: () => undefined,
+        },
+        startOrganisation: {
+          mayStart: async () => true,
+          withLock: (_name, run) => run(),
+          mintKey: async () => {
+            keys.push("new-org-key");
+            return { id: "key-2", token: "new-org-key" };
+          },
+          deleteKey: async () => undefined,
+        },
+        fetch: async (url, init) => {
+          if (!url.endsWith("/api/door")) return json(200, { apps: [] });
+          const body = JSON.parse(String(init?.body)) as { orgKey?: string };
+          requests.push({ authorization: new Headers(init?.headers).get("authorization"), body });
+          return body.orgKey === "new-org-key"
+            ? json(200, {
+                session: "kept-session",
+                expiresAt: isoAt(now + 24 * 3_600_000),
+                userId: "u1",
+              })
+            : json(status, { code });
+        },
+      });
+      await api.structure();
+      expect(keys).toEqual(minted);
+      expect(requests.map((request) => request.authorization)).toEqual(
+        minted.length === 1
+          ? ["Bearer kept-session", "Bearer kept-session", "Bearer kept-session"]
+          : ["Bearer kept-session"],
+      );
+      expect(kept).toEqual(minted.length === 1 ? ["kept-session"] : []);
+    },
+  );
+
+  it("asks Zerops for a new access token once when HQ refuses the one it sent as not a person's", async () => {
+    const asked: Array<string | undefined> = [];
+    let first = true;
+    const hq = fakeHq((seen) => {
+      if (seen.path !== "/api/door" || !first) return undefined;
+      first = false;
+      return json(401, { code: "zerops_person_required" });
+    });
+    await makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async (refused) => {
+        asked.push(refused);
+        return refused === undefined ? "stale" : "fresh";
+      },
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    }).structure();
+    expect(asked).toEqual([undefined, "stale"]);
+    expect(hq.seen.filter((e) => e.path === "/api/door").map((e) => e.body)).toEqual([
+      { accessToken: "stale", orgId: ORG },
+      { accessToken: "fresh", orgId: ORG },
+    ]);
   });
 
   // Audit K7: the account keeps HQ's session across loads, as it keeps the Mates'.
@@ -194,7 +420,7 @@ describe("makeHqApi", () => {
           token = next;
         },
         port: {
-          read: () => token,
+          read: () => (token === null ? null : { token, expiresAtMs: FAR }),
           keep: (session: { readonly token: string; readonly expiresAt: string }) => {
             told.push(`keep ${session.token} until ${session.expiresAt}`);
             token = session.token;
@@ -214,18 +440,20 @@ describe("makeHqApi", () => {
       await makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: door.throughDoor,
+        accessToken: door.accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
         kept: kept.port,
       }).structure();
-      expect(kept.told).toEqual(["keep session-1 until 2026-10-02T20:00:00.000Z"]);
+      expect(kept.told).toEqual(["keep session-1 until 2099-01-01T00:00:00.000Z"]);
 
       // The next load presents it, through no door.
       const reloaded = doors();
       await makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: reloaded.throughDoor,
+        accessToken: reloaded.accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
         kept: kept.port,
       }).structure();
@@ -240,15 +468,16 @@ describe("makeHqApi", () => {
       const api = makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: door.throughDoor,
+        accessToken: door.accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
         kept: kept.port,
       });
       await api.structure();
-      expect(door.minted).toEqual(["door-1"]);
+      expect(door.minted).toEqual(["access-1"]);
       expect(kept.told).toEqual([
         "forget revoked",
-        "keep session-1 until 2026-10-02T20:00:00.000Z",
+        "keep session-1 until 2099-01-01T00:00:00.000Z",
       ]);
     });
 
@@ -259,7 +488,8 @@ describe("makeHqApi", () => {
       const api = makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: door.throughDoor,
+        accessToken: door.accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
         kept: kept.port,
       });
@@ -269,14 +499,15 @@ describe("makeHqApi", () => {
       await makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       }).structure();
       kept.replace("session-2");
       hq.revoke("session-1");
 
       await api.structure();
-      expect(door.minted).toEqual(["door-1"]);
+      expect(door.minted).toEqual(["access-1"]);
       expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-2");
     });
   });
@@ -288,13 +519,14 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
 
     await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
 
-    expect(door.minted).toEqual(["door-1"]);
+    expect(door.minted).toEqual(["access-1"]);
     expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
   });
 
@@ -304,7 +536,8 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
       beforeWrite: () =>
         new Promise<void>((resolve) => {
@@ -325,7 +558,8 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
       beforeWrite: async () => {
         throw new HqError({ kind: "refused", code: "hq_not_official", message: "Not official." });
@@ -347,7 +581,8 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     expect([await api.mateKey("P_ADA"), await api.mateKey("P_BEA")]).toEqual(["tok-ada", null]);
@@ -359,14 +594,15 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await api.structure();
     hq.expire();
 
     await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
-    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(hq.seen.map((entry) => `${entry.method} ${entry.path} ${entry.authorization}`)).toEqual([
       "POST /api/door null",
       "GET /api/structure Bearer session-1",
@@ -382,14 +618,15 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await api.structure();
     hq.expire();
 
     await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
-    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
   });
 
   it("ends a session whose renewal HQ refuses too, through one door", async () => {
@@ -400,10 +637,11 @@ describe("makeHqApi", () => {
       fetch: fakeHq((seen) =>
         seen.path === "/api/structure" ? json(401, { code: "session_required" }) : undefined,
       ).fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
       kept: {
-        read: () => kept,
+        read: () => (kept === null ? null : { token: kept, expiresAtMs: FAR }),
         keep: () => undefined,
         forget: () => {
           kept = null;
@@ -411,7 +649,7 @@ describe("makeHqApi", () => {
       },
     });
     await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
-    expect(door.minted).toEqual(["door-1"]);
+    expect(door.minted).toEqual(["access-1"]);
   });
 
   it("ends a session the door has just opened at once when HQ refuses it", async () => {
@@ -421,18 +659,19 @@ describe("makeHqApi", () => {
       fetch: fakeHq((seen) =>
         seen.path === "/api/structure" ? json(401, { code: "session_required" }) : undefined,
       ).fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(stuck.structure()).rejects.toMatchObject({ code: "session_required" });
-    expect(door.minted).toEqual(["door-1"]);
+    expect(door.minted).toEqual(["access-1"]);
   });
 
   it("ends a session truthfully when its renewal's door is refused", async () => {
     const hq = fakeHq((seen) =>
       seen.path === "/api/door" &&
       seen.body !== undefined &&
-      (seen.body as { token: string }).token === "door-2"
+      (seen.body as { accessToken: string }).accessToken === "access-2"
         ? json(401, { code: "zerops_throwaway_required" })
         : undefined,
     );
@@ -440,7 +679,8 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await api.structure();
@@ -449,7 +689,7 @@ describe("makeHqApi", () => {
       kind: "refused",
       code: "zerops_throwaway_required",
     });
-    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
   });
 
   it("waits 45 s for a door that does not answer, then gives it up, and the next call enters again", async () => {
@@ -475,7 +715,8 @@ describe("makeHqApi", () => {
             init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
           });
         },
-        throughDoor: door.throughDoor,
+        accessToken: door.accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       });
       const first = api.structure();
@@ -488,7 +729,7 @@ describe("makeHqApi", () => {
       await expect(first).rejects.toMatchObject({ kind: "unavailable", code: "network" });
 
       await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
-      expect(door.minted).toEqual(["door-1", "door-2"]);
+      expect(door.minted).toEqual(["access-1", "access-2"]);
     } finally {
       deadlines.mockRestore();
       vi.useRealTimers();
@@ -532,7 +773,8 @@ describe("makeHqApi", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     const failure = await api.createApp("Acme").catch((cause: unknown) => cause);
@@ -558,7 +800,8 @@ describe("Git token refusals", () => {
     return makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     }).gitTargetWrite("token-test", intent, "candidate");
   };
@@ -899,7 +1142,11 @@ describe("makeHqApi — the structure socket", () => {
     const messages: Array<string> = [];
     const closes: Array<number> = [];
     const socket = api.openScopeSocket(
-      { message: (data) => messages.push(data), close: (code) => closes.push(code) },
+      {
+        open: () => {},
+        message: (data) => messages.push(data),
+        close: (code) => closes.push(code),
+      },
       signal,
     );
     return { socket, messages, closes };
@@ -911,7 +1158,8 @@ describe("makeHqApi — the structure socket", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: sockets.openSocket,
     });
     const opened = opening(api);
@@ -934,14 +1182,15 @@ describe("makeHqApi — the structure socket", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: sockets.openSocket,
     });
     opening(api);
     (await sockets.next()).on.close(4401);
     opening(api);
     await sockets.next();
-    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/stream-ticket",
       authorization: "Bearer session-2",
@@ -956,10 +1205,11 @@ describe("makeHqApi — the structure socket", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: ticketing().fetch,
-      throughDoor: door.throughDoor,
+      accessToken: door.accessToken,
+      orgId: ORG,
       openSocket: sockets.openSocket,
       kept: {
-        read: () => kept,
+        read: () => (kept === null ? null : { token: kept, expiresAtMs: FAR }),
         keep: (session) => {
           kept = session.token;
         },
@@ -974,7 +1224,7 @@ describe("makeHqApi — the structure socket", () => {
 
     opening(api);
     await sockets.next();
-    expect(door.minted).toEqual(["door-1", "door-2"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(kept).toBe("session-2");
   });
 
@@ -983,7 +1233,8 @@ describe("makeHqApi — the structure socket", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await api.updateMate("p1", { face: "rose:seal:named" });
@@ -1002,7 +1253,8 @@ describe("makeHqApi — a Mate's birth intent", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     expect(await api.recordBirth({ appId: "app-1", face: "rose:seal" })).toEqual(intent);
@@ -1022,7 +1274,8 @@ describe("makeHqApi — a Mate's birth intent", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await api.recordBirth({ appId: "app-1", face: "", standUp: true });
@@ -1121,7 +1374,8 @@ describe("makeHqApi — application name and a project's application", () => {
       makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       }),
     );
@@ -1172,7 +1426,8 @@ describe("makeHqApi — a person's deploys", () => {
     const hqApi = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(ask(hqApi)).resolves.toEqual(DEPLOYS);
@@ -1241,7 +1496,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       api: makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       }),
     };
@@ -1708,7 +1964,8 @@ describe("makeHqApi — a write HQ may have made", () => {
             });
           });
         },
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       });
       const made = api.release("app-1", ASKED);
@@ -1740,7 +1997,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     const asked = () =>
@@ -1774,7 +2032,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
@@ -1800,7 +2059,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(ask(api)).rejects.toMatchObject({
@@ -1824,7 +2084,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.renameApp("app-1", "Harbor")).resolves.toBeUndefined();
@@ -1847,7 +2108,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.renameApp("app-1", "Harbor")).rejects.toMatchObject({
@@ -1871,7 +2133,8 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
@@ -1902,7 +2165,8 @@ describe("makeHqApi — a write HQ may have made", () => {
             init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
           });
         },
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       });
       const made = api.release("app-1", ASKED);
@@ -1939,7 +2203,8 @@ describe("makeHqApi — original lifecycle receipts", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.lifecycleWrite("original", intent)).rejects.toMatchObject({
@@ -1965,7 +2230,8 @@ describe("makeHqApi — original lifecycle receipts", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.lifecycleWrite("original:complete", complete)).rejects.toMatchObject({
@@ -1993,7 +2259,7 @@ describe("HQ's final account fence", () => {
         ...(phase === "repair"
           ? {
               kept: {
-                read: () => kept,
+                read: () => (kept === null ? null : { token: kept, expiresAtMs: FAR }),
                 keep: () => {},
                 forget: () => {
                   kept = null;
@@ -2001,10 +2267,10 @@ describe("HQ's final account fence", () => {
               },
             }
           : {}),
-        throughDoor: async (use) => {
-          const answer = await use("door");
+        orgId: ORG,
+        accessToken: async () => {
           active = false;
-          return answer;
+          return "access";
         },
         isCurrent: () => active,
       });
@@ -2030,7 +2296,8 @@ describe("HQ automatic-update policy transport", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     expect(await api.autoUpdatePolicy()).toEqual({ orgId: "ORG", enabled: true, revision: 0 });
@@ -2055,7 +2322,8 @@ describe("HQ automatic-update policy transport", () => {
       const api = makeHqApi({
         address: ADDRESS,
         fetch: hq.fetch,
-        throughDoor: doors().throughDoor,
+        accessToken: doors().accessToken,
+        orgId: ORG,
         openSocket: NO_SOCKET,
       });
       await expect(api.setAutoUpdatePolicy(false)).rejects.toMatchObject({ kind: "uncertain" });
@@ -2107,7 +2375,8 @@ it("Git transport keeps candidate plaintext in one incoming write body and recov
   const api = makeHqApi({
     address: ADDRESS,
     fetch: hq.fetch,
-    throughDoor: door.throughDoor,
+    accessToken: door.accessToken,
+    orgId: ORG,
     openSocket: NO_SOCKET,
   });
   await expect(api.gitTargetWrite("original", intent, marker)).rejects.toMatchObject({
@@ -2222,7 +2491,8 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(call(api)).resolves.toEqual(read);
@@ -2240,10 +2510,57 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      throughDoor: doors().throughDoor,
+      accessToken: doors().accessToken,
+      orgId: ORG,
       openSocket: NO_SOCKET,
     });
     await expect(api.stopAppTask!("app-1", "task-1")).resolves.toBeUndefined();
     expect(hq.seen.some((entry) => entry.path === path && entry.method === "POST")).toBe(true);
+  });
+});
+
+describe("makeHqApi — a Mate's ticket", () => {
+  const ticketApi = (answer: Response) => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/mates/P1/ticket" ? answer.clone() : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: () => {
+        throw new Error("unused");
+      },
+    });
+    return { hq, api };
+  };
+
+  it("A Mate's ticket is asked of HQ under the session and answers where to open the socket", async () => {
+    const { hq, api } = ticketApi(
+      json(200, { ticket: "T-1", expiresIn: 30, origin: "https://mate.example" }),
+    );
+
+    await expect(api.mateTicket("P1")).resolves.toEqual({
+      ticket: "T-1",
+      expiresIn: 30,
+      origin: "https://mate.example",
+    });
+    expect(hq.seen.at(-1)).toMatchObject({
+      method: "POST",
+      path: "/api/mates/P1/ticket",
+      authorization: "Bearer session-1",
+    });
+  });
+
+  it.each([
+    [403, { code: "forbidden", reason: "not_mate_opener" }, "refused", "forbidden"],
+    [404, { code: "mate_not_found" }, "refused", "mate_not_found"],
+    [409, { code: "mate_not_connected" }, "refused", "mate_not_connected"],
+    [503, { code: "not_active" }, "unavailable", "not_active"],
+  ])("HQ's %i refusal of a ticket is told as its own kind", async (status, body, kind, code) => {
+    const { api } = ticketApi(json(status, body));
+
+    await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind, code });
   });
 });

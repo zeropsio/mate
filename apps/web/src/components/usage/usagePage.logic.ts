@@ -1,4 +1,6 @@
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
+import { formatCount } from "@t3tools/shared/usageFormat";
+import { UNDATED_PERIOD } from "../../state/usage.logic";
 import type { UsageScope } from "./usageDimensions";
 import { USAGE_AUTOMATED_OWNER, type EnvironmentId, type UsageReport } from "@t3tools/contracts";
 import {
@@ -68,7 +70,8 @@ export function usagePageState(input: {
           : "This old project-name URL is no longer supported. Choose a project to use its stable ID.",
     };
   }
-  if (input.read.kind === "reading") return { kind: "reading", message: "Reading usage…" };
+  if (input.read.kind === "reading")
+    return { kind: "reading", message: input.read.line ?? "Reading usage…" };
   if (input.read.kind === "unavailable")
     return { kind: "unavailable", message: "Usage could not be read." };
   const report = input.read.report;
@@ -88,4 +91,12 @@ export function usagePageState(input: {
             : "No recorded usage in this period.",
     };
   return { kind: report.state === "complete" ? "ready" : "partial", message: null };
+}
+
+/** The tokens of a day-grouped report that were recorded without a day; the daily chart cannot place them. */
+export function undatedHistoryLine(periods: UsageReport | null): string | null {
+  const tokens = (periods?.groups ?? [])
+    .filter((row) => row.period === UNDATED_PERIOD)
+    .reduce((sum, row) => sum + BigInt(row.totals.tokens), 0n);
+  return tokens === 0n ? null : `${formatCount(Number(tokens))} tokens recorded without a day`;
 }

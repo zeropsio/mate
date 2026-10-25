@@ -197,10 +197,11 @@ export {
   organizationProjects,
   ownRowWanted,
   projectGone,
+  rosterAnswered,
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
-export type { UnavailableReason } from "./projections/freshness.ts";
+export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export {
   creationStepId,
@@ -239,7 +240,6 @@ export {
   type RecordedEnvironment,
 } from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
-export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
@@ -777,7 +777,7 @@ export {
   isListedMateProject,
   isListedMateEnvironment,
   type HqMateDirectory,
-  type MyChief,
+  type DirectoryChief,
 } from "./projections/hqMateDirectory.ts";
 export {
   shownHqMateDirectoryAtom,
@@ -787,3 +787,5 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
+export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";

@@ -1,13 +1,133 @@
-// @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
+// @effect-diagnostics preferSchemaOverJson:off nodeBuiltinImport:off -- human-readable failure diagnostics.
+import * as NodeCrypto from "node:crypto";
+import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
-import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
 import { expect } from "@effect/vitest";
+import { HqNavigationJob } from "@t3tools/shared/hqStream";
+import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
 import type { Page } from "puppeteer-core";
 import type { environmentFixture } from "./fake.ts";
 import { endBuild } from "../../fakes/e-env/builds.ts";
 
 type Fixture = Effect.Success<typeof environmentFixture>;
+
+// The job fields these cases read of an application's navigation value; the rest is ignored.
+const EnvironmentJob = Schema.Struct({
+  id: HqNavigationJob.fields.id,
+  sha: HqNavigationJob.fields.sha,
+  state: HqNavigationJob.fields.state,
+  cause: HqNavigationJob.fields.cause,
+  processId: HqNavigationJob.fields.processId,
+});
+type EnvironmentJob = typeof EnvironmentJob.Type;
+const decodeEnvironments = Schema.decodeUnknownOption(
+  Schema.Struct({
+    environments: Schema.Array(
+      Schema.Struct({ id: Schema.String, jobs: Schema.Array(EnvironmentJob) }),
+    ),
+  }),
+);
+
+/**
+ * The tier's jobs as HQ's navigation delivers them, once `ready` holds of them: the first delivery
+ * carries the whole state, so jobs already recorded are read at once, later ones on their update.
+ */
+export const environmentJobs = Effect.fn("e-env.environmentJobs")(function* (
+  f: Pick<Fixture, "s" | "appId">,
+  tier: "stage" | "production",
+  ready: (jobs: readonly EnvironmentJob[]) => boolean,
+) {
+  const { core, owner } = f.s.drivers;
+  let seen: readonly EnvironmentJob[] | undefined;
+  yield* openScenarioNavigation(core.origin, yield* ticketFor(core.call, owner), (message) => {
+    if (message.type !== "scope-reset" && message.type !== "scope-values") return false;
+    const value = message.values.find((entry) => entry.key === `app:${f.appId}`)?.value;
+    const jobs = Option.getOrUndefined(decodeEnvironments(value))?.environments.find(
+      (environment) => environment.id === `Shop-${tier}`,
+    )?.jobs;
+    if (jobs === undefined || !ready(jobs)) return false;
+    seen = jobs;
+    return true;
+  }).pipe(Effect.scoped);
+  return seen!;
+});
+
+const decodeGitEnvironments = Schema.decodeUnknownOption(
+  Schema.Struct({
+    environments: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        target: Schema.Struct({ kind: Schema.String }),
+      }),
+    ),
+  }),
+);
+
+/** The application's Git environments as HQ's navigation delivers them, once `ready` holds. */
+export const gitEnvironments = Effect.fn("e-env.gitEnvironments")(function* (
+  f: Pick<Fixture, "s" | "appId">,
+  ready: (environments: ReadonlyArray<{ readonly id: string; readonly name: string }>) => boolean,
+) {
+  const { core, owner } = f.s.drivers;
+  let seen: ReadonlyArray<{ readonly id: string; readonly name: string }> | undefined;
+  yield* openScenarioNavigation(core.origin, yield* ticketFor(core.call, owner), (message) => {
+    if (message.type !== "scope-reset" && message.type !== "scope-values") return false;
+    const value = message.values.find((entry) => entry.key === `app:${f.appId}`)?.value;
+    const git = Option.getOrUndefined(decodeGitEnvironments(value))?.environments.filter(
+      (environment) => environment.target.kind === "git",
+    );
+    if (git === undefined || !ready(git)) return false;
+    seen = git;
+    return true;
+  }).pipe(Effect.scoped);
+  return seen!;
+});
+
+/**
+ * Attaches a Git environment through HQ's API: the application's `web` repository gets a remote on
+ * the scenario's GitHub, then the environment is previewed and added as the owner would. Returns
+ * the environment's id.
+ */
+export const addGitEnvironment = Effect.fn("e-env.addGitEnvironment")(function* (
+  f: Pick<Fixture, "s" | "appId">,
+  input: { readonly tier: "stage" | "production"; readonly name: string },
+) {
+  const { core, github, owner } = f.s.drivers;
+  const repository = github.addRepository("acme/shop");
+  const common = { orgId: "ORG", appId: f.appId, hqProjectId: "ignored" };
+  const post = Effect.fn("e-env.gitTarget")(function* (body: unknown) {
+    const answer = yield* core.call("POST", `/api/git-targets/${NodeCrypto.randomUUID()}`, {
+      session: owner,
+      body,
+    });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    return answer.body as { acceptance: { result: unknown } };
+  });
+  yield* post({
+    intent: { kind: "connect-git-remote", ...common, repo: "web", url: repository.url },
+    candidate: repository.token,
+  });
+  const target = { kind: "git", branch: "main", delivery: "direct" };
+  const previewed = yield* post({
+    intent: { kind: "preview-git-environment", ...common, request: { target } },
+  });
+  yield* post({
+    intent: {
+      kind: "add-git-environment",
+      ...common,
+      request: { ...input, target, adoption: previewed.acceptance.result },
+    },
+  });
+  expect(github.unmatched()).toEqual([]);
+  const added = yield* gitEnvironments(f, (environments) =>
+    environments.some((environment) => environment.name === input.name),
+  );
+  return added.find((environment) => environment.name === input.name)!.id;
+});
 
 export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const { s, appId } = f;
@@ -90,27 +210,19 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     ).pipe(
       Effect.filterOrFail((row) => row !== undefined),
       Effect.retry(Schedule.spaced("25 millis")),
+      // The build is HQ's once its navigation names the process as the tier's job.
       Effect.tap((process) =>
-        s.drivers.core.deploys.changes.pipe(
-          Stream.mapEffect(() => s.drivers.core.deploys.operations(appId)),
-          Stream.filter((rows) =>
-            rows.some(
-              (row) => row.projectId === `Shop-${tier}` && row.handles.includes(process.id),
-            ),
-          ),
-          Stream.take(1),
-          Stream.runDrain,
-        ),
+        environmentJobs(f, tier, (jobs) => jobs.some((job) => job.processId === process.id)),
       ),
       Effect.timeout("10 seconds"),
       Effect.tapError(() =>
         Effect.gen(function* () {
-          const jobs = yield* s.drivers.core.sql`
-            SELECT kind, project_id, sha, label, process_id, state, reason, evidence
-            FROM hq_deploy_job WHERE project_id = ${`Shop-${tier}`}`;
+          const structure = yield* s.drivers.core.call("GET", "/api/structure", {
+            session: s.drivers.owner,
+          });
           yield* Effect.logError("Build receipt missing", {
             tier,
-            jobs,
+            structure: structure.body,
             processes: s.drivers.zerops.rows("process"),
             versions: s.drivers.zerops.rows("app-version"),
             browser: yield* Effect.promise(() =>
@@ -241,11 +353,14 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const running = (tier: "stage" | "production") =>
     Effect.gen(function* () {
       const process = yield* deployment(tier);
-      const jobs = yield* s.drivers.core.sql<{
-        state: string;
-        process_id: string;
-      }>`SELECT state, process_id FROM hq_deploy_job WHERE project_id = ${`Shop-${tier}`} AND process_id = ${process.id}`;
-      expect(jobs).toEqual([{ state: "building", process_id: process.id }]);
+      const jobs = yield* environmentJobs(f, tier, (jobs) =>
+        jobs.some((job) => job.processId === process.id),
+      );
+      expect(
+        jobs
+          .filter((job) => job.processId === process.id)
+          .map(({ state, processId }) => ({ state, processId })),
+      ).toEqual([{ state: "building", processId: process.id }]);
     });
   return {
     when: {

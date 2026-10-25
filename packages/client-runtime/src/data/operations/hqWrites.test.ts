@@ -59,6 +59,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         closeChange: asked("closeChange"),
         handChange: asked("handChange"),
         setChief: asked("setChief"),
+        removeChief: asked("removeChief"),
         decideProposal: asked("decideProposal"),
         ...api,
       };

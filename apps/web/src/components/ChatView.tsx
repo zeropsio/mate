@@ -3198,7 +3198,7 @@ function ConversationView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
-  // The person's Chief: the organization's Mate (`chief.ts`).
+  // The organization's Chief: the organization's Mate (`chief.ts`).
   const chiefConversation = (() => {
     const at = zeropsMateAt(zeropsMates, environmentId);
     return at.kind === "mate" && at.mate.chief === true;

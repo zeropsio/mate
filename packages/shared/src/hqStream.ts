@@ -283,13 +283,13 @@ export const HqPersonFacts = Schema.Struct({
   mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
-  /** This Mate's person's registered Chief; absent from an older HQ. */
+  /** The project the organisation's Chief mark names, or none; absent from an older HQ. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
-  /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
-  chief: Schema.optionalKey(Schema.Literals(["mine", "another"])),
+  /** `org` on the organisation's Chief, for every reader alike; absent on any other project. */
+  chief: Schema.optionalKey(Schema.Literal("org")),
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 
@@ -506,6 +506,18 @@ export const HqNavigationIntake = Schema.Struct({
 });
 export type HqNavigationIntake = typeof HqNavigationIntake.Type;
 
+/**
+ * One of an application's recent rollouts as its navigation carries it: whether HQ planned it, and
+ * HQ's words for what it could not ask for — what a handed-over answer (`HqDeployAnswer.rollout`)
+ * ends its wait with when the rollout was planned with no job.
+ */
+export const HqNavigationRollout = Schema.Struct({
+  id: Schema.String,
+  planned: Schema.Boolean,
+  note: Schema.NullOr(Schema.String),
+});
+export type HqNavigationRollout = typeof HqNavigationRollout.Type;
+
 /** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
@@ -525,6 +537,11 @@ export const HqNavigationApp = Schema.Struct({
    * one of them to be free; null: nowhere. Absent from an older HQ.
    */
   intake: Schema.optionalKey(Schema.NullOr(HqNavigationIntake)),
+  /**
+   * Its recent rollouts, newest first, to whoever reads its environments. Absent from an older HQ,
+   * and a rollout not listed: not known, never planned.
+   */
+  rollouts: Schema.optionalKey(Schema.Array(HqNavigationRollout)),
 });
 export type HqNavigationApp = typeof HqNavigationApp.Type;
 /** Additive canonical reader; the legacy app DTO remains usable until consumers migrate. */

@@ -17,8 +17,6 @@ declare module "../model.ts" {
       readonly projectName: string;
       readonly agents: ReadonlyArray<ZeropsAgentType>;
       readonly setupRuntimesYaml?: string;
-      /** A Chief's container: its zcp serves the organization `orgId` names. */
-      readonly chief?: true;
     };
   }
   interface OperationResults {

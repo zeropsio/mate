@@ -15,7 +15,7 @@ import {
   make as makeOffboarding,
   ZeropsOffboarding,
 } from "./ZeropsOffboarding.ts";
-import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import {
   make as makeSignOut,
@@ -122,7 +122,7 @@ describe("ZeropsOffboarding", () => {
   );
 });
 
-// R6: HQ relaying a different answer signs a person who lost access out now, not at the next
+// HQ sending a different access list signs a person who lost access out now, not at the next
 // role recheck.
 describe("ZeropsOffboarding's loop", () => {
   it.effect("runs a pass at once when HQ relays a different answer", () =>
@@ -164,10 +164,10 @@ describe("ZeropsOffboarding's loop", () => {
                   } as unknown as ZeropsSignOut["Service"]),
                 ),
                 Layer.succeed(
-                  ZeropsProjectAccess,
-                  ZeropsProjectAccess.of({
+                  ZeropsMateAccessList,
+                  ZeropsMateAccessList.of({
                     changes: Stream.fromPubSub(relays),
-                  } as unknown as ZeropsProjectAccess["Service"]),
+                  } as unknown as ZeropsMateAccessList["Service"]),
                 ),
               ),
             ),

@@ -1,12 +1,9 @@
 /**
- * The person's Chief and the decisions on its proposals, as HQ records them (`zerops/hq/chief.ts`):
- * a Chief recorded for a project, and one decision on a proposal. HQ answers each at once and keeps
- * no request id for it, so a lost answer stays uncertain and is never sent again blindly — a
- * Chief's record is asked for again by the person (a second replaces the first), and a decision is
- * written once: a second is HQ's conflict.
- *
- * The credential a Chief's record answers is handed to the set-up alone (`makeHqExecutor`'s
- * `chiefAccess`), never kept in its receipt.
+ * The organisation's Chief mark and the decisions on its proposals, as HQ records them
+ * (`zerops/hq/chief.ts`): the mark set on a project or removed, and one decision on a proposal. HQ answers
+ * each at once and keeps no request id for it, so a lost answer stays uncertain and is never sent
+ * again blindly — the mark is asked for again by the person (a second sets the same mark), and a
+ * decision is written once: a second is HQ's conflict.
  *
  * @module data/operations/hqChief
  */
@@ -21,6 +18,7 @@ import type { OperationKind } from "./kind.ts";
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "set-chief": { readonly orgId: string; readonly projectId: string };
+    readonly "remove-chief": { readonly orgId: string };
     readonly "decide-proposal": {
       readonly orgId: string;
       readonly proposalId: string;
@@ -43,13 +41,19 @@ export const setChief: OperationKind<"set-chief"> = {
   reflected: answered,
 };
 
+export const removeChief: OperationKind<"remove-chief"> = {
+  kind: "remove-chief",
+  executor: "hq",
+  reflected: answered,
+};
+
 export const decideProposal: OperationKind<"decide-proposal"> = {
   kind: "decide-proposal",
   executor: "hq",
   reflected: answered,
 };
 
-export const HQ_CHIEF_KINDS = [setChief, decideProposal] as const;
+export const HQ_CHIEF_KINDS = [setChief, removeChief, decideProposal] as const;
 
 export type HqChiefIntent = Extract<
   OperationIntent,

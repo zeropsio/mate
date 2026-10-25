@@ -155,11 +155,6 @@ export function buildZcpServiceImportYaml(input: {
    * `services: []`, and a container made before the press — which carries neither — never does.
    */
   readonly setupRuntimesYaml?: string;
-  /**
-   * The organization a Chief's container serves, by id: its zcp runs org mode (`ZCP_CHIEF`) for
-   * that organization (`ZCP_ORG_ID`). Absent for every other Mate.
-   */
-  readonly chiefOf?: string;
 }): string {
   if (!input.vscodePassword) {
     throw new Error("A zcp container with a public subdomain needs a VSCODE_PASSWORD.");
@@ -177,10 +172,6 @@ export function buildZcpServiceImportYaml(input: {
     .map((agentType) => `      ZCP_AGENT_AUTH_TYPE_${agentTypeToEnvSuffix(agentType)}: "oauth"\n`)
     .join("");
   const keyLine = input.apiKey ? `      ZCP_API_KEY: "${input.apiKey}"\n` : "";
-  const chiefLines =
-    input.chiefOf === undefined
-      ? ""
-      : `      ZCP_CHIEF: "1"\n      ZCP_ORG_ID: "${input.chiefOf}"\n`;
   const runtimesLine = input.apiKey
     ? `      MATE_SETUP_RUNTIMES: "${encodeSetupRuntimes(input.setupRuntimesYaml || NO_SETUP_RUNTIMES)}"\n`
     : "";
@@ -196,7 +187,7 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
-${keyLine}${runtimesLine}${chiefLines}    zeropsYaml:
+${keyLine}${runtimesLine}    zeropsYaml:
 ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .split("\n")
   .map((line) => `      ${line}`)

@@ -7,11 +7,11 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../hq/test/harness/tempPostgres.ts";
 import type { StructureRead } from "../../../../hq/src/structure.ts";
-import { mateInApp } from "../../../../hq/test/harness/mates.ts";
-import { seedCoreWorld, sessionFor, untilHealth } from "../../../../hq/test/harness/runningCore.ts";
+import { seedCoreWorld, untilHealth } from "../../../../hq/test/harness/runningCore.ts";
 import { openBrowser } from "../harness/browser.ts";
 import { startScenarioCore } from "../harness/hqCore.ts";
 import { serve } from "../harness/http.ts";
+import { personDoor, placeMate } from "../harness/mateAccess.ts";
 import { ZeropsFake } from "./zerops.ts";
 import { definePerson, projectRoles } from "./zeropsWorld.ts";
 
@@ -35,8 +35,9 @@ describe("harness extension APIs", () => {
             baseUrl: `${api.origin}/api/rest/public`,
             world: fake.world,
           });
-          yield* untilHealth(core.call, "active");
-          const owner = yield* sessionFor(core.call, "door-owner");
+          if (core.kind === "in-process") yield* untilHealth(core.call, "active");
+          // The first door keeps the organisation's key, which HQ then reads Zerops with.
+          const owner = yield* personDoor(core, "owner", "hq");
           const appIds = new Map<string, string>();
           for (const name of ["Ada", "Bea", "Staging", "Production", "Cara"]) {
             fake.put("project", {
@@ -48,35 +49,35 @@ describe("harness extension APIs", () => {
               userRoles: projectRoles(fake.world, name),
             });
           }
-          const shop = yield* mateInApp(core.call, core.fake, owner, "Ada", "Shop", appIds);
-          const bea = yield* mateInApp(core.call, core.fake, owner, "Bea", "Shop", appIds);
-          expect(bea.appId).toBe(shop.appId);
+          const shop = yield* placeMate(core, owner, "Ada", "Shop", appIds);
+          const bea = yield* placeMate(core, owner, "Bea", "Shop", appIds);
+          expect(bea).toBe(shop);
           for (const [projectId, kind] of [
             ["Staging", "stage"],
             ["Production", "production"],
           ] as const) {
-            const attached = yield* core.call("POST", `/api/apps/${shop.appId}/projects`, {
+            const attached = yield* core.call("POST", `/api/apps/${shop}/projects`, {
               session: owner,
               body: { projectId, kind, environment: { name: projectId.toLowerCase() } },
             });
             expect(attached.status).toBe(201);
           }
-          const cara = yield* mateInApp(core.call, core.fake, owner, "Cara", "Other", appIds);
+          const cara = yield* placeMate(core, owner, "Cara", "Other", appIds);
           expect(appIds.size).toBe(2);
-          expect(appIds.get("Shop")).toBe(shop.appId);
-          expect(cara.appId).not.toBe(shop.appId);
+          expect(appIds.get("Shop")).toBe(shop);
+          expect(cara).not.toBe(shop);
           const structure = yield* core.call("GET", "/api/structure", { session: owner });
           expect(structure.status).toBe(200);
           const apps = (structure.body as StructureRead).apps;
           expect(apps.map(({ name }) => name).sort()).toEqual(["Other", "Shop"]);
           expect(
             apps
-              .find(({ id }) => id === shop.appId)
+              .find(({ id }) => id === shop)
               ?.projects.map(({ projectId }) => projectId)
               .sort(),
           ).toEqual(["Ada", "Bea", "Production", "Staging"]);
           expect(
-            apps.find(({ id }) => id === cara.appId)?.projects.map(({ projectId }) => projectId),
+            apps.find(({ id }) => id === cara)?.projects.map(({ projectId }) => projectId),
           ).toEqual(["Cara"]);
           expect(
             fake.requestsByCredential.get("hq")?.get("GET /client/ORG/user/list"),

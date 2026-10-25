@@ -1,42 +1,26 @@
 /**
- * A Mate's session, kept across loads (the owner, 2026-10-02) — and HQ's, by the same rules
- * (audit K7): its door opened a session per load in this page's memory only, so every load minted
- * and deleted a throwaway on the first paint's path, and a sign-out left the session live for its
- * 12 hours.
- *
- * The door's throwaway (`doorThrowaway.ts`) opens a session on a Mate, and ending it is the
- * Mate's call: its membership watch ends it when the person's access changes, and its age ends
- * it after a day. Held in memory only, it was lost on every load, so every load minted and
- * deleted a throwaway per Mate, waited on the mint pace and the Zerops API to reach Mates that
- * were up, and left the session it dropped live on its Mate for the rest of the day.
- *
- * It is kept instead, per account, and presented again only where the exchange would present a
- * fresh one — the Mate's descriptor names the expected project and environment — and only once
- * the Mate says it is still its own (`identityExchange.ts`). Anything else mints, as before.
+ * HQ's session, kept across loads (audit K7): its door opened a session per load in this page's
+ * memory only, so every load passed the door on the first paint's path, and a sign-out left the
+ * session live for its 12 hours.
  *
  * - Nothing here outweighs what the same storage already holds: the account's Zerops token sits
- *   beside it and can mint a throwaway for every Mate. So no session stays kept once that token is
- *   gone: every way out of the account ends them at their Mates (`drain`), and so does a stored
- *   login the platform refuses.
+ *   beside it and can open a session at every HQ. So no session stays kept once that token is
+ *   gone: every way out of the account ends them where they were issued (`drain`), and so does a
+ *   stored login the platform refuses.
  * - A session one keeps or forgets in place of another answers the one it displaced, for the
- *   caller to end at its Mate: a session dropped from here is never left live for its day.
+ *   caller to end where it was issued: a session dropped from here is never left live.
  * - A refusal forgets only the session it was about: another tab may have kept a newer one. Two
- *   tabs writing at once can still lose one entry; its session ends with its day, as every session
- *   did before any was kept.
+ *   tabs writing at once can still lose one entry; its session ends with its deadline, as every
+ *   session did before any was kept.
  *
  * @module keptSessions
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { BearerConnectionRegistration } from "../connection/catalog.ts";
-
-/** The account-scoped storage key the kept Mate sessions live under. */
-export const KEPT_SESSIONS_KEY = "mate-sessions.v1";
-
 /**
  * A session with less than this left is not presented again: it would end within the load that
- * restored it, and a throwaway buys a whole day.
+ * restored it.
  */
 export const KEPT_SESSION_LEAD_MS = 15 * 60_000;
 
@@ -91,17 +75,6 @@ export const HQ_SESSIONS: KeptSessionKind<KeptHqSession, typeof KeptHqSession.En
   schema: KeptHqSession,
   token: (session) => session.token,
   expiresAtEpochMs: (session) => session.expiresAtEpochMs,
-};
-
-/** A Mate's session, by target (`projectId:serviceId`). */
-export const MATE_SESSIONS: KeptSessionKind<
-  BearerConnectionRegistration,
-  typeof BearerConnectionRegistration.Encoded
-> = {
-  storageKey: KEPT_SESSIONS_KEY,
-  schema: BearerConnectionRegistration,
-  token: (registration) => registration.credential.token,
-  expiresAtEpochMs: (registration) => registration.credential.expiresAtEpochMs,
 };
 
 export function makeKeptSessions<T, E>(

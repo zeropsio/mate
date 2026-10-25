@@ -78,6 +78,88 @@ async function receiver(origin: string, id: string) {
 }
 
 describe("Zerops fake: measured wire guarantees", () => {
+  it("the API Date header advances with the injected platform clock", async () => {
+    const { fake, server, call } = await rig();
+    try {
+      fake.clock.setTime(1_800_000_000_000);
+      const first = await call("/client/ORG/integration-token/personal");
+      expect(
+        first.headers.get("date"),
+        "ASSERTION: token age is judged against the injected API clock",
+      ).toBe("Fri, 15 Jan 2027 08:00:00 GMT");
+      const minted = await (
+        await call("/client/ORG/integration-token", {
+          name: "Clock receipt",
+          roleCode: "NO_ACCESS",
+        })
+      ).json();
+      const created = await (await call(`/client/ORG/integration-token/${minted.id}`)).json();
+      expect(created.created).toBe("2027-01-15T08:00:00.000Z");
+      fake.clock.advance(2_000);
+      const second = await call("/client/ORG/integration-token/gone");
+      expect(second.headers.get("date")).toBe("Fri, 15 Jan 2027 08:00:02 GMT");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it.each([
+    ["?limit=1&offset=0", ["first"], 1, 0],
+    ["?limit=1&offset=1", ["second"], 1, 1],
+    ["?limit=1&offset=2", [], 1, 2],
+    ["", ["first", "second"], 100, 0],
+  ])(
+    "project list %s reports its bounded page and complete total",
+    async (query, ids, limit, offset) => {
+      const { fake, server, call } = await rig();
+      try {
+        for (const id of ["first", "second"])
+          fake.put("project", { id, clientId: "ORG", name: id });
+        const response = await call(`/client/ORG/project${query}`);
+        const body = await response.json();
+        expect(
+          body,
+          "ASSERTION: project paging exposes count, total, limit and offset",
+        ).toMatchObject({ count: ids.length, total: 2, limit, offset });
+        expect(body.list.map((row: { id: string }) => row.id)).toEqual(ids);
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  it.each([
+    ["/client/ORG/integration-token/gone", "clientUserConnectionNotFound"],
+    ["/service-stack/gone", "serviceStackNotFound"],
+    ["/service-stack/gone/env", "serviceStackNotFound"],
+  ])("unknown records at %s use the platform refusal code", async (path, code) => {
+    const { server, call } = await rig();
+    try {
+      const response = await call(path);
+      expect(response.status).toBe(400);
+      expect(
+        await response.json(),
+        "ASSERTION: unknown records carry the measured Zerops refusal",
+      ).toMatchObject({ error: { code } });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("integration token records carry the sudo verdict required by the keys door", async () => {
+    const { server, call } = await rig();
+    try {
+      const response = await call("/client/ORG/integration-token/personal");
+      expect(response.status).toBe(200);
+      expect(
+        await response.json(),
+        "ASSERTION: a standard token explicitly has sudo disabled",
+      ).toMatchObject({ sudo: false });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("accepts a personal token, org-wide filters, full versioned rows and membership-first delivery; reconnect registers current state", async () => {
     const { fake, server, call } = await rig();
     try {

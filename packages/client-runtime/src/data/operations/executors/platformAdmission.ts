@@ -22,7 +22,6 @@ export function admitPlatformOperation(input: {
   return Effect.gen(function* () {
     if (!input.active()) return yield* refused("This Zerops sign-in has ended.");
     const { intent, viewer } = input;
-    if (intent.kind === "throwaway-sweep") return;
     const capabilities = (projectId?: string) =>
       platformCapabilities.derive(readsOfState(input.store.state()), {
         orgId: viewer?.id ?? "",

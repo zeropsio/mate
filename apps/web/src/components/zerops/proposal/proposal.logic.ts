@@ -194,7 +194,7 @@ const SERVICE_VERBS = {
 } as const;
 
 /**
- * What the person's Chief is sent when a project's Mate asks it: who asks and from where, then the
+ * What the organization's Chief is sent when a project's Mate asks it: who asks and from where, then the
  * words and what they hand along.
  */
 export function chiefAsk(
@@ -204,15 +204,15 @@ export function chiefAsk(
   return `From ${from.mateName} in ${from.projectName}:\n\n${proposalMessage(params)}`;
 }
 
-/** Where an ask goes: the source Mate's person's Chief, none, or not known yet. */
+/** Where an ask goes: the organization's Chief, none, or not known yet. */
 export function chiefMessageTarget(
-  own: string | null | undefined,
+  marked: string | null | undefined,
 ):
   | { readonly kind: "chief"; readonly projectId: string }
   | { readonly kind: "none" }
   | { readonly kind: "unknown" } {
-  if (own === undefined) return { kind: "unknown" };
-  return own === null ? { kind: "none" } : { kind: "chief", projectId: own };
+  if (marked === undefined) return { kind: "unknown" };
+  return marked === null ? { kind: "none" } : { kind: "chief", projectId: marked };
 }
 
 /**

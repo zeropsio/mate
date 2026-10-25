@@ -1,22 +1,17 @@
 /**
- * The Chief page (`/chief`), which the menu's top row opens while the person has no Chief to talk
- * to: the stage a Mate's empty conversation stands on (`MateEmptyStateView`) — the Chief's mark,
+ * The Chief page (`/chief`), which the menu's top row opens while the organization has no Chief to
+ * talk to: the stage a Mate's empty conversation stands on (`MateEmptyStateView`) — the Chief's mark,
  * one headline, the sentence under it, one slot — saying what a Chief is over *Set up Chief*. The
  * press runs the setup here (`chiefSetup.ts`): the button hands over to its steps in place, a step
  * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
-import {
-  resumeChiefSetup,
-  startChiefSetup,
-  tryChiefSetupAgain,
-  useChiefSetup,
-  useChiefUnfinished,
-} from "~/zerops/chiefSetup";
+import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
-import { useOwnChief } from "~/zerops/ownChief";
+import { useOrgChief } from "~/zerops/orgChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
+import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { hqUpdateOffered } from "@t3tools/client-runtime/zerops/hq";
@@ -43,13 +38,15 @@ const CHIEF_DRAWN = {
 } as const;
 
 export function ChiefPage() {
-  const own = useOwnChief();
+  const own = useOrgChief();
   const { setup, startedAtMs } = useChiefSetup();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const accountHq = useAccountHq(orgId);
-  const unfinished = useChiefUnfinished(typeof own === "string" ? own : null);
   const create = useOrgOffers()("create_app");
+  // Only an Owner or Admin marks the organization's Chief; while the role is not read, nothing is
+  // held back that a read would give again.
+  const capabilities = usePlatformCapabilities(null);
   // An HQ on an older Core than this app's records no Chief: its update comes first.
   const standing = useAtomValue(hqStandingAtom);
   const carried = useCarriedCoreBuild();
@@ -58,7 +55,6 @@ export function ChiefPage() {
   const view = chiefPageView({
     own,
     setup,
-    unfinished,
     hq:
       accountHq.hq.kind === "official"
         ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
@@ -68,6 +64,7 @@ export function ChiefPage() {
           ? "none"
           : "reading",
     mayCreate: create.kind !== "refused",
+    mayMark: !capabilities.membershipKnown || capabilities.manageOrganization,
   });
   if (view.kind === "coming")
     return <ZeropsMateComingPage key={view.projectId} projectId={view.projectId} />;
@@ -79,10 +76,6 @@ export function ChiefPage() {
         {view.kind === "reading" ? null : (
           <ChiefStage
             onAgain={tryChiefSetupAgain}
-            onFinish={() => {
-              if (orgId !== undefined && view.kind === "finish")
-                resumeChiefSetup(orgId, view.projectId);
-            }}
             onSetUp={startChiefSetup}
             startedAtMs={startedAtMs}
             view={view}
@@ -101,6 +94,13 @@ const CHIEF_IS = {
 } as const;
 
 /**
+ * Who sees what the Chief reads, said before its mark is set (spec-mate §3.11): the mark is the
+ * organization's, and its overview is everyone's who may open the Chief's project.
+ */
+export const CHIEF_SEEN_BY =
+  "Everyone with access to the Chief's project sees its overview of your organization: projects, services and members with their roles.";
+
+/**
  * The page's stage in each of its states before the Chief exists (`chiefPageView`), for the page
  * and a design harness alike: props only.
  */
@@ -108,13 +108,11 @@ export function ChiefStage({
   view,
   onSetUp,
   onAgain,
-  onFinish,
   startedAtMs = null,
 }: {
   readonly view: Exclude<ChiefPageView, { kind: "reading" | "coming" }>;
   readonly onSetUp: () => void;
   readonly onAgain: () => void;
-  readonly onFinish: () => void;
   /** When this tab pressed *Set up Chief*: the row's clock; `null` when unknown. */
   readonly startedAtMs?: number | null;
 }) {
@@ -138,30 +136,10 @@ export function ChiefStage({
                 >
                   Set up Chief
                 </Button>
-                {view.blocked === undefined ? null : (
-                  <p className="text-sm text-muted-foreground">{view.blocked}</p>
-                )}
+                <p className="max-w-md text-sm text-muted-foreground">
+                  {view.blocked ?? CHIEF_SEEN_BY}
+                </p>
               </div>
-            </ArrivalSwap>
-          ),
-        };
-      case "finish":
-        return {
-          kind: "coming",
-          face: "needs",
-          headline: "Your Chief is not finished.",
-          sentence:
-            "Its view of your organization never reached it. Finishing hands it over again.",
-          below: (
-            <ArrivalSwap id="finish" kind="slot">
-              <Button
-                data-zerops-surface="chief-finish"
-                onClick={onFinish}
-                size="lg"
-                variant="primary"
-              >
-                Finish setting up
-              </Button>
             </ArrivalSwap>
           ),
         };
@@ -173,7 +151,9 @@ export function ChiefStage({
         return {
           kind: stopped ? "failed" : "coming",
           face: stopped ? "needs" : "working",
-          headline: stopped ? "Setting up your Chief stopped." : "Setting up your Chief.",
+          headline: stopped
+            ? "Setting up your organization's Chief stopped."
+            : "Setting up your organization's Chief.",
           sentence: stopped
             ? "Try again picks up at the step that stopped; finished steps are kept."
             : "Keep this tab open until these steps are done. Then Chief comes up on its own.",
@@ -185,7 +165,7 @@ export function ChiefStage({
                   at={at}
                   estimateMs={CHIEF_SETUP_ESTIMATE_MS}
                   identity={view.setup.birthId}
-                  label="Setting up your Chief"
+                  label="Setting up your organization's Chief"
                   startedAtMs={startedAtMs}
                   steps={CHIEF_SETUP_DOING}
                   view={

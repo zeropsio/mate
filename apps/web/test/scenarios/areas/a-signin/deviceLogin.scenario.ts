@@ -186,6 +186,34 @@ describe("A: sign-in through the Zerops window", () => {
       }),
     );
 
+    // Catches a sign-in or a load renewing a session with hours left: the platform revokes the old
+    // access token on every refresh, so the first door, the Zerops reads and the websocket login
+    // went out with a revoked token and were refused before they were repeated.
+    it.effect("a sign-in and a load of the app renew no session and meet no refusal", () =>
+      Effect.gen(function* () {
+        const s = yield* deviceLoginScenario();
+        const refused: string[] = [];
+        const doors: number[] = [];
+        s.page.on("response", (response) => {
+          const { pathname } = new URL(response.url());
+          if (response.status() === 401) refused.push(pathname);
+          if (pathname === "/api/door" && response.request().method() === "POST")
+            doors.push(response.status());
+        });
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        yield* account(s.page).reload;
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        expect(s.drivers.zerops.requests.get("POST /auth/refresh") ?? 0).toBe(0);
+        expect(refused).toEqual([]);
+        expect(doors[0], "The first door answered").toBe(200);
+        expect(s.drivers.zerops.sockets.size, "The Zerops websocket opened").toBeGreaterThan(0);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches sign-out leaving the session alive at Zerops, or another tab still signed in.
     it.effect("sign-out ends the session at Zerops and signs every tab out", () =>
       Effect.gen(function* () {

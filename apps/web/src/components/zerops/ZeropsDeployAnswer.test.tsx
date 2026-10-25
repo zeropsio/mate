@@ -17,7 +17,7 @@ vi.mock("~/zerops/projectFlows", () => ({
   useAppsEnvironments: () => navigation.environments,
 }));
 
-import { answeredDeploys, ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
+import { answeredDeploys, useReviewDeploys, ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 
 const ANSWER: HqDeployAnswer = {
   jobs: [
@@ -141,5 +141,52 @@ describe("an answered job follows HQ's stream to its end", () => {
     expect(markup).toContain(said);
     expect(markup).toContain(`data-zerops-job-state="${state}"`);
     expect(markup).not.toContain("building");
+  });
+});
+
+// HQ answered before planning the merge's rollout: its review waits, then follows what was planned.
+describe("a merge whose answer handed planning over", () => {
+  const MERGED = "5c3ea18b00000000000000000000000000000000";
+  const press: ReviewPress = {
+    kind: "done",
+    deploys: {
+      jobs: [],
+      note: "HQ plans these deploys once the organisation's other rollout is planned",
+      planned: false,
+      rollout: "41",
+    },
+    rollout: { appId: "app", cause: "merge", ref: MERGED },
+  };
+  function Review() {
+    return <ZeropsDeployAnswer answer={useReviewDeploys(press)} />;
+  }
+
+  it.each([
+    {
+      name: "says it waits for planning while HQ shows none of its jobs",
+      streamed: { ...job, cause: "release", ref: MERGED },
+      says: ["Waiting for planning."],
+      never: ["View deploy", "other rollout"],
+    },
+    {
+      name: "follows the planned jobs and their log once HQ shows them",
+      streamed: { ...job, service: "web", sha: MERGED, cause: "merge", ref: MERGED },
+      says: ["building", "View deploy", 'data-zerops-deploy-job="3"'],
+      never: ["Waiting for planning."],
+    },
+    {
+      name: "says HQ's note once HQ planned its rollout with no jobs",
+      streamed: { ...job, cause: "release", ref: MERGED },
+      rollouts: [{ id: "41", planned: true, note: "the stage tier could not be read" }],
+      says: ["the stage tier could not be read"],
+      never: ["Waiting for planning.", "other rollout"],
+    },
+  ])("$name", ({ streamed, rollouts, says, never }) => {
+    const environments = environmentsWith(streamed);
+    navigation.environments =
+      rollouts === undefined ? environments : { app: { ...environments.app, rollouts } };
+    const markup = renderToStaticMarkup(<Review />);
+    for (const words of says) expect(markup).toContain(words);
+    for (const words of never) expect(markup).not.toContain(words);
   });
 });

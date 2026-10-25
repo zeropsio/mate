@@ -97,6 +97,20 @@ export const make = Effect.gen(function* () {
     );
     yield* reportProgress({ stage: "synchronizing", prepared });
     yield* session.ready;
+    if (target._tag === "ZeropsMateConnectionTarget") {
+      // Tickets skip the descriptor request; the admitted socket carries the same capabilities.
+      const { capabilities } = (yield* session.initialConfig).environment;
+      return {
+        prepared: {
+          ...prepared,
+          contentAddressedImages: capabilities.contentAddressedImages === true,
+          ...(capabilities.mateEngine === undefined
+            ? {}
+            : { mateEngine: capabilities.mateEngine.protocol }),
+        },
+        session,
+      } satisfies EnvironmentConnectionLease;
+    }
     return { prepared, session } satisfies EnvironmentConnectionLease;
   });
 

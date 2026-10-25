@@ -4,8 +4,9 @@
  *
  * - Every target's presence comes from the account's listing — the projects of the organization
  *   the account observes, as its store lists them, and their services as the account's store reads
- *   them (B4, `mateListingsAtom`) — and from the sessions kept for its Mates (C1). A remembered
- *   Mate is looked for where its kept session opened until its project's services are read (A16);
+ *   them (B4, `mateListingsAtom`) — and from the catalog's registrations at a listed Mate's address
+ *   (C1). A remembered Mate is looked for where it was registered until its project's services are
+ *   read (A16);
  *   one they were read without is gone only once a direct read lacks it too (§9 C19). A listing
  *   change that changes no row and settles no absence feeds nothing. No React holds a fact here:
  *   the web and mobile hand over ports and send intents — the route, the active organization, a
@@ -15,9 +16,9 @@
  * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
  *   one left last for `RECENT_MS`, an action's, a Connect's, a page's that draws every Mate
  *   (Usage). Only those Mates are read; the rest read their containers from the platform's
- *   statuses. The route's target is found through its kept session, the Mates already read, the
- *   catalog's address or HQ — never by reading other projects. A remembered Mate with no lease is
- *   parked: its registration, kept session and cached data stay, its socket closes.
+ *   statuses. The route's target is found through the Mates already read, the catalog's address or
+ *   HQ — never by reading other projects. A remembered Mate with no lease is parked: its
+ *   registration and cached data stay, its socket closes.
  * - A registration no Mate holds — and that no install is writing — is released.
  * - Nobody is let into a Mate before its project is closed off (`closeOff.ts`): a Mate whose
  *   container carries the press's marker, and whose project HQ does not say is closed off, holds
@@ -130,20 +131,10 @@ export interface AccountEnvironmentPorts {
     /** The descriptor, the mint, the door and the token exchange; installs nothing. */
     readonly exchange: (request: DoorRequest) => Promise<ExchangeAnswer<DoorCredential>>;
     readonly readDescriptor: (origin: string, signal: AbortSignal) => Promise<DescriptorFacts>;
-    /**
-     * Whether the target's exchange presents a session kept from an earlier load first
-     * (`keptSessions.ts`): it starts past the mint pace and spends none of it. Absent: none is.
-     */
-    readonly kept?: (key: TargetKey) => boolean;
     /** The supervisor's `retryNow` for a link in backoff. */
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
     readonly remove: (environmentId: EnvironmentId) => void;
-    /**
-     * Drops the session kept for the target (`keptSessions.ts`) where it is, never ending it at a
-     * Mate that is gone. Absent: none is kept.
-     */
-    readonly forgetKept?: (key: TargetKey) => void;
     /** `registry.park`: the socket closes; the registration, its session and its data stay. */
     readonly park: (environmentId: EnvironmentId) => void;
     /** `registry.unpark`: the socket opens on the credential the registration holds, no door. */
@@ -158,11 +149,6 @@ export interface AccountEnvironmentPorts {
   readonly readInitAt: MateAdapterPorts<DoorCredential>["readInitAt"];
   /** This tab's container intents (C8). */
   readonly intents: IntentStorage;
-  /**
-   * The Mates whose session an earlier load kept (C1): where each was reached, and the environment
-   * it serves. A route to one is found with no read. Absent: none is kept.
-   */
-  readonly remembered?: () => ReadonlyArray<RememberedTarget>;
   /** The connection catalog: which environments are registered, and their links. */
   readonly catalog: { readonly listen: (listener: CatalogListener) => () => void };
   /**
@@ -180,15 +166,6 @@ export interface AccountEnvironmentPorts {
    */
   readonly hqIndex: {
     readonly projectOf: (environmentId: EnvironmentId) => string | null;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
-  /**
-   * Whether a press is in flight in this browser, its project made or not: the background mints
-   * no throwaway meanwhile (`holdBackground`), as the press reads the token list they are written
-   * to. A surface with no press of its own leaves it out.
-   */
-  readonly pressInFlight?: {
-    readonly read: () => boolean;
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
@@ -275,6 +252,8 @@ export interface EnvironmentStage {
   readonly hear: (signal: PlatformSignal) => void;
   /** A container's facts may have changed at the source (§6.2): it is read again. */
   readonly request: (key: TargetKey) => void;
+  /** HQ placed the project's Mate for the person again: its refused Mate is asked again. */
+  readonly accessChanged: (projectId: string) => void;
   /** The account closed: every machine, timer, probe, exchange and listener ends. */
   readonly dispose: () => void;
 }
@@ -408,16 +387,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     listingOf(targetProject(key))?.organizationId ?? activeOrganization;
 
   /**
-   * The Mates this account reached before (C1): each a session kept from an earlier load names,
-   * and each the catalog held as the stage started at a listed Mate's address — a device's catalog
-   * outlives its app — unless a kept session already names its target.
+   * The Mates this account reached before (C1): each the catalog held as the stage started at a
+   * listed Mate's address — a device's catalog outlives its app.
    */
-  const remembered = (): ReadonlyArray<RememberedTarget> => {
-    const kept = ports.remembered?.() ?? [];
-    const served = registered.flatMap((entry): ReadonlyArray<RememberedTarget> => {
+  const remembered = (): ReadonlyArray<RememberedTarget> =>
+    registered.flatMap((entry): ReadonlyArray<RememberedTarget> => {
       if (entry.origin === null || inherited?.has(entry.environmentId) !== true) return [];
       const row = rows.find((candidate) => origin(candidate.containerOrigin) === entry.origin);
-      if (row === undefined || kept.some(({ targetKey }) => targetKey === row.key)) return [];
+      if (row === undefined) return [];
       return [
         {
           targetKey: row.key,
@@ -427,8 +404,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         },
       ];
     });
-    return [...kept, ...served];
-  };
 
   /** Each Mate's machines as the adapter holds them now. */
   const machinesNow = () => adapter?.environments() ?? new Map<TargetKey, EnvironmentMachine>();
@@ -593,13 +568,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     },
     install,
     readDescriptor: ports.door.readDescriptor,
-    ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
     retryLink: ports.door.retryLink,
     // A Mate gone from where the platform lists it — or removed by its person — leaves the
-    // catalog, and its kept session with it: no later load reads it again.
-    retire: (key, environmentId) => {
+    // catalog: no later load reads it again.
+    retire: (_key, environmentId) => {
       if (environmentId !== null) ports.door.remove(environmentId);
-      ports.door.forgetKept?.(key);
     },
     probe: ports.probe,
     readInitAt: ports.readInitAt,
@@ -909,8 +882,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         { immediate: true },
       ),
     );
-    const holdBackground = () => built.holdBackground(ports.pressInFlight?.read() ?? false);
-    holdBackground();
     stops.push(
       built.subscribe(() => {
         updateRoute();
@@ -923,7 +894,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateParking();
         notify();
       }),
-      ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
       ports.hqIndex.subscribe(() => {
         updateRoute();
         updateActions();
@@ -1048,6 +1018,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       request: (key) => {
         if (!closed) built.request(key);
+      },
+      accessChanged: (projectId) => {
+        if (!closed) built.accessChanged(projectId);
       },
       dispose: () => {
         if (closed) return;

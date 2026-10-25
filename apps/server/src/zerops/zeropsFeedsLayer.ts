@@ -14,6 +14,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { ServerConfig } from "../config.ts";
 import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
@@ -41,14 +42,17 @@ import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.t
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
+import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
-import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
+import { zeropsUserIdOf } from "./zeropsSubject.ts";
+import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
+import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
-import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
@@ -62,10 +66,19 @@ import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
-/** One admission source for the auth boundary, the door, the watch and the linked HQ. */
-export const ZeropsProjectAccessLive = ZeropsProjectAccessModule.layer.pipe(
+/**
+ * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
+ * reader the door still reads Zerops with.
+ */
+export const ZeropsMateAccessListLive = ZeropsMateAccessListModule.layer.pipe(
   Layer.provideMerge(ZeropsOrgReadModule.layer),
   Layer.provideMerge(ZeropsMateKeyModule.layer),
+);
+
+/** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
+export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
+  Layer.provideMerge(ZeropsTicketDoorModule.layer),
+  Layer.provideMerge(ZeropsMateAccessListLive),
 );
 
 /** Existing credentials must still belong here before they expose any protected response. */
@@ -73,19 +86,21 @@ export const ZeropsSessionAdmissionLive = Layer.effect(
   SessionAdmission,
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const access = yield* ZeropsProjectAccessModule.ZeropsProjectAccess;
+    const access = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
     return (subject: string) =>
       config.zerops === undefined || config.zeropsFixtures !== undefined
         ? Effect.succeed(true)
-        : access.read.pipe(
-            Effect.map(
-              (answer) =>
-                answer.ok &&
-                answer.members.some(
-                  (member) =>
-                    member.userId === ZeropsMembershipWatchModule.zeropsUserIdOf(subject) &&
-                    member.visibility === "open",
-                ),
+        : access.current.pipe(
+            Effect.map((current) =>
+              Option.match(current, {
+                onNone: () => false,
+                onSome: (list) =>
+                  !list.refused &&
+                  list.members.some(
+                    (member) =>
+                      member.userId === zeropsUserIdOf(subject) && member.visibility === "open",
+                  ),
+              }),
             ),
           );
   }),
@@ -288,16 +303,13 @@ const liveLayer = Layer.mergeAll(
   mateAutoUpdatePolicyLayer,
   ZeropsDataConsoleModule.layer,
   ZeropsGitRemoteProbeModule.layer,
-  // Not a feed: the loop that ends a session whose person's role changed. It
-  // lives here because this is where the Zerops services are composed, and it
-  // is deliberately absent from the fixture layer — a fixture scene has no
-  // platform to re-read.
-  ZeropsMembershipWatchModule.layer,
 ).pipe(
   // Startup's one read of why running turns were interrupted, over the same own-key reader.
   Layer.provideMerge(ZeropsRestartReadModule.layer),
-  // Reuse the exact layer the auth boundary reads; a second instance would miss HQ's relay.
-  Layer.provideMerge(ZeropsProjectAccessLive),
+  // Reuse the exact layer the auth boundary reads; a second instance would miss HQ's list.
+  Layer.provideMerge(ZeropsConnectionsLive),
+  // The Mate's Git credential file: written by the link, read by the setup's git step.
+  Layer.provide(ZeropsGitCredentialFileModule.layer),
   // Who signed each login in, as this server saw it: one store, written by the login walker
   // and read by the gate, the feeds, the setup and the link to HQ.
   Layer.provide(ZeropsSignInsModule.layer),

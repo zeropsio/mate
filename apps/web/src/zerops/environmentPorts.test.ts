@@ -5,24 +5,23 @@ import {
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
 import { makeAccountStore, makeMateAdapter, type MateAdapter } from "@t3tools/client-runtime/data";
-import { closedOffOf, type ExchangeClock } from "@t3tools/client-runtime/zerops/environments";
 import {
-  RemoteEnvironmentAuthFetchError,
-  RemoteEnvironmentAuthInvalidJsonError,
-  RemoteEnvironmentAuthTimeoutError,
-  RemoteEnvironmentAuthUndeclaredStatusError,
-} from "@t3tools/client-runtime/rpc";
-import {
-  EnvironmentAuthInvalidError,
-  EnvironmentId,
-  EnvironmentInternalError,
-} from "@t3tools/contracts";
+  closedOffOf,
+  initialEnvironment,
+  selectReachability,
+  mateVoice,
+  type ExchangeClock,
+} from "@t3tools/client-runtime/zerops/environments";
+import { EnvironmentId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { mateTicketIssuer } from "@t3tools/client-runtime/data";
+import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
+import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { closeOffPort, hqIndexPort, keptSessionUnanswered, linkPhaseOf } from "./environmentPorts";
+import { closeOffPort, hqIndexPort, linkPhaseOf } from "./environmentPorts";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -91,6 +90,13 @@ describe("linkPhaseOf: the supervisor's state as region L", () => {
         new ConnectionTransientError({ reason: "network", detail: "gone" }),
       ),
       null,
+    ],
+    [
+      connectionState(
+        "backoff",
+        new ConnectionTransientError({ reason: "mate-not-linked", detail: "no-link" }),
+      ),
+      { phase: "backoff", retryAtMs: 1_000, unavailableReason: "no-link", noLink: true },
     ],
   ] as const)("%#", (state, phase) => {
     expect(linkPhaseOf(state)).toEqual(phase);
@@ -262,53 +268,6 @@ describe("closeOffPort: HQ's word on which Mates' projects are closed off", () =
   });
 });
 
-describe("keptSessionUnanswered: what a kept session's check failing says", () => {
-  const URL = "https://zcp-1-8080.prg1.zerops.app/mate/api/auth/session";
-  it.each([
-    ["the check ran past its 3 s", true, new RemoteEnvironmentAuthTimeoutError(URL, 3_000)],
-    [
-      "the request never reached the Mate",
-      true,
-      new RemoteEnvironmentAuthFetchError({ message: "offline", cause: null }),
-    ],
-    [
-      "the balancer answered for a server that is down",
-      true,
-      new RemoteEnvironmentAuthUndeclaredStatusError(URL, 502),
-    ],
-    [
-      "the Mate failed inside",
-      true,
-      new EnvironmentInternalError({
-        code: "internal_error",
-        reason: "bootstrap_validation_failed",
-        traceId: "trace",
-      }),
-    ],
-    [
-      "the Mate answered with a state this client cannot read",
-      false,
-      new RemoteEnvironmentAuthInvalidJsonError({ message: "invalid", cause: null }),
-    ],
-    [
-      "the Mate refused the session",
-      false,
-      new EnvironmentAuthInvalidError({
-        code: "auth_invalid",
-        reason: "invalid_credential",
-        traceId: "trace",
-      }),
-    ],
-    [
-      "the Mate does not serve the check",
-      false,
-      new RemoteEnvironmentAuthUndeclaredStatusError(URL, 404),
-    ],
-  ])("%s → no word: %s", (_name, unanswered, cause) => {
-    expect(keptSessionUnanswered(cause)).toBe(unanswered);
-  });
-});
-
 const presence = (online: boolean) => ({
   presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
 });
@@ -345,4 +304,93 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
     expect(told).toEqual(["p-vera"]);
     stop();
   });
+});
+
+describe("HQ ticket refusal on the Mate's state", () => {
+  it.effect.each([
+    {
+      reason: "no-link",
+      detail: "Mate has no connection to HQ (no-link).",
+      opening: "This Mate is not connected to HQ.",
+    },
+    {
+      reason: "no-ack",
+      detail: "Mate did not acknowledge the ticket (no-ack).",
+      opening: "Mate did not acknowledge the ticket (no-ack). Opening Quinn…",
+    },
+  ])(
+    "The Mate's state shows HQ's $reason reason and recovers when connected",
+    ({ reason, detail, opening }) =>
+      Effect.gen(function* () {
+        const hq = makeHqApi({
+          address: "https://hq.example",
+          orgId: "org-1",
+          accessToken: async () => "access",
+          openSocket: () => {
+            throw new Error("unexpected socket");
+          },
+          fetch: async (url) =>
+            new Response(
+              JSON.stringify(
+                url.endsWith("/api/door")
+                  ? { session: "session", expiresAt: "2099-01-01T00:00:00Z", userId: "user-1" }
+                  : { code: "mate_not_connected", reason },
+              ),
+              {
+                status: url.endsWith("/api/door") ? 200 : 409,
+                headers: { "content-type": "application/json" },
+              },
+            ),
+        });
+        const error = yield* Effect.flip(
+          mateTicketIssuer(() => hq).issue({ orgId: "org-1", projectId: "project-1" }),
+        );
+        for (const previouslyConnected of [false, true]) {
+          for (const phase of ["backoff", "connecting"] as const) {
+            const link = linkPhaseOf(connectionState(phase, error));
+            if (link?.phase !== "backoff" && link?.phase !== "connecting") {
+              throw new Error("A ticket refusal must retain its connection state");
+            }
+            const machine = {
+              ...initialEnvironment({ record: ENVIRONMENT_ID }),
+              presence: { kind: "present" as const, origin: ORIGIN },
+              credential: {
+                kind: "held" as const,
+                environmentId: ENVIRONMENT_ID,
+                installed: true,
+                staleBlock: false,
+                rereading: null,
+              },
+              container: { level: "ready" as const },
+              linkLostAt: previouslyConnected ? { wall: 0, mono: 0 } : null,
+              link,
+            };
+            const voice = mateVoice({
+              reachability: selectReachability(machine, ENVIRONMENT_ID),
+              conversationShown: previouslyConnected,
+              heldMs: 10_000,
+              nowMs: 0,
+              mateName: "Quinn",
+            });
+            expect(voice).toMatchObject({
+              text: previouslyConnected
+                ? `${detail} ${phase === "backoff" ? "Reconnecting to Quinn — next try in 1 s." : "Reconnecting to Quinn…"}`
+                : opening,
+            });
+            expect(
+              mateVoice({
+                reachability: selectReachability(
+                  { ...machine, link: { phase: "connected", since: { wall: 0, mono: 0 } } },
+                  ENVIRONMENT_ID,
+                ),
+                conversationShown: previouslyConnected,
+                heldMs: 10_000,
+                nowMs: 0,
+                mateName: "Quinn",
+              }),
+            ).toEqual({ surface: "none" });
+          }
+        }
+      }),
+  );
 });

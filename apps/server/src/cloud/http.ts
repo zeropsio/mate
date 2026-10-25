@@ -359,9 +359,9 @@ function requestOriginHeader(request: HttpServerRequest.HttpServerRequest): stri
  * verify it belongs to a real subdomain-enabled service of the claimed
  * Zerops project (`ZeropsProjectBinding` on the relay side).
  *
- * Order: an explicit `T3CODE_ZEROPS_PUBLIC_ORIGIN` override
- * (`zerops.publicOrigin`); otherwise `requestOrigin`, which each caller
- * derives its own way — `cloudLinkProofHandler` reads the linking browser's
+ * Order: the platform's `zeropsSubdomain` (`zerops.publicOrigin`); otherwise
+ * `requestOrigin`, which each caller derives its own way — `cloudLinkProofHandler`
+ * reads the linking browser's
  * actual `Origin`/`X-Forwarded-*`/`Host` headers via `requestOriginHeader`,
  * while the CLI reconcile loop (no inbound request to read) passes the local
  * origin it was started with. Always validated `https://` and never

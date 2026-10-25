@@ -1,4 +1,4 @@
-import { MateHealth } from "@t3tools/contracts";
+import { AGENT_USAGE_REPORT_PROTOCOL, MateHealth, type UsageReportQuery } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { hqMateHealthScope } from "../families/mateHealth.ts";
 import { hqMateSetup } from "../projections/hqMateSetup.ts";
@@ -31,12 +31,14 @@ import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
+import { agentUsageOwner } from "../families/agentUsage.ts";
 import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type StreamKey } from "../model.ts";
 import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigation } from "../projections/hqNavigation.ts";
+import { projectApplications } from "../projections/projectFlow.ts";
 import { hqMateOverview, hqMateRefusal } from "../projections/hqMates.ts";
 import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
@@ -749,11 +751,10 @@ describe("hqNavigationLink", () => {
       expect(appName(store, "shop")).toBe("Shop");
       yield* TestClock.adjust(20_000);
       yield* settle;
-      expect(view().live).toBe(false);
-      expect(view().reconnecting).toBe(true);
-      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
-        "No answer came in time.",
-      );
+      // Still unconfirmed, HQ is slow on a socket that holds: the navigation is not asked again.
+      expect(view()).toMatchObject({ live: false, reconnecting: true, slow: true });
+      expect(fixture.opens()).toBe(2);
+      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault).toBeNull();
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -1343,7 +1344,113 @@ describe("a Mate's attention, relayed", () => {
   );
 });
 
+describe("a slow HQ", () => {
+  it.effect(
+    "a navigation HQ sends long after its connection opened lands on that connection, asked once",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        // HQ computes the navigation for 45 s, pinging every 20 s meanwhile.
+        for (let ping = 0; ping < 2; ping++) {
+          yield* TestClock.adjust(20_000);
+          yield* fixture.send({ type: "ping" });
+          yield* settle;
+        }
+        yield* TestClock.adjust(5_000);
+        yield* fixture.send(
+          navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
+        );
+        yield* fixture.send(ready(1));
+        yield* settle;
+        expect(fixture.opens()).toBe(1);
+        expect(
+          navigationRequests(fixture, 1).filter(({ type }) => type === "subscribe"),
+        ).toHaveLength(1);
+        expect(appName(store, "shop")).toBe("Shop");
+        expect(phase(store, hqAppsScope(ORG))).toBe("live");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a navigation HQ is still working on, past a first answer's patience, reads slow and not down",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+        // Within its first answer's patience, a wait is not worth saying.
+        expect(view()).toMatchObject({ live: false, slow: false });
+        yield* TestClock.adjust(20_000);
+        yield* fixture.send({ type: "ping" });
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(view()).toMatchObject({
+          live: false,
+          slow: true,
+          reconnecting: false,
+          capped: false,
+          refusal: null,
+        });
+        yield* fixture.send(navigation("scope-reset", 1, []));
+        yield* fixture.send(ready(1));
+        yield* settle;
+        expect(view()).toMatchObject({ live: true, slow: false });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("a slow HQ's applications", () => {
+  it.effect(
+    "applications HQ is slow to confirm again are not called unanswered; a lost socket's are",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const unavailable = () =>
+          projectApplications.derive(readsOfState(store.state()), ORG).unavailable;
+        yield* fixture.endSegment;
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(unavailable()).toBe(false);
+        yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(unavailable()).toBe(true);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
 describe("an HQ outage", () => {
+  it.effect(
+    "a socket HQ closes before it says anything is a failed attempt: retries back off",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        for (const failures of [1, 2, 3]) {
+          yield* fixture.drop(classifyHqClose(4401));
+          yield* settle;
+          const link = streamOf(store.state(), linkKeys.hq(ORG));
+          expect({ phase: link.phase, failures: link.failures }).toEqual({
+            phase: "recovering",
+            failures,
+          });
+          if (link.next.kind === "retry")
+            yield* TestClock.adjust(link.next.at - (yield* Clock.currentTimeMillis));
+          yield* settle;
+        }
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("a socket that says nothing, not even a ping, is given up and asked again", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -1845,10 +1952,9 @@ describe("outage scenarios at the HQ input", () => {
       expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
         live: false,
         reconnecting: true,
+        slow: true,
       });
-      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
-        "No answer came in time.",
-      );
+      expect(fixture.opens()).toBe(2);
       expect(appName(store, "shop")).toBe("Shop");
       yield* Fiber.interrupt(fiber);
     }),
@@ -2030,5 +2136,86 @@ describe("outage scenarios at the HQ input", () => {
       expect(appName(store, "shop")).toBe("Shop");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+});
+
+describe("the usage reports a period holds", () => {
+  const periodOwners = (since: string) =>
+    (["mate", "model", "provider", "day"] as const).map((groupBy) =>
+      agentUsageOwner({
+        since,
+        until: "2026-10-25T00:00:00.000Z",
+        mode: "utc-days",
+        timezone: "UTC",
+        projectId: null,
+        appId: null,
+        mateId: null,
+        ownerUserId: null,
+        provider: null,
+        model: null,
+        groupBy,
+        provenance: "live-responses",
+      } satisfies UsageReportQuery),
+    );
+
+  it.effect(
+    "Switching the usage period lets go of the old period's reports before asking HQ for the new ones",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const link = hqNavigationLink({ orgId: ORG, wire: fixture.wire, store });
+        const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* settle;
+        yield* fixture.send({
+          type: "scope-ready",
+          scope: NAVIGATION,
+          incarnation: "hq",
+          revision: 1,
+          core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
+        });
+        yield* settle;
+        const usageFrames = () =>
+          fixture.sent.flatMap(({ request }) =>
+            request.type === "subscribe" || request.type === "unsubscribe"
+              ? request.scopes.flatMap((entry) => {
+                  const wire = "scope" in entry ? entry.scope : entry;
+                  return wire.kind === "agentUsage"
+                    ? [{ type: request.type, owner: agentUsageOwner(wire.query) }]
+                    : [];
+                })
+              : [],
+          );
+        const [week, month] = [
+          periodOwners("2026-10-18T00:00:00.000Z"),
+          periodOwners("2026-09-25T00:00:00.000Z"),
+        ];
+
+        const releaseWeek = week.map((ownerId) =>
+          link.demandDetail({ family: "agentUsage", ownerId }),
+        );
+        yield* settle;
+        releaseWeek.forEach((release) => release());
+        const holdMonth = month.map((ownerId) =>
+          link.demandDetail({ family: "agentUsage", ownerId }),
+        );
+        yield* settle;
+
+        const frames = usageFrames();
+        const of = (type: string, from: number, to: number) =>
+          new Set(
+            frames
+              .slice(from, to)
+              .filter((f) => f.type === type)
+              .map((f) => f.owner),
+          );
+        expect(frames).toHaveLength(12);
+        expect(of("subscribe", 0, 4)).toEqual(new Set(week));
+        expect(of("unsubscribe", 4, 8)).toEqual(new Set(week));
+        expect(of("subscribe", 8, 12)).toEqual(new Set(month));
+        holdMonth.forEach((release) => release());
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });

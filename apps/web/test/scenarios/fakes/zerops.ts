@@ -422,6 +422,19 @@ export class ZeropsFake {
   }
 
   handle: HttpHandler = async (request) => {
+    const response = await this.answer(request);
+    return (
+      response && {
+        ...response,
+        headers: {
+          Date: new Date(this.clock.currentTimeMillis()).toUTCString(),
+          ...response.headers,
+        },
+      }
+    );
+  };
+
+  private answer: HttpHandler = async (request) => {
     const path = request.url.pathname.replace(/^\/api\/rest\/public/u, "");
     const key = `${request.method} ${path}`;
     this.requests.set(key, (this.requests.get(key) ?? 0) + 1);
@@ -571,7 +584,7 @@ export class ZeropsFake {
         canViewFinances: Boolean(request.body.canViewFinances),
         canEditFinances: Boolean(request.body.canEditFinances),
         projects: (request.body.projects ?? []) as { projectId: string; roleCode: string }[],
-        createdMs: Date.now(),
+        createdMs: this.clock.currentTimeMillis(),
         createdByUser: this.people.get(bearer) ?? "owner",
       });
       return { body: { id: token, token } };
@@ -606,8 +619,8 @@ export class ZeropsFake {
         (token) => token.orgId === tokenRead[1] && token.id === tokenRead[2],
       );
       return token
-        ? { body: { ...token, created: new Date(token.createdMs).toISOString() } }
-        : this.error(400, "integrationTokenNotFound");
+        ? { body: { sudo: false, ...token, created: new Date(token.createdMs).toISOString() } }
+        : this.error(400, "clientUserConnectionNotFound");
     }
     if (clientScope && path === `/client/${clientScope}/integration-token/list`)
       return {
@@ -645,7 +658,10 @@ export class ZeropsFake {
       const rows = this.rows("project").filter(
         (row) => row.clientId === clientScope && this.canReadRow(bearer, "project", row),
       );
-      return { body: { list: rows, total: rows.length } };
+      const limit = Number(request.url.searchParams.get("limit") ?? 100);
+      const offset = Number(request.url.searchParams.get("offset") ?? 0);
+      const list = rows.slice(offset, offset + limit);
+      return { body: { list, count: list.length, total: rows.length, limit, offset } };
     }
     const projectServices = path.match(/^\/project\/([^/]+)\/service-stack$/u);
     if (projectServices)

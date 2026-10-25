@@ -482,41 +482,41 @@ export async function menuMateIn(page: Page, name: string, app: string) {
  */
 // A kept window, not a timeout test: a row not drawn within 3 s reads as folded (a design gap).
 export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
-  const find = (within: number) =>
-    page.waitForFunction(
-      (name) =>
-        [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]')].find(
-          (row) => {
-            const words = row
-              .querySelector('[data-zerops-surface="sidebar-mate-name"]')
-              ?.textContent?.replaceAll("\u00a0", " ")
-              .trim();
-            return (
-              row.getBoundingClientRect().height > 0 &&
-              (words === name || words?.endsWith(` · ${name}`) === true) &&
-              // Still: a group unfolding moves and clips its rows, so a press measured meanwhile
-              // lands beside the row.
-              !document
-                .getAnimations()
-                .some(
-                  (animation) =>
-                    animation.playState === "running" &&
-                    animation.effect instanceof KeyframeEffect &&
-                    animation.effect.target?.contains(row) === true,
-                )
-            );
-          },
-        ) ?? null,
-      { timeout: within, polling: "raf" },
-      name,
-    );
+  const literal = (value: string) => {
+    const parts = value.split('"').map((part) => `"${part}"`);
+    return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+  };
+  const words = `normalize-space(translate(., "\u00a0", " "))`;
+  const suffix = literal(` · ${name}`);
+  const named = `${words}=${literal(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
+  const row = page
+    .locator(
+      `::-p-xpath(//*[@data-zerops-surface="sidebar-mate"][.//*[@data-zerops-surface="sidebar-mate-name"][${named}]])`,
+    )
+    .filter(
+      (row) =>
+        row.getBoundingClientRect().height > 0 &&
+        // Still: a group unfolding moves and clips its rows, so a press measured meanwhile lands
+        // beside the row.
+        !document
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation.playState === "running" &&
+              animation.effect instanceof KeyframeEffect &&
+              animation.effect.target?.contains(row) === true,
+          ),
+    )
+    .setTimeout(timeout);
   const soon = Math.min(timeout, 3_000);
   try {
-    return (await find(soon)).asElement() as ElementHandle<HTMLElement>;
+    await row.setTimeout(soon).wait();
   } catch {
     await openFoldedGroups(page);
-    return (await find(Math.max(timeout - soon, 1_000))).asElement() as ElementHandle<HTMLElement>;
+    await row.setTimeout(Math.max(timeout - soon, 1_000)).wait();
   }
+  // Keep the query, not a node that an arriving HQ snapshot can replace before the click.
+  return row;
 }
 
 /** Every folded group in the menu opened as a person opens one from the keyboard: → on its row. */

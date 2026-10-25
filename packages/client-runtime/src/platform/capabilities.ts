@@ -6,10 +6,10 @@ import {
   EnvironmentId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
 
-import type { ConnectionAttemptError } from "../connection/model.ts";
+import { ConnectionBlockedError, type ConnectionAttemptError } from "../connection/model.ts";
 
 export interface PreparedSshEnvironment {
   readonly bootstrap: DesktopSshEnvironmentBootstrap;
@@ -66,3 +66,33 @@ export class SshEnvironmentGateway extends Context.Service<
     ) => Effect.Effect<void, ConnectionAttemptError>;
   }
 >()("@t3tools/client-runtime/platform/capabilities/SshEnvironmentGateway") {}
+
+/** What HQ answers for one attempt to open a Mate: the ticket and where to present it. */
+export interface IssuedMateTicket {
+  readonly ticket: string;
+  /** The Mate's container origin. */
+  readonly origin: string;
+}
+
+const NO_MATE_TICKETS = "This client opens no Mate through HQ.";
+
+/**
+ * Asks HQ for a Mate's ticket (`POST /api/mates/:projectId/ticket`), once per connection attempt.
+ * A client without an HQ account opens no Mate this way.
+ */
+export interface MateTicketIssuerService {
+  readonly issue: (mate: {
+    readonly orgId: string;
+    readonly projectId: string;
+  }) => Effect.Effect<IssuedMateTicket, ConnectionAttemptError>;
+}
+
+export class MateTicketIssuer extends Context.Reference<MateTicketIssuerService>(
+  "@t3tools/client-runtime/platform/capabilities/MateTicketIssuer",
+  {
+    defaultValue: () => ({
+      issue: () =>
+        Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail: NO_MATE_TICKETS })),
+    }),
+  },
+) {}

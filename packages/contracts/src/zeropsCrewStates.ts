@@ -60,7 +60,8 @@ export type CrewStintState = typeof CrewStintState.Type;
  * - `job`: a saved brief or job applied fresh or at once;
  * - `login`: it runs on another login;
  * - `budget`: a run's cap changed (the session resumes);
- * - `task`: its next task starts clean (unrelated work, someone else's, a second rework).
+ * - `task`: its next task starts clean (unrelated work, someone else's, a second rework);
+ * - `chief`: the organisation's Chief mark moved, so the session resumes under the new Chief.
  *
  * Open on both ends: a reason from a newer build decodes as `unknown`.
  */
@@ -71,6 +72,7 @@ export const CREW_SESSION_REASONS = [
   "login",
   "budget",
   "task",
+  "chief",
 ] as const;
 
 /** The Show-on-dev claim per dev host (ARCHITECTURE §4). */

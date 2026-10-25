@@ -157,13 +157,9 @@ export function budgets(s: Scenario) {
         });
         return { samples, p50: percentile(samples, 0.5), p95: percentile(samples, 0.95) };
       },
+      /** A Mate opens through HQ alone: one visit is one ticket HQ issues for it. */
       doorVisits: (name: string) =>
-        observation.mateHttp
-          .get(name)!
-          .filter(
-            (request) =>
-              request.startsWith("POST ") && request.includes("/api/auth/zerops-throwaway"),
-          ).length,
+        observation.hq.requests().byPath[`POST /api/mates/${name}/ticket`] ?? 0,
       mateRpcs: (name: string) => s.drivers.mates.get(name)!.requests.length,
     },
     // oxlint-disable-next-line unicorn/no-thenable -- `then` is the DSL's assertion step, never awaited.

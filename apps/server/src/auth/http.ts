@@ -35,7 +35,6 @@ import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
-import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
 import { deriveAuthClientMetadata } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
@@ -237,7 +236,6 @@ export const authHttpApiLayer = HttpApiBuilder.group(
   "auth",
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const sessions = yield* SessionStore.SessionStore;
 
     return handlers
       .handle(
@@ -258,8 +256,8 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.logout")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const session = yield* EnvironmentAuthenticatedPrincipal;
-          const revoked = yield* sessions
-            .revoke(session.sessionId)
+          const revoked = yield* serverAuth
+            .revokeSession(session.sessionId)
             .pipe(
               Effect.catch((error) =>
                 failEnvironmentInternal("client_session_revoke_failed", error),

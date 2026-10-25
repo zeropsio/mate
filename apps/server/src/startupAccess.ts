@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/http";
 
 import { ServerConfig } from "./config.ts";
+import { DEFAULT_HQ_ORIGIN } from "./zerops/ZeropsEnvironment.ts";
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
 
@@ -82,12 +83,14 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
 };
 
 /** What a Zerops container prints in place of a credential. */
-export const formatZeropsServeOutput = (connectionString: string): string =>
+export const formatZeropsServeOutput = (
+  connectionString: string,
+  hqOrigin = DEFAULT_HQ_ORIGIN,
+): string =>
   [
     "Zerops Mate is ready.",
     `Address: ${connectionString}`,
-    "Sign in with your Zerops account - members of this project are let in by",
-    "their Zerops identity, so no pairing code is issued here.",
+    `Open this Mate through HQ at ${hqOrigin}.`,
     "",
   ].join("\n");
 

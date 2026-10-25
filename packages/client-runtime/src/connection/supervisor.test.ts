@@ -24,6 +24,7 @@ import {
   ConnectionTransientError,
   PrimaryConnectionTarget,
   RelayConnectionTarget,
+  ZeropsMateConnectionTarget,
   type ConnectionAttemptError,
   type ConnectionTarget,
   type NetworkStatus,
@@ -41,6 +42,17 @@ const TARGET = new PrimaryConnectionTarget({
   httpBaseUrl: "https://environment.example.test",
   wsBaseUrl: "wss://environment.example.test",
 });
+
+const MATE_ENTRY: ConnectionCatalogEntry = {
+  target: new ZeropsMateConnectionTarget({
+    environmentId: EnvironmentId.make("environment-1"),
+    label: "Ada",
+    orgId: "org-1",
+    projectId: "project-ada",
+    httpBaseUrl: "https://zcp-ada-8080.prg1.zerops.app/mate",
+  }),
+  profile: Option.none(),
+};
 
 const RELAY_TARGET = new RelayConnectionTarget({
   environmentId: TARGET.environmentId,
@@ -435,6 +447,87 @@ describe("EnvironmentSupervisor", () => {
       }
 
       expect(yield* Ref.get(harness.prepareCount)).toBe(delays.length + 1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect(
+    "A Mate connection asks for its next ticket 2, 4, 8, 15 and 30 s apart, then every 60 s while on screen",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ prepare: () => Effect.fail(transient()) });
+        const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "backoff" && state.attempt === 1,
+        );
+        const delays = [2_000, 4_000, 8_000, 15_000, 30_000, 60_000, 60_000];
+        for (const [index, delay] of delays.entries()) {
+          yield* TestClock.adjust(delay - 1);
+          expect(yield* Ref.get(harness.prepareCount)).toBe(index + 1);
+          yield* TestClock.adjust(1);
+          yield* eventuallyState(
+            supervisor.state,
+            (state) => state.phase === "backoff" && state.attempt === index + 2,
+          );
+        }
+      }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("A Mate in the background asks for a ticket every 5 min past the first rungs", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ prepare: () => Effect.fail(transient()) });
+      const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(
+        Effect.provide(harness.dependencies),
+        Effect.provideService(EnvironmentSupervisor.MatePresence, {
+          onScreen: () => false,
+          hidden: () => false,
+        }),
+      );
+
+      yield* awaitState(supervisor.state, (state) => state.attempt === 1);
+      yield* TestClock.adjust(2_000 + 4_000 + 8_000 + 15_000 + 30_000);
+      yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.attempt === 6,
+      );
+      yield* TestClock.adjust(299_999);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(6);
+      yield* TestClock.adjust(1);
+      yield* eventuallyState(supervisor.state, (state) => state.attempt === 7);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("A hidden tab asks for no new ticket until it is seen again", () =>
+    Effect.gen(function* () {
+      let hidden = true;
+      const harness = yield* makeHarness({ prepare: () => Effect.fail(transient()) });
+      const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(
+        Effect.provide(harness.dependencies),
+        Effect.provideService(EnvironmentSupervisor.MatePresence, {
+          onScreen: () => true,
+          hidden: () => hidden,
+        }),
+      );
+
+      yield* awaitState(supervisor.state, (state) => state.attempt === 1);
+      yield* TestClock.adjust(600_000);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+
+      hidden = false;
+      yield* harness.wake("application-active");
+      // Seen again, it tries at once, on a fresh ladder.
+      yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.retryAt === 2_000 + 600_000,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
     }).pipe(Effect.provide(TestClock.layer())),
   );
 

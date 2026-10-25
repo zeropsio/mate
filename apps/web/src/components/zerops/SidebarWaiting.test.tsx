@@ -118,7 +118,7 @@ describe("SidebarChiefRow — what waits on you, at the menu's top", () => {
     const container = await mount(top([]));
     expect(container.querySelector('[data-zerops-surface="sidebar-waiting"]')).toBeNull();
     expect(container.querySelector('[data-zerops-surface="sidebar-waiting-count"]')).toBeNull();
-    expect(container.querySelector(".menu-chief-name")?.textContent).toBe("Chief Mate");
+    expect(container.querySelector(".menu-chief-name")?.textContent).toBe("Chief");
   });
 });
 

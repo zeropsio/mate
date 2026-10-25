@@ -19,6 +19,14 @@ const RELEASE = {
   groupHead: "b".repeat(40),
   entries: [],
 } as const;
+const MERGED = "c".repeat(40);
+const MERGE = {
+  kind: "merge-change",
+  orgId: "org",
+  link: { appId: "shop", repo: "app", number: 4 },
+  expectedHead: "d".repeat(40),
+} as const;
+const RELEASED = { appId: "shop", cause: "release", ref: "v1.0.1" } as const;
 
 const recorded = (intent: OperationIntent) =>
   reduceAccount(emptyAccount, { kind: "operation-recorded", requestId: "r1", intent }).state;
@@ -48,12 +56,23 @@ describe("flowAnswer", () => {
         kind: "accepted",
         result: { tag: "v1.0.1", deploys: DEPLOYS },
       }),
-      answer: { tag: "v1.0.1", deploys: DEPLOYS },
+      answer: { tag: "v1.0.1", deploys: DEPLOYS, rollout: RELEASED },
     },
     {
       name: "a release adopted after a lost answer",
       state: answered(recorded(RELEASE), { kind: "accepted" }),
-      answer: { tag: "v1.0.1", deploys: undefined },
+      answer: { tag: "v1.0.1", deploys: undefined, rollout: RELEASED },
+    },
+    {
+      name: "a merge HQ took, its rollout by the commit it squashed into main",
+      state: answered(recorded(MERGE), {
+        kind: "accepted",
+        result: { deploys: DEPLOYS, mergedSha: MERGED },
+      }),
+      answer: {
+        deploys: DEPLOYS,
+        rollout: { appId: "shop", cause: "merge", ref: MERGED },
+      },
     },
     {
       name: "a release HQ refused",

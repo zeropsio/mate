@@ -166,7 +166,8 @@ describe("Git browse reads", () => {
       const sent: Array<string> = [];
       const api = makeHqApi({
         address: "https://hq.example",
-        throughDoor: async (use) => use("door"),
+        accessToken: async () => "access",
+        orgId: "org-1",
         openSocket: () => {
           throw new Error("unused");
         },

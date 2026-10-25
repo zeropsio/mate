@@ -32,7 +32,7 @@ import {
   type ReleaseLive,
 } from "./projectFlowJoin.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness } from "./freshness.ts";
+import { scopeFreshness, scopeSlow } from "./freshness.ts";
 import type { HqAppContents } from "../../zerops/hq/index.ts";
 
 /** Application membership and availability, without joining placements, people or history. */
@@ -52,8 +52,10 @@ export const projectApplications: Projection<
     return {
       ids: read.members(scope).ids.filter((id) => read.fact("hqApp", id).kind === "known"),
       read: freshness.complete && freshness.live,
+      // A slow HQ on a connection that holds is working, not unanswered.
       unavailable:
         !freshness.live &&
+        !scopeSlow(read, scope) &&
         (freshness.complete || freshness.reconnecting || freshness.unavailableReason !== undefined),
     };
   },
@@ -205,6 +207,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       environments === undefined
         ? undefined
         : canonicalGroupStopsOf({
+            unread: canonicalAppEnvironments.derive(read, key).unread,
             environments,
             projects,
             versions,
@@ -338,6 +341,7 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
     const stops = zeropsStops({
       declarations: flow.declarations,
       environments: flow.environmentInputs,
+      unread: flow.unreadEnvironments,
     });
     return {
       ...flow,

@@ -40,7 +40,9 @@ Projections are pure functions over keyed facts, source coverage, access and ope
 read projections, express demand and submit intents. They do not own a second remote cache, infer
 person facts from credentials or substitute clock order for source order. Retry policy belongs to
 the shared stream supervisor. Automatic recovery is visible and bounded in rate while demanded.
-Every wait has a deadline or names its next action. A definitive refusal stops automatic recovery
+Every wait has a deadline or names its next action. A first answer awaited on a connection
+that holds may be bounded by that connection's liveness instead: a source still working there is
+slow, not down, said as slow and never asked again meanwhile. A definitive refusal stops automatic recovery
 and waits for changed input, changed access or an explicit retry.
 
 ## Writes and evidence

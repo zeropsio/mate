@@ -31,6 +31,7 @@ export {
   readHqParts,
   type Asked,
   type HqApi,
+  type HqMateTicket,
   type HqAttach,
   type HqBirth,
   type HqMate,
@@ -53,6 +54,12 @@ export {
   type DeployAnswerJob,
   type DeployAnswerSaid,
 } from "./deployAnswer.ts";
+export {
+  followHandedOver,
+  WAITING_FOR_PLANNING,
+  type AppDeployRollout,
+  type DeployRollout,
+} from "./deployHandover.logic.ts";
 export {
   deployLogTarget,
   deployLogProcess,
@@ -85,6 +92,9 @@ export { canonicalHqStructureOf, hqStructureOf, type HqMates } from "./structure
 export {
   CanonicalHqEnvironment,
   canonicalEnvironmentsOf,
+  UNREAD_ENVIRONMENT_LINE,
+  unreadEnvironmentsWords,
+  type UnreadEnvironment,
   environmentsOf,
   jobFailed,
   jobInFlight,
@@ -111,7 +121,7 @@ export {
 export { selectGitCredentials, type GitCredentialSnapshot } from "./gitCredentialStore.ts";
 export {
   HqChief,
-  HqChiefSetUp,
+  HqChiefMarkSet,
   HqProposalDecision,
   PROPOSAL_IDS_PER_READ,
   type HqChiefCalls,

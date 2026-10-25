@@ -6,7 +6,6 @@ import { observeBrowserBudget } from "../../fakes/h-budget/browserBudget.ts";
 export interface BudgetObservations {
   hq: Awaited<ReturnType<typeof observeTraffic>>;
   browser: Awaited<ReturnType<typeof observeBrowserBudget>>;
-  mateHttp: Map<string, string[]>;
   mateReady: (name: string) => Promise<void>;
 }
 
@@ -21,7 +20,6 @@ export const installBudget: ScenarioExtension = async (drivers) => {
   const hq = await observeTraffic(drivers.routes[origin]!);
   drivers.routes[origin] = hq.origin;
   drivers.cleanup.push(hq.close);
-  const mateHttp = new Map<string, string[]>();
   const connected = new Map<string, Promise<void>>();
   drivers.onMate.push((mate) => {
     let received = () => {};
@@ -35,18 +33,10 @@ export const installBudget: ScenarioExtension = async (drivers) => {
       received();
       return false;
     });
-    const requests: string[] = [];
-    mateHttp.set(mate.projectId, requests);
-    const handle = mate.handle;
-    mate.handle = (request) => {
-      requests.push(`${request.method} ${request.url.pathname}`);
-      return handle(request);
-    };
   });
   observations.set(drivers, {
     hq,
     browser,
-    mateHttp,
     mateReady: (name) => {
       const receipt = connected.get(name);
       if (!receipt) throw new Error(`No Mate fixture ${name}`);

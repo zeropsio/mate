@@ -25,6 +25,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
+import { isPersonalChief } from "./chiefOwnership.ts";
 import { Roles } from "./roles.ts";
 import { Structure } from "./structure.ts";
 import type { ZeropsMember, ZeropsProject } from "./zerops/api.ts";
@@ -106,18 +107,20 @@ export const mateAccessLayer = Layer.effect(
       snapshots.pipe(
         Stream.mapEffect(({ source, answered }) =>
           Effect.gen(function* () {
-            const project = source.facts.projects.find((candidate) => candidate.id === projectId);
             const userId = source.chiefOwners.get(projectId);
-            const chief =
-              userId !== undefined || project?.tags.includes("chief") === true
-                ? {
-                    userId: userId ?? null,
-                    ownerName:
-                      source.facts.members
-                        .find((member) => member.userId === userId)
-                        ?.name.trim() || null,
-                  }
-                : null;
+            const chief = isPersonalChief(
+              source.facts,
+              projectId,
+              source.chiefOwners,
+              source.chiefMark,
+            )
+              ? {
+                  userId: userId ?? null,
+                  ownerName:
+                    source.facts.members.find((member) => member.userId === userId)?.name.trim() ||
+                    null,
+                }
+              : null;
             const access = accessOf(source.facts, projectId, chief);
             if (Option.isNone(access)) return Option.none<string>();
             const ageMs = Math.max(0, (yield* Clock.currentTimeMillis) - answered);

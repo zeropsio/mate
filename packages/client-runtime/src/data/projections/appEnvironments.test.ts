@@ -25,7 +25,7 @@ const STAGE = {
 } as const;
 const PRODUCTION = { ...STAGE, projectId: "prod", tier: "production", name: "production" } as const;
 
-const app = (id: string, environments: unknown): Row =>
+const app = (id: string, environments: unknown, more: object = {}): Row =>
   ({
     family: "hqApp",
     id,
@@ -40,6 +40,7 @@ const app = (id: string, environments: unknown): Row =>
       environments,
       changes: [],
       releaseOffer: null,
+      ...more,
     },
   }) as Row;
 
@@ -131,12 +132,51 @@ describe("appEnvironments", () => {
     expect(of(told, appId).refused).toBe(refused);
   });
 
+  it("reads an application's recent rollouts beside its environments, none from an older HQ", () => {
+    const rollouts = [{ id: "41", planned: true, note: "the production tier could not be read" }];
+    const state = apply(demanded, [
+      deliver([app("shop", [STAGE], { rollouts }), app("blog", [STAGE])]),
+    ]);
+    expect(of(state, "shop").rollouts).toEqual(rollouts);
+    expect(of(state, "blog").rollouts).toBeUndefined();
+  });
+
   it("reads several applications, each apart", () => {
     const read = appsEnvironments.derive(readsOfState(told), {
       orgId: ORG,
       appIds: ["shop", "blog"],
     });
     expect(read.shop?.environments).toEqual([STAGE, PRODUCTION]);
-    expect(read.blog).toEqual({ environments: undefined, refused: "read_change" });
+    expect(read.blog).toEqual({ environments: undefined, refused: "read_change", unread: [] });
   });
+
+  it.each([
+    {
+      name: "one of two",
+      sent: [STAGE, { ...PRODUCTION, id: "env-prod", jobs: [{ id: "j", state: "unheard-of" }] }],
+      readable: [STAGE],
+      unread: [{ id: "env-prod", name: "production", tier: "production" }],
+    },
+    {
+      name: "the only one",
+      sent: [{ ...STAGE, keyHeld: "yes" }],
+      readable: [],
+      unread: [{ id: null, name: "stage", tier: "stage" }],
+    },
+    {
+      name: "one that is not even a record",
+      sent: [PRODUCTION, 7],
+      readable: [PRODUCTION],
+      unread: [{ id: null, name: null, tier: null }],
+    },
+    { name: "none", sent: [STAGE, PRODUCTION], readable: [STAGE, PRODUCTION], unread: [] },
+  ])(
+    "An environment this build cannot read shows as unread, never as an application without it: $name",
+    ({ sent, readable, unread }) => {
+      const state = apply(demanded, [deliver([app("shop", sent)])]);
+      const read = of(state, "shop");
+      expect(read.environments).toEqual(readable);
+      expect(read.unread).toEqual(unread);
+    },
+  );
 });

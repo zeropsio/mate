@@ -3,19 +3,16 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CHIEF_SETUP_IDLE,
   chiefProjectProgress,
-  chiefServiceOf,
   chiefSetupAfter,
   chiefSetupSteps,
-  chiefVariableWrites,
-  chiefVariables,
   finishChiefSetup,
   type ChiefSetup,
   type ChiefSetupEvent,
 } from "./chiefSetup.logic";
 
-const running = (step: "project" | "hq" | "variables", projectId: string | null = "p-chief") =>
+const running = (step: "project" | "hq", projectId: string | null = "p-chief") =>
   ({ phase: "running", step, birthId: "b1", projectId }) as const satisfies ChiefSetup;
-const failed = (step: "project" | "hq" | "variables", projectId: string | null = "p-chief") =>
+const failed = (step: "project" | "hq", projectId: string | null = "p-chief") =>
   ({
     phase: "failed",
     step,
@@ -33,33 +30,15 @@ describe("chiefSetupAfter", () => {
       running("project", null),
     ],
     [
-      "a Chief left without its access by a reload resumes at HQ, its project kept",
-      CHIEF_SETUP_IDLE,
-      { type: "resume", projectId: "p-chief" },
-      { phase: "running", step: "hq", birthId: "resume:p-chief", projectId: "p-chief" },
-    ],
-    [
-      "a resume while a setup runs changes nothing",
-      running("project", null),
-      { type: "resume", projectId: "p-chief" },
-      running("project", null),
-    ],
-    [
       "its project made, HQ is asked to record it",
       running("project", null),
       { type: "project-made", projectId: "p-chief" },
       running("hq"),
     ],
     [
-      "HQ's answer hands its zcp the access",
+      "HQ's mark set, the Chief is set up",
       running("hq"),
-      { type: "hq-answered" },
-      running("variables"),
-    ],
-    [
-      "its access written, the Chief is set up",
-      running("variables"),
-      { type: "variables-written" },
+      { type: "marked" },
       { phase: "done", birthId: "b1", projectId: "p-chief" },
     ],
     [
@@ -87,12 +66,6 @@ describe("chiefSetupAfter", () => {
       failed("hq"),
     ],
     [
-      "a refused write says why, its project kept",
-      running("variables"),
-      { type: "failed", reason: "No." },
-      failed("variables"),
-    ],
-    [
       "trying the project again resumes the same creation",
       failed("project", null),
       { type: "again" },
@@ -105,12 +78,6 @@ describe("chiefSetupAfter", () => {
       running("hq"),
     ],
     [
-      "trying again after the write failed asks HQ for a fresh credential, none being kept",
-      failed("variables"),
-      { type: "again" },
-      running("hq"),
-    ],
-    [
       "a second Set up Chief while one runs starts nothing",
       running("hq"),
       { type: "start", birthId: "b2" },
@@ -119,7 +86,7 @@ describe("chiefSetupAfter", () => {
     [
       "an answer for a step not running is ignored",
       running("project", null),
-      { type: "variables-written" },
+      { type: "marked" },
       running("project", null),
     ],
     ["nothing to try again while it runs", running("hq"), { type: "again" }, running("hq")],
@@ -130,11 +97,10 @@ describe("chiefSetupAfter", () => {
 
 describe("chiefSetupSteps", () => {
   it.each<[string, ChiefSetup, ReadonlyArray<string>]>([
-    ["before it starts, every step waits", CHIEF_SETUP_IDLE, ["waiting", "waiting", "waiting"]],
-    ["the project runs first", running("project", null), ["active", "waiting", "waiting"]],
-    ["HQ runs once the project is made", running("hq"), ["done", "active", "waiting"]],
-    ["a stopped write says its own step failed", failed("variables"), ["done", "done", "failed"]],
-    ["all done", { phase: "done", birthId: "b1", projectId: "p-chief" }, ["done", "done", "done"]],
+    ["before it starts, every step waits", CHIEF_SETUP_IDLE, ["waiting", "waiting"]],
+    ["the project runs first", running("project", null), ["active", "waiting"]],
+    ["HQ runs once the project is made", running("hq"), ["done", "active"]],
+    ["all done", { phase: "done", birthId: "b1", projectId: "p-chief" }, ["done", "done"]],
   ])("%s", (_title, setup, states) => {
     expect(chiefSetupSteps(setup).map((step) => step.state)).toEqual(states);
   });
@@ -203,76 +169,51 @@ describe("chiefProjectProgress", () => {
   });
 });
 
-describe("chiefVariables", () => {
-  it("hands its zcp HQ's proxy in the open and the credential as a secret", () => {
-    expect(chiefVariables({ proxyUrl: "https://hq/api/chief/zerops", credential: "c" })).toEqual([
-      { key: "ZCP_ORG_API", value: "https://hq/api/chief/zerops", sensitive: false },
-      { key: "ZCP_ORG_TOKEN", value: "c", sensitive: true },
-    ]);
-  });
-});
-
 describe("finishChiefSetup", () => {
-  const answer = {
-    chief: { projectId: "p-chief", since: "2026-10-12" },
-    credential: "c",
-    proxyUrl: "https://hq/api/chief/zerops",
-  };
+  const answer = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
 
-  it("records the Chief at HQ, then writes its access onto its zcp", async () => {
+  it("marks its project as the organization's Chief at HQ, and the setup is done", async () => {
     const events: ChiefSetupEvent[] = [];
-    const written: unknown[] = [];
+    const marked: string[] = [];
     await finishChiefSetup({
       projectId: "p-chief",
       setChief: async (projectId) => {
-        written.push(["hq", projectId]);
+        marked.push(projectId);
         return answer;
-      },
-      writeVariables: async (values) => {
-        written.push(["zcp", values.map((value) => value.key)]);
       },
       dispatch: (event) => events.push(event),
     });
-    expect(written).toEqual([
-      ["hq", "p-chief"],
-      ["zcp", ["ZCP_ORG_API", "ZCP_ORG_TOKEN"]],
-    ]);
-    expect(events.map((event) => event.type)).toEqual(["hq-answered", "variables-written"]);
+    expect(marked).toEqual(["p-chief"]);
+    expect(events).toEqual([{ type: "marked" }]);
   });
 
-  it.each<[string, "hq" | "zcp", string]>([
-    ["HQ refusing stops before anything is written", "hq", "HQ said no."],
-    ["a refused write stops the setup", "zcp", "Zerops said no."],
-  ])("%s", async (_title, refuses, words) => {
-    const events: ChiefSetupEvent[] = [];
-    const wrote: string[] = [];
-    await finishChiefSetup({
-      projectId: "p-chief",
-      setChief: async () => {
-        if (refuses === "hq") throw new Error(words);
-        return answer;
-      },
-      writeVariables: async () => {
-        if (refuses === "zcp") throw new Error(words);
-        wrote.push("zcp");
-      },
-      dispatch: (event) => events.push(event),
-    });
-    expect(events.at(-1)).toEqual({ type: "failed", reason: words });
-    expect(wrote).toEqual([]);
-  });
+  it.each<[string, string]>([["HQ refusing stops before anything is written", "HQ said no."]])(
+    "%s",
+    async (_title, words) => {
+      const events: ChiefSetupEvent[] = [];
+      await finishChiefSetup({
+        projectId: "p-chief",
+        setChief: async () => {
+          throw new Error(words);
+        },
+        dispatch: (event) => events.push(event),
+      });
+      expect(events).toEqual([{ type: "failed", reason: words }]);
+    },
+  );
 
-  it("resumes after a failure: HQ is asked again and the access written once", async () => {
+  it("resumes after a failure: HQ is asked again and the mark set once", async () => {
     let setup: ChiefSetup = running("hq");
     let refusals = 1;
+    const asked: string[] = [];
     const run = () =>
       finishChiefSetup({
         projectId: "p-chief",
-        setChief: async () => {
+        setChief: async (projectId) => {
+          asked.push(projectId);
           if (refusals-- > 0) throw new Error("HQ is not answering right now.");
           return answer;
         },
-        writeVariables: async () => undefined,
         dispatch: (event) => {
           setup = chiefSetupAfter(setup, event);
         },
@@ -282,38 +223,6 @@ describe("finishChiefSetup", () => {
     setup = chiefSetupAfter(setup, { type: "again" });
     await run();
     expect(setup).toEqual({ phase: "done", birthId: "b1", projectId: "p-chief" });
-  });
-});
-
-describe("chiefVariableWrites", () => {
-  const values = chiefVariables({ proxyUrl: "https://hq/api/chief/zerops", credential: "c" });
-
-  it("adds what its zcp holds none of", () => {
-    expect(chiefVariableWrites(values, {}).map((write) => write.kind)).toEqual(["add", "add"]);
-  });
-
-  it("writes over what a stopped setup left, so a revoked credential is replaced", () => {
-    expect(chiefVariableWrites(values, { ZCP_ORG_TOKEN: "ud-1" })[1]).toEqual({
-      kind: "update",
-      id: "ud-1",
-      key: "ZCP_ORG_TOKEN",
-      value: "c",
-      sensitive: true,
-    });
-  });
-});
-
-describe("chiefServiceOf", () => {
-  const service = (id: string, type: string) => ({
-    id,
-    serviceStackTypeInfo: { serviceStackTypeVersionName: type },
-  });
-  it.each<[string, Parameters<typeof chiefServiceOf>[0], string | undefined]>([
-    ["its zcp, among its project's services", [service("s-zcp", "zcp@1")], "s-zcp"],
-    ["none while its services are not read", undefined, undefined],
-    ["none while its zcp is not listed yet", [service("s-db", "postgresql@17")], undefined],
-    ["none where two claim it", [service("a", "zcp@1"), service("b", "zcp@1")], undefined],
-  ])("hands the access to %s", (_title, services, id) => {
-    expect(chiefServiceOf(services)).toBe(id);
+    expect(asked).toEqual(["p-chief", "p-chief"]);
   });
 });

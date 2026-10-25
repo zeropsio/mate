@@ -3,25 +3,24 @@
  * squares floating over its end. Its mark wears the Chief's state as a Mate's face does; "Chief";
  * and a second line only while it has something to say (`chiefRowLine`), the name centred in the
  * row otherwise. What waits on the person counts just left of the squares, its own door to the
- * list. While its setup runs the same row opens the Chief page; before that there is no row.
+ * list; an Owner or Admin finds *Remove as Chief* on its ···. While its setup runs the same row
+ * opens the Chief page; before that there is no row.
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { Link } from "@tanstack/react-router";
-import { CircleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, MoreHorizontalIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateMark } from "../../MateMark";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
 import { MateDot } from "../MateDot";
-import { MateOwnerMark } from "../MateOwnerMark";
-import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
 import type { WaitingItem } from "../SidebarWaiting.logic";
-import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
+import { chiefNameParts, chiefRowName, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
 
 export interface SidebarChiefRowProps {
@@ -38,6 +37,8 @@ export interface SidebarChiefRowProps {
   readonly waiting?:
     | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
     | undefined;
+  /** Removes the organization's mark; absent where this viewer may not (`mayRemoveChief`). */
+  readonly onRemove?: (() => void) | undefined;
 }
 
 /** The title, its noun whole: the words before "Chief" give way first in a narrow menu. */
@@ -62,12 +63,12 @@ export function SidebarChiefRow({
   current,
   onOpen,
   waiting,
+  onRemove,
 }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
-  // The person's own Chief, by their name and with their picture on its mark (the owner,
-  // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
-  // its setup has one to say.
-  const account = useSignedInAccount();
+  // The organization's Chief, by the organization's name: one Chief every reader shares, so no
+  // reader's picture on its mark; a line only while its setup has one to say.
+  const organization = useZeropsSessionOptional()?.activeOrganization?.name ?? null;
   const shown = line ?? null;
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
@@ -103,21 +104,9 @@ export function SidebarChiefRow({
             {unseen ? (
               <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
             ) : null}
-            {account === null ? null : (
-              <MateOwnerMark
-                seat={{
-                  kind: "person",
-                  mark: ownerMark({
-                    name: account.fullName ?? account.name,
-                    initials: account.initials,
-                    avatarUrl: account.avatarUrl,
-                  }),
-                }}
-              />
-            )}
           </span>
           <span className="menu-chief-words">
-            <ChiefName title={chiefRowName(account)} />
+            <ChiefName title={chiefRowName(organization)} />
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
@@ -125,7 +114,33 @@ export function SidebarChiefRow({
       {waiting === undefined || items.length === 0 ? null : (
         <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
       )}
+      {onRemove === undefined ? null : <ChiefMenu onRemove={onRemove} />}
     </div>
+  );
+}
+
+/** The Chief's ···: what an Owner or Admin may do with the organization's mark. */
+function ChiefMenu({ onRemove }: { readonly onRemove: () => void }) {
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            aria-label="More for the Chief"
+            className="menu-row-action menu-chief-more"
+            data-zerops-surface="sidebar-chief-more"
+            type="button"
+          />
+        }
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+      </MenuTrigger>
+      <MenuPopup align="start" side="right">
+        <MenuItem data-zerops-chief-menu="remove" onClick={onRemove}>
+          Remove as Chief
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -143,7 +158,7 @@ export function SidebarChiefTile({
 }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   // Named as its row names it: one name on the rail and in the open menu.
-  const name = chiefRowName(useSignedInAccount());
+  const name = chiefRowName(useZeropsSessionOptional()?.activeOrganization?.name ?? null);
   return (
     <div className="menu-rail-chief" data-zerops-surface="sidebar-chief">
       <Tooltip>
@@ -216,38 +231,21 @@ export function SidebarChiefPlace({
   );
 }
 
-function useSignedInAccount() {
-  const session = useZeropsSessionOptional();
-  return session !== null && session.status === "signed-in"
-    ? zeropsAccountDisplay(session.user)
-    : null;
-}
-
-/** The Chief's one name in the menu, by its person: "Ada's Chief Mate". */
-function chiefRowName(account: { readonly name: string } | null): string {
-  return account === null ? "Chief Mate" : `${account.name}'s Chief Mate`;
-}
-
 const SETUP_WORDS: Readonly<Record<ChiefSetupRowState, string>> = {
   running: "Being set up",
   stopped: "Setting up stopped",
-  unfinished: "Finish its setup",
 };
 
 /**
  * Its line before it is up: its setup running, muted; stopped, in the attention ink with its mark,
- * as a Mate's that did not come; or waiting on the person to finish it, in ink.
+ * as a Mate's that did not come.
  */
 export function ChiefSetupRowLine({ state }: { readonly state: ChiefSetupRowState }) {
   return (
     <span
       className={cn(
         "menu-line2 truncate",
-        state === "running"
-          ? "text-muted-foreground"
-          : state === "stopped"
-            ? "text-status-attention-text"
-            : "text-sidebar-foreground",
+        state === "running" ? "text-muted-foreground" : "text-status-attention-text",
       )}
       data-chief-setup={state}
       data-zerops-surface="sidebar-chief-setup"

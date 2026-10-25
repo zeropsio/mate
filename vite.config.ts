@@ -4,6 +4,7 @@ import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 import * as NodeOS from "node:os";
 import { testWorkerBudget } from "./scripts/lib/test-worker-budget.ts";
+import { useTestScratchRoot } from "./scripts/lib/test-scratch-root.ts";
 
 /** Import restrictions every file keeps. */
 const RESTRICTED_IMPORT_PATHS = [
@@ -32,6 +33,8 @@ const RESTRICTED_UI_VARIANT_PATTERNS = [
       "Render the components/ui export instead of borrowing its class recipe (render={<Button …/>}, SelectButton, ToggleGroup).",
   },
 ];
+
+useTestScratchRoot(process.env);
 
 const maxWorkers = testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism());
 

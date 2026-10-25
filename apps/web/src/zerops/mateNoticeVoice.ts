@@ -403,6 +403,13 @@ export function mateNoticeVoice(
       }
     }
     case "connecting":
+      if (reachability.waitingOn === "mate-link")
+        return say(
+          `${name} is not connected to HQ.`,
+          "The conversation opens once it is.",
+          "sleep",
+          actions,
+        );
       return say(
         `${name} is paused while this tab is in the background.`,
         "Return to this tab to continue connecting.",

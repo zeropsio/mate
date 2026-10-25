@@ -2,8 +2,8 @@
  * A Mate's proposal, carried out as the person: an approved restart, start or stop is the
  * account's own operation at Zerops with their token, as is an approved domain — added onto the
  * service's port and put in place, then followed in the project's addresses; a value is the vault
- * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
- * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is the
+ * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the
+ * organization's Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is the
  * account's own `set-project-access`, each person found among the organization's members, as an
  * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
@@ -140,12 +140,10 @@ function Proposal({
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
   const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
   const chief = chiefMessageTarget(person?.chief?.projectId);
-  const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
-  const readOnlyReason = readOnlyChief
-    ? person?.chief === undefined
-      ? "Finding this Mate's Chief…"
-      : "Only this Mate's person can ask their Chief."
-    : undefined;
+  // Anyone who may open the source Mate decides its ask (HQ's `not_mate_opener` otherwise); only
+  // while HQ has not named the organization's Chief is there nothing to decide yet.
+  const readOnlyChief = proposal.kind === "chief.message" && chief.kind === "unknown";
+  const readOnlyReason = readOnlyChief ? "Finding this Mate's Chief…" : undefined;
   const proposer = useKnownMate(environmentId);
   const directory = useZeropsMateDirectory();
   const recipient = useMemo(

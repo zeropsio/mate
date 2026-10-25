@@ -3,7 +3,6 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   buildStableManifest,
   ReleaseManifestAssetInvalidShaError,
-  RELEASE_MANIFEST_CONTRACT,
 } from "./releaseManifestAsset.ts";
 
 const VALID_SHA256 = "a".repeat(64);
@@ -25,7 +24,7 @@ describe("buildStableManifest", () => {
   });
   it.each([
     {
-      name: "builds the manifest with the GitHub download URL and contract 1",
+      name: "builds the manifest with the GitHub download URL and contract 2",
       input: {
         version: "0.8.1",
         asset: "zerops-mate-0.8.1.tgz",
@@ -41,7 +40,7 @@ describe("buildStableManifest", () => {
         url: "https://github.com/zeropsio/mate/releases/download/v0.8.1/zerops-mate-0.8.1.tgz",
         sha256: VALID_SHA256,
         size: 21_690_443,
-        contract: RELEASE_MANIFEST_CONTRACT,
+        contract: 2,
         rollbackCompatible: false,
         publishedAt: "2026-09-09T07:23:00Z",
       },
@@ -63,7 +62,7 @@ describe("buildStableManifest", () => {
         url: "https://github.com/zeropsio/mate/releases/download/v0.0.0-rehearsal/zerops-mate-0.0.0-rehearsal.tgz",
         sha256: VALID_SHA256,
         size: 1,
-        contract: RELEASE_MANIFEST_CONTRACT,
+        contract: 2,
         rollbackCompatible: false,
         publishedAt: "2026-09-09T00:00:00Z",
       },
@@ -85,7 +84,7 @@ describe("buildStableManifest", () => {
         url: "https://github.com/zeropsio/mate/releases/download/v0.8.1/zerops-mate-0.8.1.tgz",
         sha256: VALID_SHA256,
         size: 1,
-        contract: RELEASE_MANIFEST_CONTRACT,
+        contract: 2,
         rollbackCompatible: false,
         publishedAt: "2026-09-09T00:00:00Z",
       },

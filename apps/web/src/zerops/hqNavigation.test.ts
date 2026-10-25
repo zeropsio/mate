@@ -1,4 +1,4 @@
-import { NOT_READ_HQ, type HqNavigationRead } from "@t3tools/client-runtime/data";
+import { HQ_SLOW, NOT_READ_HQ, type HqNavigationRead } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqOutage } from "./hqNavigation";
@@ -51,6 +51,18 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
         line: "Zerops refused HQ. Showing what HQ last said.",
         again: true,
       },
+    ],
+    [
+      "slow on a connection that holds, before it ever read",
+      { ...NOT_READ_HQ, read: "reading", slow: true },
+      null,
+      { kind: "slow", line: HQ_SLOW, again: false },
+    ],
+    [
+      "slow to confirm again what it read",
+      read({ reconnecting: true, slow: true }),
+      at(14, 5),
+      { kind: "slow", line: HQ_SLOW, again: false },
     ],
     [
       "refused before it ever read",

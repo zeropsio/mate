@@ -35,17 +35,29 @@ export const chiefOfPerson = (
     : null;
 };
 
+/**
+ * Whether a project is a personal Chief's: one registered, or tagged {@link CHIEF_TAG}, that is not
+ * the organisation's marked Chief (`mark`). The marked Chief is an ordinary project to its readers.
+ */
+export const isPersonalChief = (
+  facts: OrgView,
+  projectId: string,
+  chiefs: ReadonlyMap<string, string | null>,
+  mark: string | null,
+): boolean =>
+  projectId !== mark &&
+  (chiefs.has(projectId) ||
+    facts.projects.find((candidate) => candidate.id === projectId)?.tags.includes(CHIEF_TAG) ===
+      true);
+
 /** Platform org authority never grants another person's personal Chief. */
 export const chiefProjectIsVisible = (
   facts: OrgView,
   userId: string,
   projectId: string,
   chiefs: ReadonlyMap<string, string | null>,
-): boolean => {
-  const project = facts.projects.find((candidate) => candidate.id === projectId);
-  const personal = chiefs.has(projectId) || project?.tags.includes(CHIEF_TAG) === true;
-  return !personal || chiefs.get(projectId) === userId;
-};
+  mark: string | null,
+): boolean => !isPersonalChief(facts, projectId, chiefs, mark) || chiefs.get(projectId) === userId;
 
 /** A project read requires both personal ownership, when relevant, and platform permission. */
 export const readsChiefProject = (
@@ -53,7 +65,10 @@ export const readsChiefProject = (
   userId: string,
   projectId: string,
   chiefs: ReadonlyMap<string, string>,
+  mark: string | null,
 ): boolean =>
-  chiefProjectIsVisible(facts, userId, projectId, chiefs) &&
-  (!chiefs.has(projectId) || chiefOfPerson(facts, userId, chiefs)?.projectId === projectId) &&
+  chiefProjectIsVisible(facts, userId, projectId, chiefs, mark) &&
+  (!isPersonalChief(facts, projectId, chiefs, mark) ||
+    !chiefs.has(projectId) ||
+    chiefOfPerson(facts, userId, chiefs)?.projectId === projectId) &&
   can({ kind: "person", userId }, "read_project", { projectId }, facts).allow;

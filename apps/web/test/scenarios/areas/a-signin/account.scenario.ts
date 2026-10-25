@@ -13,6 +13,7 @@ import {
   unchangedHandovers,
   allowHqRetries,
   firstHqAnswer,
+  hqKeepsEverySession,
 } from "./dsl.ts";
 
 const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
@@ -69,8 +70,8 @@ describe("A: sign-in, session and organizations", () => {
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.given.signedIn;
           yield* s.then.menu.row("Shop").appears();
-          const mints = () =>
-            s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
+          // Each door crossing is the browser's one `POST /api/door` to HQ, whatever token it carries.
+          const mints = () => s.drivers.hq.requests.get("POST /api/door") ?? 0;
           const first = mints();
           expect(first, "The first load enters HQ's door once").toBe(1);
           for (let load = 0; load < 2; load++) {
@@ -273,6 +274,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* s.then.menu.row("Shop").appears();
         yield* Effect.promise(() => b.page.bringToFront());
         yield* b.then.menu.row("Shop").appears();
+        yield* hqKeepsEverySession(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Both live");
         yield* b.then.menu.row("Both live").appears({ within: 10_000 });
         yield* Effect.promise(() => s.page.bringToFront());

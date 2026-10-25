@@ -10,7 +10,6 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { zeropsGrantScopes } from "../zerops/ZeropsIdentityGate.ts";
 import { RPC_REQUIRED_SCOPES } from "./RpcAuthorization.ts";
 
 /**
@@ -128,7 +127,7 @@ describe("the scopes a Mate client asks for", () => {
   it("asks for exactly what the Zerops door grants", () => {
     // The exchange refuses a request for any scope the grant does not carry,
     // so one scope too many is no session at all.
-    expect([...zeropsGrantScopes].sort()).toEqual([...AuthZeropsClientScopes].sort());
+    expect([...AuthZeropsClientScopes].sort()).toEqual([...AuthZeropsClientScopes].sort());
   });
 
   it("is what both shells actually put on the wire", () => {

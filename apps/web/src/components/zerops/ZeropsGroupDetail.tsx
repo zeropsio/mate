@@ -6,7 +6,7 @@ import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
-import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+import { hqRefusalWords, unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
 import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
@@ -873,6 +873,7 @@ const NO_ROUTE_ENVIRONMENT = Atom.make(undefined);
 const NO_ROUTE_ENVIRONMENTS = Atom.make<CanonicalAppEnvironmentsRead>({
   environments: undefined,
   refused: null,
+  unread: [],
 });
 const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
   structure: null,
@@ -882,6 +883,7 @@ const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
   read: "unread",
   refusal: null,
   capped: false,
+  slow: false,
   updateRequired: false,
   coreBuild: undefined,
   live: false,
@@ -938,7 +940,9 @@ export function ZeropsStopDetailPage({
     );
   }
   const note =
-    read.refused !== null ? hqRefusalWords({ code: "forbidden", reason: read.refused }) : unread;
+    read.refused !== null
+      ? hqRefusalWords({ code: "forbidden", reason: read.refused })
+      : (unreadEnvironmentsWords(read.unread) ?? unread);
   if (environment === undefined) {
     return (
       <ZeropsUnresolvedStopDetailPage

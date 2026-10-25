@@ -303,10 +303,6 @@
       "types": "./src/zerops/mateAccess.ts",
       "default": "./src/zerops/mateAccess.ts"
     },
-    "./zerops/doorThrowaway": {
-      "types": "./src/zerops/doorThrowaway.ts",
-      "default": "./src/zerops/doorThrowaway.ts"
-    },
     "./zerops/keptSessions": {
       "types": "./src/zerops/keptSessions.ts",
       "default": "./src/zerops/keptSessions.ts"

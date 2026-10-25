@@ -1,8 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 
 import type { ZeropsUser } from "../api.ts";
 import type { ZeropsSession } from "../session.ts";
 import {
+  ZEROPS_RENEWAL_MARGIN_MS,
   makeZeropsSessionCalls,
   probeZeropsPrincipal,
   type ZeropsPrincipalVerdict,
@@ -150,6 +152,48 @@ describe("probeZeropsPrincipal", () => {
   });
 });
 
+describe("makeZeropsSessionCalls renews ahead", () => {
+  const at = Date.parse("2026-10-14T12:00:00Z");
+  const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+  const renewedSession = { ...next, expiresAt: iso(at + 6 * 60 * 60_000) };
+
+  it("a session's first read within the renewal margin carries the renewed token, never the one it revokes", async () => {
+    const bearers: Array<string | null> = [];
+    const { fetch, sent } = platform({
+      "/auth/refresh": () => json(200, renewedSession),
+      "/user/info": () => json(200, person),
+    });
+    const calls = makeZeropsSessionCalls(
+      {
+        fetch: (input, init) => {
+          bearers.push(new Headers(init?.headers).get("authorization"));
+          return fetch(input, init);
+        },
+        baseUrl: BASE_URL,
+      },
+      () => at,
+    );
+    calls.client.restoreSession({ ...stored, expiresAt: iso(at + ZEROPS_RENEWAL_MARGIN_MS - 1) });
+
+    await expect(calls.readUser()).resolves.toEqual(person);
+    expect(sent).toEqual(["POST /auth/refresh", "GET /user/info"]);
+    expect(bearers).toEqual([null, "Bearer access-2"]);
+  });
+
+  it("a session another tab renewed is adopted for the read, and this tab renews nothing itself", async () => {
+    const { fetch, sent } = platform({ "/user/info": () => json(200, person) });
+    const calls = makeZeropsSessionCalls(
+      { fetch, baseUrl: BASE_URL, renewSession: async () => renewedSession },
+      () => at,
+    );
+    calls.client.restoreSession({ ...stored, expiresAt: iso(at + 60_000) });
+
+    await expect(calls.readUser()).resolves.toEqual(person);
+    expect(sent).toEqual(["GET /user/info"]);
+    expect(calls.client.session).toBe(renewedSession);
+  });
+});
+
 describe("makeZeropsSessionCalls.freshBearer", () => {
   const at = Date.parse("2026-10-14T12:00:00Z");
   const margin = 15 * 60_000;
@@ -164,6 +208,43 @@ describe("makeZeropsSessionCalls.freshBearer", () => {
 
     await expect(calls.freshBearer(margin, at)).resolves.toBe(bearer);
     expect(sent).toEqual(bearer === "access-2" ? ["POST /auth/refresh"] : []);
+  });
+
+  // A device login lives six hours, measured against the platform.
+  const HOUR = 60 * 60_000;
+  const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+
+  it.each([
+    ["six hours, a device login's whole life", 6 * HOUR],
+    ["just over the margin", ZEROPS_RENEWAL_MARGIN_MS + 1],
+  ])(
+    "a session with more than the renewal margin left is not renewed when the app loads (%s)",
+    async (_left, remainingMs) => {
+      const { fetch, sent } = platform({ "/auth/refresh": () => json(200, next) });
+      const calls = makeZeropsSessionCalls({ fetch, baseUrl: BASE_URL });
+      calls.client.restoreSession({
+        ...stored,
+        expiresAt: iso(at + remainingMs),
+      });
+
+      await expect(calls.freshBearer(ZEROPS_RENEWAL_MARGIN_MS, at)).resolves.toBe("access-1");
+      expect(sent).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["at the margin", ZEROPS_RENEWAL_MARGIN_MS - 1],
+    ["with a minute left", 60_000],
+  ])("a session within the renewal margin renews once, before it ends (%s)", async (_left, ms) => {
+    const { fetch, sent } = platform({
+      "/auth/refresh": () => json(200, { ...next, expiresAt: iso(at + 6 * HOUR) }),
+    });
+    const calls = makeZeropsSessionCalls({ fetch, baseUrl: BASE_URL });
+    calls.client.restoreSession({ ...stored, expiresAt: iso(at + ms) });
+
+    await expect(calls.freshBearer(ZEROPS_RENEWAL_MARGIN_MS, at)).resolves.toBe("access-2");
+    await expect(calls.freshBearer(ZEROPS_RENEWAL_MARGIN_MS, at + 1)).resolves.toBe("access-2");
+    expect(sent).toEqual(["POST /auth/refresh"]);
   });
 
   it("never renews a personal token, which has no refresh token", async () => {

@@ -53,7 +53,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   // Platform rows supply only the body, never the name, face, project or environment identity.
   const rows = heldCandidates(get(allCandidateListingAtom)).rows;
   const directory = get(shownHqMateDirectoryAtom);
-  const ownId = directory.myChief.kind === "present" ? directory.myChief.projectId : undefined;
+  const chiefId = directory.chief.kind === "present" ? directory.chief.projectId : undefined;
   const bodies = new Map<string, Array<(typeof rows)[number]>>();
   for (const row of rows) {
     const held = bodies.get(row.project.id);
@@ -77,7 +77,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
         : seeded;
     if (
       mate.environmentId !== undefined &&
-      (mate.projectId === ownId || isListedMateProject(directory, { id: mate.projectId }))
+      (mate.projectId === chiefId || isListedMateProject(directory, { id: mate.projectId }))
     ) {
       const bodiesHere = bodies.get(mate.projectId) ?? [];
       const body =
@@ -85,7 +85,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
         (bodiesHere.length === 1 ? bodiesHere[0] : undefined);
       mates.set(mate.environmentId, {
         ...mate,
-        ...(mate.projectId === ownId ? { chief: true } : {}),
+        ...(mate.projectId === chiefId ? { chief: true } : {}),
         ...(body === undefined
           ? {}
           : {
@@ -107,7 +107,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   Atom.withLabel("zerops:mates"),
 );
 
-/** Identities for explicit detail and action targets, including the viewer's own Chief. */
+/** Identities for explicit detail and action targets, including the organization's Chief. */
 export function useZeropsMateDirectory(): ZeropsMateDirectory {
   return useAtomValue(zeropsMatesAtom);
 }

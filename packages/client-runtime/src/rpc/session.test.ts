@@ -11,6 +11,7 @@ import {
   UsageLimitSourceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -21,14 +22,33 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import * as Socket from "effect/socket/Socket";
 
 import {
   ConnectionTransientError,
   PrimaryConnectionTarget,
+  ZeropsMateConnectionTarget,
   type PreparedConnection,
+  type SupervisorConnectionState,
 } from "../connection/model.ts";
+import * as ConnectionDriver from "../connection/driver.ts";
+import * as ConnectionResolver from "../connection/resolver.ts";
+import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import * as EnvironmentRegistry from "../connection/registry.ts";
+import * as Persistence from "../platform/persistence.ts";
+import { makeMateImageWire } from "../data/adapters/mateImages.ts";
+import * as Connectivity from "../connection/connectivity.ts";
+import * as ConnectionWakeups from "../connection/wakeups.ts";
+import * as ClientCapabilities from "../platform/capabilities.ts";
+import { ConnectionCredentialStore } from "../connection/credentialStore.ts";
+import { ConnectionProfileStore } from "../connection/profileStore.ts";
+import { ConnectionAdmissionRef, makeConnectionAdmission } from "../connection/admission.ts";
+import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
+import { RemoteDpopAccessTokenStore } from "../authorization/tokenStore.ts";
+import { ManagedRelayDpopSigner } from "../relay/managedRelay.ts";
+import { remoteHttpClientLayer } from "./http.ts";
 import * as RpcSession from "./session.ts";
 import { applyServerConfigProjection } from "../state/serverConfigProjection.ts";
 
@@ -268,6 +288,210 @@ const completeInitialConfig = Effect.fn("TestRpcSessionFactory.completeInitialCo
 });
 
 describe("RpcSessionFactory", () => {
+  it.effect(
+    "A Mate ticket is available to HTTP readers only after RPC readiness and is discarded on disconnect",
+    () =>
+      Effect.gen(function* () {
+        const { factory, sockets } = yield* makeFactory();
+        const issued: string[] = [];
+        const target = new ZeropsMateConnectionTarget({
+          environmentId: TARGET.environmentId,
+          label: TARGET.label,
+          orgId: "org-1",
+          projectId: "project-1",
+          httpBaseUrl: "https://environment.example.test/mate",
+        });
+        const unsupported = Effect.die("Ticket connections must not use legacy credentials.");
+        const platform = Layer.mergeAll(
+          Layer.succeed(ClientCapabilities.ClientPresentation, {
+            metadata: { label: "Test Client", deviceType: "desktop", surface: "web" },
+            scopes: [],
+          }),
+          Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, { bearerToken: unsupported }),
+          Layer.succeed(ClientCapabilities.SshEnvironmentGateway, {
+            provision: () => unsupported,
+            prepare: () => unsupported,
+            disconnect: () => unsupported,
+          }),
+          Layer.succeed(ConnectionCredentialStore, {
+            get: () => unsupported,
+            put: () => unsupported,
+            remove: () => unsupported,
+          }),
+          Layer.succeed(ConnectionProfileStore, {
+            get: () => unsupported,
+            put: () => unsupported,
+            remove: () => unsupported,
+          }),
+          Layer.succeed(RemoteDpopAccessTokenStore, {
+            get: () => unsupported,
+            put: () => unsupported,
+            remove: () => unsupported,
+          }),
+          Layer.succeed(ManagedRelayDpopSigner, {
+            thumbprint: unsupported,
+            createProof: () => unsupported,
+          }),
+          remoteHttpClientLayer(() => Promise.reject(new Error("Unexpected legacy HTTP request"))),
+          Layer.succeed(ClientCapabilities.MateTicketIssuer, {
+            issue: () =>
+              Effect.sync(() => {
+                const ticket = `ticket-${issued.length + 1}`;
+                issued.push(ticket);
+                return { ticket, origin: "https://environment.example.test" };
+              }),
+          }),
+        );
+        const resolver = ConnectionResolver.layer.pipe(
+          Layer.provide(RemoteEnvironmentAuthorization.layer),
+          Layer.provide(platform),
+        );
+        const driver = ConnectionDriver.layer.pipe(
+          Layer.provide(resolver),
+          Layer.provide(Layer.succeed(RpcSession.RpcSessionFactory, factory)),
+        );
+        const admission = makeConnectionAdmission({ setTimer: () => () => undefined });
+        admission.prefer(target.environmentId);
+        const registry = yield* EnvironmentRegistry.make.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              driver,
+              platform,
+              Layer.succeed(Persistence.ConnectionTargetStore, { list: Effect.succeed([target]) }),
+              Layer.succeed(Persistence.ConnectionRegistrationStore, {
+                register: () => Effect.void,
+                remove: () => Effect.void,
+              }),
+              Layer.succeed(Persistence.EnvironmentCacheStore, {
+                loadShell: () => Effect.succeedNone,
+                saveShell: () => Effect.void,
+                loadThread: () => Effect.succeedNone,
+                saveThread: () => Effect.void,
+                removeThread: () => Effect.void,
+                loadServerConfig: () => Effect.succeedNone,
+                saveServerConfig: () => Effect.void,
+                loadVcsRefs: () => Effect.succeedNone,
+                saveVcsRefs: () => Effect.void,
+                removeVcsRefs: () => Effect.void,
+                clearVcsRefs: () => Effect.void,
+                clear: () => Effect.void,
+              }),
+              Connectivity.layer({ status: Effect.succeed("online"), changes: Stream.never }),
+              ConnectionWakeups.layer({ changes: Stream.never }),
+            ),
+          ),
+          Effect.provideService(ConnectionAdmissionRef, admission),
+        );
+        const supervisor = yield* registry.run(
+          target.environmentId,
+          EnvironmentSupervisor.EnvironmentSupervisor,
+        );
+        const atState = (predicate: (state: SupervisorConnectionState) => boolean) =>
+          SubscriptionRef.changes(supervisor.state).pipe(Stream.filter(predicate), Stream.runHead);
+        yield* supervisor.connect;
+        const socket = yield* awaitSocket(sockets);
+        const openingPrepared = yield* SubscriptionRef.get(supervisor.prepared);
+        socket.open();
+        yield* awaitRequest(socket);
+        yield* atState((state) => state.phase === "connecting" && state.stage === "synchronizing");
+        expect(openingPrepared).toEqual(Option.none());
+        expect(socket.sent[0]).toBe('{"ticket":"ticket-1"}');
+        expect(yield* SubscriptionRef.get(supervisor.prepared)).toEqual(Option.none());
+        yield* completeInitialConfig(socket, {
+          ...ENCODED_SERVER_CONFIG,
+          environment: {
+            ...ENCODED_SERVER_CONFIG.environment,
+            capabilities: {
+              ...ENCODED_SERVER_CONFIG.environment.capabilities,
+              contentAddressedImages: true,
+              mateEngine: { protocol: 1 },
+            },
+          },
+        });
+        yield* atState((state) => state.phase === "connected");
+        expect(Option.getOrThrow(yield* SubscriptionRef.get(supervisor.prepared))).toMatchObject({
+          httpAuthorization: { _tag: "Bearer", token: "ticket-1" },
+          contentAddressedImages: true,
+          mateEngine: 1,
+        });
+        socket.close(1012, "restart");
+        yield* atState((state) => state.phase !== "connected");
+        expect(yield* SubscriptionRef.get(supervisor.prepared)).toEqual(Option.none());
+        yield* supervisor.retryNow;
+        const next = yield* awaitSocket(sockets, 1);
+        next.open();
+        yield* awaitRequest(next);
+        yield* atState((state) => state.phase === "connecting" && state.stage === "synchronizing");
+        expect(yield* SubscriptionRef.get(supervisor.prepared)).toEqual(Option.none());
+        yield* completeInitialConfig(next);
+        yield* atState((state) => state.phase === "connected");
+        expect(next.sent[0]).toBe('{"ticket":"ticket-2"}');
+        expect(
+          Option.getOrThrow(yield* SubscriptionRef.get(supervisor.prepared)).httpAuthorization,
+        ).toEqual({ _tag: "Bearer", token: "ticket-2" });
+        expect(issued).toEqual(["ticket-1", "ticket-2"]);
+        const imageRequests: Request[] = [];
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+          imageRequests.push(new Request(url, init));
+          return Promise.resolve(new Response(new Blob(["image"], { type: "image/png" })));
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(() => fetchSpy.mockRestore()));
+        const imageRead = yield* Effect.forkChild(
+          makeMateImageWire(registry, Option.none()).read({
+            environmentId: target.environmentId,
+            resource: { _tag: "attachment", attachmentId: "image", mimeType: "image/png" },
+            rendition: "original",
+          }),
+        );
+        const imageRequest = yield* awaitRequest(next, 1);
+        expect(imageRequest.tag).toBe(WS_METHODS.assetsCreateUrl);
+        next.serverMessage(
+          encodeJson({
+            _tag: "Exit",
+            requestId: imageRequest.id,
+            exit: {
+              _tag: "Success",
+              value: { relativeUrl: "/api/assets/images/test", expiresAt: 0 },
+            },
+          }),
+        );
+        yield* Fiber.join(imageRead);
+        expect(imageRequests).toHaveLength(1);
+        expect(imageRequests[0]?.url).toBe(
+          "https://environment.example.test/mate/api/assets/images/test",
+        );
+        expect(imageRequests[0]?.headers.get("authorization")).toBe("Bearer ticket-2");
+        expect(imageRequests[0]?.headers.get("dpop")).toBeNull();
+        expect(imageRequests[0]?.credentials).toBe("omit");
+      }),
+  );
+
+  it.effect("A Mate connection's first frame is the ticket, sent before any request", () =>
+    Effect.gen(function* () {
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect({
+        ...PREPARED,
+        socketUrl: "wss://environment.example.test",
+        firstFrame: JSON.stringify({ ticket: "T-1" }),
+      });
+      const readyFiber = yield* Effect.forkChild(session.ready);
+      const socket = yield* awaitSocket(sockets);
+
+      socket.open();
+      yield* completeInitialConfig(socket);
+      yield* Fiber.join(readyFiber);
+
+      expect(socket.url).toBe("wss://environment.example.test");
+      expect(socket.sent[0]).toBe(JSON.stringify({ ticket: "T-1" }));
+      expect(
+        socket.sent
+          .slice(1)
+          .map((message) => decodeJson(message))
+          .filter(isRpcRequest),
+      ).toHaveLength(1);
+    }),
+  );
+
   it.effect("owns one scoped websocket attempt and exposes readiness and closure", () =>
     Effect.gen(function* () {
       const { factory, sockets } = yield* makeFactory();

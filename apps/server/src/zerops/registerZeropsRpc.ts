@@ -30,7 +30,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
-import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
+import { zeropsUserIdOf } from "./zeropsSubject.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";

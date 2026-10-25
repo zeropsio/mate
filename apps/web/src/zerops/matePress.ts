@@ -359,8 +359,7 @@ const inFlightListeners = new Set<() => void>();
 
 /**
  * Runs a press — any press's steps, or a New project's creation before them — counted in flight
- * until it ends: the background mints no throwaway meanwhile (`pressesInFlight`), as the press
- * reads the token list each throwaway is written to (E2E 2026-10-03).
+ * until it ends (`pressesInFlight`): the page holds its reload and its leave while one runs.
  */
 export async function whilePressing<T>(run: () => Promise<T>): Promise<T> {
   inFlight += 1;
@@ -373,7 +372,7 @@ export async function whilePressing<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Whether a press is in flight in this browser (`environments.ts`'s `pressInFlight` port). */
+/** Whether a press is in flight in this browser. */
 export const pressesInFlight = {
   read: (): boolean => inFlight > 0,
   subscribe: (listener: () => void): (() => void) => {
@@ -1145,8 +1144,6 @@ export async function finishMateSetup(input: {
    */
   readonly container: {
     readonly agents: ReadonlyArray<ZeropsAgentType>;
-    /** A Chief's container (`importDevelopmentContainer`'s `chief`). */
-    readonly chief?: true;
   } | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
@@ -1254,7 +1251,6 @@ async function finishLocked(
           {
             kind: "import-container",
             agents: input.container.agents,
-            ...(input.container.chief === true ? { chief: true as const } : {}),
           } as const,
         ]),
     // Isolated a moment ago by the harden, which the close-off trusts where no container comes

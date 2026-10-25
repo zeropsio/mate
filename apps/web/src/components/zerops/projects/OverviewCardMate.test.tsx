@@ -18,6 +18,7 @@ const session = vi.hoisted(() => ({ value: null as { user: { id: string } } | nu
 // The menu row's own reads, as a card reads them for the same Mate.
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useMateLinkedInHq: () => linked.value,
+  useMateOverviewInHq: () => "live",
   useMateOfflineSince: () => undefined,
   useMateAwayNow: () => 0,
 }));

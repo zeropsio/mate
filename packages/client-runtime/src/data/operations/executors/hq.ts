@@ -85,6 +85,7 @@ export type HqWrites = Pick<
   | "recordClosedOff"
   | "keepDeployToken"
   | "setChief"
+  | "removeChief"
   | "decideProposal"
 > &
   Partial<Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream">> &
@@ -189,7 +190,13 @@ function flowWrite(
     case "merge-change":
       return Effect.map(
         write(() => api.mergeChange(intent.link, intent.expectedHead)),
-        ({ deploys }) => receipt(requestId, changeHandle(intent.link), { deploys }, PENDING),
+        ({ made, deploys }) =>
+          receipt(
+            requestId,
+            changeHandle(intent.link),
+            { deploys, mergedSha: made.mergedSha },
+            PENDING,
+          ),
       );
     case "close-change":
       return Effect.map(
@@ -279,14 +286,6 @@ export function makeHqExecutor(ports: {
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
   readonly gitStore?: AccountStore;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
-  /**
-   * Handed what a Chief's record answered for its project: the credential its zcp reaches the
-   * organization with, and the proxy. Told once, at HQ's answer; the receipt never holds it.
-   */
-  readonly chiefAccess?: (
-    projectId: string,
-    access: { readonly credential: string; readonly proxyUrl: string },
-  ) => void;
 }): HqExecutor {
   const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
   let gitClosed = false;
@@ -425,16 +424,17 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** A Chief's record and a proposal's decision: HQ's answer is their end. */
+  /** The Chief's mark and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
     switch (intent.kind) {
       case "set-chief":
         return Effect.map(
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
-          ({ chief, credential, proxyUrl }) => {
-            ports.chiefAccess?.(intent.projectId, { credential, proxyUrl });
-            return answered(requestId, intent.projectId, { chief });
-          },
+          ({ chief }) => answered(requestId, intent.projectId, { chief }),
+        );
+      case "remove-chief":
+        return Effect.map(Effect.tryPromise({ try: () => api.removeChief(), catch: faultOf }), () =>
+          answered(requestId, intent.orgId),
         );
       case "decide-proposal":
         return Effect.map(
@@ -785,7 +785,11 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
+        if (
+          intent.kind === "set-chief" ||
+          intent.kind === "remove-chief" ||
+          intent.kind === "decide-proposal"
+        )
           return yield* chiefWrite(requestId, api, intent);
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({

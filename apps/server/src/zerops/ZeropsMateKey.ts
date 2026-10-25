@@ -35,6 +35,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
+import * as ZeropsKeyRefusal from "./ZeropsKeyRefusal.ts";
 
 /** Which of the two sources a resolved key most recently came from. */
 export type ZeropsMateKeySource = "store" | "snapshot";
@@ -110,6 +111,8 @@ export const resolveMateKey = (input: {
 };
 
 export interface ZeropsMateKeyReader {
+  /** Live readers report refusals; snapshot-only fixtures have no platform or HQ link. */
+  readonly refusal?: ZeropsKeyRefusal.ZeropsKeyRefusal;
   /**
    * The key to use for the Mate's own reads right now — from cache when the
    * last resolve is still within {@link MATE_KEY_CACHE_TTL}, freshly resolved
@@ -180,7 +183,8 @@ export const make = (input: {
 
     const invalidate = Ref.set(cache, undefined);
 
-    return { read, lastSource, invalidate };
+    const refusal = yield* ZeropsKeyRefusal.make(Effect.andThen(invalidate, read));
+    return { read, lastSource, invalidate, refusal };
   });
 
 /**
@@ -215,13 +219,17 @@ export const requestWithMateKey = <A extends { readonly status: number }, E, R>(
       return { token: token1, response: response1 };
     }
 
-    yield* reader.invalidate;
-    const token2 = yield* reader.read;
+    const token2 = yield* reader.refusal
+      ? reader.refusal.check(token1, response1.status)
+      : Effect.andThen(reader.invalidate, reader.read);
     if (token2 === undefined || token2 === token1) {
       return { token: token1, response: response1 };
     }
 
     const response2 = yield* request(token2);
+    if (response2.status === 401 && reader.refusal !== undefined) {
+      yield* reader.refusal.check(token2, response2.status);
+    }
     return { token: token2, response: response2 };
   });
 

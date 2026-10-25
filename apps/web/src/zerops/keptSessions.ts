@@ -1,23 +1,18 @@
 /**
- * The account's kept sessions on the web (`keptSessions.ts` in the client runtime) — its Mates'
- * and its organizations' HQs' — under the account's scoped `localStorage`. The door's exchange
- * presents a Mate's again (`environmentPorts.ts`), HQ's API its own (`accountHq.ts`), and no kept
- * session outlives the login it was opened under: the account's close ends every one where it was
+ * The account's kept sessions on the web (`keptSessions.ts` in the client runtime) — its
+ * organizations' HQs' — under the account's scoped `localStorage`. HQ's API presents its own
+ * again (`accountHq.ts`), and no kept session outlives the login it was opened under: the account's close ends every one where it was
  * issued however the account closes, and a stored login the platform refused ends its own account's
  * (`endKeptSessionsOf`) — each once no other tab of this origin holds that account open, since a
  * neighbouring tab still on the account uses them.
  */
 import { writeBrowserStorage } from "../lib/storage";
-import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import { endIssuedSession } from "@t3tools/client-runtime/data";
 import {
   HQ_SESSIONS,
   makeKeptSessions,
-  MATE_SESSIONS,
   type KeptHqSession,
-  type KeptSessionKind,
 } from "@t3tools/client-runtime/zerops/keptSessions";
-import { AuthZeropsClientScopes, type AuthSessionState } from "@t3tools/contracts";
 
 import {
   accountLocalStorage,
@@ -30,37 +25,19 @@ import {
 
 const nowEpochMs = () => Date.now();
 
-export const keptSessions = makeKeptSessions(accountLocalStorage, nowEpochMs, MATE_SESSIONS);
-
 export const keptHqSessions = makeKeptSessions(accountLocalStorage, nowEpochMs, HQ_SESSIONS);
 
 /** The tokens this page has ended: two closers never end one session twice. */
 const ended = new Set<string>();
 
 /**
- * Ends a session at its Mate. Nothing waits on it: a Mate that does not answer ends the session
- * with its day, as every session ended before any was kept.
+ * Ends a bearer session at its environment. Nothing waits on it: one that does not answer ends
+ * the session with its deadline.
  */
 export function endMateSession(logout: { readonly url: string; readonly token: string }): void {
   if (ended.has(logout.token)) return;
   ended.add(logout.token);
   endIssuedSession({ url: logout.url, method: "POST", token: logout.token });
-}
-
-/**
- * Drops the session kept for a Mate's target where it is kept, and ends nothing at the Mate: one
- * gone from the platform's listing has nobody to answer, and asking would be a failed request.
- */
-export function forgetKeptMateSession(key: string): void {
-  const registration = keptSessions.read(key);
-  if (registration !== null) keptSessions.forget(key, registration.credential.token);
-}
-
-export function endKeptSession(registration: BearerConnectionRegistration): void {
-  endMateSession({
-    url: `${registration.profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`,
-    token: registration.credential.token,
-  });
 }
 
 /** Revokes a session HQ issued (`DELETE /api/session`); nothing waits on it, as for a Mate's. */
@@ -72,17 +49,6 @@ export function endHqSession(session: KeptHqSession): void {
     method: "DELETE",
     token: session.token,
   });
-}
-
-/**
- * Whether the Mate's answer holds a session this client can still use: live, and carrying every
- * scope it asks for now — a session from before a release that added a scope is not.
- */
-export function keptSessionHeld(state: AuthSessionState): boolean {
-  return (
-    state.authenticated &&
-    AuthZeropsClientScopes.every((scope) => state.scopes?.includes(scope) === true)
-  );
 }
 
 /** The shared Web Lock every tab holds on the account it has open. */
@@ -133,23 +99,42 @@ export function endWhenAccountLeft(end: () => void): Promise<void> {
   return accountId === null ? Promise.resolve() : endWhenLeft(accountId, end);
 }
 
-/** Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. */
+/** The ends waiting on each account, run together in one lock check. */
+const pendingEnds = new Map<
+  string,
+  { readonly ends: Array<() => void>; readonly done: Promise<void> }
+>();
+
+/**
+ * Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. Ends asked
+ * for in the same wait share one check: the grant of one request never makes another's see the
+ * account as held.
+ */
 function endWhenLeft(accountId: string, end: () => void): Promise<void> {
   const locks = webLocks();
   if (locks === undefined) {
     end();
     return Promise.resolve();
   }
+  const pending = pendingEnds.get(accountId);
+  if (pending !== undefined) {
+    pending.ends.push(end);
+    return pending.done;
+  }
+  const ends = [end];
   const own = hold?.accountId === accountId ? hold.released : Promise.resolve();
-  return own.then(() =>
+  const done = own.then(() =>
     locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
-      if (lock !== null) end();
+      pendingEnds.delete(accountId);
+      if (lock !== null) for (const run of ends) run();
     }),
   );
+  pendingEnds.set(accountId, { ends, done });
+  return done;
 }
 
-/** The sessions of one kind kept under `key`, still readable once their account has closed. */
-function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
+/** The HQ sessions kept under `key`, still readable once their account has closed. */
+function keptUnder(key: string) {
   return makeKeptSessions(
     {
       getItem: () => window.localStorage.getItem(key),
@@ -157,46 +142,13 @@ function keptUnder<T, E>(key: string, kind: KeptSessionKind<T, E>) {
       removeItem: () => window.localStorage.removeItem(key),
     },
     nowEpochMs,
-    kind,
+    HQ_SESSIONS,
   );
 }
 
-/** Tokens of the Mate sessions this page minted: only those can be this tab's alone. */
-const mintedHere = new Set<string>();
-
-/**
- * Keeps a Mate session this tab minted for `key`. The one it displaces is ended at its Mate only
- * where this tab minted it and no other tab of this origin holds the account open; otherwise
- * another tab may still use it, so it is set aside beside the new one and ends with the account.
- */
-export async function keepMintedMateSession(
-  key: string,
-  registration: BearerConnectionRegistration,
-): Promise<void> {
-  mintedHere.add(registration.credential.token);
-  const displaced = keptSessions.keep(key, registration);
-  const accountId = currentAccountId();
-  const storageKey = accountStorageKey(MATE_SESSIONS.storageKey);
-  if (displaced === null || accountId === null || storageKey === null) return;
-  const token = displaced.credential.token;
-  const setAside = () => {
-    keptUnder(storageKey, MATE_SESSIONS).keep(`${key}:displaced:${token}`, displaced);
-  };
-  if (!mintedHere.has(token)) return setAside();
-  const locks = webLocks();
-  if (locks === undefined) return endKeptSession(displaced);
-  return locks.query().then(({ held = [] }) => {
-    const holders = held.filter((lock) => lock.name === accountOpenLock(accountId)).length;
-    if (holders > 1) setAside();
-    else endKeptSession(displaced);
-  }, setAside);
-}
-
-/** The sessions of every kind `accountId` keeps, its Mates' and its HQs', ended where issued. */
-function endKeptUnder(mateKey: string, hqKey: string): void {
-  for (const registration of keptUnder(mateKey, MATE_SESSIONS).drain())
-    endKeptSession(registration);
-  for (const session of keptUnder(hqKey, HQ_SESSIONS).drain()) endHqSession(session);
+/** The HQ sessions kept under `hqKey`, ended where issued. */
+function endKeptUnder(hqKey: string): void {
+  for (const session of keptUnder(hqKey).drain()) endHqSession(session);
 }
 
 /**
@@ -204,19 +156,17 @@ function endKeptUnder(mateKey: string, hqKey: string): void {
  * sessions end, once no tab of this origin holds the account open. No other account's are touched.
  */
 export function endKeptSessionsOf(accountId: string): Promise<void> {
-  const mateKey = accountStorageKeyOf(accountId, MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKeyOf(accountId, HQ_SESSIONS.storageKey);
-  return endWhenLeft(accountId, () => endKeptUnder(mateKey, hqKey));
+  return endWhenLeft(accountId, () => endKeptUnder(hqKey));
 }
 
 // However the account closes — signed out, replaced, its login refused while open — it ends every
 // session it kept, whether or not this tab ever built a connection runtime or reached HQ; where
 // another tab still holds the account open, that tab's close does.
 onAccountLifetimeClose(() => {
-  const mateKey = accountStorageKey(MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKey(HQ_SESSIONS.storageKey);
-  if (mateKey === null || hqKey === null) return;
-  const completed = endWhenAccountLeft(() => endKeptUnder(mateKey, hqKey));
+  if (hqKey === null) return;
+  const completed = endWhenAccountLeft(() => endKeptUnder(hqKey));
   hold?.release();
   return completed;
 });
