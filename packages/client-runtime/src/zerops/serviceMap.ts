@@ -554,9 +554,9 @@ export const leaseDevServersOf = (
   lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
 
 /**
- * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its branch its
- * lifecycle last read zcp holding, its own first; the bound one alone while the lifecycle is not
- * known.
+ * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its repository and
+ * branch its lifecycle last read zcp holding, its own first; the bound one alone while the
+ * lifecycle is not known.
  */
 export const threadLeasesOf = (
   lease: CheckoutLease | null | undefined,

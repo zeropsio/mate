@@ -1,7 +1,7 @@
 /**
  * The leases a thread reads (`threadLeasesOf`): the one it is bound to, then every other lease of
- * its branch its lifecycle last read zcp holding — what its Git tab, Diff, terminal and addresses
- * show. A thread bound to no lease, or asked with no environment (a hidden terminal), reads no
+ * its repository and branch its lifecycle last read zcp holding — what its Git tab, Diff, terminal
+ * and addresses show. A thread bound to no lease, or asked with no environment (a hidden terminal), reads no
  * lifecycle. One value while the leases stay the same, so a Zerops call that changes nothing of
  * them reads no checkout again.
  */
