@@ -1,8 +1,17 @@
-// @effect-diagnostics preferSchemaOverJson:off -- refusal bodies in failure messages.
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import type { gitClient } from "../../../../hq/test/harness/gitClient.ts";
+import {
+  RECIPE_PROPOSAL_TITLE,
+  RECIPE_REPO,
+  RECIPE_TIER_PATHS,
+  type RecipeTier,
+} from "@t3tools/shared/hqRecipe";
+import { gitClient } from "../../../../hq/test/harness/gitClient.ts";
 import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
+import { stateBecomes } from "../../../../hq/test/harness/recipe.ts";
 import { sessionFor } from "../../../../hq/test/harness/runningCore.ts";
 import type { ScenarioCore } from "./hqCore.ts";
 
@@ -92,4 +101,37 @@ export const placeMate = Effect.fn("scenarios.placeMate")(function* (
   });
   expect(attached.status, JSON.stringify(attached.body)).toBe(201);
   return appId;
+});
+
+/**
+ * The Mate publishes `tier`'s recipe in its application's recipe repository, as zcp does over HQ's
+ * HTTP and Git: a proposal, its push, and HQ merging it onto `main`.
+ */
+export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
+  core: ScenarioCore,
+  owner: string,
+  credential: string,
+  appId: string,
+  tier: RecipeTier,
+) {
+  const access = mateAccess(core, owner, credential);
+  yield* access.repo(appId, RECIPE_REPO);
+  const opened = yield* core.call("POST", "/api/mate/changes", {
+    headers: access.headers,
+    body: { repo: RECIPE_REPO, title: RECIPE_PROPOSAL_TITLE },
+  });
+  expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+  const number = (opened.body as { readonly change: { readonly number: number } }).change.number;
+  const git = yield* gitClient;
+  yield* access.clone(git, appId, RECIPE_REPO, "recipe");
+  const work = NodePath.join(git.dir, "recipe");
+  const path = NodePath.join(work, RECIPE_TIER_PATHS[tier]);
+  yield* Effect.sync(() => {
+    NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+    NodeFS.writeFileSync(path, "services:\n  - hostname: api\n    type: nodejs@22\n");
+  });
+  yield* git.checked(["add", "-A"], work);
+  yield* git.checked(["commit", "-q", "-m", `Add the ${tier} recipe`], work);
+  yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${String(number)}`], work);
+  yield* stateBecomes(core.call, owner, appId, number, "merged");
 });
