@@ -35,6 +35,27 @@ const gateRunnerFiles = [
   "test-process-lock-holder.ts",
 ];
 
+it("new-branch selection includes every path when Git output exceeds one mebibyte", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-large-diff-"));
+  try {
+    const paths = Array.from(
+      { length: 6000 },
+      (_, index) => `${"x".repeat(180)}-${index}.md`,
+    ).sort();
+    for (const path of paths) NodeFS.writeFileSync(NodePath.join(root, path), "");
+    expect(NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: root }).status).toBe(0);
+    expect(NodeChildProcess.spawnSync("git", ["add", "."], { cwd: root }).status).toBe(0);
+    expect(Buffer.byteLength(paths.join("\0"))).toBeGreaterThan(1024 * 1024);
+    let selected: string[] | undefined;
+    expect(() => {
+      selected = changedPaths(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+    }, "ASSERTION: a new branch must retain its complete file selection beyond the default subprocess buffer").not.toThrow();
+    expect(selected).toEqual(paths);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("includes relay consumers when discovering related tests for shared changes", () => {
   const packages = [
     { directory: "apps/web", name: "web", typecheck: true },
