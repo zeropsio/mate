@@ -182,8 +182,6 @@ function withOperation<K extends OperationIntent["kind"]>(
 /** What HQ heard of the press: each close-off it was asked to mark. */
 const hq = vi.hoisted(() => ({
   calls: null as Array<string> | null,
-  /** The id of the key the Mate named to HQ; none where it named none. */
-  key: null as string | null,
   /** What HQ answers every attach with, where it takes none. */
   attachFailure: null as Error | null,
 }));
@@ -191,9 +189,6 @@ vi.mock("./accountHq", () => ({
   accountHqApi: () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
-    },
-    recheckKey: async () => {
-      hq.calls?.push("recheck key");
     },
     bindBirth: async () => undefined,
     attachProject: async (
@@ -224,7 +219,6 @@ vi.mock("./accountHq", () => ({
         `record ${mate.face}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
       );
     },
-    mateKey: async () => hq.key,
   }),
 }));
 
@@ -1732,72 +1726,32 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
-  // Key by id (audit K3): an adopted Mate's key is hardened by the id the Mate named to HQ, where
-  // it named one; matched on the token list only where it did not.
-  it("hardens an adopted Mate's key by the id HQ names", async () => {
+  // HQ names no key (a Mate proves itself with its project key): the harden finds the key by name.
+  it("Finish setup on a Mate whose setup stopped lowers its key found by its name, asking HQ nothing about the key", async () => {
     begin();
     const calls: Array<string> = [];
-    const base = inputs(() => true, calls);
-    const asked: Array<string | undefined> = [];
-    const byId = withOperation(base, "harden-project", ({ keyTokenId }) => {
-      asked.push(keyTokenId);
-      return answered({
-        value: {
-          tokenLowered: true,
-          keyNotLowered: null,
-          delegationsDropped: 0,
-          isolationSteps: 1,
-          restarted: false,
-        },
-      });
-    });
+    const asked: Array<unknown> = [];
+    const named = withOperation(
+      inputs(() => true, calls),
+      "harden-project",
+      (intent) => {
+        asked.push(intent);
+        calls.push("harden");
+        return answered({
+          value: {
+            tokenLowered: true,
+            keyNotLowered: null,
+            delegationsDropped: 0,
+            isolationSteps: 1,
+            restarted: false,
+          },
+        });
+      },
+    );
     hq.calls = calls;
-    const finishOld = () =>
-      finishMateSetup({
-        inputs: byId,
-        projectId: "p-old",
-        projectName: "Acme - Ada",
-        container: null,
-        registration: null,
-        hq: { projectId: "hq-project", address: "https://hq.test" },
-        isCurrent: () => true,
-        harden: true,
-        locks: undefined,
-      });
-    hq.key = "token-7";
-    expect(await finishOld()).toMatchObject({ ok: true });
-    hq.key = null;
-    expect(await finishOld()).toMatchObject({ ok: true });
-    expect(asked).toEqual(["token-7", undefined]);
-    forgetPress("p-old");
-  });
-
-  // ADR 0003's fallout: a Mate HQ holds whose key reads other projects is hardened by its Finish
-  // setup by the id HQ names — the widened key its container holds, never taken for the Mate's own
-  // — and then asks HQ to read the key again.
-  it("hardens a Mate whose key reads other projects, then asks HQ to read its key again", async () => {
-    begin();
-    const calls: Array<string> = [];
-    const base = inputs(() => true, calls);
-    const asked: Array<string | undefined> = [];
-    const matched = withOperation(base, "harden-project", ({ keyTokenId }) => {
-      asked.push(keyTokenId);
-      calls.push("harden");
-      return answered({
-        value: {
-          tokenLowered: true,
-          keyNotLowered: null,
-          delegationsDropped: 0,
-          isolationSteps: 1,
-          restarted: false,
-        },
-      });
-    });
-    hq.calls = calls;
-    hq.key = "token-wide";
     expect(
       await finishMateSetup({
-        inputs: matched,
+        inputs: named,
         projectId: "p-old",
         projectName: "Acme - Ada",
         container: null,
@@ -1805,13 +1759,11 @@ describe("finishMateSetup — the harden path", () => {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         isCurrent: () => true,
         harden: true,
-        keyWider: true,
         locks: undefined,
       }),
     ).toMatchObject({ ok: true });
-    hq.key = null;
-    expect(asked).toEqual(["token-wide"]);
-    expect(calls).toEqual(["harden", "recheck key", "mark"]);
+    expect(asked).toEqual([expect.not.objectContaining({ keyTokenId: expect.anything() })]);
+    expect(calls).toEqual(["harden", "mark"]);
     forgetPress("p-old");
   });
 

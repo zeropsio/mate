@@ -144,21 +144,10 @@ export function finishMateSetupVerb(input: {
   readonly recordMissing: boolean;
   /** HQ's rule lets the viewer create its record (`create_mate_record`). */
   readonly mayCreateRecord: boolean;
-  /**
-   * HQ says its key reads other projects too (`keyWider`, ADR 0003's fallout): *Finish setup*'s
-   * harden takes those grants off, by the key's id HQ tells (`mayEditRecord`).
-   */
-  readonly keyWider?: boolean;
-  /**
-   * HQ offers the viewer editing the Mate's record (`edit_mate_record`): HQ tells them its key's
-   * id, which the harden narrows.
-   */
-  readonly mayEditRecord?: boolean;
 }): string | undefined {
   // An unread service listing proves neither a container nor its absence. Finishing then could
   // register and close off the birth while silently skipping its container import.
   if (!input.containerKnown) return undefined;
-  if (input.keyWider === true && input.mayEditRecord === true) return FINISH_MATE_SETUP_VERB;
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
   if (
     input.recordMissing &&

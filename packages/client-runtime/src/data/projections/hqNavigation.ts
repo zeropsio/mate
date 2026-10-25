@@ -108,7 +108,6 @@ function mateOf(
     standupRequestedBy: mate.standupRequestedBy,
     closedOff: mate.closedOff,
     setupMarker: mate.setupMarker,
-    keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),

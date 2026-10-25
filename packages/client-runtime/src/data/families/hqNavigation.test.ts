@@ -23,7 +23,7 @@ const project = {
   appId: "shop",
   name: "Ada",
   kind: "mate",
-  mate: { face: "ada", madeBy: null, standupRequestedBy: null, closedOff: false, keyWider: false },
+  mate: { face: "ada", madeBy: null, standupRequestedBy: null, closedOff: false },
   person: {
     role: "DEVELOPER",
     mayWrite: true,
