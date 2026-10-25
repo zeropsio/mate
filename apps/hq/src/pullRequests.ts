@@ -4,14 +4,14 @@
  * branch its Mate named, by its Mate: one change, two views (`hq_pull_request`).
  *
  * - Once the change has a head its Mate described (`ready`), its head goes to its branch on GitHub
- *   (`GithubMirror.pushChange`; a branch its Mate named is there already) and a pull request opens
- *   from it into GitHub's default branch, or the one its Mate opened there is taken for it,
- *   ready for review: its body says what it does, how it was checked, where to try it, `Fixes #n`
- *   for its task's issue, and a footer naming the Mate, its task and who asked; who asked is its
- *   assignee where they can write; its first comment says once what the Mate does with it. A
- *   later push goes to the same branch; a new description edits only HQ's part of the body
- *   (between {@link MATE_START} and {@link MATE_END}). Kept on every move of a change, and every
- *   minute for any move missed.
+ *   (`GithubMirror.pushChange`: HQ's own for a change opened without one, the branch its Mate named
+ *   under that name) and a pull request opens from it into GitHub's default branch, or the one
+ *   its Mate opened there is taken for it, ready for review: its body says what it does, how it
+ *   was checked, where to try it, `Fixes #n` for its task's issue, and a footer naming the Mate,
+ *   its task and who asked; who asked is its assignee where they can write; its first comment
+ *   says once what the Mate does with it. A later push goes to the same branch; a new description
+ *   edits only HQ's part of the body (between {@link MATE_START} and {@link MATE_END}). Kept on
+ *   every move of a change, and every minute for any move missed.
  * - Merge in Mate merges the pull request on GitHub (squash, at the head the person saw), then
  *   follows GitHub's default branch (`GithubMirror.sync`), which marks the change merged; GitHub's
  *   refusal is the merge's, in plain words, and nothing moves. Close in Mate closes it there too.

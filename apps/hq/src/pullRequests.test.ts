@@ -59,7 +59,7 @@ const mirroredPool = Effect.gen(function* () {
             const [row] = yield* sql<{ readonly head: string | null; readonly branch: string }>`
               SELECT head, branch FROM hq_change
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
-            // A change on a branch its Mate named is that branch on GitHub.
+            // A change on a branch its Mate named is pushed under that name.
             if (row?.head == null) return undefined;
             return row.branch.startsWith("mate/")
               ? { branch: `mate/${String(number)}-hotter-tea`, sha: row.head }

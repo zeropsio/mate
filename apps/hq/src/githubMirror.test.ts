@@ -1192,7 +1192,7 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
     // mono-live 2026-10-22 H1/H2: an agent's own branch on GitHub never reached HQ, and HQ pushed a
     // change to a `mate/<n>-<slug>` branch of its own beside the branch it was opened on.
     it.effect(
-      "a change opened on the Mate's own branch follows that branch on GitHub: HQ never pushes it, nor a branch of its own",
+      "a change opened on the Mate's own branch follows that branch on GitHub, and HQ makes no branch of its own beside it",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
