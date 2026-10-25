@@ -239,6 +239,13 @@ const ROLE_ORDER: ReadonlyArray<SitesLinkRole | undefined> = ["dev", "preview", 
 /** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
 const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.endsWith("dev");
 
+/**
+ * Whether a Sites list reads a Mate's leases: only a dev pool's workspaces come from them, so a
+ * Mate whose services listing names no pool (or is not read yet) holds no lifecycle feed open.
+ */
+export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
+  (mate.pools ?? []).length > 0;
+
 /** A Mate's dev pools: those its services listing names, and every pool a lease is of. */
 const poolsOf = (mate: SitesMateFacts): ReadonlySet<string> =>
   new Set([...(mate.pools ?? []), ...(mate.leases ?? []).map((lease) => lease.pool)]);
