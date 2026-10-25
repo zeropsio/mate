@@ -1014,6 +1014,61 @@ describe("a thread's lease", () => {
     expect(block("appdev", null)).toMatchObject({ repository: "appdev", label: "appdev" });
   });
 
+  // HQ names a repository after the dev service it began on (`appdev`), never after a pool's
+  // container: what ties a lease to its change is the branch zcp checked out there.
+  it("a lease's block reads the Mate's change on the lease's branch, and goes to HQ by that change's repository", () => {
+    const onBranch = change("mergeable", { number: 7, repository: "appdev", branch: "feat-x" });
+    const flow = {
+      pullRequests: [
+        onBranch,
+        change("mergeable", { number: 9, repository: "appdev", branch: "feat-y" }),
+        change("mergeable", {
+          number: 11,
+          repository: "appdev",
+          branch: "feat-x",
+          mateProjectId: "p2",
+        }),
+      ],
+      merged: [],
+    };
+    expect(mateChangeIn(flow, "p1", "webpool-3", [LEASE])).toBe(onBranch);
+    expect(mateChangeIn(flow, "p1", "webpool-3", [{ ...LEASE, branch: "feat-z" }])).toBe(undefined);
+    expect(mateChangeIn(flow, "p1", "appdev", []), "a service's, by its repository").toBe(
+      flow.pullRequests[1],
+    );
+
+    const checkout: GitCheckoutState = {
+      repository: "webpool-3",
+      isRepo: true,
+      hasRemote: true,
+      headRef: "feat-x",
+      aheadCount: 0,
+      behindCount: 0,
+      hasUpstream: true,
+      changed: [],
+    };
+    const shown = gitBlock({
+      checkout,
+      changes: { read: true, change: onBranch },
+      declarations: DECLARATIONS,
+      evidence: EVIDENCE,
+      leases: [LEASE],
+    });
+    expect(shown).toMatchObject({
+      repository: "webpool-3",
+      hqRepository: "appdev",
+      pullRequestNumber: 7,
+    });
+    expect(
+      gitBlock({
+        checkout: { ...checkout, repository: "appdev" },
+        changes: { read: true, change: undefined },
+        declarations: DECLARATIONS,
+        evidence: EVIDENCE,
+      }).hqRepository,
+    ).toBe("appdev");
+  });
+
   /** zcp's leases as the thread last read them: its branch is held on two more pools. */
   const READ = [
     { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
