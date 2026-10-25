@@ -61,6 +61,7 @@ import {
   cardChanges,
   cardPeople,
   releaseLineOpens,
+  releaseProductionRuns,
   rollBackTarget,
   type CardMateReading,
   type CardStage,
@@ -368,12 +369,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           </Button>
         )}
         {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
-            history stands beside the card. Its first release on its way holds History's room, so
-            the release lands moving nothing (the run's card grew 42 px as it landed) — through the
-            beat production's chip names what it runs before the flow's releases say it. */}
+            history stands beside the card. Production runs a release only once it has landed
+            (`releaseProductionRuns`), so a first release on its way holds History's room and a
+            second keeps History. */}
         {input.onPage === true ? null : historyOffered({
             releases: releases.length,
-            runs: stop?.version !== undefined,
+            runs:
+              releaseProductionRuns(
+                releases,
+                entry.flow.production.kind === "releasing" ? entry.flow.production.tag : undefined,
+              ) !== undefined,
           }) ? (
           <Button
             onClick={() => {
