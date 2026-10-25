@@ -325,7 +325,8 @@ export function mateReviewWaits(
 
 /**
  * How many of a Mate's own changes wait on the person's review, by the same rule
- * (`mateNextStep`): an automated Mate holds one per task, several at once; 0 before HQ answered.
+ * (`mateNextStep`'s `waiting`): an automated Mate holds one per task, several at once; 0 before HQ
+ * answered. A change the strip lists that does not merge waits on the Mate or HQ: it counts none.
  */
 export function mateReviewCount(
   flow:
@@ -343,8 +344,7 @@ export function mateReviewCount(
     mateProjectId,
     mateName: undefined,
   });
-  if (step.kind !== "review") return 0;
-  return step.lines.length === 0 ? 1 : step.lines.length + step.more;
+  return step.kind === "review" ? step.waiting : 0;
 }
 
 /**

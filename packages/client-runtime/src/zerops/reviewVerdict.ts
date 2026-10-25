@@ -548,10 +548,13 @@ function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewMo
 
 /**
  * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
- * door that merges a change asks it first — the review's Merge and *Put it live* alike.
+ * door that merges a change asks it first — the review's Merge and *Put it live* alike — and the
+ * composer's strip says it of a change that does not merge (`mateNextStep`). The clock only ages
+ * the commit that conflicts: a caller that read no conflict passes none.
  */
 export function changeMergeVerdict(
-  input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits" | "now">,
+  input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits"> &
+    Partial<Pick<ChangeReviewInput, "now">>,
 ): {
   readonly verdict: ReviewVerdict;
   readonly enabled: boolean;
@@ -589,7 +592,10 @@ export function changeMergeVerdict(
     const number = by === undefined ? undefined : /\(#(\d+)\)\s*$/u.exec(by.subject)?.[1];
     const author =
       by === undefined ? undefined : number === undefined ? `“${by.subject}”` : `#${number}`;
-    const age = by?.at === undefined ? undefined : reviewAge(by.at, input.now)?.toLowerCase();
+    const age =
+      by?.at === undefined || input.now === undefined
+        ? undefined
+        : reviewAge(by.at, input.now)?.toLowerCase();
     const it = files.length === 1 ? "it" : "them";
     return {
       enabled: false,
