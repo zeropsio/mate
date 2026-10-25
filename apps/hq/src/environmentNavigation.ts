@@ -41,7 +41,6 @@ const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 export const readEnvironmentSource = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,
   chiefs?: ReadonlyMap<string, string>,
-  chiefMark?: string | null,
 ) {
   const owners =
     chiefs ??
@@ -51,11 +50,6 @@ export const readEnvironmentSource = Effect.fnUntraced(function* (
         (row) => [row.project_id, row.user_id] as const,
       ),
     );
-  const mark =
-    chiefMark !== undefined
-      ? chiefMark
-      : ((yield* sql<{ readonly project_id: string }>`
-    SELECT project_id FROM hq_chief_mark`)[0]?.project_id ?? null);
   const environments = yield* sql<{
     readonly environment_id: string;
     readonly project_id: string | null;
@@ -299,7 +293,7 @@ FROM standing s`;
             .filter(
               (value) =>
                 value.target.kind === "git" ||
-                readsChiefProject(facts, userId, value.target.projectId, owners, mark),
+                readsChiefProject(facts, userId, value.target.projectId, owners),
             )
             .map((value) => ({
               ...value,

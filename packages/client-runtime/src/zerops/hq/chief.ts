@@ -1,10 +1,10 @@
 /**
- * The organisation's Chief mark and the decisions on its proposals, as HQ keeps them (mate-hq
+ * A person's Chief and the decisions on its proposals, as HQ keeps them (mate-hq
  * `spec/protocol.md`, "Chief"), through the client's HQ session (`client.ts`).
  *
- * - `PUT /api/chief {projectId}` → an Owner or Admin marks the project as the organisation's Chief,
- *   or moves the mark there; HQ answers the mark it holds. The mark carries no key, so a set-up
- *   that lost its answer simply asks again.
+ * - `PUT /api/chief {projectId}` → HQ registers the project as the reader's own Chief, or moves
+ *   their Chief there, and answers the registration it holds. It carries no key, so a set-up that
+ *   lost its answer simply asks again.
  * - `GET /api/proposals?ids=…` → the decisions HQ holds of those proposals, at most
  *   {@link PROPOSAL_IDS_PER_READ} per call.
  * - `PUT /api/proposals/:id` → one decision, then once how an approval ended: `decision` is
@@ -14,13 +14,13 @@
  */
 import * as Schema from "effect/Schema";
 
-/** The organisation's Chief mark: its project, and since when HQ holds it. */
+/** The reader's own Chief: its project, and since when HQ holds it. */
 export const HqChief = Schema.Struct({ projectId: Schema.NonEmptyString, since: Schema.String });
 export type HqChief = typeof HqChief.Type;
 
-/** What setting or moving the mark answers. */
-export const HqChiefMarkSet = Schema.Struct({ chief: HqChief });
-export type HqChiefMarkSet = typeof HqChiefMarkSet.Type;
+/** What registering a Chief answers. */
+export const HqChiefRegistration = Schema.Struct({ chief: HqChief });
+export type HqChiefRegistration = typeof HqChiefRegistration.Type;
 
 /** One proposal's decision as HQ holds it. */
 export const HqProposalDecision = Schema.Struct({
@@ -51,9 +51,7 @@ export interface HqProposalDecisionWrite {
 export const PROPOSAL_IDS_PER_READ = 100;
 
 export interface HqChiefCalls {
-  readonly setChief: (projectId: string) => Promise<HqChiefMarkSet>;
-  /** Removes the organisation's mark: HQ answers nothing but that it holds none. */
-  readonly removeChief: () => Promise<void>;
+  readonly setChief: (projectId: string) => Promise<HqChiefRegistration>;
   /** Every decision HQ holds of `ids`, read {@link PROPOSAL_IDS_PER_READ} at a time. */
   readonly proposalDecisions: (
     ids: ReadonlyArray<string>,
@@ -74,21 +72,18 @@ export interface HqChiefTransport {
 }
 
 export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChiefCalls {
-  const readMark = decoded(HqChiefMarkSet);
+  const readRegistration = decoded(HqChiefRegistration);
   const readDecisions = decoded(DecisionsAnswer);
   const readDecision = decoded(HqProposalDecision);
   return {
     setChief: async (projectId) =>
-      readMark(
+      readRegistration(
         await authorized(
           "/api/chief",
           { method: "PUT", body: JSON.stringify({ projectId }) },
           true,
         ),
       ),
-    removeChief: async () => {
-      await authorized("/api/chief", { method: "DELETE" }, true);
-    },
     proposalDecisions: async (ids, signal) => {
       const unique = [...new Set(ids)];
       const batches: string[][] = [];

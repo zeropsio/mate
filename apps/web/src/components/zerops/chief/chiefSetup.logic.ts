@@ -1,14 +1,15 @@
 /**
- * Setting up the organization's Chief, as two steps:
+ * Setting up a person's Chief, as two steps:
  *
  * 1. **project** — its project and zcp container, made by the new-project path (a New project
  *    tagged `chief`);
- * 2. **hq** — an Owner or Admin marks it as the organization's Chief at HQ (`PUT /api/chief`). The
- *    mark carries no key: its zcp reads the mark from its Mate state and enters org mode itself
- *    (spec-mate §2.11, §3.11).
+ * 2. **hq** — HQ registers it as the person's Chief (`PUT /api/chief`). The registration carries no
+ *    key: its zcp reads its Chief from its Mate state and enters org mode itself (spec-mate §2.11,
+ *    §3.11).
  *
  * A step that stops says why, and *Try again* resumes there: the project's creation resumes on the
- * same project, never a second; past it, HQ is asked again — a second ask sets the same mark.
+ * same project, never a second; past it, HQ is asked again — a second ask answers the same
+ * registration.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
@@ -40,8 +41,8 @@ export type ChiefSetupEvent =
   | { readonly type: "start"; readonly birthId: string }
   /** Its project and zcp service are made. */
   | { readonly type: "project-made"; readonly projectId: string }
-  /** HQ holds the mark on its project. */
-  | { readonly type: "marked" }
+  /** HQ holds its project as the person's Chief. */
+  | { readonly type: "registered" }
   /** HQ now supplies the completed Chief; setup no longer owns its existence. */
   | { readonly type: "observed"; readonly projectId: string }
   /** The running step stopped. */
@@ -61,7 +62,7 @@ export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): Chie
       return setup.phase === "running" && setup.step === "project"
         ? { ...setup, step: "hq", projectId: event.projectId }
         : setup;
-    case "marked":
+    case "registered":
       return setup.phase === "running" && setup.step === "hq" && setup.projectId !== null
         ? { phase: "done", birthId: setup.birthId, projectId: setup.projectId }
         : setup;
@@ -90,11 +91,7 @@ const STEPS: ReadonlyArray<{
   readonly doing: string;
 }> = [
   { id: "project", label: "Its workspace", doing: "Making its workspace" },
-  {
-    id: "hq",
-    label: "Marked as your organization's Chief",
-    doing: "Marking it as your organization's Chief",
-  },
+  { id: "hq", label: "Named your Chief", doing: "Registering it as your Chief" },
 ];
 
 /** Each step's words while it runs, in order: the progress row's steps. */
@@ -166,7 +163,7 @@ export function chiefProjectProgress(
 }
 
 /**
- * Step 2 on a made project: HQ marks it as the organization's Chief. A failure says why and keeps
+ * Step 2 on a made project: HQ registers it as the person's Chief. A failure says why and keeps
  * nothing.
  */
 export async function finishChiefSetup(input: {
@@ -180,5 +177,5 @@ export async function finishChiefSetup(input: {
     input.dispatch({ type: "failed", reason: zeropsErrorMessage(cause) });
     return;
   }
-  input.dispatch({ type: "marked" });
+  input.dispatch({ type: "registered" });
 }

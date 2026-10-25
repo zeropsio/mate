@@ -289,7 +289,6 @@ export const HQ_CLIENT_VERBS = [
   "release",
   "rollback",
   "setChief",
-  "removeChief",
   "proposalDecisions",
   "decideProposal",
 ] as const;

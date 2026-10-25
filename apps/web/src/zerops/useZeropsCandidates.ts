@@ -199,22 +199,23 @@ export const candidateListingAtom = Atom.make((get) => {
   );
 });
 
-/** Known-ID detail readers may read ordinary Mates and the Chief HQ marks the organization's. */
+/** Known-ID detail readers may read ordinary Mates and the Chief HQ identifies as this person's. */
 export const detailCandidateListingAtom = Atom.make((get) => {
   const directory = get(shownHqMateDirectoryAtom);
   return keepCandidates(
     get(allCandidateListingAtom),
     (candidate) =>
       isListedMateProject(directory, candidate.project) ||
-      (directory.chief.kind === "present" && directory.chief.projectId === candidate.project.id),
+      (directory.myChief.kind === "present" &&
+        directory.myChief.projectId === candidate.project.id),
   );
 });
 
-export const chiefCandidateAtom = Atom.make((get) => {
-  const { chief } = get(shownHqMateDirectoryAtom);
-  return chief.kind === "present"
+export const ownChiefCandidateAtom = Atom.make((get) => {
+  const { myChief } = get(shownHqMateDirectoryAtom);
+  return myChief.kind === "present"
     ? heldCandidates(get(allCandidateListingAtom)).rows.find(
-        (row) => row.project.id === chief.projectId,
+        (row) => row.project.id === myChief.projectId,
       )
     : undefined;
 });
@@ -232,7 +233,7 @@ export const heldDetailCandidateRowsAtom = Atom.make(
   (get) => heldCandidates(get(detailCandidateListingAtom)).rows,
 ).pipe(Atom.withEquality(sameValue));
 
-/** A detail route keeps the organization's Chief available without adding it to any picker. */
+/** A detail route keeps its own Chief available without adding it to any picker. */
 export function useHeldZeropsDetailCandidates() {
   return useAtomValue(heldDetailCandidateRowsAtom);
 }

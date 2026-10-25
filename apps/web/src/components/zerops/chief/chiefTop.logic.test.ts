@@ -6,13 +6,11 @@ import {
   chiefNameParts,
   chiefPageView,
   chiefRowLine,
-  chiefRowName,
   chiefRowOpens,
   chiefTopShown,
-  mayRemoveChief,
   type ChiefPageView,
 } from "./chiefTop.logic";
-import { chiefSetupLine, type OrgChief } from "~/zerops/chief";
+import { chiefSetupLine, type OwnChief } from "~/zerops/chief";
 
 const mate = (state: MateRowState, second: MateRowSecond) => ({ state, second });
 
@@ -96,7 +94,7 @@ const FAILED: ChiefSetup = {
   projectId: null,
   reason: "No room.",
 };
-const ready = { hq: "official", mayCreate: true, mayMark: true } as const;
+const ready = { hq: "official", mayCreate: true } as const;
 
 describe("chiefPageView", () => {
   it.each<[string, Parameters<typeof chiefPageView>[0], ChiefPageView]>([
@@ -161,14 +159,6 @@ describe("chiefPageView", () => {
       { ...ready, own: "p-chief", setup: { phase: "idle" } },
       { kind: "coming", projectId: "p-chief" },
     ],
-    [
-      "says why where the person is not an Owner or Admin, who alone mark the organization's Chief",
-      { ...ready, mayMark: false, own: null, setup: { phase: "idle" } },
-      {
-        kind: "offer",
-        blocked: "Only an Owner or Admin of this organization can set one up.",
-      },
-    ],
   ])("%s", (_title, input, view) => {
     expect(chiefPageView(input)).toEqual(view);
   });
@@ -184,32 +174,9 @@ describe("chiefNameParts", () => {
   });
 });
 
-describe("chiefRowName", () => {
-  it.each([
-    ["Acme", "Acme's Chief"],
-    [null, "Chief"],
-  ])("names the Chief by its organization, not by who reads it: %s", (organization, name) => {
-    expect(chiefRowName(organization)).toBe(name);
-  });
-});
-
-describe("mayRemoveChief", () => {
-  it.each([
-    ["an Owner or Admin", { membershipKnown: true, manageOrganization: true }, true],
-    [
-      "a member whose role is not read yet",
-      { membershipKnown: false, manageOrganization: false },
-      false,
-    ],
-    ["a known member below Admin", { membershipKnown: true, manageOrganization: false }, false],
-  ])("offers Remove as Chief only to an Owner or Admin: %s", (_who, capabilities, offered) => {
-    expect(mayRemoveChief(capabilities)).toBe(offered);
-  });
-});
-
 describe("chiefTopShown", () => {
   it("the Chief's row stays from setup until HQ reports it", () => {
-    const steps: ReadonlyArray<[OrgChief, "running" | "done" | "idle"]> = [
+    const steps: ReadonlyArray<[OwnChief, "running" | "done" | "idle"]> = [
       [null, "running"],
       [null, "done"],
       [undefined, "done"],

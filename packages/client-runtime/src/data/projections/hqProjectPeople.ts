@@ -26,8 +26,8 @@ export interface HqMateOwner {
 export interface HqProjectPeople {
   /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
   readonly owned: boolean | undefined;
-  /** The organisation's Chief as HQ names it on this Mate (`chiefProjectId`), or none. */
-  readonly chief?: { readonly projectId: string | null };
+  /** The Chief of this Mate's person and whether the reader is that person. */
+  readonly chief?: { readonly projectId: string | null; readonly mine: boolean | undefined };
   readonly owner: HqMateOwner | null;
   /** HQ names the reader as its person (`mine`); `undefined` where HQ does not say. */
   readonly mine: boolean | undefined;
@@ -57,7 +57,7 @@ function peopleOf(
     ...(person?.chiefProjectId === undefined
       ? {}
       : {
-          chief: { projectId: person.chiefProjectId },
+          chief: { projectId: person.chiefProjectId, mine: person.mine },
         }),
     owned:
       person?.ownerUserId === undefined || (withheld && person.ownerUserId === null)

@@ -3247,7 +3247,7 @@ function KeyedMateRow<T extends RosterCandidate>(props: Parameters<typeof MateRo
 }
 
 /**
- * A Mate drawn outside the list — the organization's Chief, the menu's top row (`SidebarChiefRow`) — read
+ * A Mate drawn outside the list — the person's Chief, the menu's top row (`SidebarChiefRow`) — read
  * as its row in the list would read it (`useMateRowState`), and its one line drawn the same way.
  */
 export function MenuMateLine<T extends RosterCandidate>({

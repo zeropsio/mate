@@ -85,7 +85,6 @@ export type HqWrites = Pick<
   | "recordClosedOff"
   | "keepDeployToken"
   | "setChief"
-  | "removeChief"
   | "decideProposal"
 > &
   Partial<Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream">> &
@@ -424,17 +423,13 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** The Chief's mark and a proposal's decision: HQ's answer is their end. */
+  /** A Chief's registration and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
     switch (intent.kind) {
       case "set-chief":
         return Effect.map(
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
           ({ chief }) => answered(requestId, intent.projectId, { chief }),
-        );
-      case "remove-chief":
-        return Effect.map(Effect.tryPromise({ try: () => api.removeChief(), catch: faultOf }), () =>
-          answered(requestId, intent.orgId),
         );
       case "decide-proposal":
         return Effect.map(
@@ -785,11 +780,7 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        if (
-          intent.kind === "set-chief" ||
-          intent.kind === "remove-chief" ||
-          intent.kind === "decide-proposal"
-        )
+        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
           return yield* chiefWrite(requestId, api, intent);
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({

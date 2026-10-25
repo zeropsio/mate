@@ -56,7 +56,7 @@ const DECISION = {
 } as const;
 
 describe("the Chief at HQ", () => {
-  it("marks a project as the organisation's Chief and answers the mark HQ holds", async () => {
+  it("registers a project as my Chief and answers the registration HQ holds", async () => {
     const answer = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
     const { api, seen } = hqAnswering(() => json(200, answer));
     await expect(api.setChief("p-chief")).resolves.toEqual(answer);
@@ -71,12 +71,6 @@ describe("the Chief at HQ", () => {
   ])("says HQ refused a Chief (%i)", async (status, code) => {
     const { api } = hqAnswering(() => json(status, { code }));
     await expect(api.setChief("p-chief")).rejects.toMatchObject({ kind: "refused", status });
-  });
-
-  it("removes the organisation's Chief mark at HQ", async () => {
-    const { api, seen } = hqAnswering(() => new Response(null, { status: 204 }));
-    await expect(api.removeChief()).resolves.toBeUndefined();
-    expect(seen).toEqual([{ method: "DELETE", path: "/api/chief", ids: null, body: undefined }]);
   });
 
   it("refuses an answer without the mark rather than report a Chief HQ did not set", async () => {

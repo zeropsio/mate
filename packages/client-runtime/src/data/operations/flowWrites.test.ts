@@ -156,7 +156,6 @@ function hqOf(answer: () => Promise<unknown>) {
     closeChange: call("closeChange"),
     handChange: call("handChange"),
     setChief: call("setChief"),
-    removeChief: call("removeChief"),
     decideProposal: call("decideProposal"),
   } satisfies HqWrites;
   return { writes, calls };

@@ -7,7 +7,7 @@
  * Chief at rest is its name alone. While it is set up, the line is its setup's; before that there
  * is no row (`chiefTopShown`).
  */
-import type { OrgChief } from "~/zerops/chief";
+import type { OwnChief } from "~/zerops/chief";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
 import type { ChiefSetup } from "./chiefSetup.logic";
@@ -55,7 +55,7 @@ export function chiefRowLine(input: {
  * menu row standing for something that does not exist.
  */
 export function chiefTopShown(input: {
-  readonly own: OrgChief;
+  readonly own: OwnChief;
   /** `chiefSetupLine`. */
   readonly setup: "offer" | "running" | "stopped" | null;
 }): boolean {
@@ -84,10 +84,9 @@ const HQ_READING = "Reaching your organization's HQ…";
 const NO_HQ = "Your organization has no HQ to record a Chief.";
 const HQ_BEHIND = "Your organization's HQ needs its update before it can record a Chief.";
 const MAY_NOT_CREATE = "Only someone who may create projects in this organization can set one up.";
-const MAY_NOT_MARK = "Only an Owner or Admin of this organization can set one up.";
 
 export function chiefPageView(input: {
-  readonly own: OrgChief;
+  readonly own: OwnChief;
   readonly setup: ChiefSetup;
   /**
    * The organization's HQ: reached, still being reached, none, or reached but running an older
@@ -96,8 +95,6 @@ export function chiefPageView(input: {
   readonly hq: "official" | "reading" | "none" | "behind";
   /** The person may make the project a Chief lives in (HQ's `create_app`). */
   readonly mayCreate: boolean;
-  /** The person is an Owner or Admin, who alone mark the organization's Chief (`PUT /api/chief`). */
-  readonly mayMark: boolean;
 }): ChiefPageView {
   const { setup, own } = input;
   if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
@@ -110,25 +107,10 @@ export function chiefPageView(input: {
       ? HQ_READING
       : input.hq === "behind"
         ? HQ_BEHIND
-        : !input.mayMark
-          ? MAY_NOT_MARK
-          : input.mayCreate
-            ? undefined
-            : MAY_NOT_CREATE;
+        : input.mayCreate
+          ? undefined
+          : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
-}
-
-/** The Chief's one name in the menu, by its organization: "Acme's Chief"; "Chief" before it is known. */
-export function chiefRowName(organization: string | null): string {
-  return organization === null ? "Chief" : `${organization}'s Chief`;
-}
-
-/** Only an Owner or Admin, known as one, finds Remove as Chief on the Chief's menu. */
-export function mayRemoveChief(capabilities: {
-  readonly membershipKnown: boolean;
-  readonly manageOrganization: boolean;
-}): boolean {
-  return capabilities.membershipKnown && capabilities.manageOrganization;
 }
 
 /**

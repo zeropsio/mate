@@ -1,7 +1,7 @@
 /**
  * A proposal: what a Zerops tool asks the person to approve. The Chief's organization tools
  * (`zerops_org_*`) propose changes to the organization; a project's Mate proposes asking the
- * organization's Chief (`zerops_propose_ask_chief`). Those tools never act. Each returns one document
+ * person's Chief (`zerops_propose_ask_chief`). Those tools never act. Each returns one document
  * with a top-level `proposal`; the person approves or declines it on its card, and the client
  * carries out an approved one as the person. The contract is zcp's (`../zcp/docs/spec-mate.md`,
  * org mode).

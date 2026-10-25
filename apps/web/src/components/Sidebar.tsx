@@ -1,4 +1,4 @@
-import { chiefCandidateAtom } from "~/zerops/useZeropsCandidates";
+import { ownChiefCandidateAtom } from "~/zerops/useZeropsCandidates";
 import {
   shownHqMateDirectoryAtom,
   isListedMateEnvironment,
@@ -226,7 +226,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
-import { useChiefRemoval, useOrgChief } from "~/zerops/orgChief";
+import { useOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
@@ -1876,8 +1876,8 @@ export default function Sidebar() {
   // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
   const newProjectRoute = useMatch({ from: "/_chat/mate/new/$birthId", shouldThrow: false });
-  // The organization's Chief, kept out of the listing for a top of its own.
-  const zeropsChief = useAtomValue(chiefCandidateAtom);
+  // The person's Chief, kept out of the listing for a top of its own.
+  const zeropsChief = useAtomValue(ownChiefCandidateAtom);
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
@@ -1974,7 +1974,7 @@ export default function Sidebar() {
     },
     [askMateToFix, isMobile, setOpenMobile],
   );
-  // The menu's top row is the organization's Chief: its conversation once it is listed, else the Chief
+  // The menu's top row is the person's Chief: its conversation once it is listed, else the Chief
   // page, where it is set up. An organization without an HQ holds no Chief: its top is the mark.
   const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const zeropsChiefPageOpen = useLocation({ select: (location) => location.pathname === "/chief" });
@@ -1988,8 +1988,7 @@ export default function Sidebar() {
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
-  const orgChief = useOrgChief();
-  const removeChief = useChiefRemoval();
+  const ownChief = useOwnChief();
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2730,14 +2729,14 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The menu's top: the organization's Chief, as the open menu's row or the rail's tile — once it exists
+  // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
   // or is being set up. Before that the account menu offers it (`chiefOffered`), and its place
   // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =
     zeropsSignedIn &&
     zeropsHoldsChief &&
     chiefTopShown({
-      own: zeropsChief === undefined ? orgChief : zeropsChief.project.id,
+      own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
       setup: chiefSetupLine,
     });
   const zeropsChiefTop = (tile: boolean) =>
@@ -2758,7 +2757,6 @@ export default function Sidebar() {
         waiting={
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }
-        onRemove={removeChief}
       />
     ) : undefined;
   // Search and the +, on the open menu's top row and under the rail's Chief.

@@ -1,4 +1,3 @@
-import type { HqPersonFacts } from "@t3tools/shared/hqStream";
 import { initialContainer } from "../../zerops/environments/containerMachine.ts";
 import { initialEnvironment } from "../../zerops/environments/environmentMachine.ts";
 import { mateLinkScope } from "../families/mateLink.ts";
@@ -43,7 +42,7 @@ afterEach(() => {
   fixture.store.close();
   fixture.registry.dispose();
 });
-function seed(viewer: Omit<HqPersonFacts, "chief" | "chiefProjectId"> = person) {
+function seed(chief: "mine" | "another" = "mine") {
   seedHqNavigation(fixture.store, ORG, {
     structure: {
       apps: [
@@ -92,22 +91,12 @@ function seed(viewer: Omit<HqPersonFacts, "chief" | "chiefProjectId"> = person) 
           name: "Chief",
           kind: "mate",
           mate: { face: "" },
-          person: { ...viewer, chiefProjectId: "chief", chief: "org" },
+          person: { ...person, chief },
         },
       },
     ],
   });
 }
-
-it("every member whose navigation holds the organisation's Chief receives it, not only who set its mark", () => {
-  seed({ ...person, role: "BASIC_USER", mayWrite: false, mine: false, ownerUserId: "other" });
-  show();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toMatchObject({
-    kind: "present",
-    projectId: "chief",
-  });
-  expect(Object.keys(fixture.registry.get(shownHqMateDirectoryAtom).mates)).toEqual(["ordinary"]);
-});
 
 it("Mate list identities exclude the viewer's Chief at the data layer", () => {
   seed();
@@ -127,7 +116,7 @@ function show(orgId: string | null = ORG) {
 it("The header receives my Chief separately while every Mate list excludes Chiefs", () => {
   seed();
   show();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toMatchObject({
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toMatchObject({
     kind: "present",
     projectId: "chief",
   });
@@ -154,15 +143,9 @@ it("The header receives my Chief separately while every Mate list excludes Chief
 });
 
 it("Another person's Chief from an older Core is never an ordinary Mate", () => {
-  seed();
+  seed("another");
   show();
-  liveProjects(ORG, [
-    { id: "ordinary", tagList: ["mate"] },
-    { id: "older", tagList: ["mate", "chief"] },
-  ]).forEach(fixture.store.dispatch);
-  expect(fixture.registry.get(shownMateListProjectsAtom).projects.map(({ id }) => id)).toEqual([
-    "ordinary",
-  ]);
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "absent" });
   expect(Object.keys(fixture.registry.get(shownHqListedMateIdentitiesAtom))).toEqual(["ordinary"]);
   expect(
     fixture.registry.get(shownHqListNavigationAtom).structure?.apps.map((app) => app.id),
@@ -179,15 +162,15 @@ it("A tagged Chief being created or failed stays out of the platform Mate list b
   expect(fixture.registry.get(shownMateListProjectsAtom).projects.map(({ id }) => id)).toEqual([
     "ordinary",
   ]);
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "unknown" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "unknown" });
 });
 
 it("Chief ownership arriving after first paint updates the header and all ordinary lists together", () => {
   show();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "unknown" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "unknown" });
   expect(fixture.registry.get(shownHqListNavigationAtom).structure).toBeNull();
   seed();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toMatchObject({
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toMatchObject({
     kind: "present",
     projectId: "chief",
   });
@@ -208,29 +191,29 @@ it("An explicitly deleted Chief leaves the header without entering the Mate list
     rows: [],
     removals: [{ family: "placement", id: "chief", reason: "deleted" }],
   });
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "absent" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "absent" });
   expect(Object.keys(fixture.registry.get(shownHqListedMateIdentitiesAtom))).toEqual(["ordinary"]);
 });
 
 it("Switching organizations never carries the previous organization's personal Chief", () => {
   seed();
   show();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toMatchObject({
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toMatchObject({
     kind: "present",
     projectId: "chief",
   });
   show("other-org");
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "unknown" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "unknown" });
   expect(fixture.registry.get(shownHqListNavigationAtom).structure).toBeNull();
   seedHqNavigation(fixture.store, "other-org", { structure: { apps: [], ungrouped: [] } });
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "absent" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "absent" });
   show();
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toMatchObject({
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toMatchObject({
     kind: "present",
     projectId: "chief",
   });
   show(null);
-  expect(fixture.registry.get(shownHqMateDirectoryAtom).chief).toEqual({ kind: "unknown" });
+  expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "unknown" });
 });
 
 it("A Chief's kept connection stays out of search before HQ sends its environment identity", () => {

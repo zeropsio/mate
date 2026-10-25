@@ -1,7 +1,8 @@
 /**
- * Setting up the organization's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project
- * that makes its project and container, and HQ's mark on it. The Chief page shows it and presses it (`ChiefPage`); the runner is mounted once,
- * above every view (`ChiefSetupHost`), so its steps run on wherever the person goes.
+ * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
+ * makes its project and container, and HQ's registration of it. The Chief page shows it and presses
+ * it (`ChiefPage`); the runner is mounted once, above every view (`ChiefSetupHost`), so its steps
+ * run on wherever the person goes.
  *
  * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
@@ -28,7 +29,7 @@ import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
-import { useOrgChief } from "./orgChief";
+import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -79,7 +80,7 @@ export function useChiefSetup(): ChiefSetupState {
  * a Chief is a project of their own, so a role that may not create projects is offered none.
  */
 export function useChiefSetupEntry(): boolean {
-  const own = useOrgChief();
+  const own = useHqOwnChief();
   const { setup } = useChiefSetup();
   const offered = useRoleOffers().setUpChief;
   return offered && chiefSetupEntry(own, setup.phase);
@@ -99,7 +100,7 @@ export function useChiefOffer(): boolean {
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */
 export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
-  const own = useOrgChief();
+  const own = useOwnChief();
   const { setup } = useChiefSetup();
   const mayCreate = useOrgOffers()("create_app").kind === "allowed";
   return chiefSetupLine({ own, mayCreate, setup: setup.phase });
@@ -109,10 +110,9 @@ export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
 const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 
 /**
- * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ marks it
- * as the organization's Chief; *Try again* resumes the step that stopped. Mounted
- * once, above every view: its presses reach the page through `startChiefSetup` and
- * `tryChiefSetupAgain`.
+ * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ registers
+ * it as the person's Chief; *Try again* resumes the step that stopped. Mounted once, above every
+ * view: its presses reach the page through `startChiefSetup` and `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
   readonly start: () => void;
@@ -124,7 +124,7 @@ export function useChiefSetupRunner(): {
   const operations = useAccountOperationsOptional();
   const runNewProject = useRunNewProject();
   const { setup, orgId } = useChiefSetupStore();
-  const own = useOrgChief();
+  const own = useOwnChief();
   const birthId = setup.phase === "idle" ? null : setup.birthId;
   const creation = useCreation(birthId ?? "");
   const presses = useMatePresses();

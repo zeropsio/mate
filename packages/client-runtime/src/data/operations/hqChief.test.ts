@@ -1,5 +1,5 @@
 /**
- * The organisation's Chief mark set at HQ, and one decision on a proposal, as the account's
+ * The person's Chief registered at HQ, and one decision on a proposal, as the account's
  * operations send them: HQ answers each at once, and a proposal HQ holds another decision of
  * already is refused as decided.
  */
@@ -15,7 +15,7 @@ import type { HqProposalDecision } from "../../zerops/hq/chief.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
-const MARK = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
+const REGISTERED = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
 
 const DECIDED: HqProposalDecision = {
   id: "prop-1",
@@ -46,13 +46,13 @@ const progress = (store: AccountStore) =>
 const receipt = (store: AccountStore) => store.state().operations.get("r1")?.receipt;
 
 describe("a Chief recorded at HQ", () => {
-  it.effect("ends with the organisation's mark HQ answered", () =>
+  it.effect("ends with the registration HQ answered", () =>
     Effect.gen(function* () {
       const asked: string[] = [];
       const { store, operations } = account({
         setChief: async (projectId) => {
           asked.push(projectId);
-          return MARK;
+          return REGISTERED;
         },
       });
       yield* operations.submit({ kind: "set-chief", orgId: ORG, projectId: "p-chief" });
@@ -60,7 +60,7 @@ describe("a Chief recorded at HQ", () => {
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
       expect(receipt(store)?.acceptance).toEqual({
         kind: "accepted",
-        result: MARK,
+        result: REGISTERED,
       });
     }),
   );
@@ -81,22 +81,6 @@ describe("a Chief recorded at HQ", () => {
         stage: "refused",
         reason: "Only the project's admin can make it a Chief.",
       });
-    }),
-  );
-});
-
-describe("a Chief mark removed at HQ", () => {
-  it.effect("ends when HQ answers it holds no mark", () =>
-    Effect.gen(function* () {
-      let removed = 0;
-      const { store, operations } = account({
-        removeChief: async () => {
-          removed += 1;
-        },
-      });
-      yield* operations.submit({ kind: "remove-chief", orgId: ORG });
-      expect(removed).toBe(1);
-      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
   );
 });

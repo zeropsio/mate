@@ -1,4 +1,4 @@
-/** The organisation's Chief has a dedicated record; every general Mate list reads this partition. */
+/** Personal Chiefs have a dedicated record; every general Mate list reads this partition. */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { zeropsStructure } from "../../zerops/hq/structure.ts";
@@ -12,26 +12,25 @@ import { hqMateOverview, hqMates } from "./hqMates.ts";
 import { canonicalHqMenuNavigation } from "./hqNavigation.ts";
 import { organizationProjects } from "./projects.ts";
 
-/** The organisation's Chief as this reader's navigation holds it: the entry HQ marks `org`. */
-export type DirectoryChief =
+export type MyChief =
   | { readonly kind: "unknown" }
   | { readonly kind: "absent" }
   | { readonly kind: "present"; readonly projectId: string; readonly placement: PlacementValue };
 export interface HqMateDirectory {
-  readonly chief: DirectoryChief;
+  readonly myChief: MyChief;
   readonly mates: Readonly<Record<string, PlacementValue>>;
   readonly chiefProjectIds: ReadonlyArray<string>;
   readonly chiefEnvironmentIds: ReadonlyArray<EnvironmentId>;
 }
 
 export const EMPTY_MATE_DIRECTORY: HqMateDirectory = {
-  chief: { kind: "unknown" },
+  myChief: { kind: "unknown" },
   mates: {},
   chiefProjectIds: [],
   chiefEnvironmentIds: [],
 };
 
-/** Tags classify a Chief before its mark is read; HQ's `chief: "org"` names the organisation's. */
+/** Tags classify a Chief before registration; only HQ's personal fact identifies its owner. */
 export function isListedMateProject(
   directory: HqMateDirectory,
   project: Pick<ZeropsProject, "id" | "tagList">,
@@ -52,7 +51,7 @@ export const hqMateDirectory: Projection<string, HqMateDirectory> = {
     const scope = placementsScope(orgId);
     const chiefs = new Set<string>();
     const placements: Record<string, PlacementValue> = {};
-    let marked: Extract<DirectoryChief, { kind: "present" }> | undefined;
+    let own: Extract<MyChief, { kind: "present" }> | undefined;
     let unknown = read.coverage(scope) !== "complete";
     for (const id of read.members(scope).ids) {
       const fact = read.fact("placement", id);
@@ -62,8 +61,8 @@ export const hqMateDirectory: Projection<string, HqMateDirectory> = {
       }
       placements[id] = fact.value;
       if (fact.value.person?.chief !== undefined) chiefs.add(id);
-      if (fact.value.person?.chief === "org")
-        marked = { kind: "present", projectId: id, placement: fact.value };
+      if (fact.value.person?.chief === "mine")
+        own = { kind: "present", projectId: id, placement: fact.value };
     }
     for (const id of read.members(projectsScope(orgId)).ids) {
       const project = read.fact("project", id);
@@ -86,7 +85,7 @@ export const hqMateDirectory: Projection<string, HqMateDirectory> = {
       }
     }
     return {
-      chief: marked ?? { kind: unknown ? "unknown" : "absent" },
+      myChief: own ?? { kind: unknown ? "unknown" : "absent" },
       mates: Object.fromEntries(Object.entries(placements).filter(([id]) => !chiefs.has(id))),
       chiefProjectIds,
       chiefEnvironmentIds: [...chiefEnvironmentIds],
