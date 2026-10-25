@@ -934,10 +934,12 @@ describe("deploys", () => {
                 ),
                 (fd) => Effect.sync(() => NodeFS.closeSync(fd)),
               );
+              const startedFifo = NodePath.join(remote, "started");
+              NodeChildProcess.execFileSync("mkfifo", [startedFifo]);
               const hook = NodePath.join(remote, "hooks/pre-receive");
               NodeFS.writeFileSync(
                 hook,
-                `#!/bin/sh\nread old new ref\nprintf '%s\\n' "$new" > '${remote}/submitted'\nread gate < '${fifo}'\n`,
+                `#!/bin/sh\nread old new ref\nprintf '%s\\n' "$new" > '${remote}/submitted'\nprintf '%s\\n' "$new" > '${startedFifo}'\nread gate < '${fifo}'\n`,
                 { mode: 0o700 },
               );
               const first = yield* commit("code", { "README.md": "one" });
@@ -954,33 +956,11 @@ describe("deploys", () => {
                 Stream.runDrain,
                 Effect.timeout("10 seconds"),
               );
-              yield* Effect.promise(
-                () =>
-                  new Promise<void>((resolve, reject) => {
-                    const signal = AbortSignal.timeout(10_000);
-                    const watcher = NodeFS.watch(remote, () => read());
-                    const abort = () => {
-                      watcher.close();
-                      reject(new Error("Remote hook did not start"));
-                    };
-                    signal.addEventListener("abort", abort, { once: true });
-                    const read = () => {
-                      try {
-                        if (
-                          NodeFS.readFileSync(NodePath.join(remote, "submitted"), "utf8").trim() !==
-                          first
-                        )
-                          return;
-                      } catch {
-                        return;
-                      }
-                      watcher.close();
-                      signal.removeEventListener("abort", abort);
-                      resolve();
-                    };
-                    read();
-                  }),
-              );
+              // The hook's own receipt: opening the FIFO for reading returns once the hook has
+              // written the sha it received, so no filesystem event or timer is involved.
+              expect(
+                (yield* Effect.promise(() => NodeFS.promises.readFile(startedFifo, "utf8"))).trim(),
+              ).toBe(first);
               const second = yield* commit("code", { "README.md": "two" });
               yield* planned;
               const third = yield* commit("code", { "README.md": "three" });
