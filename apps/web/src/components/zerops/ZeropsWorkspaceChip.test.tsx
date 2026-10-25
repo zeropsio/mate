@@ -287,3 +287,43 @@ describe("the workspace chip of a person who only reads along", () => {
     expect(listHtml).not.toContain("data-zerops-workspace-release");
   });
 });
+
+// Review r3-15: a list of buttons all named "Release" tells a screen reader nothing of which
+// workspace each one releases.
+describe("the workspace chip's Release, as a screen reader names it", () => {
+  beforeEach(() => {
+    feeds.lifecycle = undefined;
+    feeds.asked = [];
+  });
+
+  it("Every Release is named by the workspace it releases", () => {
+    feeds.lifecycle = lifecycleReading([
+      readLease(3, { fileCount: 0, unpushedCommits: 0 }),
+      parkedLease,
+      silentLease,
+    ]);
+    const releases = (html: string) =>
+      [...html.matchAll(/<button[^>]*data-zerops-workspace-release[^>]*>/gu)].map(
+        ([button]) => button.match(/aria-label="([^"]*)"/u)?.[1],
+      );
+    expect(releases(chip(turnAt(hoursAgo(5))))).toEqual(["Release workspace webpool-3"]);
+    expect(
+      releases(
+        renderToStaticMarkup(
+          <ZeropsWorkspaceList
+            environmentId={ENVIRONMENT}
+            latestTurn={turnAt(hoursAgo(5))}
+            lease={LEASE}
+            mateName="Kara"
+            onClose={() => {}}
+            threadId={THREAD}
+          />,
+        ),
+      ),
+    ).toEqual([
+      "Release workspace webpool-3",
+      "Release workspace apipool-2",
+      "Release workspace webpool-5",
+    ]);
+  });
+});
