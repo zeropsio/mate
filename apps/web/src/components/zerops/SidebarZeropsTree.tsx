@@ -169,6 +169,7 @@ import {
   useMateAwayNow,
   useMateOfflineSince,
   useMateLinkedInHq,
+  useMateOverviewInHq,
   useMatesLinkedInHq,
 } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -3340,6 +3341,7 @@ function useMateRowState<T extends RosterCandidate>({
   // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
   const linkedInHq = useMateLinkedInHq(candidate.project.id);
+  const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const linkedNow = candidate.group === "connected" || linkedInHq;
   const placedKnown = useAtomValue(menuPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
@@ -3403,6 +3405,7 @@ function useMateRowState<T extends RosterCandidate>({
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
+    overview: overviewInHq,
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,
@@ -4901,6 +4904,7 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
     records: { named: false, signedIn: false },
     asked: true,
     hqSigners: "none",
+    overview: "live",
   }).seat,
   false,
 );

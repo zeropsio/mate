@@ -1,3 +1,4 @@
+import type { MatePresence } from "@t3tools/shared/hqMates";
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -178,6 +179,12 @@ export function mateOwnerView(input: {
    * or `undefined` while HQ has not said — then the row says nothing of a sign-in.
    */
   readonly hqSigners: "some" | "none" | undefined;
+  /**
+   * What HQ holds of the Mate (its presence's `overview`), `undefined` with no presence at all.
+   * Whether anybody signed its agent in is HQ's to say only once it has heard the Mate (`live` or
+   * `stored`); otherwise the row says nothing of a sign-in.
+   */
+  readonly overview: MatePresence["overview"] | undefined;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
@@ -201,6 +208,7 @@ export function mateOwnerView(input: {
   if (
     records.signedIn ||
     input.hqSigners !== "none" ||
+    (input.overview !== "live" && input.overview !== "stored") ||
     input.asked ||
     records.runsWithoutSignIn === true
   ) {
