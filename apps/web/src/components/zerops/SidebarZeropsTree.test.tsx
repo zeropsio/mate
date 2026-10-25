@@ -1,3 +1,4 @@
+import { HQ_SLOW } from "@t3tools/client-runtime/data";
 import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import {
@@ -702,10 +703,13 @@ describe("SidebarZeropsTree", () => {
 
   // The menu's header says it instead (the owner, 2026-10-05: a notice pushed the menu down and
   // back on every reconnect): a spinner while HQ's first read catches up, and words — in view,
-  // not only in a tooltip — once what HQ said is no longer current, or it never answered.
+  // not only in a tooltip — once what HQ said is no longer current, it never answered, or it is
+  // slow on a connection that holds (a spinner beside those words, and nothing to try again).
   it.each([
     ["syncing", false, null, false],
     ["syncing", true, null, false],
+    ["slow", false, HQ_SLOW, false],
+    ["slow", true, HQ_SLOW, false],
     ["last-known", false, "HQ is not reachable since 14:05 — showing what it last said.", false],
     ["last-known", true, "HQ is not reachable since 14:05 — showing what it last said.", true],
     ["unavailable", false, "HQ unavailable", false],
@@ -714,7 +718,9 @@ describe("SidebarZeropsTree", () => {
     const line =
       kind === "unavailable"
         ? "HQ unavailable"
-        : "HQ is not reachable since 14:05 — showing what it last said.";
+        : kind === "slow"
+          ? HQ_SLOW
+          : "HQ is not reachable since 14:05 — showing what it last said.";
     const html = renderToStaticMarkup(
       <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
     );

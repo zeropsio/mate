@@ -24,12 +24,12 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** How the menu says HQ's standing: `null` while it answers, or before anything is known. */
 export interface HqOutage {
   /**
-   * `syncing`: its first read is catching up, nothing of it shown yet, or HQ is slow on a
-   * connection that holds — nothing to try again, it is working; `last-known`: what it last
+   * `syncing`: its first read is catching up, nothing of it shown yet; `slow`: HQ's connection
+   * holds and it is still working — nothing to try again; `last-known`: what it last
    * said stands; `unavailable`: retries have reached their backoff cap before it ever answered;
    * `refused`: HQ's actual refusal and the next action, whether or not it answered before.
    */
-  readonly kind: "syncing" | "last-known" | "unavailable" | "refused";
+  readonly kind: "syncing" | "slow" | "last-known" | "unavailable" | "refused";
   readonly line: string;
   /** Whether the person's *Try again* is offered: HQ refused, or its retries are capped. */
   readonly again: boolean;
@@ -58,7 +58,7 @@ export function hqOutage(
       line: `${navigation.refusal}${read ? " Showing what HQ last said." : ""}`,
       again: true,
     };
-  if (navigation.slow) return { kind: "syncing", line: HQ_SLOW, again: false };
+  if (navigation.slow) return { kind: "slow", line: HQ_SLOW, again: false };
   const stopped = navigation.capped;
   if (!stopped && !navigation.reconnecting) return null;
   const since =

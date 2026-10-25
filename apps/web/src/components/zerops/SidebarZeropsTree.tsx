@@ -2398,7 +2398,8 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
  */
 /**
  * How current the menu is while HQ is not answering it (`hqOutage`, SPEC §6.2.3), in the header
- * row: a spinner while HQ's first read catches up; in words once what HQ said is no longer current
+ * row: a spinner while HQ's first read catches up; a spinner and its words while HQ is slow on a
+ * connection that holds, with nothing to try again; in words once what HQ said is no longer current
  * ("HQ is not reachable — showing what it last said") or it never answered ("HQ unavailable") —
  * the whole line in its tooltip, and *Try again* on a press where it is offered. Never a line above
  * the list: the owner, 2026-10-05, of one that pushed the menu down and back on every reconnect.
@@ -2418,7 +2419,10 @@ export function SidebarHqStatus({
    *  its tooltip (the owner, 2026-10-12, of the line drawn over the Chief's mark). */
   readonly compact?: boolean;
 }) {
-  const again = kind === "syncing" ? undefined : onAgain;
+  // Catching up or slow, HQ is working: nothing to try again.
+  const working = kind === "syncing" || kind === "slow";
+  const again = working ? undefined : onAgain;
+  const spinner = <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />;
   if (compact && kind !== "syncing") {
     return (
       <Tooltip>
@@ -2440,7 +2444,7 @@ export function SidebarHqStatus({
             )
           }
         >
-          <CloudOffIcon aria-hidden="true" className="size-4" />
+          {kind === "slow" ? spinner : <CloudOffIcon aria-hidden="true" className="size-4" />}
           <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
         </TooltipTrigger>
         <TooltipPopup side="bottom">
@@ -2458,13 +2462,13 @@ export function SidebarHqStatus({
           render={
             again === undefined ? (
               <span
-                className={cn("inline-flex items-center", fit)}
+                className={cn("inline-flex items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
                 role="status"
               />
             ) : (
               <button
-                className={cn("inline-flex cursor-pointer items-center", fit)}
+                className={cn("inline-flex cursor-pointer items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={again}
                 type="button"
@@ -2472,9 +2476,8 @@ export function SidebarHqStatus({
             )
           }
         >
-          {kind === "syncing" ? (
-            <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
-          ) : (
+          {working ? spinner : null}
+          {kind === "syncing" ? null : (
             <span
               aria-hidden="true"
               className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
@@ -2488,7 +2491,7 @@ export function SidebarHqStatus({
           {again === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>
-      {kind === "syncing" || serviceUrl === undefined ? null : (
+      {working || serviceUrl === undefined ? null : (
         <a
           className="text-xs text-sidebar-muted-foreground underline"
           href={serviceUrl}

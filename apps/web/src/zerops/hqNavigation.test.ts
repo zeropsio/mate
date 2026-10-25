@@ -56,13 +56,13 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
       "slow on a connection that holds, before it ever read",
       { ...NOT_READ_HQ, read: "reading", slow: true },
       null,
-      { kind: "syncing", line: HQ_SLOW, again: false },
+      { kind: "slow", line: HQ_SLOW, again: false },
     ],
     [
       "slow to confirm again what it read",
       read({ reconnecting: true, slow: true }),
       at(14, 5),
-      { kind: "syncing", line: HQ_SLOW, again: false },
+      { kind: "slow", line: HQ_SLOW, again: false },
     ],
     [
       "refused before it ever read",
