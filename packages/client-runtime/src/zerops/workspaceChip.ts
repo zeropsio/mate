@@ -32,6 +32,17 @@ import type { AtomCommandResult } from "../state/runtime.ts";
 import { type CheckoutLease, checkoutLabel } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 
+/**
+ * The Mate's leases as one of its conversations' lifecycles last read them (`leases[]` on the
+ * lifecycle's envelope); `undefined` while it is not read, or before that conversation made a
+ * Zerops call: not read, never none.
+ */
+export function lifecycleLeases(
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsLease> | undefined {
+  return lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
+}
+
 /** How long a workspace goes with nothing happening in it before it is idle: the owner's 24 h. */
 export const ZEROPS_LEASE_IDLE_AFTER_MS = 24 * 60 * 60 * 1000;
 

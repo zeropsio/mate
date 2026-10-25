@@ -11,6 +11,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { lifecycleLeases } from "@t3tools/client-runtime/zerops";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
@@ -33,7 +34,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
           input: { threadId: thread.threadId },
         }),
       );
-      read[projectId] = lifecycle.state === "known" ? lifecycle.value.envelope?.leases : undefined;
+      read[projectId] = lifecycleLeases(lifecycle);
     }
     return read;
   }).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:sites-leases"));

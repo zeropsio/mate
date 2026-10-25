@@ -287,6 +287,7 @@ export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIden
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   boundLeaseRead,
+  lifecycleLeases,
   mateWorkspaceList,
   sendZeropsReleaseRequest,
   workspaceChip,
