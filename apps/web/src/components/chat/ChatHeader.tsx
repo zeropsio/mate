@@ -680,8 +680,9 @@ export const ChatHeader = memo(function ChatHeader({
                 timestampFormat={settings.timestampFormat}
               />
             )}
-            {/* A conversation bound to a lease: when its workspace was last active, what a
-              release would lose there, whether it is idle, and a Release that asks first —
+            {/* A conversation bound to a lease: its workspace by name, when it was last
+              active, what a release would lose there, whether it is idle, how many other
+              workspaces the Mate holds (pressed, it lists them), and a Release that asks first —
               where the header has room. */}
             {activeThreadShell?.lease == null ? null : (
               <span className="hidden shrink-0 @3xl/header-actions:block">
@@ -689,6 +690,7 @@ export const ChatHeader = memo(function ChatHeader({
                   environmentId={activeThreadEnvironmentId}
                   latestTurn={activeThreadShell.latestTurn}
                   lease={activeThreadShell.lease}
+                  mateName={mate?.name}
                   threadId={activeThreadId}
                 />
               </span>
