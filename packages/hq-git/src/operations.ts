@@ -1382,7 +1382,11 @@ export const makeOperations = (
           reason: "no_main",
           message: "Main has no commit",
         });
-      const base = await text(dir, ["merge-base", main, head], signal);
+      // A change sharing no history with main reads against main: all it would make main hold.
+      const base =
+        (await run(dir, ["merge-base", main, head], signal, undefined, undefined, [1]))
+          .toString()
+          .trim() || main;
       const result = await prefix(
         dir,
         ["diff", "--no-renames", "--numstat", "-z", base, head, "--"],
