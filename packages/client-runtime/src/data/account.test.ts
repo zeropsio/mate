@@ -207,6 +207,8 @@ describe("observeAccount", () => {
 
         account.rereadListing("other-org");
         account.rereadListing("org");
+        // The read asked again is under way: the listing's last answer is no longer its current one.
+        yield* until(store, () => listing().phase !== "live", "the listing to be read again");
         yield* until(
           store,
           () => listing().phase === "live" && listing().generation > generation,
