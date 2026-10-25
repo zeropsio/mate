@@ -32,7 +32,7 @@ const input = vi.hoisted(() => {
     pr: null,
   });
   const checkout = (name: string, changed: number, aheadOfMain: number) => ({
-    repository: { name, cwd: `/var/www/${name}` },
+    repository: { name, label: name, cwd: `/var/www/${name}` },
     status: status(changed, aheadOfMain),
   });
   return {

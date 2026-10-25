@@ -135,7 +135,7 @@ it("a thread bound to a lease diffs that lease's repository alone, named by its 
     null,
     async (latest) => {
       expect(latest()?.map(({ repository }) => repository)).toEqual([
-        { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
+        { name: "webpool-3", label: "webpool · feat-x", cwd: "/var/www/webpool-3" },
       ]);
     },
     [{ alias: "webpool-3", pool: "webpool", branch: "feat-x" }],
@@ -150,8 +150,8 @@ it("a thread bound to a lease of a branch held on several pools diffs every leas
     null,
     async (latest) => {
       expect(latest()?.map(({ repository }) => repository)).toEqual([
-        { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
-        { name: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
+        { name: "webpool-3", label: "webpool · feat-x", cwd: "/var/www/webpool-3" },
+        { name: "hqpool-2", label: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
       ]);
     },
     [
@@ -166,7 +166,7 @@ it("a thread bound to no lease diffs the Mate's checkouts, never another thread'
   mate.statuses.set("/var/www/webpool-3", { isRepo: true, refName: "feat-x" });
   await readRepositories(null, async (latest) => {
     expect(latest()?.map(({ repository }) => repository)).toEqual([
-      { name: "apidev", cwd: "/var/www/apidev" },
+      { name: "apidev", label: "apidev", cwd: "/var/www/apidev" },
     ]);
   });
 });
@@ -194,7 +194,7 @@ it("a part migrated to a dev pool is never read as a checkout: Diff asks git not
   mate.statuses.set("/var/www/apidev", { isRepo: true, refName: "main" });
   await readRepositories(null, async (latest) => {
     expect(latest()?.map(({ repository }) => repository)).toEqual([
-      { name: "apidev", cwd: "/var/www/apidev" },
+      { name: "apidev", label: "apidev", cwd: "/var/www/apidev" },
     ]);
     expect(mate.atoms.has("/var/www/appstage")).toBe(false);
   });
