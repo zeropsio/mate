@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a set is files: its manifest, records and bundles.
 /**
  * The checks the shared HQ's legacy import (zeropsio/mate-hq `apps/hq/src/legacyImport.ts`,
- * `readLegacySet` and the table check `convertLegacySet` opens with, as of 044c60eda7) runs on a
+ * `readLegacySet` and the table check `convertLegacySet` opens with, as of 361c474d3f) runs on a
  * set before it converts a row, ported as they stand there: a set they refuse is one that import
  * refuses. Change this file only together with that one.
  *
@@ -14,8 +14,8 @@ import * as NodePath from "node:path";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-/** The last migration of today's HQ the import takes a set at. */
-export const LEGACY_MIGRATION = "0083_repo_upstream.sql";
+/** The last migrations of today's HQ the import takes a set at, before and after its Chief mark. */
+const LEGACY_MIGRATIONS: ReadonlyArray<string> = ["0083_repo_upstream.sql", "0084_chief_mark.sql"];
 
 /** Every table of today's HQ the import maps or deliberately drops (`LEGACY_TABLES` there). */
 export const LEGACY_TABLES: ReadonlyArray<string> = [
@@ -29,6 +29,7 @@ export const LEGACY_TABLES: ReadonlyArray<string> = [
   "hq_change_comment",
   "hq_change_mirror",
   "hq_chief",
+  "hq_chief_mark",
   "hq_chief_proposal",
   "hq_deploy_job",
   "hq_deploy_token",
@@ -177,8 +178,8 @@ export const legacySetRefusal = async (
       tables.set(entry.table, rows);
     }
     const migrations = (tables.get("hq_migration") ?? []).map((row) => String(row["name"]));
-    if (migrations.toSorted().at(-1) !== LEGACY_MIGRATION)
-      refuse(`the set is not at today's last migration, ${LEGACY_MIGRATION}`);
+    if (!LEGACY_MIGRATIONS.includes(migrations.toSorted().at(-1) ?? ""))
+      refuse(`the set is not at today's last migration, ${LEGACY_MIGRATIONS.join(" or ")}`);
     for (const table of tables.keys())
       if (!LEGACY_TABLES.includes(table)) refuse(`${table} is no table of today's HQ`);
     return { tables };
