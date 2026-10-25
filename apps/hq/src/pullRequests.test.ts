@@ -1256,6 +1256,58 @@ describe("a change's pull request", () => {
         }),
     );
 
+    it.effect.each([
+      ["a person closes it in Mate", "person"],
+      ["its Mate closes it", "mate"],
+    ] as const)(
+      "a change on a branch its Mate named closes its pull request on GitHub as it closes: %s",
+      ([_who, by]) =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          // Off any task, the Mate opens a change on a branch it names, and describes it.
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea", branch: "fix-x" },
+          });
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD} WHERE repo = 'web' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/web/1", {
+            headers: core.robot.auth,
+            body: { body: "Boils the water twice." },
+          });
+          const [made] = yield* asked(core, "POST", "/repos/acme/tea-shop/pulls");
+          assert.strictEqual((made!.body as { head: string }).head, "fix-x");
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 2,
+          );
+          // The test's head is HQ's record alone, never pushed to git: the close reviews none.
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed =
+            by === "person"
+              ? yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/close`, {
+                  session: core.owner,
+                  body: { expectedHead: null },
+                })
+              : yield* core.call("POST", "/api/mate/changes/web/1/close", {
+                  headers: core.robot.auth,
+                });
+          assert.strictEqual(closed.status, 200);
+          yield* core.github.seenWhere("closed on GitHub", (seen) =>
+            seen.some(
+              (request) =>
+                request.method === "PATCH" &&
+                request.path === PULL &&
+                (request.body as { state?: string }).state === "closed",
+            ),
+          );
+        }),
+    );
+
     it.effect("Close in Mate closes the pull request on GitHub with a line saying so", () =>
       Effect.gen(function* () {
         const core = yield* mirroredPool;
