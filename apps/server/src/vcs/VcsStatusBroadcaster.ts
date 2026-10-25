@@ -166,7 +166,8 @@ export class VcsStatusBroadcaster extends Context.Service<
     readonly refreshStatus: (cwd: string) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
     /**
      * Another repository may sit at `cwd` now (a lease's checkout bound or released): nothing kept
-     * of the one before is served again, and whoever watches `cwd` hears it read afresh.
+     * of the one before is served again, and whoever watches `cwd` hears it read afresh. Returns at
+     * once; the forget and the read run on the broadcaster's own fiber.
      */
     readonly forgetStatus: (cwd: string) => Effect.Effect<void>;
     readonly streamStatus: (
@@ -415,9 +416,7 @@ export const make = Effect.gen(function* () {
     return yield* updateCachedStatus(cwd, began, local, remote, { publish: true });
   });
 
-  const forgetStatus: VcsStatusBroadcaster["Service"]["forgetStatus"] = Effect.fn(
-    "VcsStatusBroadcaster.forgetStatus",
-  )(function* (rawCwd) {
+  const forget = Effect.fn("VcsStatusBroadcaster.forgetStatus")(function* (rawCwd: string) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
     yield* workflow.forgetRepository(cwd);
     const began = yield* Ref.modify(cacheRef, (cache) => {
@@ -426,18 +425,22 @@ export const make = Effect.gen(function* () {
       entries.delete(cwd);
       return [count, { entries, forgotten: new Map(cache.forgotten).set(cwd, count) }] as const;
     });
-    // Read afresh for whoever watches, off the caller's fiber: the repository may be on another
-    // container, and a forget is told from a feed that must not wait on its ssh.
-    yield* Effect.all([readLocal(cwd), workflow.remoteStatus({ cwd })], {
+    // Read afresh for whoever watches.
+    const [local, remote] = yield* Effect.all([readLocal(cwd), workflow.remoteStatus({ cwd })], {
       concurrency: "unbounded",
-    }).pipe(
-      Effect.flatMap(([local, remote]) =>
-        updateCachedStatus(cwd, began, local, remote, { publish: true }),
-      ),
+    });
+    yield* updateCachedStatus(cwd, began, local, remote, { publish: true });
+  });
+
+  // All of it off the caller's fiber, the path's own resolution included: the checkout may sit
+  // behind a mount that stopped answering, and a forget is told from a feed whose one fiber serves
+  // every thread.
+  const forgetStatus: VcsStatusBroadcaster["Service"]["forgetStatus"] = (rawCwd) =>
+    forget(rawCwd).pipe(
       Effect.ignoreCause({ log: true }),
       Effect.forkIn(broadcasterScope),
+      Effect.asVoid,
     );
-  });
 
   const makeRemoteRefreshLoop = (
     cwd: string,
