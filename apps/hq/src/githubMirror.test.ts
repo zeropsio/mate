@@ -304,11 +304,13 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     // Main as the app finds it, written behind HQ's back so no follow of it races the test's own.
     const main = commitIn(hqDir, [], "index.html");
     native(hqDir, ["update-ref", "refs/heads/main", main]);
-    // Connected only now: what came before is the repository as the app found it.
-    yield* sql`
+    /** The repository mirrored through the app: GitHub's `acme/tea-shop`, by its id there. */
+    const connect = sql`
       INSERT INTO hq_repo_remote (app_id, repo, url, url_key, host, host_repo_id, via)
       VALUES (${appId}::uuid, 'appdev', ${`https://github.com/${REPOSITORY}.git`},
         ${`github.com/${REPOSITORY}`}, 'github.com', '501', 'app')`;
+    // Connected only now: what came before is the repository as the app found it.
+    yield* connect;
 
     // The Mate's side: git's smart HTTP as HQ serves it, to the Mate `nova` of this application.
     const scope = yield* Effect.scope;
@@ -338,19 +340,30 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
     const port = typeof address === "object" && address !== null ? address.port : 0;
     const work = NodePath.join(root, "work");
     yield* over(root, ["clone", `http://127.0.0.1:${String(port)}/git/${appId}/appdev.git`, work]);
-    /** Change `number` of the Mate `mate`, open, titled `title`. */
-    const openChange = (title: string, number = 1, mate = "nova") =>
+    /**
+     * Change `number` of the Mate `mate`, open, titled `title`, on `branch`: the one a change opened
+     * without naming a branch is on, by default.
+     */
+    const openChange = (
+      title: string,
+      number = 1,
+      mate = "nova",
+      branch = `mate/${mate}/${String(number)}`,
+    ) =>
       sql`
         INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, branch)
-        VALUES (${appId}::uuid, 'appdev', ${number}, ${mate}, ${title}, ${`mate/${mate}/${String(number)}`})`;
-    /** The Mate commits `file` and pushes it to its change 1; the head, once HQ recorded it. */
-    const push = (file: string) =>
+        VALUES (${appId}::uuid, 'appdev', ${number}, ${mate}, ${title}, ${branch})`;
+    /**
+     * The Mate commits `file` and pushes it to `branch`, its change 1's by default; the head, once
+     * HQ recorded it.
+     */
+    const push = (file: string, branch = "mate/nova/1") =>
       recorded(
         Effect.gen(function* () {
           NodeFS.writeFileSync(NodePath.join(work, file), `${file}\n`);
           native(work, ["add", file]);
           native(work, ["commit", "-m", `Add ${file}`]);
-          yield* over(work, ["push", "origin", "HEAD:refs/heads/mate/nova/1"]);
+          yield* over(work, ["push", "origin", `HEAD:refs/heads/${branch}`]);
           return native(work, ["rev-parse", "HEAD"]);
         }),
       );
@@ -409,6 +422,7 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
       push,
       compared,
       changeRow,
+      connect,
     };
   });
 
@@ -1178,7 +1192,7 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
     // mono-live 2026-10-22 H1/H2: an agent's own branch on GitHub never reached HQ, and HQ pushed a
     // change to a `mate/<n>-<slug>` branch of its own beside the branch it was opened on.
     it.effect(
-      "a change opened on the Mate's own branch follows that branch on GitHub: HQ never pushes it, nor a branch of its own",
+      "a change opened on the Mate's own branch follows that branch on GitHub, and HQ makes no branch of its own beside it",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -1237,6 +1251,141 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             // No sweep runs within the test: only the opening asks GitHub.
             yield* f.changes.openChange("nova", "appdev", "Fix x", undefined, "fix-x");
             yield* f.headIs(pushed);
+          }),
+        ),
+    );
+
+    // Kara run 3, 2026-10-25: changes on branches their Mate named, pushed to HQ, never reached
+    // GitHub, so they had no pull request and could never merge once the repository was mirrored.
+    it.effect(
+      "a change on a branch its Mate named reaches that branch on GitHub from Mate's copy, and its next push updates it",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Fix x", 1, "nova", "fix-x");
+            const first = yield* f.push("fix.ts", "fix-x");
+            yield* until(() => refIn(f.github, "refs/heads/fix-x"), first);
+            const second = yield* f.push("fix-more.ts", "fix-x");
+            yield* until(() => refIn(f.github, "refs/heads/fix-x"), second);
+            assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 1), {
+              branch: "fix-x",
+              sha: second,
+            });
+            // Under its own name only: HQ makes no branch of its own beside it.
+            assert.strictEqual(refsOf(f.github, "refs/heads/mate/"), "");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a branch its Mate named that GitHub holds with someone else's commits is never overwritten: the change says its branch there diverged, and is tried again only when either side moves",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            const theirs = commitIn(f.github, [f.main], "theirs.ts");
+            native(f.github, ["update-ref", "refs/heads/fix-x", theirs]);
+            yield* f.openChange("Fix x", 1, "nova", "fix-x");
+            yield* f.push("fix.ts", "fix-x");
+            const refused = yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
+            assert.strictEqual(refused._tag, "GithubMirrorUnavailable");
+            assert.strictEqual(refIn(f.github, "refs/heads/fix-x"), theirs);
+            const change = yield* f.changes.change(f.appId, "appdev", 1);
+            assert.isString(change.mirrorDivergedSince);
+            assert.deepStrictEqual(yield* changesToPush(f.sql, f.appId, "appdev"), []);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a change on a branch its Mate named, pushed before its repository was mirrored, reaches GitHub on the next sweep",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored(Duration.millis(200));
+            yield* f.sql`DELETE FROM hq_repo_remote`;
+            yield* f.openChange("Fix x", 1, "nova", "fix-x");
+            const head = yield* f.push("fix.ts", "fix-x");
+            assert.strictEqual(refIn(f.github, "refs/heads/fix-x"), null);
+            yield* f.connect;
+            yield* until(() => refIn(f.github, "refs/heads/fix-x"), head);
+          }),
+        ),
+    );
+
+    it.effect.each([
+      ["opened without naming a branch", "mate/vega/1", "mate/1-fix-x"],
+      ["on a branch its first Mate named", "fix-x", "fix-x"],
+    ] as const)(
+      "a change handed to another Mate goes to GitHub under the branch it was opened on: %s",
+      ([_how, branch, onGithub]) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Fix x", 1, "vega", branch);
+            yield* f.sql`UPDATE hq_change SET mate_project_id = 'nova' WHERE number = 1`;
+            const head = yield* f.push("fix.ts", branch);
+            yield* until(() => refIn(f.github, `refs/heads/${onGithub}`), head);
+            assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 1), {
+              branch: onGithub,
+              sha: head,
+            });
+          }),
+        ),
+    );
+
+    it.effect(
+      "a change on a branch named as GitHub's default branch is never pushed there: only a merge moves it",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            // GitHub's default branch is `trunk`, at Mate's main: the one HQ follows.
+            yield* f.mirror.sync(f.appId, "appdev");
+            native(f.github, ["update-ref", "refs/heads/trunk", f.main]);
+            native(f.github, ["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+            native(f.github, ["update-ref", "-d", "refs/heads/main"]);
+            assert.deepStrictEqual(yield* f.mirror.sync(f.appId, "appdev"), {
+              kind: "same",
+              sha: f.main,
+            });
+            yield* f.openChange("Fix x", 1, "nova", "trunk");
+            yield* f.push("fix.ts", "trunk");
+            const refused = yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
+            assert.strictEqual("reason" in refused ? refused.reason : undefined, "refused");
+            assert.strictEqual(refIn(f.github, "refs/heads/trunk"), f.main);
+          }),
+        ),
+    );
+
+    it.effect(
+      "a task's change on a branch its Mate named is pushed there, and commits on top of it on GitHub come into Mate's copy without telling its Mate, who pushes there itself",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Fix x", 1, "nova", "fix-x");
+            yield* f.task;
+            const first = yield* f.push("fix.ts", "fix-x");
+            yield* until(() => refIn(f.github, "refs/heads/fix-x"), first);
+            yield* f.mirror.pushChange(f.appId, "appdev", 1);
+            const own = commitIn(f.github, [first], "fix-more.ts");
+            native(f.github, ["update-ref", "refs/heads/fix-x", own]);
+            yield* f.events.dispatch({
+              name: "push",
+              deliveryId: "delivery-own-push",
+              repository: REPOSITORY,
+              payload: {
+                ref: "refs/heads/fix-x",
+                after: own,
+                repository: { default_branch: "main" },
+              },
+            });
+            assert.strictEqual(refIn(f.hqDir, "refs/heads/fix-x"), own);
+            yield* f.headIs(own);
+            assert.deepStrictEqual(f.told, []);
           }),
         ),
     );

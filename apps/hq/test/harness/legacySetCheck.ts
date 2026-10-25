@@ -15,7 +15,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 /** The last migration of today's HQ the import takes a set at. */
-export const LEGACY_MIGRATION = "0083_repo_upstream.sql";
+export const LEGACY_MIGRATION = "0084_changes_per_branch.sql";
 
 /** Every table of today's HQ the import maps or deliberately drops (`LEGACY_TABLES` there). */
 export const LEGACY_TABLES: ReadonlyArray<string> = [

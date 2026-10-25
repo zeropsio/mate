@@ -240,6 +240,55 @@ describe("hqChanges — the wire", () => {
       "Success",
     ],
     [
+      "an HQ that keeps an open change per branch, its open change judged",
+      MateChanges,
+      {
+        appId: APP,
+        openPerBranch: true,
+        changes: [
+          {
+            repo: "appdev",
+            number: 8,
+            state: "open",
+            head: SHA,
+            mergedSha: null,
+            landedHead: null,
+            branch: "badge",
+            ready: false,
+            mergeability: "clean",
+            behind: true,
+            updatedAt: "2026-10-25T10:00:00.000Z",
+          },
+        ],
+      },
+      "Success",
+    ],
+    [
+      "an open change judged in a way this build does not know",
+      MateChanges,
+      {
+        appId: APP,
+        changes: [
+          {
+            repo: "appdev",
+            number: 8,
+            state: "open",
+            head: SHA,
+            mergedSha: null,
+            landedHead: null,
+            mergeability: "sideways",
+          },
+        ],
+      },
+      "Failure",
+    ],
+    [
+      "an HQ that says it keeps one open change per repository in a word it never says",
+      MateChanges,
+      { appId: APP, openPerBranch: false, changes: [] },
+      "Failure",
+    ],
+    [
       "a change of a state this build does not know",
       MateChanges,
       {

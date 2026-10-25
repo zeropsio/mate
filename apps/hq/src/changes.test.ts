@@ -885,11 +885,24 @@ describe("a Mate's changes in HQ", () => {
             landedHead: null,
             branch: `mate/P_MATE/${String(number)}`,
           });
-          assert.deepStrictEqual(yield* self, {
+          const placed = yield* self;
+          const opened = (placed["changes"] as ReadonlyArray<Record<string, unknown>>)[0]!;
+          assert.match(String(opened["updatedAt"]), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u);
+          assert.deepStrictEqual(placed, {
             ...record,
             appId,
             appName: "Shop",
-            changes: [change(1, "open")],
+            // An open change says whether it asks for review and how it last merged.
+            changes: [
+              {
+                ...change(1, "open"),
+                ready: false,
+                mergeability: "unknown",
+                behind: false,
+                updatedAt: opened["updatedAt"],
+              },
+            ],
+            openPerBranch: true,
             gitPushes: [],
             production: false,
             repos: [{ name: "appdev" }, { name: "group" }],
@@ -914,7 +927,8 @@ describe("a Mate's changes in HQ", () => {
             { ...change(1, "merged", head), mergedSha: squash, landedHead: head },
           ]);
 
-          // Many changes later, the latest ten of the repository, newest first.
+          // Many changes later, the open one and the latest ten settled of the repository, newest
+          // first.
           for (let n = 2; n <= 12; n++) {
             yield* call("POST", "/api/mate/changes", {
               headers: auth,
@@ -933,7 +947,7 @@ describe("a Mate's changes in HQ", () => {
             ((yield* self)["changes"] as ReadonlyArray<{ number: number; state: string }>).map(
               ({ number, state }) => [number, state],
             ),
-            [[12, "open"], ...[11, 10, 9, 8, 7, 6, 5, 4, 3].map((n) => [n, "closed"])],
+            [[12, "open"], ...[11, 10, 9, 8, 7, 6, 5, 4, 3, 2].map((n) => [n, "closed"])],
           );
 
           // Out of its application, it has none.
@@ -950,6 +964,241 @@ describe("a Mate's changes in HQ", () => {
             production: false,
             repos: [],
           });
+        }),
+    );
+
+    it.effect("the Mate's state lists every open change, however many settled since", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateWithChange(call, fake, owner);
+        // Eleven of its changes settled after its open one.
+        for (let n = 2; n <= 12; n++)
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, branch,
+               closed_at)
+             VALUES ('${appId}'::uuid, 'appdev', ${String(n)}, 'P_MATE', 'Mate: appdev', 'closed',
+               'mate/P_MATE/${String(n)}', now())
+             RETURNING 1`,
+            () => true,
+          );
+        const self = (yield* call("GET", "/api/mate/self", { headers: auth })).body as {
+          readonly changes: ReadonlyArray<{ readonly number: number; readonly state: string }>;
+        };
+        assert.deepStrictEqual(
+          self.changes.map(({ number, state }) => [number, state]),
+          [...[12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n) => [n, "closed"]), [1, "open"]],
+        );
+      }),
+    );
+
+    it.effect("merging one leaves the other behind, judged, in its Mate's own state", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+        yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+        for (const [title, branch] of [
+          ["Fix the login", "fix-login"],
+          ["Add a badge", "badge"],
+        ] as const) {
+          const opened = yield* call("POST", "/api/mate/changes", {
+            headers: auth,
+            body: { repo: "appdev", title, branch },
+          });
+          assert.strictEqual((opened.body as { readonly created: boolean }).created, true);
+        }
+        const git = yield* gitClient;
+        yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "work"]);
+        const work = NodePath.join(git.dir, "work");
+        const heads: Array<string> = [];
+        for (const [file, branch] of [
+          ["login.ts", "fix-login"],
+          ["badge.ts", "badge"],
+        ] as const) {
+          yield* git.checked(["reset", "--hard", "origin/main"], work);
+          NodeFS.writeFileSync(NodePath.join(work, file), `${file}\n`);
+          yield* git.checked(["add", file], work);
+          yield* git.checked(["commit", "-m", `Add ${file}`], work);
+          yield* git.checked(["push", "origin", `HEAD:refs/heads/${branch}`], work);
+          heads.push(yield* git.checked(["rev-parse", "HEAD"], work));
+        }
+        yield* rowsWhere(
+          url,
+          "SELECT number FROM hq_change WHERE head IS NOT NULL AND mergeability = 'clean'",
+          (rows) => rows.length === 2,
+        );
+        const merged = yield* call("POST", `/api/apps/${appId}/changes/appdev/1/merge`, {
+          session: owner,
+          body: { expectedHead: heads[0] },
+        });
+        assert.strictEqual(merged.status, 200);
+        // main moved: the other change is judged again, behind it and still merging cleanly.
+        yield* rowsWhere(
+          url,
+          "SELECT behind FROM hq_change WHERE number = 2",
+          (rows) => rows[0]?.["behind"] === true,
+        );
+        const self = (yield* call("GET", "/api/mate/self", { headers: auth })).body as {
+          readonly changes: ReadonlyArray<Record<string, unknown>>;
+        };
+        assert.deepStrictEqual(
+          self.changes.map((own) => [
+            own["number"],
+            own["state"],
+            own["mergeability"] ?? null,
+            own["behind"] ?? null,
+            own["ready"] ?? null,
+          ]),
+          [
+            [2, "open", "clean", true, false],
+            [1, "merged", null, null, null],
+          ],
+        );
+      }),
+    );
+
+    it.effect(
+      "a Mate closes its own open change, never another's nor a task's, its branch kept, and says so in the change's conversation",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop", apps);
+          addProject(fake, "P_BEA");
+          const bea = yield* mateInApp(call, fake, owner, "P_BEA", "Shop", apps);
+          yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+          const open = (auth: Record<string, string>, title: string, branch: string) =>
+            Effect.map(
+              call("POST", "/api/mate/changes", {
+                headers: auth,
+                body: { repo: "appdev", title, branch },
+              }),
+              (answer) => (answer.body as { readonly change: Record<string, unknown> }).change,
+            );
+          assert.strictEqual((yield* open(ada.auth, "Fix the login", "fix-login"))["number"], 1);
+          assert.strictEqual((yield* open(bea.auth, "Fix the signup", "fix-signup"))["number"], 2);
+          const close = (auth: Record<string, string>, number: number) =>
+            Effect.map(
+              call("POST", `/api/mate/changes/appdev/${String(number)}/close`, { headers: auth }),
+              (answer) => [answer.status, answer.body as Record<string, unknown>] as const,
+            );
+          assert.deepStrictEqual(yield* close(bea.auth, 1), [
+            403,
+            { code: "forbidden", reason: "not_your_change" },
+          ]);
+          assert.deepStrictEqual(yield* close(ada.auth, 9), [
+            404,
+            { code: "change_not_found", reason: "unknown_change" },
+          ]);
+          const [status, closed] = yield* close(ada.auth, 1);
+          assert.deepStrictEqual(
+            [status, closed["state"], closed["branch"], closed["mateProjectId"]],
+            [200, "closed", "fix-login", "P_MATE"],
+          );
+          assert.deepStrictEqual(yield* close(ada.auth, 1), [
+            409,
+            { code: "conflict", reason: "change_not_open" },
+          ]);
+          // Bea's stays open; the log says the Mate closed Ada's.
+          const listed = (yield* call("GET", `/api/apps/${ada.appId}/changes`, { session: owner }))
+            .body as { readonly changes: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            listed.changes.map((change) => [change["number"], change["state"]]),
+            [
+              [2, "open"],
+              [1, "closed"],
+            ],
+          );
+          yield* rowsWhere(
+            url,
+            "SELECT data FROM hq_git_event WHERE kind = 'closed'",
+            (rows) =>
+              rows.length === 1 &&
+              JSON.stringify(rows[0]?.["data"]) ===
+                JSON.stringify({ by: "mate", mateProjectId: "P_MATE" }),
+          );
+          // The person reads it in the change's conversation, said by the Mate.
+          const comments = (yield* call("GET", `/api/apps/${ada.appId}/changes/appdev/1/comments`, {
+            session: owner,
+          })).body as { readonly comments: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            comments.comments.map((comment) => [
+              comment["authorUserId"],
+              comment["authorMateProjectId"],
+              comment["body"],
+            ]),
+            [[null, "P_MATE", "Closed without merging. Its branch fix-login stays."]],
+          );
+          // Its branch stays: a change may be opened on it again.
+          assert.deepStrictEqual(
+            [
+              (yield* open(ada.auth, "Fix the login again", "fix-login"))["number"],
+              (yield* open(ada.auth, "Fix the login again", "fix-login"))["state"],
+            ],
+            [3, "open"],
+          );
+          // A task's change is its task's: its Mate closes none of those.
+          assert.strictEqual((yield* open(ada.auth, "The task's work", "task-work"))["number"], 4);
+          yield* rowsWhere(
+            url,
+            `WITH task AS (
+               INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state,
+                 source_kind, source, source_key)
+               VALUES ('${ada.appId}'::uuid, 'appdev', 1, 'A task', '', 'https://tasks.test/1',
+                 'delivery-1', 'done', 'github-issue', '{}'::jsonb, 'github:acme/shop#1')
+               RETURNING id)
+             UPDATE hq_change SET task_id = (SELECT id FROM task) WHERE number = 4 RETURNING 1`,
+            () => true,
+          );
+          assert.deepStrictEqual(yield* close(ada.auth, 4), [
+            409,
+            { code: "conflict", reason: "change_on_task" },
+          ]);
+        }),
+    );
+
+    // Lab G, 2026-10-25: a change Cal closed read "Somebody closed it", though HQ's log says Cal.
+    it.effect(
+      "a change its Mate closed says its Mate closed it; one a person closed does not",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop", apps);
+          yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+          for (const branch of ["given-up", "turned-down"])
+            yield* call("POST", "/api/mate/changes", {
+              headers: ada.auth,
+              body: { repo: "appdev", title: branch, branch },
+            });
+          const byMate = (yield* call("POST", "/api/mate/changes/appdev/1/close", {
+            headers: ada.auth,
+          })).body as Record<string, unknown>;
+          const byPerson = (yield* call("POST", `/api/apps/${ada.appId}/changes/appdev/2/close`, {
+            session: owner,
+            body: { expectedHead: null },
+          })).body as Record<string, unknown>;
+          assert.deepStrictEqual(
+            [byMate["closedByMate"], byPerson["state"], byPerson["closedByMate"]],
+            [true, "closed", undefined],
+          );
+          const listed = (yield* call("GET", `/api/apps/${ada.appId}/changes`, { session: owner }))
+            .body as { readonly changes: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            listed.changes.map((change) => [change["number"], change["closedByMate"]]),
+            [
+              [2, undefined],
+              [1, true],
+            ],
+          );
         }),
     );
 
@@ -1806,10 +2055,24 @@ describe("a Mate's changes in HQ", () => {
             landedHead: null,
             branch: "mate/P_MATE/1",
           });
+          // What HQ judged of an open change rides beside it (the Mate's own state pins it).
+          const owned = (changes: unknown) =>
+            (changes as ReadonlyArray<Change>).map(
+              ({
+                ready: _ready,
+                mergeability: _merges,
+                behind: _behind,
+                updatedAt: _at,
+                ...change
+              }) => change,
+            );
           const state = (yield* link.next("state")) as {
             readonly mate: { readonly appId: string; readonly changes: ReadonlyArray<Change> };
           };
-          assert.deepStrictEqual([state.mate.appId, state.mate.changes], [appId, [own(null)]]);
+          assert.deepStrictEqual(
+            [state.mate.appId, owned(state.mate.changes)],
+            [appId, [own(null)]],
+          );
 
           // The Mate pushes: the change's head moves on the socket and down the link.
           const git = yield* gitClient;
@@ -1829,8 +2092,10 @@ describe("a Mate's changes in HQ", () => {
             [head],
           );
           assert.deepStrictEqual(
-            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
-              .changes,
+            owned(
+              ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+                .changes,
+            ),
             [own(head)],
           );
 
@@ -1847,8 +2112,10 @@ describe("a Mate's changes in HQ", () => {
           );
           assert.strictEqual(retitled[0]?.["title"], "Add a login page");
           assert.deepStrictEqual(
-            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
-              .changes,
+            owned(
+              ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+                .changes,
+            ),
             [own(head, "Add a login page")],
           );
           // Its post-change subscription is refused too; no protected value reached it.

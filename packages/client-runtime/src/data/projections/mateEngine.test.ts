@@ -1395,6 +1395,22 @@ describe("an engine conversation's row in the menu", () => {
     ).toBeNull();
   });
 
+  // Lab A.3, 2026-10-25: Archive and start fresh left the conversation reading live once nobody
+  // held it, and a review's Fix asked it, on a hidden composer, rather than the live one.
+  it.each([
+    { name: "archived", row: { archived: true }, archived: true },
+    { name: "live", row: {}, archived: false },
+  ] as const)("reads a conversation nobody holds $name, as its row says", ({ row, archived }) => {
+    const overlaid = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "idle" },
+        ...row,
+      } as Partial<ConversationRow>),
+    );
+    expect(overlaid.archivedAt != null).toBe(archived);
+  });
+
   it("gives a thread shell that never had a session its row's: working, on its run", () => {
     const overlaid = overlayEngineRow(
       { ...shellThread, session: null },

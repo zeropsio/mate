@@ -4,15 +4,17 @@
  * branch its Mate named, by its Mate: one change, two views (`hq_pull_request`).
  *
  * - Once the change has a head its Mate described (`ready`), its head goes to its branch on GitHub
- *   (`GithubMirror.pushChange`; a branch its Mate named is there already) and a pull request opens
- *   from it into GitHub's default branch, or the one its Mate opened there is taken for it,
- *   ready for review: its body says what it does, how it was checked, where to try it, `Fixes #n`
- *   for its task's issue, and a footer naming the Mate, its task and who asked; who asked is its
- *   assignee where they can write; its first comment says once what the Mate does with it. A
- *   later push goes to the same branch; a new description edits only HQ's part of the body
- *   (between {@link MATE_START} and {@link MATE_END}). Kept on every move of a change, and every
- *   minute for any move missed.
- * - Merge in Mate merges the pull request on GitHub (squash, at the head the person saw), then
+ *   (`GithubMirror.pushChange`: HQ's own for a change opened without one, the branch its Mate named
+ *   under that name) and a pull request opens from it into GitHub's default branch, or the one
+ *   its Mate opened there is taken for it, ready for review: its body says what it does, how it
+ *   was checked, where to try it, `Fixes #n` for its task's issue, and a footer naming the Mate,
+ *   its task and who asked; who asked is its assignee where they can write; its first comment
+ *   says once what the Mate does with it. A later push goes to the same branch; a new description
+ *   edits only HQ's part of the body (between {@link MATE_START} and {@link MATE_END}). Kept on
+ *   every move of a change, and every minute for any move missed.
+ * - Merge in Mate merges the pull request on GitHub at the head the person saw — a squash, but a
+ *   merge commit keeping its commits for the first change into a repository whose `main` holds
+ *   nothing that carries another repository's history, as HQ's own merge lands it as it is — then
  *   follows GitHub's default branch (`GithubMirror.sync`), which marks the change merged; GitHub's
  *   refusal is the merge's, in plain words, and nothing moves. Close in Mate closes it there too.
  * - From GitHub (`GithubEvents`): merged there, the change is merged here; closed unmerged, the
@@ -56,6 +58,7 @@ import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
 import { GithubMirror } from "./githubMirror.ts";
+import { GitHost } from "./gitHost.ts";
 import { type RemoteIdentity, remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Remotes } from "./repoRemotes.ts";
@@ -284,6 +287,15 @@ export class PullRequests extends Context.Service<
       number: number,
       expectedHead: string | null,
     ) => Effect.Effect<HqChange, MergeError>;
+    /**
+     * A Mate giving up its own open change (`Changes.mateCloseChange`): closed, and its pull request
+     * on GitHub with it, as a person's Close does.
+     */
+    readonly mateClose: (
+      projectId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<HqChange, MergeError>;
   }
 >()("@t3tools/hq/pullRequests") {}
 
@@ -437,6 +449,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        */
       const taken = new Map<string, number>();
       const mirror = yield* GithubMirror;
+      const gitHost = yield* GitHost;
       const events = yield* GithubEvents;
       // One pull request's step at a time: a sweep, an event and a merge never cross.
       const working = yield* Semaphore.make(1);
@@ -1156,6 +1169,33 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           ),
         );
 
+      /**
+       * How GitHub merges the change: squashed, as a merge in HQ squashes it — but one keeping its
+       * history (`@t3tools/hq-git` `keepsHistory`: the first into a `main` that holds nothing,
+       * carrying another repository's history) under one merge commit, its commits as they are.
+       */
+      const methodOf = (change: HqChange) =>
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          const verdict = yield* git.mergeability(
+            { appId: change.appId, id: change.repo },
+            {
+              mateId: change.mateProjectId,
+              number: change.number,
+              branch: change.branch ?? `mate/${change.mateProjectId}/${String(change.number)}`,
+            },
+          );
+          return verdict.kind === "clean" && verdict.keepsHistory === true
+            ? ("merge" as const)
+            : ("squash" as const);
+        }).pipe(
+          // A `main` HQ has not made yet holds nothing to keep.
+          Effect.catchIf(
+            (error) => error._tag === "GitError" && error.reason === "no_main",
+            () => Effect.succeed("squash" as const),
+          ),
+        );
+
       const mergeOnGithub = (
         userId: string,
         row: PullRow,
@@ -1195,6 +1235,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               ? { login: undefined }
               : sectionOf(appId, repo, number, row.github_repo, facts);
           const id = login === undefined ? undefined : yield* userIdOf(app, login);
+          const method = yield* methodOf(change);
           // The person merges this head in Mate: recorded, then said on GitHub before its merge.
           // `hq_gate` records the Zerops person's press, whatever GitHub answers: that is the rule.
           yield* leader.write(sql`
@@ -1209,6 +1250,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const merged = yield* github
             .mergePull(app.remote, app.token, row.pr_number, {
               sha: expectedHead,
+              method,
               title: `${change.title} (#${String(row.pr_number)})`,
               message: mergeMessage({
                 description: change.body,
@@ -1248,6 +1290,22 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           return change;
         });
 
+      /**
+       * A change just closed in Mate: its pull request closed on GitHub too, read under the permit,
+       * so a sweep that closed it meanwhile closed it once. GitHub not answering leaves it for the
+       * sweep; the close in Mate stands.
+       */
+      const closedThere = (closed: HqChange) =>
+        Effect.gen(function* () {
+          const row = yield* pullOf(closed.appId, closed.repo, closed.number);
+          if (row?.state === "open") yield* closeOnGithub(row);
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a pull request not closed on GitHub yet", { cause }),
+          ),
+          working.withPermits(1),
+        );
+
       return PullRequests.of({
         merge: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {
@@ -1267,20 +1325,9 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             }).pipe(working.withPermits(1));
           }),
         close: (userId, appId, repo, number, expectedHead) =>
-          Effect.gen(function* () {
-            const closed = yield* changes.closeChange(userId, appId, repo, number, expectedHead);
-            // Read under the permit: a sweep that closed it meanwhile closed it once.
-            yield* Effect.gen(function* () {
-              const row = yield* pullOf(appId, repo, number);
-              if (row?.state === "open") yield* closeOnGithub(row);
-            }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("a pull request not closed on GitHub yet", { cause }),
-              ),
-              working.withPermits(1),
-            );
-            return closed;
-          }),
+          Effect.tap(changes.closeChange(userId, appId, repo, number, expectedHead), closedThere),
+        mateClose: (projectId, repo, number) =>
+          Effect.tap(changes.mateCloseChange(projectId, repo, number), closedThere),
       });
     }),
   );

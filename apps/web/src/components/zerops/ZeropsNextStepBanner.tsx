@@ -269,6 +269,8 @@ export function useZeropsNextStepStrip(
   pending: ZeropsNextStepPending,
   /** Whether the Mate is the viewer's; a colleague's change waits for a review, not the viewer's. */
   yours = true,
+  /** The branch of the lease this conversation is bound to: its change leads the strip. */
+  boundBranch?: string,
 ): ReactNode {
   const openReview = useOpenReview();
   const navigate = useNavigate();
@@ -284,7 +286,7 @@ export function useZeropsNextStepStrip(
     },
     [threadKey],
   );
-  const nextStep = useZeropsMateNextStep(threadRef, yours);
+  const nextStep = useZeropsMateNextStep(threadRef, yours, boundBranch);
   const { strip, reserved } = zeropsComposerTop({
     nextStep,
     dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),

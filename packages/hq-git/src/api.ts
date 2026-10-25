@@ -137,7 +137,12 @@ export interface Author {
   readonly email: string;
 }
 export type Mergeability =
-  | { readonly kind: "clean" }
+  /**
+   * It merges cleanly. `keepsHistory`: `main` never held a file — HQ's empty first commit, nothing
+   * merged onto it yet — and the change carries another repository's history (a root commit `main`
+   * does not hold): it lands as it is, never squashed ({@link HqGit.squashMerge}).
+   */
+  | { readonly kind: "clean"; readonly keepsHistory?: true }
   | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
   | { readonly kind: "empty" | "already_merged" | "no_change" | "unrelated" };
 export interface SquashOptions extends ChangeBranch {
@@ -283,7 +288,12 @@ export interface HqGit {
     change: ChangeBranch,
     snapshot?: ChangeSnapshot,
   ) => Effect.Effect<Mergeability, GitError>;
-  /** Mergeability's verdict, then one commit on main by CAS: never a moved main or change head. */
+  /**
+   * Mergeability's verdict, then main moved once by CAS — never a moved main or change head — to
+   * one squash commit; but a change that keeps its history (`keepsHistory`) lands as it is: main
+   * fast-forwards to its head where it builds on main, else takes one merge commit of main and the
+   * head, with the squash's message and trailers.
+   */
   readonly squashMerge: (
     repo: Repo,
     options: SquashOptions,
@@ -471,14 +481,19 @@ export interface HqGit {
     options: { readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly total: number }, GitError>;
   /**
-   * The change's commits not on main or before its own base (the previously landed head),
-   * children before parents, at most `limit`;
-   * without a main, all of the change's. None without a change head.
+   * The change's commits on neither main nor any of `landed` (heads of changes landed before it,
+   * whose own commits a squash left off main; one the repository lacks is passed over), children
+   * before parents, at most `limit`; without a main, all of the change's but those. None without a
+   * change head.
    */
   readonly changeLog: (
     repo: Repo,
     change: ChangeBranch,
-    options: { readonly limit: number; readonly base?: string; readonly snapshot?: ChangeSnapshot },
+    options: {
+      readonly limit: number;
+      readonly landed?: ReadonlyArray<string>;
+      readonly snapshot?: ChangeSnapshot;
+    },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
    * What squashing the change into main would do to main now: each file of the merged tree that

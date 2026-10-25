@@ -99,6 +99,22 @@ export const SIDEBAR_ACCOUNT_DESTINATIONS: ReadonlyArray<SidebarAccountDestinati
   { id: "settings", label: "Settings", to: "/settings" },
 ];
 
+/**
+ * Where a switch from organization `from` to `to` goes from `pathname`: a page of the organization
+ * left behind — a conversation, a change, a Mate — is not in the new one's projects, so the switch
+ * lands on the home, as a fresh visit would; the account's own pages read the new organization in
+ * place, and so does the home. Null: stay. A link opened to another organization's page still says
+ * it is not in the person's projects; only the switch moves.
+ */
+export function organizationSwitchLanding(input: {
+  readonly pathname: string;
+  readonly from: string | undefined;
+  readonly to: string;
+}): "/" | null {
+  if (input.to === input.from || input.pathname === "/") return null;
+  return sidebarAccountDestinationOf(input.pathname) === null ? "/" : null;
+}
+
 /** Which destination a path is inside, so the menu can light it. */
 export function sidebarAccountDestinationOf(
   pathname: string,

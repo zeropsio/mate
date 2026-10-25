@@ -77,6 +77,63 @@ describe("askMateThread", () => {
   });
 });
 
+// Several changes per Mate, one per branch (several-changes design §5.11): a review's Ask and Fix
+// go to the conversation bound to a lease on the change's branch — where that work happens — and
+// only else to the main chat.
+describe("askMateThread: a change's branch", () => {
+  const thread = (id: string, fields: Record<string, unknown> = {}) => ({
+    id,
+    archivedAt: null,
+    createdAt: "2026-10-25T08:00:00.000Z",
+    updatedAt: "2026-10-25T08:00:00.000Z",
+    ...fields,
+  });
+  const lease = (alias: string, branch: string | null) => ({
+    lease: { alias, pool: alias.replace(/-\d+$/u, ""), branch },
+  });
+  const main = thread("main", { pinnedAt: "2026-10-25T08:00:00.000Z" });
+  const badge = thread("badge", lease("hqpool-4", "badge"));
+  const previews = thread("previews", {
+    ...lease("hqpool-3", "pool-previews"),
+    latestUserMessageAt: "2026-10-25T09:00:00.000Z",
+  });
+  const previewsToo = thread("previews-too", lease("boxpool-5", "pool-previews"));
+  const crewBadge = thread("crew-badge", {
+    ...lease("boxpool-6", "stamp"),
+    crew: { crew: "game", crewmate: "backend", stint: 1 },
+  });
+  const closed = thread("closed", {
+    ...lease("webpool-2", "old"),
+    archivedAt: "2026-10-25T09:00:00.000Z",
+  });
+  const unbranched = thread("unbranched", lease("webpool-3", null));
+  const threads = [main, badge, previews, previewsToo, crewBadge, closed, unbranched];
+
+  it.each([
+    { name: "asks in the chat bound to a lease of it", branch: "badge", asked: "badge" },
+    {
+      name: "of several chats bound to it, the one the person spoke in last",
+      branch: "pool-previews",
+      asked: "previews",
+    },
+    { name: "no chat bound to it: the main chat", branch: "wip", asked: "main" },
+    {
+      name: "a crewmate's chat bound to it is not the person's: the main chat",
+      branch: "stamp",
+      asked: "main",
+    },
+    { name: "a closed chat bound to it is not asked: the main chat", branch: "old", asked: "main" },
+    { name: "main is no change's branch: the main chat", branch: "main", asked: "main" },
+    { name: "no branch: the main chat", branch: undefined, asked: "main" },
+  ])("$name", ({ branch, asked }) => {
+    expect(askMateThread(threads, undefined, branch)?.id).toBe(asked);
+  });
+
+  it("a person chat named outranks the change's branch", () => {
+    expect(askMateThread(threads, "previews-too", "badge")?.id).toBe("previews-too");
+  });
+});
+
 describe("askedDraft: a request left unsent joins what the person had typed, never replaces it", () => {
   const ASK = 'On #2 "Add a /status page" on appdev: ';
   it.each([

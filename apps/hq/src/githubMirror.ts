@@ -1,12 +1,14 @@
 /**
  * A repository HQ mirrors to GitHub through the organization's app: GitHub's default branch is
  * upstream. HQ pushes its `main` to an empty repository, fast-forwards its own `main` to GitHub's
- * after a merge there, and pushes the head of each open change opened without a branch to a branch
- * of its own on GitHub, from which `pullRequests.ts` keeps the change's pull request. GitHub's
- * branches and tags follow into HQ's copy under `refs/github/`, as GitHub has them; nothing there
- * goes back. A change its Mate opened on a branch it named is that branch on GitHub, where the Mate
- * pushes it: HQ never pushes it, and its branch in HQ's copy follows GitHub's forward, so HQ keeps
- * every head it records.
+ * after a merge there, and pushes the head of each open change to its branch on GitHub — one opened
+ * without a branch to a branch of its own (`mate/<n>-<slug>`), one on a branch its Mate named under
+ * that name — from which `pullRequests.ts` keeps the change's pull request. GitHub's branches and
+ * tags follow into HQ's copy under `refs/github/`, as GitHub has them; nothing there goes back. A
+ * Mate whose checkout's origin is GitHub pushes its named branch there itself: that branch in HQ's
+ * copy follows GitHub's forward, so HQ keeps every head it records, and HQ's own pushes only ever
+ * move a branch on GitHub forward, never over commits someone else put there, never onto GitHub's
+ * default branch.
  *
  * @module githubMirror
  */
@@ -78,10 +80,11 @@ export class GithubMirror extends Context.Service<
      */
     readonly follow: (appId: string, repo: string) => Effect.Effect<void>;
     /**
-     * Push the change's head to its branch on GitHub (`mate/<number>-<slug>`, named once); its
-     * name and the sha pushed, or `undefined` where the change has no head or the repo no mirror.
-     * A change on a branch its Mate named is on GitHub already, its head followed from there: its
-     * branch and head, never pushed.
+     * Push the change's head to its branch on GitHub — `mate/<number>-<slug>`, named once, for one
+     * opened without a branch; the branch its Mate named, under that name — only forward from what
+     * GitHub has there; its name and the sha pushed, or `undefined` where the change has no head or
+     * the repo no mirror. A named branch that is GitHub's default branch is refused: only a merge
+     * moves that one.
      */
     readonly pushChange: (
       appId: string,
@@ -127,20 +130,20 @@ const githubLogin = (email: string) =>
   /^(?:\d+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$/u.exec(email)?.[1];
 
 /**
- * The open changes of `repo` opened without a branch whose head is not on GitHub yet — never one
- * whose branch there diverged while its head is still the one it diverged at.
+ * The open changes of `repo`, named or not, whose head is not on GitHub yet — never one whose
+ * branch there diverged while its head is still the one it diverged at.
  */
 export const changesToPush = (sql: SqlClient.SqlClient, appId: string, repo: string) =>
   Effect.map(
-    sql<{ readonly number: number; readonly branch: string }>`
-      SELECT c.number, c.branch FROM hq_change c
+    sql<{ readonly number: number }>`
+      SELECT c.number FROM hq_change c
       LEFT JOIN hq_change_mirror m
         ON m.app_id = c.app_id AND m.repo = c.repo AND m.number = c.number
       WHERE c.app_id::text = ${appId} AND c.repo = ${repo} AND c.state = 'open'
         AND c.head IS NOT NULL AND c.head IS DISTINCT FROM m.pushed_sha
         AND c.head IS DISTINCT FROM m.diverged_head
       ORDER BY c.number`,
-    (rows) => rows.filter((row) => allocated(row.branch)).map((row) => row.number),
+    (rows) => rows.map((row) => row.number),
   );
 
 export interface GithubMirrorOptions {
@@ -482,7 +485,8 @@ export const githubMirrorLayer = (
       /**
        * Each open change of `at` on a branch its Mate named, at that branch's tip on GitHub
        * (`heads`): its branch in HQ's copy made there or moved forward to it, as a push of it moves
-       * the change. A branch GitHub has not, or one rewritten there, moves nothing.
+       * the change. A branch GitHub has not, one rewritten there, or one HQ's copy is ahead of (its
+       * push takes GitHub there), moves nothing.
        */
       const followChanges = (git: HqGit, at: Repo, heads: ReadonlyMap<string, string>) =>
         Effect.gen(function* () {
@@ -499,6 +503,7 @@ export const githubMirrorLayer = (
             const change = { mateId: row.mate_project_id, number: row.number, branch: row.branch };
             const kept = yield* git.changeHead(at, change);
             if (kept === tip) continue;
+            if (kept !== null && (yield* git.isAncestor(at, tip, kept))) continue;
             const moved = yield* git.fastForwardChange(at, change, tip, kept);
             if (moved.kind === "not_fast_forward")
               yield* Effect.logWarning("a change's branch on GitHub left its head behind", {
@@ -606,9 +611,11 @@ export const githubMirrorLayer = (
 
       /**
        * The change's head to its branch on GitHub; where GitHub's branch moved since HQ pushed it
-       * (`githubMoved`, or a lease refused): commits people added there on top of the head come into
-       * HQ's copy, a branch put back behind the head is pushed on, and histories neither contains
-       * are kept as diverged — not tried again until either side moves.
+       * (`githubMoved`, or a lease refused): commits added there on top of the head come into HQ's
+       * copy (on HQ's own branch only people add them, and a task's Mate is told; on a branch its
+       * Mate named, the Mate pushes there itself), a branch put back behind the head is pushed on,
+       * and histories neither contains are kept as diverged — not tried again until either side
+       * moves.
        */
       const mirrorChange = (appId: string, repo: string, number: number, githubMoved?: string) =>
         serialized(
@@ -626,18 +633,33 @@ export const githubMirrorLayer = (
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
             if (change === undefined || change.state !== "open" || change.head === null)
               return undefined;
-            // On a branch its Mate named: GitHub has it, and its head came from there.
-            if (!allocated(change.branch)) return { branch: change.branch, sha: change.head };
+            // A branch its Mate named is that branch on GitHub; one opened without, HQ's own there.
+            const named = !allocated(change.branch);
             const [kept] = yield* sql<{ readonly branch: string; readonly pushed_sha: string }>`
               SELECT branch, pushed_sha FROM hq_change_mirror
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
-            const branch = kept?.branch ?? changeBranch(number, change.title);
+            const branch =
+              kept?.branch ?? (named ? change.branch : changeBranch(number, change.title));
             const head = change.head;
             const news = githubMoved !== undefined && githubMoved !== kept?.pushed_sha;
             if (kept?.pushed_sha === head && !news) return { branch, sha: head };
             const remote = yield* remoteFor(appId, repo);
             const git = yield* gitHost.git.pipe(Effect.mapError(fromGit));
             const at = { appId, id: repo };
+            // GitHub's default branch, the one HQ follows, moves only by a merge: a change named
+            // after it never goes there.
+            if (named) {
+              const [followed] = yield* sql<{ readonly branch: string }>`
+                SELECT branch FROM hq_repo_mirror WHERE app_id::text = ${appId} AND repo = ${repo}`;
+              const upstream =
+                followed?.branch ??
+                (yield* git.remoteHead(at, remote).pipe(Effect.mapError(fromGit))).branch;
+              if (branch === upstream)
+                return yield* unavailable(
+                  "refused",
+                  `${branch} is GitHub's default branch: only a merge moves it`,
+                );
+            }
             const pushed = news
               ? ({ kind: "rejected", reason: "stale" } as const)
               : yield* git
@@ -669,7 +691,7 @@ export const githubMirrorLayer = (
               if (moved.kind !== "moved")
                 return yield* unavailable("busy", "the change's head moved meanwhile");
               yield* keepPushed(appId, repo, number, branch, theirs);
-              yield* tellAdded(git, at, number, theirs);
+              if (!named) yield* tellAdded(git, at, number, theirs);
               return { branch, sha: theirs };
             }
             if (theirs === null || (yield* ancestor(theirs, head))) {
@@ -770,8 +792,8 @@ export const githubMirrorLayer = (
           const after = typeof payload.after === "string" ? payload.after : "";
           for (const row of yield* mirrored) {
             if (remoteIdentity(row.url)?.path !== named) continue;
-            // A change's branch moved there, as HQ named it: someone added commits to its pull
-            // request.
+            // A change's branch moved there, as HQ pushes it: commits were added to its pull
+            // request, by people or, on a branch it named, by its Mate.
             const changed = ref.startsWith("refs/heads/")
               ? yield* sql<{ readonly number: number }>`
                   SELECT number FROM hq_change_mirror

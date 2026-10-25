@@ -1390,6 +1390,14 @@ describe("changeReview: a change closed without merging", () => {
     expect(review.consequence).toBe("It never reached main; nothing merges from here.");
   });
 
+  // Lab G, 2026-10-25: a change Cal gave up read "Somebody closed it", though HQ said Cal.
+  it("names its Mate where its Mate closed it", () => {
+    const review = changeReview(
+      change({ pull: pull({ state: "closed", merged: false, closedByMate: true }) }),
+    );
+    expect(review.verdict.why).toBe("Nova closed it; its branch is still there");
+  });
+
   it.each([
     ["an open one", { state: "open" }, "ready"],
     ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],

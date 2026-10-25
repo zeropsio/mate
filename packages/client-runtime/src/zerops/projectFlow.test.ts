@@ -389,6 +389,37 @@ describe("the one merge that was an application's first code", () => {
   });
 });
 
+// Lab G, 2026-10-25: a change Cal gave up read "Somebody closed it", though HQ said Cal.
+describe("a change closed without merging", () => {
+  const closed = (over: Partial<HqChange>): HqChange => ({
+    appId: "g1",
+    repo: "appdev",
+    number: 6,
+    mateProjectId: VERA,
+    title: "Given up",
+    body: "",
+    state: "closed",
+    head: "a".repeat(40),
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-25T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: "2026-10-25T10:00:00.000Z",
+    updatedAt: "2026-10-25T10:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 1,
+    ...over,
+  });
+  it.each([
+    ["says its Mate closed it where HQ says so", { closedByMate: true }, true],
+    ["says nothing of who closed it where HQ does not", {}, undefined],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(flowChange(closed(over), "https://hq/").closedByMate).toBe(expected);
+  });
+});
+
 describe("whose pull request it is", () => {
   it.each([
     { name: "main's zcp's branch", ref: `mate/mate-${VERA}`, expected: VERA },

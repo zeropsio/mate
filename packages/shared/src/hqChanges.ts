@@ -2,8 +2,10 @@
  * A Mate's changes in HQ (SPEC §3.2a), what replaces a pull request: the wire between HQ, zcp and
  * the client. A change is HQ's record of a Mate's work toward `main` in one repository of its
  * application, on a branch: the one it was opened on, `mate/<Mate's project id>/<number>` where it
- * named none. A Mate has at most one open change per repository, and a branch is one open change's. HQ checks every body it reads with these schemas; zcp reads this file as
- * the spec.
+ * named none. A branch is one open change's. Off any task, a Mate holds an open change per branch it
+ * named plus its one default change (named no branch), at most {@link MATE_OPEN_CHANGES_MAX} in a
+ * repository; on a task, the task's one change. HQ checks every body it reads with these schemas;
+ * zcp reads this file as the spec.
  *
  * **The Mate's side**, `Authorization: Mate <credential>` (`apps/hq/src/mateCredentials.ts`), always
  * within the application HQ holds the Mate in (`mate` or `devstage`):
@@ -11,6 +13,11 @@
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
+ * - `POST /api/mate/changes/:repo/:n/close`, no body → {@link HqChange}: its own open change closed
+ *   without merging, its branch kept, said in the change's conversation in the Mate's name; another
+ *   Mate's is `403 forbidden` `not_your_change`, none of that number `404 change_not_found`
+ *   `unknown_change`, one no longer open `409 conflict` `change_not_open`, a task's `409 conflict`
+ *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
@@ -47,7 +54,8 @@
  * `commit_not_found` / `path_not_found`,
  * `409 conflict` `change_not_open` for a change merged or closed, `branch_taken` / `protected_ref`
  * for a change opened on another open change's branch / on `main`, `mate/…` or a full ref,
- * `400 invalid` for a body these
+ * `too_many_open` for a new change of a Mate already holding {@link MATE_OPEN_CHANGES_MAX} open ones
+ * in the repository, `400 invalid` for a body these
  * schemas refuse, `413 too_large`. Only the HQ that leads serves any of it: a standby answers `503
  * not_active` with `Retry-After` (two instances overlap through a deploy), which is "try again",
  * never a refusal; so is `503 zerops_unavailable`.
@@ -206,6 +214,11 @@ export const HqChange = Schema.Struct({
   openedAt: Instant,
   mergedAt: Schema.NullOr(Instant),
   closedAt: Schema.NullOr(Instant),
+  /**
+   * On a change closed without merging: its own Mate closed it, work it gave up — a Mate closes no
+   * other's. Absent where a person or HQ closed it, and from an older HQ.
+   */
+  closedByMate: Schema.optionalKey(Schema.Literal(true)),
   /** Its last push, edit of its words, or comment. */
   updatedAt: Instant,
   /**
@@ -467,17 +480,21 @@ export type MateRepo = typeof MateRepo.Type;
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
 
 /**
- * `POST /api/mate/changes`: the change a delivery goes to — on a task, the task's own open change
- * (an automated Mate holds one per task it delivered, several waiting for review at once); on none,
- * the Mate's one open change in the repository — or the next number opened with `title`. An open
- * change keeps its title: retitling it is zcp's call, by `PATCH`.
+ * `POST /api/mate/changes`: the change a delivery goes to, or the next number opened with `title`.
+ * On a task, the task's own open change (an automated Mate holds one per task it delivered, several
+ * waiting for review at once). On none, the open change on the `branch` named — this Mate's, or one
+ * handed to it — else a new change on it; naming no branch, the Mate's one default change in the
+ * repository (released zcp names none), else a new default one. A new change of a Mate already
+ * holding {@link MATE_OPEN_CHANGES_MAX} open ones in the repository off any task is refused
+ * `too_many_open`; one answered as it is never is. An open change keeps its title: retitling it is
+ * zcp's call, by `PATCH`.
  */
 export const OpenChangeRequest = Schema.Struct({
   repo: RepoName,
   title: ChangeTitle,
   /**
-   * The branch a new change is on, pushed already or not yet; `mate/<Mate's project id>/<number>`
-   * where none is named. Refused `branch_taken` while another open change is on it, and
+   * The branch the change is on, pushed already or not yet; `mate/<Mate's project id>/<number>`
+   * where none is named. Refused `branch_taken` while another Mate's open change is on it, and
    * `protected_ref` for `main`, a name under `mate/` (those are HQ's) or under `refs/`. An open
    * change answered as it is keeps its own.
    */
@@ -526,8 +543,17 @@ export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const AttachmentResponse = Schema.Struct({ id: Schema.String, path: Schema.String });
 export type AttachmentResponse = typeof AttachmentResponse.Type;
 
-/** How many of a Mate's changes in a repository its own state carries, newest first. */
+/**
+ * How many of a Mate's merged or closed changes in a repository its own state carries beside every
+ * open one, newest first.
+ */
 export const MATE_CHANGES_PER_REPO = 10;
+
+/**
+ * How many open changes a Mate off any task may hold in a repository: its default change, those on
+ * branches it named and those handed to it. A person's hand-over is never refused for it.
+ */
+export const MATE_OPEN_CHANGES_MAX = 5;
 
 /**
  * One of a Mate's own changes, as the Mate reads its outcome: open, merged, or closed — and its
@@ -549,21 +575,42 @@ export const MateChange = Schema.Struct({
    * which this Mate pushes from then on. Absent otherwise.
    */
   handed: Schema.optionalKey(Schema.Literal(true)),
+  /**
+   * On an open change: whether it asks for review, described at its head ({@link HqChange}
+   * `ready`); a draft otherwise. Absent on a merged or closed one, and from an older HQ.
+   */
+  ready: Schema.optionalKey(Schema.Boolean),
+  /**
+   * On an open change: how it merges into `main` and whether `main` moved past its merge base, as
+   * HQ last judged it ({@link HqChange} `mergeability`, `behind`). Absent on a merged or closed one,
+   * and from an older HQ.
+   */
+  mergeability: Schema.optionalKey(MergeabilityKind),
+  behind: Schema.optionalKey(Schema.Boolean),
+  /** On an open change: its last push, edit of its words, or comment. Absent as `ready` is. */
+  updatedAt: Schema.optionalKey(Instant),
 });
 export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
  * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
- * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, the
- * Mate's latest {@link MATE_CHANGES_PER_REPO} changes, newest first. An automated Mate may hold
- * several open, one per task; a Mate on no task opens a number only while none of its own is.
+ * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, every
+ * open change of the Mate's and its latest {@link MATE_CHANGES_PER_REPO} merged or closed ones,
+ * newest first. A change missing from it is merged or closed. An automated Mate holds one open per
+ * task; a Mate on no task one per branch it named plus its default change (`openPerBranch`).
  */
 export const MateChanges = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
   /** Added after `appId`: an older HQ's state, without it, names none. */
   appName: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   changes: Schema.Array(MateChange),
+  /**
+   * For a Mate in an application: this HQ keeps a Mate's open change per branch it names beside its
+   * default change ({@link OpenChangeRequest}). Absent from an older HQ, which keeps one open change
+   * per Mate and repository off any task, and for a Mate in no application.
+   */
+  openPerBranch: Schema.optionalKey(Schema.Literal(true)),
 });
 export type MateChanges = typeof MateChanges.Type;
 
@@ -747,8 +794,9 @@ export const HandChangeRequest = Schema.Struct({ mateProjectId: Schema.String })
 
 /**
  * Why HQ does not hand a change over: it is merged or closed; its Mate is still the application's;
- * the Mate named is not one of the application's; or it holds an open change of its own in the
- * repository already.
+ * the Mate named is not one of the application's; or the change is on that Mate's own default
+ * branch (handed away from it once) while it holds its default change again. How many open changes
+ * the Mate holds never refuses it.
  */
 export const HAND_REFUSALS = [
   "change_not_open",

@@ -70,6 +70,7 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
  *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
  *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
+ *   /api/mate/changes/:repo/:n/close`, no body → its own open change, closed without merging; `POST
  *   /api/mate/changes/:repo/:n/attachments`, a raster picture of at most 20 MiB → `{ id, path }`; and git
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
@@ -1137,6 +1138,19 @@ const routes = (
             }),
           );
         }),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/mate/changes/:repo/:n/close",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const { projectId } = yield* mate;
+            const { repo, number } = yield* changePath;
+            return json(yield* (yield* PullRequests).mateClose(projectId, repo, number), 200);
+          }),
+        ),
       ),
     ),
     HttpRouter.add(

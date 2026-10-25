@@ -263,6 +263,8 @@ export interface ChangeReviewInput {
     readonly landedOutside?: boolean | undefined;
     /** HQ's word that it is open and its Mate is no longer one of the application's. */
     readonly mateGone?: true | undefined;
+    /** HQ's word, once it closed without merging, that its own Mate closed it. */
+    readonly closedByMate?: true | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -748,12 +750,9 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
 
   // Owner-proven terminal facts win over an outdated local press.
   if (!pull.merged && pull.state === "closed") {
-    return closedReview(
-      base,
-      close.kind === "done"
-        ? "You closed it; its branch is still there"
-        : "Somebody closed it; its branch is still there",
-    );
+    const who =
+      close.kind === "done" ? "You" : pull.closedByMate === true ? input.mateName : "Somebody";
+    return closedReview(base, `${who} closed it; its branch is still there`);
   }
   if (pull.merged || press.kind === "done") {
     const age =

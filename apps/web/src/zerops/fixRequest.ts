@@ -17,6 +17,11 @@ import { useAskMate } from "./useAskMate";
 export interface FixProblem {
   /** What is broken, as a sentence: "Production's release v0.1.57 failed in the build step." */
   readonly what: string;
+  /**
+   * A change's problem: the branch its work is on. Its Fix reaches the main chat once the
+   * conversation bound to that branch is archived, and the main chat is told where to work.
+   */
+  readonly branch?: string | undefined;
   /** When it broke, ISO: written as a time of day and how long ago. */
   readonly at?: string | undefined;
   /** The error's own words, quoted as they were. */
@@ -56,7 +61,8 @@ export function fixRequestWhen(at: string, now: Date): string {
 export function fixRequestPrompt(problem: FixProblem, now: Date = new Date()): string {
   const what = problem.what.trim().replace(/[.:]$/u, "");
   const when = problem.at === undefined ? "" : fixRequestWhen(problem.at, now);
-  const parts = [when.length > 0 ? `${what} ${when}.` : `${what}.`];
+  const branch = problem.branch === undefined ? "" : ` Its work is on branch ${problem.branch}.`;
+  const parts = [`${when.length > 0 ? `${what} ${when}.` : `${what}.`}${branch}`];
   const error = problem.error?.trim();
   if (error !== undefined && error.length > 0) parts.push(`The error: ${error}`);
   const lines = (problem.logLines ?? [])
@@ -95,13 +101,27 @@ export function fixMateChoice<T extends FixMate>(mates: ReadonlyArray<T>): Reado
 
 /**
  * Opens the Mate's conversation with the problem written into its composer,
- * not sent: the person reads what goes and presses Send themselves.
+ * not sent: the person reads what goes and presses Send themselves. A change's
+ * problem names its branch: the conversation bound to a lease of it is opened
+ * while it is not archived, else the main chat, and the words say the branch.
  */
-export function useAskMateToFix(): (mateProjectId: string, problem: FixProblem) => void {
+export function useAskMateToFix(): (
+  mateProjectId: string,
+  problem: FixProblem,
+  options?: { readonly branch?: string | undefined },
+) => void {
   const askMate = useAskMate();
   return useCallback(
-    (mateProjectId, problem) => {
-      askMate(mateProjectId, fixRequestPrompt(problem), { send: false });
+    (mateProjectId, problem, options) => {
+      const branch = options?.branch;
+      askMate(
+        mateProjectId,
+        fixRequestPrompt(branch === undefined ? problem : { ...problem, branch }),
+        {
+          send: false,
+          ...(branch === undefined ? {} : { branch }),
+        },
+      );
     },
     [askMate],
   );

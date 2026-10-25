@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import {
+  organizationSwitchLanding,
   SIDEBAR_ACCOUNT_DESTINATIONS,
   sidebarAccountDestinationOf,
   sidebarAccountLines,
@@ -133,5 +134,38 @@ describe("sidebarAccountDestinationOf", () => {
     for (const destination of SIDEBAR_ACCOUNT_DESTINATIONS) {
       expect(sidebarAccountDestinationOf(destination.to)).toBe(destination.id);
     }
+  });
+});
+
+// Aleš, 2026-10-25: switching from Mate s.r.o. to Mate2 s.r.o. on Kara's conversation kept its
+// address and read "This conversation isn't in your Zerops projects", while the menu already listed
+// Mate2's Cal. A link opened to another organization's conversation still reads that.
+describe("organizationSwitchLanding", () => {
+  it.each([
+    {
+      name: "a conversation of the organization left lands home",
+      pathname: "/env-1/thread-1",
+      to: "m-b",
+      lands: "/",
+    },
+    { name: "a change of it lands home", pathname: "/change/g1/appdev/4", to: "m-b", lands: "/" },
+    { name: "a Mate of it lands home", pathname: "/mate/p1", to: "m-b", lands: "/" },
+    {
+      name: "Settings reads the new organization in place",
+      pathname: "/settings/appearance",
+      to: "m-b",
+      lands: null,
+    },
+    { name: "the projects read it in place", pathname: "/zerops", to: "m-b", lands: null },
+    { name: "Git reads it in place", pathname: "/git", to: "m-b", lands: null },
+    { name: "home stays home", pathname: "/", to: "m-b", lands: null },
+    {
+      name: "the organization in view picked again stays",
+      pathname: "/env-1/thread-1",
+      to: "m-a",
+      lands: null,
+    },
+  ])("$name", ({ pathname, to, lands }) => {
+    expect(organizationSwitchLanding({ pathname, from: "m-a", to })).toBe(lands);
   });
 });

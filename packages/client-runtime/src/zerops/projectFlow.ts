@@ -88,6 +88,8 @@ export interface FlowPullRequest {
   readonly firstCodeMerge?: boolean | undefined;
   /** Merged by GitHub of a head no person merged in Mate (`HqChange.landedOutside`). */
   readonly landedOutside?: boolean | undefined;
+  /** Closed without merging by its own Mate (`HqChange.closedByMate`). */
+  readonly closedByMate?: true | undefined;
   /**
    * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
@@ -184,6 +186,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
     ...(change.firstCodeMerge === undefined ? {} : { firstCodeMerge: change.firstCodeMerge }),
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
+    ...(change.state === "closed" && change.closedByMate === true ? { closedByMate: true } : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
