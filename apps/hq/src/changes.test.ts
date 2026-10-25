@@ -1062,7 +1062,7 @@ describe("a Mate's changes in HQ", () => {
     );
 
     it.effect(
-      "a Mate closes its own open change, never another's, its branch kept, and says so in the change's conversation",
+      "a Mate closes its own open change, never another's nor a task's, its branch kept, and says so in the change's conversation",
       () =>
         Effect.gen(function* () {
           const { call, fake, url } = yield* startCore(true);
@@ -1094,7 +1094,7 @@ describe("a Mate's changes in HQ", () => {
           ]);
           assert.deepStrictEqual(yield* close(ada.auth, 9), [
             404,
-            { code: "change_not_found", reason: "change_not_found" },
+            { code: "change_not_found", reason: "unknown_change" },
           ]);
           const [status, closed] = yield* close(ada.auth, 1);
           assert.deepStrictEqual(
@@ -1143,6 +1143,23 @@ describe("a Mate's changes in HQ", () => {
             ],
             [3, "open"],
           );
+          // A task's change is its task's: its Mate closes none of those.
+          assert.strictEqual((yield* open(ada.auth, "The task's work", "task-work"))["number"], 4);
+          yield* rowsWhere(
+            url,
+            `WITH task AS (
+               INSERT INTO hq_task (app_id, repo, number, title, body, url, delivery_id, state,
+                 source_kind, source, source_key)
+               VALUES ('${ada.appId}'::uuid, 'appdev', 1, 'A task', '', 'https://tasks.test/1',
+                 'delivery-1', 'done', 'github-issue', '{}'::jsonb, 'github:acme/shop#1')
+               RETURNING id)
+             UPDATE hq_change SET task_id = (SELECT id FROM task) WHERE number = 4 RETURNING 1`,
+            () => true,
+          );
+          assert.deepStrictEqual(yield* close(ada.auth, 4), [
+            409,
+            { code: "conflict", reason: "change_on_task" },
+          ]);
         }),
     );
 
