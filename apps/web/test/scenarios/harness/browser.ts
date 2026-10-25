@@ -364,8 +364,14 @@ export async function openBrowser(
 }
 
 /** Some `surface` in the page draws `text` as one of its lines, or one name of a line. */
-function surfaceShowsText(surface: string, text: string) {
-  return [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
+/**
+ * Whether `surface` draws `text`: shown, or — where `folds` — not drawn while a menu group stands
+ * folded, so it may stand inside that group.
+ */
+function whereText(surface: string, text: string, folds: boolean): "shown" | "folded" | null {
+  const shown = [
+    ...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`),
+  ].some(
     (element) =>
       // A Mate alone in its project reads "Project · Mate": either name stands on its own.
       element.innerText
@@ -375,16 +381,21 @@ function surfaceShowsText(surface: string, text: string) {
             line.split(/\s·\s/).some((part) => part.trim() === text) || line.trim() === text,
         ) && element.getBoundingClientRect().height > 0,
   );
+  if (shown) return "shown";
+  return folds &&
+    document.querySelector('[data-zerops-surface="sidebar-project"][aria-expanded="false"]') !==
+      null
+    ? "folded"
+    : null;
 }
 
 /** Whether `surface` draws `text` now, with no wait: for a look between clock advances. */
-export function showsText(page: Page, surface: string, text: string) {
-  return page.evaluate(surfaceShowsText, surface, text);
+export async function showsText(page: Page, surface: string, text: string) {
+  return (await page.evaluate(whereText, surface, text, false)) === "shown";
 }
 
-/** `timeout` only for `visibleInMenu`'s fold heuristic; every other caller waits for the text. */
-export async function visibleText(page: Page, surface: string, text: string, timeout = 0) {
-  await page.waitForFunction(surfaceShowsText, { timeout, polling: "raf" }, surface, text);
+export async function visibleText(page: Page, surface: string, text: string) {
+  await page.waitForFunction(whereText, { polling: "raf" }, surface, text, false);
 }
 
 /** Where Mate `name` stands in the menu against project `app`: drawn there, folded in it, or not yet. */
@@ -477,11 +488,10 @@ export async function menuMateIn(page: Page, name: string, app: string) {
 /**
  * The menu's row of Mate `name`, drawn and still: its name alone (a Mate in no project, or under its open
  * group), or its project's then its own ("Shop · Ada", a project of one Mate). A Mate in a folded
- * group is drawn once a person opens its group: where none shows it soon, every group is opened
- * from the menu's top row.
+ * group is drawn once a person opens its group: where it is not drawn while a group stands folded,
+ * every group is opened once.
  */
-// A kept window, not a timeout test: a row not drawn within 3 s reads as folded (a design gap).
-export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
+export async function menuMateRow(page: Page, name: string) {
   const literal = (value: string) => {
     const parts = value.split('"').map((part) => `"${part}"`);
     return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
@@ -489,32 +499,40 @@ export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
   const words = `normalize-space(translate(., "\u00a0", " "))`;
   const suffix = literal(` · ${name}`);
   const named = `${words}=${literal(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
-  const row = page
-    .locator(
-      `::-p-xpath(//*[@data-zerops-surface="sidebar-mate"][.//*[@data-zerops-surface="sidebar-mate-name"][${named}]])`,
-    )
-    .filter(
-      (row) =>
-        row.getBoundingClientRect().height > 0 &&
-        // Still: a group unfolding moves and clips its rows, so a press measured meanwhile lands
-        // beside the row.
-        !document
-          .getAnimations()
-          .some(
-            (animation) =>
-              animation.playState === "running" &&
-              animation.effect instanceof KeyframeEffect &&
-              animation.effect.target?.contains(row) === true,
-          ),
-    )
-    .setTimeout(timeout);
-  const soon = Math.min(timeout, 3_000);
-  try {
-    await row.setTimeout(soon).wait();
-  } catch {
-    await openFoldedGroups(page);
-    await row.setTimeout(Math.max(timeout - soon, 1_000)).wait();
-  }
+  const path = `//*[@data-zerops-surface="sidebar-mate"][.//*[@data-zerops-surface="sidebar-mate-name"][${named}]]`;
+  const row = page.locator(`::-p-xpath(${path})`).filter(
+    (row) =>
+      row.getBoundingClientRect().height > 0 &&
+      // Still: a group unfolding moves and clips its rows, so a press measured meanwhile lands
+      // beside the row.
+      !document
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === "running" &&
+            animation.effect instanceof KeyframeEffect &&
+            animation.effect.target?.contains(row) === true,
+        ),
+  );
+  const where = await page.waitForFunction(
+    (path) => {
+      const rows = document.evaluate(path, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE);
+      for (let index = 0; index < rows.snapshotLength; index++)
+        if ((rows.snapshotItem(index) as Element).getBoundingClientRect().height > 0)
+          return "shown";
+      return document.querySelector(
+        '[data-zerops-surface="sidebar-project"][aria-expanded="false"]',
+      ) === null
+        ? null
+        : "folded";
+    },
+    { polling: "raf" },
+    path,
+  );
+  const found = await where.jsonValue();
+  await where.dispose();
+  if (found === "folded") await openFoldedGroups(page);
+  await row.wait();
   // Keep the query, not a node that an arriving HQ snapshot can replace before the click.
   return row;
 }
@@ -532,16 +550,17 @@ async function openFoldedGroups(page: Page) {
 
 /**
  * Mate `name` drawn in the menu's `surface`: a Mate in a folded group is drawn once a person
- * opens its group, so where none shows it soon every group is opened.
+ * opens its group, so where it is not drawn while a group stands folded every group is opened
+ * once. The menu draws a snapshot's groups and rows in one frame, so a row in an open group or
+ * among the ungrouped reads as shown before any folded group is opened for it.
  */
-// A kept window, not a timeout test: a row not drawn within 3 s reads as folded (a design gap).
-export async function visibleInMenu(page: Page, surface: string, name: string, timeout = 10_000) {
-  try {
-    await visibleText(page, surface, name, Math.min(timeout, 3_000));
-  } catch {
-    await openFoldedGroups(page);
-    await visibleText(page, surface, name, Math.max(timeout - 3_000, 1_000));
-  }
+export async function visibleInMenu(page: Page, surface: string, name: string) {
+  const where = await page.waitForFunction(whereText, { polling: "raf" }, surface, name, true);
+  const found = await where.jsonValue();
+  await where.dispose();
+  if (found === "shown") return;
+  await openFoldedGroups(page);
+  await visibleText(page, surface, name);
 }
 
 /**

@@ -84,7 +84,7 @@ describe("A: sign-in, session and organizations", () => {
             );
             // The application keeps its id: the colleague renames it by its first name each time.
             yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
-            yield* s.then.menu.row(`Shop ${load}`).appears({ within: lateMs + 10_000 });
+            yield* s.then.menu.row(`Shop ${load}`).appears();
           }
           expect(mints(), "Two reloads mint no further door token").toBe(first);
           yield* s.then.noExternalNetwork;
@@ -155,7 +155,7 @@ describe("A: sign-in, session and organizations", () => {
         slowMemberList(s.drivers, MEMBERS_MS);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+        yield* s.then.menu.row("Shop").appears();
         const reloaded = firstHqAnswer(s.page);
         reloaded.from();
         yield* account(s.page).reload;
@@ -210,7 +210,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
         yield* s.then.menu
           .row("HQ returned")
-          .appears({ within: 10_000 })
+          .appears()
           .pipe(Effect.ensuring(Effect.all([s.then.noReload, s.then.noExternalNetwork])));
       }),
     );
@@ -276,9 +276,9 @@ describe("A: sign-in, session and organizations", () => {
         yield* b.then.menu.row("Shop").appears();
         yield* hqKeepsEverySession(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Both live");
-        yield* b.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* b.then.menu.row("Both live").appears();
         yield* Effect.promise(() => s.page.bringToFront());
-        yield* s.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* s.then.menu.row("Both live").appears();
         yield* account(s.page).showsPerson("owner");
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
@@ -297,7 +297,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* sessionEnds(s, "expiry");
         yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
         yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
-        yield* s.then.menu.row("Automatically renewed").appears({ within: 10_000 });
+        yield* s.then.menu.row("Automatically renewed").appears();
         yield* retainedAuthorization();
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;

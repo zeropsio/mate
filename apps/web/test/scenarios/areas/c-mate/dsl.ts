@@ -126,7 +126,7 @@ export function mateChat(
   const openMate = (name: string) =>
     Effect.promise(async () => {
       // Its own row, its group opened where it is folded: never a group's line that names it.
-      await (await menuMateRow(page, name, 8000)).click();
+      await (await menuMateRow(page, name)).click();
     });
   const send = (message: string, waitForReady: boolean) =>
     Effect.promise(() => sendConversationMessage(page, message, waitForReady));

@@ -49,7 +49,7 @@ const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", histo
     yield* Effect.promise(async () => {
       s.web.setPerson(page, "personal");
       await s.web.gotoWithSession(page, "personal");
-      await (await menuMateRow(page, name, 8000)).click();
+      await (await menuMateRow(page, name)).click();
       await page.waitForSelector('[role="textbox"]', { visible: true });
     });
     for (const [question, answer] of exchanges) {

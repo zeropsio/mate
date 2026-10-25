@@ -624,10 +624,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
             });
           }),
         row: (name: string) => ({
-          appears: (options: { within?: number } = {}) =>
+          appears: () =>
             Effect.promise(async () => {
               try {
-                await visibleInMenu(page, "sidebar-environments", name, options.within);
+                await visibleInMenu(page, "sidebar-environments", name);
               } catch (error) {
                 throw new Error(
                   `Menu row ${name} missing\n${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\n${JSON.stringify([...zerops.requests])}\nFrames: ${JSON.stringify([...zerops.framesByKind])}\nSubscriptions: ${JSON.stringify([...zerops.subscriptions.values()].map(({ kind, name, receiver, output, search }) => ({ kind, name, receiver, output, search })))}`,
