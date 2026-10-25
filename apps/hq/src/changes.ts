@@ -308,7 +308,9 @@ export class Changes extends Context.Service<
     ) => Effect.Effect<HqChangeComment, ReadError | NotLeader>;
     /**
      * The change squashed into `main` (`hqChanges.ts` `MergeChangeRequest`), if its head is still
-     * `expectedHead`: one merge of a repository at a time, from `main` as the last one left it.
+     * `expectedHead`: one merge of a repository at a time, from `main` as the last one left it. The
+     * first change into a repository whose `main` holds nothing, carrying another repository's
+     * history, lands it as it is instead (`@t3tools/hq-git` `keepsHistory`).
      */
     readonly mergeChange: (
       userId: string,
@@ -903,10 +905,11 @@ export const changesLayer: Layer.Layer<
 
     /**
      * The change squashed into `main` by whoever `by` names — a person, or Core — with the head
-     * that was judged: one merge of a repository at a time. Each try squashes onto the `main` its
-     * `aim` reads under the repository's lock — a person's, `main` as it is now; Core's, the one it
-     * judged the change against — or stops short where the aim says; should anything else move
-     * `main` meanwhile, it is tried again from where it went.
+     * that was judged (or, keeping its history into a `main` that holds nothing, landed as it is:
+     * `main` at that head, or one merge commit): one merge of a repository at a time. Each try
+     * squashes onto the `main` its `aim` reads under the repository's lock — a person's, `main` as
+     * it is now; Core's, the one it judged the change against — or stops short where the aim says;
+     * should anything else move `main` meanwhile, it is tried again from where it went.
      */
     const land = <A = never, E = never, R = never>(
       change: RecordedChange,
@@ -1747,7 +1750,8 @@ export const changesLayer: Layer.Layer<
             change: { ...change, ...judged },
             mainHead,
             mergeBase,
-            mergeability,
+            // As the wire declares it: how a clean change lands is the merge's to decide.
+            mergeability: mergeability.kind === "clean" ? { kind: "clean" as const } : mergeability,
             files: diff.items.map((file) => ({
               path: file.path,
               added: file.added,

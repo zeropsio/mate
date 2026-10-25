@@ -137,7 +137,12 @@ export interface Author {
   readonly email: string;
 }
 export type Mergeability =
-  | { readonly kind: "clean" }
+  /**
+   * It merges cleanly. `keepsHistory`: `main` never held a file — HQ's empty first commit, nothing
+   * merged onto it yet — and the change carries another repository's history (a root commit `main`
+   * does not hold): it lands as it is, never squashed ({@link HqGit.squashMerge}).
+   */
+  | { readonly kind: "clean"; readonly keepsHistory?: true }
   | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
   | { readonly kind: "empty" | "already_merged" | "no_change" | "unrelated" };
 export interface SquashOptions extends ChangeBranch {
@@ -283,7 +288,12 @@ export interface HqGit {
     change: ChangeBranch,
     snapshot?: ChangeSnapshot,
   ) => Effect.Effect<Mergeability, GitError>;
-  /** Mergeability's verdict, then one commit on main by CAS: never a moved main or change head. */
+  /**
+   * Mergeability's verdict, then main moved once by CAS — never a moved main or change head — to
+   * one squash commit; but a change that keeps its history (`keepsHistory`) lands as it is: main
+   * fast-forwards to its head where it builds on main, else takes one merge commit of main and the
+   * head, with the squash's message and trailers.
+   */
   readonly squashMerge: (
     repo: Repo,
     options: SquashOptions,

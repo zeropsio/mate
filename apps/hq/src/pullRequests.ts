@@ -12,7 +12,9 @@
  *   says once what the Mate does with it. A later push goes to the same branch; a new description
  *   edits only HQ's part of the body (between {@link MATE_START} and {@link MATE_END}). Kept on
  *   every move of a change, and every minute for any move missed.
- * - Merge in Mate merges the pull request on GitHub (squash, at the head the person saw), then
+ * - Merge in Mate merges the pull request on GitHub at the head the person saw — a squash, but a
+ *   merge commit keeping its commits for the first change into a repository whose `main` holds
+ *   nothing that carries another repository's history, as HQ's own merge lands it as it is — then
  *   follows GitHub's default branch (`GithubMirror.sync`), which marks the change merged; GitHub's
  *   refusal is the merge's, in plain words, and nothing moves. Close in Mate closes it there too.
  * - From GitHub (`GithubEvents`): merged there, the change is merged here; closed unmerged, the
@@ -56,6 +58,7 @@ import { type GithubEvent, GithubEvents } from "./githubEvents.ts";
 import { GithubGate } from "./githubGate.ts";
 import { type GithubCheckRun, GithubIssues } from "./githubIssues.ts";
 import { GithubMirror } from "./githubMirror.ts";
+import { GitHost } from "./gitHost.ts";
 import { type RemoteIdentity, remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { Remotes } from "./repoRemotes.ts";
@@ -446,6 +449,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
        */
       const taken = new Map<string, number>();
       const mirror = yield* GithubMirror;
+      const gitHost = yield* GitHost;
       const events = yield* GithubEvents;
       // One pull request's step at a time: a sweep, an event and a merge never cross.
       const working = yield* Semaphore.make(1);
@@ -1165,6 +1169,33 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           ),
         );
 
+      /**
+       * How GitHub merges the change: squashed, as a merge in HQ squashes it — but one keeping its
+       * history (`@t3tools/hq-git` `keepsHistory`: the first into a `main` that holds nothing,
+       * carrying another repository's history) under one merge commit, its commits as they are.
+       */
+      const methodOf = (change: HqChange) =>
+        Effect.gen(function* () {
+          const git = yield* gitHost.git;
+          const verdict = yield* git.mergeability(
+            { appId: change.appId, id: change.repo },
+            {
+              mateId: change.mateProjectId,
+              number: change.number,
+              branch: change.branch ?? `mate/${change.mateProjectId}/${String(change.number)}`,
+            },
+          );
+          return verdict.kind === "clean" && verdict.keepsHistory === true
+            ? ("merge" as const)
+            : ("squash" as const);
+        }).pipe(
+          // A `main` HQ has not made yet holds nothing to keep.
+          Effect.catchIf(
+            (error) => error._tag === "GitError" && error.reason === "no_main",
+            () => Effect.succeed("squash" as const),
+          ),
+        );
+
       const mergeOnGithub = (
         userId: string,
         row: PullRow,
@@ -1204,6 +1235,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
               ? { login: undefined }
               : sectionOf(appId, repo, number, row.github_repo, facts);
           const id = login === undefined ? undefined : yield* userIdOf(app, login);
+          const method = yield* methodOf(change);
           // The person merges this head in Mate: recorded, then said on GitHub before its merge.
           // `hq_gate` records the Zerops person's press, whatever GitHub answers: that is the rule.
           yield* leader.write(sql`
@@ -1218,6 +1250,7 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const merged = yield* github
             .mergePull(app.remote, app.token, row.pr_number, {
               sha: expectedHead,
+              method,
               title: `${change.title} (#${String(row.pr_number)})`,
               message: mergeMessage({
                 description: change.body,

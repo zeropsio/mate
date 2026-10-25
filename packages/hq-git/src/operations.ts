@@ -233,7 +233,14 @@ export const makeOperations = (
     const base = (await run(dir, ["merge-base", main, head], signal, undefined, undefined, [1]))
       .toString()
       .trim();
-    if (!base) return { kind: "unrelated" };
+    if (!base) {
+      // Onto a main that holds nothing, another repository's history is joined, never refused.
+      if (!(await keepsHistory(dir, main, head, signal))) return { kind: "unrelated" };
+      const tree = await text(dir, ["rev-parse", `${head}^{tree}`], signal);
+      if (tree === (await text(dir, ["rev-parse", `${main}^{tree}`], signal)))
+        return { kind: "empty" };
+      return { kind: "clean", keepsHistory: true, tree };
+    }
     if (base === head) return { kind: "already_merged" };
     // Change refs only fast-forward, so an earlier squash of this change lies on main past the base.
     const history = await prefix(
@@ -277,8 +284,19 @@ export const makeOperations = (
     if (merged.code === 1) return { kind: "conflict", paths };
     if (tree === (await text(dir, ["rev-parse", `${main}^{tree}`], signal)))
       return { kind: "empty" };
-    return { kind: "clean", tree };
+    return (await keepsHistory(dir, main, head, signal))
+      ? { kind: "clean", keepsHistory: true, tree }
+      : { kind: "clean", tree };
   };
+  /**
+   * Whether `head` lands on `main` as it is: `main` never held a file (HQ's empty first commit,
+   * nothing merged onto it yet) and `head` carries another repository's history — a root commit
+   * `main` does not hold. A main whose own tree holds a file answers at once.
+   */
+  const keepsHistory = async (dir: string, main: string, head: string, signal: AbortSignal) =>
+    (await text(dir, ["ls-tree", "--name-only", main], signal)) === "" &&
+    (await emptyHistory(dir, main, signal)) &&
+    (await text(dir, ["rev-list", "--max-parents=0", head, `^${main}`, "--"], signal)) !== "";
   // macOS and Windows checkouts fold case and Unicode form, so such names clash in one directory.
   const collides = async (dir: string, tree: string, paths: string[], signal: AbortSignal) => {
     const fold = (name: string) => name.normalize("NFC").toLowerCase();
@@ -787,14 +805,23 @@ export const makeOperations = (
       if (head !== opts.expectedHead) return { kind: "head_moved" } as const;
       const result = await inspect(dir, repo, opts, main, head, signal);
       if (result.kind !== "clean") return result;
+      // A change that keeps its history and builds on main is main's next commits as they are.
+      if (result.keepsHistory === true && (await ancestorIn(dir, main, head, signal))) {
+        if (!(await cas(dir, "refs/heads/main", head, main, signal)))
+          return { kind: "main_moved" } as const;
+        emit({ kind: "main_moved", repo, old: main, new: head, by: "merge" });
+        return { merged: head };
+      }
       // Git reads trailers only from the last paragraph, so the trusted block always ends the message.
       const message = `${opts.message.trimEnd()}\n\n${trailers
         .map(([k, v]) => `${k}: ${v}`)
         .join("\n")}\n`;
+      // One squash; a change keeping its history is joined, its head the merge's second parent.
+      const parents = result.keepsHistory === true ? ["-p", main, "-p", head] : ["-p", main];
       const sha = (
         await run(
           dir,
-          ["commit-tree", result.tree!, "-p", main],
+          ["commit-tree", result.tree!, ...parents],
           signal,
           message,
           identity(opts.author),

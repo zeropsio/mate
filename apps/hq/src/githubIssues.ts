@@ -317,14 +317,20 @@ export class GithubIssues extends Context.Service<
       },
     ) => Effect.Effect<number, HostUnreachable>;
     /**
-     * The pull request `number` squashed into its base, if its head is still `sha`: its status,
-     * the commit it made, or GitHub's reason.
+     * The pull request `number` merged into its base by `method` — squashed, or `merge`: its
+     * commits kept, under one merge commit — if its head is still `sha`: its status, the commit it
+     * made, or GitHub's reason.
      */
     readonly mergePull: (
       remote: RemoteIdentity,
       token: Redacted.Redacted,
       number: number,
-      merge: { readonly sha: string; readonly title: string; readonly message: string },
+      merge: {
+        readonly sha: string;
+        readonly title: string;
+        readonly message: string;
+        readonly method: "squash" | "merge";
+      },
     ) => Effect.Effect<
       {
         readonly status: number;
@@ -552,7 +558,7 @@ export const githubIssuesLayer = (api?: string) =>
         mergePull: (remote, token, number, merge) =>
           Effect.map(
             send("PUT", `${repo(remote)}/pulls/${String(number)}/merge`, token, {
-              merge_method: "squash",
+              merge_method: merge.method,
               sha: merge.sha,
               commit_title: merge.title,
               commit_message: merge.message,
