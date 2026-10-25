@@ -9,6 +9,7 @@ import {
   type HqScopeDelivery,
   type HqStreamMessage,
 } from "@t3tools/shared/hqStream";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Fiber from "effect/Fiber";
@@ -1345,6 +1346,42 @@ describe("a Mate's attention, relayed", () => {
 });
 
 describe("a slow HQ", () => {
+  it.effect("A slow socket handshake is waited for, not restarted from a new ticket", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const upgraded = Deferred.makeUnsafe<void>();
+      let tickets = 0;
+      // Chrome queues the upgrade behind another handshake: the socket exists, its 101 is late.
+      const fixture = hqFixtureWire({
+        open: (socketCreated) =>
+          Effect.gen(function* () {
+            tickets += 1;
+            yield* socketCreated;
+            yield* Deferred.await(upgraded);
+          }),
+      });
+      const { fiber } = yield* run(store, fixture);
+      yield* TestClock.adjust(14_300);
+      yield* settle;
+      expect({ tickets, phase: phase(store, linkKeys.hq(ORG)) }).toEqual({
+        tickets: 1,
+        phase: "connecting",
+      });
+      yield* Deferred.succeed(upgraded, undefined);
+      yield* settle;
+      yield* fixture.send(
+        navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
+      );
+      yield* fixture.send(ready(1));
+      yield* settle;
+      expect({ tickets, phase: phase(store, linkKeys.hq(ORG)) }).toEqual({
+        tickets: 1,
+        phase: "live",
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "a navigation HQ sends long after its connection opened lands on that connection, asked once",
     () =>

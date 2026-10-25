@@ -40,9 +40,14 @@ describe("HQ picture demand on the account link", () => {
       const rotated = yield* Deferred.make<void>();
       let reads = 0;
       const wire: HqWire = {
-        open: fixture.wire.open.pipe(
-          Effect.tap(() => Deferred.succeed(fixture.opens() === 2 ? rotated : opened, undefined)),
-        ),
+        open: (created) =>
+          fixture.wire
+            .open(created)
+            .pipe(
+              Effect.tap(() =>
+                Deferred.succeed(fixture.opens() === 2 ? rotated : opened, undefined),
+              ),
+            ),
         picture: () =>
           Effect.suspend(() => {
             reads += 1;

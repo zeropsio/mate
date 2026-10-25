@@ -74,7 +74,10 @@ export interface HqSegment {
 
 /** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
 export interface HqWire {
-  readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+  /** Opens a segment; `socketCreated` runs once its socket exists, before the upgrade finishes. */
+  readonly open: (
+    socketCreated: Effect.Effect<void>,
+  ) => Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
   readonly change?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
@@ -123,6 +126,9 @@ const ON_THE_SOCKET: StreamEvent = {
   kind: "handshake",
   baselineWithinMs: Number.POSITIVE_INFINITY,
 };
+
+/** The link's socket exists; its upgrade is waited for. */
+const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
 /** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
 export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
@@ -725,7 +731,7 @@ export function hqNavigationLink(options: {
       const segment = (first: boolean) =>
         Effect.scoped(
           Effect.gen(function* () {
-            const opened = yield* wire.open;
+            const opened = yield* wire.open(first ? signal(key, SOCKET_CREATED) : Effect.void);
             open = opened;
             usageSupported = null;
             for (const { registered } of subscribed.values()) {

@@ -42,7 +42,6 @@ export function useGitCredentials(appId: string) {
   }, [store, key]);
   return {
     state,
-    address: hq?.address,
     onIssue: () => {
       setCopied(null);
       if (store !== null && key !== null) void store.issue(key);
