@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { EnvironmentId } from "@t3tools/contracts";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { EnvironmentId, type ZeropsLease, type ZeropsLifecycle } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
+import { Atom } from "effect/reactivity";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -15,12 +17,56 @@ import {
 
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
-import { ProjectSites, type ProjectSitesInput, type SitesMate } from "./SidebarProjectSites";
+import {
+  HeaderSites,
+  ProjectSites,
+  type ProjectSitesInput,
+  type SitesMate,
+} from "./SidebarProjectSites";
 
 vi.mock("~/zerops/accountForge", () => ({
   useStopDeploymentDemand: () => {},
   useStopDeployments: () => new Map(),
 }));
+
+/** zcp's leases as each conversation's lifecycle last read them, by the conversation's scoped key. */
+const lifecycles = vi.hoisted(() => new Map<string, ReadonlyArray<unknown>>());
+vi.mock("~/zerops/feeds", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/zerops/feeds")>();
+  return {
+    zeropsFeeds: {
+      ...actual.zeropsFeeds,
+      lifecycle: ({
+        environmentId,
+        input,
+      }: {
+        readonly environmentId: string;
+        readonly input: { readonly threadId: string };
+      }) => {
+        const leases = lifecycles.get(`${environmentId}:${input.threadId}`);
+        return Atom.make(
+          (leases === undefined
+            ? { state: "unread", waitingFor: null }
+            : {
+                state: "known",
+                value: {
+                  threadId: input.threadId,
+                  recentTools: [],
+                  envelope: {
+                    phase: "develop-active",
+                    environment: "container",
+                    project: { id: "quill-kara", name: "Kara" },
+                    services: [],
+                    leases,
+                    generated: "2026-10-25T09:00:00Z",
+                  },
+                },
+              }) as unknown as Known<ZeropsLifecycle>,
+        );
+      },
+    },
+  };
+});
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
   service,
@@ -55,6 +101,13 @@ function mate(
     readonly mine?: boolean;
     readonly owner?: SitesMate["owner"];
     readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
+    /** Its project's services as listed, with the dev pools among them. */
+    readonly services?: {
+      readonly hostnames: ReadonlyArray<string>;
+      readonly pools: ReadonlyArray<string>;
+    };
+    /** Its conversation the person last visited, by scoped key. */
+    readonly threadKey?: string;
   } = {},
 ): SitesMate {
   const id = `quill-${name.toLowerCase()}`;
@@ -78,11 +131,12 @@ function mate(
         : {
             routes: [route("appdev", `${id}.example.app`)],
           }),
+      ...(over.services === undefined ? {} : { services: over.services }),
     },
     tint: "sky",
     shape: MATE_SHAPE_OF_TINT.sky,
     mine: over.mine ?? true,
-    threadKey: undefined,
+    threadKey: over.threadKey,
     name,
     owner: over.owner,
   };
@@ -113,6 +167,7 @@ const CALM: HeadingLineInput = {
 const unmounts: Array<() => void> = [];
 afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
+  lifecycles.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   useAddressesSheet.getState().close();
@@ -356,6 +411,139 @@ describe("the project's addresses", () => {
     await press(surface("sidebar-production-ask-open"));
     expect(ask).toHaveBeenCalledWith("quill-nell", PROBLEM);
     expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+});
+
+/** A pool declaring three slots' ports, each with its own subdomain whether or not a container holds it. */
+const slots = (pool: string) =>
+  [3001, 3002, 3003].map((port) => route(pool, `${pool}-${String(port)}.quill.example.app`, port));
+
+/** A lease zcp holds, as its envelope names it. */
+const held = (alias: string, branch: string, over: Partial<ZeropsLease> = {}) => ({
+  alias,
+  pool: alias.slice(0, alias.lastIndexOf("-")),
+  branch,
+  state: "held",
+  acquiredAt: "2026-10-25T08:00:00Z",
+  ...over,
+});
+
+/** Kara, whose project holds two dev pools of three slots each and a stage. */
+const kara = (threadKey: string | undefined) =>
+  mate("Kara", {
+    routes: [...slots("webpool"), ...slots("hqpool"), route("appstage", "kara-stage.example.app")],
+    services: { hostnames: ["appstage", "hqpool", "webpool"], pools: ["hqpool", "webpool"] },
+    threadKey,
+  });
+
+/** The leases of Kara's two branches: one running its preview, one parked, one with none yet. */
+const KARA_LEASES = [
+  held("webpool-3", "feat-x", {
+    devServers: [
+      {
+        name: "web",
+        port: 3000,
+        url: "https://webpool-3001.quill.example.app",
+        status: "running",
+        readAt: "2026-10-25T09:00:00Z",
+      },
+    ],
+  }),
+  held("hqpool-3", "feat-x", { state: "parked" }),
+  held("hqpool-4", "feat-y"),
+  held("webpool-5", "gone", { state: "lost" }),
+];
+
+/** Each workspace row of the open popover, as it reads. */
+const workspaceRows = () =>
+  surfaces("sidebar-project-sites-workspace").map((row) => ({
+    text: row.textContent,
+    href: row.getAttribute("href"),
+    dot: row.querySelector("[data-dot]")?.getAttribute("data-dot"),
+  }));
+
+describe("a Mate's dev pools", () => {
+  it("list one row per held or parked lease, named by its pool and branch, with its state and its preview, never the pool's per-port addresses", async () => {
+    lifecycles.set("env-kara:thread-kara", KARA_LEASES);
+    await mount({
+      production: undefined,
+      stages: undefined,
+      mates: [kara("env-kara:thread-kara")],
+    });
+    await press(surface("sidebar-project-sites"));
+    expect(workspaceRows()).toEqual([
+      { text: "hqpool · feat-xhqpool-3parked", href: null, dot: "hollow" },
+      { text: "hqpool · feat-yhqpool-4no preview yet", href: null, dot: "off" },
+      {
+        text: "webpool · feat-xwebpool-3runningwebpool-3001.quill.example.app",
+        href: "https://webpool-3001.quill.example.app",
+        dot: "ok",
+      },
+    ]);
+    expect(listed()).toEqual([["Kara", ["https://kara-stage.example.app"]]]);
+    expect(
+      surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,
+    ).toBe("4 addresses");
+  });
+
+  it("the header's Sites read the Mate's workspaces from the conversation it is in", async () => {
+    lifecycles.set("env-kara:thread-open", KARA_LEASES);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const sites: ProjectSitesInput = {
+      groupId: "quill",
+      projectName: "Quillmark",
+      production: undefined,
+      stages: undefined,
+      mates: [kara(undefined)],
+      prodChip: undefined,
+      stageChip: undefined,
+      line: undefined,
+      onAskToFix: undefined,
+      onOpenStop: () => undefined,
+    };
+    await act(async () => {
+      root.render(
+        <HeaderSites
+          mateProjectId="quill-kara"
+          sites={sites}
+          threadKey="env-kara:thread-open"
+          trigger={<button data-trigger="" type="button" />}
+        >
+          Sites
+        </HeaderSites>,
+      );
+    });
+    unmounts.push(() => {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    });
+    await press(document.querySelector<HTMLElement>("[data-trigger]"));
+    expect(workspaceRows().map((row) => row.href)).toEqual([
+      null,
+      null,
+      "https://webpool-3001.quill.example.app",
+    ]);
+    expect(listed()).toEqual([["Kara", ["https://kara-stage.example.app"]]]);
+  });
+
+  it("the globe never says there is no address while a Mate's pools hold workspaces not read yet", async () => {
+    await mount({
+      production: undefined,
+      stages: undefined,
+      line: undefined,
+      mates: [
+        mate("Kara", {
+          routes: slots("webpool"),
+          services: { hostnames: ["webpool"], pools: ["webpool"] },
+        }),
+      ],
+    });
+    expect(surface("sidebar-project-sites")?.hasAttribute("data-empty")).toBe(false);
   });
 });
 
