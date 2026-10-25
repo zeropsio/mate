@@ -155,7 +155,20 @@ export function useThreadActions() {
               conversation: thread,
               alias: lease.alias,
               archived: true,
-              unarchive: () => unarchiveThread(threadRef, { navigate: true }),
+              // Back, then opened so the person sees the request and its answer: the request goes
+              // once the conversation is back, whether or not it could be opened.
+              unarchive: async () => {
+                const back = await unarchiveThread(threadRef);
+                if (back._tag === "Success") {
+                  await settlePromise(() =>
+                    router.navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(threadRef),
+                    }),
+                  );
+                }
+                return back;
+              },
             }),
         });
       }
@@ -182,6 +195,7 @@ export function useThreadActions() {
       markThreadVisited,
       requestRelease,
       resolveThreadTarget,
+      router,
       unarchiveThread,
     ],
   );
