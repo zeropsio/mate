@@ -4,12 +4,13 @@ import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import { ChangeReceipt, HqChange } from "@t3tools/shared/hqChanges";
+import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 import * as Schema from "effect/Schema";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
 import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
-import { mateAccess } from "../../harness/mateAccess.ts";
+import { mateAccess, publishRecipe } from "../../harness/mateAccess.ts";
 
 const decodeChange = Schema.decodeUnknownSync(HqChange);
 const encodeReceipt = Schema.encodeSync(ChangeReceipt);
@@ -91,6 +92,9 @@ export const changeFixture = Effect.fn(function* (
         expect(reported.status, JSON.stringify(reported.body)).toBe(200);
       }),
     direct: `/change/${appId}/appdev/1`,
+    /** Ada publishes `tier`'s recipe, so the application can add that environment. */
+    publishesRecipe: (tier: RecipeTier) =>
+      publishRecipe(s.drivers.core, s.owner, credential, appId, tier),
     colleagueMerges: Effect.gen(function* () {
       const response = yield* s.drivers.core.call("POST", `${path}/merge`, {
         session: s.owner,
