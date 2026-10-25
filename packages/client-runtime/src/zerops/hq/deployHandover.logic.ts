@@ -3,11 +3,14 @@
  * answered before it planned the event's rollout, and the leading HQ plans it later. Until HQ's
  * navigation shows that rollout's jobs — the event's own, by `cause` and `ref` within its
  * application — the surface that pressed it says it waits for planning, never that nothing will
- * deploy; once it shows them, the answer is those jobs, followed as if HQ had answered them.
+ * deploy; once it shows them, the answer is those jobs, followed as if HQ had answered them. Once
+ * navigation reads the answer's own rollout (`HqDeployAnswer.rollout`) planned while none of its
+ * jobs shows, HQ planned it with none: the answer is HQ's note there.
  *
  * @module hq/deployHandover
  */
 import type { HqDeployAnswer, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
+import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 
 import type { HqJob } from "./environments.ts";
 
@@ -43,12 +46,14 @@ const outcomeOf = (environment: string, job: HqJob): HqDeployOutcome => ({
 /**
  * The answer as the review says it: a planned one (or one from an HQ that does not say) as HQ
  * answered it; a handed-over one as its rollout's jobs in the application's `environments`, each
- * environment's oldest first, or a wait for planning while there are none.
+ * environment's oldest first; while there are none, HQ's note once the application's `rollouts`
+ * read it planned, or a wait for planning — also where they do not list it.
  */
 export function followHandedOver(
   answer: HqDeployAnswer,
   rollout: DeployRollout | undefined,
   environments: ReadonlyArray<{ readonly name: string; readonly jobs: ReadonlyArray<HqJob> }>,
+  rollouts: ReadonlyArray<HqNavigationRollout> | undefined,
 ): HqDeployAnswer {
   if (answer.planned !== false) return answer;
   const jobs =
@@ -60,7 +65,9 @@ export function followHandedOver(
             .reverse()
             .map((job) => outcomeOf(name, job)),
         );
-  return jobs.length === 0
-    ? { jobs: [], note: WAITING_FOR_PLANNING, planned: false }
-    : { jobs, note: null };
+  if (jobs.length > 0) return { jobs, note: null };
+  const planned = rollouts?.find(({ id }) => id === answer.rollout);
+  return answer.rollout !== undefined && planned?.planned === true
+    ? { jobs: [], note: planned.note }
+    : { jobs: [], note: WAITING_FOR_PLANNING, planned: false };
 }
