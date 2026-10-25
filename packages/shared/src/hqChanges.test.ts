@@ -427,6 +427,16 @@ describe("hqChanges — the wire", () => {
   });
 });
 
+describe("hqChanges — a repository", () => {
+  it("A repository's HQ address survives the read", () => {
+    const url = "https://hq.example/git/org-1/app-1/code.git";
+    const { repos } = Schema.decodeUnknownSync(RepoListResponse)({
+      repos: [{ name: "code", mainHead: null, updatedAt: "2026-10-01T00:00:00.000Z", url }],
+    });
+    expect(repos[0]?.url).toBe(url);
+  });
+});
+
 describe("hqChanges — a merge", () => {
   it("is asked with the head the person was shown, never with main", () => {
     const read = (value: unknown) => Schema.decodeUnknownExit(MergeChangeRequest)(value)._tag;

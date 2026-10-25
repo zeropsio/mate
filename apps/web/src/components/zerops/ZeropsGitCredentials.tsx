@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
+import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 
 export function ZeropsGitCredentialsView({
@@ -159,9 +160,12 @@ export function ZeropsGitCredentials({
   readonly repo: string;
 }) {
   const credentials = useGitCredentials(appId);
-  if (credentials.address === undefined)
+  const appIds = useMemo(() => [appId], [appId]);
+  const cloneUrl = useHqAppReleases(appIds)
+    .repos.get(appId)
+    ?.find((r) => r.name === repo)?.url;
+  if (cloneUrl === undefined)
     return <p className="text-sm text-muted-foreground">Waiting for HQ…</p>;
-  const cloneUrl = `${credentials.address.replace(/\/+$/u, "")}/git/${encodeURIComponent(appId)}/${encodeURIComponent(repo)}.git`;
   return (
     <>
       <ZeropsGitCredentialsView {...credentials} cloneUrl={cloneUrl} />
