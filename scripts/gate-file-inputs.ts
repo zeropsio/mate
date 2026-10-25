@@ -264,6 +264,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/web/vite.config.ts",
   ],
   "scripts/update-release-package-versions.test.ts": [],
+  "scripts/vitest-tmp.test.ts": ["patches/vitest@*.patch"],
 };
 
 // Inspect calls, not source text: comments and scripts held in strings are not filesystem reads.
