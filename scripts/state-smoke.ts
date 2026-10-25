@@ -51,7 +51,7 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
     .flat()
     .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
     .join("|");
-  // Keep sign-in and fixed smoke on their existing shards; spread full affected files across both.
+  // Keep sign-in and fixed smoke on their existing shards; spread full affected files across all.
   const stages: { files: string[]; selection?: string }[] = [];
   if (index === 1) stages.push({ files: ["test/scenarios/areas/a-signin"] });
   if (1 % count === index - 1 && Object.keys(smoke).length)

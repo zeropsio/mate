@@ -10,7 +10,7 @@ export const blameMatrices = {
   test_client_runtime: [1].map((shard) => ({ shard, total: 1 })),
   test_web: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
   test_server: [1, 2, 3, 4, 5, 6].map((shard) => ({ shard, total: 6 })),
-  state_smoke: [1, 2].map((shard) => ({ shard, total: 2 })),
+  state_smoke: [1, 2, 3, 4].map((shard) => ({ shard, total: 4 })),
 };
 const jobNames = {
   check: "Check",
