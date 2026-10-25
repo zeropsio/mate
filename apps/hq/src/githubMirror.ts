@@ -705,9 +705,19 @@ export const githubMirrorLayer = (
                   `${branch} is GitHub's default branch: only a merge moves it`,
                 );
             }
-            // A branch HQ made is leased on the commit it last pushed there; any other, on GitHub
-            // lacking it — made then, a named one only where GitHub's rules leave it to pushes.
-            const lease = kept?.made === true ? kept.pushed_sha : null;
+            // A branch HQ made is leased on the commit it last pushed there — for this change, or,
+            // before its first push, for an earlier change on the same branch (its Mate going on
+            // from it); any other, on GitHub lacking it — made then, a named one only where
+            // GitHub's rules leave it to pushes.
+            const [before] =
+              kept === undefined
+                ? yield* sql<{ readonly pushed_sha: string }>`
+                    SELECT pushed_sha FROM hq_change_mirror
+                    WHERE app_id::text = ${appId} AND repo = ${repo} AND branch = ${branch}
+                      AND made AND number <> ${number}
+                    ORDER BY number DESC LIMIT 1`
+                : [];
+            const lease = kept?.made === true ? kept.pushed_sha : (before?.pushed_sha ?? null);
             const made = lease !== null;
             const makeable = named ? mayMake(appId, repo, branch) : Effect.void;
             if (named && !made && !news) {
