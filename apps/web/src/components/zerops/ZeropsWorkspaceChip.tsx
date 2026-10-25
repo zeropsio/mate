@@ -146,6 +146,7 @@ export function ZeropsWorkspaceList({
   if (asking !== undefined) {
     return (
       <ReleaseQuestionHost
+        bound={asking.bound}
         environmentId={environmentId}
         latestTurn={asking.bound ? latestTurn : null}
         lease={asking.lease}
@@ -258,8 +259,11 @@ export function ZeropsReleaseQuestion({
 function ReleaseQuestionHost({
   onDismiss,
   onDone,
+  bound = true,
   ...conversation
 }: BoundConversation & {
+  /** False for another of the Mate's workspaces, which the conversation is not bound to. */
+  readonly bound?: boolean;
   /** Not now. */
   readonly onDismiss: () => void;
   /** The request was sent, or failed to be. */
@@ -281,6 +285,7 @@ function ReleaseQuestionHost({
       threadRef,
       conversation: shell,
       alias: lease.alias,
+      bound,
       archived: shell.archivedAt !== null,
       unarchive: () => unarchiveThread(threadRef),
     }).finally(onDone);
