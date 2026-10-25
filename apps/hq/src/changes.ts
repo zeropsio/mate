@@ -106,6 +106,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "protected_ref",
     "invalid_ref",
     "too_many_open",
+    "change_on_task",
   ]),
 }) {}
 
@@ -236,6 +237,16 @@ export class Changes extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<MateGitPush>, SqlError>;
     /** Whether the Mate's application has a production, of any target; none out of one. */
     readonly mateProduction: (projectId: string) => Effect.Effect<boolean, SqlError>;
+    /**
+     * The Mate's own open change `number` in `repo` closed without merging — work it gave up — its
+     * branch kept; said in the change's conversation in the Mate's own name. A task's change is
+     * refused `change_on_task`: it is decided with its task.
+     */
+    readonly mateCloseChange: (
+      projectId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<HqChange, MateError>;
     /** A picture for the Mate's open change: a raster, kept for its description to show. */
     readonly attach: (
       projectId: string,
@@ -759,15 +770,24 @@ export const changesLayer: Layer.Layer<
         }),
       );
 
-    /** The application the Mate edits its change `number` of `repo` in: its own change only. */
     /** The application HQ holds the Mate in, by id and name: none for a Mate in no application. */
     const matePlaced = (projectId: string) =>
       sql<{ readonly app_id: string; readonly name: string }>`
         SELECT placed.app_id::text AS app_id, app.name FROM hq_app_project placed
         JOIN hq_app app ON app.id = placed.app_id
         WHERE placed.project_id = ${projectId} AND placed.kind IN ('mate', 'devstage')`;
-    const mateChange = (projectId: string, repo: string, number: number) =>
-      confirmingRefusal(
+    /**
+     * The application the Mate edits or closes its change `number` of `repo` in: its own change
+     * only. An edit is decided as every write that can be undone is; a close, which cannot, over
+     * roles read for it alone.
+     */
+    const mateChange = (
+      projectId: string,
+      repo: string,
+      number: number,
+      verb: "edit_change" | "close_own_change" = "edit_change",
+    ) =>
+      (verb === "edit_change" ? confirmingRefusal : decidedFresh)(
         Effect.gen(function* () {
           const held = yield* mateHeld(projectId);
           const [row] =
@@ -781,11 +801,7 @@ export const changesLayer: Layer.Layer<
             change: row === undefined ? null : { mateProjectId: row.mate_project_id },
           };
           const facts = yield* roles.forWrite;
-          return yield* enforced(
-            "edit_change",
-            target,
-            can(mate(projectId), "edit_change", target, facts),
-          );
+          return yield* enforced(verb, target, can(mate(projectId), verb, target, facts));
         }),
       );
 
@@ -1517,6 +1533,32 @@ export const changesLayer: Layer.Layer<
           // Described, it asks for review: a task's status line says so now, not when it opened.
           if (edit.body !== undefined) yield* tellTasksOf(appId, repo, number);
           return edited;
+        }),
+      mateCloseChange: (projectId, repo, number) =>
+        Effect.gen(function* () {
+          const appId = yield* mateChange(projectId, repo, number, "close_own_change");
+          return yield* touched(
+            leader.write(
+              Effect.gen(function* () {
+                yield* openChangeLocked(appId, repo, number);
+                const change = yield* changeIn(appId, repo, number);
+                // Handed to another Mate since `can` decided: no longer its own to give up.
+                if (change.mateProjectId !== projectId)
+                  return yield* refuse("forbidden", "not_your_change");
+                // A task's change is decided with its task, and closed by a person.
+                const [task] = yield* sql<{ readonly on_task: boolean }>`
+                  SELECT task_id IS NOT NULL AS on_task FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}`;
+                if (task?.on_task === true) return yield* refuse("conflict", "change_on_task");
+                // The person reads who closed it where they read the change's conversation.
+                yield* sql`
+                  INSERT INTO hq_change_comment (app_id, repo, number, author_mate_project_id, body)
+                  VALUES (${appId}::uuid, ${repo}, ${number}, ${projectId},
+                    ${`Closed without merging. Its branch ${change.branch} stays.`})`;
+                return yield* closeLocked(change, { by: "mate", mateProjectId: projectId });
+              }),
+            ),
+          );
         }),
       attach: (projectId, repo, number, content) =>
         Effect.gen(function* () {

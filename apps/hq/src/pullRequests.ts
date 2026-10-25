@@ -284,6 +284,15 @@ export class PullRequests extends Context.Service<
       number: number,
       expectedHead: string | null,
     ) => Effect.Effect<HqChange, MergeError>;
+    /**
+     * A Mate giving up its own open change (`Changes.mateCloseChange`): closed, and its pull request
+     * on GitHub with it, as a person's Close does.
+     */
+    readonly mateClose: (
+      projectId: string,
+      repo: string,
+      number: number,
+    ) => Effect.Effect<HqChange, MergeError>;
   }
 >()("@t3tools/hq/pullRequests") {}
 
@@ -1248,6 +1257,22 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           return change;
         });
 
+      /**
+       * A change just closed in Mate: its pull request closed on GitHub too, read under the permit,
+       * so a sweep that closed it meanwhile closed it once. GitHub not answering leaves it for the
+       * sweep; the close in Mate stands.
+       */
+      const closedThere = (closed: HqChange) =>
+        Effect.gen(function* () {
+          const row = yield* pullOf(closed.appId, closed.repo, closed.number);
+          if (row?.state === "open") yield* closeOnGithub(row);
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("a pull request not closed on GitHub yet", { cause }),
+          ),
+          working.withPermits(1),
+        );
+
       return PullRequests.of({
         merge: (userId, appId, repo, number, expectedHead) =>
           Effect.gen(function* () {
@@ -1267,20 +1292,9 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             }).pipe(working.withPermits(1));
           }),
         close: (userId, appId, repo, number, expectedHead) =>
-          Effect.gen(function* () {
-            const closed = yield* changes.closeChange(userId, appId, repo, number, expectedHead);
-            // Read under the permit: a sweep that closed it meanwhile closed it once.
-            yield* Effect.gen(function* () {
-              const row = yield* pullOf(appId, repo, number);
-              if (row?.state === "open") yield* closeOnGithub(row);
-            }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("a pull request not closed on GitHub yet", { cause }),
-              ),
-              working.withPermits(1),
-            );
-            return closed;
-          }),
+          Effect.tap(changes.closeChange(userId, appId, repo, number, expectedHead), closedThere),
+        mateClose: (projectId, repo, number) =>
+          Effect.tap(changes.mateCloseChange(projectId, repo, number), closedThere),
       });
     }),
   );

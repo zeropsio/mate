@@ -13,6 +13,11 @@
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
+ * - `POST /api/mate/changes/:repo/:n/close`, no body → {@link HqChange}: its own open change closed
+ *   without merging, its branch kept, said in the change's conversation in the Mate's name; another
+ *   Mate's is `403 forbidden` `not_your_change`, none of that number `404 change_not_found`
+ *   `unknown_change`, one no longer open `409 conflict` `change_not_open`, a task's `409 conflict`
+ *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
