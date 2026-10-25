@@ -13,6 +13,7 @@ import {
   browserCheckFailure,
   browserCheckShape,
   checksStrip,
+  checksVerdict,
   browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
@@ -1641,6 +1642,44 @@ describe("browser checks", () => {
       { projectId: undefined, builds: () => "finished" },
     ).operations[0]!;
 
+  // A walk zcp ended at a wedged browser, or its deadline cut, has no `errors`
+  // step: its figures never say "0 errors" for errors nobody read.
+  it("A check whose walk ended before it read the page's errors says so in its figures", () => {
+    const [check] = reduceZeropsOperations(
+      [
+        {
+          id: "b1",
+          turnId: "t1",
+          toolName: "zerops_browser",
+          input: { url: "https://shop.example.com/" },
+          status: "completed",
+          resultText: JSON.stringify({
+            url: "https://shop.example.com/",
+            steps: [
+              { command: ["open", "https://shop.example.com/"], success: true },
+              { command: ["click", "#buy"], success: true },
+            ],
+            message:
+              "agent-browser timed out after 2m0s (context deadline exceeded); 2 steps finished.",
+          }),
+          truncated: false,
+          startedAt: at(1),
+          anchorActivityId: "activity-b1",
+          settledAt: at(1, 30),
+          rowIds: new Set(["activity-b1"]),
+          agentInternal: false,
+        },
+      ],
+      { projectId: undefined, builds: () => "finished" },
+    ).operations;
+    expect(check!.browserSummary).toMatchObject({
+      unfinished: true,
+      line: "2 steps · not finished",
+    });
+    expect(browserCheckFailure(check!)).toBeNull();
+    expect(browserTakeState(check!, [check!])).toBe("unfinished");
+  });
+
   // An agent's guessed ref or misspelt command read as "couldn't find role
   // checkbox get --name Hide sold out" · "1 check failed": the page was never
   // asked (browser-check-fails, 2026-10-19). zcp v9.217.0 files these under
@@ -1717,6 +1756,15 @@ describe("browser checks", () => {
         errorKind: "other",
       },
       note: "the check's own script failed: TypeError: Cannot read properties of undefined (reading 'count')",
+    },
+    {
+      name: "a script zcp found never settled on a page that still answered",
+      step: {
+        command: ["eval", "new Promise(() => {})"],
+        error: "CDP command timed out: Runtime.evaluate",
+        errorKind: "script-timeout",
+      },
+      note: "the check's own script never settled",
     },
   ])(
     "A browser step running the check's own script that failed says so and is not counted as a failed check: $name",
@@ -4371,6 +4419,11 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
     "Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))).then(() => 'settled')",
   ];
   const HUNG = "CDP command timed out: Runtime.evaluate";
+  const WEDGED = {
+    message:
+      "Chrome wedged behind CDP (signal: CDP command timed out). The browser is recycled. Retry with a new batch.",
+    browserRecycled: true,
+  };
   const browserCheck = (
     id: string,
     minute: number,
@@ -4418,14 +4471,18 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
     {
       name: "its script never settled, and the check went on to take the page's picture",
       home: browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "wedge"), ...TAIL], SHOT),
+      checked: "2 pages checked, both checks passed",
     },
     {
+      name: "its script never settled on a page that answered, and zcp went on",
+      home: browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "script-timeout"), ...TAIL], SHOT),
+      checked: "2 pages checked, both checks passed",
+    },
+    {
+      // It never read the page's errors: not passed either.
       name: "its script never settled, and zcp ended the walk there as a wedged browser",
-      home: browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "wedge")], undefined, {
-        message:
-          "Chrome wedged behind CDP (signal: CDP command timed out). The browser is recycled. Retry with a new batch.",
-        browserRecycled: true,
-      }),
+      home: browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "wedge")], undefined, WEDGED),
+      checked: "2 pages checked, 1 passed, 1 not finished",
     },
     {
       name: "the browser rejected its command",
@@ -4439,17 +4496,18 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
         ],
         SHOT,
       ),
+      checked: "2 pages checked, both checks passed",
     },
   ])(
     "a check whose own step failed on a page that loaded leaves no broken row and asks nobody to fix it: $name",
-    ({ home }) => {
+    ({ home, checked }) => {
       expect(pages([home, loginPassed])).toEqual({
         failures: 0,
         rows: [
           {
             title: "hqpool-3270-3002.prg1.zerops.app",
             words: null,
-            checked: "2 pages checked, both checks passed",
+            checked,
             detail: null,
             fix: false,
           },
@@ -4516,4 +4574,100 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
       });
     },
   );
+
+  // A check whose walk ended before its canned tail ran never read the page's errors, console or
+  // requests: it neither passed nor failed, and no surface says either (the coordinator,
+  // 2026-10-25: "the card never claims what wasn't read").
+  const DEADLINE = {
+    message:
+      "agent-browser timed out after 2m0s (context deadline exceeded); 3 steps finished. The browser is recycled. Retry with a shorter command sequence, or raise timeoutSeconds (max 300s).",
+    browserRecycled: true,
+  };
+  const checksOf = (entries: TimelineEntry[]) => {
+    const [only] = structure([user("m0", 0), ...entries, assistant("a1", "t1", 9)], settled).turns;
+    return only!.stretches
+      .flatMap(stretchOperations)
+      .filter((operation) => operation.kind === "browser");
+  };
+  const homePassed = browserCheck("b3", 5, "/", TAIL, SHOT);
+  const homeWaitFailed = browserCheck(
+    "b0",
+    1,
+    "/",
+    [failed(["wait", "--text", "Mate test"], "Timeout 25000ms exceeded", "timeout"), ...TAIL],
+    SHOT,
+  );
+
+  it.each([
+    {
+      name: "zcp ended the walk at a wedged browser",
+      home: browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "wedge")], undefined, WEDGED),
+    },
+    {
+      name: "its deadline cut the walk",
+      home: browserCheck("b1", 1, "/", [ran(["click", "#badge"])], undefined, DEADLINE),
+    },
+  ])(
+    "a check whose walk ended before it read the page's errors reads not finished, never passed or failed: $name",
+    ({ home }) => {
+      expect(pages([home, loginPassed])).toEqual({
+        failures: 0,
+        rows: [
+          {
+            title: "hqpool-3270-3002.prg1.zerops.app",
+            words: null,
+            checked: "2 pages checked, 1 passed, 1 not finished",
+            detail: null,
+            fix: false,
+          },
+        ],
+      });
+      const checks = checksOf([home, loginPassed]);
+      expect(checks.map((check) => browserTakeState(check, checks))).toEqual([
+        "unfinished",
+        "passed",
+      ]);
+      const strip = checksStrip(checks, false);
+      expect(strip).toMatchObject({ failures: 0, unfinished: 1 });
+      expect(checksVerdict(strip)).toBe("1 check passed, 1 not finished");
+      expect(checksVerdict(checksStrip([checks[0]!], false))).toBe("not finished");
+      const [only] = structure([user("m0", 0), home, assistant("a1", "t1", 9)], settled).turns;
+      const [row] = resultRows(deriveOutcome({ turn: only!, landed: [] })!);
+      expect(row).toMatchObject({ tone: "muted", checked: "check not finished", action: null });
+    },
+  );
+
+  it("a later check of the same page that passed settles one that did not finish", () => {
+    const home = browserCheck("b1", 1, "/", [failed(SETTLED, HUNG, "wedge")], undefined, WEDGED);
+    expect(pages([home, homePassed])).toEqual({
+      failures: 0,
+      rows: [
+        {
+          title: "hqpool-3270-3002.prg1.zerops.app",
+          words: null,
+          checked: "checked ✓",
+          detail: null,
+          fix: false,
+        },
+      ],
+    });
+    const checks = checksOf([home, homePassed]);
+    expect(checksStrip(checks, false)).toMatchObject({ failures: 0, unfinished: 0 });
+  });
+
+  it("a check that did not finish settles no earlier failure of the same page", () => {
+    const home = browserCheck("b1", 2, "/", [ran(["click", "#badge"])], undefined, DEADLINE);
+    expect(pages([homeWaitFailed, home])).toEqual({
+      failures: 1,
+      rows: [
+        {
+          title: "hqpool-3270-3002.prg1.zerops.app",
+          words: "Check of / failed",
+          checked: null,
+          detail: "couldn't wait --text Mate test: Timeout 25000ms exceeded",
+          fix: true,
+        },
+      ],
+    });
+  });
 });
