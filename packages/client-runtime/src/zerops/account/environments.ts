@@ -252,6 +252,8 @@ export interface EnvironmentStage {
   readonly hear: (signal: PlatformSignal) => void;
   /** A container's facts may have changed at the source (§6.2): it is read again. */
   readonly request: (key: TargetKey) => void;
+  /** HQ placed the project's Mate for the person again: its refused Mate is asked again. */
+  readonly accessChanged: (projectId: string) => void;
   /** The account closed: every machine, timer, probe, exchange and listener ends. */
   readonly dispose: () => void;
 }
@@ -1016,6 +1018,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       request: (key) => {
         if (!closed) built.request(key);
+      },
+      accessChanged: (projectId) => {
+        if (!closed) built.accessChanged(projectId);
       },
       dispose: () => {
         if (closed) return;

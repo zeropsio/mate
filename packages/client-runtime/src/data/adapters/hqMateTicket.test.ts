@@ -41,6 +41,22 @@ describe("mateTicketIssuer", () => {
       }),
   );
 
+  it.effect(
+    "HQ answering that no Mate is there for the person ends reconnecting instead of retrying",
+    () =>
+      Effect.gen(function* () {
+        const issuer = mateTicketIssuer(() => ({
+          mateTicket: () => Promise.reject(refusal("refused", "mate_not_found")),
+        }));
+
+        expect(yield* Effect.flip(issuer.issue({ orgId: "O1", projectId: "P1" }))).toMatchObject({
+          _tag: "ConnectionBlockedError",
+          reason: "not-found",
+          detail: "HQ has no Mate here you may open.",
+        });
+      }),
+  );
+
   it.effect.each([
     {
       case: "not_mate_opener",
@@ -57,8 +73,8 @@ describe("mateTicketIssuer", () => {
     {
       case: "mate_not_found",
       error: refusal("refused", "mate_not_found"),
-      tag: "ConnectionTransientError",
-      reason: "remote-unavailable",
+      tag: "ConnectionBlockedError",
+      reason: "not-found",
     },
     {
       case: "not_active",

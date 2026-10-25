@@ -253,7 +253,9 @@ export const makeMateImageWire = (
             if (
               state.phase === "blocked" &&
               state.lastFailure?._tag === "ConnectionBlockedError" &&
-              ["authentication", "permission", "read-only"].includes(state.lastFailure.reason)
+              ["authentication", "permission", "read-only", "not-found"].includes(
+                state.lastFailure.reason,
+              )
             ) {
               receive(
                 classifyImageHttp(

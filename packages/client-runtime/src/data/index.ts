@@ -197,6 +197,7 @@ export {
   organizationProjects,
   ownRowWanted,
   projectGone,
+  rosterAnswered,
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";

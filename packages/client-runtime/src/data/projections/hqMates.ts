@@ -14,6 +14,7 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
+import { placedMates } from "../placedRows.ts";
 import { liveOrHeld } from "../streamMachine.ts";
 
 export interface HqMatesRead {
@@ -39,6 +40,25 @@ export const hqMates: Projection<string, HqMatesRead> = {
         liveOrHeld(read.stream(placementsScope(orgId))),
     };
   },
+  equals: sameValue,
+};
+
+/**
+ * The projects whose Mate HQ places for the reader, and whether that is HQ's current word: its
+ * link and its placements live (`zerops/account/hqView.ts` hears a project enter or leave).
+ */
+export const hqPlacedMates: Projection<
+  string,
+  { readonly live: boolean; readonly placed: ReadonlyArray<string> }
+> = {
+  name: "hqPlacedMates",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => ({
+    live:
+      liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
+      liveOrHeld(read.stream(placementsScope(orgId))),
+    placed: placedMates(read, orgId),
+  }),
   equals: sameValue,
 };
 

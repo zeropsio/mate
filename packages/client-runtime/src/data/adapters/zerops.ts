@@ -161,6 +161,12 @@ const isRefusedAlone = (answer: unknown): answer is RefusedAlone =>
 
 const corrupt = (message: string): StreamFault => ({ outcome: "transient", message });
 
+/** The viewer's access changed: the scopes never say all it took or gave, so all are asked again. */
+const ACCESS_CHANGED: StreamFault = {
+  outcome: "transient",
+  message: "The viewer's access changed: every scope is registered again.",
+};
+
 /** Each item's id: a row too damaged to read still names its member. */
 const membersOf = (items: ReadonlyArray<unknown>): ReadonlyArray<string> =>
   items.flatMap((item) =>
@@ -195,6 +201,8 @@ export function zeropsNavigationLink(options: {
   readonly retryDetail: (demand: DetailDemand) => void;
   /** Renew a held own row without reviving a refusal. */
   readonly renew: (demand: DetailDemand) => void;
+  /** The viewer's access may have changed: the attempt under way ends, and the next reads all. */
+  readonly reread: () => void;
 } {
   const { orgId, store } = options;
   const demands = makeDetailDemands({
@@ -215,6 +223,8 @@ export function zeropsNavigationLink(options: {
   const familyOf = (scope: ScopeKey) => scopeSpec(scope).family;
   /** Looks at the demanded details again in the attempt under way, if one is. */
   let wakeAttempt: (() => void) | null = null;
+  /** Ends the attempt under way, if one is, so the next registers every scope again. */
+  let endAttempt: (() => void) | null = null;
   /**
    * When each sampled detail was last read whole, across attempts: a new demand inside its
    * family's `freshMs` reads nothing. Our own write forgets it.
@@ -253,6 +263,13 @@ export function zeropsNavigationLink(options: {
       const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
       /** What ends this attempt from its side work: the credential refused, or access changed. */
       const ended = yield* Deferred.make<never, StreamFault>();
+      const end = () => Deferred.doneUnsafe(ended, Effect.fail(ACCESS_CHANGED));
+      endAttempt = end;
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (endAttempt === end) endAttempt = null;
+        }),
+      );
       /**
        * A read beside the frames whose credential no longer passes ends the attempt: the session
        * and access are the link's. A read that fails transiently is tried again alone; one the
@@ -276,12 +293,7 @@ export function zeropsNavigationLink(options: {
             return Effect.flatMap(
               Effect.forEach(directive.ids, (id) => verifyAbsence(directive.key, id)),
               (denied) =>
-                denied.some(Boolean)
-                  ? Deferred.fail(ended, {
-                      outcome: "transient",
-                      message: "The viewer's access changed: every scope is registered again.",
-                    })
-                  : Effect.void,
+                denied.some(Boolean) ? Deferred.fail(ended, ACCESS_CHANGED) : Effect.void,
             );
           return Effect.void;
         }).pipe(Effect.catch(sessionEnds), Effect.forkIn(attemptScope), Effect.asVoid);
@@ -984,5 +996,6 @@ export function zeropsNavigationLink(options: {
     },
     retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),
     renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
+    reread: () => endAttempt?.(),
   };
 }

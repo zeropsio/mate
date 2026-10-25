@@ -166,6 +166,9 @@ export function selectReachability(
         return machine.descriptor === null
           ? { kind: "connecting", waitingOn: "descriptor" }
           : floorVerdict(machine.descriptor);
+      case "not-found":
+        // HQ has no Mate here for the person: its project is gone to them, never restarting.
+        return { kind: "gone", because: "direct-not-found" };
       case "project-mismatch":
         return { kind: "connecting", waitingOn: "presence" };
       case "access":

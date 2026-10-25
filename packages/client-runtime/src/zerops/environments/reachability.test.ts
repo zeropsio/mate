@@ -684,6 +684,26 @@ describe("reachability over the machine's own transitions", () => {
     expect(selectReachability(again, ENV_A)).toEqual({ kind: "refused-role" });
   });
 
+  it.each([
+    { name: "its link still blocked", link: { phase: "blocked", reason: "not-found" } },
+    { name: "its link idle", link: { phase: "idle" } },
+  ] as const)(
+    "a Mate HQ says is not there for the person reads as no longer available, never as restarting: $name",
+    ({ link }) => {
+      const refused = machine({
+        credential: { kind: "refused", reason: { kind: "not-found" } },
+        link,
+        linkLostAt: at(NOW - 1_000),
+      });
+      const verdict = selectReachability(refused, ENV_A);
+      expect(verdict).toEqual({ kind: "gone", because: "direct-not-found" });
+      expect(isTerminalReachability(verdict)).toBe(true);
+      expect(reachabilityPhrase(verdict, { nowMs: NOW, mateName: "Ada" }).text).not.toMatch(
+        /restarting/i,
+      );
+    },
+  );
+
   it("a Chief owner's refusal closes an existing session without another exchange", () => {
     const blocked = transitionEnvironment(
       connectedMachine(),

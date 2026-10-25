@@ -38,6 +38,7 @@ import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { organization } from "../zerops/__fixtures__/platformData";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import {
+  routeTarget,
   useEnvironmentLinks,
   useRouteConversation,
   useRouteGateInputs,
@@ -1015,6 +1016,56 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
   );
   return { read: () => JSON.parse(container.textContent) as Routed };
 }
+
+describe("routeTarget", () => {
+  const NONE_INDEXED = { serving: new Map(), reported: new Map() };
+  const target = (listingAnswered: boolean) =>
+    routeTarget({
+      machines: new Map(),
+      index: NONE_INDEXED,
+      environmentId: ENV_A,
+      hqNames: true,
+      listingAnswered,
+      inventoryKnown: true,
+      organization: "chosen",
+      content: "empty",
+    });
+
+  it.each([{ name: "its read under way", listingAnswered: false }])(
+    "a conversation HQ names before the Zerops listing does waits for the listing instead of saying it isn't in your projects: $name",
+    ({ listingAnswered }) => {
+      const gate = selectRouteGate(target(listingAnswered));
+      expect(gate).toEqual({ kind: "wait", reachability: null });
+      expect(routeGatePhrase(gate, { nowMs: 0, mateName: "Ada" }).text).toBe(
+        "Opening this conversation…",
+      );
+    },
+  );
+  it.each([
+    { name: "HQ naming it", hqNames: true },
+    { name: "HQ naming nothing", hqNames: false },
+  ])(
+    "once the listing read after HQ named it still lacks the project, the conversation says it isn't in your Zerops projects: $name",
+    ({ hqNames }) => {
+      const gate = selectRouteGate(
+        routeTarget({
+          machines: new Map(),
+          index: NONE_INDEXED,
+          environmentId: ENV_A,
+          hqNames,
+          listingAnswered: true,
+          inventoryKnown: true,
+          organization: "chosen",
+          content: "empty",
+        }),
+      );
+      expect(gate).toEqual({ kind: "unavailable", reachability: null });
+      expect(routeGatePhrase(gate, { nowMs: 0, mateName: "Ada" }).text).toBe(
+        "This conversation isn't in your Zerops projects.",
+      );
+    },
+  );
+});
 
 describe("the descriptor index", () => {
   it("resolves a route's environment through HQ's index without a descriptor sweep", async () => {

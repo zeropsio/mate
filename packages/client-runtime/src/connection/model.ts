@@ -98,6 +98,9 @@ export const ConnectionBlockedReason = Schema.Literals([
   // open (D5). Its own reason because it is not a fault to recover from —
   // there is nothing to retry and nothing to fix.
   "read-only",
+  // HQ has no Mate here this person may open: it was deleted, or their access to its project
+  // ended. HQ does not say which, and nothing to retry changes it until their access does.
+  "not-found",
   "unsupported",
 ]);
 export type ConnectionBlockedReason = typeof ConnectionBlockedReason.Type;
