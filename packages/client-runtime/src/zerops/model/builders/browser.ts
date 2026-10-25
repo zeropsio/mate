@@ -45,17 +45,49 @@ function browserCommandWasWrong(step: BrowserStepResult): boolean {
   );
 }
 
+/**
+ * A failed `eval` is the check's own script failing — it threw, or its promise
+ * never settled before agent-browser's CDP timeout (a wait for a looping
+ * animation's `finished`) — never something the page did. zcp's class of
+ * error does not tell it apart (a hung evaluate is `wedge`, like a hung
+ * page), so the command says it.
+ */
+function browserScriptFailed(label: string, step: BrowserStepResult): boolean {
+  return !step.success && label.split(" ")[0] === "eval";
+}
+
 /** A failed step in the browser's own words, else its class of error. */
 function browserStepNote(step: BrowserStepResult): string | undefined {
   if (step.success || step.errorKind === undefined) return undefined;
   return step.error ?? sentenceCase(step.errorKind);
 }
 
-/** A wrong command's step reads "Not run", muted: it failed nothing on the page. */
+/**
+ * A step that failed on the check's own terms reads muted — a wrong command
+ * "Not run", the check's own script "Not finished" — and fails nothing on the
+ * page: the check is judged by the page's own steps.
+ */
 function buildBrowserStep(id: string, label: string, step: BrowserStepResult) {
-  return browserCommandWasWrong(step)
-    ? buildStep(id, label, "not_run", `the check's command was wrong: ${browserStepNote(step)}`)
-    : buildStep(id, label, step.success ? "ACTIVE" : "FAILED", browserStepNote(step));
+  if (browserCommandWasWrong(step)) {
+    return buildStep(
+      id,
+      label,
+      "not_run",
+      `the check's command was wrong: ${browserStepNote(step)}`,
+    );
+  }
+  if (browserScriptFailed(label, step)) {
+    const note = browserStepNote(step);
+    return buildStep(
+      id,
+      label,
+      "not_finished",
+      note === undefined
+        ? "the check's own script failed"
+        : `the check's own script failed: ${note}`,
+    );
+  }
+  return buildStep(id, label, step.success ? "ACTIVE" : "FAILED", browserStepNote(step));
 }
 
 /**
