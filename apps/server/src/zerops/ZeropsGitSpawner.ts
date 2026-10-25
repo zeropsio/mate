@@ -16,9 +16,10 @@
  * command checks the project and service IDs in the same shell before Git.
  * A workspace path the cached read holds no mount at is read again; one a
  * whole read of the mount table still holds no mount at is this container's
- * own disk, where Git runs as anywhere else (a runtime with no checkout
- * mounted reads as no repository). Any other unresolved remote location fails
- * instead of falling back to local Git. Non-Git commands and Git outside the
+ * own disk, where Git runs as anywhere else but never looks above that path
+ * (a runtime with no checkout mounted reads as no repository). Any other
+ * unresolved remote location fails instead of falling back to local Git.
+ * Non-Git commands and Git outside the
  * remote workspace keep their platform behaviour. Compound Git pipelines
  * involving remote locations are refused.
  *
@@ -39,6 +40,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { ServerConfig } from "../config.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
+  ZEROPS_WORKSPACE_ROOT,
   ZeropsRepositorySource,
   type ZeropsRepositories,
   type ZeropsRepository,
@@ -209,6 +211,28 @@ const remoteLocationsOf = (command: ChildProcess.StandardCommand): ReadonlyArray
       ),
     ),
   ].filter((candidate) => candidate.startsWith("/var/www/"));
+};
+
+/**
+ * Local git at a workspace path no mount holds, kept from looking for a repository above that
+ * path: its directory can outlive its mount, and git would otherwise climb into whatever
+ * repository holds the workspace root and answer for it as this runtime's. Without an environment
+ * of its own the command inherits the server's, as it did.
+ */
+const belowWorkspaceRoot = (command: ChildProcess.StandardCommand): ChildProcess.Command => {
+  const { env, extendEnv } = command.options;
+  const ceiling = env?.GIT_CEILING_DIRECTORIES;
+  return ChildProcess.make(command.command, command.args, {
+    ...command.options,
+    env: {
+      ...env,
+      GIT_CEILING_DIRECTORIES:
+        ceiling === undefined || ceiling === ""
+          ? ZEROPS_WORKSPACE_ROOT
+          : `${ZEROPS_WORKSPACE_ROOT}:${ceiling}`,
+    },
+    extendEnv: env === undefined || extendEnv === true,
+  });
 };
 
 const mentionsRemoteLocation = (command: ChildProcess.Command): boolean =>
@@ -433,7 +457,7 @@ export const makeZeropsGitSpawner = (
             !mentioned.some((path) =>
               [...mounted, ...known].some((repository) => isUnderMount(path, repository)),
             );
-          if (ownDisk) return yield* options.inner.spawn(command);
+          if (ownDisk) return yield* options.inner.spawn(belowWorkspaceRoot(command));
           return yield* Effect.fail(
             PlatformError.badArgument({
               module: "ZeropsGitSpawner",

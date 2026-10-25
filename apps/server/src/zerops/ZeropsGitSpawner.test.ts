@@ -260,8 +260,12 @@ const makeInnerSpawner = (options?: {
 }) =>
   Effect.gen(function* () {
     const calls = yield* Ref.make<ReadonlyArray<SpawnRecord>>([]);
-    /** Each spawn's environment, in order. */
-    const envs = yield* Ref.make<ReadonlyArray<Record<string, string | undefined> | undefined>>([]);
+    /** Each spawn's environment, in order, and whether it extends the server's. */
+    const envs = yield* Ref.make<
+      ReadonlyArray<
+        (Record<string, string | undefined> & { readonly extendEnv?: boolean }) | undefined
+      >
+    >([]);
     const inFlight = yield* Ref.make(0);
     const peak = yield* Ref.make(0);
     const spawner = ChildProcessSpawner.make((command) =>
@@ -274,7 +278,17 @@ const makeInnerSpawner = (options?: {
           ...previous,
           { command: command.command, args: command.args },
         ]);
-        yield* Ref.update(envs, (previous) => [...previous, command.options.env]);
+        yield* Ref.update(envs, (previous) => [
+          ...previous,
+          command.options.env === undefined
+            ? undefined
+            : {
+                ...command.options.env,
+                ...(command.options.extendEnv === undefined
+                  ? {}
+                  : { extendEnv: command.options.extendEnv }),
+              },
+        ]);
         const current = yield* Ref.updateAndGet(inFlight, (n) => n + 1);
         yield* Ref.update(peak, (n) => Math.max(n, current));
         yield* Effect.addFinalizer(() => Ref.update(inFlight, (n) => n - 1));
@@ -480,6 +494,7 @@ describe("makeZeropsGitSpawner", () => {
           ]);
           assert.strictEqual(first?.LC_ALL, "C");
           assert.include(second?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
+          assert.isTrue(second?.extendEnv, "a command with no environment still inherits PATH");
         }),
       ),
   );
