@@ -237,3 +237,30 @@ describe("diffRepositories", () => {
     ]);
   });
 });
+
+describe("two workspaces of one pool and branch", () => {
+  // zcp holds one lease per repository, branch and pool: two repositories on one pool's branch are
+  // two leases that read alike.
+  const web = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+  const docs = { alias: "webpool-4", pool: "webpool", branch: "feat-x" } as const;
+
+  it("are two repositories in Diff, each kept by its own choice", () => {
+    const repositories =
+      diffRepositories({
+        checkouts: ["webpool-3", "webpool-4"],
+        cwd: "/var/www",
+        crewmate: null,
+        leases: [web, docs],
+      }) ?? [];
+    expect(new Set(repositories.map(({ name }) => name)).size).toBe(2);
+    const reads = repositories.map((repository, index) => ({
+      repository,
+      status: status({ changed: index }),
+    }));
+    const [first] = repositories;
+    const shown = shownDiff(reads, { kind: "unstaged", repository: first?.name });
+    expect(shown.kind === "choice" ? shown.choice.repository.cwd : shown.kind).toBe(
+      "/var/www/webpool-3",
+    );
+  });
+});
