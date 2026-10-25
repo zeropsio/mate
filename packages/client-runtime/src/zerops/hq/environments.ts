@@ -185,6 +185,17 @@ const readDeliveryEnvironment = Schema.decodeUnknownOption(
 export interface UnreadEnvironment {
   readonly id: string | null;
   readonly name: string | null;
+  /** Its tier where that much is legible. */
+  readonly tier: "stage" | "production" | null;
+}
+
+/** The one place an unreadable environment is said: every surface that draws it uses these words. */
+export const UNREAD_ENVIRONMENT_LINE = "Could not be read by this version";
+
+export function unreadEnvironmentsWords(unread: ReadonlyArray<UnreadEnvironment>): string | null {
+  if (unread.length === 0) return null;
+  const names = unread.map(({ name, tier }) => name ?? tier ?? "An environment");
+  return `${names.join(", ")} could not be read by this version of Mate. Reload to update it; the environment is still there.`;
 }
 
 const legible = (record: unknown, key: string): string | null => {
@@ -205,7 +216,14 @@ export function readDeliveryEnvironments(value: unknown): {
   for (const sent of Array.isArray(value) ? value : []) {
     const read = readDeliveryEnvironment(sent);
     if (Option.isSome(read)) environments.push(read.value);
-    else unread.push({ id: legible(sent, "id"), name: legible(sent, "name") });
+    else {
+      const tier = legible(sent, "tier");
+      unread.push({
+        id: legible(sent, "id"),
+        name: legible(sent, "name"),
+        tier: tier === "stage" || tier === "production" ? tier : null,
+      });
+    }
   }
   return { environments, unread };
 }

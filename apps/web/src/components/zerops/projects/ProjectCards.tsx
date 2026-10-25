@@ -550,7 +550,11 @@ function CardMates<T>({
 function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
   const { production, stages } = entry.flow;
   const stops = [
-    ...(production.kind === "absent" || production.kind === "creating" ? [] : [production.stop]),
+    ...(production.kind === "absent" ||
+    production.kind === "unread" ||
+    production.kind === "creating"
+      ? []
+      : [production.stop]),
     ...stages,
   ];
   // Every stop is held here, so each keeps the demand that reads what it runs.

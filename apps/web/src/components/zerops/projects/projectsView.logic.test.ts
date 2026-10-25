@@ -594,6 +594,29 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     expect(input.mates.map((entry) => entry.working)).toEqual(working);
   });
 
+  it("feeds the environments the project flow could not read to the flow", () => {
+    const unread = [{ id: null, name: "production", tier: "production" as const }];
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members: [],
+      flow: {
+        unreadEnvironments: unread,
+        environments: [],
+        pullRequests: [],
+        merged: [],
+        release: {
+          gate: { allowed: false, reason: "" },
+          suggestion: "",
+          contents: [],
+          untold: [],
+        },
+      },
+      deployments: new Map(),
+      pending: [],
+    });
+    expect(input.unread).toEqual(unread);
+  });
+
   it("feeds an unknown talk to the flow as not spoken to", () => {
     const members = groupMemberFactsOf(
       [{ item: mate("ready"), role: "dev" }],

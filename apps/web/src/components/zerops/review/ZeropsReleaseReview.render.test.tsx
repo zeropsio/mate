@@ -95,6 +95,7 @@ function flow(): ZeropsProjectFlow {
     recipeRead: true,
     environments: [],
     environmentInputs: [],
+    unreadEnvironments: [],
     recipeTiers: [],
     pullRequests: [],
     changesKnown: true,

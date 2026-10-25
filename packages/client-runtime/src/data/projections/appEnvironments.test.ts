@@ -155,19 +155,19 @@ describe("appEnvironments", () => {
       name: "one of two",
       sent: [STAGE, { ...PRODUCTION, id: "env-prod", jobs: [{ id: "j", state: "unheard-of" }] }],
       readable: [STAGE],
-      unread: [{ id: "env-prod", name: "production" }],
+      unread: [{ id: "env-prod", name: "production", tier: "production" }],
     },
     {
       name: "the only one",
       sent: [{ ...STAGE, keyHeld: "yes" }],
       readable: [],
-      unread: [{ id: null, name: "stage" }],
+      unread: [{ id: null, name: "stage", tier: "stage" }],
     },
     {
       name: "one that is not even a record",
       sent: [PRODUCTION, 7],
       readable: [PRODUCTION],
-      unread: [{ id: null, name: null }],
+      unread: [{ id: null, name: null, tier: null }],
     },
     { name: "none", sent: [STAGE, PRODUCTION], readable: [STAGE, PRODUCTION], unread: [] },
   ])(

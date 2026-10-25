@@ -19,7 +19,7 @@ import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRow
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import { jobInFlight, type HqJob } from "./hq/environments.ts";
+import { jobInFlight, UNREAD_ENVIRONMENT_LINE, type HqJob } from "./hq/environments.ts";
 
 /** HQ's job of a deploy in `state`. */
 const deployRecord = (state: HqJob["state"]): HqJob => ({
@@ -1392,4 +1392,35 @@ it("a Git production's blocker reaches group flow without a runtime read or Rele
     stop: { version: undefined, addresses: [], git },
   });
   expect(flow.nextStep.kind).not.toBe("release");
+});
+
+describe("an environment this build cannot read", () => {
+  it.each([
+    {
+      case: "a production of that tier",
+      unread: [{ id: "e1", name: "production", tier: "production" as const }],
+      production: { kind: "unread", line: UNREAD_ENVIRONMENT_LINE },
+      stages: [],
+    },
+    {
+      case: "one of no legible tier, where no production was read",
+      unread: [{ id: null, name: null, tier: null }],
+      production: { kind: "unread", line: UNREAD_ENVIRONMENT_LINE },
+      stages: [],
+    },
+    {
+      case: "a stage, which leaves production absent",
+      unread: [{ id: null, name: "stage", tier: "stage" as const }],
+      production: { kind: "absent" },
+      stages: ["stage"],
+    },
+    { case: "none", unread: [], production: { kind: "absent" }, stages: [] },
+  ])(
+    "An environment this build cannot read shows as unread, never as an application without it: $case",
+    ({ unread, production, stages }) => {
+      const flow = groupFlow({ ...SM_FIXTURE, stops: [], unread });
+      expect(flow.production).toEqual(production);
+      expect(flow.unreadStages).toEqual(stages);
+    },
+  );
 });

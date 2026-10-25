@@ -4,7 +4,7 @@
  * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
-import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
+import type { OfficialHq, UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployWord,
   firstDeployLine,
@@ -575,6 +575,8 @@ export interface GroupFlowReads {
   /** The Mate tier as `main` holds it (`servicePairs`); `undefined` while unread. */
   readonly mateTier?: string | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
+  /** Environments HQ sent that this build cannot read; absent where the menu holds none. */
+  readonly unreadEnvironments?: ReadonlyArray<UnreadEnvironment>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   readonly release: {
@@ -698,6 +700,7 @@ export function groupFlowInputOf(input: {
     mainHasCode: undefined,
     mainHead: undefined,
     pending: input.pending,
+    unread: flow?.unreadEnvironments ?? [],
   };
 }
 

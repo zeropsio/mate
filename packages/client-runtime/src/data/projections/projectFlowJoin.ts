@@ -38,7 +38,7 @@ import {
   type GroupEnvironmentTier,
   type FlowReleaseRow,
 } from "../../zerops/index.ts";
-import { hqRefusalWords } from "../../zerops/hq/index.ts";
+import { hqRefusalWords, type UnreadEnvironment } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
 import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
@@ -103,6 +103,8 @@ export interface ZeropsProjectFlow {
   /** Stages first, then the production — the order code travels. */
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
+  /** Environments HQ sent that this build cannot read: present, never an application without them. */
+  readonly unreadEnvironments: ReadonlyArray<UnreadEnvironment>;
   /** The tiers the recipe on `main` holds; empty until it is read (`recipeRead`). */
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
   /** Whether the recipe on `main` is read: until it is, `recipeTiers` is empty for want of an answer. */
@@ -532,6 +534,7 @@ function projectFlow(
     declarationsRead: stops !== undefined,
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
+    unreadEnvironments: stops?.unread ?? [],
     recipeTiers: recipe?.tiers ?? [],
     recipeRead: recipe !== undefined,
     pullRequests: changes?.pullRequests ?? [],

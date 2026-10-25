@@ -207,6 +207,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       environments === undefined
         ? undefined
         : canonicalGroupStopsOf({
+            unread: canonicalAppEnvironments.derive(read, key).unread,
             environments,
             projects,
             versions,
@@ -340,6 +341,7 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
     const stops = zeropsStops({
       declarations: flow.declarations,
       environments: flow.environmentInputs,
+      unread: flow.unreadEnvironments,
     });
     return {
       ...flow,

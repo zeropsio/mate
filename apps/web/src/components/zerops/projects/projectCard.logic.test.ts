@@ -1637,3 +1637,31 @@ describe("a place's addresses on its panel", () => {
     expect(said.head).toEqual({ host: "example.xyz", url: "https://example.xyz" });
   });
 });
+
+describe("a card's unread places", () => {
+  it.each([
+    {
+      case: "an unreadable production",
+      flow: { production: { kind: "unread", line: "Could not be read by this version" } },
+      lines: [{ name: "prod", words: "Could not be read by this version" }],
+    },
+    {
+      case: "an unreadable stage beside no production",
+      flow: { production: { kind: "absent" }, unreadStages: ["stage"] },
+      lines: [
+        { name: "stage", words: "Could not be read by this version" },
+        { name: "prod", words: "Not released yet" },
+      ],
+    },
+  ] as const)(
+    "An environment this build cannot read shows as unread, never as an application without it: $case",
+    ({ flow, lines }) => {
+      expect(
+        placeLines({ flow: { stages: [], ...flow }, nowMs: 0 }).map((line) => ({
+          name: line.name,
+          words: line.words.join(" · "),
+        })),
+      ).toEqual(lines);
+    },
+  );
+});

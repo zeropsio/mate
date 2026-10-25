@@ -343,7 +343,7 @@ export function productionChip(input: {
 }): ChipView {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
-  if (production.kind === "absent") return NONE;
+  if (production.kind === "absent" || production.kind === "unread") return NONE;
   if (production.stop.git !== undefined)
     return { kind: "chip", chip: gitChip("prod", production.stop.git) };
   const served =

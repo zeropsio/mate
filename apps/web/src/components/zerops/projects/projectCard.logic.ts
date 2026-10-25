@@ -23,6 +23,7 @@ import {
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { domainFaceWords } from "../addresses/addresses.logic";
@@ -171,7 +172,7 @@ function chipLine(
 
 /** What production's line says from the flow alone, where no chip was read. */
 function flowLine(
-  production: Exclude<GroupFlowProduction, { readonly kind: "absent" }>,
+  production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" }>,
   since: string | undefined,
   rollsBackTo: string | undefined,
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
@@ -303,7 +304,8 @@ function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "
  * nothing runs there, so every card ends on it.
  */
 export function placeLines(input: {
-  readonly flow: Pick<GroupFlow, "production" | "stages">;
+  readonly flow: Pick<GroupFlow, "production" | "stages"> &
+    Partial<Pick<GroupFlow, "unreadStages">>;
   /** Production's chip as the menu reads it; `undefined` where none was read. */
   readonly chip?: ProductionChip | undefined;
   /** Each stage's own chip, by its project. */
@@ -324,15 +326,38 @@ export function placeLines(input: {
   const { production, stages } = input.flow;
   const downOf = (projectId: string | undefined) =>
     (projectId === undefined ? undefined : input.down?.get(projectId)) ?? [];
-  const staged = stages.map((stop) =>
-    stageLine(
-      stop,
-      input.stageChips?.get(stop.projectId),
-      downOf(stop.projectId),
-      input.addressOffered?.get(stop.projectId),
+  const staged: ReadonlyArray<PlaceLine> = [
+    ...stages.map((stop) =>
+      stageLine(
+        stop,
+        input.stageChips?.get(stop.projectId),
+        downOf(stop.projectId),
+        input.addressOffered?.get(stop.projectId),
+      ),
     ),
-  );
+    ...(input.flow.unreadStages ?? []).map((name): PlaceLine => ({
+      kind: "stage",
+      name,
+      projectId: undefined,
+      addresses: [],
+      dot: "unknown",
+      words: [UNREAD_ENVIRONMENT_LINE],
+      trouble: false,
+    })),
+  ];
   const prod = { kind: "production" as const, name: "prod" };
+  if (production.kind === "unread")
+    return [
+      ...staged,
+      {
+        ...prod,
+        projectId: undefined,
+        addresses: [],
+        dot: "unknown",
+        words: [production.line],
+        trouble: false,
+      },
+    ];
   if (production.kind === "absent")
     return [
       ...staged,

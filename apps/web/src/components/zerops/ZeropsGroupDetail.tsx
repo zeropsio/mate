@@ -6,7 +6,7 @@ import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
-import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+import { hqRefusalWords, unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
 import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
@@ -867,13 +867,6 @@ export function ZeropsGroupPane({
       </SideSection>
     </>
   );
-}
-
-/** Environments HQ sent that this build cannot read: said as unread, never as absent. */
-function unreadEnvironmentsWords(unreadEnvironments: CanonicalAppEnvironmentsRead["unread"]) {
-  if (unreadEnvironments.length === 0) return null;
-  const names = unreadEnvironments.map(({ name }) => name ?? "An environment");
-  return `${names.join(", ")} could not be read by this version of Mate. Reload to update it; the environment is still there.`;
 }
 
 const NO_ROUTE_ENVIRONMENT = Atom.make(undefined);
