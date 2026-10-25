@@ -339,6 +339,12 @@ export const ZeropsLease = Schema.Struct({
    */
   activity: ForwardCompatibleOptional(ZeropsLeaseActivity),
   unsaved: ForwardCompatibleOptional(ZeropsLeaseUnsaved),
+  /**
+   * Why the lease's container did not answer a call's read over ssh — its process limit, or ssh
+   * not reaching it — as zcp says it (zcp `docs/spec-workflows.md` §8 DP-21). Absent when it
+   * answered or was not read; it is still zcp's lease.
+   */
+  notAnswering: Schema.optional(Schema.String),
 });
 export type ZeropsLease = typeof ZeropsLease.Type;
 

@@ -1,17 +1,20 @@
 /**
- * The workspace chip of a conversation bound to a lease: when its workspace was last active and
- * what a release would lose there, idle once nothing happened in it for 24 h (`workspaceChip`).
- * Its Release asks first (`zeropsReleaseAsk`): only the person's Release in that question sends the
- * conversation's agent the request to release the lease. Mate releases nothing itself.
+ * The workspace chip of a conversation bound to a lease: its workspace by name, when it was last
+ * active and what a release would lose there, idle once nothing happened in it for 24 h, and how
+ * many other workspaces the Mate holds (`workspaceChip`). Pressed, it lists every workspace of the
+ * Mate (`mateWorkspaceList`). Every Release asks first (`zeropsReleaseAsk`): only the person's
+ * Release in that question sends the conversation's agent the request to release that lease. Mate
+ * releases nothing itself.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { workspaceChipOf, zeropsReleaseAsk } from "@t3tools/client-runtime/zerops";
-import type {
-  EnvironmentId,
-  OrchestrationLatestTurn,
-  ThreadId,
-  ThreadLease,
-} from "@t3tools/contracts";
+import {
+  type CheckoutLease,
+  type MateWorkspace,
+  mateWorkspaceList,
+  workspaceChipOf,
+  zeropsReleaseAsk,
+} from "@t3tools/client-runtime/zerops";
+import type { EnvironmentId, OrchestrationLatestTurn, ThreadId } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 
 import { useThreadActions } from "../../hooks/useThreadActions";
@@ -22,34 +25,57 @@ import { useZeropsReleaseRequest } from "../../zerops/useZeropsReleaseRequest";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import type { ChipDot } from "./SidebarProductionChip.logic";
+import { EnvDot } from "./SidebarProductionChip";
 
 interface BoundConversation {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   /** The lease the conversation is bound to. */
-  readonly lease: ThreadLease;
+  readonly lease: CheckoutLease;
   readonly latestTurn: OrchestrationLatestTurn | null;
 }
 
 export function ZeropsWorkspaceChip({
-  environmentId,
-  threadId,
-  lease,
-  latestTurn,
-}: BoundConversation) {
+  mateName,
+  ...conversation
+}: BoundConversation & {
+  /** The Mate whose conversation it is, by name; none where the conversation is no Mate's. */
+  readonly mateName?: string | undefined;
+}) {
+  const { environmentId, threadId, lease, latestTurn } = conversation;
   const chip = workspaceChipOf({
     binding: lease,
     lifecycle: useZeropsLifecycle(environmentId, threadId),
     lastTurn: latestTurn,
     now: useNowMs(),
   });
+  const [listing, setListing] = useState(false);
   const [asking, setAsking] = useState(false);
   if (chip === undefined) return null;
   return (
     <span className="inline-flex items-center gap-1">
-      <Badge data-zerops-workspace-chip="" tone={chip.idle ? "warning" : "neutral"}>
-        {chip.words}
-      </Badge>
+      <Popover onOpenChange={setListing} open={listing}>
+        <PopoverTrigger
+          render={
+            <button
+              className="inline-flex cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              type="button"
+            />
+          }
+        >
+          <Badge data-zerops-workspace-chip="" tone={chip.idle ? "warning" : "neutral"}>
+            {chip.words}
+          </Badge>
+        </PopoverTrigger>
+        <PopoverPopup align="end" width="lg">
+          <ZeropsWorkspaceList
+            {...conversation}
+            mateName={mateName}
+            onClose={() => setListing(false)}
+          />
+        </PopoverPopup>
+      </Popover>
       <Popover onOpenChange={setAsking} open={asking}>
         <PopoverTrigger
           render={<Button data-zerops-workspace-release="" size="sm" variant="ghost" />}
@@ -58,15 +84,106 @@ export function ZeropsWorkspaceChip({
         </PopoverTrigger>
         <PopoverPopup align="end" width="md">
           <ReleaseQuestionHost
-            environmentId={environmentId}
-            latestTurn={latestTurn}
-            lease={lease}
-            onClose={() => setAsking(false)}
-            threadId={threadId}
+            {...conversation}
+            onDismiss={() => setAsking(false)}
+            onDone={() => setAsking(false)}
           />
         </PopoverPopup>
       </Popover>
     </span>
+  );
+}
+
+/** A workspace's state, as its dot: held ok, parked hollow, not answering red, another quiet. */
+const stateDot = (workspace: MateWorkspace): ChipDot => {
+  if (workspace.notAnswering !== undefined) return "failed";
+  if (workspace.state === "held") return "ok";
+  if (workspace.state === "parked") return "hollow";
+  return "off";
+};
+
+/**
+ * Every workspace of the Mate, as the chip lists it: each by name and alias, its state, what is
+ * known of it, the conversation's own marked; and each its own Release, whose question takes the
+ * list's place — Not now brings the list back, a sent request closes it.
+ */
+export function ZeropsWorkspaceList({
+  mateName,
+  onClose,
+  ...conversation
+}: BoundConversation & {
+  readonly mateName: string | undefined;
+  readonly onClose: () => void;
+}) {
+  const { environmentId, threadId, lease, latestTurn } = conversation;
+  const workspaces = mateWorkspaceList({
+    binding: lease,
+    lifecycle: useZeropsLifecycle(environmentId, threadId),
+    lastTurn: latestTurn,
+    now: useNowMs(),
+  });
+  const [asking, setAsking] = useState<MateWorkspace | undefined>(undefined);
+  if (asking !== undefined) {
+    return (
+      <ReleaseQuestionHost
+        environmentId={environmentId}
+        latestTurn={asking.bound ? latestTurn : null}
+        lease={asking.lease}
+        onDismiss={() => setAsking(undefined)}
+        onDone={onClose}
+        threadId={threadId}
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2" data-zerops-workspace-list="">
+      <p className="font-medium text-sm">
+        {mateName === undefined ? "Workspaces" : `${mateName}'s workspaces`}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {workspaces.map((workspace) => (
+          <li
+            className="flex flex-col gap-0.5"
+            data-bound={workspace.bound ? "" : undefined}
+            data-zerops-workspace={workspace.lease.alias}
+            key={workspace.lease.alias}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <EnvDot dot={stateDot(workspace)} />
+              <span className="zerops-sites-service">{workspace.name}</span>
+              {workspace.alias === undefined ? null : (
+                <span className="zerops-sites-alias">{workspace.alias}</span>
+              )}
+              {workspace.state === undefined ? null : (
+                <span
+                  className="zerops-sites-role"
+                  data-tone={workspace.notAnswering === undefined ? undefined : "red"}
+                >
+                  {workspace.state}
+                </span>
+              )}
+              {workspace.bound ? <Badge>this chat</Badge> : null}
+              <span className="ms-auto">
+                <Button
+                  data-zerops-workspace-release=""
+                  onClick={() => setAsking(workspace)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Release
+                </Button>
+              </span>
+            </div>
+            {workspace.notAnswering === undefined ? null : (
+              <p className="ps-4 text-muted-foreground text-xs">{workspace.notAnswering}</p>
+            )}
+            {workspace.facts === undefined ? null : (
+              <p className="ps-4 text-muted-foreground text-xs">{workspace.facts}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -116,9 +233,15 @@ export function ZeropsReleaseQuestion({
 
 /** The question with its send: mounted only while it is open. */
 function ReleaseQuestionHost({
-  onClose,
+  onDismiss,
+  onDone,
   ...conversation
-}: BoundConversation & { readonly onClose: () => void }) {
+}: BoundConversation & {
+  /** Not now. */
+  readonly onDismiss: () => void;
+  /** The request was sent, or failed to be. */
+  readonly onDone: () => void;
+}) {
   const { environmentId, threadId, lease } = conversation;
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -137,12 +260,12 @@ function ReleaseQuestionHost({
       alias: lease.alias,
       archived: shell.archivedAt !== null,
       unarchive: () => unarchiveThread(threadRef),
-    }).finally(onClose);
+    }).finally(onDone);
   };
   return (
     <ZeropsReleaseQuestion
       {...conversation}
-      onDismiss={onClose}
+      onDismiss={onDismiss}
       onRelease={release}
       releasing={releasing}
     />

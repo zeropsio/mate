@@ -16,7 +16,9 @@ import {
   boundLeaseRead,
   sendZeropsReleaseRequest,
   workspaceChip,
+  mateWorkspaceList,
   workspaceChipOf,
+  workspaceName,
   ZEROPS_RELEASE_QUESTION,
   ZEROPS_RELEASE_REQUEST,
   zeropsReleaseAsk,
@@ -26,6 +28,8 @@ import {
 const NOW = Date.parse("2026-10-25T12:00:00Z");
 const ago = (minutes: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - minutes * 60_000));
 const hours = (count: number) => ago(count * 60);
+/** What the chip of a conversation bound to `webpool-3` on `feat-x` calls its workspace. */
+const NAME = "webpool · feat-x";
 
 type LeaseRead = Pick<ZeropsLease, "acquiredAt" | "activity" | "unsaved">;
 type Turn = Pick<OrchestrationLatestTurn, "state" | "requestedAt" | "startedAt" | "completedAt">;
@@ -46,11 +50,12 @@ const completedTurn = (at: string): Turn => ({
   completedAt: at,
 });
 const words = (lease: LeaseRead | undefined, lastTurn: Turn | null = null) =>
-  workspaceChip({ lease, lastTurn, now: NOW })?.words;
+  workspaceChip({ name: NAME, lease, lastTurn, now: NOW })?.words;
 
 describe("a bound conversation's workspace chip", () => {
   it("says when the workspace was last active and what a release would lose there", () => {
     const chip = workspaceChip({
+      name: NAME,
       lease: readLease(
         { lastChangeAt: hours(3), previewOpenConns: 0, acquiredAt: hours(30), readAt: hours(2) },
         { files: [" M src/App.tsx", "?? notes.txt"], fileCount: 2, unpushedCommits: 2 },
@@ -59,13 +64,14 @@ describe("a bound conversation's workspace chip", () => {
       now: NOW,
     });
     expect(chip).toEqual({
-      words: "workspace · last active 3 h ago · 2 unpushed · 2 uncommitted",
+      words: "webpool · feat-x · last active 3 h ago · 2 unpushed · 2 uncommitted",
       idle: false,
     });
   });
 
   it("labels a workspace idle once nothing happened in it for 24 h and every fact was read", () => {
     const chip = workspaceChip({
+      name: NAME,
       lease: readLease(
         {
           lastChangeAt: hours(26),
@@ -80,7 +86,7 @@ describe("a bound conversation's workspace chip", () => {
       now: NOW,
     });
     expect(chip).toEqual({
-      words: "workspace · idle · last active 26 h ago · 2 unpushed",
+      words: "webpool · feat-x · idle · last active 26 h ago · 2 unpushed",
       idle: true,
     });
   });
@@ -90,6 +96,7 @@ describe("a bound conversation's workspace chip", () => {
     ["23 h 59 min ago", 24 * 60 - 1, false],
   ])("a workspace last active %s is idle: %s", (_when, minutes, idle) => {
     const chip = workspaceChip({
+      name: NAME,
       lease: readLease({
         lastChangeAt: ago(minutes),
         previewOpenConns: 0,
@@ -112,11 +119,12 @@ describe("a bound conversation's workspace chip", () => {
           readAt: hours(1),
         }),
       ),
-    ).toBe("workspace · idle · last active 3 d ago · all pushed");
+    ).toBe("webpool · feat-x · idle · last active 3 d ago · all pushed");
   });
 
   it("never labels idle a workspace whose preview had a connection open when zcp read it", () => {
     const chip = workspaceChip({
+      name: NAME,
       lease: readLease({
         lastChangeAt: hours(72),
         previewLastConnAt: hours(60),
@@ -128,7 +136,7 @@ describe("a bound conversation's workspace chip", () => {
       now: NOW,
     });
     expect(chip, "the read saw it in use").toEqual({
-      words: "workspace · last active 30 h ago · all pushed",
+      words: "webpool · feat-x · last active 30 h ago · all pushed",
       idle: false,
     });
   });
@@ -165,13 +173,13 @@ describe("a bound conversation's workspace chip", () => {
     ],
     ["no call read it", { acquiredAt: hours(80) }],
   ])("never labels idle a workspace while a fact was not read: %s", (_what, lease) => {
-    expect(workspaceChip({ lease, lastTurn: null, now: NOW })?.idle).toBe(false);
+    expect(workspaceChip({ name: NAME, lease, lastTurn: null, now: NOW })?.idle).toBe(false);
   });
 
   it("dates a workspace whose checkout was not read from its acquire", () => {
     expect(
       words({ acquiredAt: hours(80), activity: { acquiredAt: hours(80), note: "not read" } }),
-    ).toBe("workspace · last active 3 d ago");
+    ).toBe("webpool · feat-x · last active 3 d ago");
   });
 
   it("counts the conversation's own last turn as the workspace's activity, whichever is newer", () => {
@@ -182,10 +190,11 @@ describe("a bound conversation's workspace chip", () => {
       readAt: hours(25),
     });
     expect(
-      workspaceChip({ lease: idleByZcp, lastTurn: completedTurn(hours(2)), now: NOW }),
-    ).toEqual({ words: "workspace · last active 2 h ago · all pushed", idle: false });
+      workspaceChip({ name: NAME, lease: idleByZcp, lastTurn: completedTurn(hours(2)), now: NOW }),
+    ).toEqual({ words: "webpool · feat-x · last active 2 h ago · all pushed", idle: false });
     expect(
       workspaceChip({
+        name: NAME,
         lease: idleByZcp,
         lastTurn: {
           state: "running",
@@ -196,11 +205,13 @@ describe("a bound conversation's workspace chip", () => {
         now: NOW,
       }),
       "a turn running now is activity now",
-    ).toEqual({ words: "workspace · last active just now · all pushed", idle: false });
+    ).toEqual({ words: "webpool · feat-x · last active just now · all pushed", idle: false });
   });
 
   it("shows the conversation's last turn alone before zcp read the workspace, and nothing with neither", () => {
-    expect(words(undefined, completedTurn(ago(5)))).toBe("workspace · last active 5 min ago");
+    expect(words(undefined, completedTurn(ago(5)))).toBe(
+      "webpool · feat-x · last active 5 min ago",
+    );
     expect(words(undefined, null)).toBeUndefined();
   });
 
@@ -214,7 +225,29 @@ describe("a bound conversation's workspace chip", () => {
           readAt: ago(-2),
         }),
       ),
-    ).toBe("workspace · last active just now · all pushed");
+    ).toBe("webpool · feat-x · last active just now · all pushed");
+  });
+
+  it.each([
+    ["a lease of a branch by its pool and branch", "feat-x", "webpool · feat-x"],
+    ["a lease of no branch by its alias", null, "webpool-3"],
+    ["a lease zcp names no branch for by its alias", undefined, "webpool-3"],
+  ])("names its workspace: %s", (_what, branch, name) => {
+    expect(workspaceName({ alias: "webpool-3", pool: "webpool", branch })).toBe(name);
+  });
+
+  it("counts the Mate's other workspaces after what it says of its own", () => {
+    const lease = readLease(
+      { lastChangeAt: hours(3), previewOpenConns: 0, acquiredAt: hours(30), readAt: hours(2) },
+      { fileCount: 2, unpushedCommits: 0 },
+    );
+    expect(workspaceChip({ name: NAME, lease, lastTurn: null, now: NOW, more: 2 })?.words).toBe(
+      "webpool · feat-x · last active 3 h ago · 2 uncommitted · 2 more",
+    );
+    expect(
+      workspaceChip({ name: NAME, lease, lastTurn: null, now: NOW, more: 0 })?.words,
+      "none more says nothing",
+    ).toBe("webpool · feat-x · last active 3 h ago · 2 uncommitted");
   });
 });
 
@@ -291,16 +324,222 @@ describe("the workspace chip a conversation's lifecycle draws", () => {
   it("reads zcp's last read of the bound lease while the lifecycle is known, the turn alone while not", () => {
     const lastTurn = completedTurn(hours(40));
     expect(workspaceChipOf({ binding, lifecycle: known, lastTurn, now: NOW })).toEqual({
-      words: "workspace · idle · last active 30 h ago · 1 uncommitted",
+      words: "webpool · feat-x · idle · last active 30 h ago · 1 uncommitted",
       idle: true,
     });
     expect(workspaceChipOf({ binding, lifecycle: reading, lastTurn, now: NOW })).toEqual({
-      words: "workspace · last active 40 h ago",
+      words: "webpool · feat-x · last active 40 h ago",
       idle: false,
     });
     expect(
       workspaceChipOf({ binding: null, lifecycle: known, lastTurn: null, now: NOW }),
     ).toBeUndefined();
+  });
+
+  it("counts every other workspace the Mate holds, its branch's on another pool included, never an ended one", () => {
+    const others = [
+      // The bound branch's other part: another container, released on its own.
+      { alias: "hqpool-1", pool: "hqpool", branch: "feat-x", state: "held", acquiredAt: hours(70) },
+      // A helper's, on another branch, parked.
+      {
+        alias: "webpool-5",
+        pool: "webpool",
+        branch: "b-red",
+        state: "parked",
+        acquiredAt: hours(9),
+      },
+      // A helper's whose container did not answer: still held.
+      {
+        alias: "apipool-2",
+        pool: "apipool",
+        branch: "c-green",
+        state: "held",
+        acquiredAt: hours(2),
+        notAnswering: "at its process limit",
+      },
+      { alias: "webpool-7", pool: "webpool", branch: "d-gone", state: "released" },
+      { alias: "webpool-8", pool: "webpool", branch: "e-lost", state: "lost" },
+    ];
+    const lifecycle = {
+      ...known,
+      value: {
+        threadId: "thread-1",
+        recentTools: [],
+        envelope: { leases: [...leases, ...others] },
+      },
+    } as unknown as Known<ZeropsLifecycle>;
+    expect(
+      workspaceChipOf({ binding, lifecycle, lastTurn: completedTurn(hours(40)), now: NOW })?.words,
+    ).toBe("webpool · feat-x · idle · last active 30 h ago · 1 uncommitted · 3 more");
+    expect(
+      workspaceChipOf({ binding, lifecycle: reading, lastTurn: completedTurn(hours(40)), now: NOW })
+        ?.words,
+      "before a read, how many more is not known, never none",
+    ).toBe("webpool · feat-x · last active 40 h ago");
+  });
+});
+
+describe("the workspaces a Mate's chip lists", () => {
+  const binding = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+  const bound = {
+    alias: "webpool-3",
+    pool: "webpool",
+    branch: "feat-x",
+    state: "held",
+    acquiredAt: hours(72),
+    activity: {
+      lastChangeAt: hours(3),
+      previewOpenConns: 0,
+      acquiredAt: hours(72),
+      readAt: hours(1),
+    },
+    unsaved: { fileCount: 2, unpushedCommits: 1 },
+  };
+  const sibling = {
+    alias: "hqpool-1",
+    pool: "hqpool",
+    branch: "feat-x",
+    state: "held",
+    acquiredAt: hours(72),
+  };
+  const parked = {
+    alias: "webpool-5",
+    pool: "webpool",
+    branch: "b-red",
+    state: "parked",
+    acquiredAt: hours(80),
+    activity: {
+      lastChangeAt: hours(50),
+      previewOpenConns: 0,
+      acquiredAt: hours(80),
+      readAt: hours(1),
+    },
+    unsaved: { fileCount: 0, unpushedCommits: 0 },
+  };
+  const silent = {
+    alias: "apipool-2",
+    pool: "apipool",
+    state: "held",
+    acquiredAt: hours(2),
+    notAnswering: "at its process limit: nothing new starts in it",
+  };
+  const ended = { alias: "webpool-7", pool: "webpool", branch: "d-gone", state: "released" };
+  const lifecycleOf = (leases: ReadonlyArray<unknown>) =>
+    ({
+      state: "known",
+      value: { threadId: "thread-1", recentTools: [], envelope: { leases } },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    }) as unknown as Known<ZeropsLifecycle>;
+  const listed = (
+    leases: ReadonlyArray<unknown> | undefined,
+    lastTurn: Turn | null = null,
+    on: typeof binding | null = binding,
+  ) =>
+    mateWorkspaceList({
+      binding: on,
+      lifecycle: leases === undefined ? undefined : lifecycleOf(leases),
+      lastTurn,
+      now: NOW,
+    });
+
+  it("lists every workspace the Mate holds, the bound one first and marked, each with its state, last activity and unsaved work", () => {
+    const list = listed([silent, parked, ended, sibling, bound]);
+    expect(
+      list.map(({ name, alias, state, facts, bound: isBound }) => ({
+        name,
+        alias,
+        state,
+        facts,
+        bound: isBound,
+      })),
+    ).toEqual([
+      {
+        name: "webpool · feat-x",
+        alias: "webpool-3",
+        state: "held",
+        facts: "last active 3 h ago · 1 unpushed · 2 uncommitted",
+        bound: true,
+      },
+      {
+        name: "apipool-2",
+        alias: undefined,
+        state: "not answering",
+        facts: "last active 2 h ago",
+        bound: false,
+      },
+      {
+        name: "hqpool · feat-x",
+        alias: "hqpool-1",
+        state: "held",
+        facts: "last active 3 d ago",
+        bound: false,
+      },
+      {
+        name: "webpool · b-red",
+        alias: "webpool-5",
+        state: "parked",
+        facts: "idle · last active 2 d ago · all pushed",
+        bound: false,
+      },
+    ]);
+    expect(list.map(({ idle }) => idle)).toEqual([false, false, false, true]);
+  });
+
+  it("names each workspace's lease, which its own Release asks about and asks to release", () => {
+    expect(listed([bound, parked]).map(({ lease }) => lease)).toEqual([
+      binding,
+      { alias: "webpool-5", pool: "webpool", branch: "b-red" },
+    ]);
+    expect(listed([{ ...parked, repo: "https://hq.example/git/g1/appdev" }])[0]?.lease).toEqual({
+      alias: "webpool-5",
+      pool: "webpool",
+      branch: "b-red",
+      repo: "https://hq.example/git/g1/appdev",
+    });
+  });
+
+  it("says a workspace whose container did not answer is not answering, and why, as zcp said it", () => {
+    const [row] = listed([silent]);
+    expect(row?.state).toBe("not answering");
+    expect(row?.notAnswering).toBe("at its process limit: nothing new starts in it");
+    expect(listed([bound])[0]?.notAnswering).toBeUndefined();
+  });
+
+  it("dates the bound workspace by the conversation's last turn too, the others only by what zcp read", () => {
+    const list = listed([bound, sibling], {
+      state: "running",
+      requestedAt: hours(1),
+      startedAt: hours(1),
+      completedAt: null,
+    });
+    expect(list.map(({ facts }) => facts)).toEqual([
+      "last active just now · 1 unpushed · 2 uncommitted",
+      "last active 3 d ago",
+    ]);
+  });
+
+  it("lists the bound workspace alone, named by its binding, before zcp's leases are read", () => {
+    expect(listed(undefined, completedTurn(hours(5)))).toEqual([
+      {
+        lease: binding,
+        name: "webpool · feat-x",
+        alias: "webpool-3",
+        state: undefined,
+        notAnswering: undefined,
+        facts: "last active 5 h ago",
+        idle: false,
+        bound: true,
+      },
+    ]);
+  });
+
+  it("leaves out a bound lease zcp no longer holds, and lists nothing for a conversation bound to none", () => {
+    expect(listed([{ ...bound, state: "released" }, parked]).map(({ alias }) => alias)).toEqual([
+      "webpool-5",
+    ]);
+    expect(listed([bound, parked], null, null)).toEqual([]);
   });
 });
 

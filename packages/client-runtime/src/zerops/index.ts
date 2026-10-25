@@ -287,15 +287,18 @@ export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIden
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   boundLeaseRead,
+  mateWorkspaceList,
   sendZeropsReleaseRequest,
   workspaceChip,
   workspaceChipOf,
+  workspaceName,
   ZEROPS_RELEASE_QUESTION,
   ZEROPS_RELEASE_REQUEST,
   zeropsLeaseIdle,
   zeropsReleaseAsk,
   zeropsReleaseTurn,
   ZEROPS_LEASE_IDLE_AFTER_MS,
+  type MateWorkspace,
   type WorkspaceChip,
   type ZeropsReleaseAsk,
   type ZeropsReleaseConversation,
