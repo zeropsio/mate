@@ -544,9 +544,9 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
       }
     >;
   };
-  // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
+  // A false chat verdict must not prevent the shared scenario graph from selecting affected journeys.
   expect(jobs.state_smoke!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}",
+    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}",
   );
   expect(blameSelection("refs/heads/main", undefined).selected).toContain("state_smoke");
   const signal = parse(

@@ -199,6 +199,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   ],
   "scripts/ensure-electron-runtime.test.ts": [],
   "scripts/gate-changed.test.ts": [],
+  "scripts/state-smoke.test.ts": [".github/workflows/ci.yml"],
   "scripts/gate-rerun.test.ts": [],
   "scripts/gate-file-inputs.test.ts": [
     "scripts/**/*.test.ts",

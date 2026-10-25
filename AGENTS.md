@@ -53,19 +53,20 @@ The loop:
   reuses a green kh-next run for the same SHA.
 - On completion, run `node scripts/gate-changed.ts` once: guard ledgers/repository invariants,
   touched-file `vp check`, incremental typechecks of touched packages and dependents, owned unit tests,
-  then edited scenario files plus fixed state-only smoke (door, send, reload, approve, engine-secret,
-  one sandbox case; no frame sampler). `--list` previews; `--base <ref>` changes the comparison.
+  without browser scenario files or fixed state-only smoke. `--with-scenarios` opts into selected
+  scenarios and fixed smoke locally; `--scenarios <file...>` also includes named witnesses.
+  `--list` previews; `--base <ref>` changes the comparison.
   About five minutes: one blocking command, timeout at least ten minutes, never detached and polled.
   Then re-run only failed files and the gate once more; it reuses passed stages on unchanged inputs.
   `--full` forces every selected stage to run.
 - Browser scenario shards run in the non-blocking `Signal` workflow on `kh-next`,
   `kh-bisect/signal-**` and pull requests; other `kh-bisect/**` refs run CI only. Diagnostic and PR
   pushes cancel older runs of the same workflow/ref; integration runs finish. Signal
-  failures get one same-commit rerun for classification. CI keeps sign-in and state-only smoke blocking.
+  failures get one same-commit rerun for classification. CI's required State Smoke runs sign-in,
+  fixed state-only smoke and the uncapped affected scenario selection against the commit's base.
 - CI's Check job runs repo-wide `vp check`, ledger markdown included. Local
-  `node scripts/ci-local.ts` only after touching guard ledgers, exceptions,
-  `surfaces.json`, theme tokens or tooling; the integrator certifies assembled work through fast/final
-  CI. The formatter pads every table row to the table's widest
+  `node scripts/ci-local.ts` remains a manual diagnostic; the integrator certifies assembled work
+  through fast/final CI. The formatter pads every table row to the table's widest
   cell; table rows committed past the pre-commit hook leave unaligned columns and a red job:
   `vp fmt` the file first.
 - Agents push `wt/<card>`, never `main` or `kh-next`; the integrator verifies and promotes. Returned

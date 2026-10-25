@@ -510,22 +510,14 @@ jobs:
       - name: Exercise release-only workflow steps
         run: node scripts/release-smoke.ts
 
-  # Every job gated on the `changes` outputs below runs unless the gate said
-  # an explicit "false": a gate that failed leaves the output empty, and that
-  # must run the job rather than silently skip it. `!cancelled()` keeps a
-  # failed gate from skipping its dependents outright.
-  # Every job gated on the `changes` outputs below runs unless the gate said
-  # an explicit "false": a gate that failed leaves the output empty, and that
-  # must run the job rather than silently skip it. `!cancelled()` keeps a
-  # failed gate from skipping its dependents outright.
-  # Each State Smoke shard builds the scenario bundles itself and waits on no
-  # other job; shard 1 certifies sign-in, shard 2 the state-only cases.
+  # Each State Smoke shard builds its scenario bundles; sign-in, fixed smoke
+  # and the shared graph's affected scenarios all block CI.
   state_smoke:
     name: State Smoke ${{ matrix.shard }}
     needs: [prepare, changes]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 14
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.state_smoke) }}
@@ -533,6 +525,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           sparse-checkout: |
             /*
             !/.repos/
@@ -569,12 +562,13 @@ jobs:
       - name: Build the shared scenario bundle
         run: vp exec node apps/web/test/scenarios/harness/build.ts
 
-      - name: Certify sign-in and the state-only smoke
+      - name: Certify sign-in, fixed smoke and affected scenarios
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+          MATE_SCENARIO_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
         run: |
           vp run test:browser
-          node scripts/state-smoke.ts --shard ${{ matrix.shard }}/${{ matrix.total }}
+          node scripts/state-smoke.ts --base "$MATE_SCENARIO_BASE" --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.
