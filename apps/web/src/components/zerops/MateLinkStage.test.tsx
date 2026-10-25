@@ -20,6 +20,11 @@ const QUILL = {
 } as const;
 const who = vi.hoisted(() => ({ at: { kind: "unknown" } as { kind: string; mate?: unknown } }));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => who.at }));
+const told = vi.hoisted(() => ({ projectId: "", activity: undefined as unknown }));
+vi.mock("~/zerops/useMenuMateReadings", () => ({
+  useToldActivity: (projectId: string) =>
+    projectId === told.projectId ? told.activity : undefined,
+}));
 vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
 vi.mock("./RouteStandIn", () => ({ RouteStandIn: () => <textarea data-stand-in="" /> }));
 vi.mock("./ZeropsMateComingPage", () => ({
@@ -89,6 +94,20 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
       for (const text of absent) expect(markup).not.toContain(text);
     } finally {
       who.at = { kind: "unknown" };
+    }
+  });
+
+  it("opening, it names the limit HQ told of the Mate the directory names there", () => {
+    who.at = { kind: "mate", mate: { ...QUILL, projectId: "project-orchard" } };
+    told.projectId = "project-orchard";
+    told.activity = { limitHistory: { provider: "Claude", resetsAt: null } };
+    try {
+      const markup = renderToStaticMarkup(<MateOpeningView threadRef={ref} />);
+      expect(markup).toContain("Quill hit the Claude limit.");
+      expect(markup).not.toContain("Picking up where it left off.");
+    } finally {
+      who.at = { kind: "unknown" };
+      told.activity = undefined;
     }
   });
 
