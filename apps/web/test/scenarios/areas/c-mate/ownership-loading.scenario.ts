@@ -23,9 +23,11 @@ describe("owner-reported layout regressions", () => {
     it.effect("a read-only Mate shows one honest line, no fake input area", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);
+        // The grant exists before HQ reads the project: HQ's organisation view ages before it
+        // learns a grant made after that read.
+        s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         yield* s.given.project("Ada", { mate: true });
         mateChat(s).fixture().history();
-        s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         const colleague = yield* s.given.browserActor({ person: "dev" });
         yield* colleague.given.signedIn;
         const chat = mateChat({ ...s, ...colleague });
