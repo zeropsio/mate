@@ -242,12 +242,51 @@ type ZeropsLeaseResult = typeof ZeropsLeaseResult.Type;
 const decodeResultLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLeaseResult));
 const decodeThreadLease = Schema.decodeUnknownOption(ThreadLease);
 
-/** What a set of leases says, to tell a new read from the same read again. */
+/**
+ * What a set of leases says, to tell a new read from the same read again: a lease is its alias, its
+ * state and when zcp acquired it, since a pool hands a released container out again under the same
+ * alias.
+ */
 const leasesKey = (leases: ReadonlyArray<ZeropsLease>): string =>
   leases
-    .map((lease) => `${lease.alias}\u0000${lease.state}`)
+    .map((lease) => `${lease.alias}\u0000${lease.state}\u0000${lease.acquiredAt ?? ""}`)
     .toSorted()
     .join("\n");
+
+/** A read of zcp's leases the conversations' bindings were checked against. */
+interface CheckedRead {
+  /** The read's `leasesKey`; none for a read only kept from before a restart, checked whole again. */
+  readonly key: string | undefined;
+  /** When zcp acquired each lease the read named, by alias. */
+  readonly acquiredAt: ReadonlyMap<string, string>;
+}
+
+const checkedRead = (leases: ReadonlyArray<ZeropsLease>, key: string | undefined): CheckedRead => ({
+  key,
+  acquiredAt: new Map(
+    leases.flatMap((lease) =>
+      lease.acquiredAt === undefined ? [] : [[lease.alias, lease.acquiredAt] as const],
+    ),
+  ),
+});
+
+/**
+ * The leases a read names held under an alias the checked read named acquired at another time: other
+ * leases than the ones bound under it, handed out again while no call of this server read them.
+ */
+const renewedLeases = (
+  read: ReadonlyArray<ZeropsLease>,
+  checked: CheckedRead | undefined,
+): ReadonlyArray<string> =>
+  read.flatMap((lease) => {
+    const before = checked?.acquiredAt.get(lease.alias);
+    return isZeropsLeaseHeld(lease.state) &&
+      lease.acquiredAt !== undefined &&
+      before !== undefined &&
+      before !== lease.acquiredAt
+      ? [lease.alias]
+      : [];
+  });
 
 /** A call's own `leases` beside its envelope: the leases the `zerops_lease` call acted on. */
 const callLeases = (text: string): ReadonlyArray<ZeropsLeaseResult> => {
@@ -330,6 +369,8 @@ interface LeaseFacts {
   readonly read?: ReadonlyArray<ZeropsLease>;
   /** The leases this call released: the one it names, and each its result says it released. */
   readonly released: ReadonlyArray<string>;
+  /** The leases this call read held under an alias the last checked read had of another lease. */
+  readonly renewed: ReadonlyArray<string>;
   /**
    * The leases this call acquired (`aliases`, never one zcp already held), the one of them its
    * conversation is bound to (`lease`), and that conversation (none: no conversation).
@@ -346,6 +387,7 @@ const leaseFactsOf = (
   text: string,
   read: ReadonlyArray<ZeropsLease> | undefined,
   readChanged: boolean,
+  renewed: ReadonlyArray<string>,
   owner: ThreadId | undefined,
 ): LeaseFacts => {
   const held =
@@ -371,15 +413,17 @@ const leaseFactsOf = (
     ...(held === undefined ? {} : { held }),
     ...(read === undefined ? {} : { read }),
     released,
+    renewed,
     ...(acquired === undefined ? {} : { acquired: { ...acquired, by: owner } }),
   };
 };
 
 /**
  * The lease changes the facts say to the conversations bound now, in the order they apply: every
- * conversation whose lease ended is unbound first — released, no longer held, or acquired again by
- * another (a pool hands a released container out again under the same alias, so the alias alone
- * never says whose lease it is: the binding is the conversation's that acquired it) — then each is
+ * conversation whose lease ended is unbound first — released, no longer held, acquired again by
+ * another, or read under its alias acquired at another time (a pool hands a released container out
+ * again under the same alias, so the alias alone never says whose lease it is: the binding is the
+ * conversation's that acquired it) — then each is
  * bound to the earliest-acquired lease of its branch this call read still held, if any (a branch
  * spanning several app parts holds one lease per part's pool, and its conversation goes on
  * showing the others), never one another conversation acquired in this call; then the
@@ -397,6 +441,7 @@ const leaseChangesFor = (
     ({ conversation, alias }) =>
       facts.released.includes(alias) ||
       (facts.held !== undefined && !facts.held.includes(alias)) ||
+      facts.renewed.includes(alias) ||
       acquiredByAnother(alias, conversation),
   );
   const boundNext = (binding: LeaseBinding): ThreadLease | undefined => {
@@ -475,14 +520,22 @@ export const make = (options: ZeropsLifecycleOptions) =>
     const { toolEvents, repository } = options;
     const noteLeases = options.noteLeases ?? (() => Effect.void);
     const channels = yield* Ref.make(new Map<ThreadId, PubSub.PubSub<ZeropsLifecycleState>>());
+    // The last read of zcp's leases the bindings were checked against: one set for every
+    // conversation, so a read that says nothing new unbinds nothing.
+    const checked = yield* Ref.make<CheckedRead | undefined>(undefined);
 
-    // A restart knows which mounts are leases from the last read this server kept.
+    // A restart knows which mounts are leases from the last read this server kept, and which lease
+    // each alias was then: its first read is checked whole against it.
     yield* repository.latestLeases.pipe(
       Effect.map(Option.flatMap(decodeLeases)),
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.void,
-          onSome: (leases) => noteLeases(leases.map((lease) => lease.alias)),
+          onSome: (leases) =>
+            Effect.andThen(
+              Ref.set(checked, checkedRead(leases, undefined)),
+              noteLeases(leases.map((lease) => lease.alias)),
+            ),
         }),
       ),
       Effect.catchCause((cause) =>
@@ -491,9 +544,6 @@ export const make = (options: ZeropsLifecycleOptions) =>
     );
     const writeMutex = yield* Semaphore.make(1);
     const cache = yield* Ref.make(new Map<ThreadId, ZeropsLifecycleState>());
-    // The last read of zcp's leases any thread's call carried: one set for every conversation, so a
-    // read that says nothing new unbinds nothing. None at start: the first read is checked whole.
-    const lastRead = yield* Ref.make<string | undefined>(undefined);
 
     /** Reads a stored row tolerantly: anything unreadable degrades to "nothing yet". */
     const fromRow = (row: ZeropsThreadLifecycleRow): ZeropsLifecycleState => ({
@@ -637,10 +687,13 @@ export const make = (options: ZeropsLifecycleOptions) =>
           yield* PubSub.publish(yield* channel(next.threadId), next);
 
           let readChanged = false;
+          let renewed: ReadonlyArray<string> = [];
           if (envelope?.leases !== undefined) {
             yield* noteLeases(envelope.leases.map((lease) => lease.alias));
             const key = leasesKey(envelope.leases);
-            readChanged = (yield* Ref.getAndSet(lastRead, key)) !== key;
+            const prior = yield* Ref.getAndSet(checked, checkedRead(envelope.leases, key));
+            readChanged = prior?.key !== key;
+            renewed = renewedLeases(envelope.leases, prior);
           }
           // Only what a successful call did or read; any thread's, since zcp's leases are shared.
           return resultText === undefined || failed
@@ -650,6 +703,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
                 resultText,
                 envelope?.leases,
                 readChanged,
+                renewed,
                 owner === undefined ? undefined : threadId,
               );
         }),
@@ -662,7 +716,10 @@ export const make = (options: ZeropsLifecycleOptions) =>
         const facts = yield* fold(event);
         if (
           facts === undefined ||
-          (facts.held === undefined && facts.released.length === 0 && facts.acquired === undefined)
+          (facts.held === undefined &&
+            facts.released.length === 0 &&
+            facts.renewed.length === 0 &&
+            facts.acquired === undefined)
         ) {
           return;
         }
