@@ -74,7 +74,7 @@ it("State Smoke shards affected files once while retaining sign-in and fixed smo
   }
 });
 
-it("State Smoke CI spreads a full selection across four bounded partitions without losing cases", () => {
+it("State Smoke CI gives sign-in its own job and spreads a full selection across bounded partitions without losing cases", () => {
   const files = Array.from({ length: 58 }, (_, index) => scenario(`full-${index}`));
   affected.mockReturnValue(files);
   const partitions = blameMatrices.state_smoke.map(({ shard, total }) => {
@@ -82,9 +82,12 @@ it("State Smoke CI spreads a full selection across four bounded partitions witho
     runStateSmoke(root, ["--base", base, "--shard", `${shard}/${total}`]);
     return commands();
   });
-  expect(partitions, "ASSERTION: the full suite has four independent 14-minute jobs").toHaveLength(
-    4,
+  expect(partitions, "ASSERTION: the full suite has eight independent 14-minute jobs").toHaveLength(
+    8,
   );
+  expect(partitions[0], "ASSERTION: the first job runs sign-in alone").toEqual([
+    expect.arrayContaining(["test/scenarios/areas/a-signin"]),
+  ]);
   const runs = partitions.flat();
   expect(runs.filter((args) => args.includes("test/scenarios/areas/a-signin"))).toHaveLength(1);
   expect(runs.filter((args) => args.includes("--testNamePattern"))).toHaveLength(1);
@@ -94,13 +97,13 @@ it("State Smoke CI spreads a full selection across four bounded partitions witho
       `ASSERTION: full-suite scenario ${file} runs exactly once`,
     ).toHaveLength(1);
   }
-  for (const partition of partitions) {
+  for (const partition of partitions.slice(1)) {
     expect(
       partition
         .flat()
         .filter((argument) => files.some((file) => NodePath.join(root, file) === argument)).length,
-      "ASSERTION: no partition holds more than a quarter of the full selection rounded up",
-    ).toBeLessThanOrEqual(Math.ceil(files.length / 4));
+      "ASSERTION: no partition holds more than its share of the full selection rounded up",
+    ).toBeLessThanOrEqual(Math.ceil(files.length / (partitions.length - 1)));
   }
 });
 

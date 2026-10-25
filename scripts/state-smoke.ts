@@ -51,7 +51,8 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
     .flat()
     .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
     .join("|");
-  // Keep sign-in and fixed smoke on their existing shards; spread full affected files across all.
+  // Sign-in, the blocking door, runs alone on the first of several shards; fixed smoke stays on
+  // the second and full affected files spread across every shard after the first.
   const stages: { files: string[]; selection?: string }[] = [];
   if (index === 1) stages.push({ files: ["test/scenarios/areas/a-signin"] });
   if (1 % count === index - 1 && Object.keys(smoke).length)
@@ -61,7 +62,9 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
     });
   const selected = affected
     .filter((file) => !file.startsWith("apps/web/test/scenarios/areas/a-signin/"))
-    .filter((_, position) => position % count === index - 1);
+    .filter((_, position) =>
+      count === 1 ? true : index > 1 && position % (count - 1) === index - 2,
+    );
   if (selected.length) stages.push({ files: selected.map((file) => NodePath.join(root, file)) });
 
   for (const { files, selection } of stages) {

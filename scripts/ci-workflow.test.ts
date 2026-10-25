@@ -779,7 +779,7 @@ it("main promotion reports successful required checks without repeating verified
   }
   expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2, 3]);
   expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3, 4, 5, 6]);
-  expect(workflow.jobs.state_smoke.strategy.matrix.shard).toEqual([1, 2, 3, 4]);
+  expect(workflow.jobs.state_smoke.strategy.matrix.shard).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 });
 
 it("Decision: a SHA is tested once, on kh-next; main only re-verifies that receipt", () => {

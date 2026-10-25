@@ -38,7 +38,7 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
     selection.selected.sort(),
     "ASSERTION: blocking State Smoke selects only its execution dependencies",
   ).toEqual(["changes", "state_smoke"]);
-  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 4 }] });
+  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 8 }] });
   for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
     expect(
       () => blameSelection("refs/heads/kh-bisect/abc1234", context),
