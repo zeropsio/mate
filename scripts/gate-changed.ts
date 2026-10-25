@@ -134,11 +134,12 @@ function sourceShape(path: string, text: string): string | undefined {
 /** Compare parsed source, preserving syntax and literal content while ignoring comments. */
 export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
   const previous = new Map<string, string>();
-  const tracked = NodeChildProcess.spawnSync(
-    "git",
-    ["ls-tree", "-r", "--name-only", "-z", base, "--", ...paths],
-    { cwd: root, encoding: "utf8" },
-  );
+  const tracked = NodeChildProcess.spawnSync("git", ["ls-tree", "-r", "--name-only", "-z", base], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (tracked.error) throw tracked.error;
   if (tracked.status !== 0) throw new Error(tracked.stderr);
   const oldFiles = new Set(tracked.stdout.split("\0"));
   const meaningful = paths.filter((path) => {

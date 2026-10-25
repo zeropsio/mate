@@ -38,10 +38,13 @@ const gateRunnerFiles = [
 it("new-branch selection includes every path when Git output exceeds one mebibyte", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-large-diff-"));
   try {
-    const paths = Array.from(
-      { length: 6000 },
-      (_, index) => `${"x".repeat(180)}-${index}.md`,
-    ).sort();
+    const scenario = "apps/web/test/scenarios/areas/c-mate/large-selection.scenario.ts";
+    for (const directory of ["scripts", "packages", "infra", NodePath.dirname(scenario)])
+      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+    const paths = [
+      ...Array.from({ length: 6000 }, (_, index) => `${"x".repeat(180)}-${index}.md`),
+      scenario,
+    ].sort();
     for (const path of paths) NodeFS.writeFileSync(NodePath.join(root, path), "");
     expect(NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: root }).status).toBe(0);
     expect(NodeChildProcess.spawnSync("git", ["add", "."], { cwd: root }).status).toBe(0);
@@ -51,6 +54,13 @@ it("new-branch selection includes every path when Git output exceeds one mebibyt
       selected = changedPaths(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
     }, "ASSERTION: a new branch must retain its complete file selection beyond the default subprocess buffer").not.toThrow();
     expect(selected).toEqual(paths);
+    expect(
+      () => affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+      "ASSERTION: the State Smoke selector must consume the entire new-branch diff",
+    ).not.toThrow();
+    expect(affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904")).toEqual([
+      scenario,
+    ]);
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
