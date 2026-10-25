@@ -12,7 +12,7 @@ import {
   postgresBinDir,
   postgresHome,
   pruneStaleClusters,
-  reclaimLeasedDatabases,
+  reclaimDeadRuns,
   startCluster,
   startRecord,
 } from "./test-postgres.ts";
@@ -197,8 +197,8 @@ async function supervise() {
         END LOOP; END $$`,
       ]);
     };
-    // A healed cluster has none; a reused one still holds the leases its killed supervisor left.
-    reclaimLeasedDatabases(sql);
+    // A healed cluster has none; a reused one still holds what its killed runs left.
+    reclaimDeadRuns(sql);
     const owners = new Set<NodeNet.Socket>();
     let shutdown: Promise<void> | undefined;
     const idle = (): Promise<void> => {

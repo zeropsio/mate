@@ -215,15 +215,25 @@ export function startCluster(
   io.start();
 }
 
-/** A prior supervisor's leases cannot survive its loss: drop every managed database on start. */
-export function reclaimLeasedDatabases(sql: (query: string) => string): void {
-  for (const name of sql("SELECT datname FROM pg_database WHERE datname LIKE 'mate_test_%'")
-    .trim()
-    .split("\n")
-    .filter(Boolean)) {
-    if (!/^mate_test_[a-f0-9]+$/u.test(name)) throw new Error(`Unexpected test database: ${name}`);
-    sql(`DROP DATABASE ${name} WITH (FORCE)`);
-  }
+/** initdb's own databases and roles (PostgreSQL's FirstNormalObjectId): everything above is a run's. */
+const FIRST_RUN_OID = 16384;
+
+/**
+ * No lease survives the supervisor that granted it, so when one starts every database and role a
+ * run made belongs to a dead run, whatever it is named: a killed lease's databases, one a run made
+ * beside its lease, and roles named apart from any database. Drop them all; keep initdb's own.
+ */
+export function reclaimDeadRuns(sql: (query: string) => string): void {
+  const made = (catalog: "pg_database" | "pg_roles", column: "datname" | "rolname") =>
+    sql(`SELECT oid, quote_ident(${column}) FROM ${catalog}`)
+      .split("\n")
+      .filter(Boolean)
+      .map((row) => row.split("|") as [string, string])
+      .filter(([oid]) => Number(oid) >= FIRST_RUN_OID)
+      .map(([, name]) => name);
+  for (const name of made("pg_database", "datname")) sql(`DROP DATABASE ${name} WITH (FORCE)`);
+  // A role still owning objects in `postgres` would refuse DROP ROLE alone.
+  for (const name of made("pg_roles", "rolname")) sql(`DROP OWNED BY ${name}; DROP ROLE ${name}`);
 }
 
 /** A test cluster home unused this long is abandoned, whether or not its checkout still exists. */
