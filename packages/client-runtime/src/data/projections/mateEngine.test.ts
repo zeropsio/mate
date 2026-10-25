@@ -1173,6 +1173,70 @@ describe("an engine card not held whole, as its worked line and its scroll read 
     });
   });
 
+  // Filip's card (Aleš, 2026-10-25): a person's message sent while a run worked goes on in that
+  // run's card. Opened once that run had ended, the run is not read yet, and the live run holds its
+  // newest lines from its window: the card held none of them, the live card opened onto its current
+  // step alone and its Hide work folded nothing away.
+  describe("a live card a queued message joined to a run not read yet", () => {
+    const run2 = "thread-ada/r/2";
+    const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+    const worked = long(1, { startedAt: AT, endedAt: AT + 10_000 });
+    const working = long(2, {
+      state: "running",
+      end: null,
+      endedAt: null,
+      queuedAt: AT + 5_000,
+      admittedAt: AT + 10_000,
+      startedAt: AT + 10_000,
+      summary: {
+        items: 1_700,
+        calls: { command: 800 },
+        answerItemId: null,
+        lastItemSeq: 3_700,
+      },
+    });
+    const said = personItem(run2, 2_001, "GitHub is set", { at: AT + 5_000 });
+    const tail = [
+      callItem(run2, 3_661, { at: AT + 20_000 }),
+      callItem(run2, 3_700, { at: AT + 30_000 }),
+    ];
+    const notRead = { runId: run1, from: null, to: 0, reading: null };
+
+    it("holds its live run's newest lines through its end, and pages back from them", () => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, working],
+        items: [...held, said, ...tail],
+        spans: [notRead, { runId: run2, from: 3_661, to: null, reading: null }],
+      });
+      expect(paging[run1]).toMatchObject({
+        pageRuns: { earlier: run2, later: null },
+        holdsLines: true,
+        since: iso(AT + 20_000),
+        through: null,
+      });
+    });
+
+    it.each([
+      {
+        name: "read back to its start",
+        spans: [{ runId: run2, from: null, to: null, reading: null }],
+      },
+      { name: "held whole from its first line", spans: [] },
+    ])("reaches back into the run before it once its live run is $name", ({ spans }) => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, working],
+        items: [...held, said, ...tail],
+        spans: [notRead, ...spans],
+      });
+      expect(paging[run1]).toMatchObject({
+        pageRuns: { earlier: run1, later: null },
+        holdsLines: true,
+        since: iso(AT + 5_000),
+        through: null,
+      });
+    });
+  });
+
   it("keeps counting from the summary once every page is read, so its worked line never changes", () => {
     const paging = engineCardPagingOfRecords(key, {
       runs: [long(1)],
