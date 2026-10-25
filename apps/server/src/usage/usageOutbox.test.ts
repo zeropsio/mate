@@ -129,6 +129,23 @@ describe("completed Mate turn usage delivery", () => {
         }),
       ),
   );
+  it.effect("a rebound Mate claims coverage only from the turns it still holds", () =>
+    withOutbox((box) =>
+      Effect.gen(function* () {
+        yield* box.bind(binding);
+        yield* box.record(turn("old"));
+        const first = (yield* box.batch)!;
+        yield* box.acknowledge(
+          first,
+          first.facts.map(({ originId, factId }) => ({ originId, factId })),
+        );
+        yield* box.record({ ...turn("new"), at: "2026-10-09T10:00:00.000Z" });
+        yield* box.bind({ ...binding, mateId: "mate-after-reimport" });
+        const frame = (yield* box.batch)!;
+        assert.equal(frame.origins[0]?.coverage.since, "2026-10-09T10:00:00.000Z");
+      }),
+    ),
+  );
   it.effect.each([
     { title: "another organization", other: { orgId: "other-org" } },
     { title: "another project", other: { projectId: "other-project" } },

@@ -99,7 +99,7 @@ export const makeUsageOutbox = Effect.gen(function* () {
   });
   // HQ mints a Mate's id when it creates the Mate's record, so a re-import hands the same Mate a
   // new one. The organization and project are the Mate's fixed identity; pending turns are
-  // reported under whatever id HQ currently holds.
+  // reported under whatever id HQ currently holds, and coverage restarts from them.
   const bind = Effect.fnUntraced(function* (next: UsageBinding) {
     const validated = yield* validateBinding(next);
     const registered = yield* binding;
@@ -109,7 +109,16 @@ export const makeUsageOutbox = Effect.gen(function* () {
     )
       return yield* new UsageOutboxError({ code: "mate-binding-conflict" });
     if (registered?.mateId === validated.mateId) return;
-    yield* sql`INSERT OR REPLACE INTO usage_binding VALUES (1, ${usageCanonical(validated)})`;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`INSERT OR REPLACE INTO usage_binding VALUES (1, ${usageCanonical(validated)})`;
+        // The new id's origin has seen nothing before this point except what is still pending.
+        if (registered) {
+          yield* sql`DELETE FROM usage_recorded_since`;
+          yield* sql`INSERT INTO usage_recorded_since SELECT json_extract(value,'$.provider'), min(json_extract(value,'$.at')) FROM usage_outbox GROUP BY 1`;
+        }
+      }),
+    );
   });
   const record = Effect.fnUntraced(function* (input: CompletedUsage) {
     const validated = yield* validateResponse(input);
