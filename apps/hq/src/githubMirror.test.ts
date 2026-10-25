@@ -1370,6 +1370,28 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
         ),
     );
 
+    it.effect(
+      "a branch HQ made on GitHub for its Mate's earlier change there is moved on for the next change on it",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.openChange("Fix x", 1, "nova", "fix-x");
+            const first = yield* f.push("fix.ts", "fix-x");
+            yield* until(() => refIn(f.github, "refs/heads/fix-x"), first);
+            yield* f.sql`UPDATE hq_change SET state = 'merged' WHERE number = 1`;
+            // The Mate goes on from it, on the same branch.
+            yield* f.openChange("Fix x further", 2, "nova", "fix-x");
+            const next = yield* f.push("fix-more.ts", "fix-x");
+            assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 2), {
+              branch: "fix-x",
+              sha: next,
+            });
+            assert.strictEqual(refIn(f.github, "refs/heads/fix-x"), next);
+          }),
+        ),
+    );
+
     it.effect.each([
       ["kept at an ancestor of the change's head", false],
       ["at the change's head when HQ found it there, then behind its next push", true],
