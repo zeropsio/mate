@@ -1112,12 +1112,15 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           repository,
           threadOwner: conversationOfThread,
           leaseBindings: Effect.map(Ref.get(records), (all) => ({
-            bindings: Object.entries(all).map(([conversation, { alias, branch, repo }]) => ({
-              conversation: conversation as ThreadId,
-              alias,
-              branch,
-              repo,
-            })),
+            bindings: Object.entries(all).map(
+              ([conversation, { alias, branch, repo, acquiredAt }]) => ({
+                conversation: conversation as ThreadId,
+                alias,
+                branch,
+                repo,
+                acquiredAt,
+              }),
+            ),
             complete: true,
           })),
           recordLease: (conversation, change) =>
@@ -1475,7 +1478,12 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
             { _tag: "UnbindLease", ended: "hqpool-2" },
             {
               _tag: "BindLease",
-              lease: { alias: "apipool-4", pool: "apipool", branch: "feat-x" },
+              lease: {
+                alias: "apipool-4",
+                pool: "apipool",
+                branch: "feat-x",
+                acquiredAt: "2026-10-23T12:00:01Z",
+              },
             },
           ]);
           expect(yield* bound()).toEqual({ ada: "apipool-4" });
@@ -1508,7 +1516,13 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           expect(yield* told()).toEqual([
             {
               _tag: "BindLease",
-              lease: { alias: "webpool-2", pool: "webpool", branch: "main", repo: WEB },
+              lease: {
+                alias: "webpool-2",
+                pool: "webpool",
+                branch: "main",
+                repo: WEB,
+                acquiredAt: "2026-10-23T12:00:03Z",
+              },
             },
           ]);
         }),
@@ -1527,7 +1541,13 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
             { _tag: "UnbindLease", ended: "webpool-2" },
             {
               _tag: "BindLease",
-              lease: { alias: "docspool-4", pool: "docspool", branch: "main", repo: WEB },
+              lease: {
+                alias: "docspool-4",
+                pool: "docspool",
+                branch: "main",
+                repo: WEB,
+                acquiredAt: "2026-10-23T12:00:02Z",
+              },
             },
           ]);
           expect(yield* bound()).toEqual({ ada: "docspool-4" });
@@ -1828,14 +1848,50 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       ),
   );
 
+  // Review r3-5: the last read every binding was checked against stays behind while a record
+  // cannot be read, so the alias's new holder read as a lease handed out again under it, was
+  // unbound, and its own acquire of the branch again came back reused and bound nothing.
+  const handedOutAgain = {
+    first: member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" }),
+    again: member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z" }),
+  };
+  const releasedBy = (threadId: ThreadId, lease: ReturnType<typeof member>) =>
+    leaseCall({
+      input: { action: "release", lease: lease.alias },
+      leases: [{ ...lease, state: "released" }],
+      envelope: [],
+      threadId,
+    });
+
+  it.effect(
+    "a conversation bound before its lease's acquiring was kept is unbound by a read of its alias acquired at another time",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const { acquiredAt: _kept, ...recordedBefore } = first;
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("ada"), ["webpool"], [recordedBefore], [first]),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          yield* lifecycle.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(yield* bound()).toEqual({});
+        }),
+      ),
+  );
+
   /** Conversations whose records outlive a restart of the lifecycle, bound as the engine binds. */
   const recordsOver = (records: Ref.Ref<Readonly<Record<string, ThreadLease>>>) => ({
     leaseBindings: Effect.map(Ref.get(records), (all) => ({
-      bindings: Object.entries(all).map(([conversation, { alias, branch, repo }]) => ({
+      bindings: Object.entries(all).map(([conversation, { alias, branch, repo, acquiredAt }]) => ({
         conversation: conversation as ThreadId,
         alias,
         branch,
         repo,
+        acquiredAt,
       })),
       complete: true,
     })),
@@ -1917,21 +1973,6 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
         }),
       ).pipe(Effect.provide(persistence)),
   );
-
-  // Review r3-5: the last read every binding was checked against stays behind while a record
-  // cannot be read, so the alias's new holder read as a lease handed out again under it, was
-  // unbound, and its own acquire of the branch again came back reused and bound nothing.
-  const handedOutAgain = {
-    first: member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" }),
-    again: member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z" }),
-  };
-  const releasedBy = (threadId: ThreadId, lease: ReturnType<typeof member>) =>
-    leaseCall({
-      input: { action: "release", lease: lease.alias },
-      leases: [{ ...lease, state: "released" }],
-      envelope: [],
-      threadId,
-    });
 
   it.effect(
     "the conversation that acquired an alias handed out again while a record could not be read stays bound at the next read",

@@ -249,6 +249,7 @@ const ZeropsLifecycleLive = Layer.unwrap(
                   alias: view.lease.alias,
                   branch: view.lease.branch,
                   repo: view.lease.repo,
+                  acquiredAt: view.lease.acquiredAt,
                 },
               ],
         ),

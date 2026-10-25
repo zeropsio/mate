@@ -242,6 +242,12 @@ export interface LeaseBinding {
    */
   readonly branch: string | null;
   readonly repo: string | undefined;
+  /**
+   * When zcp acquired the lease bound (`ThreadLease.acquiredAt`): a read of its alias acquired at
+   * another time is another lease. None in a binding recorded before it was kept: such a binding
+   * is checked against the last read every binding was checked against (`renewed`).
+   */
+  readonly acquiredAt: string | undefined;
 }
 
 /** The conversations bound to a lease now, and whether every conversation's record was read. */
@@ -346,6 +352,9 @@ const threadLeaseOf = (lease: ZeropsLease): ThreadLease | undefined =>
       pool: lease.pool,
       branch: lease.branch === undefined || lease.branch === "" ? null : lease.branch,
       ...(lease.repo === undefined || lease.repo === "" ? {} : { repo: lease.repo }),
+      ...(lease.acquiredAt === undefined || lease.acquiredAt === ""
+        ? {}
+        : { acquiredAt: lease.acquiredAt }),
     }),
   );
 
@@ -396,7 +405,10 @@ interface LeaseFacts {
   readonly read?: ReadonlyArray<ZeropsLease>;
   /** The leases this call released: the one it names, and each its result says it released. */
   readonly released: ReadonlyArray<string>;
-  /** The leases this call read held under an alias the last checked read had of another lease. */
+  /**
+   * The leases this call read held under an alias the last checked read had of another lease: what
+   * says a binding that keeps no `acquiredAt` ended.
+   */
   readonly renewed: ReadonlyArray<string>;
   /** This call's read, to check the next one against once every binding was checked against it. */
   readonly checkpoint?: CheckedRead;
@@ -469,12 +481,25 @@ const leaseChangesFor = (
   const { acquired } = facts;
   const acquiredByAnother = (alias: string, conversation: ThreadId) =>
     acquired !== undefined && acquired.aliases.includes(alias) && conversation !== acquired.by;
+  // Against the binding's own lease where it keeps when zcp acquired it: the last checked read
+  // stays behind while a record cannot be read, and would take the alias's new holder for another
+  // lease than its own.
+  const renewed = ({ alias, acquiredAt }: LeaseBinding) => {
+    if (acquiredAt === undefined) return facts.renewed.includes(alias);
+    const now = facts.read?.find((lease) => lease.alias === alias);
+    return (
+      now !== undefined &&
+      isZeropsLeaseHeld(now.state) &&
+      now.acquiredAt !== undefined &&
+      now.acquiredAt !== acquiredAt
+    );
+  };
   const ended = bindings.filter(
-    ({ conversation, alias }) =>
-      facts.released.includes(alias) ||
-      (facts.held !== undefined && !facts.held.includes(alias)) ||
-      facts.renewed.includes(alias) ||
-      acquiredByAnother(alias, conversation),
+    (binding) =>
+      facts.released.includes(binding.alias) ||
+      (facts.held !== undefined && !facts.held.includes(binding.alias)) ||
+      renewed(binding) ||
+      acquiredByAnother(binding.alias, binding.conversation),
   );
   const boundNext = (binding: LeaseBinding): ThreadLease | undefined => {
     if (acquired !== undefined && binding.conversation === acquired.by) return undefined;
