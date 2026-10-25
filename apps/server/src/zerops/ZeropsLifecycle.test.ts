@@ -1659,8 +1659,11 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
   /** zcp's leases as conversation `name`'s views read them. */
   const leasesOf = (lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"], name: string) =>
     Effect.map(lifecycle.get(name as ThreadId), (state) => state.envelope?.leases);
-  const branchOf = (leases: ReadonlyArray<{ alias: string; branch?: string }> | undefined) =>
-    leases?.find(({ alias }) => alias === "apipool-4")?.branch;
+  const branchOf = (
+    leases:
+      | ReadonlyArray<{ readonly alias: string; readonly branch?: string | undefined }>
+      | undefined,
+  ) => leases?.find(({ alias }) => alias === "apipool-4")?.branch;
 
   it.effect(
     "every conversation reads zcp's leases as the latest call read them, whichever conversation made it",

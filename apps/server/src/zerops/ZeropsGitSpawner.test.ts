@@ -262,9 +262,10 @@ const makeInnerSpawner = (options?: {
     const calls = yield* Ref.make<ReadonlyArray<SpawnRecord>>([]);
     /** Each spawn's environment, in order, and whether it extends the server's. */
     const envs = yield* Ref.make<
-      ReadonlyArray<
-        (Record<string, string | undefined> & { readonly extendEnv?: boolean }) | undefined
-      >
+      ReadonlyArray<{
+        readonly env: Record<string, string | undefined> | undefined;
+        readonly extendEnv: boolean | undefined;
+      }>
     >([]);
     const inFlight = yield* Ref.make(0);
     const peak = yield* Ref.make(0);
@@ -280,14 +281,7 @@ const makeInnerSpawner = (options?: {
         ]);
         yield* Ref.update(envs, (previous) => [
           ...previous,
-          command.options.env === undefined
-            ? undefined
-            : {
-                ...command.options.env,
-                ...(command.options.extendEnv === undefined
-                  ? {}
-                  : { extendEnv: command.options.extendEnv }),
-              },
+          { env: command.options.env, extendEnv: command.options.extendEnv },
         ]);
         const current = yield* Ref.updateAndGet(inFlight, (n) => n + 1);
         yield* Ref.update(peak, (n) => Math.max(n, current));
@@ -488,12 +482,12 @@ describe("makeZeropsGitSpawner", () => {
           yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }));
 
           const [first, second] = yield* Ref.get(inner.envs);
-          assert.includeMembers(first?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], [
+          assert.includeMembers(first?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], [
             "/var/www",
             "/home/zerops",
           ]);
-          assert.strictEqual(first?.LC_ALL, "C");
-          assert.include(second?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
+          assert.strictEqual(first?.env?.LC_ALL, "C");
+          assert.include(second?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
           assert.isTrue(second?.extendEnv, "a command with no environment still inherits PATH");
         }),
       ),
