@@ -27,6 +27,7 @@ const GROUPS = [
 ];
 
 const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): GroupStops => ({
+  unread: [],
   declarations: environments.map((entry) => ({
     name: entry.environment,
     tier: entry.tier,

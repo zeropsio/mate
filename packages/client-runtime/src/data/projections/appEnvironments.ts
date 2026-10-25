@@ -10,7 +10,8 @@
 import type { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import {
-  deliveryEnvironmentsOf,
+  readDeliveryEnvironments,
+  type UnreadEnvironment,
   zeropsEnvironments,
   type CanonicalHqEnvironment,
   type HqDeliveryEnvironment,
@@ -24,6 +25,8 @@ export interface AppEnvironmentsRead {
   readonly environments: ReadonlyArray<HqEnvironment> | undefined;
   /** HQ's reason the reader may not read them, while it says one. */
   readonly refused: string | null;
+  /** Environments HQ sent that this build cannot read: present, never an application without them. */
+  readonly unread: ReadonlyArray<UnreadEnvironment>;
   /** Its recent rollouts, with the environments; absent from an older HQ. */
   readonly rollouts?: ReadonlyArray<HqNavigationRollout>;
 }
@@ -32,17 +35,24 @@ export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, 
   readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
 }
 
-const UNTOLD: CanonicalAppEnvironmentsRead = { environments: undefined, refused: null };
+const UNTOLD: CanonicalAppEnvironmentsRead = {
+  environments: undefined,
+  refused: null,
+  unread: [],
+};
 
 function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnvironmentsRead {
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
   const { environments, rollouts } = fact.value;
   if (environments === undefined) return UNTOLD;
-  if ("refused" in environments) return { environments: undefined, refused: environments.refused };
+  if ("refused" in environments)
+    return { environments: undefined, refused: environments.refused, unread: [] };
+  const sent = Array.isArray(environments) ? readDeliveryEnvironments(environments) : undefined;
   return {
-    environments: deliveryEnvironmentsOf(environments),
+    environments: sent?.environments,
     refused: null,
+    unread: sent?.unread ?? [],
     ...(rollouts === undefined ? {} : { rollouts }),
   };
 }

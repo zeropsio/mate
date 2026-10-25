@@ -62,7 +62,7 @@ import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
-import type { HqJob } from "./hq/environments.ts";
+import { UNREAD_ENVIRONMENT_LINE, type HqJob, type UnreadEnvironment } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -172,6 +172,8 @@ export interface GroupFlowInput {
   readonly mainHead: string | undefined;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
+  /** Environments HQ sent that this build cannot read; none where nothing was unreadable. */
+  readonly unread?: ReadonlyArray<UnreadEnvironment>;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -226,6 +228,8 @@ export type GroupFlowProduction =
   | { readonly kind: "pushed"; readonly stop: GroupFlowStop; readonly line: string }
   /** No production: nothing is said of it, and nothing waits on it. */
   | { readonly kind: "absent" }
+  /** HQ sent a production this build cannot read: it is there, and its standing is not told. */
+  | { readonly kind: "unread"; readonly line: string }
   /** Its creation is under way and the listing does not hold it yet; nothing is offered. */
   | { readonly kind: "creating"; readonly line: string; readonly creation: GroupFlowPending }
   | {
@@ -292,6 +296,8 @@ export interface GroupFlow {
   /** Stages being created that the listing does not hold yet, oldest first. */
   readonly creatingStages: ReadonlyArray<GroupFlowPending>;
   readonly production: GroupFlowProduction;
+  /** The stages HQ sent that this build cannot read, by name; their place is there, unread. */
+  readonly unreadStages: ReadonlyArray<string>;
   readonly nextStep: GroupNextStep;
 }
 
@@ -464,11 +470,32 @@ function runningState(tone: GroupRowTone): GroupFlowStopState {
   }
 }
 
+/**
+ * Where the unreadable environments belong. An unreadable one whose tier is not told is production
+ * while no production was read, else a stage: it is never an application without it.
+ */
+function unreadPlaces(input: GroupFlowInput): {
+  readonly production: boolean;
+  readonly stages: ReadonlyArray<string>;
+} {
+  const productionRead = input.stops.some((stop) => stop.tier === "production");
+  const unread = input.unread ?? [];
+  const isProduction = (entry: UnreadEnvironment) =>
+    entry.tier === "production" || (entry.tier === null && !productionRead);
+  return {
+    production: unread.some(isProduction),
+    stages: unread.filter((entry) => !isProduction(entry)).map((entry) => entry.name ?? "Stage"),
+  };
+}
+
 function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): GroupFlowProduction {
   const creation = input.pending.find((entry) => entry.kind === "production");
   if (stop === undefined && creation !== undefined)
     return { kind: "creating", line: PRODUCTION_SETTING_UP, creation };
-  if (stop === undefined) return { kind: "absent" };
+  if (stop === undefined)
+    return unreadPlaces(input).production
+      ? { kind: "unread", line: UNREAD_ENVIRONMENT_LINE }
+      : { kind: "absent" };
   if (stop.git !== undefined)
     return {
       kind: stop.git.standing === "pushed" ? "pushed" : "checking",
@@ -635,6 +662,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     stages,
     creatingStages: pending.filter((entry) => entry.kind === "stage"),
     production,
+    unreadStages: unreadPlaces(input).stages,
     nextStep: nextStepOf(input, pullRequests, stages, production),
   };
 }

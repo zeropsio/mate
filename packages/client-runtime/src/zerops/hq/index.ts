@@ -92,6 +92,9 @@ export { canonicalHqStructureOf, hqStructureOf, type HqMates } from "./structure
 export {
   CanonicalHqEnvironment,
   canonicalEnvironmentsOf,
+  UNREAD_ENVIRONMENT_LINE,
+  unreadEnvironmentsWords,
+  type UnreadEnvironment,
   environmentsOf,
   jobFailed,
   jobInFlight,
