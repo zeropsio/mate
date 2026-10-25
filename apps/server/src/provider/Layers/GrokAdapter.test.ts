@@ -1340,6 +1340,9 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         Effect.promise(() => NodeFSP.rm(tempDir, { recursive: true, force: true })),
       );
       const promptStartedPath = NodePath.join(tempDir, "prompt-started");
+      // The wait must start on an existing file: its appends reach a file watcher at once, while
+      // a creation is seen only through a directory notification, which macOS delivers late.
+      yield* Effect.promise(() => NodeFSP.writeFile(promptStartedPath, ""));
       const wrapperPath = yield* Effect.promise(() =>
         makeMockGrokWrapper({
           T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
