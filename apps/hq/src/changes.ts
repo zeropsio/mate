@@ -529,7 +529,7 @@ const instant = (column: string) =>
 const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(ChangeReceipt));
 
 /** A change's columns as {@link ChangeRow} reads them. */
-const CHANGE_COLUMNS = [
+export const CHANGE_COLUMNS = [
   "app_id::text AS app_id",
   "repo",
   "number",
