@@ -170,7 +170,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: signal-shard-${{ matrix.report }}
-          path: signal-reports/${{ matrix.report }}.json
+          path: |
+            signal-reports/${{ matrix.report }}.json
+            signal-reports/${{ matrix.report }}.json.progress.jsonl
           if-no-files-found: error
           retention-days: 7
 
@@ -230,9 +232,6 @@ jobs:
       - name: Provision Chrome for Testing
         run: vp run test:browser
 
-      - name: Require the workflow infrastructure to succeed
-        run: test "${{ needs.chat_bundle.result }}" = success && test "${{ needs.chat_scenarios.result }}" = success
-
       - name: Download all shard evidence
         uses: actions/download-artifact@v4
         with:
@@ -259,6 +258,10 @@ jobs:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
           MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json
         run: node scripts/signal.ts classify
+
+      - name: Require the workflow infrastructure to succeed
+        # After classification, so a shard the job guard killed still has its running case named.
+        run: test "${{ needs.chat_bundle.result }}" = success && test "${{ needs.chat_scenarios.result }}" = success
 
       - name: Upload failure classifications
         # A standing red fails the classify step after it wrote its classification: the next run

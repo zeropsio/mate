@@ -3,7 +3,13 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
-import { classifyFailures, failedSelection, readSignalReport, validateReport } from "./signal.ts";
+import {
+  classifyFailures,
+  failedSelection,
+  readSignalReport,
+  reportFromProgress,
+  validateReport,
+} from "./signal.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
@@ -108,3 +114,42 @@ it("Signal's rerun executes only the failed test of a file and still certifies i
       ]);
     },
   ));
+
+it("a case that hits the hang ceiling fails as hung, names its last step, and the shard goes on", () =>
+  withProject(
+    `import { trackSteps } from ${JSON.stringify(NodePath.join(root, "apps/web/test/scenarios/harness/lastStep.ts"))};
+     const when = trackSteps('when', { menu: { opensMate: () => 1 } });
+     it('stuck', async () => { when.menu.opensMate(); await new Promise(() => {}); });
+     it('after the stuck one', () => {});`,
+    (run, directory) => {
+      const result = run(["--testTimeout=200"]);
+      expect(result.status, result.stderr).toBe(1);
+      const report = readSignalReport(result.output);
+      expect(report.tests.map(({ title, status, reason }) => [title, status, reason])).toEqual([
+        ["stuck", "failed", "hung: no end within 200 ms; last step: when.menu.opensMate"],
+        ["after the stuck one", "passed", undefined],
+      ]);
+      const [failure] = classifyFailures([report], report, 42);
+      expect(failure?.reason).toContain("hung");
+      expect(failure?.file).toBe(NodePath.relative(root, NodePath.join(directory, "case.test.ts")));
+    },
+  ));
+
+it("a shard killed mid-case leaves its finished cases and names the running one", () => {
+  const file = NodePath.join(
+    root,
+    "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+  );
+  const report = reportFromProgress([
+    { event: "start", file, title: "done case" },
+    { event: "end", file, title: "done case", status: "passed" },
+    { event: "start", file, title: "running case" },
+  ]);
+  expect(report.tests.map(({ title, status, reason }) => [title, status, reason])).toEqual([
+    ["done case", "passed", undefined],
+    ["running case", "failed", "hung: the shard ended while this case was running"],
+  ]);
+  expect(failedSelection([report]).files).toEqual([
+    "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+  ]);
+});
