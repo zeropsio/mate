@@ -1300,7 +1300,9 @@ export function engineCardPagingOf(
   /**
    * The stretch through the end, back through every run held whole to the first, from the end,
    * not held from its start; a run whose end is not held (read from its start, or not at all) stops
-   * it at the start of the run after it, and is the one it pages back into, from its end.
+   * it at the start of the run after it, and is the one it pages back into, from its end. Read back
+   * from its end, it starts no later than the run after it: a person's message queued behind it is
+   * timed inside it, and stays as its pages are read.
    */
   const fromEnd = (members: ReadonlyArray<RunRecord>): Stretch => {
     const at = members.findLastIndex((member) => {
@@ -1317,15 +1319,18 @@ export function engineCardPagingOf(
         through: null,
       };
     const next = members[at + 1];
+    const nextStart = next === undefined ? null : startOf(next);
+    const pageStart =
+      span.from === null ? null : timeAt(gap.id, span.from, gap.endedAt ?? gap.queuedAt);
     return {
       pageRuns: { earlier: gap.id, later: null },
       holdsLines: true,
       since:
-        span.from !== null
-          ? timeAt(gap.id, span.from, gap.endedAt ?? gap.queuedAt)
-          : next === undefined
-            ? null
-            : startOf(next),
+        pageStart === null
+          ? nextStart
+          : nextStart !== null && Date.parse(nextStart) < Date.parse(pageStart)
+            ? nextStart
+            : pageStart,
       through: null,
     };
   };
