@@ -161,14 +161,12 @@ const readCheckout = (activity: ZeropsLease["activity"]): boolean => activity?.r
  * does), and what zcp last read of its checkout — its activity and unsaved work — where this call
  * did not (only `zerops_lease action=status` does; one that could not read a lease says why and
  * clears nothing). A read of the checkout is one whole: a newer one replaces both, so unsaved work
- * it could not read is not known rather than an older read's beside newer activity. The checkout
- * read is the same lease's only: the alias acquired at another time is another lease.
+ * it could not read is not known rather than an older read's beside newer activity. Every read is
+ * the same lease's only: the alias acquired at another time is another lease, which keeps none.
  */
 const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
+  if (lease.acquiredAt !== last.acquiredAt) return lease;
   const devServers = lease.devServers ?? last.devServers;
-  if (lease.acquiredAt !== last.acquiredAt) {
-    return devServers === undefined ? lease : { ...lease, devServers };
-  }
   const newer = readCheckout(lease.activity);
   const activity = newer
     ? lease.activity
