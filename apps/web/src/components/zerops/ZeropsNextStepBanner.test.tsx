@@ -147,7 +147,7 @@ const WAITING_AND_CONFLICT: ZeropsMateNextStep = {
       {
         pull: POOLS_PULL,
         label: "#4 Add an api part and dev pools",
-        verdict: { title: "Behind main", fix: RESOLVE },
+        verdict: { title: "Conflicts with main", fix: RESOLVE },
       },
     ],
     more: 0,
@@ -166,7 +166,7 @@ const SHOWN_WAITING_AND_CONFLICT: ZeropsNextStepStripModel = {
     {
       label: "#4 Add an api part and dev pools",
       target: { kind: "change", groupId: "g-1", repository: "app", number: 4 },
-      verdict: "Behind main",
+      verdict: "Conflicts with main",
       fix: { ...RESOLVE, mateProjectId: "p-nova", branch: "api-info" },
     },
   ],
@@ -285,7 +285,7 @@ describe("zeropsComposerTop", () => {
       SHOWN_TWO,
     );
   });
-  it("lists a change that does not merge under its review's words, with the fix that review offers", () => {
+  it("lists a change that does not merge in its row's word, with the fix its review offers", () => {
     expect(
       zeropsComposerTop({ nextStep: WAITING_AND_CONFLICT, pending: NOTHING_PENDING }).strip,
     ).toEqual(SHOWN_WAITING_AND_CONFLICT);
@@ -382,7 +382,9 @@ describe("ZeropsNextStepStrip", () => {
       .replace(/\s+/gu, " ");
     expect(text).toContain("Nova is waiting for your review of 2 changes");
     expect(text).toContain("#2 Add a status page Review");
-    expect(text).toContain("#4 Add an api part and dev pools · Behind main Ask Nova to resolve it");
+    expect(text).toContain(
+      "#4 Add an api part and dev pools · Conflicts with main Ask Nova to resolve it",
+    );
 
     const onReview = vi.fn();
     const onFix = vi.fn();

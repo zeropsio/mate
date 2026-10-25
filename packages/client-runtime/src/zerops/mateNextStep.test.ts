@@ -74,8 +74,7 @@ describe("mateNextStep", () => {
       mateName: "Juno",
       step: "none",
     },
-    // The conversation's header counts it, so the strip lists it too, under its review's words
-    // (below).
+    // The conversation's header counts it, so the strip lists it too, in its row's word (below).
     {
       case: "its own change that does not merge",
       pullRequests: [pull({ mergeability: "conflicting" })],
@@ -341,9 +340,9 @@ describe("mateNextStep: the conversation's own branch first", () => {
 // The rehearsal of 2026-10-25: the conversation's header read "Review 2" while the composer listed
 // one change — the other conflicted with main and was left out. The strip lists every change of
 // its Mate's the header counts, under one count: one that merges with its Review, one that does
-// not merge as it stands after the ones that do, under the words its review leads with and with
-// the fix that review offers — the Mate's to make, the person's to ask for.
-describe("mateNextStep: every change the header counts, one that does not merge under its review's words", () => {
+// not merge as it stands after the ones that do, in the word its row says (one answer on every
+// surface) and with the fix its review offers — the Mate's to make, the person's to ask for.
+describe("mateNextStep: every change the header counts, one that does not merge in its row's word with its review's fix", () => {
   const at = (hour: number) => `2026-10-25T${String(hour).padStart(2, "0")}:00:00Z`;
   const notes = pull({
     repository: "appdev",
@@ -367,7 +366,7 @@ describe("mateNextStep: every change the header counts, one that does not merge 
     verdict: line.verdict,
   });
   const resolve = {
-    title: "Behind main",
+    title: "Conflicts with main",
     fix: {
       label: "Ask Wren to resolve it",
       problem: {
@@ -427,7 +426,7 @@ describe("mateNextStep: every change the header counts, one that does not merge 
       over: { mergeability: "conflicting" },
       yours: true,
       verdict: {
-        title: "Behind main",
+        title: "Conflicts with main",
         fix: {
           label: "Ask Wren to resolve it",
           problem: {
@@ -441,13 +440,13 @@ describe("mateNextStep: every change the header counts, one that does not merge 
       case: "a colleague's Mate's change that conflicts: its Review, never a fix",
       over: { mergeability: "conflicting" },
       yours: false,
-      verdict: { title: "Behind main" },
+      verdict: { title: "Conflicts with main" },
     },
     {
       case: "one HQ is still checking: its Review, as HQ works it out",
       over: { mergeability: "checking" },
       yours: true,
-      verdict: { title: "Checking whether it merges cleanly" },
+      verdict: { title: "Checking" },
     },
     {
       case: "one main already holds: its Review, nothing to merge",

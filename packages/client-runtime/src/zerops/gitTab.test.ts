@@ -921,7 +921,12 @@ describe("one answer on every surface (DESIGN §4.7)", () => {
       const seen = surfaces(change(mergeability));
       // The tab's door is the review's, on every open change; the review decides.
       expect(seen.tab.action?.kind).toBe("review");
-      expect(seen.banner !== undefined).toBe(mergeability === "mergeable");
+      // The composer lists it whatever HQ says, as the conversation's header counts it, and says
+      // the row's word where it does not merge (the rehearsal of 2026-10-25).
+      expect(seen.banner).toBeDefined();
+      expect(seen.banner?.lines[0]?.verdict?.title).toBe(
+        seen.blocked === null ? undefined : seen.row?.word,
+      );
       expect(seen.tab.verdict?.tone).toBe(seen.row?.tone);
       expect(seen.tab.verdict?.ask).toBe(seen.blocked?.ask);
       const rebase = {
