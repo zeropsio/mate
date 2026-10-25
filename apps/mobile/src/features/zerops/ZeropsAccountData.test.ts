@@ -65,6 +65,7 @@ function mountAccount() {
         readDetail: unexpectedObservation,
         revalidate: unexpectedObservation,
         retryDetail: unexpectedObservation,
+        rereadListing: unexpectedObservation,
         retry: unexpectedObservation,
         resume: unexpectedObservation,
         stop: unexpectedObservation,
