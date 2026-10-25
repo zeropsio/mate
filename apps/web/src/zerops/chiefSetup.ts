@@ -1,7 +1,8 @@
 /**
- * Setting up the organization's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project
- * that makes its project and container, and HQ's mark on it. The Chief page shows it and presses it (`ChiefPage`); the runner is mounted once,
- * above every view (`ChiefSetupHost`), so its steps run on wherever the person goes.
+ * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
+ * makes its project and container, and HQ's registration of it. The Chief page shows it and presses
+ * it (`ChiefPage`); the runner is mounted once, above every view (`ChiefSetupHost`), so its steps
+ * run on wherever the person goes.
  *
  * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
@@ -109,10 +110,9 @@ export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
 const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 
 /**
- * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ marks it
- * as the organization's Chief; *Try again* resumes the step that stopped. Mounted
- * once, above every view: its presses reach the page through `startChiefSetup` and
- * `tryChiefSetupAgain`.
+ * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ registers
+ * it as the person's Chief; *Try again* resumes the step that stopped. Mounted once, above every
+ * view: its presses reach the page through `startChiefSetup` and `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
   readonly start: () => void;

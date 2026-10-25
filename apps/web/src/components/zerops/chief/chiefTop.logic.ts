@@ -84,7 +84,6 @@ const HQ_READING = "Reaching your organization's HQ…";
 const NO_HQ = "Your organization has no HQ to record a Chief.";
 const HQ_BEHIND = "Your organization's HQ needs its update before it can record a Chief.";
 const MAY_NOT_CREATE = "Only someone who may create projects in this organization can set one up.";
-const MAY_NOT_MARK = "Only an Owner or Admin of this organization can set one up.";
 
 export function chiefPageView(input: {
   readonly own: OwnChief;
@@ -96,8 +95,6 @@ export function chiefPageView(input: {
   readonly hq: "official" | "reading" | "none" | "behind";
   /** The person may make the project a Chief lives in (HQ's `create_app`). */
   readonly mayCreate: boolean;
-  /** The person is an Owner or Admin, who alone mark the organization's Chief (`PUT /api/chief`). */
-  readonly mayMark: boolean;
 }): ChiefPageView {
   const { setup, own } = input;
   if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
@@ -110,11 +107,9 @@ export function chiefPageView(input: {
       ? HQ_READING
       : input.hq === "behind"
         ? HQ_BEHIND
-        : !input.mayMark
-          ? MAY_NOT_MARK
-          : input.mayCreate
-            ? undefined
-            : MAY_NOT_CREATE;
+        : input.mayCreate
+          ? undefined
+          : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
 }
 

@@ -36,9 +36,9 @@ describe("chiefSetupAfter", () => {
       running("hq"),
     ],
     [
-      "HQ's mark set, the Chief is set up",
+      "HQ's registration answered, the Chief is set up",
       running("hq"),
-      { type: "marked" },
+      { type: "registered" },
       { phase: "done", birthId: "b1", projectId: "p-chief" },
     ],
     [
@@ -86,7 +86,7 @@ describe("chiefSetupAfter", () => {
     [
       "an answer for a step not running is ignored",
       running("project", null),
-      { type: "marked" },
+      { type: "registered" },
       running("project", null),
     ],
     ["nothing to try again while it runs", running("hq"), { type: "again" }, running("hq")],
@@ -172,19 +172,19 @@ describe("chiefProjectProgress", () => {
 describe("finishChiefSetup", () => {
   const answer = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
 
-  it("marks its project as the organization's Chief at HQ, and the setup is done", async () => {
+  it("registers its project as my Chief at HQ, and the setup is done", async () => {
     const events: ChiefSetupEvent[] = [];
-    const marked: string[] = [];
+    const registered: string[] = [];
     await finishChiefSetup({
       projectId: "p-chief",
       setChief: async (projectId) => {
-        marked.push(projectId);
+        registered.push(projectId);
         return answer;
       },
       dispatch: (event) => events.push(event),
     });
-    expect(marked).toEqual(["p-chief"]);
-    expect(events).toEqual([{ type: "marked" }]);
+    expect(registered).toEqual(["p-chief"]);
+    expect(events).toEqual([{ type: "registered" }]);
   });
 
   it.each<[string, string]>([["HQ refusing stops before anything is written", "HQ said no."]])(
@@ -202,7 +202,7 @@ describe("finishChiefSetup", () => {
     },
   );
 
-  it("resumes after a failure: HQ is asked again and the mark set once", async () => {
+  it("resumes after a failure: HQ is asked again and the registration answered once", async () => {
     let setup: ChiefSetup = running("hq");
     let refusals = 1;
     const asked: string[] = [];

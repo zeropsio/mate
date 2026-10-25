@@ -31,7 +31,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   waiting,
   tile = false,
 }: {
-  /** The organization's Chief among the listed Mates; undefined while it is not listed. */
+  /** The person's own Chief among the listed Mates; undefined while it is not listed. */
   readonly chief: T | undefined;
   readonly coming: MateComing | undefined;
   readonly conversationsRead: boolean;

@@ -41,7 +41,7 @@ describe("Zerops native capability table", () => {
         ).toEqual({
           membershipKnown: true,
           createProject: create || flag,
-          setUpChief: (create || flag) && administer,
+          setUpChief: create || flag,
           reachesEveryProject: role !== "NO_ACCESS",
           manageOrganization: administer,
           editFinances: role === "OWNER",
@@ -114,9 +114,10 @@ describe("Zerops native capability table", () => {
   });
 
   it.each([
-    // An owner and an admin make projects and mark the organization's Chief.
+    // An owner, an admin and a Developer make projects and a Chief of their own.
     ["OWNER", false, true],
     ["ADMIN", false, true],
+    ["NO_ACCESS", true, true],
     // A Guest is never told to start a project, nor offered a Chief, which would be one.
     ["NO_ACCESS", false, false],
     ["READ_ONLY", false, false],
@@ -134,16 +135,6 @@ describe("Zerops native capability table", () => {
       expect(roleOffers(capabilities)).toEqual({ newProject: offered, setUpChief: offered });
     },
   );
-  it("a Developer who may create projects is offered New project but no Chief: only an Owner or Admin marks the organization's", () => {
-    const reads = readsOfState(
-      stateOf([...liveProjects("org", [{ id: "p" }]), ...membershipInputs("NO_ACCESS", true)]),
-    );
-    const capabilities = platformCapabilities.derive(reads, {
-      orgId: "org",
-      viewer: platformMembership.derive(reads, "org").viewer,
-    });
-    expect(roleOffers(capabilities)).toEqual({ newProject: true, setUpChief: false });
-  });
   it.each([
     ["OWNER", true, true],
     ["ADMIN", false, true],

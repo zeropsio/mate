@@ -324,7 +324,7 @@ export interface HqApi {
     requestId: string,
     intent: HqGitTargetIntent,
   ) => Promise<HqGitOperationReceipt | null>;
-  /** The organisation's Chief mark set on, or moved to, `projectId` (`chief.ts`). */
+  /** The reader's Chief registered for, or moved to, `projectId` (`chief.ts`). */
   readonly setChief: HqChiefCalls["setChief"];
   /** Every decision HQ holds of the proposals named (`chief.ts`). */
   readonly proposalDecisions: HqChiefCalls["proposalDecisions"];

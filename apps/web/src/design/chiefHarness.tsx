@@ -135,7 +135,7 @@ function Harness() {
     const events = [
       { type: "start", birthId: "b1" },
       { type: "project-made", projectId: "p-chief" },
-      { type: "marked" },
+      { type: "registered" },
     ] as const;
     events.forEach((event, index) =>
       setTimeout(() => setSetup((now) => chiefSetupAfter(now, event)), index * 700),

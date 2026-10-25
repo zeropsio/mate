@@ -1974,7 +1974,7 @@ export default function Sidebar() {
     },
     [askMateToFix, isMobile, setOpenMobile],
   );
-  // The menu's top row is the organization's Chief: its conversation once it is listed, else the Chief
+  // The menu's top row is the person's Chief: its conversation once it is listed, else the Chief
   // page, where it is set up. An organization without an HQ holds no Chief: its top is the mark.
   const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const zeropsChiefPageOpen = useLocation({ select: (location) => location.pathname === "/chief" });
@@ -2729,7 +2729,7 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The menu's top: the organization's Chief, as the open menu's row or the rail's tile — once it exists
+  // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
   // or is being set up. Before that the account menu offers it (`chiefOffered`), and its place
   // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =

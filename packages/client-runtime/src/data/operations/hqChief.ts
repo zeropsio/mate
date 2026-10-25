@@ -1,8 +1,8 @@
 /**
- * The organisation's Chief mark and the decisions on its proposals, as HQ records them
- * (`zerops/hq/chief.ts`): the mark set on a project, and one decision on a proposal. HQ answers
- * each at once and keeps no request id for it, so a lost answer stays uncertain and is never sent
- * again blindly — the mark is asked for again by the person (a second sets the same mark), and a
+ * The person's Chief and the decisions on its proposals, as HQ records them (`zerops/hq/chief.ts`):
+ * a Chief registered for a project, and one decision on a proposal. HQ answers each at once and
+ * keeps no request id for it, so a lost answer stays uncertain and is never sent again blindly — a
+ * Chief's registration is asked for again by the person (a second answers the same one), and a
  * decision is written once: a second is HQ's conflict.
  *
  * @module data/operations/hqChief

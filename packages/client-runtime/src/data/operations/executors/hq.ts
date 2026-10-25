@@ -423,7 +423,7 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** The Chief's mark and a proposal's decision: HQ's answer is their end. */
+  /** A Chief's registration and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
     switch (intent.kind) {
       case "set-chief":

@@ -56,7 +56,7 @@ const DECISION = {
 } as const;
 
 describe("the Chief at HQ", () => {
-  it("marks a project as the organisation's Chief and answers the mark HQ holds", async () => {
+  it("registers a project as my Chief and answers the registration HQ holds", async () => {
     const answer = { chief: { projectId: "p-chief", since: "2026-10-12T10:00:00.000Z" } };
     const { api, seen } = hqAnswering(() => json(200, answer));
     await expect(api.setChief("p-chief")).resolves.toEqual(answer);

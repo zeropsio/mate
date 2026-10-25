@@ -6,8 +6,7 @@
  * - `membershipKnown` — the viewer's membership in the organization is read: until it is, a
  *   capability that reads `false` is not a refusal, and a control already drawn stays drawn.
  * - `createProject` — Zerops' own *can create projects* (`mayCreateProjects`): New project.
- * - `setUpChief` — a Chief is a new project an Owner or Admin marks as the organization's (HQ's
- *   `not_structure_writer` otherwise), so it takes `createProject` and `manageOrganization`.
+ * - `setUpChief` — a Chief is a project of the person's own, so it takes `createProject`.
  * - `reachesEveryProject` — the organization role reaches every project by itself (Read only or
  *   above); below it, a person sees only the projects they are given.
  * - `manageOrganization` — an owner or an admin: the team, and who has access to what.
@@ -82,13 +81,12 @@ export const platformCapabilities: Projection<PlatformCapabilitiesKey, PlatformC
     const role = access?.kind === "allowed" ? access.role : undefined;
     const member = viewer !== undefined && viewer.id === orgId ? viewer : undefined;
     const createProject = member !== undefined && mayCreateProjects(member);
-    const manageOrganization = member !== undefined && roleAtLeast(member.roleCode, "ADMIN");
     return {
       membershipKnown: member !== undefined,
       createProject,
-      setUpChief: createProject && manageOrganization,
+      setUpChief: createProject,
       reachesEveryProject: member !== undefined && roleAtLeast(member.roleCode, "READ_ONLY"),
-      manageOrganization,
+      manageOrganization: member !== undefined && roleAtLeast(member.roleCode, "ADMIN"),
       editFinances:
         member !== undefined && (member.roleCode === "OWNER" || member.canEditFinances === true),
       projectAccessKnown: access !== undefined && access.kind !== "unknown",

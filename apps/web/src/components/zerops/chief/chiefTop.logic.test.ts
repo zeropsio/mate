@@ -94,7 +94,7 @@ const FAILED: ChiefSetup = {
   projectId: null,
   reason: "No room.",
 };
-const ready = { hq: "official", mayCreate: true, mayMark: true } as const;
+const ready = { hq: "official", mayCreate: true } as const;
 
 describe("chiefPageView", () => {
   it.each<[string, Parameters<typeof chiefPageView>[0], ChiefPageView]>([
@@ -158,14 +158,6 @@ describe("chiefPageView", () => {
       "waits for the person's own Chief to answer, then hands over to its conversation",
       { ...ready, own: "p-chief", setup: { phase: "idle" } },
       { kind: "coming", projectId: "p-chief" },
-    ],
-    [
-      "says why where the person is not an Owner or Admin, who alone mark the organization's Chief",
-      { ...ready, mayMark: false, own: null, setup: { phase: "idle" } },
-      {
-        kind: "offer",
-        blocked: "Only an Owner or Admin of this organization can set one up.",
-      },
     ],
   ])("%s", (_title, input, view) => {
     expect(chiefPageView(input)).toEqual(view);
