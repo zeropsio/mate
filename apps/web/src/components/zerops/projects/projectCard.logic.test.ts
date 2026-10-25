@@ -29,6 +29,7 @@ import {
   mateChangesForReview,
   panelAddresses,
   historyOffered,
+  releaseProductionRuns,
   placeLines,
   putLiveHasChange,
   readyLine,
@@ -1110,6 +1111,47 @@ describe("production's actions", () => {
   ])("offers production's history only once it runs a release: $case", (input) => {
     expect(historyOffered(input)).toBe(input.offered);
   });
+});
+
+describe("the version production runs", () => {
+  const row = (tag: string, standing?: "live" | "deploy-failed") => ({ tag, standing });
+  it.each([
+    { case: "no release", releases: [], inFlight: undefined, names: undefined },
+    {
+      case: "a first release still building",
+      releases: [row("v1.0.0")],
+      inFlight: "v1.0.0",
+      names: undefined,
+    },
+    {
+      case: "a first release on its way that production's services already name",
+      releases: [row("v1.0.0", "live")],
+      inFlight: "v1.0.0",
+      names: undefined,
+    },
+    {
+      case: "a first release whose deploy failed",
+      releases: [row("v1.0.0", "deploy-failed")],
+      names: undefined,
+    },
+    {
+      case: "a first release that landed",
+      releases: [row("v1.0.0", "live")],
+      inFlight: undefined,
+      names: "v1.0.0",
+    },
+    {
+      case: "a second release still building",
+      releases: [row("v1.1.0"), row("v1.0.0", "live")],
+      inFlight: "v1.1.0",
+      names: "v1.0.0",
+    },
+  ])(
+    "A card names the version production runs only from a release that has landed: $case",
+    (input) => {
+      expect(releaseProductionRuns(input.releases, input.inFlight)).toBe(input.names);
+    },
+  );
 });
 
 describe("production's panel", () => {

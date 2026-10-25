@@ -434,6 +434,18 @@ export function historyOffered(input: {
 }
 
 /**
+ * The tag of the release production runs: one that has landed. A release on its way (`inFlight`)
+ * has not, even once production's services name its commit; a first release on its way names none
+ * and a second keeps the first.
+ */
+export function releaseProductionRuns(
+  releases: ReadonlyArray<Pick<PanelRelease, "tag" | "standing">>,
+  inFlight: string | undefined,
+): string | undefined {
+  return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
+}
+
+/**
  * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
  * it open that its one press merges. A Mate's setup files are no app.
  */
