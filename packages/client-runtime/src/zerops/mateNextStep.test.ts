@@ -230,3 +230,100 @@ describe("mateNextStep: every change of its own waiting, newest first", () => {
     ).toEqual({ title, lines, more });
   });
 });
+
+// Several changes per Mate, one per branch (the owner, D-7, 2026-10-25): a conversation offers all
+// of its Mate's waiting changes, the one on the branch its lease is bound to first — never
+// another Mate's — and says it in the same words.
+describe("mateNextStep: the conversation's own branch first", () => {
+  const at = (hour: number) => `2026-10-25T${String(hour).padStart(2, "0")}:00:00Z`;
+  const previews = pull({
+    repository: "appsdev",
+    number: 2,
+    title: "Pool previews",
+    branch: "pool-previews",
+    updatedAt: at(12),
+  });
+  const stamp = pull({
+    repository: "appsdev",
+    number: 7,
+    title: "Build stamp",
+    branch: "build-stamp",
+    updatedAt: at(11),
+  });
+  const badge = pull({
+    repository: "appsdev",
+    number: 6,
+    title: "Test badge",
+    branch: "badge",
+    updatedAt: at(9),
+  });
+  const theirs = pull({
+    repository: "appsdev",
+    number: 8,
+    title: "Their badge",
+    branch: "badge-2",
+    mateProjectId: "p-juno",
+    updatedAt: at(13),
+  });
+
+  it.each([
+    [
+      "its bound lease's branch leads, the rest newest first",
+      [previews, stamp, badge],
+      "badge",
+      ["#6 Test badge", "#2 Pool previews", "#7 Build stamp"],
+    ],
+    [
+      "bound to no lease: newest first",
+      [previews, stamp, badge],
+      undefined,
+      ["#2 Pool previews", "#7 Build stamp", "#6 Test badge"],
+    ],
+    [
+      "a branch with no change of its own waiting: newest first",
+      [previews, stamp, badge],
+      "wip",
+      ["#2 Pool previews", "#7 Build stamp", "#6 Test badge"],
+    ],
+    [
+      "its branch's change still a draft asks nothing: newest first",
+      [previews, stamp, { ...badge, ready: false }],
+      "badge",
+      ["#2 Pool previews", "#7 Build stamp"],
+    ],
+    [
+      "another Mate's change on the branch is never offered",
+      [previews, { ...theirs, branch: "badge" }],
+      "badge",
+      [],
+    ],
+  ] as const)("%s", (_case, pullRequests, boundBranch, lines) => {
+    const step = mateNextStep({
+      pullRequests,
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      boundBranch,
+    });
+    expect(step.kind === "review" ? step.lines.map((line) => line.label) : null).toEqual(
+      lines.length === 0 ? [] : lines,
+    );
+    if (step.kind === "review" && lines.length > 0) {
+      expect(step.detail).toBe(lines[0]!.replace(/^#\d+ /u, ""));
+      expect(step.title).toBe(`Wren is waiting for your review of ${String(lines.length)} changes`);
+    }
+  });
+
+  it("a lone change on its branch reads as the one change, in the same words", () => {
+    const step = mateNextStep({
+      pullRequests: [badge],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      boundBranch: "badge",
+    });
+    expect(step.kind === "review" ? [step.title, step.detail, step.pull.number] : null).toEqual([
+      "Wren is waiting for your review",
+      "Test badge",
+      6,
+    ]);
+  });
+});
