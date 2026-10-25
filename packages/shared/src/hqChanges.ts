@@ -431,6 +431,8 @@ export const RepoListEntry = Schema.Struct({
   follows: Schema.optionalKey(HqRemoteUrl),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
+  /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */
+  url: Schema.optionalKey(Schema.String),
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
   releaseVersion: Schema.optionalKey(
     Schema.Struct({
