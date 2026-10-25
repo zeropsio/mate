@@ -1163,6 +1163,45 @@ describe("a Mate's changes in HQ", () => {
         }),
     );
 
+    // Lab G, 2026-10-25: a change Cal closed read "Somebody closed it", though HQ's log says Cal.
+    it.effect(
+      "a change its Mate closed says its Mate closed it; one a person closed does not",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop", apps);
+          yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+          for (const branch of ["given-up", "turned-down"])
+            yield* call("POST", "/api/mate/changes", {
+              headers: ada.auth,
+              body: { repo: "appdev", title: branch, branch },
+            });
+          const byMate = (yield* call("POST", "/api/mate/changes/appdev/1/close", {
+            headers: ada.auth,
+          })).body as Record<string, unknown>;
+          const byPerson = (yield* call("POST", `/api/apps/${ada.appId}/changes/appdev/2/close`, {
+            session: owner,
+            body: { expectedHead: null },
+          })).body as Record<string, unknown>;
+          assert.deepStrictEqual(
+            [byMate["closedByMate"], byPerson["state"], byPerson["closedByMate"]],
+            [true, "closed", undefined],
+          );
+          const listed = (yield* call("GET", `/api/apps/${ada.appId}/changes`, { session: owner }))
+            .body as { readonly changes: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            listed.changes.map((change) => [change["number"], change["closedByMate"]]),
+            [
+              [2, undefined],
+              [1, true],
+            ],
+          );
+        }),
+    );
+
     it.effect("a Mate reads whether its application has a production in its own state", () =>
       Effect.gen(function* () {
         const { call, fake, url } = yield* startCore(true);
