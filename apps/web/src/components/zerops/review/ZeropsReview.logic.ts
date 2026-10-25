@@ -374,6 +374,42 @@ export function changeCode(pull: {
   return { sha: pull.headSha, view: "code", words: "Browse files" };
 }
 
+/**
+ * The branch a change's review names beside its number: the one its Mate named, so a Mate's
+ * several changes in one repository read apart. None for HQ's own `mate/…` branch of a change that
+ * named none, whose number already says which it is, nor where HQ named none.
+ */
+export function reviewBranch(pull: { readonly branch?: string | undefined }): string | undefined {
+  const branch = pull.branch;
+  return branch === undefined || branch === "" || branch.startsWith("mate/") ? undefined : branch;
+}
+
+/**
+ * Its Mate's other open changes in the change's repository, by number: the review links each, so
+ * the person steps between a Mate's parallel work there. Never another Mate's.
+ */
+export function otherOpenChanges<
+  T extends {
+    readonly repository: string;
+    readonly number: number;
+    readonly mateProjectId: string;
+    readonly merged: boolean;
+  },
+>(
+  pull: Pick<T, "repository" | "number" | "mateProjectId">,
+  pullRequests: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  return pullRequests
+    .filter(
+      (other) =>
+        other.repository === pull.repository &&
+        other.mateProjectId === pull.mateProjectId &&
+        other.number !== pull.number &&
+        !other.merged,
+    )
+    .toSorted((left, right) => left.number - right.number);
+}
+
 /** The status letter in a file row's 16 px box. */
 export function changeFileLetter(status: string): "A" | "M" | "D" | "R" | "C" {
   switch (status) {

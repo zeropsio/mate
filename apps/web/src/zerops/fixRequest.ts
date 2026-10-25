@@ -95,13 +95,21 @@ export function fixMateChoice<T extends FixMate>(mates: ReadonlyArray<T>): Reado
 
 /**
  * Opens the Mate's conversation with the problem written into its composer,
- * not sent: the person reads what goes and presses Send themselves.
+ * not sent: the person reads what goes and presses Send themselves. A change's
+ * problem names its branch: the conversation bound to a lease of it is opened.
  */
-export function useAskMateToFix(): (mateProjectId: string, problem: FixProblem) => void {
+export function useAskMateToFix(): (
+  mateProjectId: string,
+  problem: FixProblem,
+  options?: { readonly branch?: string | undefined },
+) => void {
   const askMate = useAskMate();
   return useCallback(
-    (mateProjectId, problem) => {
-      askMate(mateProjectId, fixRequestPrompt(problem), { send: false });
+    (mateProjectId, problem, options) => {
+      askMate(mateProjectId, fixRequestPrompt(problem), {
+        send: false,
+        ...(options?.branch === undefined ? {} : { branch: options.branch }),
+      });
     },
     [askMate],
   );

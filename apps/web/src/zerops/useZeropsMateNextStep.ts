@@ -71,6 +71,8 @@ export function useZeropsMateNextStep(
   threadRef: ScopedThreadRef | null,
   /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
   yours = true,
+  /** The branch of the lease the conversation is bound to: its change is offered first. */
+  boundBranch?: string,
 ): ZeropsMateNextStep {
   const inventory = useZeropsInventory();
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
@@ -94,6 +96,7 @@ export function useZeropsMateNextStep(
     mateProjectId: projectId,
     mateName: projectId === undefined ? undefined : mateNames.get(projectId),
     yours,
+    boundBranch,
   });
   if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);

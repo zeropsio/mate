@@ -5430,6 +5430,8 @@ function ConversationView(props: ChatViewProps) {
       working: isWorking || mateAtWork,
     },
     colleagueReadOnly === null,
+    // Its own work leads: the change on the branch of the lease this conversation is bound to.
+    activeThread?.lease?.branch ?? undefined,
   );
   // Typing here while the Mate works in another of its chats, Send's hover says so
   // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's

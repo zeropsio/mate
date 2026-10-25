@@ -15,6 +15,10 @@
  * still being checked waits on the Mate or on HQ, not on the person. A
  * recipe change is the group's document and is left to the projects page.
  *
+ * A Mate may hold several changes at once, one per branch: the conversation offers every one of
+ * them, the change on the branch its lease is bound to first, then the newest (the owner, D-7,
+ * 2026-10-25) — the conversation's own work leads, and nothing of its Mate's is hidden.
+ *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module mateNextStep
@@ -33,7 +37,7 @@ export const MATE_NEXT_STEP_LINES = 3;
 export type MateNextStep =
   | {
       readonly kind: "review";
-      /** The newest of its waiting changes. */
+      /** The change on the conversation's own branch, else the newest of its waiting changes. */
       readonly pull: FlowPullRequest;
       /**
        * `Wren is waiting for your review`, its change's title under it — or `… of 2 changes` where
@@ -43,8 +47,9 @@ export type MateNextStep =
       /** What the newest change is: its own title. */
       readonly detail: string;
       /**
-       * Where more than one waits, the newest three, each named as the menu names it
-       * (`apidev #1 Rebuild the API`); none where one waits, which the title names.
+       * Where more than one waits, the first three — the conversation's own branch's, then the
+       * newest — each named as the menu names it (`apidev #1 Rebuild the API`); none where one
+       * waits, which the title names.
        */
       readonly lines: ReadonlyArray<{ readonly pull: FlowPullRequest; readonly label: string }>;
       /** How many more wait past the lines. */
@@ -68,12 +73,20 @@ export function mateNextStep(input: {
   readonly working?: boolean;
   /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
   readonly yours?: boolean;
+  /**
+   * The branch of the lease this conversation is bound to (zcp's lease binding), where it is bound
+   * to one: its change leads.
+   */
+  readonly boundBranch?: string | undefined;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
 
-  // The newest by its last move where a Mate has two — its number is per repository, so two
-  // repositories' #1s would tie — and by number after that, so the strip is stable.
+  // The conversation's own branch's change first; then the newest by its last move where a Mate
+  // has two — its number is per repository, so two repositories' #1s would tie — and by number
+  // after that, so the strip is stable.
+  const own = (entry: FlowPullRequest) =>
+    input.boundBranch !== undefined && entry.branch === input.boundBranch ? 0 : 1;
   const waiting = pullRequests
     .filter(
       (entry) =>
@@ -83,7 +96,7 @@ export function mateNextStep(input: {
         entry.mergeability === "mergeable" &&
         changeShowsReview(entry, { working: input.working }),
     )
-    .sort(byNewest);
+    .sort((left, right) => own(left) - own(right) || byNewest(left, right));
   const [pull] = waiting;
   if (pull === undefined) return NONE;
   const who = `${input.mateName ?? "This Mate"} is waiting for ${
