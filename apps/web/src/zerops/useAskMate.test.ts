@@ -132,6 +132,58 @@ describe("askMateThread: a change's branch", () => {
   it("a person chat named outranks the change's branch", () => {
     expect(askMateThread(threads, "previews-too", "badge")?.id).toBe("previews-too");
   });
+
+  // Two apps of one Mate, each its own repository in HQ, both with a change on `fix-login`: a
+  // lease's group is its repository and branch, so the change's Ask goes to its own repository's
+  // chat, never the other app's (review r4-10).
+  const WEB = "https://hq.example/git/g1/appdev";
+  const API = "https://hq.example/git/g1/apidev";
+  const webChat = thread("web-login", {
+    lease: { alias: "webpool-3", pool: "webpool", branch: "fix-login", repo: WEB },
+    latestUserMessageAt: "2026-10-25T09:00:00.000Z",
+  });
+  const apiChat = thread("api-login", {
+    lease: { alias: "apipool-4", pool: "apipool", branch: "fix-login", repo: API },
+  });
+  const githubChat = thread("github-login", {
+    lease: {
+      alias: "ghpool-5",
+      pool: "ghpool",
+      branch: "fix-login",
+      repo: "https://github.com/acme/api",
+    },
+  });
+  const twoApps = [main, webChat, apiChat];
+
+  it.each([
+    { name: "its own repository's chat", chats: twoApps, url: API, asked: "api-login" },
+    {
+      name: "its own repository's chat, addresses compared as zcp compares them",
+      chats: twoApps,
+      url: `${API}.git`,
+      asked: "api-login",
+    },
+    {
+      name: "the main chat when no chat is of its repository",
+      chats: [main, webChat],
+      url: API,
+      asked: "main",
+    },
+    {
+      name: "a chat leased from a repository outside HQ, which may be its own",
+      chats: [main, githubChat],
+      url: API,
+      asked: "github-login",
+    },
+    {
+      name: "by its branch alone when its address is not known",
+      chats: twoApps,
+      url: undefined,
+      asked: "web-login",
+    },
+  ])("a change of one of two apps on one branch asks $name", ({ chats, url, asked }) => {
+    expect(askMateThread(chats, undefined, "fix-login", url)?.id).toBe(asked);
+  });
 });
 
 describe("askedDraft: a request left unsent joins what the person had typed, never replaces it", () => {
