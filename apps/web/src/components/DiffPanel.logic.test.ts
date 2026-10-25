@@ -257,8 +257,9 @@ describe("two workspaces of one pool and branch", () => {
       repository,
       status: status({ changed: index }),
     }));
-    const [first] = repositories;
-    const shown = shownDiff(reads, { kind: "unstaged", repository: first?.name });
+    // The person chose the first, which has nothing uncommitted; the other has a file.
+    const chosen = repositories[0]?.name ?? "";
+    const shown = shownDiff(reads, { kind: "unstaged", repository: chosen });
     expect(shown.kind === "choice" ? shown.choice.repository.cwd : shown.kind).toBe(
       "/var/www/webpool-3",
     );
