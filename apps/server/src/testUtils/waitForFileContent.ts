@@ -5,8 +5,10 @@ import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 
-// Directory notifications discover creation/replacement; the file's own watcher
-// observes appends, which need not produce another directory notification.
+// The file is created empty when absent so its own watcher can be registered at
+// once; correctness never depends on a directory notification (macOS delivers
+// those late or never under load). Content is re-read right after the watch is
+// registered, so a write that lands before registration is not missed.
 export const waitForFileContent = (
   filePath: string,
   accepts: (content: string) => boolean = (content) => content.trim().length > 0,
@@ -51,17 +53,15 @@ export const waitForFileContent = (
         resume(Effect.die(error));
       }
     };
-    const directoryWatcher = NodeFS.watch(NodePath.dirname(filePath), (_event, filename) => {
-      if (filename !== null && filename.toString() !== NodePath.basename(filePath)) return;
-      watchFile();
-      read();
-    });
-    directoryWatcher.on("error", (error) => resume(Effect.die(error)));
-    watchFile();
-    read();
+    void NodeFSP.appendFile(filePath, "").then(
+      () => {
+        watchFile();
+        read();
+      },
+      (error) => resume(Effect.die(error)),
+    );
     return Effect.sync(() => {
       closed = true;
       fileWatcher?.close();
-      directoryWatcher.close();
     });
   });

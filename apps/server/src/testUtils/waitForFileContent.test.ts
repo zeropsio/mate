@@ -23,6 +23,9 @@ vi.mock("node:fs", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  appendFile: vi.fn(async (path: string) => {
+    if (!fileSystem.files.has(path)) fileSystem.files.set(path, "");
+  }),
   readFile: vi.fn(async (path: string) => {
     const content = fileSystem.files.get(path);
     if (content === undefined) throw Object.assign(new Error("Missing file"), { code: "ENOENT" });
@@ -58,18 +61,16 @@ it.effect("an existing file's append completes its waiter without a directory no
 );
 
 it.effect(
-  "a newly created file remains observed for appends after its directory notification",
+  "a file that does not exist yet completes its waiter with no directory notification",
   () =>
     Effect.gen(function* () {
       const waiting = yield* waitForFileContent("/fixture/requests", (content) =>
         content.includes("session/prompt"),
       ).pipe(Effect.forkChild({ startImmediately: true }));
       yield* Effect.promise(() => Promise.resolve());
-
-      fileSystem.files.set("/fixture/requests", "initialize\n");
-      fileSystem.watchers.get("/fixture")?.notify("rename", "requests");
       yield* Effect.promise(() => Promise.resolve());
 
+      expect(fileSystem.watchers.has("/fixture")).toBe(false);
       fileSystem.files.set("/fixture/requests", "initialize\nsession/prompt\n");
       fileSystem.watchers.get("/fixture/requests")?.notify("change", "requests");
       yield* Effect.promise(() => Promise.resolve());
@@ -91,7 +92,7 @@ it.effect("a replaced file's subsequent append completes the existing waiter", (
     yield* Effect.promise(() => Promise.resolve());
 
     fileSystem.files.set("/fixture/requests", "replacement\n");
-    fileSystem.watchers.get("/fixture")?.notify("rename", "requests");
+    fileSystem.watchers.get("/fixture/requests")?.notify("rename", "requests");
     yield* Effect.promise(() => Promise.resolve());
 
     fileSystem.files.set("/fixture/requests", "replacement\nsession/prompt\n");
