@@ -28,7 +28,7 @@ import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
-import { useOrgChief } from "./orgChief";
+import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -79,7 +79,7 @@ export function useChiefSetup(): ChiefSetupState {
  * a Chief is a project of their own, so a role that may not create projects is offered none.
  */
 export function useChiefSetupEntry(): boolean {
-  const own = useOrgChief();
+  const own = useHqOwnChief();
   const { setup } = useChiefSetup();
   const offered = useRoleOffers().setUpChief;
   return offered && chiefSetupEntry(own, setup.phase);
@@ -99,7 +99,7 @@ export function useChiefOffer(): boolean {
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */
 export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
-  const own = useOrgChief();
+  const own = useOwnChief();
   const { setup } = useChiefSetup();
   const mayCreate = useOrgOffers()("create_app").kind === "allowed";
   return chiefSetupLine({ own, mayCreate, setup: setup.phase });
@@ -124,7 +124,7 @@ export function useChiefSetupRunner(): {
   const operations = useAccountOperationsOptional();
   const runNewProject = useRunNewProject();
   const { setup, orgId } = useChiefSetupStore();
-  const own = useOrgChief();
+  const own = useOwnChief();
   const birthId = setup.phase === "idle" ? null : setup.birthId;
   const creation = useCreation(birthId ?? "");
   const presses = useMatePresses();

@@ -7,7 +7,7 @@
  * Chief at rest is its name alone. While it is set up, the line is its setup's; before that there
  * is no row (`chiefTopShown`).
  */
-import type { OrgChief } from "~/zerops/chief";
+import type { OwnChief } from "~/zerops/chief";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
 import type { ChiefSetup } from "./chiefSetup.logic";
@@ -55,7 +55,7 @@ export function chiefRowLine(input: {
  * menu row standing for something that does not exist.
  */
 export function chiefTopShown(input: {
-  readonly own: OrgChief;
+  readonly own: OwnChief;
   /** `chiefSetupLine`. */
   readonly setup: "offer" | "running" | "stopped" | null;
 }): boolean {
@@ -87,7 +87,7 @@ const MAY_NOT_CREATE = "Only someone who may create projects in this organizatio
 const MAY_NOT_MARK = "Only an Owner or Admin of this organization can set one up.";
 
 export function chiefPageView(input: {
-  readonly own: OrgChief;
+  readonly own: OwnChief;
   readonly setup: ChiefSetup;
   /**
    * The organization's HQ: reached, still being reached, none, or reached but running an older

@@ -1,11 +1,10 @@
 /**
- * The Chief: the organization's Mate for the whole organization rather than one project, the way
- * the owner works with a coding agent that reaches every project. An Owner or Admin marks its
- * project as the organization's Chief in HQ (`PUT /api/chief`), and HQ names it `chief: "org"` to
- * every reader whose navigation holds it: the menu's top row, apart from the projects, once it
- * exists or is being set up; before that the account menu offers it (`chiefOffered`), and its empty
- * conversation asks about the organization. A project tagged {@link CHIEF_TAG} the mark does not
- * name appears nowhere.
+ * The Chief: a person's own Mate for the whole organization rather than one project, the way the
+ * owner works with a coding agent that reaches every project. Its project carries
+ * {@link CHIEF_TAG}, and HQ says whose it is (`GET /api/chief`): the viewer's own is the menu's top
+ * row, apart from the projects, once it exists or is being set up; before that the account menu
+ * offers it (`chiefOffered`), and its empty conversation asks about the organization. Another
+ * person's Chief appears nowhere.
  */
 export const CHIEF_TAG = "chief";
 
@@ -24,16 +23,16 @@ export function chiefQuestion(name: string, organization: string | undefined): s
   return `What should ${name} look into across ${organization ?? "your organization"}?`;
 }
 
-/** The organization's Chief as the viewer sees it: its project; null for none; undefined while that is not known. */
-export type OrgChief = string | null | undefined;
+/** Whose Chief the viewer has: its project; null for none; undefined while that is not known. */
+export type OwnChief = string | null | undefined;
 
-/** The organization's Chief from HQ's current person facts; absence needs a complete answer. */
-export function hqOrgChief(
+/** The viewer's Chief from HQ's current person facts; absence needs a complete answer. */
+export function hqOwnChief(
   facts: Readonly<Record<string, { readonly chief?: string | undefined }>>,
   read: boolean,
-): OrgChief {
-  const marked = Object.entries(facts).find(([, fact]) => fact.chief === "org")?.[0];
-  return marked ?? (read ? null : undefined);
+): OwnChief {
+  const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0];
+  return mine ?? (read ? null : undefined);
 }
 
 /**
@@ -59,7 +58,7 @@ export function chiefOffered(input: {
 
 /** Navigation to setup is offered before creation; the destination owns its permission check. */
 export function chiefSetupEntry(
-  own: OrgChief,
+  own: OwnChief,
   setup: "idle" | "running" | "failed" | "done",
 ): boolean {
   return own === null && setup === "idle";
@@ -71,7 +70,7 @@ export function chiefSetupEntry(
  */
 export function othersChiefs(
   projects: Iterable<{ readonly id: string; readonly tagList?: ReadonlyArray<string> | undefined }>,
-  own: OrgChief,
+  own: OwnChief,
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   for (const project of projects)
@@ -80,18 +79,18 @@ export function othersChiefs(
 }
 
 /** The viewer's own Chief among the listed projects: the menu's top row, as HQ names it. */
-export function chiefAmong<T extends { readonly project: { readonly id: string } }>(
+export function ownChiefAmong<T extends { readonly project: { readonly id: string } }>(
   candidates: ReadonlyArray<T>,
-  own: OrgChief,
+  own: OwnChief,
 ): T | undefined {
   if (own === null || own === undefined) return undefined;
   return candidates.find((candidate) => candidate.project.id === own);
 }
 
 /** The menu's list below its top row: every Mate but the viewer's own Chief, drawn once above. */
-export function withoutChief<T extends { readonly project: { readonly id: string } }>(
+export function withoutOwnChief<T extends { readonly project: { readonly id: string } }>(
   candidates: ReadonlyArray<T>,
-  own: OrgChief,
+  own: OwnChief,
 ): ReadonlyArray<T> {
   if (own === null || own === undefined) return candidates;
   return candidates.filter((candidate) => candidate.project.id !== own);
@@ -126,7 +125,7 @@ export function chiefNames(person: ChiefPerson | null): {
  * running until HQ reports the Chief, so its row never leaves and comes back — else nothing.
  */
 export function chiefSetupLine(input: {
-  readonly own: OrgChief;
+  readonly own: OwnChief;
   /** The person may make the project a Chief lives in (HQ's `create_app`). */
   readonly mayCreate: boolean;
   readonly setup: "idle" | "running" | "failed" | "done";

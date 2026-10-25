@@ -20,7 +20,6 @@ export class ChiefRefused extends Schema.TaggedError<ChiefRefused>()("ChiefRefus
     "invalid",
     "method_not_allowed",
     "chief_credential_required",
-    "project_not_found",
   ]),
   reason: Schema.optionalKey(Schema.String),
 }) {}
@@ -34,7 +33,6 @@ export const CHIEF_STATUS = {
   invalid: 400,
   method_not_allowed: 405,
   chief_credential_required: 401,
-  project_not_found: 404,
 } as const;
 
 /**

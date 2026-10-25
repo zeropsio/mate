@@ -65,7 +65,7 @@ vi.mock("~/zerops/accountHq", () => ({
     hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
   }),
 }));
-vi.mock("~/zerops/orgChief", () => ({ useOrgChief: () => "readers-chief" }));
+vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => "readers-chief" }));
 vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
   useZeropsEnvironmentProject: () => ({ orgId: "org", projectId: "source-mate" }),
 }));

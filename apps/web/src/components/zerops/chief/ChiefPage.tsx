@@ -9,7 +9,7 @@
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
-import { useOrgChief } from "~/zerops/orgChief";
+import { useOwnChief } from "~/zerops/ownChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -38,7 +38,7 @@ const CHIEF_DRAWN = {
 } as const;
 
 export function ChiefPage() {
-  const own = useOrgChief();
+  const own = useOwnChief();
   const { setup, startedAtMs } = useChiefSetup();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;

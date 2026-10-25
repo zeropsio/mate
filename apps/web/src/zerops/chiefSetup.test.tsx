@@ -63,7 +63,7 @@ vi.mock("./useZeropsMates", () => ({
 }));
 vi.mock("./useAskMate", () => ({ useAskMate: () => vi.fn() }));
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
-vi.mock("./orgChief", () => ({ useOrgChief: () => null }));
+vi.mock("./ownChief", () => ({ useOwnChief: () => null, useKeepOwnChief: () => vi.fn() }));
 vi.mock("./useHqOffers", () => ({ useOrgOffers: () => () => ({ kind: "allowed" }) }));
 vi.mock("./usePlatformCapabilities", () => ({
   usePlatformCapabilities: () => ({ membershipKnown: true, manageOrganization: true }),

@@ -192,8 +192,6 @@ export interface Targets {
   readonly keep_intake: null;
   /** The organization's API key for a provider its automated Mates run on: its owner or admin. */
   readonly keep_ai_key: null;
-  /** The project marked as the organisation's Chief, moved or removed: its owner or admin. */
-  readonly mark_chief: null;
   /** An environment's deploy token handed to HQ (SPEC §3.2b): by who may attach the project. */
   readonly keep_deploy_token: { readonly projectId: string };
   readonly attach: AttachTarget;
@@ -435,7 +433,6 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "delete_app":
     case "keep_intake":
     case "keep_ai_key":
-    case "mark_chief":
       return writer ? ALLOW : deny("not_structure_writer");
     // The token is minted by the person who attaches the environment, on their own client (main
     // E03): whoever has Full access on its project, or the structure's writer.

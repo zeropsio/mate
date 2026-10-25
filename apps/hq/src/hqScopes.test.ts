@@ -245,7 +245,6 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (
   const detailReads: string[] = [];
   const sqlReads: Array<{ query: string; values: ReadonlyArray<unknown> }> = [];
   let chiefRows: ReadonlyArray<{ readonly project_id: string; readonly user_id: string }> = [];
-  let chiefMark: string | null = null;
   const recipeRead = yield* Queue.unbounded<string>();
   const structureChanged = yield* PubSub.unbounded<number>();
   const rolesChanged = yield* PubSub.unbounded<{
@@ -261,7 +260,6 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (
   const sourceNow = (): StructureSource => ({
     environmentSource: environmentSnapshot(),
     chiefOwners: new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
-    chiefMark,
     facts: org,
     appIds: new Set(deleted ? [] : otherApp ? ["A", "B"] : ["A"]),
     projectIds: new Set(deleted ? [] : ["P"]),
@@ -342,7 +340,6 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (
           userId,
           "P",
           new Map(chiefRows.map((row) => [row.project_id, row.user_id])),
-          chiefMark,
         )
           ? []
           : otherApp && !deleted
@@ -644,10 +641,6 @@ const fixtureWithRemotes = Effect.fnUntraced(function* (
     /** The Chiefs HQ records: whose each Chief project is. */
     chiefs: (rows: typeof chiefRows) => {
       chiefRows = rows;
-    },
-    /** The project HQ holds as the organisation's Chief, or none. */
-    mark: (projectId: string | null) => {
-      chiefMark = projectId;
     },
     recipeRead,
     overviews,
@@ -1034,11 +1027,11 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
-  it.effect("HQ navigation names the organisation's Chief to every reader of its project", () =>
+  it.effect("HQ navigation returns a person's own Chief and withholds another person's Chief", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const f = yield* fixture;
-        f.mark("P");
+        f.chiefs([{ project_id: "P", user_id: "owner" }]);
         yield* f.roles({
           ...facts,
           projects: facts.projects.map((project) => ({ ...project, tags: ["mate", "chief"] })),
@@ -1049,16 +1042,25 @@ describe("revisioned HQ values", () => {
           full: true,
           overview: overviewOf(),
         });
-        for (const userId of ["owner", "reader"]) {
+        for (const [userId, chief] of [
+          ["owner", "mine"],
+          ["reader", null],
+        ] as const) {
           const client = yield* f.connect(userId);
           yield* client.subscribe([{ scope: nav }]);
           const delivery = resetOf(yield* client.take);
           yield* client.take;
-          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
-            person: { chief?: string; chiefProjectId?: string | null };
-          };
-          assert.strictEqual(project.person.chief, "org");
-          assert.strictEqual(project.person.chiefProjectId, "P");
+          const value = delivery.values.find((value) => value.key === "project:P");
+          if (chief === null) {
+            assert.strictEqual(value, undefined);
+            assert.notInclude(json(delivery.values), '"projectId":"P"');
+          } else {
+            const project = value!.value as {
+              person: { chief?: string; chiefProjectId?: string | null };
+            };
+            assert.strictEqual(project.person.chief, chief);
+            assert.strictEqual(project.person.chiefProjectId, "P");
+          }
         }
       }),
     ),

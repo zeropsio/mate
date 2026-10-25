@@ -48,7 +48,7 @@ import { environmentShell } from "~/state/shell";
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
 import { useMateRegistration } from "~/zerops/registration";
-import { useOrgChief } from "~/zerops/orgChief";
+import { useOwnChief } from "~/zerops/ownChief";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
 import { useMateOffers } from "~/zerops/useHqOffers";
@@ -289,7 +289,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   });
   const [cameUp, setCameUp] = useState(false);
   // The person's own Chief, by HQ's word or before HQ names it.
-  const orgChief = useOrgChief();
+  const ownChief = useOwnChief();
 
   // HQ names it as the menu does. Before registration, its creation or press names it.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
@@ -333,7 +333,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
   }, [identity, press, candidate, creation, projectId, tints, viewer, hqStructure]);
-  const isChief = mate.chief === true || orgChief === projectId;
+  const isChief = mate.chief === true || ownChief === projectId;
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once

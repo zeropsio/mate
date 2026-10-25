@@ -329,8 +329,6 @@ export interface MateOffers {
 export interface StructureSource {
   readonly environmentSource: EnvironmentSource;
   readonly chiefOwners: ReadonlyMap<string, string>;
-  /** The project the organisation's Chief mark names, or none. */
-  readonly chiefMark: string | null;
   readonly forPerson: (userId: string) => StructureRead;
   readonly facts: OrgView;
   readonly appIds: ReadonlySet<string>;
@@ -1213,9 +1211,7 @@ export const structureLayer = (options: {
                   readonly userId: string;
                   readonly record: unknown;
                 }>;
-                readonly chief_mark: string | null;
               }>`SELECT
-                (SELECT project_id FROM hq_chief_mark WHERE org_id = ${view.orgId}) AS chief_mark,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('project_id', project_id, 'user_id', user_id,
                   'app_id', app_id::text, 'active', revoked_at IS NULL)) FROM hq_chief WHERE org_id = ${view.orgId}), '[]'::jsonb) AS chiefs,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('projectId', project_id, 'kind', kind) ORDER BY project_id) FROM hq_tool), '[]'::jsonb) AS tools,
@@ -1236,8 +1232,7 @@ export const structureLayer = (options: {
                   .filter((row) => row.active)
                   .map((row) => [row.project_id, row.user_id] as const),
               );
-              const chiefMark = retained!.chief_mark;
-              const environmentSource = yield* readEnvironmentSource(sql, chiefs, chiefMark);
+              const environmentSource = yield* readEnvironmentSource(sql, chiefs);
               const chiefApplications = retained!.chiefs.filter((row) => row.app_id !== null);
               const names = new Map(view.projects.map((project) => [project.id, project.name]));
               const projects = new Map(view.projects.map((project) => [project.id, project]));
@@ -1245,7 +1240,6 @@ export const structureLayer = (options: {
                 facts: view,
                 environmentSource,
                 chiefOwners: chiefs,
-                chiefMark,
                 appIds: new Set(apps.map((app) => app.id)),
                 pressProjectIds: new Set(presses.map((press) => press.project_id)),
                 projectIds: new Set([
@@ -1255,13 +1249,13 @@ export const structureLayer = (options: {
                 forPerson: (userId: string): StructureRead => {
                   const person = { kind: "person", userId } as const;
                   const reads = (projectId: string) =>
-                    readsChiefProject(view, userId, projectId, chiefs, chiefMark);
+                    readsChiefProject(view, userId, projectId, chiefs);
                   const hiddenChiefs = new Set(
                     [
                       ...new Set([...view.projects.map((project) => project.id), ...chiefs.keys()]),
                     ].filter(
                       (projectId) =>
-                        !chiefProjectIsVisible(view, userId, projectId, chiefs, chiefMark) ||
+                        !chiefProjectIsVisible(view, userId, projectId, chiefs) ||
                         (chiefs.has(projectId) && !reads(projectId)),
                     ),
                   );

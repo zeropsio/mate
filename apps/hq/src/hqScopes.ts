@@ -55,6 +55,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
+import { chiefOfPerson } from "./chiefOwnership.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
@@ -600,7 +601,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   ? all.get(projectId)?.overview
                   : undefined,
               });
-              const chiefProjectId = current.chiefMark;
+              const chiefProjectId =
+                ownerUserId === entry.userId
+                  ? (chiefOfPerson(current.facts, ownerUserId, chiefOwners)?.projectId ?? null)
+                  : null;
               const waitsOn =
                 signedInNow["claude-code"] ??
                 signedInNow.codex ??
@@ -612,7 +616,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
-                ...(chiefProjectId === projectId ? { chief: "org" as const } : {}),
+                ...(chiefProjectId === projectId && chiefOwners.get(projectId) === entry.userId
+                  ? { chief: "mine" as const }
+                  : {}),
                 unseen:
                   attention == null
                     ? null
