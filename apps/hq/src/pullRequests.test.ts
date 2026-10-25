@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off -- a change's commits are written into HQ's repository with the host's git.
+import * as NodeChildProcess from "node:child_process";
+import * as NodePath from "node:path";
+
 import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
@@ -233,6 +237,29 @@ const squashOnMain = (core: Pool) =>
     core.github.state.merge = { ...core.github.state.merge, sha };
     return sha;
   });
+
+/** `git <args>` in HQ's repository `dir`, with no ambient configuration; its output. */
+const bare = (dir: string, args: ReadonlyArray<string>, input = "") =>
+  NodeChildProcess.execFileSync("git", ["--git-dir", dir, ...args], {
+    input,
+    encoding: "utf8",
+    env: {
+      PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_AUTHOR_NAME: "Juno",
+      GIT_AUTHOR_EMAIL: "juno@mate.test",
+      GIT_COMMITTER_NAME: "Juno",
+      GIT_COMMITTER_EMAIL: "juno@mate.test",
+    },
+  }).trim();
+
+/** A commit in `dir` holding only `file`, after `parents`. */
+const commitIn = (dir: string, parents: ReadonlyArray<string>, file: string) => {
+  const blob = bare(dir, ["hash-object", "-w", "--stdin"], file);
+  const tree = bare(dir, ["mktree"], `100644 blob ${blob}\t${file}\n`);
+  return bare(dir, ["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", file]);
+};
 
 const changeOf = (core: Pool) =>
   Effect.map(
@@ -1305,6 +1332,53 @@ describe("a change's pull request", () => {
                 (request.body as { state?: string }).state === "closed",
             ),
           );
+        }),
+    );
+
+    it.effect.each([
+      [
+        "the first change into a repository holding nothing, carrying another repository's history, as a merge commit",
+        "theirs",
+        "merge",
+      ],
+      ["a change of the repository's own history, as a squash", "own", "squash"],
+    ] as const)(
+      "Merge in Mate merges a change's pull request on GitHub keeping its commits only where it carries another repository's history into an empty repository: %s",
+      ([_name, history, method]) =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          // Written into HQ's repository, its main still HQ's empty first commit.
+          const dir = NodePath.join(core.gitRoot, core.appId, "web.git");
+          const main = bare(dir, ["rev-parse", "refs/heads/main"]);
+          const theirs = commitIn(dir, [commitIn(dir, [], "README.md")], "kettle.ts");
+          const head =
+            history === "theirs"
+              ? bare(dir, [
+                  "commit-tree",
+                  `${theirs}^{tree}`,
+                  "-p",
+                  main,
+                  "-p",
+                  theirs,
+                  "-m",
+                  "Join the repository's base",
+                ])
+              : commitIn(dir, [main], "kettle.ts");
+          bare(dir, ["update-ref", "refs/heads/mate/P_ROBOT/1", head]);
+          yield* describedChange(core, head);
+          yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
+          yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: head },
+          });
+          assert.strictEqual(merged.status, 200);
+          const [put] = yield* asked(core, "PUT", `${PULL}/merge`);
+          assert.strictEqual((put!.body as { merge_method: string }).merge_method, method);
         }),
     );
 

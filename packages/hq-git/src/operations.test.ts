@@ -90,6 +90,28 @@ const branch = async (
   await native(dir, ["update-ref", "-d", "refs/heads/core/build"]);
   return head;
 };
+/**
+ * Another repository's history written into `dir`: from a root of its own, one commit per file,
+ * each adding it; its last commit.
+ */
+const history = async (dir: string, files: ReadonlyArray<string>) => {
+  let tip: string | undefined;
+  let entries = "";
+  for (const file of files) {
+    const blob = await native(dir, ["hash-object", "-w", "--stdin"], file);
+    entries += `100644 blob ${blob}\t${file}\n`;
+    const tree = await native(dir, ["mktree"], entries);
+    tip = await native(dir, [
+      "commit-tree",
+      tree,
+      ...(tip === undefined ? [] : ["-p", tip]),
+      "-m",
+      `Add ${file}`,
+    ]);
+  }
+  if (tip === undefined) throw new Error("a history needs a file");
+  return tip;
+};
 const merge = async (
   git: HqGit,
   main: string,
@@ -274,6 +296,94 @@ describe("git operations", () => {
       await native(dir, ["update-ref", "refs/heads/mate/alice/1", root]);
       expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "unrelated" });
       expect(await merge(git, main)).toEqual({ kind: "unrelated" });
+    }),
+  );
+  it.live(
+    "onto a main that never held a file, a change carrying another repository's history lands as it is: main fast-forwards to it",
+    () =>
+      fixture(async (git, dir, events) => {
+        const main = await write(git, {}, null);
+        // Another repository's history, joined onto main as zcp joins it: one merge of both roots.
+        const theirs = await history(dir, ["readme.md", "app.ts"]);
+        const joined = await native(dir, [
+          "commit-tree",
+          `${theirs}^{tree}`,
+          "-p",
+          main,
+          "-p",
+          theirs,
+          "-m",
+          "Join the repository's base",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", joined]);
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({
+          kind: "clean",
+          keepsHistory: true,
+        });
+        expect(await merge(git, main, 1, "Bring the repository in")).toEqual({ merged: joined });
+        expect(await native(dir, ["rev-parse", "main"])).toBe(joined);
+        await vi.waitFor(() =>
+          expect(events.at(-1)).toEqual({
+            kind: "main_moved",
+            repo,
+            old: main,
+            new: joined,
+            by: "merge",
+          }),
+        );
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "already_merged" });
+      }),
+  );
+  it.live(
+    "onto a main that never held a file, a change carrying another repository's history and none of main's lands as one merge commit keeping both",
+    () =>
+      fixture(async (git, dir) => {
+        const main = await write(git, {}, null);
+        const theirs = await history(dir, ["readme.md", "app.ts"]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", theirs]);
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({
+          kind: "clean",
+          keepsHistory: true,
+        });
+        const result = await merge(git, main, 1, "Bring the repository in");
+        if (!("merged" in result)) throw new Error(`merge refused: ${JSON.stringify(result)}`);
+        const commit = await value(git.commit(repo, result.merged));
+        expect(commit.parents).toEqual([main, theirs]);
+        expect(commit.message).toBe(
+          "Bring the repository in\n\nCrew-Assignment: trusted\nMate-Change: alice/1\n",
+        );
+        expect(await native(dir, ["rev-parse", `${result.merged}^{tree}`])).toBe(
+          await native(dir, ["rev-parse", `${theirs}^{tree}`]),
+        );
+        expect(await native(dir, ["rev-parse", "main"])).toBe(result.merged);
+        expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "already_merged" });
+      }),
+  );
+  it.live.each([
+    ["built on a main that never held a file, with no history of its own beneath it", "empty"],
+    ["carrying another repository's history onto a main that holds a file", "held"],
+  ] as const)("a change %s is one squash as always", ([_name, base]) =>
+    fixture(async (git, dir) => {
+      const main = await write(git, base === "empty" ? {} : { base: "base" }, null);
+      const theirs = await history(dir, ["readme.md", "app.ts"]);
+      const head =
+        base === "empty"
+          ? await branch(git, dir, main, { "app.ts": "app" })
+          : await native(dir, [
+              "commit-tree",
+              `${theirs}^{tree}`,
+              "-p",
+              main,
+              "-p",
+              theirs,
+              "-m",
+              "Join the repository's base",
+            ]);
+      await native(dir, ["update-ref", "refs/heads/mate/alice/1", head]);
+      expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "clean" });
+      const result = await merge(git, main, 1, "Add the app");
+      if (!("merged" in result)) throw new Error(`merge refused: ${JSON.stringify(result)}`);
+      expect((await value(git.commit(repo, result.merged))).parents).toEqual([main]);
     }),
   );
   it.live("reports a missing main, not a missing change, while main is unborn", () =>
