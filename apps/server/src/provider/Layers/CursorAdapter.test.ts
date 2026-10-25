@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodePath from "node:path";
 
+import { parseCompleteJsonLines } from "../../testUtils/jsonLines.ts";
 import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
@@ -89,27 +90,16 @@ async function readArgvLog(filePath: string) {
 }
 
 async function readJsonLines(filePath: string) {
-  const raw = await NodeFSP.readFile(filePath, "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  return parseCompleteJsonLines(await NodeFSP.readFile(filePath, "utf8"));
 }
 
 function waitForJsonLogMatch(
   filePath: string,
   predicate: (entry: Record<string, unknown>) => boolean,
 ) {
-  const parse = (content: string) =>
-    content
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-  return waitForFileContent(filePath, (content) => parse(content).some(predicate)).pipe(
-    Effect.map(parse),
-  );
+  return waitForFileContent(filePath, (content) =>
+    parseCompleteJsonLines(content).some(predicate),
+  ).pipe(Effect.map(parseCompleteJsonLines));
 }
 
 // Tests mutate `ServerSettingsService` mid-flight (e.g. setting

@@ -15,6 +15,7 @@ import * as AcpError from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
 const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
+let pendingRequestBytes = "";
 const promptStartedPath = process.env.T3_ACP_PROMPT_STARTED_PATH;
 const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
 const antigravityProfile = process.env.T3_ACP_ANTIGRAVITY === "1";
@@ -1655,13 +1656,18 @@ const program = Effect.gen(function* () {
               if (typeof event.payload !== "string") {
                 return Effect.void;
               }
-              const payload = event.payload;
+              const chunk = event.payload;
               return Effect.sync(() => {
+                // A stdin chunk can end inside a message; log only whole lines.
+                pendingRequestBytes += chunk;
+                const lineEnd = pendingRequestBytes.lastIndexOf("\n");
+                if (lineEnd === -1) return;
                 NodeFS.appendFileSync(
                   requestLogPath,
-                  payload.endsWith("\n") ? payload : `${payload}\n`,
+                  pendingRequestBytes.slice(0, lineEnd + 1),
                   "utf8",
                 );
+                pendingRequestBytes = pendingRequestBytes.slice(lineEnd + 1);
               });
             },
           }

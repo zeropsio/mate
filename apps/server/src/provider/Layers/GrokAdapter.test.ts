@@ -28,6 +28,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 
 import { ServerConfig } from "../../config.ts";
+import { parseCompleteJsonLines } from "../../testUtils/jsonLines.ts";
 import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
 import {
@@ -57,12 +58,7 @@ async function makeMockGrokWrapper(extraEnv?: Record<string, string>) {
 }
 
 async function readJsonLines(filePath: string) {
-  const raw = await NodeFSP.readFile(filePath, "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  return parseCompleteJsonLines(await NodeFSP.readFile(filePath, "utf8"));
 }
 
 const grokAdapterTestLayer = ServerConfig.layerTest(process.cwd(), {
