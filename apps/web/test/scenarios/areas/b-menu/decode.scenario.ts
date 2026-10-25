@@ -1,4 +1,4 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { installOlderNavigation } from "../../fakes/b-menu/olderNavigation.ts";
@@ -22,35 +22,57 @@ describe("B: navigation protocol", () => {
             { polling: "raf" },
           ),
         );
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () =>
-              [...document.querySelectorAll("button")].some(
-                (button) => button.textContent?.trim() === "Update HQ",
+        // An HQ every organization shares deploys from no project of the organization: the
+        // notice is its whole ask, with no Update HQ of its own to follow across a reconnect.
+        const ownHq = s.drivers.core.kind === "in-process";
+        if (ownHq) {
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              () =>
+                [...document.querySelectorAll("button")].some(
+                  (button) => button.textContent?.trim() === "Update HQ",
+                ),
+              { polling: "raf" },
+            ),
+          );
+          yield* Effect.promise(() =>
+            s.page.locator('::-p-aria(Update HQ[role="button"])').click(),
+          );
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              () => document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ"),
+              { polling: "raf" },
+            ),
+          );
+        } else {
+          expect(
+            yield* Effect.promise(() =>
+              s.page.evaluate(() =>
+                [...document.querySelectorAll("button")].some(
+                  (button) => button.textContent?.trim() === "Update HQ",
+                ),
               ),
-            { polling: "raf" },
-          ),
-        );
-        yield* Effect.promise(() => s.page.locator('::-p-aria(Update HQ[role="button"])').click());
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () => document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ"),
-            { polling: "raf" },
-          ),
-        );
+            ),
+            "ASSERTION: a shared HQ offers no Update HQ of its own",
+          ).toBe(false);
+        }
         s.drivers.hq.mapFrames((frame) => frame);
         yield* s.when.hq.socket.drops;
         yield* s.when.hq.socket.returns;
         yield* Effect.promise(() =>
           s.page.waitForFunction(
-            () =>
+            (followsUpdate) =>
               !document.body.innerText.includes(
                 "HQ needs an update to show all navigation facts.",
-              ) && document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ"),
+              ) &&
+              (!followsUpdate ||
+                document.querySelector('[role="dialog"]')?.textContent?.includes("Update HQ")),
             { polling: "raf" },
+            ownHq,
           ),
         );
-        yield* Effect.promise(() => s.page.locator('::-p-aria(Close[role="button"])').click());
+        if (ownHq)
+          yield* Effect.promise(() => s.page.locator('::-p-aria(Close[role="button"])').click());
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
