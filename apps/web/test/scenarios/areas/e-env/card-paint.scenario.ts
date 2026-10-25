@@ -1,7 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { resizeMenu } from "../../harness/browser.ts";
+import { transportGate } from "../../harness/transportGate.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { environmentFixtureWith } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
@@ -92,6 +96,12 @@ describe("owner-reported layout regressions", () => {
           const f = yield* environmentFixtureWith({}, { stage: false });
           const a = environmentActions(f);
           yield* f.merge();
+          const hq = yield* Effect.acquireRelease(
+            Effect.promise(() => transportGate(() => f.s.drivers.hq.origin, "")),
+            (gate) => Effect.promise(gate.close),
+          );
+          f.s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
+          yield* Effect.promise(() => f.s.web.setRoutes());
           yield* f.s.given.signedIn;
           const cardAt = `[data-zerops-surface="project-cards"] [data-zerops-group="${f.appId}"]`;
           const page = f.s.page;
@@ -102,8 +112,33 @@ describe("owner-reported layout regressions", () => {
             await resizeMenu(page, 435);
           });
           yield* Effect.promise(() => page.evaluate(recordHeldCard, cardAt));
-          yield* a.when.releaseFromReview;
+          // A write receipt and Zerops' deployment can arrive before HQ's next stream frame.
+          // Hold those real frames so the first releasing paint cannot depend on their timing.
+          yield* a.when.click("Review release");
+          yield* a.then.text("Version");
+          yield* Effect.promise(() =>
+            page.waitForFunction(() =>
+              [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+                (button) => button.innerText === "Release v0.1.0 to production" && !button.disabled,
+              ),
+            ),
+          );
+          const held = hq.holdFrames((frame) => {
+            if (frame.isBinary) return false;
+            const message = Schema.decodeUnknownSync(HqStreamMessage)(
+              JSON.parse(Buffer.from(frame.bytes).toString()),
+            );
+            return (
+              "scope" in message &&
+              (message.scope.kind === "navigation" || message.scope.kind === "app-detail")
+            );
+          });
+          yield* Effect.addFinalizer(() => Effect.sync(held.release));
+          yield* a.when.click("Release v0.1.0 to production");
+          yield* Effect.promise(() => held.held);
           yield* a.then.text("Releasing v0.1.0", `${cardAt} [data-zerops-place="production"]`);
+          yield* Effect.promise(() => waitForStillFrames(page));
+          held.release();
           yield* a.when.finish("production");
           yield* a.then.text("Running", `${cardAt} [data-zerops-place="production"]`);
           // What a landed card might still move shows within a beat.

@@ -8,11 +8,15 @@ import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import { inventoryPlacements } from "./inventory.ts";
 import { canonicalHqNavigation } from "./hqNavigation.ts";
 import { environmentSlots } from "../../zerops/groupEnvironments.ts";
-import { linkKeys } from "../model.ts";
+import { linkKeys, type OperationReceipt } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import type { CanonicalHqEnvironment, HqJob } from "../../zerops/hq/environments.ts";
+import {
+  canonicalEnvironmentsOf,
+  type CanonicalHqEnvironment,
+  type HqJob,
+} from "../../zerops/hq/environments.ts";
 import { environmentById } from "./appEnvironments.ts";
 import { canonicalProjectFlow, projectFlow } from "./projectFlow.ts";
 import { productionRelease } from "../../zerops/projectFlow.ts";
@@ -644,3 +648,194 @@ describe("what a Mate is told of production", () => {
     f.registry.dispose();
   });
 });
+
+it.each(
+  ["release", "roll-back"].flatMap((kind) =>
+    ["zerops", "git"].map((target) => ({ kind: kind as "release" | "roll-back", target })),
+  ),
+)(
+  "An accepted $kind keeps $target production releasing until HQ publishes its rollout",
+  ({ kind, target }) => {
+    const f = fixture();
+    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const read = () => f.registry.get(atom)!.release;
+    const intent =
+      kind === "release"
+        ? {
+            kind,
+            orgId: "org",
+            appId: "shop",
+            tag: "v1.2.4",
+            groupHead: "a".repeat(40),
+            entries: [],
+          }
+        : { kind, orgId: "org", appId: "shop", tag: "v1.2.0", groupHead: "a".repeat(40) };
+    const receipt: OperationReceipt = {
+      requestId: "release-request",
+      operationId: "v1.2.4",
+      executor: "hq",
+      affected: [],
+      handles: [],
+      acceptance: { kind: "accepted", result: { tag: "v1.2.4", deploys: undefined } },
+      outcome: { kind: "pending" },
+    };
+    f.store.dispatch({ kind: "operation-recorded", requestId: receipt.requestId, intent });
+    expect(read().inFlight, "ASSERTION: submitting a request is not acceptance").toBeUndefined();
+    f.store.dispatch({ kind: "operation-receipt", receipt });
+    expect(read().inFlight, "ASSERTION: HQ acceptance reaches production before navigation").toBe(
+      "v1.2.4",
+    );
+    expect(read().gate).toEqual({ allowed: false, reason: "Releasing v1.2.4…" });
+    f.store.dispatch({
+      kind: "operation-receipt",
+      receipt: { ...receipt, outcome: { kind: "succeeded", evidence: "The release is listed." } },
+    });
+    expect(read().inFlight, "ASSERTION: the release record does not end its deployment").toBe(
+      "v1.2.4",
+    );
+    const app = readsOfState(f.store.state()).fact("hqApp", "shop");
+    if (app.kind !== "known" || !Array.isArray(app.value.environments))
+      throw new Error("App fixture missing");
+    const environments = app.value.environments;
+    f.store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      reset: false,
+      removals: [],
+      scopes: [
+        {
+          scope: hqAppsScope("org"),
+          generation: f.store.state().streams.get(hqAppsScope("org"))!.generation,
+        },
+      ],
+      rows: [
+        {
+          family: "hqApp",
+          id: "shop",
+          revision: { kind: "hq", incarnation: "seed", revision: 100 },
+          value: { ...app.value, releaseOffer: { refused: "forbidden" } },
+        },
+      ],
+    });
+    expect(
+      read().gate,
+      "ASSERTION: accepted work cannot override HQ's explicit refusal",
+    ).toMatchObject({ allowed: false, refusedBy: "hq" });
+    const publish = (ended: boolean) =>
+      f.store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: [
+          {
+            scope: hqAppsScope("org"),
+            generation: f.store.state().streams.get(hqAppsScope("org"))!.generation,
+          },
+        ],
+        reset: false,
+        removals: [],
+        rows: [
+          {
+            family: "hqApp",
+            id: "shop",
+            revision: { kind: "hq", incarnation: "seed", revision: ended ? 102 : 101 },
+            value: {
+              ...app.value,
+              releaseOffer: {
+                head: "a".repeat(40),
+                suggestion: "v1.2.5",
+                summary: { subjects: [], total: 0, more: 0, atLeast: false },
+                gate: ended ? { allow: true } : { allow: false, reason: "Releasing v1.2.4…" },
+                inFlight: ended ? null : "v1.2.4",
+                ...(target === "git"
+                  ? {
+                      releaseTarget: {
+                        environmentId: HqEnvironmentId.make("prod"),
+                        createdAt: "2026-10-25T00:00:00Z",
+                        target: {
+                          kind: "git" as const,
+                          branch: "main",
+                          delivery: "direct" as const,
+                        },
+                      },
+                    }
+                  : {}),
+              },
+              environments: environments.map((environment) => ({
+                ...environment,
+                target:
+                  target === "git"
+                    ? { kind: "git" as const, branch: "main", delivery: "direct" as const }
+                    : environment.target,
+                release: {
+                  id: "rollout",
+                  tag: "v1.2.4",
+                  planned: true,
+                  ended,
+                  endedAt: ended ? "2026-10-25T00:00:00Z" : null,
+                  landed: ended,
+                  leftOut: [],
+                },
+              })),
+            },
+          },
+        ],
+      });
+    publish(false);
+    if (target === "git")
+      expect(read().git?.attachment.target).toEqual({
+        kind: "git",
+        branch: "main",
+        delivery: "direct",
+      });
+    expect(read().inFlight, "ASSERTION: navigation takes over the same accepted release").toBe(
+      "v1.2.4",
+    );
+    publish(true);
+    const published = readsOfState(f.store.state()).fact("hqApp", "shop");
+    expect(
+      published.kind === "known"
+        ? canonicalEnvironmentsOf(published.value.environments)
+        : undefined,
+    ).toEqual([expect.objectContaining({ release: expect.objectContaining({ ended: true }) })]);
+    expect(f.store.state().indexes.get("accepted-release:shop")?.size).toBe(0);
+    expect(
+      read().inFlight,
+      "ASSERTION: HQ's completed rollout ends the accepted-flight bridge",
+    ).toBeUndefined();
+    f.registry.dispose();
+  },
+);
+
+it.each(["failed", "cancelled"] as const)(
+  "An accepted release stops holding production when HQ reports it %s",
+  (outcome) => {
+    const f = fixture();
+    const intent = {
+      kind: "release" as const,
+      orgId: "org",
+      appId: "shop",
+      tag: "v1.2.4",
+      groupHead: "a".repeat(40),
+      entries: [],
+    };
+    const receipt: OperationReceipt = {
+      requestId: "release-request",
+      operationId: "v1.2.4",
+      executor: "hq",
+      affected: [],
+      handles: [],
+      acceptance: { kind: "accepted" },
+      outcome: { kind: "pending" },
+    };
+    f.store.dispatch({ kind: "operation-recorded", requestId: receipt.requestId, intent });
+    f.store.dispatch({ kind: "operation-receipt", receipt });
+    expect(f.read()?.release.inFlight).toBe("v1.2.4");
+    f.store.dispatch({
+      kind: "operation-receipt",
+      receipt: { ...receipt, outcome: { kind: outcome, evidence: "HQ ended the release." } },
+    });
+    expect(f.read()?.release.inFlight).toBeUndefined();
+    expect(f.store.state().indexes.get("accepted-release:shop")?.size).toBe(0);
+    f.registry.dispose();
+  },
+);

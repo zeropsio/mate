@@ -17,6 +17,7 @@ import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
 import type { ZeropsOrganization } from "../../zerops/api.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
+import { acceptedReleaseOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
 import { canonicalAppEnvironments } from "./appEnvironments.ts";
 import { hqAppDetail } from "./hqAppDetail.ts";
@@ -234,9 +235,15 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       link.phase === "recovering" ||
       link.phase === "reauthenticating" ||
       link.phase === "unsupported";
+    let acceptedRelease: string | undefined;
+    for (const requestId of read.index("accepted-release", appId)) {
+      const accepted = acceptedReleaseOf(read.operation(requestId));
+      if (accepted?.orgId === orgId) acceptedRelease = accepted.tag;
+    }
     const flow = joinProjectFlows({
       groups: [{ groupId: appId }],
       navigationOffers: { [appId]: app.releaseOffer },
+      acceptedReleases: new Map(acceptedRelease === undefined ? [] : [[appId, acceptedRelease]]),
       stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),

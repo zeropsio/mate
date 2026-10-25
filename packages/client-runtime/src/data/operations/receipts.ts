@@ -25,6 +25,19 @@ export function acceptedProjectOf(record: OperationRecord | undefined) {
     : { orgId: record.intent.orgId, projectId: result.projectId, name: record.intent.name };
 }
 
+/** A release HQ accepted is on its way until its rollout answers, even after its tag is listed. */
+export function acceptedReleaseOf(record: OperationRecord | undefined) {
+  if (record?.intent.kind !== "release" && record?.intent.kind !== "roll-back") return null;
+  const receipt = record.receipt;
+  if (
+    receipt?.acceptance.kind !== "accepted" ||
+    receipt.outcome.kind === "failed" ||
+    receipt.outcome.kind === "cancelled"
+  )
+    return null;
+  return { orgId: record.intent.orgId, appId: record.intent.appId, tag: receipt.operationId };
+}
+
 export type OperationInput =
   | {
       readonly kind: "operation-recorded";

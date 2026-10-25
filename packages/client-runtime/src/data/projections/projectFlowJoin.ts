@@ -15,6 +15,7 @@ import {
   nameStopByRelease,
   releaseDeploys,
   releaseInFlight,
+  releaseInFlightReason,
   releaseStalled,
   releaseCandidate,
   compareForRelease,
@@ -258,6 +259,8 @@ export function joinProjectFlows(input: {
   readonly navigationOffers?:
     | Readonly<Record<string, CanonicalHqNavigationApp["releaseOffer"] | undefined>>
     | undefined;
+  /** Accepted release receipts bridge the answer until HQ's rollout says it ended. */
+  readonly acceptedReleases?: ReadonlyMap<string, string>;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
@@ -285,6 +288,7 @@ export function joinProjectFlows(input: {
   const flows = new Map<string, ZeropsProjectFlow>();
   for (const group of input.groups) {
     const navigationOffer = input.navigationOffers?.[group.groupId];
+    const acceptedRelease = input.acceptedReleases?.get(group.groupId);
     const git =
       navigationOffer != null &&
       !("refused" in navigationOffer) &&
@@ -323,7 +327,7 @@ export function joinProjectFlows(input: {
     const { rollouts } = git ? { rollouts: [] } : releaseDeploys(stops?.environments ?? []);
     const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
     const deploy = {
-      inFlight: releaseInFlight({ newest, rollouts }),
+      inFlight: releaseInFlight({ newest, rollouts }) ?? acceptedRelease,
       stalled: releaseStalled({ newest, rollouts }),
     };
     const repos = input.repos.get(group.groupId);
@@ -333,6 +337,7 @@ export function joinProjectFlows(input: {
     const changesFailure = input.changesRefused.get(group.groupId) ?? input.changesFailure;
     const key = JSON.stringify([
       navigationOffer,
+      acceptedRelease,
       input.review,
       group.groupId,
       deploy.inFlight ?? null,
@@ -363,7 +368,7 @@ export function joinProjectFlows(input: {
       flow = projectFlow(
         group,
         { stops, records, changes, changesFailure },
-        { repos, recipe, permission, live, navigationOffer, review: input.review },
+        { repos, recipe, permission, live, navigationOffer, acceptedRelease, review: input.review },
         deploy,
         withheld,
       );
@@ -422,6 +427,7 @@ function projectFlow(
     readonly live: ReleaseLive;
     readonly review?: boolean | undefined;
     readonly navigationOffer?: CanonicalHqNavigationApp["releaseOffer"] | undefined;
+    readonly acceptedRelease?: string | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
   deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
@@ -493,21 +499,23 @@ function projectFlow(
     suggestion: "",
   };
   const ownerGate: ReleaseGate =
-    navigation === undefined
-      ? { allowed: false, reason: "Release offer is unknown." }
-      : navigation === null
-        ? { allowed: false, reason: "Checking what can be released…" }
-        : "refused" in navigation
-          ? {
-              allowed: false,
-              reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
-              refusedBy: "hq",
-            }
-          : navigation.gate.allow
-            ? { allowed: true }
-            : permission?.allowed === false
-              ? permission
-              : { allowed: false, reason: navigation.gate.reason };
+    navigation != null && "refused" in navigation
+      ? {
+          allowed: false,
+          reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
+          refusedBy: "hq",
+        }
+      : offered.acceptedRelease !== undefined
+        ? { allowed: false, reason: releaseInFlightReason(offered.acceptedRelease) }
+        : navigation === undefined
+          ? { allowed: false, reason: "Release offer is unknown." }
+          : navigation === null
+            ? { allowed: false, reason: "Checking what can be released…" }
+            : navigation.gate.allow
+              ? { allowed: true }
+              : permission?.allowed === false
+                ? permission
+                : { allowed: false, reason: navigation.gate.reason };
   const gate: ReleaseGate =
     gitTarget && !ownerGate.allowed
       ? ownerGate
