@@ -387,6 +387,64 @@ describe("a takeover after git moved past HQ's records", () => {
         }),
     );
 
+    it.effect(
+      "a takeover reads a change merged only from main's own line, never from a Mate-Change trailer in history main took in",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          yield* first.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: "Ada's first" },
+          });
+          yield* first.stop;
+          // Another repository's history, brought in beside main's own line: its commits carry
+          // trailers naming changes of that repository, and Ada's id is the same Mate's there.
+          const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const blob = appdev(["hash-object", "-w", "--stdin"], "theirs\n");
+          const tree = appdev(["mktree"], `100644 blob ${blob}\ttheirs.txt\n`);
+          const root = appdev(["commit-tree", tree, "-m", "Theirs (#7)\n\nMate-Change: P_MATE/7"]);
+          const theirs = appdev([
+            "commit-tree",
+            tree,
+            "-p",
+            root,
+            "-m",
+            "Theirs again (#1)\n\nMate-Change: P_MATE/1",
+          ]);
+          const joined = appdev([
+            "commit-tree",
+            tree,
+            "-p",
+            main,
+            "-p",
+            theirs,
+            "-m",
+            "Bring the repository in",
+          ]);
+          appdev(["update-ref", "refs/heads/main", joined, main]);
+
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT number, state, merged_sha AS merged FROM hq_change
+               WHERE repo = 'appdev' ORDER BY number`,
+              () => true,
+            ),
+            [{ number: 1, state: "open", merged: null }],
+          );
+        }),
+    );
+
     it.effect("recovers unrecorded squashes in the order main merged them", () =>
       Effect.gen(function* () {
         const first = yield* startCore(true);
