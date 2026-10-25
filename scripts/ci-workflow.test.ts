@@ -26,6 +26,32 @@ import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
+it.each(["main", "kh-next", "wt/keys", "kh-bisect/keys", "kh-bisect/org-switch", "feature"])(
+  "State Smoke tests every z3 ref against mate-hq main (%s)",
+  (branch) => {
+    const workflow = parse(
+      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+    );
+    const step = workflow.jobs.state_smoke.steps.find(
+      (step: { name: string }) => step.name === "Resolve the mate-hq ref",
+    );
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-ref-"));
+    try {
+      const output = NodePath.join(dir, "output");
+      const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", step.run], {
+        env: { ...process.env, BRANCH: branch, GITHUB_OUTPUT: output },
+      });
+      expect(result.status).toBe(0);
+      expect(
+        NodeFS.readFileSync(output, "utf8"),
+        "ASSERTION: every z3 ref consumes the maintained mate-hq main",
+      ).toBe("ref=main\n");
+    } finally {
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 it("CI runs lint, guards, types and builds in parallel without losing the release verdict", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),

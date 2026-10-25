@@ -544,17 +544,13 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      # The HQ ref each branch is tested against; any branch not listed uses main.
+      # Every z3 branch tests the maintained multitenant HQ.
       - name: Resolve the mate-hq ref
         id: hq_ref
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          case "$BRANCH" in
-            main | kh-next) ref=main ;;
-            wt/keys | kh-bisect/keys | kh-bisect/keys-*) ref=r/keys ;;
-            *) ref=main ;;
-          esac
+          ref=main
           echo "$BRANCH tests against mate-hq $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
