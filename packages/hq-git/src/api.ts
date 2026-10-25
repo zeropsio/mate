@@ -471,14 +471,19 @@ export interface HqGit {
     options: { readonly limit: number },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly total: number }, GitError>;
   /**
-   * The change's commits not on main or before its own base (the previously landed head),
-   * children before parents, at most `limit`;
-   * without a main, all of the change's. None without a change head.
+   * The change's commits on neither main nor any of `landed` (heads of changes landed before it,
+   * whose own commits a squash left off main; one the repository lacks is passed over), children
+   * before parents, at most `limit`; without a main, all of the change's but those. None without a
+   * change head.
    */
   readonly changeLog: (
     repo: Repo,
     change: ChangeBranch,
-    options: { readonly limit: number; readonly base?: string; readonly snapshot?: ChangeSnapshot },
+    options: {
+      readonly limit: number;
+      readonly landed?: ReadonlyArray<string>;
+      readonly snapshot?: ChangeSnapshot;
+    },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
    * What squashing the change into main would do to main now: each file of the merged tree that

@@ -1914,10 +1914,24 @@ describe("a Mate's changes in HQ", () => {
             landedHead: null,
             branch: "mate/P_MATE/1",
           });
+          // What HQ judged of an open change rides beside it (the Mate's own state pins it).
+          const owned = (changes: unknown) =>
+            (changes as ReadonlyArray<Change>).map(
+              ({
+                ready: _ready,
+                mergeability: _merges,
+                behind: _behind,
+                updatedAt: _at,
+                ...change
+              }) => change,
+            );
           const state = (yield* link.next("state")) as {
             readonly mate: { readonly appId: string; readonly changes: ReadonlyArray<Change> };
           };
-          assert.deepStrictEqual([state.mate.appId, state.mate.changes], [appId, [own(null)]]);
+          assert.deepStrictEqual(
+            [state.mate.appId, owned(state.mate.changes)],
+            [appId, [own(null)]],
+          );
 
           // The Mate pushes: the change's head moves on the socket and down the link.
           const git = yield* gitClient;
@@ -1937,8 +1951,10 @@ describe("a Mate's changes in HQ", () => {
             [head],
           );
           assert.deepStrictEqual(
-            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
-              .changes,
+            owned(
+              ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+                .changes,
+            ),
             [own(head)],
           );
 
@@ -1955,8 +1971,10 @@ describe("a Mate's changes in HQ", () => {
           );
           assert.strictEqual(retitled[0]?.["title"], "Add a login page");
           assert.deepStrictEqual(
-            ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
-              .changes,
+            owned(
+              ((yield* link.next("state")) as { readonly mate: { readonly changes: unknown } }).mate
+                .changes,
+            ),
             [own(head, "Add a login page")],
           );
           // Its post-change subscription is refused too; no protected value reached it.

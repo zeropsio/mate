@@ -33,6 +33,7 @@ import {
   HAND_REFUSALS,
   MERGE_REFUSALS,
   MATE_CHANGES_PER_REPO,
+  MATE_OPEN_CHANGES_MAX,
   type MateChanges,
   type OpenChangeResponse,
   type RepoListEntry,
@@ -104,6 +105,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_on_branch",
     "protected_ref",
     "invalid_ref",
+    "too_many_open",
   ]),
 }) {}
 
@@ -198,9 +200,9 @@ export class Changes extends Context.Service<
       name: string,
     ) => Effect.Effect<HqRepo, MateError | GitError>;
     /**
-     * The open change in `repo` a delivery goes to — its live task's own, else the Mate's own off
-     * any task — or the next number opened with `title`, the task's, on `branch` (its default where
-     * none is named).
+     * The open change in `repo` a delivery goes to — its live task's own; off any task, the Mate's
+     * own on `branch`, or its default change where none is named — or the next number opened with
+     * `title`, the task's, on `branch` (its default where none is named).
      */
     readonly openChange: (
       projectId: string,
@@ -221,7 +223,8 @@ export class Changes extends Context.Service<
     ) => Effect.Effect<HqChange, MateError>;
     /**
      * What the Mate's own state carries of its changes: the application HQ holds it in, by id and
-     * name, and there its latest changes per repository, newest first.
+     * name, and there every open change of its and its latest settled ones per repository, newest
+     * first.
      */
     readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
     /**
@@ -365,8 +368,8 @@ export class Changes extends Context.Service<
     ) => Effect.Effect<HqChange, ReadError | NotLeader | GitError>;
     /**
      * An open change whose Mate is gone, handed by a person who may close it to `mateProjectId`, a
-     * Mate of its application holding no open change of its own in the repository: its branch
-     * stays, and that Mate's from then on (`@t3tools/hq-git` `allowRefUpdate` reads its record).
+     * Mate of its application, however many open changes of its own it holds: its branch stays, and
+     * that Mate's from then on (`@t3tools/hq-git` `allowRefUpdate` reads its record).
      */
     readonly handChange: (
       userId: string,
@@ -415,6 +418,9 @@ export class Changes extends Context.Service<
     >;
   }
 >()("@t3tools/hq/changes") {}
+
+/** How many of a repository's latest landings a change's commit list leaves out as landed. */
+const LANDED_BASES = 20;
 
 /** The most of a tier's import file a read takes: the git layer's own ceiling. */
 const RECIPE_READ_MAX = 1024 * 1024;
@@ -1243,7 +1249,8 @@ export const changesLayer: Layer.Layer<
                 /**
                  * The Mate's live task (one at a time — on it, or back on it for a follow-up): what
                  * it delivers is that task's own change, whatever else of its waits for review.
-                 * None on no task: a person's own Mate keeps one open change in the repository.
+                 * None on no task: a person's own Mate keeps an open change per branch it names,
+                 * and one default change for openings that name none.
                  */
                 const [live] = yield* sql<{
                   readonly id: string;
@@ -1271,22 +1278,50 @@ export const changesLayer: Layer.Layer<
                         RETURNING id::text AS id`,
                         (rows) => rows[0]?.id,
                       );
-                const [open] = yield* sql<ChangeRow>`
-                SELECT ${columns} FROM hq_change
-                WHERE app_id = ${appId}::uuid AND repo = ${repo}
-                  AND mate_project_id = ${projectId} AND state = 'open'
-                  AND ${taskId === null ? sql`task_id IS NULL` : sql`task_id::text = ${taskId}`}`;
-                if (open !== undefined) {
-                  const change = changeOf(open);
-                  // An opener naming no branch (released zcp) pushes `mate/<Mate>/<number>`, which
-                  // a change on a branch its Mate named, or one handed over from another Mate's
-                  // default, never takes: answered, it would push there and open again for good.
-                  if (
-                    branch === undefined &&
-                    change.branch !== `mate/${projectId}/${change.number}`
-                  )
-                    return yield* refuse("conflict", "change_on_branch");
-                  return { change, created: false, task: yield* onTask(change) };
+                if (taskId !== null) {
+                  const [open] = yield* sql<ChangeRow>`
+                  SELECT ${columns} FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo}
+                    AND mate_project_id = ${projectId} AND state = 'open'
+                    AND task_id::text = ${taskId}`;
+                  if (open !== undefined) {
+                    const change = changeOf(open);
+                    // An opener naming no branch (released zcp) pushes `mate/<Mate>/<number>`,
+                    // which a change on a branch its Mate named, or one handed over from another
+                    // Mate's default, never takes: answered, it would push there and open again for
+                    // good.
+                    if (
+                      branch === undefined &&
+                      change.branch !== `mate/${projectId}/${change.number}`
+                    )
+                      return yield* refuse("conflict", "change_on_branch");
+                    return { change, created: false, task: yield* onTask(change) };
+                  }
+                } else {
+                  // Off any task: the open change on the branch named — this Mate's own (one handed
+                  // to it is), never another's — or, naming none, the Mate's default change.
+                  const [open] = yield* sql<ChangeRow & { readonly task_id: string | null }>`
+                  SELECT ${columns}, task_id::text AS task_id FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo} AND state = 'open' AND ${
+                    branch === undefined
+                      ? sql`mate_project_id = ${projectId} AND task_id IS NULL
+                          AND branch = 'mate/' || mate_project_id || '/' || number::text`
+                      : sql`branch = ${branch}`
+                  }`;
+                  if (open !== undefined) {
+                    if (open.mate_project_id !== projectId || open.task_id !== null)
+                      return yield* refuse("conflict", "branch_taken");
+                    const change = changeOf(open);
+                    return { change, created: false, task: yield* onTask(change) };
+                  }
+                  // A Mate fills its person's review queue only so far: anything new waits for one
+                  // of its open changes to be merged or closed.
+                  const [held] = yield* sql<{ readonly open: number }>`
+                  SELECT count(*)::int AS open FROM hq_change
+                  WHERE app_id = ${appId}::uuid AND repo = ${repo}
+                    AND mate_project_id = ${projectId} AND state = 'open' AND task_id IS NULL`;
+                  if ((held?.open ?? 0) >= MATE_OPEN_CHANGES_MAX)
+                    return yield* refuse("conflict", "too_many_open");
                 }
                 // A branch is one open change's at a time.
                 const taken =
@@ -1352,6 +1387,8 @@ export const changesLayer: Layer.Layer<
         Effect.gen(function* () {
           const [placed] = yield* matePlaced(projectId);
           if (placed === undefined) return { appId: null, appName: null, changes: [] };
+          // Every open change, and the newest settled ones per repository: a change missing from
+          // the Mate's state reads to zcp as merged or closed.
           const rows = yield* sql<
             Pick<
               ChangeRow,
@@ -1363,15 +1400,23 @@ export const changesLayer: Layer.Layer<
               | "merged_sha"
               | "landed_head"
               | "branch"
+              | "ready"
+              | "mergeability"
+              | "behind"
+              | "updated_at"
             > & { readonly handed: boolean }
           >`
             SELECT repo, number, title, state, head, merged_sha, landed_head, branch,
-              handed_from IS NOT NULL AS handed FROM (
-              SELECT *, row_number() OVER (PARTITION BY repo ORDER BY number DESC) AS rank
+              handed_from IS NOT NULL AS handed,
+              (repo = ${RECIPE_REPO} OR COALESCE(ready_head = head, false)) AS ready,
+              mergeability, behind, ${sql.literal(instant("updated_at"))} FROM (
+              SELECT *, row_number() OVER (
+                PARTITION BY repo, state = 'open' ORDER BY number DESC
+              ) AS rank
               FROM hq_change
               WHERE app_id = ${placed.app_id}::uuid AND mate_project_id = ${projectId}
             ) latest
-            WHERE rank <= ${MATE_CHANGES_PER_REPO}
+            WHERE state = 'open' OR rank <= ${MATE_CHANGES_PER_REPO}
             ORDER BY repo, number DESC`;
           return {
             appId: placed.app_id,
@@ -1386,7 +1431,16 @@ export const changesLayer: Layer.Layer<
               landedHead: row.landed_head,
               branch: row.branch,
               ...(row.handed ? { handed: true } : {}),
+              ...(row.state === "open"
+                ? {
+                    ready: row.ready,
+                    mergeability: row.mergeability,
+                    behind: row.behind,
+                    updatedAt: row.updated_at,
+                  }
+                : {}),
             })),
+            openPerBranch: true as const,
           };
         }),
       // The newest pushed job per environment and repository, as `gitCi.ts` resumes it.
@@ -1599,7 +1653,6 @@ export const changesLayer: Layer.Layer<
           const git = yield* gitHost.git;
           // As the change's record names it, never as the path spelled it.
           const at = { appId: change.appId, id: change.repo };
-          const mate = change.mateProjectId;
           const mainHead = yield* mainOf(git, at);
           if (query.expectedHead !== undefined && query.expectedHead !== change.head) {
             return yield* refuse("conflict", "head_moved");
@@ -1613,18 +1666,21 @@ export const changesLayer: Layer.Layer<
             maxBytesPerFile: 256 * 1024,
             snapshot,
           });
-          // A squash lands content without its original commits. The preceding landing of this
-          // Mate is the change's own base, independent of a later merge-base with main.
-          const [previous] = yield* sql<{ readonly landed_head: string | null }>`
+          // A squash lands content without its original commits: a commit reachable from the head
+          // of any change landed before this one is landed content — whoever's, whatever its
+          // number — be the change continued from it or built on it while it was open.
+          const landed = yield* sql<{ readonly landed_head: string }>`
             SELECT landed_head FROM hq_change
             WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-              AND mate_project_id = ${mate} AND number < ${number} AND state = 'merged'
-              AND landed_head IS NOT NULL
-            ORDER BY number DESC LIMIT 1`;
+              AND number <> ${number} AND state = 'merged' AND landed_head IS NOT NULL
+              AND (${change.mergedAt}::timestamptz IS NULL
+                OR merged_at < ${change.mergedAt}::timestamptz)
+            ORDER BY merged_at DESC NULLS LAST, number DESC
+            LIMIT ${LANDED_BASES}`;
           const log = yield* git.changeLog(at, branchOf(change), {
             limit: 100,
             snapshot,
-            ...(previous?.landed_head == null ? {} : { base: previous.landed_head }),
+            landed: landed.map((row) => row.landed_head),
           });
           const mergeBase = yield* git.mergeBase(at, branchOf(change), snapshot);
           const mergeability = yield* git.mergeability(at, branchOf(change), snapshot);
@@ -1834,8 +1890,8 @@ export const changesLayer: Layer.Layer<
           touched(
             leader.write(
               Effect.gen(function* () {
-                // The repository's row, locked, as an opening locks it: its Mates' one open change
-                // each is decided one write at a time.
+                // The repository's row, locked, as an opening locks it: its Mates' default changes
+                // are decided one write at a time.
                 yield* sql`
                   SELECT 1 FROM hq_repo WHERE app_id = ${appId}::uuid AND name = ${repo} FOR UPDATE`;
                 yield* openChangeLocked(appId, repo, number);
@@ -1845,12 +1901,16 @@ export const changesLayer: Layer.Layer<
                   SELECT 1 FROM hq_app_project
                   WHERE project_id = ${mateProjectId} AND app_id = ${appId}::uuid AND kind = 'mate'`;
                 if (mates.length === 0) return yield* refuse("conflict", "not_app_mate");
-                // Off any task: its new Mate's own one open change in the repository.
+                // Off any task, one more open change of its new Mate's, however many it holds: the
+                // cap guards agents, never a person. Only a change on that Mate's own default
+                // branch, handed away from it once, would be its default change a second time.
                 const own = yield* sql`
                   SELECT 1 FROM hq_change
                   WHERE app_id = ${appId}::uuid AND repo = ${repo} AND state = 'open'
-                    AND mate_project_id = ${mateProjectId} AND task_id IS NULL`;
-                if (own.length > 0) return yield* refuse("conflict", "mate_has_change");
+                    AND mate_project_id = ${mateProjectId} AND task_id IS NULL
+                    AND branch = 'mate/' || mate_project_id || '/' || number::text`;
+                if (own.length > 0 && change.branch === `mate/${mateProjectId}/${String(number)}`)
+                  return yield* refuse("conflict", "mate_has_change");
                 const [row] = yield* sql<ChangeRow>`
                   UPDATE hq_change
                   SET mate_project_id = ${mateProjectId}, task_id = NULL,

@@ -1168,7 +1168,8 @@ export const makeOperations = (
   const changeLog: HqGit["changeLog"] = (repo, change, opts) =>
     inRepo("changeLog", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
-      if (opts.base !== undefined && !validSha(opts.base)) throw error("Invalid change base");
+      const landed = opts.landed ?? [];
+      if (!landed.every(validSha)) throw error("Invalid landed head");
       const snapshot = checkedSnapshot(opts.snapshot);
       const head =
         snapshot === undefined ? await refHead(dir, changeRef(change), signal) : snapshot.head;
@@ -1180,11 +1181,13 @@ export const makeOperations = (
           dir,
           [
             "rev-list",
+            // A landed head the repository lacks excludes nothing, rather than failing the read.
+            ...(landed.length === 0 ? [] : ["--ignore-missing"]),
             "--topo-order",
             `--max-count=${limit + 1}`,
             head,
             ...(main ? [`^${main}`] : []),
-            ...(opts.base === undefined ? [] : [`^${opts.base}`]),
+            ...landed.map((sha) => `^${sha}`),
             "--",
           ],
           signal,
