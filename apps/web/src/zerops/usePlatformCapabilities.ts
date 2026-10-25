@@ -73,18 +73,21 @@ export function useCreditOffers() {
 }
 
 /**
- * What a Zerops project's own surfaces offer by the viewer's role there (`projectRoleOffers`): its
- * addresses to manage only where the role operates it.
+ * The native permission verdict for a project, including before HQ admits its Mate.
  */
-export function useProjectRoleOffers(projectId: string | undefined) {
+export function useProjectCapabilities(projectId: string | undefined) {
   const account = useAccountDataOptional();
   const viewer = useViewerOf(account?.orgId);
-  const capabilities = useProjection(
+  return useProjection(
     platformCapabilities,
     account?.orgId == null || projectId === undefined
       ? null
       : { orgId: account.orgId, projectId, viewer },
     UNKNOWN,
   );
+}
+
+export function useProjectRoleOffers(projectId: string | undefined) {
+  const capabilities = useProjectCapabilities(projectId);
   return useMemo(() => projectRoleOffers(capabilities), [capabilities]);
 }

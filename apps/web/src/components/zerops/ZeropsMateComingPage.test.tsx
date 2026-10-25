@@ -2,7 +2,13 @@ import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/cl
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 // @vitest-environment happy-dom
 import { Atom } from "effect/reactivity";
-import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  creationPressStoreAtom,
+  makeAccountStore,
+} from "@t3tools/client-runtime/data";
+import { liveProjects, projectValue, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
+import { hqMateScope, projectsScope } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -25,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
+import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import { CREDIT_REFUSED_LINE, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
@@ -129,6 +136,12 @@ const app = vi.hoisted(() => ({
   processes: [] as Array<unknown>,
   birthProgress: false,
   observeRefused: false,
+  chiefProjectRead: false,
+  hqHeld: true,
+  ownChief: null as string | null | undefined,
+  setUpChief: true,
+  createAllowed: true,
+  setChief: vi.fn(async (..._args: unknown[]) => ({})),
   wholeForPerson: false,
   detailFailure: null as { readonly message: string } | null,
   admissionRefusal: null as {
@@ -142,14 +155,23 @@ const app = vi.hoisted(() => ({
   /** Who the account's directory names in each environment (`zeropsMates`). */
   directory: new Map() as Map<unknown, unknown>,
 }));
+vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => app.ownChief }));
+vi.mock("~/zerops/usePlatformCapabilities", () => ({
+  useRoleOffers: () => ({ setUpChief: app.setUpChief }),
+  useProjectCapabilities: () => ({ operate: !app.observeRefused }),
+}));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMateDirectory: () => app.directory }));
 vi.mock("~/zerops/useHqOffers", () => ({
-  useMateOffers: () => () => ({
-    held: true,
-    observe: app.observeRefused
-      ? { kind: "refused", reason: "zerops_read_only" }
-      : { kind: "allowed" },
-  }),
+  useOrgOffers: () => () => ({ kind: app.createAllowed ? "allowed" : "refused" }),
+  useMateOffers: () => () =>
+    app.hqHeld
+      ? {
+          held: true,
+          observe: app.observeRefused
+            ? { kind: "refused", reason: "zerops_read_only" }
+            : { kind: "allowed" },
+        }
+      : { held: false },
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
@@ -239,6 +261,8 @@ vi.mock("~/zerops/mateRestart", () => ({
 }));
 vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ submit: () => new Promise(() => {}) }),
+  useAccountOperationsOptional: () => ({ run: app.setChief }),
+  HQ_UNFOLLOWED: "HQ did not answer.",
 }));
 vi.mock("~/zerops/zeropsDataContext", () => ({
   useZeropsData: () => ({ organizationRef: (id: string) => ({ id }), runtime: {} }),
@@ -345,12 +369,16 @@ vi.mock("./ZeropsMateEmptyState", () => ({
       readonly headline?: string;
       readonly sentence?: string;
     };
-    readonly mate: { readonly name: string; readonly tint?: string; readonly shape?: string };
+    readonly mate: {
+      readonly name: string;
+      readonly tint?: string;
+      readonly shape?: string;
+    } | null;
   }) =>
     h(
       "section",
-      { "data-kind": coming.kind, "data-mate-face": `${mate.tint}:${mate.shape}` },
-      mate.name,
+      { "data-kind": coming.kind, "data-mate-face": `${mate?.tint}:${mate?.shape}` },
+      mate?.name,
       coming.headline,
       coming.sentence,
       notice,
@@ -403,7 +431,7 @@ let tree: ReactTestRenderer | undefined;
 
 /** Quinn's own view, rendered as the route draws it. */
 const comingView = (projectId: string) =>
-  app.birthProgress
+  app.birthProgress || app.chiefProjectRead
     ? h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId }))
     : h(ZeropsMateComingPage, { projectId });
 
@@ -427,8 +455,50 @@ const buttons = () =>
     .filter((node) => node.props.disabled !== true && node.props.inert !== true)
     .map((node) => node.children.join("")) ?? [];
 
+function answerHqOwnership() {
+  appAtomRegistry.get(creationPressStoreAtom)!.dispatch({
+    kind: "stream",
+    key: hqMateScope("org-1", PROJECT),
+    now: 0,
+    event: {
+      kind: "fault",
+      jitter: 0,
+      fault: { outcome: "definitive-refusal", code: "forbidden", message: "Not registered" },
+    },
+  });
+}
+
+function publishProject(tagList: string[], ownershipAnswered = true) {
+  if (ownershipAnswered) answerHqOwnership();
+  app.chiefProjectRead = true;
+  appAtomRegistry.get(creationPressStoreAtom)!.dispatch({
+    kind: "rows",
+    scope: projectsScope("org-1"),
+    generation: 1,
+    method: "push",
+    via: "zerops-realtime",
+    rows: [
+      {
+        family: "project",
+        id: PROJECT,
+        value: projectValue({ ...QUINN.project, clientId: "org-1", tagList }),
+        revision: zeropsVersion(tagList.includes("chief") ? 2 : 1),
+      },
+    ],
+  });
+}
+
 beforeEach(() => {
-  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
+  openAccountLifetime("chief-register-test");
+  const store = makeAccountStore(appAtomRegistry);
+  appAtomRegistry.set(creationPressStoreAtom, store);
+  liveProjects("org-1", [{ ...QUINN.project }]).forEach((input) => store.dispatch(input));
+  appAtomRegistry.set(accountReadsAtom, {
+    orgId: "org-1",
+    data: store.data,
+    demandDetail: () => () => {},
+    renewHeld: () => {},
+  });
   app.recovery = liveRecovery({
     standing: { kind: "unknown" },
     status: undefined,
@@ -452,6 +522,12 @@ beforeEach(() => {
   app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
   app.observeRefused = false;
+  app.chiefProjectRead = false;
+  app.hqHeld = true;
+  app.ownChief = null;
+  app.setUpChief = true;
+  app.createAllowed = true;
+  app.setChief.mockReset().mockResolvedValue({});
   app.standUpRetry.mockClear();
   app.threads = [];
   app.projects = [];
@@ -475,6 +551,7 @@ afterEach(async () => {
   takeMateConversation(PROJECT);
   appAtomRegistry.get(creationPressStoreAtom)?.close();
   appAtomRegistry.set(creationPressStoreAtom, null);
+  appAtomRegistry.set(accountReadsAtom, null);
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -483,6 +560,101 @@ afterEach(async () => {
 // at /zerops page". A Mate's own view waits for its link where it stands, connects it, and hands
 // over to its conversation; nothing in it takes the person to another screen on its own.
 describe("a Mate's own view while its link is made", () => {
+  it("a tagged project offers Make this my Chief and opens after HQ registers it", async () => {
+    publishProject(["mate", "chief"]);
+    app.listing = listingOf([]);
+    app.link = { key: KEY, environmentId: undefined, reachability: null };
+    app.detailFailure = { message: "not_mate_opener" };
+    app.hqHeld = false;
+    openView();
+    const button = tree?.root
+      .findAllByType("button")
+      .find((node) => node.children.join("") === "Make this my Chief");
+    expect(
+      button,
+      "ASSERTION: the tagged unregistered project's page offers Make this my Chief",
+    ).toBeDefined();
+    openAccountLifetime("chief-register-test");
+    await act(async () => button!.props.onClick());
+    expect(app.setChief).toHaveBeenCalledWith(
+      { kind: "set-chief", orgId: "org-1", projectId: PROJECT },
+      { orgId: "org-1", unobserved: "HQ did not answer." },
+    );
+    expect(app.connect).toHaveBeenCalledWith({ key: KEY });
+  });
+
+  it("a chief tag arriving after first paint offers registration on the same page", () => {
+    publishProject(["mate"]);
+    openView();
+    expect(buttons()).not.toContain("Make this my Chief");
+    act(() => publishProject(["chief"]));
+    expect(buttons()).toContain("Make this my Chief");
+    app.ownChief = PROJECT;
+    act(() => tree?.update(comingView(PROJECT)));
+    expect(buttons()).not.toContain("Make this my Chief");
+  });
+
+  it.each([false, true])(
+    "Chief ownership must answer before registration is offered (other owner: %s)",
+    (otherOwner) => {
+      publishProject(["chief"], false);
+      app.listing = listingOf([]);
+      openView();
+      expect(buttons()).not.toContain("Make this my Chief");
+      act(() => {
+        if (otherOwner) app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
+        answerHqOwnership();
+        tree?.update(comingView(PROJECT));
+      });
+      expect(buttons().includes("Make this my Chief")).toBe(!otherOwner);
+    },
+  );
+
+  it.each(["setup", "project", "HQ", "owner", "unknown"])(
+    "%s permission withholds registration from a tagged project's page",
+    (permission) => {
+      publishProject(["chief"]);
+      app.listing = listingOf([]);
+      if (permission === "setup") app.setUpChief = false;
+      if (permission === "project") app.observeRefused = true;
+      if (permission === "HQ") app.createAllowed = false;
+      if (permission === "owner")
+        app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
+      if (permission === "unknown") app.ownChief = undefined;
+      openView();
+      expect(buttons()).not.toContain("Make this my Chief");
+      expect(app.setChief).not.toHaveBeenCalled();
+    },
+  );
+
+  it("Chief registration stays pending until HQ answers and shows a refusal without opening", async () => {
+    publishProject(["chief"]);
+    app.listing = listingOf([]);
+    app.detailFailure = { message: "not_mate_opener" };
+    let refuse!: (error: Error) => void;
+    app.setChief.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    openView();
+    openAccountLifetime("chief-register-test");
+    act(() =>
+      tree!.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Make this my Chief")!
+        .props.onClick(),
+    );
+    expect(said()).toContain("Registering Chief…");
+    expect(buttons()).not.toContain("Registering Chief…");
+    expect(app.connect).not.toHaveBeenCalled();
+    await act(async () => refuse(new Error("another_persons_chief")));
+    expect(said()).toContain("another_persons_chief");
+    expect(buttons()).toContain("Make this my Chief");
+    expect(app.connect).not.toHaveBeenCalled();
+  });
+
   it("someone else's Chief Mate is not opened by its direct address", () => {
     app.listing = listingOf([]);
     app.recovery = liveRecovery({

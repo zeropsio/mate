@@ -8,6 +8,8 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
+  listedProjectAtom,
+  hqMateAnsweredAtom,
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
   mateArrival,
@@ -17,7 +19,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
-import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
+import { useAccountDataOptional, useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import { environmentShell } from "~/state/shell";
 /**
@@ -48,6 +50,11 @@ import { environmentShell } from "~/state/shell";
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
 import { useMateRegistration } from "~/zerops/registration";
+import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
+import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
+import { useOrgOffers } from "~/zerops/useHqOffers";
+import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
@@ -201,6 +208,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const { listing, wholeForPerson, refresh: rereadListing } = useZeropsDetailCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
+  const account = useAccountDataOptional();
+  const project = useAtomValue(listedProjectAtom(projectId));
+  const ownershipAnswered = useAtomValue(hqMateAnsweredAtom(projectId));
+  const operations = useAccountOperationsOptional();
+  const maySetUpChief = useRoleOffers().setUpChief;
+  const projectCapabilities = useProjectCapabilities(projectId);
+  const createOffer = useOrgOffers()("create_app");
+  const [registeringChief, setRegisteringChief] = useState(false);
+  const [chiefError, setChiefError] = useState<string | null>(null);
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
   const registration = useMateRegistration(projectId);
@@ -517,6 +533,39 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       : () => {
           if (!reviveFailed(failedServiceId)) void connect({ key: linkKey });
         };
+
+  const offerChiefRegistration = chiefRegistrationOffered({
+    project: project ?? undefined,
+    own: ownChief,
+    maySetUp:
+      maySetUpChief && createOffer.kind === "allowed" && operations !== null && orgId !== null,
+    mayObserve: projectCapabilities.operate,
+    anotherPersonsChief: admissionRefusal?.chiefOwnerName !== undefined,
+    ownershipAnswered,
+  });
+  const registerChief = async () => {
+    if (!offerChiefRegistration || registeringChief || operations === null || orgId === null)
+      return;
+    const current = captureAccountLifetime();
+    setRegisteringChief(true);
+    setChiefError(null);
+    try {
+      await operations.run(
+        { kind: "set-chief", orgId, projectId },
+        { orgId, unobserved: HQ_UNFOLLOWED },
+      );
+      if (!current()) return;
+      account?.retryDetail({ family: "hqMate", ownerId: projectId });
+      readAgain();
+      const key = link.key ?? candidate?.key;
+      if (key !== undefined) void connect({ key });
+    } catch (cause) {
+      if (current())
+        setChiefError(cause instanceof Error ? cause.message : "Chief could not be registered.");
+    } finally {
+      if (current()) setRegisteringChief(false);
+    }
+  };
 
   // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
   // while its card is on screen and its setup is under way, and why where it can't be read.
@@ -897,18 +946,49 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     page?.kind === "unreachable" &&
     page.reachability?.kind === "refused-role" &&
     page.reachability.chiefOwnerName !== undefined;
-  if (detailFailure !== null && !projectUnavailable && !chiefRefused)
+  const chiefRegistration =
+    offerChiefRegistration || registeringChief ? (
+      <MateEmptyStateView
+        mate={{ ...mate, name: project?.name ?? mate.name }}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        coming={{
+          kind: "unreachable",
+          face: "sleep",
+          headline: "Make this my Chief",
+          sentence: chiefError ?? "Register this project as your Chief to open its conversation.",
+          below: (
+            <Button
+              disabled={registeringChief}
+              onClick={() => void registerChief()}
+              size="md"
+              variant="primary"
+            >
+              {registeringChief ? "Registering Chief…" : "Make this my Chief"}
+            </Button>
+          ),
+        }}
+      />
+    ) : null;
+  if (chiefRegistration === null && detailFailure !== null && !projectUnavailable && !chiefRefused)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).
     <MateFaceAsMark.Provider value={isChief}>
       <MateComingFrame
-        composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}
+        composer={
+          chiefRegistration === null && standsInComposer ? (
+            <ConversationFooterStandIn draft={draft} />
+          ) : null
+        }
         header={
           <MateComingHeader
             arriving={shown !== undefined && !handingArrival}
             mate={{
               ...mate,
+              name: chiefRegistration === null ? mate.name : (project?.name ?? mate.name),
               projectUrl: projectUnavailable ? undefined : mate.projectUrl,
               connected: stageAwake,
               chief: isChief,
@@ -917,31 +997,32 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           />
         }
       >
-        {opening ? (
-          <ConversationOpeningStage
-            ready={false}
-            name={named.name}
-            mate={named}
-            activity={liveActivity ?? toldActivity}
-            timestampFormat={timestampFormat}
-          />
-        ) : view === null ? null : (
-          <ConversationOpeningStage ready={false} name={named.name} mate={named}>
-            <MateEmptyStateView
-              coming={view}
-              // Handed over to from the creation's view, whose headline held the focus.
-              focusOnArrival={made !== undefined}
-              mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
-              phase={handingArrival ? empty.phase : phaseAhead}
-              standUpFailure={empty.standUpFailure}
-              signIn={handingArrival ? empty.signIn : null}
-              runtimes={empty.runtimes}
-              signInRequired={empty.signInRequired}
-              agentReady={empty.agentReady}
-              unknown={handingArrival ? empty.unknown : null}
+        {chiefRegistration ??
+          (opening ? (
+            <ConversationOpeningStage
+              ready={false}
+              name={named.name}
+              mate={named}
+              activity={liveActivity ?? toldActivity}
+              timestampFormat={timestampFormat}
             />
-          </ConversationOpeningStage>
-        )}
+          ) : view === null ? null : (
+            <ConversationOpeningStage ready={false} name={named.name} mate={named}>
+              <MateEmptyStateView
+                coming={view}
+                // Handed over to from the creation's view, whose headline held the focus.
+                focusOnArrival={made !== undefined}
+                mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
+                phase={handingArrival ? empty.phase : phaseAhead}
+                standUpFailure={empty.standUpFailure}
+                signIn={handingArrival ? empty.signIn : null}
+                runtimes={empty.runtimes}
+                signInRequired={empty.signInRequired}
+                agentReady={empty.agentReady}
+                unknown={handingArrival ? empty.unknown : null}
+              />
+            </ConversationOpeningStage>
+          ))}
       </MateComingFrame>
       {mateActions.dialogs}
     </MateFaceAsMark.Provider>

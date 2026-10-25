@@ -39,6 +39,7 @@ export {
 export {
   hqMateOverview,
   hqMateRefusal,
+  hqMateAnswered,
   hqMatePresence,
   hqMateLogins,
   hqMateReady,
@@ -109,6 +110,7 @@ export {
   type MateLinksRead,
 } from "./projections/mateLinks.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
+export { hqMateScope } from "./families/hqMate.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
@@ -265,6 +267,7 @@ export {
   NOT_READ_HQ,
   hqMateOverviewAtom,
   hqMateRefusalAtom,
+  hqMateAnsweredAtom,
   hqMatePresenceAtom,
   hqMateLoginsAtom,
   hqMateReadyAtom,
