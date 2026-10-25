@@ -272,7 +272,12 @@ describe("EngineStore", () => {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         const leased = ConversationId.make("leased");
-        const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+        const lease = {
+          alias: "webpool-3",
+          pool: "webpool",
+          branch: "feat-x",
+          repo: "https://hq.example.zerops.app/git/acme/web",
+        };
         yield* drive(yield* makeEngineStore({ snapshotEvery: 1 }), initialState(leased), [
           envelope({ _tag: "BindLease", lease }, { by: { kind: "engine" }, conversation: leased }),
         ]);

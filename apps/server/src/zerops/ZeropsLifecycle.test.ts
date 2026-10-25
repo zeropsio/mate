@@ -1112,10 +1112,11 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           repository,
           threadOwner: conversationOfThread,
           leaseBindings: Effect.map(Ref.get(records), (all) => ({
-            bindings: Object.entries(all).map(([conversation, { alias, branch }]) => ({
+            bindings: Object.entries(all).map(([conversation, { alias, branch, repo }]) => ({
               conversation: conversation as ThreadId,
               alias,
               branch,
+              repo,
             })),
             complete: true,
           })),
@@ -1301,6 +1302,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       readonly reused?: boolean;
       readonly branch?: string;
       readonly state?: string;
+      readonly repo?: string;
     } = {},
   ) => {
     const [pool = alias, number = "1"] = alias.split("-");
@@ -1312,6 +1314,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       state: options.state ?? "held",
       unverified: false,
       ...(options.acquiredAt === undefined ? {} : { acquiredAt: options.acquiredAt }),
+      ...(options.repo === undefined ? {} : { repo: options.repo }),
       ...(options.reused === undefined ? {} : { reused: options.reused }),
     };
   };
@@ -1476,6 +1479,71 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
             },
           ]);
           expect(yield* bound()).toEqual({ ada: "apipool-4" });
+        }),
+      ),
+  );
+
+  /** Two apps of one Mate, each its own repository in HQ. */
+  const WEB = "https://hq.example.zerops.app/git/acme/web";
+  const API = "https://hq.example.zerops.app/git/acme/api";
+  /** Both apps on `main`: ada works on web's `webpool-2`; api's lease of `main` is the earliest. */
+  const adasWeb = member("webpool-2", {
+    branch: "main",
+    repo: WEB,
+    acquiredAt: "2026-10-23T12:00:03Z",
+  });
+  const twoApps = [
+    adasWeb,
+    member("apipool-1", { branch: "main", repo: API, acquiredAt: "2026-10-23T12:00:00Z" }),
+    member("docspool-4", { branch: "main", repo: WEB, acquiredAt: "2026-10-23T12:00:02Z" }),
+    member("hqpool-5", { branch: "main", repo: WEB, acquiredAt: "2026-10-23T12:00:04Z" }),
+  ];
+
+  it.effect(
+    "an acquire binds its conversation to its lease's alias, pool, branch and repository",
+    () =>
+      withConversations((lifecycle, _bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adasWeb], twoApps));
+          expect(yield* told()).toEqual([
+            {
+              _tag: "BindLease",
+              lease: { alias: "webpool-2", pool: "webpool", branch: "main", repo: WEB },
+            },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "when the bound lease ends, its conversation is bound to the earliest-acquired lease of its repository and branch, never another app's lease of the same branch",
+    () =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adasWeb], twoApps));
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(release("webpool-2", sessionOf("ada"), asRead(twoApps.slice(1))));
+          expect((yield* told()).slice(first)).toEqual([
+            { _tag: "UnbindLease", ended: "webpool-2" },
+            {
+              _tag: "BindLease",
+              lease: { alias: "docspool-4", pool: "docspool", branch: "main", repo: WEB },
+            },
+          ]);
+          expect(yield* bound()).toEqual({ ada: "docspool-4" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a conversation bound by a zcp that names no repository is bound next by its branch alone",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          const { repo: _repo, ...unnamed } = adasWeb;
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [unnamed], twoApps));
+          yield* lifecycle.ingest(release("webpool-2", sessionOf("ada"), asRead(twoApps.slice(1))));
+          expect(yield* bound()).toEqual({ ada: "apipool-1" });
         }),
       ),
   );
@@ -1763,10 +1831,11 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
   /** Conversations whose records outlive a restart of the lifecycle, bound as the engine binds. */
   const recordsOver = (records: Ref.Ref<Readonly<Record<string, ThreadLease>>>) => ({
     leaseBindings: Effect.map(Ref.get(records), (all) => ({
-      bindings: Object.entries(all).map(([conversation, { alias, branch }]) => ({
+      bindings: Object.entries(all).map(([conversation, { alias, branch, repo }]) => ({
         conversation: conversation as ThreadId,
         alias,
         branch,
+        repo,
       })),
       complete: true,
     })),
