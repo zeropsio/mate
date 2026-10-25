@@ -2,6 +2,7 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
@@ -16,7 +17,7 @@ const author = { name: "Core", email: "core@example.test" };
 
 /** A commit beside `sha` holding `bytes` more, written past HQ's own write limits. */
 const commitBeside = (dir: string, sha: string, bytes: Uint8Array) => {
-  const git = (args: ReadonlyArray<string>, input?: string | Uint8Array) =>
+  const git = (args: ReadonlyArray<string>, input?: string) =>
     NodeChildProcess.execFileSync("git", ["-C", dir, ...args], {
       input,
       env: {
@@ -31,7 +32,19 @@ const commitBeside = (dir: string, sha: string, bytes: Uint8Array) => {
     })
       .toString()
       .trim();
-  const blob = git(["hash-object", "-w", "--stdin"], bytes);
+  // The blob goes in as a file, not through stdin: on macOS a 32 MiB `--stdin` write
+  // occasionally leaves git blocked in read() after node shut the pipe, and the sync spawn then
+  // blocks the worker's event loop, so no test timeout can end it.
+  const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-blob-"));
+  const file = NodePath.join(scratch, "noise.bin");
+  NodeFS.writeFileSync(file, bytes);
+  const blob = (() => {
+    try {
+      return git(["hash-object", "-w", "--", file]);
+    } finally {
+      NodeFS.rmSync(scratch, { recursive: true, force: true });
+    }
+  })();
   const tree = git(["mktree"], `${git(["ls-tree", sha])}\n100644 blob ${blob}\tnoise.bin\n`);
   return git(["commit-tree", tree, "-p", sha, "-m", "Noise"]);
 };
