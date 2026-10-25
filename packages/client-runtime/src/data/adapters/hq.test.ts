@@ -1,4 +1,4 @@
-import { MateHealth } from "@t3tools/contracts";
+import { AGENT_USAGE_REPORT_PROTOCOL, MateHealth, type UsageReportQuery } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { hqMateHealthScope } from "../families/mateHealth.ts";
 import { hqMateSetup } from "../projections/hqMateSetup.ts";
@@ -31,6 +31,7 @@ import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
+import { agentUsageOwner } from "../families/agentUsage.ts";
 import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type StreamKey } from "../model.ts";
 import { factOf, streamOf } from "../reducer.ts";
@@ -2135,5 +2136,86 @@ describe("outage scenarios at the HQ input", () => {
       expect(appName(store, "shop")).toBe("Shop");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+});
+
+describe("the usage reports a period holds", () => {
+  const periodOwners = (since: string) =>
+    (["mate", "model", "provider", "day"] as const).map((groupBy) =>
+      agentUsageOwner({
+        since,
+        until: "2026-10-25T00:00:00.000Z",
+        mode: "utc-days",
+        timezone: "UTC",
+        projectId: null,
+        appId: null,
+        mateId: null,
+        ownerUserId: null,
+        provider: null,
+        model: null,
+        groupBy,
+        provenance: "live-responses",
+      } satisfies UsageReportQuery),
+    );
+
+  it.effect(
+    "Switching the usage period lets go of the old period's reports before asking HQ for the new ones",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const link = hqNavigationLink({ orgId: ORG, wire: fixture.wire, store });
+        const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* settle;
+        yield* fixture.send({
+          type: "scope-ready",
+          scope: NAVIGATION,
+          incarnation: "hq",
+          revision: 1,
+          core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
+        });
+        yield* settle;
+        const usageFrames = () =>
+          fixture.sent.flatMap(({ request }) =>
+            request.type === "subscribe" || request.type === "unsubscribe"
+              ? request.scopes.flatMap((entry) => {
+                  const wire = "scope" in entry ? entry.scope : entry;
+                  return wire.kind === "agentUsage"
+                    ? [{ type: request.type, owner: agentUsageOwner(wire.query) }]
+                    : [];
+                })
+              : [],
+          );
+        const [week, month] = [
+          periodOwners("2026-10-18T00:00:00.000Z"),
+          periodOwners("2026-09-25T00:00:00.000Z"),
+        ];
+
+        const releaseWeek = week.map((ownerId) =>
+          link.demandDetail({ family: "agentUsage", ownerId }),
+        );
+        yield* settle;
+        releaseWeek.forEach((release) => release());
+        const holdMonth = month.map((ownerId) =>
+          link.demandDetail({ family: "agentUsage", ownerId }),
+        );
+        yield* settle;
+
+        const frames = usageFrames();
+        const of = (type: string, from: number, to: number) =>
+          new Set(
+            frames
+              .slice(from, to)
+              .filter((f) => f.type === type)
+              .map((f) => f.owner),
+          );
+        expect(frames).toHaveLength(12);
+        expect(of("subscribe", 0, 4)).toEqual(new Set(week));
+        expect(of("unsubscribe", 4, 8)).toEqual(new Set(week));
+        expect(of("subscribe", 8, 12)).toEqual(new Set(month));
+        holdMonth.forEach((release) => release());
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });
