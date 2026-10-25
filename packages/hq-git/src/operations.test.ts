@@ -299,7 +299,7 @@ describe("git operations", () => {
     }),
   );
   it.live(
-    "onto a main that never held a file, a change carrying another repository's history lands as it is: main fast-forwards to it",
+    "onto a main that never held a file, a change carrying another repository's history and building on main lands as one merge commit of main and its head, never a fast-forward",
     () =>
       fixture(async (git, dir, events) => {
         const main = await write(git, {}, null);
@@ -320,14 +320,25 @@ describe("git operations", () => {
           kind: "clean",
           keepsHistory: true,
         });
-        expect(await merge(git, main, 1, "Bring the repository in")).toEqual({ merged: joined });
-        expect(await native(dir, ["rev-parse", "main"])).toBe(joined);
+        // Main's own line stays HQ's: the history comes in beside it, under one merge carrying
+        // the trailers, so no commit of that history is read as one of main's merges.
+        const result = await merge(git, main, 1, "Bring the repository in");
+        if (!("merged" in result)) throw new Error(`merge refused: ${JSON.stringify(result)}`);
+        const commit = await value(git.commit(repo, result.merged));
+        expect(commit.parents).toEqual([main, joined]);
+        expect(commit.message).toBe(
+          "Bring the repository in\n\nCrew-Assignment: trusted\nMate-Change: alice/1\n",
+        );
+        expect(await native(dir, ["rev-parse", `${result.merged}^{tree}`])).toBe(
+          await native(dir, ["rev-parse", `${joined}^{tree}`]),
+        );
+        expect(await native(dir, ["rev-parse", "main"])).toBe(result.merged);
         await vi.waitFor(() =>
           expect(events.at(-1)).toEqual({
             kind: "main_moved",
             repo,
             old: main,
-            new: joined,
+            new: result.merged,
             by: "merge",
           }),
         );

@@ -310,7 +310,7 @@ export class Changes extends Context.Service<
      * The change squashed into `main` (`hqChanges.ts` `MergeChangeRequest`), if its head is still
      * `expectedHead`: one merge of a repository at a time, from `main` as the last one left it. The
      * first change into a repository whose `main` holds nothing, carrying another repository's
-     * history, lands it as it is instead (`@t3tools/hq-git` `keepsHistory`).
+     * history, lands it under one merge commit instead (`@t3tools/hq-git` `keepsHistory`).
      */
     readonly mergeChange: (
       userId: string,
@@ -529,7 +529,7 @@ const instant = (column: string) =>
 const encodeReceipt = Schema.encodeSync(Schema.fromJsonString(ChangeReceipt));
 
 /** A change's columns as {@link ChangeRow} reads them. */
-const CHANGE_COLUMNS = [
+export const CHANGE_COLUMNS = [
   "app_id::text AS app_id",
   "repo",
   "number",
@@ -912,8 +912,8 @@ export const changesLayer: Layer.Layer<
 
     /**
      * The change squashed into `main` by whoever `by` names — a person, or Core — with the head
-     * that was judged (or, keeping its history into a `main` that holds nothing, landed as it is:
-     * `main` at that head, or one merge commit): one merge of a repository at a time. Each try
+     * that was judged (or, keeping its history into a `main` that holds nothing, landed with it
+     * under one merge commit): one merge of a repository at a time. Each try
      * squashes onto the `main` its `aim` reads under the repository's lock — a person's, `main` as
      * it is now; Core's, the one it judged the change against — or stops short where the aim says;
      * should anything else move `main` meanwhile, it is tried again from where it went.
@@ -1723,15 +1723,21 @@ export const changesLayer: Layer.Layer<
           });
           // A squash lands content without its original commits: a commit reachable from the head
           // of any change landed before this one is landed content — whoever's, whatever its
-          // number — be the change continued from it or built on it while it was open.
-          const landed = yield* sql<{ readonly landed_head: string }>`
-            SELECT landed_head FROM hq_change
-            WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+          // number — be the change continued from it or built on it while it was open. The
+          // repository's latest landings, and its Mate's own last one at any age: what it goes on
+          // from however many landed since.
+          const before = sql`
+            app_id = ${change.appId}::uuid AND repo = ${change.repo}
               AND number <> ${number} AND state = 'merged' AND landed_head IS NOT NULL
               AND (${change.mergedAt}::timestamptz IS NULL
-                OR merged_at < ${change.mergedAt}::timestamptz)
-            ORDER BY merged_at DESC NULLS LAST, number DESC
-            LIMIT ${LANDED_BASES}`;
+                OR merged_at < ${change.mergedAt}::timestamptz)`;
+          const landed = yield* sql<{ readonly landed_head: string }>`
+            (SELECT landed_head FROM hq_change WHERE ${before}
+              ORDER BY merged_at DESC NULLS LAST, number DESC LIMIT ${LANDED_BASES})
+            UNION
+            (SELECT landed_head FROM hq_change
+              WHERE ${before} AND mate_project_id = ${change.mateProjectId}
+              ORDER BY merged_at DESC NULLS LAST, number DESC LIMIT 1)`;
           const log = yield* git.changeLog(at, branchOf(change), {
             limit: 100,
             snapshot,

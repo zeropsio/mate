@@ -6,6 +6,7 @@ import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { CHANGE_COLUMNS } from "./changes.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { MIGRATIONS_TABLE, migrate } from "./migrations.ts";
 
@@ -33,6 +34,28 @@ const tables = Effect.gen(function* () {
 
 describe("migrate", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a change read finds whether its own Mate closed it by an index of the log's closes, never by scanning the log",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* migrate(treeMigrations());
+            const plan = yield* sql.withTransaction(
+              Effect.andThen(
+                // Tables this small are read whole by any plan; only a missing index forces it.
+                sql`SET LOCAL enable_seqscan = off`,
+                sql.unsafe<{ readonly "QUERY PLAN": string }>(
+                  `EXPLAIN SELECT ${CHANGE_COLUMNS} FROM hq_change WHERE state = 'closed'`,
+                ),
+              ),
+            );
+            const lines = plan.map((row) => row["QUERY PLAN"]).join("\n");
+            assert.include(lines, "hq_git_event");
+            assert.notMatch(lines, /Seq Scan on hq_git_event/u);
+          }),
+        ),
+    );
     it.effect(
       "existing Chief registrations retain their application's identity after the schema expands",
       () =>

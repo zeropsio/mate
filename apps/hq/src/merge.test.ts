@@ -247,18 +247,26 @@ describe("a change merged into main, or closed", () => {
             body: { title: "Bring the monorepo in" },
           });
 
+          const before = yield* ada.main;
           const merged = yield* merge(call, owner, appId, 1, head);
           assert.strictEqual(merged.status, 200);
           const change = merged.body as Record<string, unknown>;
+          const landed = yield* ada.main;
           assert.deepStrictEqual(
             [change["state"], change["mergedSha"], change["landedHead"]],
-            ["merged", head, head],
+            ["merged", landed, head],
           );
-          // Main is the change's head: every commit it carried, and HQ's first, none squashed.
-          assert.strictEqual(yield* ada.main, head);
+          // Main takes the change's head under one merge commit, never a fast-forward: every commit
+          // it carried, and HQ's first, none squashed, and main's own line stays HQ's.
+          assert.strictEqual(
+            yield* git.checked(["log", "-1", "--format=%P%n%B", landed], ada.work),
+            [`${before} ${head}`, "Bring the monorepo in (#1)", "", "Mate-Change: P_MATE/1"].join(
+              "\n",
+            ),
+          );
           assert.strictEqual(
             yield* git.checked(["rev-list", "--count", "origin/main"], ada.work),
-            "5",
+            "6",
           );
 
           // The next change squashes onto the history the first one kept.
@@ -273,7 +281,7 @@ describe("a change merged into main, or closed", () => {
           assert.strictEqual((yield* merge(call, owner, appId, 2, later.head)).status, 200);
           assert.strictEqual(
             yield* git.checked(["log", "-1", "--format=%P%n%B", yield* ada.main], ada.work),
-            [head, "Add a login page (#2)", "", "Mate-Change: P_MATE/2"].join("\n"),
+            [landed, "Add a login page (#2)", "", "Mate-Change: P_MATE/2"].join("\n"),
           );
         }),
     );
