@@ -7,6 +7,7 @@ import {
   rolledBackTo,
   type FlowReleaseRow,
   type GitDelivery,
+  type GitDeliveryEnvironment,
   type Moved,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
@@ -22,6 +23,7 @@ import { ZeropsEnvironmentRow, ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
+import { gitReleaseHistory } from "./GitHistory.logic";
 import { Badge } from "~/components/ui/badge";
 
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
@@ -38,6 +40,7 @@ export interface ZeropsReleasesCarried {
 interface ReleaseRowsProps {
   readonly groupId: string;
   readonly git?: GitDelivery | undefined;
+  readonly gitJobs?: GitDeliveryEnvironment["jobs"] | undefined;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /** The verbs under way (`flowVerbKey`): a release rolling back holds its verb. */
   readonly pending: ReadonlySet<string>;
@@ -66,7 +69,9 @@ export function ZeropsReleaseRows({
   ...props
 }: ReleaseRowsProps & { readonly carried?: ZeropsReleasesCarried }) {
   if (props.git !== undefined)
-    return <GitReleaseRows releases={props.releases} delivery={props.git} />;
+    return (
+      <GitReleaseRows releases={props.releases} delivery={props.git} jobs={props.gitJobs ?? []} />
+    );
   if (carried !== undefined) return <CarriedReleaseRows {...props} carried={carried} />;
   const { groupId, releases, pending, onRollBack } = props;
   return (
@@ -302,44 +307,45 @@ function ReleaseService({
   );
 }
 
-/** Historical rows keep HQ's frozen entries; only the shared standing proves a hand-over. */
+/** Historical rows keep HQ's frozen entries and the environment's recorded push outcomes. */
 export function GitReleaseRows({
   releases,
   delivery,
+  jobs,
 }: {
   readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "entries" | "verdict">>;
   readonly delivery: GitDelivery | undefined;
+  readonly jobs: GitDeliveryEnvironment["jobs"];
 }) {
   return (
     <>
-      {releases.map((release) => (
-        <ZeropsEnvironmentRow
-          key={release.tag}
-          name={release.tag}
-          tag="release"
-          status={
-            <Badge
-              dot
-              tone={
-                STATUS_BADGE_TONE[
-                  release.tag === delivery?.version && delivery.blocked ? "attention" : "off"
+      {releases.map((release) => {
+        const history = gitReleaseHistory(release, delivery, jobs);
+        return (
+          <ZeropsEnvironmentRow
+            key={release.tag}
+            name={release.tag}
+            tag="release"
+            status={
+              <Badge dot tone={STATUS_BADGE_TONE[history.attention ? "attention" : "off"]}>
+                {history.word}
+              </Badge>
+            }
+            summary={
+              <span className="whitespace-normal">
+                {[
+                  release.entries
+                    .map((entry) => `${entry.service} ${entry.commit.slice(0, 7)}`)
+                    .join(" · "),
+                  history.reason,
                 ]
-              }
-            >
-              {release.tag === delivery?.version
-                ? delivery.line
-                : release.tag === delivery?.previousVersion
-                  ? `Previously pushed ${release.tag}`
-                  : release.verdict === "refused"
-                    ? "Refused"
-                    : "Hand-over not reported"}
-            </Badge>
-          }
-          summary={release.entries
-            .map((entry) => `${entry.service} ${entry.commit.slice(0, 7)}`)
-            .join(" · ")}
-        />
-      ))}
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            }
+          />
+        );
+      })}
     </>
   );
 }

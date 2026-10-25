@@ -347,7 +347,7 @@ it("Git release history shows frozen commits and keeps previous push distinct fr
   const delivery = gitDeliveryOf(env, { releases: records, repos });
   const html = renderToStaticMarkup(
     <ul>
-      <GitReleaseRows releases={records.map(flowReleaseOf)} delivery={delivery} />
+      <GitReleaseRows releases={records.map(flowReleaseOf)} delivery={delivery} jobs={env.jobs} />
     </ul>,
   );
   expect(html).toContain(delivery!.line.replaceAll("'", "&#x27;"));
