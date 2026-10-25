@@ -19,11 +19,17 @@ describe("B: Usage read states", () => {
             s.drivers.hq.mapFrames((frame) => {
               const message = JSON.parse(frame) as HqStreamMessage;
               if (
-                (message.type !== "scope-reset" && message.type !== "scope-values") ||
+                (message.type !== "scope-ready" &&
+                  message.type !== "scope-reset" &&
+                  message.type !== "scope-values") ||
                 message.scope.kind !== "agentUsage"
               )
                 return frame;
+              // Loading is a read HQ has not answered: none of its answer reaches the page, its
+              // ready mark included, or the page holds the read as answered and Refresh resumes it
+              // empty instead of asking afresh.
               if (reading) return JSON.stringify({ type: "ping" });
+              if (message.type === "scope-ready") return frame;
               const query = message.scope.query;
               const report = recordedReport({
                 query,
