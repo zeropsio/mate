@@ -36,12 +36,13 @@ import {
 import type { ReviewTarget } from "../../zerops/review";
 import {
   browserCheckCaption,
-  browserCheckFailed,
   browserCheckFailure,
   browserCheckPage,
+  browserCheckPassed,
   pageView,
   browserCheckUrl,
   browserTakeState,
+  unsettledUnfinishedChecks,
   type ActivityKind,
   type OutcomeModel,
   type OutcomePicture,
@@ -187,6 +188,8 @@ interface CheckedPage {
   readonly failedAt: string | null;
   /** The device its failed take emulated, where it named one. */
   readonly failedOn: string | null;
+  /** Its takes that did not finish and no later take of it settled. */
+  readonly unfinished: number;
 }
 
 function checkedPages(takes: ReadonlyArray<ZeropsOperation>): CheckedPage[] {
@@ -198,6 +201,7 @@ function checkedPages(takes: ReadonlyArray<ZeropsOperation>): CheckedPage[] {
     if (list) list.push(take);
     else byPage.set(page, [take]);
   }
+  const unfinished = unsettledUnfinishedChecks(takes);
   return [...byPage].map(([page, list]) => {
     const url = browserCheckUrl(list[0]!);
     const failed = list.findLast((take) => browserTakeState(take, takes) === "failed");
@@ -210,6 +214,7 @@ function checkedPages(takes: ReadonlyArray<ZeropsOperation>): CheckedPage[] {
       failure: failed === undefined ? null : (browserCheckFailure(failed) ?? "failed"),
       failedAt: failed === undefined ? null : (failed.settledAt ?? failed.anchorAt),
       failedOn: failed?.deviceName ?? null,
+      unfinished: list.filter((take) => unfinished.includes(take)).length,
     };
   });
 }
@@ -245,28 +250,42 @@ function serviceAtHost(
     .toSorted((left, right) => right.hostname.length - left.hostname.length)[0];
 }
 
-function passed(take: ZeropsOperation): boolean {
-  return take.phase === "done" && !browserCheckFailed(take);
-}
-
 function checksWord(count: number): string {
   return count === 2 ? "both checks passed" : `all ${count} checks passed`;
 }
 
+/** A tally beside what did not finish: "2 passed, 1 not finished", "1 not finished". */
+function unfinishedTally(count: number, unfinished: number): string {
+  return count === 0 ? `${unfinished} not finished` : `${count} passed, ${unfinished} not finished`;
+}
+
 /**
  * "/status checked ✓", "both checks passed", or "2 pages checked, all 5
- * checks passed": only what passed. The home page is the service itself, so
- * its checks need no page named.
+ * checks passed": only what passed. A check that did not finish is never
+ * one of them — "2 pages checked, 1 passed, 1 not finished", "check not
+ * finished". The home page is the service itself, so its checks need no
+ * page named.
  */
 function checkedLine(pages: ReadonlyArray<CheckedPage>): string | null {
-  const count = pages.reduce((sum, page) => sum + page.takes.filter(passed).length, 0);
-  if (pages.length === 0 || count === 0) return null;
+  const count = pages.reduce((sum, page) => sum + page.takes.filter(browserCheckPassed).length, 0);
+  const unfinished = pages.reduce((sum, page) => sum + page.unfinished, 0);
+  if (pages.length === 0 || count + unfinished === 0) return null;
   if (pages.length === 1) {
     const caption = pages[0]!.caption;
+    if (unfinished > 0) {
+      if (count > 0) {
+        const tally = unfinishedTally(count, unfinished);
+        return caption === "/" ? tally : `${caption} checked, ${tally}`;
+      }
+      const checks = unfinished === 1 ? "check" : `${unfinished} checks`;
+      return caption === "/" ? `${checks} not finished` : `${caption}: ${checks} not finished`;
+    }
     if (caption === "/") return count === 1 ? "checked ✓" : checksWord(count);
     return count === 1 ? `${caption} checked ✓` : `${caption} checked, ${checksWord(count)}`;
   }
-  return `${pages.length} pages checked, ${checksWord(count)}`;
+  return `${pages.length} pages checked, ${
+    unfinished > 0 ? unfinishedTally(count, unfinished) : checksWord(count)
+  }`;
 }
 
 function checkedOf(line: string | null): { readonly checked?: string } {
@@ -452,11 +471,13 @@ function failedPageRow(page: CheckedPage, owner: string | null): ResultRow {
 }
 
 function pagesRow(host: string, pages: ReadonlyArray<CheckedPage>): ResultRow {
+  // A host whose checks only did not finish stands neutral: nothing says it works.
+  const passedOne = pages.some((page) => page.takes.some(browserCheckPassed));
   return {
     key: `pages:${host}`,
     group: "running",
     mark: "dot",
-    tone: "ok",
+    tone: passedOne ? "ok" : "muted",
     title: host,
     words: null,
     version: null,

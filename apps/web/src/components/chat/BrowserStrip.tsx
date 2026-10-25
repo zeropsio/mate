@@ -18,7 +18,7 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
-import { CheckIcon, CodeXmlIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import { CheckIcon, CodeXmlIcon, MinusIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 import { useImageIntent } from "~/assets/MateImages";
@@ -71,13 +71,15 @@ const SCREEN_CLASS: Record<BrowserDevice, string> = {
 
 /**
  * A take's frame, by how it ended: a failure red, a failure the same page
- * passed later amber — a retry, as the heading and the report count it.
+ * passed later amber — a retry, as the heading and the report count it. One
+ * that did not finish is neutral: it neither passed nor failed.
  */
 const TAKE_FRAME: Record<BrowserTakeState, string> = {
   running: "border-status-busy border-dashed",
   passed: "border-border",
   retried: "border-status-attention",
   failed: "border-status-failed",
+  unfinished: "border-border",
 };
 
 /** A take's thumbnail in the list of takes, in its device's shape. */
@@ -97,10 +99,13 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** What a structure check found, in words: "no errors", "2 errors · 1 failed request". */
+/**
+ * What a structure check found, in words: "no errors", "2 errors · 1 failed
+ * request" — nothing for a check that never read them.
+ */
 function takeFindings(check: ZeropsOperation): string | null {
   const summary = check.browserSummary;
-  if (summary === undefined) return null;
+  if (summary === undefined || summary.unfinished === true) return null;
   const errors = summary.errorCount;
   const requests = summary.failedRequestCount;
   if (errors === 0 && requests === 0) return "no errors";
@@ -241,14 +246,16 @@ export function BrowserStrip({
     : frames === 1
       ? failedOnStage
         ? `${browserPageWords(caption)} failed`
-        : `Checked ${browserPageWords(caption)}`
+        : strip.unfinished > 0
+          ? `${browserPageWords(caption)} not finished`
+          : `Checked ${browserPageWords(caption)}`
       : [
           plural(frames, "check", "checks"),
-          strip.failures > 0
-            ? plural(strip.failures, "failed", "failed")
-            : settledCount === frames
-              ? "all passed"
-              : null,
+          strip.failures > 0 ? plural(strip.failures, "failed", "failed") : null,
+          strip.unfinished > 0 ? plural(strip.unfinished, "not finished", "not finished") : null,
+          strip.failures === 0 && strip.unfinished === 0 && settledCount === frames
+            ? "all passed"
+            : null,
         ]
           .filter(Boolean)
           .join(" · ");
@@ -412,7 +419,7 @@ export function BrowserStrip({
               const takeWords = [
                 check.deviceName ?? DEVICE_WORD[takeDevice],
                 browserCheckCaption(check),
-                state === "passed" || live ? null : state,
+                state === "passed" || live ? null : state === "unfinished" ? "not finished" : state,
                 live ? "running" : checkDuration(check),
               ]
                 .filter(Boolean)
@@ -422,9 +429,11 @@ export function BrowserStrip({
                   ? ` — ${browserCheckFailure(check)}`
                   : state === "retried"
                     ? ` — retried: ${browserCheckFailure(check)}`
-                    : live
-                      ? " — running"
-                      : ""
+                    : state === "unfinished"
+                      ? " — not finished"
+                      : live
+                        ? " — running"
+                        : ""
               }`;
               return (
                 <button
@@ -475,6 +484,11 @@ export function BrowserStrip({
                     <RotateCcwIcon
                       aria-hidden="true"
                       className="size-3.5 shrink-0 text-status-attention"
+                    />
+                  ) : state === "unfinished" ? (
+                    <MinusIcon
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
                     />
                   ) : (
                     <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
@@ -559,7 +573,7 @@ export function BrowserTakes({
         return (
           <button
             key={take.key}
-            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : ""}. Open the screenshot`}
+            aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : state === "unfinished" ? ", not finished" : ""}. Open the screenshot`}
             className={cn(
               "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
               TAKE_PICTURE_CLASS[device],

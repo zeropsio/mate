@@ -238,7 +238,9 @@ function browserMediaFromLabel(label: string): "dark" | "light" | undefined {
  * `viewport`/`media` are the LAST matching step (a caller may resize more
  * than once); `stepCount`/`failedStep` look only at the non-tail steps —
  * the reporting tail is plumbing, never something a person reads as "what
- * the agent did".
+ * the agent did". `unfinished` is the tail's own word: its `errors` step
+ * never answered (zcp's walk ended at a wedge, or its deadline cut it), so
+ * the counts are unread.
  */
 function browserSummaryFor(
   steps: ReadonlyArray<ZeropsOperationStep>,
@@ -255,6 +257,11 @@ function browserSummaryFor(
   }
   const visibleSteps = steps.filter((step) => step.kind !== "tail");
   const failedStep = visibleSteps.find((step) => step.state === "failed");
+  // The canned tail's `errors` answered: the walk read what the page threw.
+  const readErrors = steps.some(
+    (step) =>
+      step.kind === "tail" && step.label.split(" ")[0] === "errors" && step.state === "done",
+  );
   return {
     ...(viewport !== undefined ? { viewport } : {}),
     ...(media !== undefined ? { media } : {}),
@@ -267,7 +274,9 @@ function browserSummaryFor(
       ...counts,
       ...(viewport !== undefined ? { viewport } : {}),
       ...(media !== undefined ? { media } : {}),
+      ...(readErrors ? {} : { unfinished: true }),
     }),
+    ...(readErrors ? {} : { unfinished: true as const }),
   };
 }
 
