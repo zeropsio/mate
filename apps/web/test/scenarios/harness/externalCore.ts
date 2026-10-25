@@ -287,7 +287,7 @@ export const startExternalCore = (
             (stopping ??= (async () => {
               child.stdin.end();
               try {
-                await deadline(exit, "External Core shutdown", 30_000);
+                await deadline(exit, "External Core shutdown");
               } catch (error) {
                 killGroup();
                 await exit.catch(() => {});
@@ -304,7 +304,7 @@ export const startExternalCore = (
       ({ stop }) => stop,
     );
     const { origin, database } = yield* Effect.promise(() =>
-      deadline(process.ready, "External Core readiness", 120_000),
+      deadline(process.ready, "External Core readiness"),
     );
     const agent = yield* Effect.acquireRelease(
       Effect.sync(() => new NodeHttp.Agent({ keepAlive: true })),
