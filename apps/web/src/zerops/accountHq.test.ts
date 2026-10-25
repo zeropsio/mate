@@ -1159,6 +1159,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
       refusal: classifyHqCall(refusal).message,
       capped: false,
       reconnecting: false,
+      slow: false,
       structure: null,
     };
     expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
@@ -1192,6 +1193,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
       refusal: classifyHqCall(refusal).message,
       capped: false,
       reconnecting: false,
+      slow: false,
       structure: null,
     };
     expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({

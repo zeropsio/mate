@@ -104,10 +104,11 @@ describe("menuRowsAtom", () => {
     for (const frame of frames) expect(frame).toEqual({ settled: false, rows: [] });
   });
 
-  type Outcome = "transient" | "definitive-refusal";
+  type Outcome = "transient" | "definitive-refusal" | "slow";
   /**
    * HQ's link and its navigation scope demanded, as the account opens them for an official HQ;
-   * its first attempt ended so where `outcome` says.
+   * its first attempt ended so where `outcome` says — `slow`: connected, the navigation asked and
+   * not answered past its patience.
    */
   const hqLink = (store: AccountStore, outcome: Outcome | undefined) => {
     const link = `hq:${ORG}` as const;
@@ -115,6 +116,16 @@ describe("menuRowsAtom", () => {
     for (const key of [link, apps])
       store.dispatch({ kind: "stream", key, now: 0, event: { kind: "demand", demanded: true } });
     if (outcome === undefined) return;
+    if (outcome === "slow") {
+      for (const [key, event] of [
+        [link, { kind: "handshake" }],
+        [apps, { kind: "attempt" }],
+        [apps, { kind: "handshake" }],
+        [apps, { kind: "grace-over", since: 0 }],
+      ] as const)
+        store.dispatch({ kind: "stream", key, now: 0, event });
+      return;
+    }
     const message = outcome === "transient" ? "closed" : "403";
     store.dispatch({
       kind: "stream",
@@ -144,6 +155,19 @@ describe("menuRowsAtom", () => {
       case: "an official HQ's first attempt failed and the wait ran out",
       verdict: "official",
       hq: "transient",
+      waitedOut: true,
+      drawn: true,
+    },
+    {
+      case: "an official HQ slow to answer, inside the wait",
+      verdict: "official",
+      hq: "slow",
+      drawn: false,
+    },
+    {
+      case: "an official HQ slow to answer and the wait ran out",
+      verdict: "official",
+      hq: "slow",
       waitedOut: true,
       drawn: true,
     },

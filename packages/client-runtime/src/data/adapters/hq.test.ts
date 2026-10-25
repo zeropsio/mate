@@ -37,6 +37,7 @@ import { factOf, streamOf } from "../reducer.ts";
 import { makeAccountStore, publicRead, readsOfState, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigation } from "../projections/hqNavigation.ts";
+import { projectApplications } from "../projections/projectFlow.ts";
 import { hqMateOverview, hqMateRefusal } from "../projections/hqMates.ts";
 import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
@@ -1397,6 +1398,29 @@ describe("a slow HQ", () => {
         yield* fixture.send(ready(1));
         yield* settle;
         expect(view()).toMatchObject({ live: true, slow: false });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("a slow HQ's applications", () => {
+  it.effect(
+    "applications HQ is slow to confirm again are not called unanswered; a lost socket's are",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const unavailable = () =>
+          projectApplications.derive(readsOfState(store.state()), ORG).unavailable;
+        yield* fixture.endSegment;
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(unavailable()).toBe(false);
+        yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(unavailable()).toBe(true);
         yield* Fiber.interrupt(fiber);
       }),
   );

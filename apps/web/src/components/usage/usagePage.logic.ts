@@ -70,7 +70,8 @@ export function usagePageState(input: {
           : "This old project-name URL is no longer supported. Choose a project to use its stable ID.",
     };
   }
-  if (input.read.kind === "reading") return { kind: "reading", message: "Reading usage…" };
+  if (input.read.kind === "reading")
+    return { kind: "reading", message: input.read.line ?? "Reading usage…" };
   if (input.read.kind === "unavailable")
     return { kind: "unavailable", message: "Usage could not be read." };
   const report = input.read.report;

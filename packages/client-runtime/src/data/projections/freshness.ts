@@ -52,6 +52,9 @@ export function scopeFreshness(read: ProjectionReads, scope: ScopeKey): ScopeFre
   };
 }
 
+/** What every surface says while HQ is slow, not down ({@link scopeSlow}). */
+export const HQ_SLOW = "HQ is connected but slow to answer. Still waiting…";
+
 /**
  * Whether a scope's source is slow, not gone: its connection is open and the scope still waits for
  * its answer, past the patience a first answer gets (its grace). Nothing is asked again meanwhile.

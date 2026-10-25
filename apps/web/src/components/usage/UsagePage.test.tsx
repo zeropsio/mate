@@ -1,5 +1,5 @@
 import type { EnvironmentId, UsageReport, UsageReportQuery } from "@t3tools/contracts";
-import type { AgentUsageRead } from "@t3tools/client-runtime/data";
+import { HQ_SLOW, type AgentUsageRead } from "@t3tools/client-runtime/data";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -531,6 +531,12 @@ describe("recorded HQ usage presentation", () => {
     const markup = renderPage();
     expect(markup.toLowerCase()).toContain(message.toLowerCase());
     expect(markup).not.toContain("$0.00");
+  });
+  it("usage waiting on HQ says what it waits for", () => {
+    testState.read = { kind: "reading", line: HQ_SLOW };
+    const markup = renderPage();
+    expect(markup).toContain(HQ_SLOW);
+    expect(markup).not.toContain("Reading usage");
   });
   it("an HQ outage retains permitted values labelled last known", () => {
     testState.stale = true;
