@@ -11,6 +11,7 @@ import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
 import { hqAppsScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
+import { projectsScope } from "./families/project.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { autoUpdatePolicySettings } from "./projections/hqAutoUpdatePolicy.ts";
@@ -188,6 +189,32 @@ describe("observeAccount", () => {
       expect([reads("/project/p1"), reads("/project/p2"), reads(HISTORY_PATH)]).toEqual([2, 2, 1]);
       account.show(null);
     }),
+  );
+
+  it.live(
+    "the organization shown reads its Zerops projects again when asked, at once and once; another organization's ask reads nothing",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
+        );
+        const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+        account.show("org");
+        const listing = () => streamOf(store.state(), projectsScope("org"));
+        yield* until(store, () => listing().phase === "live", "the listing to be read");
+        const generation = listing().generation;
+
+        account.rereadListing("other-org");
+        account.rereadListing("org");
+        yield* until(
+          store,
+          () => listing().phase === "live" && listing().generation > generation,
+          "the listing to be read again",
+        );
+        expect(fixture.opens()).toBe(2);
+        account.show(null);
+      }),
   );
 
   it.live("holds an open operation's detail as a standing demand, without any screen", () =>

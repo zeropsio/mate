@@ -41,6 +41,11 @@ export interface RunningLink {
   readonly retryDetail: (demand: DetailDemand) => void;
   /** Renew a held own row without reviving a refusal. */
   readonly renew: (demand: DetailDemand) => void;
+  /**
+   * The viewer's access may have changed: every scope is registered again now, on a new receiver,
+   * and a link refused or waiting to retry tries at once.
+   */
+  readonly reread: () => void;
   /** Ends the demand: the link and its scopes pause, their facts stay. */
   readonly stop: () => void;
 }
@@ -70,6 +75,10 @@ export function startZeropsNavigation(options: {
     renew: link.renew,
     revalidate: link.revalidate,
     retryDetail: link.retryDetail,
+    reread: () => {
+      link.reread();
+      Effect.runFork(supervisor.signal("input-changed"));
+    },
     stop: () => {
       Effect.runSync(supervisor.release);
       Effect.runFork(Fiber.interrupt(fiber));
@@ -77,7 +86,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew"> {
+export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "reread"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -209,6 +218,11 @@ export interface AccountObservation {
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail of the organization shown. */
   readonly retryDetail: (demand: DetailDemand) => void;
+  /**
+   * The person's view may have changed in this organization (`topic: "inventory"`): its Zerops
+   * listing is read again while it is the one shown; another organization's is read when shown.
+   */
+  readonly rereadListing: (orgId: string) => void;
   /** The person's "try now". */
   readonly retry: () => void;
   /** Network or renderer returned: retry a recovering source without reviving refusals. */
@@ -428,6 +442,9 @@ export function observeAccount(options: {
     retryDetail: (demand) => {
       if (familySpec(demand.family).scope.source === "hq") hq?.link.retryDetail(demand);
       else shown?.link.retryDetail(demand);
+    },
+    rereadListing: (orgId) => {
+      if (shown?.orgId === orgId) shown.link.reread();
     },
     retry: () => {
       shown?.link.signal("manual-retry");

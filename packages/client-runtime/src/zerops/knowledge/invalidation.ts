@@ -47,12 +47,8 @@ export const Invalidation = Schema.Union([
      */
     change: Schema.Literals(["granted", "lapsed", "renew-now", "grants-written"]),
   }),
-  Schema.Struct({
-    topic: Schema.Literal("inventory"),
-    organization: OrganizationRef,
-    /** A person's Try now: what stalled starts over on the open socket, not a full re-read. */
-    why: Schema.optionalKey(Schema.Literal("user-retry")),
-  }),
+  /** The organization's Zerops listing is read again: every scope registered anew. */
+  Schema.Struct({ topic: Schema.Literal("inventory"), organization: OrganizationRef }),
   Schema.Struct({ topic: Schema.Literal("project"), project: ProjectRef }),
   Schema.Struct({
     topic: Schema.Literal("environment"),
