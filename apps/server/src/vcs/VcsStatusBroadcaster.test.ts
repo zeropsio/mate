@@ -31,8 +31,6 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
-/** The HEAD every status here is read under, unless a test moves it. */
-const HEAD = "2f6e0d1 refs/heads/feature/status-broadcast";
 
 const baseLocalStatus: VcsStatusLocalResult = {
   isRepo: true,
@@ -80,10 +78,8 @@ function makeTestLayer(state: {
   localInvalidationCalls: number;
   remoteInvalidationCalls: number;
   remoteStatusRefreshUpstreamValues?: Array<boolean | undefined>;
-  /** What HEAD reads at the path: the commit and branch the status is read under. */
-  currentHead?: string | null;
   forgottenRepositories?: Array<string>;
-  /** Every git read the status asked for: HEAD, the local status and the remote one. */
+  /** Every git read the status asked for: the local status and the remote one. */
   gitReads?: number;
 }) {
   return VcsStatusBroadcaster.layer.pipe(
@@ -91,11 +87,6 @@ function makeTestLayer(state: {
     Layer.provide(makeBackgroundPolicyLayer(() => true)),
     Layer.provide(
       Layer.mock(GitWorkflowService.GitWorkflowService)({
-        readHead: () =>
-          Effect.sync(() => {
-            state.gitReads = (state.gitReads ?? 0) + 1;
-            return state.currentHead ?? HEAD;
-          }),
         forgetRepository: (cwd) =>
           Effect.sync(() => {
             state.forgottenRepositories?.push(cwd);
@@ -244,7 +235,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -355,7 +345,6 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(makeBackgroundPolicyLayer(() => true)),
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
-            readHead: () => Effect.succeed(HEAD),
             localStatus: (input) =>
               Effect.sync(() => {
                 seenCwds.push(input.cwd);
@@ -428,7 +417,6 @@ describe("VcsStatusBroadcaster", () => {
         remoteStatusCalls: 0,
         localInvalidationCalls: 0,
         remoteInvalidationCalls: 0,
-        currentHead: "1111111 refs/heads/feat-a",
         forgottenRepositories: [] as Array<string>,
       };
 
@@ -452,7 +440,6 @@ describe("VcsStatusBroadcaster", () => {
         } satisfies VcsStatusStreamEvent);
 
         state.currentLocalStatus = onFeatB;
-        state.currentHead = "2222222 refs/heads/feat-b";
         yield* broadcaster.forgetStatus(cwd);
 
         assert.deepStrictEqual(yield* Deferred.await(reread), {
@@ -470,53 +457,10 @@ describe("VcsStatusBroadcaster", () => {
     },
   );
 
-  it.effect(
-    "a status is not served once HEAD at its path reads another branch or commit, to a reader or a new watcher",
-    () => {
-      const state = {
-        currentLocalStatus: onFeatA,
-        currentRemoteStatus: baseRemoteStatus,
-        localStatusCalls: 0,
-        remoteStatusCalls: 0,
-        localInvalidationCalls: 0,
-        remoteInvalidationCalls: 0,
-        currentHead: "1111111 refs/heads/feat-a",
-      };
-
-      return Effect.gen(function* () {
-        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-        const cwd = "/var/www/matepool-2";
-        yield* broadcaster.getStatus({ cwd });
-        yield* broadcaster.getStatus({ cwd });
-        assert.equal(state.localStatusCalls, 1, "the same HEAD serves what was read");
-
-        // Nobody told the cache: the checkout moved under the same path.
-        state.currentLocalStatus = onFeatB;
-        state.currentHead = "2222222 refs/heads/feat-b";
-        assert.deepStrictEqual(yield* broadcaster.getStatus({ cwd }), {
-          ...onFeatB,
-          ...baseRemoteStatus,
-        });
-
-        state.currentLocalStatus = { ...onFeatB, hasWorkingTreeChanges: true };
-        state.currentHead = "3333333 refs/heads/feat-b";
-        const snapshot = yield* Stream.runHead(
-          broadcaster.streamStatus({ cwd, includeRemote: false }),
-        );
-        assert.deepStrictEqual(Option.getOrUndefined(snapshot), {
-          _tag: "snapshot",
-          local: state.currentLocalStatus,
-          remote: null,
-        } satisfies VcsStatusStreamEvent);
-        assert.equal(state.localStatusCalls, 3);
-      }).pipe(Effect.provide(makeTestLayer(state)));
-    },
-  );
-
   // Every git read of a Mate's checkout is an ssh round trip under the host's session cap: a
   // status already read is served from what was read, and a lease handed on is told (`forgetStatus`).
   it.effect.each([
-    { what: "a repository", local: baseLocalStatus, head: HEAD },
+    { what: "a repository", local: baseLocalStatus },
     {
       what: "a folder that is no repository",
       local: {
@@ -525,9 +469,8 @@ describe("VcsStatusBroadcaster", () => {
         hasPrimaryRemote: false,
         refName: null,
       } satisfies VcsStatusLocalResult,
-      head: null,
     },
-  ])("a status already read is served without running git again, for $what", ({ local, head }) => {
+  ])("a status already read is served without running git again, for $what", ({ local }) => {
     const state = {
       currentLocalStatus: local,
       currentRemoteStatus: baseRemoteStatus,
@@ -535,7 +478,6 @@ describe("VcsStatusBroadcaster", () => {
       remoteStatusCalls: 0,
       localInvalidationCalls: 0,
       remoteInvalidationCalls: 0,
-      currentHead: head,
       gitReads: 0,
     };
 
@@ -600,7 +542,6 @@ describe("VcsStatusBroadcaster", () => {
           Layer.provide(makeBackgroundPolicyLayer(() => true)),
           Layer.provide(
             Layer.mock(GitWorkflowService.GitWorkflowService)({
-              readHead: () => Effect.succeed(HEAD),
               forgetRepository: () => Effect.void,
               // The held read answers what the checkout held when it began.
               localStatus: () =>
@@ -684,7 +625,6 @@ describe("VcsStatusBroadcaster", () => {
             Layer.provide(makeBackgroundPolicyLayer(() => true)),
             Layer.provide(
               Layer.mock(GitWorkflowService.GitWorkflowService)({
-                readHead: () => Effect.succeed(HEAD),
                 forgetRepository,
                 localStatus: () => Effect.succeed(baseLocalStatus),
                 remoteStatus: () => Effect.succeed(baseRemoteStatus),
@@ -852,7 +792,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -1053,7 +992,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => false)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -1107,7 +1045,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -1194,7 +1131,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;

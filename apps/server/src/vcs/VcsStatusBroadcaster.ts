@@ -129,14 +129,6 @@ interface CachedValue<T> {
 interface CachedVcsStatus {
   readonly local: CachedValue<VcsStatusLocalResult> | null;
   readonly remote: CachedValue<VcsStatusRemoteResult | null> | null;
-  /** HEAD as it read just before `local` was read: `local` is served only while it still does. */
-  readonly head?: string | null;
-}
-
-/** A local status and the HEAD it was read under. */
-interface LocalRead {
-  readonly head: string | null;
-  readonly local: VcsStatusLocalResult;
 }
 
 interface ActiveRemotePoller {
@@ -221,7 +213,7 @@ export const make = Effect.gen(function* () {
   });
 
   const updateCachedLocalStatus = Effect.fn("VcsStatusBroadcaster.updateCachedLocalStatus")(
-    function* (cwd: string, { head, local }: LocalRead, options?: { publish?: boolean }) {
+    function* (cwd: string, local: VcsStatusLocalResult, options?: { publish?: boolean }) {
       const nextLocal = {
         fingerprint: fingerprintStatusPart(local),
         value: local,
@@ -232,7 +224,6 @@ export const make = Effect.gen(function* () {
         nextCache.set(cwd, {
           ...previous,
           local: nextLocal,
-          head,
         });
         return [previous.local?.fingerprint !== nextLocal.fingerprint, nextCache] as const;
       });
@@ -283,7 +274,7 @@ export const make = Effect.gen(function* () {
 
   const updateCachedStatus = Effect.fn("VcsStatusBroadcaster.updateCachedStatus")(function* (
     cwd: string,
-    { head, local }: LocalRead,
+    local: VcsStatusLocalResult,
     remote: VcsStatusRemoteResult | null,
     options?: { publish?: boolean },
   ) {
@@ -301,7 +292,6 @@ export const make = Effect.gen(function* () {
       nextCache.set(cwd, {
         local: nextLocal,
         remote: nextRemote,
-        head,
       });
       return [
         previous.local?.fingerprint !== nextLocal.fingerprint ||
@@ -324,35 +314,11 @@ export const make = Effect.gen(function* () {
     return mergeGitStatusParts(local, remote);
   });
 
-  // HEAD first: a HEAD that moves during the status read leaves the status older than the HEAD it
-  // is kept under, which is read again; the other order would keep a stale status under a new HEAD.
-  const readLocal = Effect.fn("VcsStatusBroadcaster.readLocal")(function* (cwd: string) {
-    const head = yield* workflow.readHead(cwd);
-    const local = yield* workflow.localStatus({ cwd });
-    return { head, local } satisfies LocalRead;
-  });
+  const readLocal = (cwd: string) => workflow.localStatus({ cwd });
 
-  /**
-   * The cached status, while HEAD still reads as it did when its local part was read. Another
-   * branch or commit at the same path (a lease's checkout handed on, a checkout switched over ssh)
-   * drops the entry, so nothing read before it is served.
-   */
-  const getCurrentCachedStatus = Effect.fn("VcsStatusBroadcaster.getCurrentCachedStatus")(
-    function* (cwd: string) {
-      const cached = yield* getCachedStatus(cwd);
-      if (!cached?.local) return cached;
-      const head = yield* workflow.readHead(cwd);
-      if (head === cached.head) return cached;
-      yield* Ref.update(cacheRef, (cache) => {
-        if (cache.get(cwd) !== cached) return cache;
-        const nextCache = new Map(cache);
-        nextCache.delete(cwd);
-        return nextCache;
-      });
-      return null;
-    },
-  );
-
+  // A cached status is served without asking git: every git read of a Mate's checkout is an ssh
+  // round trip under the host's session cap. Another checkout at the same path (a lease's handed
+  // on) is told through `forgetStatus`.
   const loadLocalStatus = Effect.fn("VcsStatusBroadcaster.loadLocalStatus")(function* (
     cwd: string,
   ) {
@@ -362,7 +328,7 @@ export const make = Effect.gen(function* () {
   const getOrLoadLocalStatus = Effect.fn("VcsStatusBroadcaster.getOrLoadLocalStatus")(function* (
     cwd: string,
   ) {
-    const cached = yield* getCurrentCachedStatus(cwd);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local) {
       return cached.local.value;
     }
@@ -375,15 +341,13 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.getStatus",
   )(function* (input) {
     const cwd = yield* withFileSystem(normalizeCwd(input.cwd));
-    const cached = yield* getCurrentCachedStatus(cwd);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local && cached.remote) {
       return mergeGitStatusParts(cached.local.value, cached.remote.value);
     }
     const [local, remote] = yield* Effect.all(
       [
-        cached?.local
-          ? Effect.succeed({ head: cached.head ?? null, local: cached.local.value })
-          : readLocal(cwd),
+        cached?.local ? Effect.succeed(cached.local.value) : readLocal(cwd),
         cached?.remote ? Effect.succeed(cached.remote.value) : workflow.remoteStatus({ cwd }),
       ],
       { concurrency: "unbounded" },
