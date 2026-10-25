@@ -165,6 +165,44 @@ function connect(): Promise<NodeNet.Socket | undefined> {
   });
 }
 
+const mebibytes = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+
+/**
+ * A full disk fails PostgreSQL, mkdtemp and vite's cache deep inside a run, and an ENOSPC crash
+ * costs the cluster; refuse before a supervisor starts and say what fills the disk.
+ */
+function refuseFullDisk(home: string) {
+  const floor = Number(process.env["MATE_TEST_PG_MIN_FREE_BYTES"] ?? 1024 ** 3);
+  const disk = NodeFS.statfsSync(home);
+  const free = disk.bavail * disk.bsize;
+  if (free >= floor) return;
+  const parent = NodePath.dirname(home);
+  const sizes = NodeChildProcess.spawnSync(
+    "du",
+    ["-sk", ...NodeFS.readdirSync(parent).map((name) => NodePath.join(parent, name))],
+    { encoding: "utf8" },
+  );
+  const largest = sizes.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [kibibytes, ...path] = line.split("\t");
+      return { name: NodePath.basename(path.join("\t")), bytes: Number(kibibytes) * 1024 };
+    })
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 5)
+    .map((entry) => `${entry.name} (${mebibytes(entry.bytes)})`);
+  const volume = NodeChildProcess.spawnSync("df", ["-P", home], { encoding: "utf8" })
+    .stdout.trim()
+    .split("\n")
+    .at(-1)!
+    .split(/\s+/u)
+    .at(-1)!;
+  throw new Error(
+    `The disk ${volume} holding the PostgreSQL test cluster is full: ${mebibytes(free)} free, below the ${mebibytes(floor)} a run needs. Largest under ${parent}: ${largest.join(", ")}.`,
+  );
+}
+
 interface SupervisorReply {
   readonly url?: string;
   readonly capabilities?: ReadonlyArray<string>;
@@ -189,6 +227,7 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const existing = await connect();
     if (existing) socket = existing;
     else {
+      refuseFullDisk(postgresHome);
       NodeFS.rmSync(socketPath, { force: true });
       const diagnosticsPath = NodePath.join(postgresHome, "supervisor.log");
       const diagnostics = NodeFS.openSync(diagnosticsPath, "w", 0o600);

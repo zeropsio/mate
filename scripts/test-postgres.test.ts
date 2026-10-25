@@ -237,3 +237,31 @@ it("a live postmaster no supervisor recorded keeps running, and the start names 
     NodeFS.rmSync(cluster.root, { recursive: true, force: true });
   }
 });
+
+it("a run whose cluster volume has less free space than the floor is refused before any supervisor starts, naming the volume", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-full-"));
+  const home = NodePath.join(root, "home");
+  NodeFS.writeFileSync(NodePath.join(root, "ballast"), Buffer.alloc(3 * 1024 * 1024));
+  const volume = NodeChildProcess.spawnSync("df", ["-P", root], { encoding: "utf8" })
+    .stdout.trim()
+    .split("\n")
+    .at(-1)!
+    .split(/\s+/u)
+    .at(-1)!;
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const refusal = await acquireTestPostgres().then(
+      () => "",
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toContain(`The disk ${volume} holding the PostgreSQL test cluster is full:`);
+    expect(refusal).toMatch(/ballast \(3\.0 MiB\)/u);
+    expect(NodeFS.existsSync(NodePath.join(home, "supervisor.log"))).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
