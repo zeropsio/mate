@@ -1069,9 +1069,51 @@ describe("a thread's lease", () => {
     ).toBe("appdev");
   });
 
-  /** Two apps of one Mate, each its own repository in HQ. */
+  /** Two apps of one Mate, each its own repository in HQ, both with a change on `feat-x`. */
   const WEB = "https://hq.example/git/g1/appdev";
   const API = "https://hq.example/git/g1/apidev";
+  const webChange = change("mergeable", {
+    number: 7,
+    repository: "appdev",
+    repositoryUrl: WEB,
+    branch: "feat-x",
+  });
+  const apiChange = change("mergeable", {
+    number: 9,
+    repository: "apidev",
+    repositoryUrl: API,
+    branch: "feat-x",
+  });
+  const twoApps = { pullRequests: [webChange, apiChange], merged: [] };
+
+  it("a lease's block reads the Mate's change of the lease's repository on its branch, never another app's change on the same branch", () => {
+    expect(mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: WEB }])).toBe(webChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "apipool-4", [
+        { alias: "apipool-4", pool: "apipool", branch: "feat-x", repo: API },
+      ]),
+    ).toBe(apiChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: `${WEB.toUpperCase()}.git/` }]),
+      "repositories compared as zcp compares them",
+    ).toBe(webChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [
+        { ...LEASE, repo: "https://hq.example/git/g1/docsdev" },
+      ]),
+    ).toBe(undefined);
+  });
+
+  it("a lease that names no repository reads the Mate's newest change on its branch", () => {
+    expect(mateChangeIn(twoApps, "p1", "webpool-3", [LEASE])).toBe(apiChange);
+    const { repositoryUrl: _url, ...unaddressed } = webChange;
+    expect(
+      mateChangeIn({ pullRequests: [unaddressed], merged: [] }, "p1", "webpool-3", [
+        { ...LEASE, repo: API },
+      ]),
+      "a change whose repository's address is not known is matched by its branch",
+    ).toBe(unaddressed);
+  });
 
   /** zcp's leases as the thread last read them: its branch is held on two more pools. */
   const READ = [
