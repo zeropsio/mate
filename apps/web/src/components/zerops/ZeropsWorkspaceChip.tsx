@@ -71,7 +71,11 @@ export function ZeropsWorkspaceChip({
             {chip.words}
           </Badge>
         </PopoverTrigger>
-        <PopoverPopup align="end" width="lg">
+        <PopoverPopup
+          align="end"
+          aria-label={mateName === undefined ? "Workspaces" : `${mateName}'s workspaces`}
+          width="lg"
+        >
           <ZeropsWorkspaceList
             {...conversation}
             canRelease={canRelease}
@@ -83,11 +87,18 @@ export function ZeropsWorkspaceChip({
       {canRelease ? (
         <Popover onOpenChange={setAsking} open={asking}>
           <PopoverTrigger
-            render={<Button data-zerops-workspace-release="" size="sm" variant="ghost" />}
+            render={
+              <Button
+                aria-label={`Release workspace ${lease.alias}`}
+                data-zerops-workspace-release=""
+                size="sm"
+                variant="ghost"
+              />
+            }
           >
             Release
           </PopoverTrigger>
-          <PopoverPopup align="end" width="md">
+          <PopoverPopup align="end" aria-label={`Release workspace ${lease.alias}`} width="md">
             <ReleaseQuestionHost
               {...conversation}
               onDismiss={() => setAsking(false)}
@@ -175,6 +186,7 @@ export function ZeropsWorkspaceList({
               {canRelease ? (
                 <span className="ms-auto">
                   <Button
+                    aria-label={`Release workspace ${workspace.lease.alias}`}
                     data-zerops-workspace-release=""
                     onClick={() => setAsking(workspace)}
                     size="sm"
