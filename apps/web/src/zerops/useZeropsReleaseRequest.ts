@@ -28,6 +28,8 @@ export type ZeropsReleaseRequest = (input: {
   /** The bound conversation, as its turn is sent. */
   readonly conversation: ZeropsReleaseConversation;
   readonly alias: string;
+  /** False for another of the Mate's workspaces, which the conversation is not bound to. */
+  readonly bound?: boolean | undefined;
   /** Archived: brought back (`unarchive`) before the request is sent. */
   readonly archived: boolean;
   readonly unarchive: () => Promise<AtomCommandResult<unknown, unknown>>;
@@ -41,6 +43,7 @@ export function useZeropsReleaseRequest(): ZeropsReleaseRequest {
         turn: zeropsReleaseTurn({
           conversation: input.conversation,
           alias: input.alias,
+          bound: input.bound,
           ids: { commandId: newCommandId(), messageId: newMessageId() },
           createdAt: new Date().toISOString(),
         }),

@@ -148,7 +148,7 @@ export function mateChangeIn(
  * address of HQ's beside it (a repository kept on GitHub, whose name in HQ its address does not
  * say). Only an address beside it under `<HQ>/git/<appId>/` is another repository.
  */
-function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
+export function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
   if (repo === undefined || repo.trim() === "" || address === undefined) return true;
   if (sameZeropsRepo(repo, address)) return true;
   const beside = address.slice(0, address.lastIndexOf("/") + 1).toLowerCase();

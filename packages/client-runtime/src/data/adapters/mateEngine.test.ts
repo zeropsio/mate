@@ -1460,4 +1460,29 @@ describe("a Mate's engine links when its connection comes back", () => {
       r.close();
     }),
   );
+
+  // Review r3-17 (pre-existing): access withheld while the rows waited out a retry; when it came
+  // back, only the conversations were tried again.
+  it.live(
+    "its conversation rows subscribe again the moment the Mate's access comes back, never after a retry's wait",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        r.conversations.holdRows(ENV);
+        yield* settle;
+        yield* r.sendRows(
+          { type: "snapshot", protocol: 1, epoch: 4, rows: [helpersAtWork(10, ["Task 2"])] },
+          { type: "synchronized", epoch: 4 },
+        );
+        yield* Queue.fail(r.rowOpens.at(-1)!, { outcome: "transient", message: "socket closed" });
+        yield* settle;
+        r.deny({ outcome: "access-unverified", message: "Sign in again." });
+        yield* settle;
+        expect(r.rowOpens).toHaveLength(1);
+        r.allow();
+        yield* settle;
+        expect(r.rowOpens).toHaveLength(2);
+        r.close();
+      }),
+  );
 });

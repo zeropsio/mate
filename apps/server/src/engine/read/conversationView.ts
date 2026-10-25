@@ -362,20 +362,59 @@ export interface ConversationList {
   readonly complete: boolean;
 }
 
+const conversationIds = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ readonly conversation_id: string }>`
+    SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation' ORDER BY rowid
+  `;
+  return rows.map((row) => ConversationId.make(row.conversation_id));
+});
+
+/** Every conversation bound to a lease, and whether every conversation's record was read. */
+export interface ConversationLeases {
+  readonly leases: ReadonlyArray<{
+    readonly conversationId: ConversationId;
+    readonly lease: ThreadLease;
+  }>;
+  /** False when a record could not be read: what it holds is not known, never none. */
+  readonly complete: boolean;
+}
+
+/**
+ * The lease each conversation the engine holds a record of is bound to, from its record alone —
+ * never its view, which reads its runs, requests and items besides. One whose record cannot be
+ * read is logged and leaves the list incomplete; the next read tries it again.
+ */
+export const readConversationLeases = Effect.gen(function* () {
+  const conversations = yield* Conversations;
+  const leases: Array<ConversationLeases["leases"][number]> = [];
+  let complete = true;
+  for (const conversationId of yield* conversationIds) {
+    const lease = yield* conversations.state(conversationId).pipe(
+      Effect.map((state) => ({ held: state.lease })),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Mate engine: a conversation's record could not be read", {
+          conversationId,
+          cause,
+        }).pipe(Effect.as(undefined)),
+      ),
+    );
+    if (lease === undefined) complete = false;
+    else if (lease.held != null) leases.push({ conversationId, lease: lease.held });
+  }
+  return { leases, complete } satisfies ConversationLeases;
+});
+
 /**
  * Every conversation the engine holds a record of, the oldest first. One that cannot be read is
  * named as unread (and logged), never dropped silently, and never keeps the others from the list;
  * the next read tries it again.
  */
 export const readConversationViews = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const ids = yield* sql<{ readonly conversation_id: string }>`
-    SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation' ORDER BY rowid
-  `;
+  const ids = yield* conversationIds;
   const views: Array<ConversationView> = [];
   const unread: Array<ConversationId> = [];
-  for (const row of ids) {
-    const id = ConversationId.make(row.conversation_id);
+  for (const id of ids) {
     const view = yield* readConversationView(id).pipe(
       Effect.map((found) => ({ found })),
       Effect.catchCause((cause) =>

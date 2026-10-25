@@ -64,6 +64,7 @@ import {
   productionUrl,
   projectSitesSections,
   projectSitesStatus,
+  readsLeases,
   sitesHoldNothing,
   sitesLinkCount,
   type SitesLink,
@@ -429,7 +430,9 @@ export function SitesPanel({
   );
   // Each Mate's dev pools list its workspaces, as a conversation of the Mate read zcp's leases.
   const leases = useMatesLeases(
-    mates.map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
+    mates
+      .filter((mate) => readsLeases(factsOf(mate)))
+      .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
   );
   const sections = projectSitesSections({
     production: prod,

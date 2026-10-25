@@ -566,6 +566,12 @@ export const ThreadLease = Schema.Struct({
    * none, and in a binding recorded before it did — such a lease's group is its branch's alone.
    */
   repo: Schema.optionalKey(TrimmedNonEmptyString),
+  /**
+   * When zcp acquired it (zcp's `acquiredAt`): a pool hands a released container out again under
+   * the same alias, so the alias read acquired at another time is another lease than the one bound.
+   * Absent where zcp said none, and in a binding recorded before it was kept.
+   */
+  acquiredAt: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type ThreadLease = typeof ThreadLease.Type;
 

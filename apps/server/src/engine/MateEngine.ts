@@ -33,7 +33,11 @@ import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";
 import type { Command } from "./domain/command.ts";
 import type { Domain, OwnerEvent } from "./owners.ts";
 import type { WakeKind } from "./ports.ts";
-import type { ConversationList, ConversationView } from "./read/conversationView.ts";
+import type {
+  ConversationLeases,
+  ConversationList,
+  ConversationView,
+} from "./read/conversationView.ts";
 import type { EngineWireShape } from "./wire/EngineWire.ts";
 
 export {
@@ -50,6 +54,7 @@ export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
 /** A store read or write that failed, as an owner kind's effects meet it. */
 export type { EngineStoreError } from "./store/EngineStore.ts";
 export type {
+  ConversationLeases,
   ConversationList,
   ConversationView,
   ViewCall,
@@ -132,6 +137,11 @@ export interface MateEngineService {
    * whose view could not be read now: a reader never takes an unread one for none.
    */
   readonly conversations: Effect.Effect<ConversationList>;
+  /**
+   * The lease every conversation is bound to, from its record alone (the lifecycle reads it at
+   * every change of zcp's leases), and whether every record was read: never a whole view.
+   */
+  readonly leases: Effect.Effect<ConversationLeases>;
   /** A retained image's conversation and workspace, from its conversation or provider-session id. */
   readonly assetContext: (thread: ThreadId) => Effect.Effect<
     | {

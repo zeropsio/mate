@@ -19,6 +19,18 @@ import {
   readInputString,
 } from "./shared.ts";
 
+/** Whether an address opens a web page: http or https, carrying no credentials. */
+const isWebAddress = (address: string): boolean => {
+  try {
+    const url = new URL(address);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password
+    );
+  } catch {
+    return false;
+  }
+};
+
 /** Humanizes `reason` (e.g. `health_probe_timeout`) into "Health probe timeout". */
 function devServerStepNote(
   card: Extract<ZeropsCardPayload, { kind: "devServer" }>,
@@ -190,12 +202,13 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
     // port's address, as zcp read it from Zerops in this call; a lease, in no
     // topology view, opens the address zcp read on its one server, as a
     // service's card opens the view's.
-    links:
-      card?.leaseUrl !== undefined
-        ? [{ label: "Open", url: card.leaseUrl }]
-        : (card?.servers ?? []).flatMap((server) =>
-            server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
-          ),
+    // An address that is no web address (the envelope's, as it came) opens nothing.
+    links: (card?.leaseUrl !== undefined
+      ? [{ label: "Open", url: card.leaseUrl }]
+      : (card?.servers ?? []).flatMap((server) =>
+          server.url === undefined ? [] : [{ label: serverLabel(server), url: server.url }],
+        )
+    ).filter((link) => isWebAddress(link.url)),
     target: { hostname: subject },
     ...(phase === "failed" && decoded.document?.code === "INVALID_PARAMETER"
       ? { refused: true as const }

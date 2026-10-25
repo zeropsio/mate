@@ -1300,7 +1300,9 @@ export function engineCardPagingOf(
   /**
    * The stretch through the end, back through every run held whole to the first, from the end,
    * not held from its start; a run whose end is not held (read from its start, or not at all) stops
-   * it at the start of the run after it, and is the one it pages back into, from its end.
+   * it at the start of the run after it, and is the one it pages back into, from its end. Read back
+   * from its end, it starts no later than the run after it: a person's message queued behind it is
+   * timed inside it, and stays as its pages are read.
    */
   const fromEnd = (members: ReadonlyArray<RunRecord>): Stretch => {
     const at = members.findLastIndex((member) => {
@@ -1317,15 +1319,18 @@ export function engineCardPagingOf(
         through: null,
       };
     const next = members[at + 1];
+    const nextStart = next === undefined ? null : startOf(next);
+    const pageStart =
+      span.from === null ? null : timeAt(gap.id, span.from, gap.endedAt ?? gap.queuedAt);
     return {
       pageRuns: { earlier: gap.id, later: null },
       holdsLines: true,
       since:
-        span.from !== null
-          ? timeAt(gap.id, span.from, gap.endedAt ?? gap.queuedAt)
-          : next === undefined
-            ? null
-            : startOf(next),
+        pageStart === null
+          ? nextStart
+          : nextStart !== null && Date.parse(nextStart) < Date.parse(pageStart)
+            ? nextStart
+            : pageStart,
       through: null,
     };
   };
@@ -1334,15 +1339,16 @@ export function engineCardPagingOf(
     const card = cardOf(span.runId);
     if (card === null || cards[card] !== undefined) continue;
     // The card's runs in the order it draws them. Its scroll holds one stretch: from its start,
-    // unless its last run's newest lines are held — a live run's, from the window's tail and every
-    // change since, or a run's whose span holds its end — when it reaches its end. From its start,
-    // a live card whose earlier run was not read yet held none of its work (Filip's card, Aleš,
-    // 2026-10-25), and lost what it held as its live run settled.
+    // unless its last run's newest lines are held — a run with no span, held whole as it came
+    // (any run that started after the conversation opened), live or settled, or a run's whose
+    // span holds its end — when it reaches its end. From its start, a live card whose earlier run
+    // was not read yet held none of its work (Filip's card, Aleš, 2026-10-25), and lost what it
+    // held as its live run settled.
     const members = runs.filter((member) => cardOf(member.id) === card);
     const last = members.at(-1);
     if (last === undefined) continue;
     const lastSpan = spanOf.get(last.id);
-    const endHeld = lastSpan === undefined ? last.end === null : lastSpan.to === null;
+    const endHeld = lastSpan === undefined || lastSpan.to === null;
     const stretch = endHeld ? fromEnd(members) : fromStart(members);
     let hasWork = false;
     for (const member of members) {

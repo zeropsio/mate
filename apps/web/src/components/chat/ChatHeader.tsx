@@ -91,6 +91,11 @@ interface ChatHeaderProps {
   conversationLoading?: boolean;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
+  /**
+   * The viewer only reads along (a colleague's Mate, or a member without operator rights): it
+   * sends the conversation's agent nothing, so nothing here asks it to act.
+   */
+  readAlong?: boolean;
   activeProjectName: string | undefined;
   activeProjectCwd: string | null;
   activeProjectFaviconPath: string | null;
@@ -209,6 +214,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadTask,
   conversationLoading = false,
   isServerThread,
+  readAlong = false,
   activeProjectName,
   activeProjectCwd,
   activeProjectFaviconPath,
@@ -687,6 +693,7 @@ export const ChatHeader = memo(function ChatHeader({
             {activeThreadShell?.lease == null ? null : (
               <span className="hidden shrink-0 @3xl/header-actions:block">
                 <ZeropsWorkspaceChip
+                  canRelease={!readAlong}
                   environmentId={activeThreadEnvironmentId}
                   latestTurn={activeThreadShell.latestTurn}
                   lease={activeThreadShell.lease}

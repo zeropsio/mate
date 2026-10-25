@@ -65,6 +65,8 @@ export interface ZeropsNextStepFix {
   readonly mateProjectId: string;
   /** The branch its work is on: the conversation bound to it is the one asked. */
   readonly branch?: string | undefined;
+  /** Its repository's address: of conversations bound to its branch, its own is asked. */
+  readonly repositoryUrl?: string | undefined;
   readonly problem: FixProblem;
 }
 
@@ -103,6 +105,25 @@ export function composerReviewId(target: ZeropsNextStepStripModel["target"]): st
   return JSON.stringify([target.groupId, target.repository, target.number]);
 }
 
+/**
+ * What a dismissal of the strip puts away: its leading change, and where it lists several, each
+ * of them and its row's word — so another change waiting beside them, or one merging again,
+ * brings it back. A strip of one change is that change's (`composerReviewId`).
+ */
+export function composerStripKey(
+  strip: Pick<ZeropsNextStepStripModel, "target" | "lines">,
+): string {
+  const lines = strip.lines ?? [];
+  if (lines.length === 0) return composerReviewId(strip.target);
+  const { groupId, repository, number } = strip.target;
+  return JSON.stringify([
+    groupId,
+    repository,
+    number,
+    lines.map((line) => [line.target.repository, line.target.number, line.verdict ?? null]),
+  ]);
+}
+
 /** Source projection alone supplies the strip; preferences can only dismiss its identity. */
 export function zeropsComposerTop(input: {
   readonly nextStep: ZeropsMateNextStep;
@@ -112,44 +133,52 @@ export function zeropsComposerTop(input: {
   const { nextStep, dismissed, pending } = input;
   const held = pending.question || pending.approval || pending.working;
   if (nextStep.kind === "unknown") return { strip: null, reserved: !held };
-  if (held || nextStep.kind === "none" || dismissed === composerReviewId(nextStep.target))
-    return { strip: null, reserved: false };
+  if (held || nextStep.kind === "none") return { strip: null, reserved: false };
+  const strip = composerStrip(nextStep);
+  return dismissed === composerStripKey(strip)
+    ? { strip: null, reserved: false }
+    : { strip, reserved: false };
+}
+
+function composerStrip(
+  nextStep: Extract<ZeropsMateNextStep, { kind: "review" }>,
+): ZeropsNextStepStripModel {
   return {
-    reserved: false,
-    strip: {
-      title: nextStep.step.title,
-      detail: nextStep.step.detail,
-      tint: nextStep.tint ?? "slate",
-      shape: nextStep.shape,
-      target: nextStep.target,
-      ...(nextStep.step.lines.length === 0
-        ? {}
-        : {
-            lines: nextStep.step.lines.map((line): ZeropsNextStepLine => {
-              const fix = line.verdict?.fix;
-              return {
-                label: line.label,
-                target: {
-                  kind: "change",
-                  groupId: nextStep.target.groupId,
-                  repository: line.pull.repository,
-                  number: line.pull.number,
-                },
-                ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
-                ...(fix === undefined
-                  ? {}
-                  : {
-                      fix: {
-                        ...fix,
-                        mateProjectId: line.pull.mateProjectId,
-                        ...(line.pull.branch === undefined ? {} : { branch: line.pull.branch }),
-                      },
-                    }),
-              };
-            }),
+    title: nextStep.step.title,
+    detail: nextStep.step.detail,
+    tint: nextStep.tint ?? "slate",
+    shape: nextStep.shape,
+    target: nextStep.target,
+    ...(nextStep.step.lines.length === 0
+      ? {}
+      : {
+          lines: nextStep.step.lines.map((line): ZeropsNextStepLine => {
+            const fix = line.verdict?.fix;
+            return {
+              label: line.label,
+              target: {
+                kind: "change",
+                groupId: nextStep.target.groupId,
+                repository: line.pull.repository,
+                number: line.pull.number,
+              },
+              ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
+              ...(fix === undefined
+                ? {}
+                : {
+                    fix: {
+                      ...fix,
+                      mateProjectId: line.pull.mateProjectId,
+                      ...(line.pull.branch === undefined ? {} : { branch: line.pull.branch }),
+                      ...(line.pull.repositoryUrl === undefined
+                        ? {}
+                        : { repositoryUrl: line.pull.repositoryUrl }),
+                    },
+                  }),
+            };
           }),
-      ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
-    },
+        }),
+    ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
   };
 }
 
@@ -313,10 +342,10 @@ export function useZeropsNextStepStrip(
   const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
   const [, redraw] = useReducer((count: number) => count + 1, 0);
   const dismiss = useCallback(
-    (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
+    (strip: ZeropsNextStepStripModel, from: HTMLElement) => {
       if (threadKey === null) return;
       foldAway(from.closest<HTMLElement>("[data-composer-top]"), () => {
-        dismissComposerReview(threadKey, composerReviewId(target));
+        dismissComposerReview(threadKey, composerStripKey(strip));
         redraw();
       });
     },
@@ -353,7 +382,9 @@ export function useZeropsNextStepStrip(
         onMore: (groupId: string) => {
           void navigate({ to: "/group/$groupId/flow", params: { groupId } });
         },
-        onDismiss: dismiss,
+        onDismiss: (_target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
+          dismiss(strip, from);
+        },
         onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
           openReview(target, { from });
         },
@@ -395,7 +426,10 @@ function ZeropsNextStepStripWithFix(
     <ZeropsNextStepStrip
       {...props}
       onFix={(fix) => {
-        askMateToFix(fix.mateProjectId, fix.problem, { branch: fix.branch });
+        askMateToFix(fix.mateProjectId, fix.problem, {
+          branch: fix.branch,
+          repositoryUrl: fix.repositoryUrl,
+        });
       }}
     />
   );

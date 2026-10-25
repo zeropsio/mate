@@ -689,6 +689,21 @@ describe("the release request a yes sends", () => {
     });
   });
 
+  // Review r3-14: the chip's list offers a Release on each of the Mate's workspaces; one this
+  // conversation is not bound to is no workspace of "this conversation's".
+  it("asks for a workspace the conversation is not bound to by its name alone, never as the conversation's", () => {
+    const text = zeropsReleaseTurn({
+      conversation,
+      alias: "webpool-5",
+      bound: false,
+      ids,
+      createdAt: hours(0),
+    }).message.text;
+    expect(text).toContain("zerops_lease action=release lease=webpool-5");
+    expect(text).not.toContain("this conversation's");
+    expect(turn().message.text).toContain("this conversation's");
+  });
+
   it("is a turn that acts even in a conversation set to plan, since the person asked for the release", () => {
     // The engine keeps no conversation-wide mode: the mode rides each message, so this turn alone
     // runs in the default mode and the conversation's next message is planned as before.

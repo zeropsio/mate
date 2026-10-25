@@ -1236,24 +1236,53 @@ describe("an engine card not held whole, as its worked line and its scroll read 
       });
     });
 
+    // Review r3-16: the person's message is timed at its queueing, inside the run before it. A
+    // page read back from that run's end starts the stretch at its first line, after the message,
+    // so the message the person sent vanished as they scrolled up.
+    it.each([
+      { name: "live", run: working },
+      { name: "settled", run: queued({ endedAt: AT + 40_000 }) },
+    ])(
+      "keeps the queued message as it pages back into the run before it, its run $name",
+      ({ run }) => {
+        const paging = engineCardPagingOfRecords(key, {
+          runs: [worked, run],
+          items: [...held, callItem(run1, 1_650, { at: AT + 9_000 }), said, ...tail],
+          spans: [{ runId: run1, from: 1_650, to: null, reading: null }],
+        });
+        expect(paging[run1]).toMatchObject({
+          pageRuns: { earlier: run1, later: null },
+          holdsLines: true,
+          since: iso(AT + 5_000),
+          through: null,
+        });
+      },
+    );
+
     // Catches a card emptied under the person reading it: its live run, read back to its start,
-    // settled while the run before it was still not read.
+    // settled while the run before it was still not read. A run that started after the
+    // conversation opened (any new turn) has no span of its own: it was held whole as it came.
     it.each([
       {
         name: "holding its newest lines",
-        span: { runId: run2, from: 3_661, to: null, reading: null },
+        spans: [{ runId: run2, from: 3_661, to: null, reading: null }],
         expected: { pageRuns: { earlier: run2, later: null }, since: iso(AT + 20_000) },
       },
       {
         name: "read back to its start",
-        span: { runId: run2, from: null, to: null, reading: null },
+        spans: [{ runId: run2, from: null, to: null, reading: null }],
         expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
       },
-    ])("keeps what it holds as its live run settles, $name", ({ span, expected }) => {
+      {
+        name: "held whole from its first line",
+        spans: [],
+        expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
+      },
+    ])("keeps what it holds as its live run settles, $name", ({ spans, expected }) => {
       const paging = engineCardPagingOfRecords(key, {
         runs: [worked, queued({ endedAt: AT + 40_000 })],
         items: [...held, said, ...tail],
-        spans: [notRead, span],
+        spans: [notRead, ...spans],
       });
       expect(paging[run1]).toMatchObject({ ...expected, holdsLines: true, through: null });
     });

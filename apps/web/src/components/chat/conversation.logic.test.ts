@@ -1733,8 +1733,8 @@ describe("browser checks", () => {
   // finish; a looping one never does, so the evaluate ran into
   // agent-browser's CDP timeout while the page stood loaded and drawn — and
   // the result card said the page broke and asked Kara to fix it
-  // (check-own-script, 2026-10-25). An `eval` is the check's own script: its
-  // failure says nothing the page did.
+  // (check-own-script, 2026-10-25). A script that never settled says
+  // nothing the page did; one that threw may be the check's assertion.
   it.each([
     {
       name: "a script that never settled",
@@ -1747,15 +1747,6 @@ describe("browser checks", () => {
         errorKind: "wedge",
       },
       note: "the check's own script failed: CDP command timed out: Runtime.evaluate",
-    },
-    {
-      name: "a script that threw",
-      step: {
-        command: ["eval", "window.__store.count"],
-        error: "TypeError: Cannot read properties of undefined (reading 'count')",
-        errorKind: "other",
-      },
-      note: "the check's own script failed: TypeError: Cannot read properties of undefined (reading 'count')",
     },
     {
       name: "a script zcp found never settled on a page that still answered",
@@ -1806,6 +1797,46 @@ describe("browser checks", () => {
         errorKind: "frame-detached",
       },
       words: "couldn't click #buy: Frame was detached",
+    },
+    // An `eval` the agent asserts with throws when the page is wrong: muted,
+    // the check read passed and its "Ask to fix it" went away (review r3-4).
+    {
+      name: "a script that threw",
+      step: {
+        command: ["eval", "window.__store.count"],
+        error: "TypeError: Cannot read properties of undefined (reading 'count')",
+        errorKind: "other",
+      },
+      words:
+        "couldn't eval window.__store.count: TypeError: Cannot read properties of undefined (reading 'count')",
+    },
+    {
+      name: "a script asserting what the page shows that threw",
+      step: {
+        command: ["eval", "if (!document.querySelector('h1')) throw new Error('blank page')"],
+        error: "Error: blank page",
+        errorKind: "other",
+      },
+      words:
+        "couldn't eval if (!document.querySelector('h1')) throw new Error('blank page'): Error: blank page",
+    },
+    {
+      name: "a script whose selector the page does not have",
+      step: {
+        command: ["eval", "document.querySelector('#stat').textContent"],
+        error: "Element not found: #stat",
+        errorKind: "selector-not-found",
+      },
+      words: "couldn't eval document.querySelector('#stat').textContent: Element not found: #stat",
+    },
+    {
+      name: "a script that timed out",
+      step: {
+        command: ["eval", "fetch('/api/health').then((r) => r.status)"],
+        error: "Timeout 10000ms exceeded",
+        errorKind: "timeout",
+      },
+      words: "couldn't eval fetch('/api/health').then((r) => r.status): Timeout 10000ms exceeded",
     },
   ])(
     "A browser step that failed on the page still counts as a failed check, in the browser's own words: $name",
@@ -4535,7 +4566,7 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
         1,
         "/",
         [
-          failed(SETTLED, "Timeout 5000ms exceeded", "timeout"),
+          failed(SETTLED, HUNG, "script-timeout"),
           failed(["wait", "--text", "Mate test"], "Timeout 25000ms exceeded", "timeout"),
           ...TAIL,
         ],

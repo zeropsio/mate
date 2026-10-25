@@ -38,10 +38,13 @@ interface BoundConversation {
 
 export function ZeropsWorkspaceChip({
   mateName,
+  canRelease = true,
   ...conversation
 }: BoundConversation & {
   /** The Mate whose conversation it is, by name; none where the conversation is no Mate's. */
   readonly mateName?: string | undefined;
+  /** False for a person who only reads along: they see the workspaces, and release none. */
+  readonly canRelease?: boolean | undefined;
 }) {
   const { environmentId, threadId, lease, latestTurn } = conversation;
   const chip = workspaceChipOf({
@@ -68,28 +71,42 @@ export function ZeropsWorkspaceChip({
             {chip.words}
           </Badge>
         </PopoverTrigger>
-        <PopoverPopup align="end" width="lg">
+        <PopoverPopup
+          align="end"
+          aria-label={mateName === undefined ? "Workspaces" : `${mateName}'s workspaces`}
+          width="lg"
+        >
           <ZeropsWorkspaceList
             {...conversation}
+            canRelease={canRelease}
             mateName={mateName}
             onClose={() => setListing(false)}
           />
         </PopoverPopup>
       </Popover>
-      <Popover onOpenChange={setAsking} open={asking}>
-        <PopoverTrigger
-          render={<Button data-zerops-workspace-release="" size="sm" variant="ghost" />}
-        >
-          Release
-        </PopoverTrigger>
-        <PopoverPopup align="end" width="md">
-          <ReleaseQuestionHost
-            {...conversation}
-            onDismiss={() => setAsking(false)}
-            onDone={() => setAsking(false)}
-          />
-        </PopoverPopup>
-      </Popover>
+      {canRelease ? (
+        <Popover onOpenChange={setAsking} open={asking}>
+          <PopoverTrigger
+            render={
+              <Button
+                aria-label={`Release workspace ${lease.alias}`}
+                data-zerops-workspace-release=""
+                size="sm"
+                variant="ghost"
+              />
+            }
+          >
+            Release
+          </PopoverTrigger>
+          <PopoverPopup align="end" aria-label={`Release workspace ${lease.alias}`} width="md">
+            <ReleaseQuestionHost
+              {...conversation}
+              onDismiss={() => setAsking(false)}
+              onDone={() => setAsking(false)}
+            />
+          </PopoverPopup>
+        </Popover>
+      ) : null}
     </span>
   );
 }
@@ -110,10 +127,13 @@ const stateDot = (workspace: MateWorkspace): ChipDot => {
 export function ZeropsWorkspaceList({
   mateName,
   onClose,
+  canRelease = true,
   ...conversation
 }: BoundConversation & {
   readonly mateName: string | undefined;
   readonly onClose: () => void;
+  /** False for a person who only reads along: no row offers its Release. */
+  readonly canRelease?: boolean | undefined;
 }) {
   const { environmentId, threadId, lease, latestTurn } = conversation;
   const workspaces = mateWorkspaceList({
@@ -126,6 +146,7 @@ export function ZeropsWorkspaceList({
   if (asking !== undefined) {
     return (
       <ReleaseQuestionHost
+        bound={asking.bound}
         environmentId={environmentId}
         latestTurn={asking.bound ? latestTurn : null}
         lease={asking.lease}
@@ -163,16 +184,19 @@ export function ZeropsWorkspaceList({
                 </span>
               )}
               {workspace.bound ? <Badge>this chat</Badge> : null}
-              <span className="ms-auto">
-                <Button
-                  data-zerops-workspace-release=""
-                  onClick={() => setAsking(workspace)}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Release
-                </Button>
-              </span>
+              {canRelease ? (
+                <span className="ms-auto">
+                  <Button
+                    aria-label={`Release workspace ${workspace.lease.alias}`}
+                    data-zerops-workspace-release=""
+                    onClick={() => setAsking(workspace)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Release
+                  </Button>
+                </span>
+              ) : null}
             </div>
             {workspace.notAnswering === undefined ? null : (
               <p className="ps-4 text-muted-foreground text-xs">{workspace.notAnswering}</p>
@@ -235,8 +259,11 @@ export function ZeropsReleaseQuestion({
 function ReleaseQuestionHost({
   onDismiss,
   onDone,
+  bound = true,
   ...conversation
 }: BoundConversation & {
+  /** False for another of the Mate's workspaces, which the conversation is not bound to. */
+  readonly bound?: boolean;
   /** Not now. */
   readonly onDismiss: () => void;
   /** The request was sent, or failed to be. */
@@ -258,6 +285,7 @@ function ReleaseQuestionHost({
       threadRef,
       conversation: shell,
       alias: lease.alias,
+      bound,
       archived: shell.archivedAt !== null,
       unarchive: () => unarchiveThread(threadRef),
     }).finally(onDone);

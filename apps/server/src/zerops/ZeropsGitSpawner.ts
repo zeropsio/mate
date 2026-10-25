@@ -29,8 +29,6 @@
  *
  * @module ZeropsGitSpawner
  */
-import * as Clock from "effect/Clock";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
@@ -76,14 +74,6 @@ export const MAX_GIT_SESSIONS_PER_HOST = 4;
 
 /** The exit code ssh reserves for its own transport failures. */
 const SSH_TRANSPORT_EXIT_CODE = 255;
-
-/**
- * How long a re-read of the mount table answers for a workspace path the cached read held no mount
- * at. One status read names such a path in a handful of git spawns in a row, and every re-read
- * takes the gate the repository list waits on; a mount made after a re-read is seen by the first
- * spawn after this window.
- */
-export const UNMOUNTED_RECHECK = Duration.seconds(1);
 
 /**
  * The only environment variables that cross the wire.
@@ -205,22 +195,57 @@ const gitLocation = (
   return { location, args };
 };
 
-/** The places under the workspace root a git command names: its location and path-valued options. */
+/** Whether a path names its place as given: no `.` or `..` segment, and no empty one inside it. */
+const isPlainPath = (path: string): boolean =>
+  path
+    .split("/")
+    .slice(1)
+    .every(
+      (segment, index, segments) =>
+        segment !== "." && segment !== ".." && (segment !== "" || index === segments.length - 1),
+    );
+
+/** An absolute path with its `.`, `..` and empty segments resolved as text. */
+const lexicallyResolved = (path: string): string => {
+  const segments: Array<string> = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return `/${segments.join("/")}`;
+};
+
+/** Whether a path lies under the workspace root, as given or once its `.` and `..` are resolved. */
+const underWorkspaceRoot = (path: string): boolean =>
+  [path, lexicallyResolved(path)].some((candidate) =>
+    candidate.startsWith(`${ZEROPS_WORKSPACE_ROOT}/`),
+  );
+
+/**
+ * The places under the workspace root a git command names: its location and path-valued options,
+ * a relative option resolved against the location as git resolves it. As given: whether one is
+ * under a mount is decided only for a plain one (`isPlainPath`).
+ */
 const remoteLocationsOf = (command: ChildProcess.StandardCommand): ReadonlyArray<string> => {
   if (command.command !== "git") return [];
   const { location } = gitLocation(command);
+  const resolved = (value: string): ReadonlyArray<string> =>
+    value.startsWith("/") ? [value] : location === undefined ? [] : [`${location}/${value}`];
   return [
     ...(location === undefined ? [] : [location]),
     ...Object.entries(command.options.env ?? {}).flatMap(([key, value]) =>
-      PATH_VALUED_ENV.has(key) && value !== undefined ? [value] : [],
+      PATH_VALUED_ENV.has(key) && value !== undefined && value !== "" ? resolved(value) : [],
     ),
-    ...command.args.filter((token, i) => PATH_VALUED_FLAGS.has(command.args[i - 1] ?? "")),
+    ...command.args.flatMap((token, i) =>
+      PATH_VALUED_FLAGS.has(command.args[i - 1] ?? "") ? resolved(token) : [],
+    ),
     ...command.args.flatMap((token) =>
       [...PATH_VALUED_FLAGS].flatMap((flag) =>
-        token.startsWith(`${flag}=`) ? [token.slice(flag.length + 1)] : [],
+        token.startsWith(`${flag}=`) ? resolved(token.slice(flag.length + 1)) : [],
       ),
     ),
-  ].filter((candidate) => candidate.startsWith("/var/www/"));
+  ].filter(underWorkspaceRoot);
 };
 
 /**
@@ -426,20 +451,6 @@ export const makeZeropsGitSpawner = (
     return created;
   };
 
-  // The last re-read of the mount table, and when it began: within UNMOUNTED_RECHECK it answers
-  // for every path no cached read held a mount at.
-  let recheck: { readonly at: number; readonly read: ZeropsRepositories } | undefined;
-  const reread = (refresh: Effect.Effect<ZeropsRepositories>) =>
-    Effect.gen(function* () {
-      const at = yield* Clock.currentTimeMillis;
-      if (recheck !== undefined && at - recheck.at < Duration.toMillis(UNMOUNTED_RECHECK)) {
-        return recheck.read;
-      }
-      const read = yield* refresh;
-      recheck = { at, read };
-      return read;
-    });
-
   const spawn: ChildProcessSpawner.ChildProcessSpawner["Service"]["spawn"] = (command) =>
     Effect.gen(function* () {
       if (command._tag === "PipedCommand" && mentionsRemoteLocation(command)) {
@@ -466,18 +477,21 @@ export const makeZeropsGitSpawner = (
       if (invocation === undefined) {
         const mentioned = remoteLocationsOf(command);
         if (mentioned.length === 0) return yield* options.inner.spawn(command);
-        // Read again: what the cached read holds no mount at may be one mounted since.
-        const fresh = options.refresh === undefined ? repositories : yield* reread(options.refresh);
+        // Read again, every time: what the cached read holds no mount at may be one mounted since,
+        // and only a read of the mount table taken for this spawn says it is not one now.
+        const fresh = options.refresh === undefined ? repositories : yield* options.refresh;
         const mounted = fresh._tag === "available" ? fresh.repositories : [];
         invocation = rewriteGitSpawn(command, mounted);
         if (invocation === undefined) {
           // A place no mount holds, read whole, is this container's own disk (or nothing): git
           // there touches no remote checkout, and answers as it does anywhere — no repository.
-          // An unread mount table, an attachment it cannot identify, or a path it names in a
-          // mount still refuses: git must never run against a mount.
+          // An unread mount table, an attachment it cannot identify, a path it names in a mount,
+          // or one named through `.`, `..` or `//` (a prefix says nothing of where that leads)
+          // still refuses: git must never run against a mount.
           const ownDisk =
             fresh._tag === "available" &&
             (fresh.limitations?.length ?? 0) === 0 &&
+            mentioned.every(isPlainPath) &&
             !mentioned.some((path) =>
               [...mounted, ...known].some((repository) => isUnderMount(path, repository)),
             );

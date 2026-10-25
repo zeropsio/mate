@@ -357,10 +357,12 @@ export const ZEROPS_RELEASE_QUESTION = (alias: string): string =>
 
 /**
  * The message a yes sends into the bound conversation: its agent releases the lease with zcp's own
- * tool, whose guard refuses unpushed work; it is never asked to force. The owner approves its words.
+ * tool, whose guard refuses unpushed work; it is never asked to force. Another of the Mate's
+ * workspaces, which the conversation is not bound to (`bound` false), is named alone. The owner
+ * approves its words.
  */
-export const ZEROPS_RELEASE_REQUEST = (alias: string): string =>
-  `Please release this conversation's Zerops workspace \`${alias}\` with zerops_lease action=release lease=${alias}. If it has unpushed work, stop and tell me instead of forcing.`;
+export const ZEROPS_RELEASE_REQUEST = (alias: string, bound = true): string =>
+  `Please release ${bound ? "this conversation's " : ""}Zerops workspace \`${alias}\` with zerops_lease action=release lease=${alias}. If it has unpushed work, stop and tell me instead of forcing.`;
 
 /** Whether to release a bound conversation's workspace, as the person is asked it. */
 export interface ZeropsReleaseAsk {
@@ -419,6 +421,8 @@ export interface ZeropsReleaseConversation {
 export const zeropsReleaseTurn = (input: {
   readonly conversation: ZeropsReleaseConversation;
   readonly alias: string;
+  /** False for another of the Mate's workspaces, which the conversation is not bound to. */
+  readonly bound?: boolean | undefined;
   readonly ids: { readonly commandId: CommandId; readonly messageId: MessageId };
   readonly createdAt: string;
 }): StartThreadTurnInput => ({
@@ -427,7 +431,7 @@ export const zeropsReleaseTurn = (input: {
   message: {
     messageId: input.ids.messageId,
     role: "user",
-    text: ZEROPS_RELEASE_REQUEST(input.alias),
+    text: ZEROPS_RELEASE_REQUEST(input.alias, input.bound ?? true),
     attachments: [],
   },
   modelSelection: input.conversation.modelSelection,

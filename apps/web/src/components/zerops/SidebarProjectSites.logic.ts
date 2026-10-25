@@ -31,6 +31,7 @@ import {
   type ChipMenuStop,
   type ProductionChip,
 } from "./SidebarProductionChip.logic";
+import { isServiceBrowserUrl } from "../../zerops/serviceBrowserPolicy";
 import type { HeadingLanding, HeadingLineInput } from "./SidebarHeadingLine.logic";
 import { routeMenuEntries } from "./ZeropsPublicRoutes.logic";
 
@@ -238,6 +239,13 @@ const ROLE_ORDER: ReadonlyArray<SitesLinkRole | undefined> = ["dev", "preview", 
 /** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
 const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.endsWith("dev");
 
+/**
+ * Whether a Sites list reads a Mate's leases: only a dev pool's workspaces come from them, so a
+ * Mate whose services listing names no pool (or is not read yet) holds no lifecycle feed open.
+ */
+export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
+  (mate.pools ?? []).length > 0;
+
 /** A Mate's dev pools: those its services listing names, and every pool a lease is of. */
 const poolsOf = (mate: SitesMateFacts): ReadonlySet<string> =>
   new Set([...(mate.pools ?? []), ...(mate.leases ?? []).map((lease) => lease.pool)]);
@@ -288,7 +296,7 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u,
  * name order. A free or warm slot is no lease and never shows; nor does one zcp no longer holds.
  * A row says its preview server's status and opens its preview (the server zcp read with an
  * address); a parked lease's container is stopped, so it says parked and opens nothing; one with
- * no preview read says so. None while the leases are not read.
+ * no preview read, or whose address is no web address, says so. None while the leases are not read.
  */
 function mateWorkspaces(mate: SitesMateFacts): ReadonlyArray<SitesWorkspace> {
   const held = (mate.leases ?? []).filter((lease) => isZeropsLeaseHeld(lease.state));
@@ -300,7 +308,9 @@ function mateWorkspaces(mate: SitesMateFacts): ReadonlyArray<SitesWorkspace> {
   return held
     .map((lease): SitesWorkspace => {
       const name = checkoutLabel(lease.alias, named);
-      const preview = (lease.devServers ?? []).find((server) => server.url !== undefined);
+      const preview = (lease.devServers ?? []).find(
+        (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
+      );
       const base = {
         key: `workspace:${lease.alias}`,
         name,

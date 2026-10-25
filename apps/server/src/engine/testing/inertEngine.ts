@@ -49,6 +49,7 @@ export const unservedWire: EngineWireShape = {
 export const inertMateEngine: MateEngineService = {
   start: () => Effect.void,
   conversations: Effect.succeed({ views: [], unread: [], complete: true }),
+  leases: Effect.succeed({ leases: [], complete: true }),
   conversation: () => Effect.succeed(undefined),
   assetContext: () => Effect.succeed(undefined),
   changes: Stream.empty,

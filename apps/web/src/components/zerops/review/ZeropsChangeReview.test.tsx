@@ -881,7 +881,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
               what: "Change #1 is behind main",
               ask: "Merge main into it, check it still works, and deliver it again.",
             },
-            { branch: "badge" },
+            { branch: "badge", repositoryUrl: "https://hq.example.test/git/group-orchard/apidev" },
           ],
         ]);
       },

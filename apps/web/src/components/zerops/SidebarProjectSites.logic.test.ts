@@ -11,6 +11,7 @@ import {
   productionUrl,
   projectSitesSections,
   projectSitesStatus,
+  readsLeases,
   sitesLinkCount,
   type SitesLease,
   type SitesMateFacts,
@@ -417,6 +418,16 @@ describe("a Mate's dev pools", () => {
     {
       title: "no preview yet, where none of its servers has an address",
       given: lease("webpool-3", { devServers: [{ ...server("running"), port: undefined }] }),
+      word: "no preview yet",
+      dot: "off",
+      url: undefined,
+    },
+    // Review r4-13: an envelope's address becomes a link's href as it is.
+    {
+      title: "no preview yet, where its server's address is no web address",
+      given: lease("webpool-3", {
+        devServers: [server("running", "javascript:alert(document.cookie)")],
+      }),
       word: "no preview yet",
       dot: "off",
       url: undefined,
@@ -860,4 +871,16 @@ it("a calm Git stage does not hide a failed Zerops production", () => {
   });
   expect(shown?.word).toBe("Release failed");
   expect(shown?.section).toBe("production");
+});
+
+// Review r3-13: opening Sites held a lifecycle feed open for every Mate, pool or not, while the
+// popover stayed open; only a dev pool's workspaces come from a Mate's leases.
+describe("the Mates whose leases a Sites list reads", () => {
+  it.each([
+    { name: "a Mate whose listing names a dev pool", pools: ["webpool"], reads: true },
+    { name: "a Mate with no dev pool", pools: [], reads: false },
+    { name: "a Mate whose listing is not read yet", pools: undefined, reads: false },
+  ])("reads the leases of $name: $reads", ({ pools, reads }) => {
+    expect(readsLeases({ pools })).toBe(reads);
+  });
 });

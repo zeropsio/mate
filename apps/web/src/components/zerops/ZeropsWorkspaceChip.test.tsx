@@ -245,3 +245,85 @@ describe("the Mate's workspaces the chip lists", () => {
     expect(feeds.asked, "the conversation's own lifecycle").toContainEqual([ENVIRONMENT, THREAD]);
   });
 });
+
+// Review r3-10: a colleague reading along, or a member without operator rights, cannot send the
+// conversation's agent anything; a Release would only fail, or reach the owner's agent.
+describe("the workspace chip of a person who only reads along", () => {
+  beforeEach(() => {
+    feeds.lifecycle = undefined;
+    feeds.asked = [];
+  });
+
+  it("A person who only reads along sees the workspaces but is offered no Release", () => {
+    feeds.lifecycle = lifecycleReading([
+      readLease(3, { fileCount: 0, unpushedCommits: 0 }),
+      parkedLease,
+    ]);
+    const chipHtml = renderToStaticMarkup(
+      <ZeropsWorkspaceChip
+        canRelease={false}
+        environmentId={ENVIRONMENT}
+        latestTurn={turnAt(hoursAgo(5))}
+        lease={LEASE}
+        mateName="Kara"
+        threadId={THREAD}
+      />,
+    );
+    expect(chipHtml).toContain("webpool · feat-x · last active 3 h ago · all pushed · 1 more");
+    expect(chipHtml).not.toContain("data-zerops-workspace-release");
+    const listHtml = renderToStaticMarkup(
+      <ZeropsWorkspaceList
+        canRelease={false}
+        environmentId={ENVIRONMENT}
+        latestTurn={turnAt(hoursAgo(5))}
+        lease={LEASE}
+        mateName="Kara"
+        onClose={() => {}}
+        threadId={THREAD}
+      />,
+    );
+    expect(listHtml).toContain("Kara&#x27;s workspaces");
+    expect(listHtml).toContain('data-zerops-workspace="webpool-5"');
+    expect(listHtml).not.toContain("data-zerops-workspace-release");
+  });
+});
+
+// Review r3-15: a list of buttons all named "Release" tells a screen reader nothing of which
+// workspace each one releases.
+describe("the workspace chip's Release, as a screen reader names it", () => {
+  beforeEach(() => {
+    feeds.lifecycle = undefined;
+    feeds.asked = [];
+  });
+
+  it("Every Release is named by the workspace it releases", () => {
+    feeds.lifecycle = lifecycleReading([
+      readLease(3, { fileCount: 0, unpushedCommits: 0 }),
+      parkedLease,
+      silentLease,
+    ]);
+    const releases = (html: string) =>
+      [...html.matchAll(/<button[^>]*data-zerops-workspace-release[^>]*>/gu)].map(
+        ([button]) => button.match(/aria-label="([^"]*)"/u)?.[1],
+      );
+    expect(releases(chip(turnAt(hoursAgo(5))))).toEqual(["Release workspace webpool-3"]);
+    expect(
+      releases(
+        renderToStaticMarkup(
+          <ZeropsWorkspaceList
+            environmentId={ENVIRONMENT}
+            latestTurn={turnAt(hoursAgo(5))}
+            lease={LEASE}
+            mateName="Kara"
+            onClose={() => {}}
+            threadId={THREAD}
+          />,
+        ),
+      ),
+    ).toEqual([
+      "Release workspace webpool-3",
+      "Release workspace apipool-2",
+      "Release workspace webpool-5",
+    ]);
+  });
+});

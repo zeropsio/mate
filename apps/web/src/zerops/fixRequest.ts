@@ -108,7 +108,11 @@ export function fixMateChoice<T extends FixMate>(mates: ReadonlyArray<T>): Reado
 export function useAskMateToFix(): (
   mateProjectId: string,
   problem: FixProblem,
-  options?: { readonly branch?: string | undefined },
+  options?: {
+    readonly branch?: string | undefined;
+    /** The change's repository's address: of chats bound to its branch, its own is asked. */
+    readonly repositoryUrl?: string | undefined;
+  },
 ) => void {
   const askMate = useAskMate();
   return useCallback(
@@ -119,7 +123,7 @@ export function useAskMateToFix(): (
         fixRequestPrompt(branch === undefined ? problem : { ...problem, branch }),
         {
           send: false,
-          ...(branch === undefined ? {} : { branch }),
+          ...(branch === undefined ? {} : { branch, repositoryUrl: options?.repositoryUrl }),
         },
       );
     },
