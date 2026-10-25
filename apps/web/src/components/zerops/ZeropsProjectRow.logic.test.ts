@@ -832,17 +832,18 @@ describe("environmentSummaryLine", () => {
         deployedAt: "2026-09-05T15:17:24Z",
         deployable: [],
         statuses: [],
+        pools: [],
       },
       "app, db · deployed 2h ago",
     ],
     [
       "names services nothing has been deployed to",
-      { hostnames: ["db"], deployedAt: undefined, deployable: [], statuses: [] },
+      { hostnames: ["db"], deployedAt: undefined, deployable: [], statuses: [], pools: [] },
       "db",
     ],
     [
       "says when a project holds only the platform's services",
-      { hostnames: [], deployedAt: undefined, deployable: [], statuses: [] },
+      { hostnames: [], deployedAt: undefined, deployable: [], statuses: [], pools: [] },
       "No services yet",
     ],
   ] as const)("%s", (_, services, expected) => {

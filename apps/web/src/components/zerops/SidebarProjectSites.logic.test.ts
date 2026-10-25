@@ -1,4 +1,4 @@
-import { HqEnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, type ZeropsDevServer } from "@t3tools/contracts";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
@@ -12,8 +12,10 @@ import {
   projectSitesSections,
   projectSitesStatus,
   sitesLinkCount,
+  type SitesLease,
   type SitesMateFacts,
   type SitesSection,
+  type SitesWorkspace,
 } from "./SidebarProjectSites.logic";
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
@@ -285,7 +287,198 @@ const mate = (over: Partial<SitesMateFacts> & { readonly name: string }): SitesM
   routes: [],
   hostnames: undefined,
   controlPlane: "zcp",
+  pools: undefined,
+  leases: undefined,
   ...over,
+});
+
+/** A lease of the pool its alias names, held for `main` unless said otherwise. */
+const lease = (alias: string, over: Partial<SitesLease> = {}): SitesLease => ({
+  alias,
+  pool: alias.slice(0, alias.lastIndexOf("-")),
+  branch: "main",
+  state: "held",
+  ...over,
+});
+
+/** A lease's preview server as zcp last read it, with its per-port address where it has one. */
+const server = (status: string, url?: string): ZeropsDevServer => ({
+  name: "web",
+  port: 3000,
+  ...(url === undefined ? {} : { url }),
+  status,
+  readAt: "2026-10-25T09:00:00Z",
+});
+
+/** A pool declaring three slots' ports, each with its own subdomain whether or not a container holds it. */
+const slots = (pool: string) =>
+  [3001, 3002, 3003].map((port) => route(pool, `${pool}-${String(port)}.example.app`, port));
+
+/** A workspace row as it reads: its name, its alias where it has one, its word, its address. */
+const workspaceRow = (workspace: SitesWorkspace) =>
+  [workspace.name, workspace.alias, workspace.word, workspace.host ?? "no link"]
+    .filter((part) => part !== undefined)
+    .join(" | ");
+
+/** The workspaces the section of a Mate alone lists, as its rows read; none where it has no section. */
+const mateWorkspaces = (facts: SitesMateFacts): ReadonlyArray<SitesWorkspace> | "no section" => {
+  const [section] = projectSitesSections({
+    production: undefined,
+    productionUnread: false,
+    stages: undefined,
+    unreadStages: [],
+    placeRoutes: (place) => place.routes,
+    mates: [facts],
+  });
+  return section?.kind === "mate" && "workspaces" in section ? section.workspaces : "no section";
+};
+const workspaceRows = (facts: SitesMateFacts) => {
+  const workspaces = mateWorkspaces(facts);
+  return workspaces === "no section" ? workspaces : workspaces.map(workspaceRow);
+};
+
+describe("a Mate's dev pools", () => {
+  it("lists each held or parked lease of a pool once, by its pool and branch with its alias beside, never the pool's per-port addresses", () => {
+    const kara = mate({
+      name: "Kara",
+      routes: [...slots("webpool"), ...slots("hqpool"), route("appstage", "appstage.example.app")],
+      hostnames: ["appstage", "hqpool", "webpool"],
+      pools: ["hqpool", "webpool"],
+      leases: [
+        lease("webpool-3", {
+          branch: "feat-x",
+          devServers: [server("running", "https://webpool-3001.example.app")],
+        }),
+        lease("hqpool-4", { branch: "feat-x", state: "parked" }),
+        lease("hqpool-3", { branch: "feat-y" }),
+        lease("webpool-6", { branch: "old", state: "released" }),
+        lease("webpool-7", { branch: "gone", state: "lost" }),
+      ],
+    });
+    expect(mateLinks(kara)?.map((link) => link.host)).toEqual(["appstage.example.app"]);
+    expect(workspaceRows(kara)).toEqual([
+      "hqpool · feat-x | hqpool-4 | parked | no link",
+      "hqpool · feat-y | hqpool-3 | no preview yet | no link",
+      "webpool · feat-x | webpool-3 | running | webpool-3001.example.app",
+    ]);
+  });
+
+  it.each<{
+    readonly title: string;
+    readonly given: SitesLease;
+    readonly word: string;
+    readonly dot: string;
+    readonly url: string | undefined;
+  }>([
+    {
+      title: "running, from its preview server, opening its preview",
+      given: lease("webpool-3", {
+        devServers: [server("running", "https://webpool-3001.example.app")],
+      }),
+      word: "running",
+      dot: "ok",
+      url: "https://webpool-3001.example.app",
+    },
+    {
+      title: "starting, from its preview server",
+      given: lease("webpool-3", {
+        devServers: [server("starting", "https://webpool-3001.example.app")],
+      }),
+      word: "starting",
+      dot: "spinner",
+      url: "https://webpool-3001.example.app",
+    },
+    {
+      title: "crashed, from its preview server, still opening its preview",
+      given: lease("webpool-3", {
+        devServers: [server("crashed", "https://webpool-3001.example.app")],
+      }),
+      word: "crashed",
+      dot: "failed",
+      url: "https://webpool-3001.example.app",
+    },
+    {
+      title: "parked, from the lease, opening nothing while its container is stopped",
+      given: lease("webpool-3", {
+        state: "parked",
+        devServers: [server("running", "https://webpool-3001.example.app")],
+      }),
+      word: "parked",
+      dot: "hollow",
+      url: undefined,
+    },
+    {
+      title: "no preview yet, where zcp read no dev server on it",
+      given: lease("webpool-3"),
+      word: "no preview yet",
+      dot: "off",
+      url: undefined,
+    },
+    {
+      title: "no preview yet, where none of its servers has an address",
+      given: lease("webpool-3", { devServers: [{ ...server("running"), port: undefined }] }),
+      word: "no preview yet",
+      dot: "off",
+      url: undefined,
+    },
+  ])("says a workspace is $title", ({ given, word, dot, url }) => {
+    const workspaces = mateWorkspaces(
+      mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] }),
+    );
+    expect(
+      workspaces === "no section"
+        ? workspaces
+        : workspaces.map((workspace) => [workspace.word, workspace.dot, workspace.url]),
+    ).toEqual([[word, dot, url]]);
+  });
+
+  it("names a lease of no branch by its alias alone", () => {
+    const rows = workspaceRows(
+      mate({
+        name: "Kara",
+        routes: slots("boxpool"),
+        pools: ["boxpool"],
+        leases: [lease("boxpool-5", { branch: undefined })],
+      }),
+    );
+    expect(rows).toEqual(["boxpool-5 | no preview yet | no link"]);
+  });
+
+  it("lists nothing of a pool with no lease, and a service that is no pool keeps its addresses", () => {
+    const kara = mate({
+      name: "Kara",
+      routes: [...slots("webpool"), route("appdev", "appdev.example.app")],
+      hostnames: ["appdev", "webpool"],
+      pools: ["webpool"],
+      leases: [],
+    });
+    expect(mateLinks(kara)?.map((link) => link.host)).toEqual(["appdev.example.app"]);
+    expect(workspaceRows(kara)).toEqual([]);
+  });
+
+  it("never lists a pool's per-port addresses while its leases are not read", () => {
+    const kara = mate({
+      name: "Kara",
+      routes: [...slots("webpool"), route("appdev", "appdev.example.app")],
+      pools: ["webpool"],
+      leases: undefined,
+    });
+    expect(mateLinks(kara)?.map((link) => link.host)).toEqual(["appdev.example.app"]);
+    expect(workspaceRows(kara)).toEqual([]);
+  });
+
+  it("takes a lease's pool for a pool where the services listing has not named it", () => {
+    const kara = mate({
+      name: "Kara",
+      routes: slots("webpool"),
+      pools: undefined,
+      leases: [lease("webpool-3", { branch: "feat-x" })],
+    });
+    expect(mateLinks(kara)).toEqual([]);
+    expect(workspaceRows(kara)).toEqual([
+      "webpool · feat-x | webpool-3 | no preview yet | no link",
+    ]);
+  });
 });
 
 describe("a Mate's addresses", () => {
@@ -451,6 +644,50 @@ describe("the project's addresses", () => {
     expect(sectionRows(sections)).toEqual([["mate:p-odo", "reading"]]);
   });
 
+  it("lists a Mate's workspaces in its section and counts each one as a row, its pool's slots never", () => {
+    const sections = projectSitesSections({
+      production: undefined,
+      productionUnread: false,
+      stages: undefined,
+      unreadStages: [],
+      placeRoutes: (place) => place.routes,
+      mates: [
+        mate({
+          name: "Kara",
+          routes: [...slots("webpool"), ...slots("hqpool"), ...slots("boxpool")],
+          pools: ["boxpool", "hqpool", "webpool"],
+          leases: [
+            lease("webpool-3", {
+              branch: "feat-x",
+              devServers: [server("running", "https://webpool-3001.example.app")],
+            }),
+            lease("hqpool-3", { branch: "feat-x" }),
+          ],
+        }),
+      ],
+    });
+    const [kara] = sections;
+    expect(
+      kara?.kind === "mate" && "workspaces" in kara ? kara.workspaces.map(workspaceRow) : [],
+    ).toEqual([
+      "hqpool · feat-x | hqpool-3 | no preview yet | no link",
+      "webpool · feat-x | webpool-3 | running | webpool-3001.example.app",
+    ]);
+    expect(sitesLinkCount(sections)).toBe(2);
+  });
+
+  it("shows no section for a Mate whose only public service is a pool with no lease", () => {
+    const sections = projectSitesSections({
+      production: undefined,
+      productionUnread: false,
+      stages: undefined,
+      unreadStages: [],
+      placeRoutes: (place) => place.routes,
+      mates: [mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [] })],
+    });
+    expect(sections).toEqual([]);
+  });
+
   it("holds a place the project has but has not read as reading", () => {
     const sections = projectSitesSections({
       production: undefined,
@@ -573,6 +810,37 @@ describe("the addresses filter", () => {
 
   it("counts the addresses it lists", () => {
     expect(sitesLinkCount(sections)).toBe(5);
+  });
+
+  it("finds a Mate's workspace by its branch", () => {
+    const withPools = projectSitesSections({
+      production: PROD,
+      productionUnread: false,
+      stages: undefined,
+      unreadStages: [],
+      placeRoutes: (place) => place.routes,
+      mates: [
+        mate({
+          name: "Kara",
+          routes: [...slots("webpool"), route("appdev", "kara-dev.example.app")],
+          pools: ["webpool"],
+          leases: [
+            lease("webpool-3", { branch: "feat-x" }),
+            lease("webpool-4", { branch: "feat-y" }),
+          ],
+        }),
+      ],
+    });
+    const found = filterSites(withPools, "feat-y");
+    expect(
+      found.map((section) => [
+        section.key,
+        section.links?.length,
+        section.kind === "mate" && "workspaces" in section
+          ? section.workspaces.map((workspace) => workspace.alias)
+          : [],
+      ]),
+    ).toEqual([["mate:p-kara", 0, ["webpool-4"]]]);
   });
 });
 
