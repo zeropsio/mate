@@ -1,6 +1,6 @@
 /**
  * An application's stage and production as HQ's navigation says them — tier, deploy key, offers,
- * jobs, birth and release standing — for the surfaces that draw them. Kept as last told through an
+ * jobs, birth and release standing, and its recent rollouts — for the surfaces that draw them. Kept as last told through an
  * outage and past a value this build cannot read; gone once HQ removed or withheld the application.
  * HQ's refusal of them to a reader who cannot read the application's changes is said apart, never
  * as an application without environments.
@@ -8,6 +8,7 @@
  * @module data/projections/appEnvironments
  */
 import type { HqEnvironmentId } from "@t3tools/contracts";
+import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import {
   deliveryEnvironmentsOf,
   zeropsEnvironments,
@@ -23,6 +24,8 @@ export interface AppEnvironmentsRead {
   readonly environments: ReadonlyArray<HqEnvironment> | undefined;
   /** HQ's reason the reader may not read them, while it says one. */
   readonly refused: string | null;
+  /** Its recent rollouts, with the environments; absent from an older HQ. */
+  readonly rollouts?: ReadonlyArray<HqNavigationRollout>;
 }
 
 export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, "environments"> {
@@ -34,10 +37,14 @@ const UNTOLD: CanonicalAppEnvironmentsRead = { environments: undefined, refused:
 function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnvironmentsRead {
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
-  const { environments } = fact.value;
+  const { environments, rollouts } = fact.value;
   if (environments === undefined) return UNTOLD;
   if ("refused" in environments) return { environments: undefined, refused: environments.refused };
-  return { environments: deliveryEnvironmentsOf(environments), refused: null };
+  return {
+    environments: deliveryEnvironmentsOf(environments),
+    refused: null,
+    ...(rollouts === undefined ? {} : { rollouts }),
+  };
 }
 
 export const canonicalAppEnvironments: Projection<

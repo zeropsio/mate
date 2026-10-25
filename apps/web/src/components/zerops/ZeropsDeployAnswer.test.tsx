@@ -153,6 +153,7 @@ describe("a merge whose answer handed planning over", () => {
       jobs: [],
       note: "HQ plans these deploys once the organisation's other rollout is planned",
       planned: false,
+      rollout: "41",
     },
     rollout: { appId: "app", cause: "merge", ref: MERGED },
   };
@@ -173,8 +174,17 @@ describe("a merge whose answer handed planning over", () => {
       says: ["building", "View deploy", 'data-zerops-deploy-job="3"'],
       never: ["Waiting for planning."],
     },
-  ])("$name", ({ streamed, says, never }) => {
-    navigation.environments = environmentsWith(streamed);
+    {
+      name: "says HQ's note once HQ planned its rollout with no jobs",
+      streamed: { ...job, cause: "release", ref: MERGED },
+      rollouts: [{ id: "41", planned: true, note: "the stage tier could not be read" }],
+      says: ["the stage tier could not be read"],
+      never: ["Waiting for planning.", "other rollout"],
+    },
+  ])("$name", ({ streamed, rollouts, says, never }) => {
+    const environments = environmentsWith(streamed);
+    navigation.environments =
+      rollouts === undefined ? environments : { app: { ...environments.app, rollouts } };
     const markup = renderToStaticMarkup(<Review />);
     for (const words of says) expect(markup).toContain(words);
     for (const words of never) expect(markup).not.toContain(words);

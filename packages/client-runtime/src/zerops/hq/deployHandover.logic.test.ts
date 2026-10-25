@@ -1,4 +1,5 @@
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -58,6 +59,7 @@ describe("a review whose answer handed planning over", () => {
       readonly name: string;
       readonly jobs: ReadonlyArray<HqJob>;
     }>;
+    readonly rollouts?: ReadonlyArray<HqNavigationRollout>;
     readonly said: HqDeployAnswer;
   }>([
     {
@@ -146,7 +148,47 @@ describe("a review whose answer handed planning over", () => {
         note: null,
       },
     },
-  ])("$name", ({ answer, rollout, environments, said }) => {
-    expect(followHandedOver(answer, rollout, environments)).toEqual(said);
+    {
+      name: "a handed-over answer whose rollout is planned with no jobs shows HQ's note, never a wait",
+      answer: { ...HANDED_OVER, rollout: "41" },
+      rollout: { cause: "release", ref: "v1.3.0" },
+      environments: [
+        {
+          name: "production",
+          jobs: [job({ id: "12", cause: "release", ref: "v1.2.0", state: "live" })],
+        },
+      ],
+      rollouts: [
+        { id: "42", planned: false, note: null },
+        { id: "41", planned: true, note: "the production tier could not be read" },
+      ],
+      said: { jobs: [], note: "the production tier could not be read" },
+    },
+    {
+      name: "a handed-over answer still waits while its rollout reads not yet planned",
+      answer: { ...HANDED_OVER, rollout: "41" },
+      rollout: { cause: "release", ref: "v1.3.0" },
+      environments: [{ name: "production", jobs: [] }],
+      rollouts: [{ id: "41", planned: false, note: null }],
+      said: { jobs: [], note: WAITING_FOR_PLANNING, planned: false },
+    },
+    {
+      name: "a handed-over answer still waits while navigation does not list its rollout",
+      answer: { ...HANDED_OVER, rollout: "41" },
+      rollout: { cause: "release", ref: "v1.3.0" },
+      environments: [{ name: "production", jobs: [] }],
+      rollouts: [{ id: "40", planned: true, note: "the production tier could not be read" }],
+      said: { jobs: [], note: WAITING_FOR_PLANNING, planned: false },
+    },
+    {
+      name: "a handed-over answer from an HQ that names no rollout still waits",
+      answer: HANDED_OVER,
+      rollout: { cause: "release", ref: "v1.3.0" },
+      environments: [{ name: "production", jobs: [] }],
+      rollouts: [{ id: "41", planned: true, note: "the production tier could not be read" }],
+      said: { jobs: [], note: WAITING_FOR_PLANNING, planned: false },
+    },
+  ])("$name", ({ answer, rollout, environments, rollouts, said }) => {
+    expect(followHandedOver(answer, rollout, environments, rollouts)).toEqual(said);
   });
 });

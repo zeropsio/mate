@@ -25,7 +25,7 @@ const STAGE = {
 } as const;
 const PRODUCTION = { ...STAGE, projectId: "prod", tier: "production", name: "production" } as const;
 
-const app = (id: string, environments: unknown): Row =>
+const app = (id: string, environments: unknown, more: object = {}): Row =>
   ({
     family: "hqApp",
     id,
@@ -40,6 +40,7 @@ const app = (id: string, environments: unknown): Row =>
       environments,
       changes: [],
       releaseOffer: null,
+      ...more,
     },
   }) as Row;
 
@@ -129,6 +130,15 @@ describe("appEnvironments", () => {
     { appId: "none", refused: null },
   ])("says HQ's refusal of $appId's environments as $refused", ({ appId, refused }) => {
     expect(of(told, appId).refused).toBe(refused);
+  });
+
+  it("reads an application's recent rollouts beside its environments, none from an older HQ", () => {
+    const rollouts = [{ id: "41", planned: true, note: "the production tier could not be read" }];
+    const state = apply(demanded, [
+      deliver([app("shop", [STAGE], { rollouts }), app("blog", [STAGE])]),
+    ]);
+    expect(of(state, "shop").rollouts).toEqual(rollouts);
+    expect(of(state, "blog").rollouts).toBeUndefined();
   });
 
   it("reads several applications, each apart", () => {

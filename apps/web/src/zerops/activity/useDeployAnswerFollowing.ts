@@ -45,8 +45,9 @@ export function useDeployAnswerFollowing(answer: HqDeployAnswer | undefined) {
 
 /**
  * A press's answer as its review says it: one that handed planning over waits for planning until
- * HQ's navigation shows its rollout's jobs in its application, then is those jobs — kept, so jobs
- * that leave navigation's window later never turn it back into a wait.
+ * HQ's navigation shows its rollout's jobs in its application, then is those jobs — or HQ's note,
+ * once navigation reads that rollout planned with none — kept, so jobs that leave navigation's
+ * window later never turn it back into a wait.
  */
 export function useHandedOverAnswer(
   answer: HqDeployAnswer | undefined,
@@ -65,6 +66,7 @@ export function useHandedOverAnswer(
             answer,
             rollout,
             rollout === undefined ? [] : (environments[rollout.appId]?.environments ?? []),
+            rollout === undefined ? undefined : environments[rollout.appId]?.rollouts,
           ),
     [answer, environments, rollout],
   );

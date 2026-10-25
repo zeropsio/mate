@@ -226,6 +226,7 @@ export const HqDeliveryAnswer = Schema.Struct({
   jobs: Schema.Array(HqDeliveryOutcome),
   note: Schema.NullOr(Schema.String),
   planned: Schema.optionalKey(Schema.Boolean),
+  rollout: Schema.optionalKey(Schema.String),
 });
 export type HqDeliveryAnswer = typeof HqDeliveryAnswer.Type;
 
@@ -235,12 +236,15 @@ export type HqDeliveryAnswer = typeof HqDeliveryAnswer.Type;
  * planned — another rollout of the organisation held planning, or HQ could not plan it now — and
  * the leading HQ plans it later: its jobs come down HQ's navigation by the event (`cause`, `ref`).
  * Absent or `true`, the rollout was planned and `jobs` are all it asked for. An HQ older than the
- * field always planned before answering.
+ * field always planned before answering. `rollout` names the rollout a handed-over answer waits on,
+ * by its id in HQ's navigation (`HqNavigationRollout`): once that reads planned and no job of the
+ * event shows, HQ's `note` there is the answer. Absent from an older HQ: followed by its jobs only.
  */
 export const HqDeployAnswer = Schema.Struct({
   jobs: Schema.Array(HqDeployOutcome),
   note: Schema.NullOr(Schema.String),
   planned: Schema.optionalKey(Schema.Boolean),
+  rollout: Schema.optionalKey(Schema.String),
 });
 export type HqDeployAnswer = typeof HqDeployAnswer.Type;
 
