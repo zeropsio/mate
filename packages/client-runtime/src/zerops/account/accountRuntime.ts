@@ -7,7 +7,7 @@ import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/reactivity";
 import { makeMateAdapter } from "../../data/adapters/mate.ts";
 import type { AccountStore } from "../../data/store.ts";
-import type { AccountScope } from "../data/types.ts";
+import { ZeropsOrganizationId, type AccountScope } from "../data/types.ts";
 import {
   makeInvalidationBus,
   type InvalidationBus,
@@ -19,6 +19,7 @@ import {
   type AccountEnvironmentPorts,
   type AccountEnvironments,
 } from "./environments.ts";
+import { followHqView } from "./hqView.ts";
 import { makeStops, type Stops } from "./stops.ts";
 export type { Stops } from "./stops.ts";
 export type {
@@ -88,6 +89,23 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       built.dispose();
     }),
   );
+  // HQ's view of the person changing is the receipt that their Zerops access did: the listing
+  // is read again once. A Mate HQ places for them again is asked again; one that left needs no
+  // ask, and asking would show its refused conversation again until the listing drops it.
+  const stopFollowingHq = followHqView(ports.atomRegistry, ({ orgId, entered }) => {
+    for (const projectId of entered) built.accessChanged(projectId);
+    Effect.runSync(
+      invalidations.invalidate({
+        topic: "inventory",
+        organization: {
+          kind: "organization",
+          account: ports.account.account,
+          organizationId: ZeropsOrganizationId.make(orgId),
+        },
+      }),
+    );
+  });
+  yield* Scope.addFinalizer(scope, Effect.sync(stopFollowingHq));
   const subscription = yield* invalidations.subscribe.pipe(Scope.provide(scope));
   yield* PubSub.take(subscription).pipe(
     Effect.tap((invalidation) =>

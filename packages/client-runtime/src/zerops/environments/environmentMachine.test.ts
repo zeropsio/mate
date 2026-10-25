@@ -284,6 +284,34 @@ describe("environment machine (DESIGN §4.4)", () => {
     },
   );
 
+  it.each([
+    { block: "not-found", refusal: { kind: "not-found" } },
+    { block: "read-only", refusal: { kind: "role" } },
+  ] as const)(
+    "a refused Mate is asked again when the person's access changes, without Try again: $block",
+    ({ block, refusal }) => {
+      const blocked = drive(connected(), [
+        { type: "LINK", link: { phase: "blocked", reason: block } },
+      ]).machine;
+      const refused = drive(blocked, [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(blocked),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+        { type: "LINK", link: { phase: "blocked", reason: block } },
+      ]).machine;
+      expect(refused.credential).toEqual({ kind: "refused", reason: refusal });
+
+      const asked = drive(refused, [{ type: "ROLE_CHANGED" }]);
+      expect(asked.machine.credential.kind).toBe("exchanging");
+      expect(asked.effects).toContainEqual(
+        expect.objectContaining({ kind: "run", op: expect.objectContaining({ kind: "exchange" }) }),
+      );
+    },
+  );
+
   it("after a role change, the first permission block re-exchanges once before refusing the role", () => {
     const blockAndRotate = (machine: EnvironmentMachine): EnvironmentMachine => {
       const blocked = drive(machine, [
