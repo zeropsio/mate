@@ -230,11 +230,11 @@ it("a browser retry acquires a new slot and reruns only its failed smoke stage",
     gate.write("packages/a/src/value.ts", "export const value = 0;\n");
     gate.baseline();
     gate.write("packages/a/src/value.ts", "export const value = 1;\n");
-    const failed = gate.run([], "smoke");
+    const failed = gate.run(["--with-scenarios"], "smoke");
     expect(failed.status, failed.stderr).toBe(9);
     expect(failed.stdout).toContain("acquired browser/scenario slot");
     gate.clearChecks();
-    const retried = gate.run();
+    const retried = gate.run(["--with-scenarios"]);
     expect(retried.status, retried.stderr).toBe(0);
     expect(retried.stdout).toContain("acquired browser/scenario slot");
     expect(gate.checks()).toHaveLength(1);
