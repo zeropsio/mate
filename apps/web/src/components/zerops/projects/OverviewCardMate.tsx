@@ -37,6 +37,7 @@ import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import {
   useMateAwayNow,
   useMateLinkedInHq,
+  useMateOverviewInHq,
   useMateOfflineSince,
 } from "~/zerops/useMenuMateReadings";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -109,6 +110,7 @@ export function OverviewCardMate({
   const people = useHqProjectPerson(projectId);
   const mine = people?.waitsOnViewer === true;
   const linkedInHq = useMateLinkedInHq(projectId);
+  const overviewInHq = useMateOverviewInHq(projectId);
   // Up as its menu row reads it (`mateAwake`): its container runs, or HQ holds its link open.
   const up = candidateContainerRuns(candidate) || linkedInHq;
   const offlineSince = useMateOfflineSince(projectId, candidate.key);
@@ -168,6 +170,7 @@ export function OverviewCardMate({
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
+    overview: overviewInHq,
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,

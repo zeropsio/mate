@@ -69,7 +69,8 @@ the dependent code are not repeated here.
 - **A Zerops access token lives 6 h, and `auth/refresh` revokes the previous one at once**
   (device-login and password sessions alike: `expiresIn` 21600 s; after a refresh the old access
   token answers 401, the spent refresh token 400; 2026-10-24). Dependency:
-  `packages/client-runtime/src/zerops/data/zeropsSession.ts` (renewal margin under the lifetime).
+  `packages/client-runtime/src/zerops/data/zeropsSession.ts` (renewal margin under the lifetime),
+  `packages/client-runtime/src/zerops/api.ts` (a request sent with a token a renewal revoked retries once with the new one).
 
   ```sh
   curl -fsS -X POST -H 'Content-Type: application/json' "$API/auth/refresh" \

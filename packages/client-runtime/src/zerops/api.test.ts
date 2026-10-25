@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 
 import {
   DEFAULT_ZEROPS_API_BASE,
@@ -642,15 +643,204 @@ describe("ZeropsApiClient.accessToken — the token HQ's sign-in reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await expect(client.accessToken(false)).resolves.toBe("access-1");
+    await expect(client.accessToken()).resolves.toBe("access-1");
     expect(stub.requests).toEqual([]);
-    await expect(client.accessToken(true)).resolves.toBe("access-2");
-    await expect(client.accessToken(false)).resolves.toBe("access-2");
+    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
+    await expect(client.accessToken()).resolves.toBe("access-2");
   });
 
   it("has none to hand out once signed out", async () => {
     const client = new ZeropsApiClient({ fetch: async () => jsonResponse(200, {}) });
-    await expect(client.accessToken(false)).rejects.toMatchObject({ kind: "expired-session" });
+    await expect(client.accessToken()).rejects.toMatchObject({ kind: "expired-session" });
+  });
+});
+
+/**
+ * The platform revokes the previous access token at once on every refresh (verified.md), so a
+ * renewal must never overtake a request still carrying the old one.
+ */
+describe("ZeropsApiClient renews ahead of expiry, under no request", () => {
+  const HOUR = 60 * 60_000;
+  const NOW = Date.UTC(2026, 9, 25, 12, 0, 0);
+  const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+  const USER = { id: "user-1", email: "ada@example.com", fullName: "Ada" };
+
+  /** Each request as its path's last segment and its bearer; a refresh as `refresh`. */
+  const labelsOf = (requests: ReadonlyArray<RecordedRequest>) =>
+    requests.map((request) =>
+      request.url.endsWith("/auth/refresh")
+        ? "refresh"
+        : `${new URL(request.url).pathname.split("/").at(-1)} ${request.authorization}`,
+    );
+  const renewed = () =>
+    jsonResponse(200, {
+      accessToken: "access-2",
+      refreshToken: "refresh-2",
+      expiresAt: iso(NOW + 6 * HOUR),
+    });
+
+  /** A platform whose refreshes wait until the test lets each one answer. */
+  function heldPlatform(options: { readonly refresh?: () => Response | undefined } = {}) {
+    const releases: Array<() => void> = [];
+    let released = 0;
+    let issued = 1;
+    const stub = recordingFetch((request) => {
+      if (!request.url.endsWith("/auth/refresh")) {
+        const current = `Bearer access-${issued}`;
+        return request.authorization === current
+          ? jsonResponse(200, USER)
+          : jsonResponse(401, { error: { code: "unauthorized" } });
+      }
+      const answer = (): Response => {
+        const refused = options.refresh?.();
+        if (refused !== undefined) return refused;
+        issued += 1;
+        return jsonResponse(200, {
+          accessToken: `access-${issued}`,
+          refreshToken: `refresh-${issued}`,
+          expiresAt: iso(NOW + 6 * HOUR),
+        });
+      };
+      if (released > 0) {
+        released -= 1;
+        return answer();
+      }
+      return new Promise<Response>((resolve) => releases.push(() => resolve(answer())));
+    });
+    const sent = () => labelsOf(stub.requests);
+    /** Lets the next refresh answer, at once when one is waiting, else as soon as it is asked. */
+    const answerRefresh = () => {
+      const waiting = releases.shift();
+      if (waiting === undefined) released += 1;
+      else waiting();
+    };
+    return { stub, sent, answerRefresh };
+  }
+
+  const clientWith = (
+    fetch: (input: string, init?: RequestInit) => Promise<Response>,
+    onSessionChange?: (session: ZeropsSession | null) => void,
+  ) =>
+    new ZeropsApiClient({
+      fetch,
+      renewAhead: { withinMs: 2 * HOUR, nowMs: () => NOW },
+      ...(onSessionChange === undefined ? {} : { onSessionChange }),
+    });
+
+  it("a request within the renewal margin waits for the renewal and carries the renewed token", async () => {
+    const platform = heldPlatform();
+    const client = clientWith(platform.stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
+
+    const user = client.fetchUser();
+    platform.answerRefresh();
+
+    await expect(user).resolves.toMatchObject({ id: "user-1" });
+    expect(platform.sent()).toEqual(["refresh", "info Bearer access-2"]);
+  });
+
+  it("a request issued while a renewal runs waits for it, and the platform renews once", async () => {
+    const platform = heldPlatform();
+    const client = clientWith(platform.stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + 5 * HOUR) });
+
+    const renewal = client.renewHeldSession();
+    const users = Promise.all([client.fetchUser(), client.listOrganizationMembers("org")]);
+    platform.answerRefresh();
+    await renewal;
+    await users.catch(() => undefined);
+
+    expect(platform.sent()).toEqual(["refresh", "info Bearer access-2", "list Bearer access-2"]);
+  });
+
+  it("a request refused because a renewal replaced its token retries once with the new token, renewing nothing more", async () => {
+    let answerFirstRead!: (response: Response) => void;
+    let reads = 0;
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/auth/refresh")) return renewed();
+      reads += 1;
+      if (reads === 1) return new Promise<Response>((resolve) => (answerFirstRead = resolve));
+      return request.authorization === "Bearer access-2"
+        ? jsonResponse(200, USER)
+        : jsonResponse(401, {});
+    });
+    const client = clientWith(stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + 5 * HOUR) });
+
+    const user = client.fetchUser();
+    await client.renewHeldSession();
+    answerFirstRead(jsonResponse(401, {}));
+
+    await expect(user).resolves.toMatchObject({ id: "user-1" });
+    expect(labelsOf(stub.requests)).toEqual([
+      "info Bearer access-1",
+      "refresh",
+      "info Bearer access-2",
+    ]);
+  });
+
+  it.each<[string, () => Response]>([
+    ["refuses it", () => jsonResponse(400, { error: { code: "refreshTokenNotFound" } })],
+    ["does not answer", () => jsonResponse(503, {})],
+  ])(
+    "when the platform %s, a renewal ahead leaves the old token in use until it expires and ends nothing",
+    async (_answer, refresh) => {
+      const platform = heldPlatform({ refresh });
+      const changes: Array<ZeropsSession | null> = [];
+      const client = clientWith(platform.stub.fetch, (session) => void changes.push(session));
+      client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
+
+      platform.answerRefresh();
+      await expect(client.fetchUser()).resolves.toMatchObject({ id: "user-1" });
+      await expect(client.fetchUser()).resolves.toMatchObject({ id: "user-1" });
+
+      expect(platform.sent()).toEqual(["refresh", "info Bearer access-1", "info Bearer access-1"]);
+      expect(changes).toEqual([]);
+      expect(client.session?.accessToken).toBe("access-1");
+    },
+  );
+
+  it("a write given up on while it waits for a renewal is never sent and never reads as maybe written", async () => {
+    const platform = heldPlatform();
+    const client = clientWith(platform.stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
+    const giveUp = new AbortController();
+
+    const write = client.requestData({
+      path: "/service-stack/s1/restart",
+      method: "PUT",
+      operationKind: "project-write",
+      signal: giveUp.signal,
+      background: false,
+    });
+    giveUp.abort();
+
+    await expect(write).rejects.toMatchObject({ name: "AbortError" });
+    expect(platform.sent()).toEqual(["refresh"]);
+  });
+
+  it("the websocket login waits for a due renewal and carries the renewed token in its body and its header", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/auth/refresh")
+        ? renewed()
+        : jsonResponse(200, { webSocketToken: "socket-1" }),
+    );
+    const client = clientWith(stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
+
+    await expect(client.exchangeWebSocketToken()).resolves.toEqual({ webSocketToken: "socket-1" });
+    expect(labelsOf(stub.requests)).toEqual(["refresh", "login Bearer access-2"]);
+    expect(stub.requests[1]?.body).toBe(JSON.stringify({ token: "access-2" }));
+  });
+
+  it("HQ's door is handed the renewed token once a due renewal ran, and a refused token another renewal replaced renews nothing", async () => {
+    const stub = recordingFetch(() => renewed());
+    const client = clientWith(stub.fetch);
+    client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
+
+    await expect(client.accessToken()).resolves.toBe("access-2");
+    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
+    expect(labelsOf(stub.requests)).toEqual(["refresh"]);
   });
 });
 

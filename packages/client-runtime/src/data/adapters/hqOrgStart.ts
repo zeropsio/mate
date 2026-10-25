@@ -40,8 +40,11 @@ export function zeropsOrgStart(
   };
 }
 
-/** The person's current Zerops access token, as HQ's door takes it; `refresh` asks Zerops again. */
+/**
+ * The person's current Zerops access token, as HQ's door takes it; `refused`, a token HQ refused,
+ * asks Zerops again unless a renewal has already replaced it.
+ */
 export const zeropsAccessToken =
   (client: Pick<ZeropsApiClient, "accessToken">) =>
-  (refresh: boolean): Promise<string> =>
-    client.accessToken(refresh);
+  (refused?: string): Promise<string> =>
+    client.accessToken(refused);

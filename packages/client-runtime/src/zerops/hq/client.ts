@@ -1033,11 +1033,11 @@ export function makeHqApi(input: {
   readonly address: string;
   readonly fetch: FetchImplementation;
   /**
-   * The person's Zerops access token; `refresh` asks Zerops for a new one first, which a sign-in
-   * does once when HQ answers `401 zerops_person_required` to the one it was given. HQ reads it
-   * once at sign-in and at each renewal and keeps nothing of it.
+   * The person's Zerops access token; `refused`, the one HQ answered `401 zerops_person_required`
+   * to, asks Zerops for a new one first unless a renewal has already replaced it, which a sign-in
+   * does once. HQ reads it once at sign-in and at each renewal and keeps nothing of it.
    */
-  readonly accessToken: (refresh: boolean) => Promise<string>;
+  readonly accessToken: (refused?: string) => Promise<string>;
   /** The organisation this client signs in to. */
   readonly orgId: string;
   /** The instant, for the renewal of a session; the wall clock where absent. */
@@ -1102,24 +1102,25 @@ export function makeHqApi(input: {
    * session, which keeps its id.
    */
   const signIn = async (orgKey?: string, renewing?: string): Promise<DoorAnswer> => {
-    const attempt = async (refresh: boolean) =>
+    const attempt = async (accessToken: string) =>
       json<DoorAnswer>(
         await send(input.fetch, `${origin}/api/door`, {
           method: "POST",
           ...(renewing === undefined ? {} : { headers: { Authorization: `Bearer ${renewing}` } }),
           body: JSON.stringify({
-            accessToken: await input.accessToken(refresh),
+            accessToken,
             orgId: input.orgId,
             ...(orgKey === undefined ? {} : { orgKey }),
           }),
           signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
         }),
       );
+    const accessToken = await input.accessToken();
     try {
-      return await attempt(false);
+      return await attempt(accessToken);
     } catch (cause) {
       if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
-      return attempt(true);
+      return attempt(await input.accessToken(accessToken));
     }
   };
 

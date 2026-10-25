@@ -361,8 +361,8 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     },
     beforeWrite: () => (configured ? Promise.resolve() : writeChecked(clientId, hq)),
     isCurrent: () => active() && (configured || verdictNames(clientId, hq) === true),
-    accessToken: (refresh) =>
-      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() => accessToken(refresh)),
+    accessToken: (refused) =>
+      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() => accessToken(refused)),
     orgId: clientId,
     startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });

@@ -156,6 +156,11 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
     };
   },
 }));
+// HQ has heard every Mate here: its overview is live, so its row may speak of a sign-in.
+vi.mock("~/zerops/useMenuMateReadings", async (original) => ({
+  ...(await original<typeof import("~/zerops/useMenuMateReadings")>()),
+  useMateOverviewInHq: () => "live",
+}));
 afterEach(() => {
   stops.deployments = new Map();
   // A tree left mounted would answer the next test's asks of the one menu.
