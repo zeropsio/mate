@@ -9970,6 +9970,57 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Claude keeps a transcript in the project folder of the directory its session opened in, and a
+  // session opens where it always has: naming that folder spares a scan of every project's.
+  it.effect(
+    "a Claude rollback reads and forks its transcript in its session's own project folder",
+    () => {
+      const folders: Array<string | undefined> = [];
+      const harness = makeHarness({
+        forkSession: async (_sessionId, options) => {
+          folders.push(options?.dir);
+          return { sessionId: CLAUDE_FORK_SESSION_ID };
+        },
+        getSessionMessages: async (sessionId, options) => {
+          folders.push(options?.dir);
+          return sessionId === CLAUDE_FORK_SESSION_ID
+            ? [
+                claudeHistoryMessage({ type: "user", uuid: "fork-turn-1", sessionId }),
+                claudeHistoryMessage({ type: "assistant", uuid: "fork-assistant-1", sessionId }),
+              ]
+            : [
+                claudeHistoryMessage({ type: "user", uuid: "turn-1" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-1" }),
+                claudeHistoryMessage({ type: "user", uuid: "turn-2" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-2" }),
+              ];
+        },
+      });
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          cwd: "/var/www",
+          resumeCursor: {
+            threadId: THREAD_ID,
+            resume: CLAUDE_ORIGINAL_SESSION_ID,
+            turnCount: 2,
+            turnStartMessageIds: ["turn-1", "turn-2"],
+          },
+        });
+
+        yield* adapter.rollbackThread(THREAD_ID, 1);
+        assert.isAbove(folders.length, 1);
+        assert.deepEqual([...new Set(folders)], ["/var/www"]);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("rewinds a Claude turn that includes tool results and a later steer", () => {
     const forkCalls: Array<Parameters<NonNullable<ClaudeAdapterLiveOptions["forkSession"]>>> = [];
     let firstTurnId = "";
