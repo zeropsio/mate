@@ -9,6 +9,7 @@ export interface Worktree {
   readonly head?: string | undefined;
   readonly branch?: string | undefined;
   readonly locked: boolean;
+  readonly lockReason?: string | undefined;
 }
 
 export function parseWorktrees(output: string): Worktree[] {
@@ -26,6 +27,7 @@ export function parseWorktrees(output: string): Worktree[] {
         head: value("HEAD"),
         branch: value("branch"),
         locked: fields.some((field) => /^locked(?: |$)/u.test(field)),
+        lockReason: value("locked"),
       };
     });
 }
@@ -129,12 +131,42 @@ export function inspectWorktree(cwd: string, worktree: Worktree) {
     ["symbolic-ref", "--quiet", "HEAD"],
     "inspect worktree branch",
   );
+  const clean = git(worktree.path, ["status", "--porcelain=v1", "--untracked-files=all"]) === "";
+  const headLanded = landed(cwd, head);
+  let releaseLock = false;
+  if (worktree.locked && worktree.lockReason && clean && headLanded) {
+    const assigned = `refs/heads/${worktree.lockReason}`;
+    const exists = exit(
+      cwd,
+      ["show-ref", "--verify", "--quiet", assigned],
+      "inspect assigned branch",
+    );
+    if (exists.status === 0) {
+      const tip = git(cwd, ["rev-parse", "--verify", assigned]).trim();
+      const history = git(cwd, ["reflog", "show", "--format=%H%x00%gs", assigned])
+        .trim()
+        .split("\n");
+      const creation = history.findLast((entry) =>
+        entry.split("\0")[1]?.startsWith("branch: Created from "),
+      );
+      // A newly assigned branch is already at the base. Only work after its creation can have landed.
+      // Missing/expired creation evidence and manual lock reasons leave the reservation intact.
+      releaseLock = creation !== undefined && creation.split("\0")[0] !== tip && landed(cwd, tip);
+    }
+  }
   return {
-    worktree: { ...worktree, head, branch: branch.status === 0 ? branch.stdout.trim() : undefined },
+    worktree: {
+      ...worktree,
+      head,
+      branch: branch.status === 0 ? branch.stdout.trim() : undefined,
+      locked: worktree.locked && !releaseLock,
+    },
     checkout: true,
-    landed: landed(cwd, head),
-    unpushed: git(cwd, ["rev-list", "--count", head, "--not", "--remotes"]).trim() !== "0",
-    clean: git(worktree.path, ["status", "--porcelain=v1", "--untracked-files=all"]) === "",
+    landed: headLanded,
+    // Squash landing protects the content even if the job's remote branch has been deleted.
+    unpushed:
+      !releaseLock && git(cwd, ["rev-list", "--count", head, "--not", "--remotes"]).trim() !== "0",
+    clean,
   };
 }
 
@@ -215,8 +247,10 @@ if (import.meta.main) {
       console.log(`keep ${worktree.path}: missing directory; registration retained`);
       continue;
     }
+    let releaseLock = false;
     const decision = (processCwds: ReadonlyArray<string>) => {
       const { worktree: inspected, ...facts } = inspectWorktree(cwd, worktree);
+      releaseLock = worktree.locked && !inspected.locked;
       return pruneDecision(inspected, {
         main,
         pool,
@@ -227,6 +261,10 @@ if (import.meta.main) {
     };
     const reason = worktree.path === main ? "main checkout" : decision(cwds);
     if (reason) {
+      if (apply && reason === "in the pool" && releaseLock) {
+        decision(cwds);
+        if (releaseLock) git(cwd, ["worktree", "unlock", worktree.path]);
+      }
       console.log(`keep ${worktree.path}: ${reason}`);
       continue;
     }
@@ -238,6 +276,7 @@ if (import.meta.main) {
         console.log(`keep ${worktree.path}: ${refreshed}`);
         continue;
       }
+      if (releaseLock) git(cwd, ["worktree", "unlock", worktree.path]);
       // Removing the worktree keeps its branch and commits in the main repository.
       git(cwd, ["worktree", "remove", worktree.path]);
     }
