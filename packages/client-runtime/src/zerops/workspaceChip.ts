@@ -1,8 +1,11 @@
 /**
- * The workspace chip of a conversation bound to a lease: when the workspace was last active, what
- * a release would lose there, and whether it is idle — from what zcp last read of the lease
- * (`leases[].activity`, `unsaved`; zcp `docs/spec-mate.md` §2.8a.3) and the conversation's own last
- * turn. Idle is a label and nothing else: nothing acts on it (zcp `docs/spec-mate.md` §0 rule 4).
+ * The workspace chip of a conversation bound to a lease: which workspace it is (`<pool> ·
+ * <branch>`), when it was last active, what a release would lose there, whether it is idle, and how
+ * many other workspaces the Mate holds — from what zcp last read of its leases (`leases[]`,
+ * `activity`, `unsaved`; zcp `docs/spec-mate.md` §2.8a.3) and the conversation's own last turn.
+ * Idle is a label and nothing else: nothing acts on it (zcp `docs/spec-mate.md` §0 rule 4).
+ *
+ * And the list it opens: every workspace of the Mate, each with its own Release.
  *
  * And its Release: the question Mate asks before a workspace is released, and the request a yes
  * sends. Mate releases nothing and runs no zcp: the bound conversation's agent releases the lease
@@ -26,7 +29,7 @@ import {
 
 import type { StartThreadTurnInput } from "../operations/commands.ts";
 import type { AtomCommandResult } from "../state/runtime.ts";
-import type { CheckoutLease } from "./gitTab.ts";
+import { type CheckoutLease, checkoutLabel } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 
 /** How long a workspace goes with nothing happening in it before it is idle: the owner's 24 h. */
@@ -112,8 +115,29 @@ const unsavedWords = (unsaved: LeaseRead["unsaved"]): ReadonlyArray<string> => {
   ];
 };
 
+/** A lease as its workspace is named, asked about and released (`CheckoutLease`). */
+type NamedLease = Pick<ZeropsLease, "alias" | "pool"> & {
+  readonly branch?: string | null | undefined;
+  readonly repo?: string | undefined;
+};
+
+/** A lease as a checkout reads it: no branch is `null`, no repository is left out. */
+const checkoutLeaseOf = (lease: NamedLease): CheckoutLease => ({
+  alias: lease.alias,
+  pool: lease.pool,
+  branch: lease.branch === undefined || lease.branch === "" ? null : lease.branch,
+  ...(lease.repo === undefined || lease.repo === "" ? {} : { repo: lease.repo }),
+});
+
+/**
+ * What a workspace is called: `<pool> · <branch>`, or the alias of a lease of no branch — as the
+ * Git tab and the Sites list name a lease (`checkoutLabel`).
+ */
+export const workspaceName = (lease: NamedLease): string =>
+  checkoutLabel(lease.alias, [checkoutLeaseOf(lease)]);
+
 export interface WorkspaceChip {
-  /** `workspace · idle · last active 26 h ago · 2 unpushed · 2 uncommitted`. */
+  /** `webpool · feat-x · idle · last active 26 h ago · 2 unpushed · 2 uncommitted · 2 more`. */
   readonly words: string;
   readonly idle: boolean;
 }
@@ -149,20 +173,28 @@ function workspaceRead(input: {
 }
 
 /**
- * The chip of a conversation bound to a lease: its workspace's last activity — the conversation's
- * own last turn or what zcp read of the lease, whichever is newer — what a release would lose
- * there when zcp read it, and the idle label once both say nothing happened for 24 h. None while
- * neither says anything.
+ * The chip of a conversation bound to a lease: its workspace's name, then its last activity — the
+ * conversation's own last turn or what zcp read of the lease, whichever is newer — what a release
+ * would lose there when zcp read it, and the idle label once both say nothing happened for 24 h;
+ * last, how many other workspaces the Mate holds. None while neither says anything.
  */
 export function workspaceChip(input: {
+  /** What the workspace is called (`workspaceName`). */
+  readonly name: string;
   /** zcp's last read of the lease (`boundLeaseRead`); none before one. */
   readonly lease: LeaseRead | undefined;
   readonly lastTurn: LastTurn | null | undefined;
   readonly now: number;
+  /** How many other workspaces the Mate holds; none said while 0 or not known. */
+  readonly more?: number | undefined;
 }): WorkspaceChip | undefined {
   const read = workspaceRead(input);
   if (read === undefined) return undefined;
-  return { words: ["workspace", ...read.facts].join(" · "), idle: read.idle };
+  const more = input.more ?? 0;
+  return {
+    words: [input.name, ...read.facts, ...(more > 0 ? [`${String(more)} more`] : [])].join(" · "),
+    idle: read.idle,
+  };
 }
 
 /**
@@ -184,21 +216,120 @@ export function boundLeaseRead(
 }
 
 /**
- * The chip of a conversation bound to `binding`, from the conversation's lifecycle: zcp's last
- * read of the lease while the lifecycle is known; while it is not, the conversation's own last
- * turn alone — what zcp read of the lease is left out, never said to be none, and never idle.
+ * The chip of a conversation bound to `binding`, from the conversation's lifecycle: named by the
+ * binding, with zcp's last read of the lease and how many other workspaces the Mate holds while the
+ * lifecycle is known; while it is not, the conversation's own last turn alone — what zcp read of
+ * the lease and its others are left out, never said to be none, and never idle.
  */
-export const workspaceChipOf = (input: {
+export function workspaceChipOf(input: {
   readonly binding: CheckoutLease | null | undefined;
   readonly lifecycle: Known<ZeropsLifecycle> | undefined;
   readonly lastTurn: LastTurn | null | undefined;
   readonly now: number;
-}): WorkspaceChip | undefined =>
-  workspaceChip({
-    lease: boundLeaseRead(input.binding, knownLeases(input.lifecycle)),
+}): WorkspaceChip | undefined {
+  const { binding } = input;
+  if (binding === null || binding === undefined) return undefined;
+  const leases = knownLeases(input.lifecycle);
+  const lease = boundLeaseRead(binding, leases);
+  return workspaceChip({
+    name: workspaceName(binding),
+    lease,
     lastTurn: input.lastTurn,
     now: input.now,
+    more: leases === undefined ? undefined : otherWorkspaces(leases, lease).length,
   });
+}
+
+/**
+ * The Mate's workspaces beside the bound one: every lease zcp still holds (held, parked, …) but
+ * the bound lease — its branch's leases on other pools included, each a container of its own,
+ * released on its own.
+ */
+const otherWorkspaces = (
+  leases: ReadonlyArray<ZeropsLease>,
+  bound: ZeropsLease | undefined,
+): ReadonlyArray<ZeropsLease> =>
+  leases.filter((lease) => lease !== bound && isZeropsLeaseHeld(lease.state));
+
+/** One workspace of the Mate, as the chip's list shows it. */
+export interface MateWorkspace {
+  /** Its lease: what its Release asks about, and the alias the request names. */
+  readonly lease: CheckoutLease;
+  /** `<pool> · <branch>`, or the alias of a lease of no branch (`workspaceName`). */
+  readonly name: string;
+  /** `<pool>-<number>`, beside the name; absent where the name is the alias. */
+  readonly alias: string | undefined;
+  /**
+   * `not answering` while its container did not answer zcp, else zcp's state verbatim (`held`,
+   * `parked`, …); absent before zcp's leases are read.
+   */
+  readonly state: string | undefined;
+  /** Why its container did not answer, as zcp said it. */
+  readonly notAnswering: string | undefined;
+  /** `idle · last active 26 h ago · all pushed`; none while nothing is known. */
+  readonly facts: string | undefined;
+  readonly idle: boolean;
+  /** The workspace the conversation is bound to: the one its chip names. */
+  readonly bound: boolean;
+}
+
+const mateWorkspace = (input: {
+  readonly lease: NamedLease;
+  readonly read: ZeropsLease | undefined;
+  readonly lastTurn: LastTurn | null;
+  readonly now: number;
+  readonly bound: boolean;
+}): MateWorkspace => {
+  const { read } = input;
+  const name = workspaceName(input.lease);
+  const known = workspaceRead({ lease: read, lastTurn: input.lastTurn, now: input.now });
+  const notAnswering =
+    read?.notAnswering === undefined || read.notAnswering === "" ? undefined : read.notAnswering;
+  return {
+    lease: checkoutLeaseOf(input.lease),
+    name,
+    alias: name === input.lease.alias ? undefined : input.lease.alias,
+    state: notAnswering === undefined ? read?.state : "not answering",
+    notAnswering,
+    facts: known === undefined ? undefined : known.facts.join(" · "),
+    idle: known?.idle ?? false,
+    bound: input.bound,
+  };
+};
+
+/**
+ * Every workspace of the Mate, as the chip's list shows it: the bound one first, marked, then each
+ * other lease zcp still holds by name. The bound one is dated by the conversation's own last turn
+ * too, as its chip is; the others only by what zcp read of them, since nothing says the
+ * conversation's turn worked there. Before zcp's leases are read, the bound one alone, from the
+ * binding; once a read no longer holds it, the others alone. None for a conversation bound to none.
+ */
+export function mateWorkspaceList(input: {
+  readonly binding: CheckoutLease | null | undefined;
+  readonly lifecycle: Known<ZeropsLifecycle> | undefined;
+  readonly lastTurn: LastTurn | null | undefined;
+  readonly now: number;
+}): ReadonlyArray<MateWorkspace> {
+  const { binding, now } = input;
+  if (binding === null || binding === undefined) return [];
+  const leases = knownLeases(input.lifecycle);
+  const lastTurn = input.lastTurn ?? null;
+  if (leases === undefined) {
+    return [mateWorkspace({ lease: binding, read: undefined, lastTurn, now, bound: true })];
+  }
+  const read = boundLeaseRead(binding, leases);
+  // `map` makes a new array: sorting it in place touches nothing of the read.
+  const others = otherWorkspaces(leases, read)
+    .map((lease) => mateWorkspace({ lease, read: lease, lastTurn: null, now, bound: false }))
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name, "en") ||
+        left.lease.alias.localeCompare(right.lease.alias, "en", { numeric: true }),
+    );
+  return read === undefined
+    ? others
+    : [mateWorkspace({ lease: binding, read, lastTurn, now, bound: true }), ...others];
+}
 
 /** zcp's leases as the conversation last read them; none while the lifecycle is not known. */
 const knownLeases = (
