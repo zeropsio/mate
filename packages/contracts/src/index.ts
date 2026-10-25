@@ -47,3 +47,5 @@ export * from "./mateTask.ts";
 export * from "./engineCall.ts";
 export * from "./engineWire.ts";
 export * from "./mateHealth.ts";
+export * from "./wire/keptGit.ts";
+export * from "./wire/project.ts";

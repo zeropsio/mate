@@ -228,6 +228,7 @@ export const HQ_CLIENT_VERBS = [
   "mateKey",
   "updateMate",
   "renameApp",
+  "answerKeptGit",
   "deleteApp",
   "createMate",
   "recordClosedOff",

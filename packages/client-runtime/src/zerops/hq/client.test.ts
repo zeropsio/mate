@@ -2564,3 +2564,63 @@ describe("makeHqApi — a Mate's ticket", () => {
     await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind, code });
   });
 });
+
+describe("makeHqApi — kept Git answers", () => {
+  it.each(["keep", "delete"] as const)(
+    "%s answers the removed project's Git question through HQ",
+    async (answer) => {
+      const hq = fakeHq((seen) =>
+        seen.path.endsWith("/kept-git") ? new Response(null, { status: 204 }) : undefined,
+      );
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: NO_SOCKET,
+      });
+      await expect(api.answerKeptGit("app/1", answer)).resolves.toBeUndefined();
+      expect(hq.seen.at(-1)).toMatchObject({
+        method: "POST",
+        path: "/api/apps/app%2F1/kept-git",
+        body: { answer },
+      });
+    },
+  );
+
+  it("a kept Git question already closed preserves HQ's refusal", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path.endsWith("/kept-git")
+        ? json(409, { code: "conflict", reason: "not_asked" })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.answerKeptGit("app-1", "keep")).rejects.toMatchObject({
+      kind: "refused",
+      code: "conflict",
+      reason: "not_asked",
+    });
+  });
+
+  it("a lost kept Git answer stays uncertain without sending or reading again", async () => {
+    const hq = fakeHq((seen) => {
+      if (seen.path.endsWith("/kept-git")) throw new TypeError("Answer lost.");
+      return undefined;
+    });
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    await expect(api.answerKeptGit("app-1", "delete")).rejects.toMatchObject({ kind: "uncertain" });
+    expect(hq.seen.map((seen) => seen.path)).toEqual(["/api/door", "/api/apps/app-1/kept-git"]);
+  });
+});

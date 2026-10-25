@@ -1,3 +1,4 @@
+import { KeptGitQuestions } from "./KeptGitQuestions";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
@@ -2287,6 +2288,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           ) : null}
         </div>
       ) : null}
+      <KeptGitQuestions />
       <SidebarSelectedBand current={bandKey} />
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}

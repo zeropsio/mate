@@ -1,3 +1,4 @@
+import type { KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
@@ -364,6 +365,8 @@ export interface HqApi {
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
+  /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
+  readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
   /**
    * Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`).
    * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
@@ -1494,6 +1497,13 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId)) === undefined,
       ),
+    answerKeptGit: async (appId, answer) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/kept-git`,
+        { method: "POST", body: JSON.stringify({ answer }) },
+        true,
+      );
+    },
     createMate: (mate) =>
       confirmedDone(
         () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),
