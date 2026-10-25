@@ -75,7 +75,7 @@ describe("foundation: the real Mate", () => {
         yield* Effect.promise(() =>
           s.page.waitForFunction(
             () => document.body.innerText.includes("Ada isn't available with your access."),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
           ),
         );
         expect(yield* Effect.promise(() => s.page.$$('[role="textbox"]'))).toHaveLength(0);

@@ -34,7 +34,6 @@ const EMBEDDED_DEFAULTS: Periods = {
 const valueOf = (url: string, query: string) => {
   const read = NodeChildProcess.spawnSync("psql", [url, "-X", "-tA", "-c", query], {
     encoding: "utf8",
-    timeout: 10_000,
   });
   if (read.status !== 0) throw new Error(`Core database read failed: ${read.stderr}`);
   return read.stdout.trim();
@@ -154,7 +153,6 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
               changed();
             }),
             "Core ping/reconcile/role-check timer scheduling",
-            5000,
           ),
         );
         // Observe the clock boundary of running Core, not a copy of its configuration object.

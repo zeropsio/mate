@@ -250,7 +250,6 @@ describe("ZeropsMateUpdate hears zcp's own reads", () => {
         const hearing = yield* service.changes.pipe(
           Stream.filter((line) => line?.latest === "0.15.31"),
           Stream.runHead,
-          Effect.timeout(Duration.seconds(5)),
           Effect.forkChild,
         );
         listeners.get(NodePath.dirname(manifestFile))?.("rename", "manifest.json");

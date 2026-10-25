@@ -186,7 +186,7 @@ it.each(["held reply", "default HTTP settling"])(
             (window as unknown as { events: [string, number, boolean?][] }).events.filter(
               ([name]) => name.startsWith("reply-"),
             ).length === count,
-          { timeout: 10_000, polling: "raf" },
+          { polling: "raf" },
           requests,
         );
       };

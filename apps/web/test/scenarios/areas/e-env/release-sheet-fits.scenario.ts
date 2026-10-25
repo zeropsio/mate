@@ -50,7 +50,7 @@ describe("owner-reported layout regressions", () => {
                   sheet.getAnimations().length === 0
                 );
               },
-              { polling: "raf", timeout: 5_000 },
+              { polling: "raf" },
             ),
           );
           const measure = Effect.promise(

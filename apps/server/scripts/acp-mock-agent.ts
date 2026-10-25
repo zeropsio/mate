@@ -2,6 +2,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 
+import { waitForFileContent } from "../src/testUtils/waitForFileContent.ts";
+
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 
@@ -13,6 +15,7 @@ import * as AcpError from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
 const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
+const promptStartedPath = process.env.T3_ACP_PROMPT_STARTED_PATH;
 const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
 const antigravityProfile = process.env.T3_ACP_ANTIGRAVITY === "1";
 const emitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS === "1";
@@ -69,7 +72,7 @@ const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "
 const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
 const initialGrokReasoningEffort =
   process.env.T3_ACP_INITIAL_GROK_REASONING_EFFORT?.trim() || undefined;
-const promptDelayMs = Number(process.env.T3_ACP_PROMPT_DELAY_MS ?? "0");
+const promptReleasePath = process.env.T3_ACP_PROMPT_RELEASE_PATH;
 const permissionOptionIds = {
   allowOnce: process.env.T3_ACP_ALLOW_ONCE_OPTION_ID ?? "allow-once",
   allowAlways: process.env.T3_ACP_ALLOW_ALWAYS_OPTION_ID ?? "allow-always",
@@ -522,7 +525,7 @@ const program = Effect.gen(function* () {
             content: { type: "text", text: "replay-tail" },
           },
         });
-        yield* Effect.sleep(loadSessionDelayMs);
+        yield* hangLoadSessionAfterReplay ? Effect.never : Effect.sleep(loadSessionDelayMs);
         return {
           modes: modeState(),
           models: modelState(),
@@ -633,6 +636,7 @@ const program = Effect.gen(function* () {
     Effect.gen(function* () {
       const requestedSessionId = String(request.sessionId ?? sessionId);
       promptCount += 1;
+      if (promptStartedPath) NodeFS.appendFileSync(promptStartedPath, `${promptCount}\n`, "utf8");
       if (
         process.env.T3_ACP_CRASH_PROMPT === "1" &&
         request.prompt.some((part) => part.type === "text" && part.text === "crash now")
@@ -677,8 +681,8 @@ const program = Effect.gen(function* () {
         return { stopReason: "cancelled", _meta: { nativeCancel: true } };
       }
 
-      if (Number.isFinite(promptDelayMs) && promptDelayMs > 0) {
-        yield* Effect.sleep(`${promptDelayMs} millis`);
+      if (promptReleasePath && promptCount === 1) {
+        yield* waitForFileContent(promptReleasePath);
       }
 
       if (failPrompt || (failSecondPrompt && promptCount === 2)) {

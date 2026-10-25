@@ -70,24 +70,23 @@ describe("owner-reported layout regressions", () => {
         yield* Effect.promise(async () => {
           await s.page.waitForSelector('button[data-agent-id="claude-code"]', {
             visible: true,
-            timeout: 8000,
           });
           await waitForStillFrames(s.page);
-          await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
+          await s.page.locator('button[data-agent-id="claude-code"]').click();
           await s.page.waitForSelector(
             '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
-            { visible: true, timeout: 8000 },
+            { visible: true },
           );
-          await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
+          await s.page.waitForSelector("[data-sign-in-code]", { visible: true });
           await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
           await s.page.keyboard.press("Enter");
           await s.page.waitForSelector(
             '[data-slot="composer-shell"] [role="textbox"]:not([inert] *)',
-            { visible: true, timeout: 8000 },
+            { visible: true },
           );
           await s.page.waitForFunction(
             () => document.querySelector("[data-sign-in-code]") === null,
-            { timeout: 8000, polling: "raf" },
+            { polling: "raf" },
           );
         });
         const mate = s.drivers.realMates.get("Ada")!;
@@ -102,7 +101,6 @@ describe("owner-reported layout regressions", () => {
         yield* chat.then.text(answer);
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
-            timeout: 8000,
             polling: "raf",
           }),
         );
@@ -115,7 +113,6 @@ describe("owner-reported layout regressions", () => {
         yield* Effect.promise(() =>
           colleague.page
             .waitForFunction(() => document.body.textContent?.includes("you can read along"), {
-              timeout: 8000,
               polling: "raf",
             })
             .catch(async (cause) => {
@@ -181,7 +178,7 @@ describe("owner-reported layout regressions", () => {
             (answer) =>
               document.body.textContent?.includes(answer) &&
               document.querySelector('[data-slot="composer-shell"]'),
-            { timeout: 10_000, polling: "raf" },
+            { polling: "raf" },
             answer,
           );
           await colleague.page.evaluate(
@@ -205,7 +202,7 @@ describe("owner-reported layout regressions", () => {
           held.release();
           await colleague.page.waitForFunction(
             () => document.body.textContent?.includes("you can read along"),
-            { timeout: 10_000, polling: "raf" },
+            { polling: "raf" },
           );
           await colleague.page.evaluate(
             () =>
@@ -277,13 +274,13 @@ describe("owner-reported layout regressions", () => {
             await colleague.page.mouse.wheel({ deltaY: -200 });
             await colleague.page.waitForFunction(
               (beforeTop) => document.querySelector(".timeline-legend-list")!.scrollTop < beforeTop,
-              { timeout: 8000, polling: "raf" },
+              { polling: "raf" },
               beforeTop,
             );
             await colleague.page.waitForFunction(
               (beforeScroll) =>
                 document.querySelector(".timeline-legend-list")!.scrollHeight < beforeScroll,
-              { timeout: 8000, polling: "raf" },
+              { polling: "raf" },
               beforeScroll,
             );
             const afterScroll = await colleague.page.$eval(

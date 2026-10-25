@@ -4,6 +4,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { CHUNKS_WARMED, SETTLE_MS } from "../../../../src/lib/appChunks.ts";
 import { installArea, mergeFor } from "./fake.ts";
 import { changeFixture, review } from "./dsl.ts";
 import { changeFixture as sourceChange } from "../../fakes/d-change/changes.ts";
@@ -16,7 +17,7 @@ const sheetSettled = (s: { readonly page: Page }) =>
         const sheet = document.querySelector(".rv");
         return sheet !== null && sheet.getAnimations().length === 0;
       },
-      { polling: "raf", timeout: 5_000 },
+      { polling: "raf" },
     ),
   );
 
@@ -291,7 +292,21 @@ describe("owner-reported layout regressions", () => {
       Effect.gen(function* () {
         const { s, r } = yield* setup;
         yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
+        // The page settles and the app's warmer fetches the review's code: its receipt is the
+        // warmer's own, once every surface it loaded has settled.
+        yield* Effect.promise(async () => {
+          const warmed = s.page.evaluate(
+            (name) =>
+              new Promise<void>((resolve) => {
+                addEventListener(name, () => resolve(), { once: true });
+              }),
+            CHUNKS_WARMED,
+          );
+          await s.clock.advance(SETTLE_MS);
+          await warmed;
+        });
         // Each frame from the press: whether the sheet is painted, and whether Merge can be pressed.
         yield* Effect.promise(() =>
           s.page.evaluate(() => {
@@ -313,6 +328,8 @@ describe("owner-reported layout regressions", () => {
           }),
         );
         yield* r.open;
+        // The review's own waits run on the page's clock.
+        yield* Effect.promise(() => s.clock.advanceStepped(2_000));
         yield* r.mergeEnabled;
         yield* sheetSettled(s);
         const frames = yield* Effect.promise(() =>

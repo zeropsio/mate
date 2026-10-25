@@ -66,7 +66,7 @@ describe("crew.app.run", () => {
             const handler = yield* makeAppRun;
             yield* createLane("backend");
             const started = okValue(yield* attempt(handler, row())) as { readonly pid: number };
-            waitUntil(() => exists(root, ".crew/backend.port"));
+            yield* waitUntil(() => exists(root, ".crew/backend.port"));
             assert.deepStrictEqual(
               { started, port: read(root, ".crew/backend.port") },
               { started: { state: "running", pid: started.pid }, port: "3001" },
@@ -89,7 +89,7 @@ describe("crew.app.run", () => {
               yield* createLane("backend");
               // The cut attempt started the app on the service.
               const first = yield* app.run(PAYLOAD);
-              waitUntil(() => exists(root, ".crew/backend.starts"));
+              yield* waitUntil(() => exists(root, ".crew/backend.starts"));
               const again = okValue(yield* attempt(handler, row(2)));
               assert.deepStrictEqual({ again, starts: starts(root) }, { again: first, starts: 1 });
             }),
@@ -126,7 +126,11 @@ describe("crew.app.run", () => {
               yield* createLane("backend");
               supervisorDown(root);
               const started = okValue(yield* attempt(handler, row())) as { readonly pid: number };
-              waitUntil(() => exists(root, ".crew/backend.port"));
+              yield* waitUntil(
+                () =>
+                  exists(root, ".crew/backend.starts") &&
+                  read(root, ".crew/backend.starts").includes("start"),
+              );
               assert.deepStrictEqual(
                 {
                   started,

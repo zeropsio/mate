@@ -16,11 +16,9 @@ import { deadline, serve } from "./http.ts";
 
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
-  const input = page
-    .locator(
-      '::-p-aria([role="textbox"]):not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
-    )
-    .setTimeout(8000);
+  const input = page.locator(
+    '::-p-aria([role="textbox"]):not([inert], [inert] *, [aria-hidden="true"], [aria-hidden="true"] *)',
+  );
   const modifier = HostProcessPlatform.defaultValue() === "darwin" ? "Meta" : "Control";
   await (await input.waitHandle()).focus();
   await page.keyboard.down(modifier);
@@ -30,7 +28,7 @@ export async function sendConversationMessage(page: Page, message: string, waitF
   await page.keyboard.type(message);
   await page.waitForFunction(
     (message) => document.activeElement?.textContent === message,
-    { timeout: 8000, polling: "raf" },
+    { polling: "raf" },
     message,
   );
   if (waitForReady) {
@@ -43,7 +41,7 @@ export async function sendConversationMessage(page: Page, message: string, waitF
               !button.disabled &&
               button.getBoundingClientRect().height > 0,
           ),
-        { timeout: 8000, polling: "raf" },
+        { polling: "raf" },
       );
     } catch (cause) {
       throw new Error(
@@ -147,6 +145,8 @@ export async function openBrowser(
   };
   // Every request leaves through the scenario's routes, or is blocked and reported.
   const route = async (page: Page) => {
+    // A wait ends on its predicate or at the hang guard, never at a window sized to one machine.
+    page.setDefaultTimeout(0);
     await page.setBypassServiceWorker(true);
     page.on("popup", (popup) => {
       if (popup === null) return;
@@ -363,61 +363,60 @@ export async function openBrowser(
   };
 }
 
-export async function visibleText(page: Page, surface: string, text: string, timeout = 10_000) {
-  await page.waitForFunction(
-    (surface, text) =>
-      [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
-        (element) =>
-          // A Mate alone in its project reads "Project · Mate": either name stands on its own.
-          element.innerText
-            .split("\n")
-            .some(
-              (line) =>
-                line.split(/\s·\s/).some((part) => part.trim() === text) || line.trim() === text,
-            ) && element.getBoundingClientRect().height > 0,
-      ),
-    { timeout, polling: "raf" },
-    surface,
-    text,
+/** Some `surface` in the page draws `text` as one of its lines, or one name of a line. */
+function surfaceShowsText(surface: string, text: string) {
+  return [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
+    (element) =>
+      // A Mate alone in its project reads "Project · Mate": either name stands on its own.
+      element.innerText
+        .split("\n")
+        .some(
+          (line) =>
+            line.split(/\s·\s/).some((part) => part.trim() === text) || line.trim() === text,
+        ) && element.getBoundingClientRect().height > 0,
   );
 }
 
-/** Where Mate `name` stands in the menu against project `app`: drawn there, folded in it, or not. */
-function mateInApp(page: Page, name: string, app: string) {
-  return page.evaluate(
-    (name, app) => {
-      const shown = (node: Element) => node.getBoundingClientRect().height > 0;
-      const named = (row: Element) =>
-        row
-          .querySelector('[data-zerops-surface="sidebar-mate-name"]')
-          ?.textContent?.replaceAll("\u00a0", " ")
-          .trim();
-      const rows = (within: ParentNode) =>
-        [...within.querySelectorAll('[data-zerops-surface="sidebar-mate"]')].filter(shown);
-      // A project of one Mate is that Mate's row: "Shop · Ada".
-      if (rows(document).some((row) => named(row) === `${app} · ${name}`)) return "shown";
-      if (app === "Ungrouped") {
-        const ungrouped = document.querySelector("section[data-zerops-ungrouped]");
-        return ungrouped !== null && rows(ungrouped).some((row) => named(row) === name)
-          ? "shown"
-          : "missing";
-      }
-      for (const section of document.querySelectorAll("section[data-zerops-group]")) {
-        const group = section.querySelector(
-          '[data-zerops-surface="sidebar-project-row"] [data-zerops-surface="sidebar-project"]',
-        );
-        const title = group
-          ?.querySelector('[data-zerops-surface="sidebar-project-name"]')
-          ?.firstChild?.textContent?.trim();
-        if (group === null || group === undefined || title !== app) continue;
-        if (group.getAttribute("aria-expanded") === "false") return "folded";
-        if (rows(section).some((row) => named(row) === name)) return "shown";
-      }
-      return "missing";
-    },
-    name,
-    app,
-  );
+/** Whether `surface` draws `text` now, with no wait: for a look between clock advances. */
+export function showsText(page: Page, surface: string, text: string) {
+  return page.evaluate(surfaceShowsText, surface, text);
+}
+
+/** `timeout` only for `visibleInMenu`'s fold heuristic; every other caller waits for the text. */
+export async function visibleText(page: Page, surface: string, text: string, timeout = 0) {
+  await page.waitForFunction(surfaceShowsText, { timeout, polling: "raf" }, surface, text);
+}
+
+/** Where Mate `name` stands in the menu against project `app`: drawn there, folded in it, or not yet. */
+function whereInApp(name: string, app: string): "shown" | "folded" | null {
+  const shown = (node: Element) => node.getBoundingClientRect().height > 0;
+  const named = (row: Element) =>
+    row
+      .querySelector('[data-zerops-surface="sidebar-mate-name"]')
+      ?.textContent?.replaceAll("\u00a0", " ")
+      .trim();
+  const rows = (within: ParentNode) =>
+    [...within.querySelectorAll('[data-zerops-surface="sidebar-mate"]')].filter(shown);
+  // A project of one Mate is that Mate's row: "Shop · Ada".
+  if (rows(document).some((row) => named(row) === `${app} · ${name}`)) return "shown";
+  if (app === "Ungrouped") {
+    const ungrouped = document.querySelector("section[data-zerops-ungrouped]");
+    return ungrouped !== null && rows(ungrouped).some((row) => named(row) === name)
+      ? "shown"
+      : null;
+  }
+  for (const section of document.querySelectorAll("section[data-zerops-group]")) {
+    const group = section.querySelector(
+      '[data-zerops-surface="sidebar-project-row"] [data-zerops-surface="sidebar-project"]',
+    );
+    const title = group
+      ?.querySelector('[data-zerops-surface="sidebar-project-name"]')
+      ?.firstChild?.textContent?.trim();
+    if (group === null || group === undefined || title !== app) continue;
+    if (group.getAttribute("aria-expanded") === "false") return "folded";
+    if (rows(section).some((row) => named(row) === name)) return "shown";
+  }
+  return null;
 }
 
 /** The menu's row of group `app`, its project of several Mates. */
@@ -435,7 +434,7 @@ function groupRow(page: Page, app: string) {
             .querySelector('[data-zerops-surface="sidebar-project-name"]')
             ?.firstChild?.textContent?.trim() === app,
       ) ?? null,
-    { timeout: 10_000, polling: "raf" },
+    { polling: "raf" },
     app,
   );
 }
@@ -453,7 +452,7 @@ export async function foldMenuGroup(page: Page, app: string, fold: boolean) {
   }
   await page.waitForFunction(
     (node, open) => node.getAttribute("aria-expanded") === open,
-    { timeout: 10_000, polling: "raf" },
+    { polling: "raf" },
     group,
     String(!fold),
   );
@@ -465,17 +464,13 @@ export async function foldMenuGroup(page: Page, app: string, fold: boolean) {
  * Mate `name` stands in project `app` in the menu: as its row ("Shop · Ada"), under its group's
  * row — the group opened as a person would, where it is folded — or among the ungrouped.
  */
-export async function menuMateIn(page: Page, name: string, app: string, timeout = 15_000) {
-  const until = Date.now() + timeout;
+export async function menuMateIn(page: Page, name: string, app: string) {
   for (;;) {
-    const where = await mateInApp(page, name, app);
-    if (where === "shown") return;
-    if (where === "folded") await foldMenuGroup(page, app, false);
-    if (Date.now() > until)
-      throw new Error(
-        `Menu did not show ${name} in ${app} (${where})\n${await page.evaluate(() => document.body.innerText)}`,
-      );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const where = await page.waitForFunction(whereInApp, { polling: "raf" }, name, app);
+    const found = await where.jsonValue();
+    await where.dispose();
+    if (found === "shown") return;
+    await foldMenuGroup(page, app, false);
   }
 }
 
@@ -485,6 +480,7 @@ export async function menuMateIn(page: Page, name: string, app: string, timeout 
  * group is drawn once a person opens its group: where none shows it soon, every group is opened
  * from the menu's top row.
  */
+// A kept window, not a timeout test: a row not drawn within 3 s reads as folded (a design gap).
 export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
   const literal = (value: string) => {
     const parts = value.split('"').map((part) => `"${part}"`);
@@ -538,6 +534,7 @@ async function openFoldedGroups(page: Page) {
  * Mate `name` drawn in the menu's `surface`: a Mate in a folded group is drawn once a person
  * opens its group, so where none shows it soon every group is opened.
  */
+// A kept window, not a timeout test: a row not drawn within 3 s reads as folded (a design gap).
 export async function visibleInMenu(page: Page, surface: string, name: string, timeout = 10_000) {
   try {
     await visibleText(page, surface, name, Math.min(timeout, 3_000));
@@ -553,22 +550,19 @@ export async function visibleInMenu(page: Page, surface: string, name: string, t
  */
 export async function openAccountMenu(page: Page) {
   // Its centre, clicked there: the control may draw anew between finding and clicking it.
-  const centre = await page.waitForFunction(
-    () => {
-      for (const button of document.querySelectorAll<HTMLElement>(
-        '[data-zerops-surface="sidebar-account"]',
-      )) {
-        const box = button.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) continue;
-        const x = box.x + box.width / 2;
-        const y = box.y + box.height / 2;
-        const top = document.elementFromPoint(x, y);
-        if (top !== null && button.contains(top)) return { x, y };
-      }
-      return null;
-    },
-    { timeout: 15_000 },
-  );
+  const centre = await page.waitForFunction(() => {
+    for (const button of document.querySelectorAll<HTMLElement>(
+      '[data-zerops-surface="sidebar-account"]',
+    )) {
+      const box = button.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      const top = document.elementFromPoint(x, y);
+      if (top !== null && button.contains(top)) return { x, y };
+    }
+    return null;
+  });
   const { x, y } = (await centre.jsonValue()) as { readonly x: number; readonly y: number };
   await page.mouse.click(x, y);
 }
@@ -580,7 +574,6 @@ export async function clickText(page: Page, surface: string, text: string) {
     .locator(
       `::-p-xpath(//*[@data-zerops-surface="${surface}"][.//text()[normalize-space(.)=${literal}]])`,
     )
-    .setTimeout(10_000)
     .click();
 }
 
@@ -588,7 +581,6 @@ export async function clickText(page: Page, surface: string, text: string) {
 export async function resizeMenu(page: Page, width: number) {
   const rail = await page.waitForSelector('[data-sidebar="rail"]', {
     visible: true,
-    timeout: 5_000,
   });
   const box = await rail!.boundingBox();
   if (box === null) throw new Error("The menu drag rail has no geometry");
@@ -606,7 +598,7 @@ export async function resizeMenu(page: Page, width: number) {
     (expected) =>
       document.querySelector('[data-sidebar="sidebar"]')?.getBoundingClientRect().width ===
       expected,
-    { timeout: 5_000, polling: "raf" },
+    { polling: "raf" },
     width,
   );
 }

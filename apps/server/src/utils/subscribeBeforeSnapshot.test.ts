@@ -39,10 +39,7 @@ describe("subscribeBeforeSnapshot", () => {
 
         const subscription = yield* Fiber.join(subscriptionFiber);
         yield* Fiber.join(publishFiber);
-        const firstChange = yield* subscription.changes.pipe(
-          Stream.runHead,
-          Effect.timeout("1 second"),
-        );
+        const firstChange = yield* subscription.changes.pipe(Stream.runHead);
 
         expect(subscription.latest).toBe(1);
         expect(firstChange).toEqual(Option.some(2));
@@ -71,10 +68,7 @@ describe("subscribeBeforeSnapshot", () => {
         yield* Deferred.succeed(finishSnapshot, undefined);
 
         const subscription = yield* Fiber.join(subscriptionFiber);
-        const firstChange = yield* subscription.changes.pipe(
-          Stream.runHead,
-          Effect.timeout("1 second"),
-        );
+        const firstChange = yield* subscription.changes.pipe(Stream.runHead);
 
         expect(subscription.latest).toBe(2);
         expect(firstChange).toEqual(Option.some(2));

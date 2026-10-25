@@ -49,7 +49,7 @@ const newProjectPlace = (page: Parameters<typeof creation>[0]["page"]) =>
           line: line.textContent ?? "",
         } satisfies NewProjectPlace;
       },
-      { timeout: 15_000, polling: "raf" },
+      { polling: "raf" },
     );
     return (await handle.jsonValue()) as NewProjectPlace;
   });
@@ -99,7 +99,7 @@ describe("owner-reported layout regressions", () => {
                     '[data-zerops-surface="project-cards"] article[aria-label="Shop"] button',
                   ),
                 ].find((button) => button.textContent?.trim().startsWith("Add a Mate")),
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             );
             await (add.asElement() as ElementHandle<Element>).click();
           });
@@ -124,7 +124,7 @@ describe("owner-reported layout regressions", () => {
                   pressLandsOnIt: under !== null && add.contains(under),
                 } satisfies AddPlace;
               },
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             ),
           );
           const at = (yield* Effect.promise(() => place.jsonValue())) as AddPlace;
@@ -209,7 +209,7 @@ describe("owner-reported layout regressions", () => {
                   create: create.getBoundingClientRect().height,
                 };
               },
-              { timeout: 15_000, polling: "raf" },
+              { polling: "raf" },
             );
             return (await handle.jsonValue()) as { add: number; create: number };
           });

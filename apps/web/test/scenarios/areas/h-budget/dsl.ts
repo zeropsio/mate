@@ -69,42 +69,32 @@ export function budgets(s: Scenario) {
         ),
       opensMate: (name: string) =>
         Effect.promise(async () => {
-          await s.page
-            .locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`)
-            .setTimeout(15_000)
-            .click();
+          await s.page.locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`).click();
           await s.page.waitForFunction(
             (threadId) => location.href.includes(threadId),
-            { timeout: 15_000, polling: "raf" },
+            { polling: "raf" },
             s.drivers.mates.get(name)!.thread.id,
           );
           await observation.mateReady(name);
         }),
       /** Opens a project's addresses, which draws each stop's public addresses. */
       opensAddresses: Effect.promise(async () => {
-        await s.page
-          .locator('[data-zerops-surface="sidebar-project-sites"]')
-          .setTimeout(15_000)
-          .click();
-        await s.page
-          .locator('[data-zerops-surface="sidebar-project-sites-popover"]')
-          .setTimeout(15_000)
-          .wait();
+        await s.page.locator('[data-zerops-surface="sidebar-project-sites"]').click();
+        await s.page.locator('[data-zerops-surface="sidebar-project-sites-popover"]').wait();
       }),
       // The overview's projects: its cards, and the lines of the projects without a Mate.
       projectsReady: Effect.promise(async () => {
-        await s.page
-          .locator('[data-zerops-surface="projects-flow"] [data-zerops-group]')
-          .setTimeout(15_000)
-          .wait();
+        await s.page.locator('[data-zerops-surface="projects-flow"] [data-zerops-group]').wait();
       }),
+      /** The overview lists `count` projects: cards, painted or standing in, and lines. */
       projectsAre: (count: number) =>
         Effect.promise(() =>
           s.page.waitForFunction(
             (expected) =>
-              document.querySelectorAll('[data-zerops-surface="projects-flow"] [data-zerops-group]')
-                .length === expected,
-            {},
+              document.querySelectorAll(
+                '[data-zerops-surface="projects-flow"] :is([data-zerops-group], [role="listitem"][aria-busy="true"])',
+              ).length === expected,
+            { polling: "mutation" },
             count,
           ),
         ),
@@ -194,7 +184,7 @@ export function budgets(s: Scenario) {
                 editor.isContentEditable &&
                 editor.getAttribute("aria-disabled") !== "true",
             ),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
         );
       }),
     },

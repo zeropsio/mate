@@ -1,8 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import { assertTrue } from "@effect/vitest/utils";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 
@@ -19,32 +17,26 @@ it.effect(
         capabilities: { repositoryIdentity: true },
       };
 
-      const welcome = yield* lifecycleEvents
-        .publish({
-          version: 1,
-          type: "welcome",
-          payload: {
-            environment,
-            cwd: "/tmp/project",
-            projectName: "project",
-          },
-        })
-        .pipe(Effect.timeoutOption("50 millis"));
-      assertTrue(Option.isSome(welcome));
-      assert.equal(welcome.value.sequence, 1);
+      const welcome = yield* lifecycleEvents.publish({
+        version: 1,
+        type: "welcome",
+        payload: {
+          environment,
+          cwd: "/tmp/project",
+          projectName: "project",
+        },
+      });
+      assert.equal(welcome.sequence, 1);
 
-      const ready = yield* lifecycleEvents
-        .publish({
-          version: 1,
-          type: "ready",
-          payload: {
-            at: "2026-01-01T00:00:00.000Z",
-            environment,
-          },
-        })
-        .pipe(Effect.timeoutOption("50 millis"));
-      assertTrue(Option.isSome(ready));
-      assert.equal(ready.value.sequence, 2);
+      const ready = yield* lifecycleEvents.publish({
+        version: 1,
+        type: "ready",
+        payload: {
+          at: "2026-01-01T00:00:00.000Z",
+          environment,
+        },
+      });
+      assert.equal(ready.sequence, 2);
 
       const snapshot = yield* lifecycleEvents.snapshot;
       assert.equal(snapshot.sequence, 2);

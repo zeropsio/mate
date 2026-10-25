@@ -89,7 +89,7 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
 
       const fd = yield* openBootstrapInputFd(filePath);
 
-      const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, { timeoutMs: 100 });
+      const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd);
       assertSome(payload, {
         mode: "desktop",
       });
@@ -114,9 +114,9 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
 
       openSyncInterceptor.failPath = `/proc/self/fd/${fd}`;
       try {
-        const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, {
-          timeoutMs: 100,
-        }).pipe(Effect.provideService(HostProcessPlatform, "linux"));
+        const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd).pipe(
+          Effect.provideService(HostProcessPlatform, "linux"),
+        );
         assertSome(payload, {
           mode: "desktop",
         });
@@ -139,9 +139,10 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
       openSyncInterceptor.failPath = fdPath;
       openSyncInterceptor.errorCode = "EIO";
       try {
-        const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, {
-          timeoutMs: 100,
-        }).pipe(Effect.provideService(HostProcessPlatform, "linux"), Effect.flip);
+        const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd).pipe(
+          Effect.provideService(HostProcessPlatform, "linux"),
+          Effect.flip,
+        );
 
         assert.instanceOf(error, BootstrapInputStreamOpenError);
         assert.equal(error.fd, fd);
@@ -164,7 +165,7 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
       const fd = NodeFS.openSync("/dev/null", "r");
       NodeFS.closeSync(fd);
 
-      const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, { timeoutMs: 100 });
+      const payload = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd);
       assertNone(payload);
     }),
   );
@@ -178,9 +179,7 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
 
       fstatSyncInterceptor.failFd = fd;
       try {
-        const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, {
-          timeoutMs: 100,
-        }).pipe(Effect.flip);
+        const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd).pipe(Effect.flip);
 
         assert.instanceOf(error, BootstrapFdStatError);
         assert.equal(error.fd, fd);
@@ -199,9 +198,7 @@ it.layer(NodeServices.layer)("readBootstrapEnvelope", (it) => {
       yield* fs.writeFileString(filePath, '{"mode":42}\n');
 
       const fd = yield* openBootstrapInputFd(filePath);
-      const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd, {
-        timeoutMs: 100,
-      }).pipe(Effect.flip);
+      const error = yield* readBootstrapEnvelope(TestEnvelopeSchema, fd).pipe(Effect.flip);
 
       assert.instanceOf(error, BootstrapEnvelopeDecodeError);
       assert.equal(error.fd, fd);

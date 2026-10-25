@@ -168,7 +168,7 @@ const drain = (worker: Worker) =>
       if ((waiting?.n ?? 0) === 0) return completed;
       yield* Effect.sleep(20);
     }
-  }).pipe(Effect.timeout("8 seconds"), Effect.orDie);
+  }).pipe(Effect.orDie);
 
 const start = askImport(c, source);
 
@@ -759,10 +759,10 @@ describe("a client watching while the earlier record comes in", () => {
                   }
                 }),
             ).pipe(Effect.forkScoped({ startImmediately: true }));
-            yield* Deferred.await(subscribed).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+            yield* Deferred.await(subscribed).pipe(Effect.orDie);
             yield* start;
             yield* drain(worker);
-            yield* Deferred.await(synchronized).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+            yield* Deferred.await(synchronized).pipe(Effect.orDie);
             return frames;
           }),
         ).pipe(Effect.provide(LiveBusModule.layer)),
@@ -930,7 +930,7 @@ describe("the import's crash table", () => {
                 if (armed && crash.how === "mid-effect") {
                   // The handler's batch goes in, then the process dies before it returns.
                   yield* Effect.forkDetach(worker.runOnce);
-                  yield* Deferred.await(acted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+                  yield* Deferred.await(acted).pipe(Effect.orDie);
                   return;
                 }
                 if (move === 0) yield* Effect.exit(start);

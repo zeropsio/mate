@@ -104,7 +104,7 @@ const collectEventsDuring = <A, E, R>(
       Array.from({ length: count }, () => undefined),
       () => Queue.take(queue),
       { discard: false },
-    ).pipe(Effect.timeout("15 seconds"), Effect.orDie);
+    ).pipe(Effect.orDie);
   });
 
 const runTurn = (input: {

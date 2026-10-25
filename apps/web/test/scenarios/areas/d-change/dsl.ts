@@ -82,7 +82,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
             ].some(
               (node) => node.getBoundingClientRect().height > 0 && node.innerText.includes(words),
             ),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
           words,
         );
       } catch (error) {
@@ -102,7 +102,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
               !button.disabled &&
               button.getBoundingClientRect().height > 0,
           ),
-        { timeout: 15_000, polling: "raf" },
+        { polling: "raf" },
       );
     } catch (error) {
       throw new Error(
@@ -125,7 +125,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
             node.closest("[inert]") === null &&
             node.innerText.trim().startsWith(title),
         ) ?? null,
-      { timeout: 15_000, polling: "raf" },
+      { polling: "raf" },
       title,
     );
     const fold = await (heading.asElement() as ElementHandle<HTMLElement>).$(
@@ -145,7 +145,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     waitUntilMergeEnabled,
     chooseInitialOrganization: (name: string) =>
       Effect.promise(async () => {
-        await s.page.locator("::-p-text(Choose an organization)").setTimeout(15_000).wait();
+        await s.page.locator("::-p-text(Choose an organization)").wait();
         await s.page.locator(`::-p-text(${name})`).click();
       }),
     switchOrganization: (name: string) =>
@@ -172,7 +172,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
             ].some(
               (node) => node.getBoundingClientRect().height > 0 && node.innerText.trim() === name,
             ),
-          { timeout: 15_000, polling: "raf" },
+          { polling: "raf" },
           name,
         );
       }),
@@ -213,13 +213,9 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     // A Mate's change waiting on the viewer: its project's row marks it, and the conversation it
     // opens holds the Review in its header.
     open: Effect.promise(async () => {
-      await s.page
-        .locator('[data-zerops-surface="sidebar-project-review-mark"]')
-        .setTimeout(15_000)
-        .click();
+      await s.page.locator('[data-zerops-surface="sidebar-project-review-mark"]').click();
       await s.page
         .locator('.chat-header-review [data-zerops-surface="sidebar-project-review"]')
-        .setTimeout(15_000)
         .click();
     }),
     direct: (path: string) =>
@@ -246,7 +242,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
                 '[aria-label="Say something on this change"]',
               ),
             ].some((box) => box.value === body),
-          { timeout: 15_000 },
+          {},
           body,
         );
       }),
@@ -254,7 +250,6 @@ export function review(s: Pick<Scenario, "page" | "web">) {
       await s.page.keyboard.press("Escape");
       await s.page.waitForSelector('[data-zerops-surface="review"]', {
         hidden: true,
-        timeout: 15_000,
       });
     }),
     // "Merge to <stage>" where the change has a stage: the button by what it does.

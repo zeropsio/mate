@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -23,11 +23,8 @@ describe("Scenario menu rows", () => {
             await animations.send("Animation.enable");
             await animations.send("Animation.setPlaybackRate", { playbackRate: 0.1 });
             await (await menuMateRow(s.page, "Bea")).click();
-            await s.page
-              .waitForFunction(() => location.pathname === "/env-Bea/thread-Bea", { timeout: 8000 })
-              .catch(() => undefined);
+            await s.page.waitForFunction(() => location.pathname === "/env-Bea/thread-Bea");
           });
-          expect(new URL(s.page.url()).pathname).toBe("/env-Bea/thread-Bea");
         }),
     );
   });

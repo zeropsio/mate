@@ -29,7 +29,7 @@ describe("C: agent selection and contextual drafts", () => {
             Effect.promise(async () => {
               const button =
                 '[class~="@container/header-actions"] button[aria-label="Review Add the order summary"]';
-              await page.waitForSelector(button, { visible: true, timeout: 8000 });
+              await page.waitForSelector(button, { visible: true });
               const header = page.locator(button);
               expect(
                 await page.$eval(

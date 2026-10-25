@@ -9,6 +9,10 @@ export default mergeConfig(
   defineConfig({
     test: {
       globalSetup: ["../../scripts/test-postgres.setup.ts"],
+      // Lazy database migrations, Core startup and real Git I/O run inside cases. Their wall
+      // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
+      testTimeout: 660_000,
+      hookTimeout: 660_000,
     },
     pack: {
       entry: ["src/main.ts"],

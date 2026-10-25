@@ -95,26 +95,23 @@ describe("B: text-only drafts", () => {
             expect(row.media).toBe(0);
             // Both Mates stand in the menu as rows: none rests apart as "quiet" (the owner,
             // 2026-10-11).
-            await s.page.waitForFunction(
-              () => {
-                // Their project's group, opened as a person would: → on its row.
-                for (const group of document.querySelectorAll<HTMLElement>(
-                  '[data-zerops-surface="sidebar-project"][aria-expanded="false"]',
-                )) {
-                  group.dispatchEvent(
-                    new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-                  );
-                }
-                const lines =
-                  document
-                    .querySelector<HTMLElement>('[data-zerops-surface="sidebar-environments"]')
-                    ?.innerText.split("\n")
-                    .flatMap((line) => line.split(/\s·\s/))
-                    .map((line) => line.trim()) ?? [];
-                return lines.includes("Ada") && lines.includes("Bea");
-              },
-              { timeout: 8000 },
-            );
+            await s.page.waitForFunction(() => {
+              // Their project's group, opened as a person would: → on its row.
+              for (const group of document.querySelectorAll<HTMLElement>(
+                '[data-zerops-surface="sidebar-project"][aria-expanded="false"]',
+              )) {
+                group.dispatchEvent(
+                  new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+                );
+              }
+              const lines =
+                document
+                  .querySelector<HTMLElement>('[data-zerops-surface="sidebar-environments"]')
+                  ?.innerText.split("\n")
+                  .flatMap((line) => line.split(/\s·\s/))
+                  .map((line) => line.trim()) ?? [];
+              return lines.includes("Ada") && lines.includes("Bea");
+            });
             const rail = await s.page.$('[data-sidebar="rail"]');
             const box = (await rail!.boundingBox())!;
             const width = await s.page.$eval(

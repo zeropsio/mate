@@ -27,7 +27,8 @@ jobs:
   prepare:
     name: CI promotion
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    # Past main's worst full run (7.6 min): a kh-next run may wait for it.
+    timeout-minutes: 9
     permissions:
       actions: read
       contents: read
@@ -67,6 +68,13 @@ jobs:
         run: |
           set -euo pipefail
           skip=false
+          # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
+          main_ran() {
+            local ran
+            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --paginate --jq '
+              [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
+            [[ "$ran" =~ ^[1-9] ]]
+          }
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
             verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
               .workflow_runs[]
@@ -90,8 +98,53 @@ jobs:
               printf 'Verified kh-next CI run(s): %s\n' "$verified"
             fi
           fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
+            # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
+            export GITHUB_TREE
+            GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --paginate --jq '
+              .workflow_runs[]
+              | select(.head_branch == "main")
+              | select(.event == "push" and .status == "completed" and .conclusion == "success")
+              | select(.head_commit.tree_id == env.GITHUB_TREE)
+              | .id')
+            for run in $candidates; do
+              if main_ran "$run"; then
+                skip=true
+                printf 'Verified main CI run: %s\n' "$run"
+                break
+              fi
+            done
+            if [[ "$skip" != true ]]; then
+              # "Integrate main" reaches kh-next seconds after the hotfix push, while main's run of the
+              # tree is still going. Wait on that run's own conclusion. A red main run is this tree's
+              # verdict too, so this run fails with it; only a cancelled (superseded) run means a full
+              # run here. The step's timeout-minutes is the only bound.
+              for status in in_progress queued; do
+                export RUN_STATUS=$status
+                pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=${status}&per_page=100" --paginate --jq '
+                  .workflow_runs[]
+                  | select(.head_branch == "main")
+                  | select(.event == "push" and .status == env.RUN_STATUS)
+                  | select(.head_commit.tree_id == env.GITHUB_TREE)
+                  | .id')
+                for run in $pending; do
+                  if gh run watch "$run" --exit-status >/dev/null; then
+                    if main_ran "$run"; then
+                      skip=true
+                      printf 'Verified main CI run: %s\n' "$run"
+                      break 2
+                    fi
+                  elif [[ "$(gh run view "$run" --json conclusion --jq .conclusion)" == failure ]]; then
+                    printf 'Main CI run %s failed on this tree; fix main, not kh-next.\n' "$run" >&2
+                    exit 1
+                  fi
+                done
+              done
+            fi
+          fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
-          echo "Already verified on kh-next: ${skip}"
+          echo "Already verified: ${skip}"
 
   cache:
     name: Check cache (${{ matrix.os }})
@@ -534,7 +587,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next or main.'
 
       - name: Require every package test job to pass
         if: needs.prepare.outputs.skip != 'true'
@@ -1018,7 +1071,7 @@ jobs:
     steps:
       - name: Report verified promotion
         if: needs.prepare.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next.'
+        run: echo 'This tree passed full CI on kh-next or main.'
 
       - name: Require release smoke to pass
         if: needs.prepare.outputs.skip != 'true'

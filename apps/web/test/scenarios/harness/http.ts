@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- real HTTP sockets are the black-box test boundary.
 import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
+import { TestRunner } from "vite-plus/test";
 import { WebSocketServer, type WebSocket } from "ws";
 
 export interface WireRequest {
@@ -88,17 +89,27 @@ export async function serve(handler: HttpHandler, upgrade?: (socket: WebSocket, 
   };
 }
 
-/** A deadline, never a delay used to guess when work finished. */
-export async function deadline<A>(promise: Promise<A>, what: string, timeout = 10_000): Promise<A> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * A receipt's wait: it ends when `promise` does, or names `what` when the test stops it (by
+ * default the running test's own stop), never at a window sized to one machine.
+ */
+export async function deadline<A>(
+  promise: Promise<A>,
+  what: string,
+  signal = TestRunner.getCurrentTest()?.context.signal,
+): Promise<A> {
+  if (!signal) return promise;
+  let stopped = () => {};
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Timed out: ${what}`)), timeout);
+        stopped = () => reject(new Error(`Timed out: ${what}`, { cause: signal.reason }));
+        if (signal.aborted) stopped();
+        else signal.addEventListener("abort", stopped, { once: true });
       }),
     ]);
   } finally {
-    clearTimeout(timer);
+    signal.removeEventListener("abort", stopped);
   }
 }

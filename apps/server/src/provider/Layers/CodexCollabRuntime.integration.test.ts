@@ -20,7 +20,10 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { assert, describe } from "vite-plus/test";
+import { afterAll, assert, describe } from "vite-plus/test";
+import * as TestClock from "effect/testing/TestClock";
+
+import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 
 import wireFixture from "../testFixtures/codexMultiAgentWire.json" with { type: "json" };
 import { makeCodexSessionRuntime } from "./CodexSessionRuntime.ts";
@@ -158,7 +161,9 @@ function readRecordedRequests() {
     .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> });
 }
 
-const scriptPath = NodePath.join(import.meta.dirname, "../testFixtures/.collab-script.json");
+const scriptDirectory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codex-collab-"));
+const scriptPath = NodePath.join(scriptDirectory, "collab-script.json");
+afterAll(() => NodeFS.rmSync(scriptDirectory, { recursive: true, force: true }));
 // Windows cannot run the shebang wrapper; the .cmd sibling does the same job.
 const peerPath = NodePath.join(
   import.meta.dirname,
@@ -582,9 +587,7 @@ describe("CodexSessionRuntime collab integration", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  // it.live: the runtime talks to a real child process; under it.effect's
-  // TestClock the internal timers freeze and the join never completes.
-  it.live("Stop interrupts every live child regardless of registration timing", () =>
+  it.effect("Stop interrupts every live child regardless of registration timing", () =>
     Effect.gen(function* () {
       // Ordering + liveness torture for stop-everything: child A's
       // turn/started arrives BEFORE anything registers it (foreign
@@ -682,14 +685,15 @@ describe("CodexSessionRuntime collab integration", () => {
 
       yield* runtime.start();
       yield* runtime.sendTurn({ input: "fan out and hang" });
-      const childBStarted = yield* Fiber.join(childBStartedFiber).pipe(
-        Effect.timeoutOption("15 seconds"),
-      );
-      assert.isTrue(childBStarted._tag === "Some", "child B turnStarted never arrived");
+      const childBStarted = yield* Fiber.join(childBStartedFiber);
+      assert.isAbove(childBStarted.length, 0, "child B turnStarted never arrived");
 
       // Stop everything. A's interrupt hangs forever — the bounded child
       // deadline must expire and the parent interrupt must still be sent.
-      yield* runtime.interruptTurn();
+      const interrupt = yield* runtime.interruptTurn().pipe(Effect.forkChild);
+      yield* waitForFileContent(interruptsPath, (content) => content.includes(CHILD_A));
+      yield* TestClock.adjust("3 seconds");
+      yield* Fiber.join(interrupt);
 
       const parseInterruptLine = (line: string) => JSON.parse(line) as { threadId?: string };
       const interrupted = NodeFS.readFileSync(interruptsPath, "utf8")
@@ -778,10 +782,12 @@ describe("CodexSessionRuntime collab integration", () => {
 
       yield* runtime.start();
       yield* runtime.sendTurn({ input: "use the connected app" });
-      const requested = yield* Deferred.await(requestedReady).pipe(
-        Effect.timeoutOption("15 seconds"),
+      const requested = yield* Deferred.await(requestedReady);
+      assert.equal(
+        requested.method,
+        "item/permissions/requestApproval",
+        "permission approval request never arrived",
       );
-      assert.isTrue(requested._tag === "Some", "permission approval request never arrived");
 
       yield* runtime.interruptTurn();
 
@@ -790,9 +796,12 @@ describe("CodexSessionRuntime collab integration", () => {
       // race-free. The runtime correlates that receipt back to the canonical
       // request (requestKind + requestId) — the same event chain the adapter
       // folds into approval.resolved, so the card actually closes.
-      const settled = yield* Deferred.await(settledReady).pipe(Effect.timeoutOption("15 seconds"));
-      assert.isTrue(settled._tag === "Some", "interrupt did not settle the parked approval");
-      const settledEvent = settled._tag === "Some" ? settled.value : undefined;
+      const settledEvent = yield* Deferred.await(settledReady);
+      assert.equal(
+        settledEvent.method,
+        "serverRequest/resolved",
+        "interrupt did not settle the parked approval",
+      );
       assert.isDefined(settledEvent);
       assert.isDefined(
         settledEvent?.requestId,

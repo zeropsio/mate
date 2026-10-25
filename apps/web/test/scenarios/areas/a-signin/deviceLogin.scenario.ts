@@ -105,7 +105,6 @@ describe("A: sign-in through the Zerops window", () => {
         const link = yield* Effect.promise(() =>
           s.page
             .locator('::-p-aria(Continue in Zerops[role="link"])')
-            .setTimeout(10_000)
             .map((anchor) => (anchor as HTMLAnchorElement).href)
             .wait(),
         );
@@ -153,9 +152,7 @@ describe("A: sign-in through the Zerops window", () => {
         s.web.setPerson(s.page, "personal");
         // Opened without HQ's card, the consent page asks.
         yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
-        yield* Effect.promise(() =>
-          s.page.locator('::-p-aria(Deny[role="button"])').setTimeout(10_000).click(),
-        );
+        yield* Effect.promise(() => s.page.locator('::-p-aria(Deny[role="button"])').click());
         const window = zeropsWindow(s);
         yield* window.says("Continue with your Zerops account");
         const text = yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText));

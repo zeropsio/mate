@@ -51,6 +51,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/hq/src/deploys.test.ts": [],
   "apps/hq/src/gitHost.test.ts": [],
   "apps/hq/src/gitPush.integration.test.ts": [],
+  "apps/hq/src/oneShotBackup.test.ts": [],
   "apps/hq/src/personGit.test.ts": [],
   "apps/hq/src/restore.test.ts": [],
   "apps/hq/src/zerops/contract.test.ts": [],
@@ -240,9 +241,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/release-mate.test.ts": [".github/workflows/release.yml"],
   "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
+  "scripts/scenario-wait-windows.test.ts": ["apps/web/test/scenarios/**"],
   "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
   "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],
   "scripts/test-ports.test.ts": [],
+  "scripts/test-postgres.test.ts": [],
   "scripts/test-process-lock.test.ts": [],
   "scripts/tsconfig-basename-collisions.test.ts": [
     "apps/**",
@@ -251,6 +254,13 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "pnpm-workspace.yaml",
   ],
   "scripts/turn-start-sites.test.ts": ["apps/**", "packages/**"],
+  "scripts/unit-test-timeouts.test.ts": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/signal.yml",
+    "apps/hq/vite.config.ts",
+    "apps/web/test/scenarios/vitest.config.ts",
+    "apps/web/vite.config.ts",
+  ],
   "scripts/update-release-package-versions.test.ts": [],
 };
 

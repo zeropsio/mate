@@ -168,7 +168,7 @@ describe("the view helper's stream", () => {
     enough: (messages: ReadonlyArray<MacViewMessage>) => boolean,
     fps = 5,
   ): Promise<ReadonlyArray<MacViewMessage>> => {
-    for (let attempt = 0; attempt < 100 && !NodeFS.existsSync(socket); attempt++) {
+    while (!NodeFS.existsSync(socket)) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     return new Promise((resolve, reject) => {
@@ -313,7 +313,7 @@ describe("the view helper's stream", () => {
         return false;
       }
     };
-    for (let attempt = 0; attempt < 60 && alive(); attempt++) {
+    while (alive()) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     expect(alive()).toBe(false);

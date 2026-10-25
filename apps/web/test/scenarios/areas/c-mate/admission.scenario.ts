@@ -40,17 +40,15 @@ const agentUnsupported = (page: Page) =>
   Effect.promise(async () => {
     const control = "[data-chat-provider-model-picker]";
     await expect
-      .poll(
-        () =>
-          page.evaluate(
-            (control) =>
-              [...document.querySelectorAll(`${control} [role="img"]`)].map((node) => [
-                node.getAttribute("aria-label"),
-                node.getAttribute("data-tone"),
-              ]),
-            control,
-          ),
-        { timeout: 8000 },
+      .poll(() =>
+        page.evaluate(
+          (control) =>
+            [...document.querySelectorAll(`${control} [role="img"]`)].map((node) => [
+              node.getAttribute("aria-label"),
+              node.getAttribute("data-tone"),
+            ]),
+          control,
+        ),
       )
       .toEqual([[expect.stringMatching(/ is unsupported$/u), "warning"]]);
     await page.click(control);
@@ -91,7 +89,7 @@ describe("C: agent admission", () => {
           yield* chat.when.open();
           yield* Effect.promise(() =>
             expect
-              .poll(() => s.page.evaluate(signInExplanations), { timeout: 8000 })
+              .poll(() => s.page.evaluate(signInExplanations))
               .toEqual(["Ada needs a Claude sign-in to continue.Sign in"]),
           );
           expect(
@@ -131,10 +129,8 @@ describe("C: agent admission", () => {
           );
           yield* Effect.promise(() =>
             expect
-              .poll(
-                () =>
-                  s.page.$eval('[data-zerops-surface="sidebar-mate"]', (node) => node.textContent),
-                { timeout: 8000 },
+              .poll(() =>
+                s.page.$eval('[data-zerops-surface="sidebar-mate"]', (node) => node.textContent),
               )
               .toContain("Ada's turn could not continue because Claude was signed out."),
           );
@@ -214,33 +210,24 @@ describe("C: agent admission", () => {
           yield* chat.when.open();
           yield* Effect.promise(() =>
             expect
-              .poll(
-                () =>
-                  s.page.evaluate(
-                    () => document.querySelector("#agent-admission button")?.textContent ?? null,
-                  ),
-                {
-                  timeout: 8000,
-                },
+              .poll(() =>
+                s.page.evaluate(
+                  () => document.querySelector("#agent-admission button")?.textContent ?? null,
+                ),
               )
               .toBe("Manage API key"),
           );
           yield* chat.when.press("Manage API key");
           yield* Effect.promise(() =>
-            expect
-              .poll(() => s.page.evaluate(() => location.pathname), { timeout: 8000 })
-              .toBe("/settings/providers"),
+            expect.poll(() => s.page.evaluate(() => location.pathname)).toBe("/settings/providers"),
           );
           yield* Effect.promise(() =>
             s.page
               .locator('input[aria-label="Environment variable value 1"]')
-              .setTimeout(8000)
               .fill("fixture-key-repair"),
           );
           yield* chat.when.key("Enter");
-          yield* Effect.promise(() =>
-            expect.poll(() => repairs, { timeout: 8000 }).toEqual(["claudeAgent-work"]),
-          );
+          yield* Effect.promise(() => expect.poll(() => repairs).toEqual(["claudeAgent-work"]));
           yield* chat.when.visit("/env-Ada/thread-Ada");
           yield* chat.then.noText("Manage API key");
           yield* chat.when.send("Continue the same conversation");

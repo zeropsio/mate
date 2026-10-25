@@ -541,7 +541,7 @@ describe("CrewEngine lead", () => {
           });
           yield* world.turnEnds(lead);
           yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
-          yield* Effect.sleep("300 millis");
+          yield* world.settled;
           assert.deepStrictEqual(
             [
               read(world.root, "ok.txt"),
@@ -742,7 +742,7 @@ describe("CrewEngine lead", () => {
           Effect.gen(function* () {
             yield* world.serverReady;
             yield* world.snapshotWhere((current) => current.run?.state === "running");
-            yield* Effect.sleep("500 millis");
+            yield* world.settled;
             assert.deepStrictEqual([before, yield* wakes(world, yield* leadThread(world))], [1, 1]);
           }),
       ]);
@@ -765,7 +765,7 @@ describe("CrewEngine lead", () => {
           const kept = yield* world.snapshotWhere((current) =>
             current.attention.some((need) => need.kind === "interrupted" && need.handle === "lead"),
           );
-          yield* Effect.sleep("300 millis");
+          yield* world.settled;
           const still = yield* world.snapshotWhere(() => true);
           assert.isTrue(
             still.attention.some(
@@ -835,7 +835,7 @@ describe("CrewEngine lead", () => {
         yield* reportDone(world, thread);
         yield* world.turnEnds(thread);
         yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "review");
-        yield* Effect.sleep("500 millis");
+        yield* world.settled;
         const wakes = (yield* turnsSent(world)).filter((turn) => turn.chat === lead);
         assert.strictEqual(wakes.length, 1);
       }),

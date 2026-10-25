@@ -2,7 +2,8 @@ import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
-import { openAccountMenu, visibleText } from "../../harness/browser.ts";
+import { openAccountMenu, showsText, visibleText } from "../../harness/browser.ts";
+import { rendered } from "../../harness/completedHttp.ts";
 import { deadline } from "../../harness/http.ts";
 import { answerInZerops, openZeropsWindow } from "../../harness/deviceLogin.ts";
 import {
@@ -29,7 +30,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
             button.innerText.trim() === "Continue with your Zerops account" ||
             button.innerText.includes("ACME"),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
     );
     const authorization = await page.$("::-p-aria(Continue with your Zerops account)");
     if (authorization) await authorization.click();
@@ -38,7 +39,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
         [...document.querySelectorAll("button")].some((button) =>
           button.innerText.includes("ACME"),
         ),
-      { timeout: 10_000, polling: "raf" },
+      { polling: "raf" },
     );
     if (await page.$('::-p-aria(ACME Owner[role="button"])'))
       await page.locator('::-p-aria(ACME Owner[role="button"])').click();
@@ -51,18 +52,7 @@ export function account(page: Page) {
   return {
     showsOrganization: (name: string) =>
       Effect.promise(() => visibleText(page, "sidebar-account-organization", name)),
-    showsPerson: (name: string, reason = "Signed-in account menu missing") =>
-      Effect.promise(async () => {
-        try {
-          await visibleText(page, "sidebar-account", name);
-        } catch (error) {
-          if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
-          throw new Error(
-            `${reason}: ${name}\n${await page.evaluate(() => document.body.innerText)}`,
-            { cause: error },
-          );
-        }
-      }),
+    showsPerson: (name: string) => Effect.promise(() => visibleText(page, "sidebar-account", name)),
     selectOrganization: (name: string) =>
       Effect.promise(async () => {
         await openMenu();
@@ -71,13 +61,10 @@ export function account(page: Page) {
       }),
     signOut: Effect.promise(async () => {
       await openMenu();
-      await page.locator('::-p-aria(Sign out[role="menuitem"])').setTimeout(10_000).click();
+      await page.locator('::-p-aria(Sign out[role="menuitem"])').click();
     }),
     signedOut: Effect.promise(async () => {
-      await page
-        .locator('::-p-aria(Continue with your Zerops account[role="button"])')
-        .setTimeout(10_000)
-        .wait();
+      await page.locator('::-p-aria(Continue with your Zerops account[role="button"])').wait();
       expect(await page.$('[data-zerops-surface="sidebar-account"]')).toBeNull();
       expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
       expect(await page.$('[role="textbox"]')).toBeNull();
@@ -85,7 +72,7 @@ export function account(page: Page) {
     needsAdministrator: Effect.promise(async () => {
       await page.waitForFunction(
         () => document.body.innerText.includes("An admin sets up HQ for this organization."),
-        { polling: "raf", timeout: 10_000 },
+        { polling: "raf" },
       );
     }),
     reload: Effect.promise(async () => {
@@ -111,7 +98,7 @@ export function account(page: Page) {
             );
             return names.every((name) => !rows.has(name));
           },
-          { polling: "raf", timeout: 10_000 },
+          { polling: "raf" },
           names,
         );
       }),
@@ -140,7 +127,7 @@ export const hqKeepsEverySession = Effect.fn("signin.hqKeepsEverySession")(funct
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
   yield* Effect.promise(() =>
-    s.page.locator('button[data-zerops-surface="sidebar-hq-outage"]').setTimeout(10_000).click(),
+    s.page.locator('button[data-zerops-surface="sidebar-hq-outage"]').click(),
   );
 });
 
@@ -163,15 +150,13 @@ export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
   settle: () => Promise<void>,
 ) {
   yield* Effect.promise(async () => {
+    // Each look follows a renderer turn, so what the advance changed is drawn.
     for (let step = 0; step < 12; step++) {
       await s.clock.advanceStepped(10_000, { settle });
-      try {
-        await visibleText(s.page, "sidebar-environments", name, 1_000);
-        return;
-      } catch (error) {
-        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
-      }
+      await rendered(s.page);
+      if (await showsText(s.page, "sidebar-environments", name)) return;
     }
+    await visibleText(s.page, "sidebar-environments", name);
   });
 });
 
@@ -222,7 +207,6 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
           (text) => document.body.innerText.includes(text),
           {
             polling: "raf",
-            timeout: 10_000,
           },
           text,
         ),
@@ -258,7 +242,7 @@ export function vault(page: Page) {
     /** Opens the value's row and asks Zerops to show it. */
     shows: (key: string) =>
       Effect.promise(async () => {
-        await page.locator(`[data-vault-row="${key}"] > button`).setTimeout(10_000).click();
+        await page.locator(`[data-vault-row="${key}"] > button`).click();
         await page.locator(`[data-vault-row="${key}"] ::-p-aria(Show[role="button"])`).click();
       }),
     /** The value as the row shows it, once shown in the clear. */
@@ -269,7 +253,7 @@ export function vault(page: Page) {
             [
               ...document.querySelectorAll<HTMLInputElement>(`[data-vault-row="${key}"] input`),
             ].some((input) => input.type === "text" && input.value === value),
-          { polling: "raf", timeout: 10_000 },
+          { polling: "raf" },
           key,
           value,
         ),

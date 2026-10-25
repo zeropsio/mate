@@ -59,8 +59,8 @@ interface TabGraph {
   readonly currentAccountId: typeof import("../accountLifetime").currentAccountId;
 }
 
-/** A file's first load of its tabs' modules is setup, with this much time: never a test's. */
-const PRELOAD_TIMEOUT_MS = 120_000;
+/** Cold imports and reloads are setup work; CI's 10-minute job guard owns hangs. */
+const PRELOAD_TIMEOUT_MS = 660_000;
 
 /**
  * Loads the tabs' modules — the session provider's graph, and `modules`, what the file's pages

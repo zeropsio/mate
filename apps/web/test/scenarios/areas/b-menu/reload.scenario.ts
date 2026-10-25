@@ -110,7 +110,7 @@ describe("B: menu reload", () => {
               () =>
                 document.querySelector('[data-sidebar="sidebar"]')?.getBoundingClientRect()
                   .width === 435,
-              { timeout: 5_000, polling: "raf" },
+              { polling: "raf" },
             );
             await s.page.click('button[aria-label="Collapse sidebar"]');
             await s.page.waitForFunction(() => document.cookie.includes("sidebar_state=false"));
@@ -118,7 +118,6 @@ describe("B: menu reload", () => {
             await s.page.reload({ waitUntil: "domcontentloaded" });
             await s.page.waitForFunction(
               () => document.querySelector('[data-zerops-surface="sidebar-rail-mate"]') !== null,
-              { timeout: 15_000 },
             );
             return s.page.evaluate(
               () => (window as unknown as { menuWidths: number[] }).menuWidths,
@@ -188,7 +187,6 @@ describe("owner-reported layout regressions", () => {
               () =>
                 ((window as unknown as { conversationArrival?: ConversationArrival })
                   .conversationArrival?.scrolls.length ?? 0) >= 40,
-              { timeout: 20_000 },
             );
             return s.page.evaluate(
               () =>
@@ -238,7 +236,6 @@ describe("owner-reported layout regressions", () => {
                     "app" &&
                   (window as unknown as { menuFrames?: MenuFrame[] }).menuFrames?.at(-1)?.shows ===
                     "rows",
-                { timeout: 15_000 },
               )
               .catch(async (cause) => {
                 throw new Error(
