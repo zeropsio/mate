@@ -1,5 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off -- disposable Core loopback socket receipts.
-import { HqStreamMessage, HqStreamRequest, type HqScope } from "@t3tools/shared/hqStream";
+import {
+  hqScopeKey,
+  HqStreamMessage,
+  HqStreamRequest,
+  type HqScope,
+} from "@t3tools/shared/hqStream";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -45,8 +50,19 @@ export const openScenarioNavigation = (
           socket.on("message", (frame) => {
             const parsed = readMessage(frame.toString());
             if (Option.isNone(parsed)) return reject(new Error("Invalid Core navigation delivery"));
-            if (parsed.value.type === "scope-error") return reject(new Error(parsed.value.code));
-            if (ready(parsed.value)) resolve();
+            const message = parsed.value;
+            if (message.type === "ping") {
+              socket.send(encodeRequest({ type: "pong" }));
+              return;
+            }
+            if (message.type === "scope-error" && hqScopeKey(message.scope) === hqScopeKey(scope)) {
+              return reject(
+                new Error(
+                  `Core navigation failed (${message.code})${message.reason === null ? "" : `: ${message.reason}`}`,
+                ),
+              );
+            }
+            if (ready(message)) resolve();
           });
         }),
         "Core navigation ready",
