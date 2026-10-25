@@ -1069,6 +1069,10 @@ describe("a thread's lease", () => {
     ).toBe("appdev");
   });
 
+  /** Two apps of one Mate, each its own repository in HQ. */
+  const WEB = "https://hq.example/git/g1/appdev";
+  const API = "https://hq.example/git/g1/apidev";
+
   /** zcp's leases as the thread last read them: its branch is held on two more pools. */
   const READ = [
     { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
@@ -1104,6 +1108,35 @@ describe("a thread's lease", () => {
   it("a thread reads only the lease it is bound to until zcp's leases are read, and none while it is bound to none", () => {
     expect(threadLeases(LEASE, undefined)).toEqual([LEASE]);
     expect(threadLeases(null, READ)).toEqual([]);
+  });
+
+  it("a thread bound to one app's lease of a branch reads every lease of its repository and branch zcp holds, never another app's of the same branch", () => {
+    const bound = { alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB } as const;
+    expect(
+      threadLeases(bound, [
+        { alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB, state: "held" },
+        { alias: "apipool-1", pool: "apipool", branch: "main", repo: API, state: "held" },
+        { alias: "hqpool-2", pool: "hqpool", branch: "main", repo: WEB, state: "held" },
+        { alias: "docspool-4", pool: "docspool", branch: "feat-x", repo: WEB, state: "held" },
+      ]),
+    ).toEqual([bound, { alias: "hqpool-2", pool: "hqpool", branch: "main", repo: WEB }]);
+  });
+
+  it("a thread whose binding or read names no repository reads every lease of its branch", () => {
+    const read = [
+      { alias: "apipool-1", pool: "apipool", branch: "main", repo: API, state: "held" },
+      { alias: "hqpool-2", pool: "hqpool", branch: "main", state: "held" },
+    ];
+    expect(
+      threadLeases({ alias: "webpool-3", pool: "webpool", branch: "main" }, read).map(
+        ({ alias }) => alias,
+      ),
+    ).toEqual(["webpool-3", "apipool-1", "hqpool-2"]);
+    expect(
+      threadLeases({ alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB }, read).map(
+        ({ alias }) => alias,
+      ),
+    ).toEqual(["webpool-3", "hqpool-2"]);
   });
 
   it("a lease of no branch is of main's group", () => {
