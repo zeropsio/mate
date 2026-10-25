@@ -729,10 +729,41 @@ describe("a change's own history", () => {
       await native(dir, ["update-ref", "refs/heads/core/build", landed]);
       const next = await write(git, { "b.txt": "b\n" }, landed, "refs/heads/core/build");
       await native(dir, ["update-ref", "refs/heads/mate/alice/2", next]);
-      const log = await value(git.changeLog(repo, alice(2), { limit: 100, base: landed }));
+      const log = await value(git.changeLog(repo, alice(2), { limit: 100, landed: [landed] }));
       expect(log.items.map((c) => c.sha)).toEqual([next]);
       expect(log.truncated).toBe(false);
     }),
+  );
+
+  it.live(
+    "excludes every landed head from a change's history, whichever change it built on, passing over one the repository lacks",
+    () =>
+      fixture(async (git, dir) => {
+        const main = await write(git, { "base.txt": "base\n" }, null);
+        // Two changes cut from main, each squashed onto it; a third built on both.
+        const first = await branch(git, dir, main, { "a.txt": "a\n" });
+        const second = await branch(git, dir, main, { "b.txt": "b\n" }, 2);
+        await merge(git, main, 1, "First task", first);
+        const tree = await native(dir, ["merge-tree", "--write-tree", first, second]);
+        const both = await native(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          first,
+          "-p",
+          second,
+          "-m",
+          "Both",
+        ]);
+        await native(dir, ["update-ref", "refs/heads/core/build", both]);
+        const own = await write(git, { "c.txt": "c\n" }, both, "refs/heads/core/build");
+        await native(dir, ["update-ref", "refs/heads/mate/alice/3", own]);
+        const missing = "1".repeat(40);
+        const log = await value(
+          git.changeLog(repo, alice(3), { limit: 100, landed: [first, missing, second] }),
+        );
+        expect(log.items.map((c) => c.sha)).toEqual([own, both]);
+      }),
   );
 
   it.live(
