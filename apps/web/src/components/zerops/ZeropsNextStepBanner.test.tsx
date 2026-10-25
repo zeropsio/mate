@@ -14,6 +14,7 @@ import { changeReviewItem, headerReviewItems } from "./SidebarProjectReview.logi
 import {
   ZeropsNextStepStrip,
   useZeropsNextStepStrip,
+  composerStripKey,
   zeropsComposerTop,
   type ZeropsNextStepPending,
   type ZeropsNextStepStripModel,
@@ -155,6 +156,48 @@ const WAITING_AND_CONFLICT: ZeropsMateNextStep = {
   },
 };
 
+/** The same two changes, once #4 merges cleanly into main again. */
+const CONFLICT_MERGES_AGAIN: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: PULL,
+    title: "Nova is waiting for your review of 2 changes",
+    detail: "Add a status page",
+    lines: [
+      { pull: PULL, label: "#2 Add a status page" },
+      {
+        pull: { ...POOLS_PULL, mergeability: "mergeable" },
+        label: "#4 Add an api part and dev pools",
+      },
+    ],
+    more: 0,
+    waiting: 2,
+  },
+};
+
+/** The same two changes, and a third that started waiting beside them. */
+const ANOTHER_WAITS_BESIDE: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: PULL,
+    title: "Nova is waiting for your review of 3 changes",
+    detail: "Add a status page",
+    lines: [
+      { pull: PULL, label: "#2 Add a status page" },
+      {
+        pull: POOLS_PULL,
+        label: "#4 Add an api part and dev pools",
+        verdict: { title: "Conflicts with main", fix: RESOLVE },
+      },
+      { pull: { ...PULL, number: 5, title: "Fix the footer" }, label: "#5 Fix the footer" },
+    ],
+    more: 0,
+    waiting: 2,
+  },
+};
+
 const SHOWN_WAITING_AND_CONFLICT: ZeropsNextStepStripModel = {
   ...SHOWN,
   title: "Nova is waiting for your review of 2 changes",
@@ -279,6 +322,18 @@ describe("zeropsComposerTop", () => {
     expect(headerReviewItems([door], PULL.mateProjectId).map((item) => item.key)).toEqual([
       "app#2",
     ]);
+  });
+  // Review r3-11: the dismissal was its leading change alone, so in a bound conversation, whose
+  // branch always leads, another change starting to wait never brought the strip back, nor did a
+  // listed change that merges cleanly again.
+  it("a dismissed strip of several changes comes back once another waits beside them, or one of them merges again", () => {
+    const shown = zeropsComposerTop({ nextStep: WAITING_AND_CONFLICT, pending: NOTHING_PENDING });
+    const dismissed = composerStripKey(shown.strip!);
+    const top = (nextStep: ZeropsMateNextStep) =>
+      zeropsComposerTop({ nextStep, dismissed, pending: NOTHING_PENDING }).strip;
+    expect(top(WAITING_AND_CONFLICT), "the same strip stays away").toBeNull();
+    expect(top(CONFLICT_MERGES_AGAIN)).not.toBeNull();
+    expect(top(ANOTHER_WAITS_BESIDE)).not.toBeNull();
   });
   it("shows current source lines for several waiting changes", () => {
     expect(zeropsComposerTop({ nextStep: WAITING_TWO, pending: NOTHING_PENDING }).strip).toEqual(
