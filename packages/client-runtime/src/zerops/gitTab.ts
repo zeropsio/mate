@@ -40,6 +40,7 @@
 import {
   isZeropsLeaseHeld,
   sameZeropsLeaseGroup,
+  sameZeropsRepo,
   ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
   type ZeropsLease,
   type ZeropsLifecycle,
@@ -112,9 +113,8 @@ export interface GitChangeState {
  * without landing is no work of anybody's any more. A checkout one of the thread's `leases` mounts
  * is no repository of HQ's — HQ names a repository after the dev service it began on, never after
  * a pool's container — so its change is the one on the branch zcp checked out there, of the
- * repository the lease names (zcp's `repo`, compared as zcp compares them): two apps of one Mate
- * may each have a change on one branch name. A lease or a change whose repository is not known is
- * matched by the branch alone.
+ * repository the lease names (`leaseOfRepository`): two apps of one Mate may each have a change on
+ * one branch name.
  */
 export function mateChangeIn(
   flow: {
@@ -132,13 +132,27 @@ export function mateChangeIn(
       ? change.repository === repository
       : lease.branch !== null &&
         change.branch === lease.branch &&
-        sameZeropsLeaseGroup(lease, { branch: change.branch, repo: change.repositoryUrl }));
+        leaseOfRepository(lease.repo, change.repositoryUrl));
   return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
     FlowPullRequest | undefined
   >(
     (newest, change) => (newest === undefined || change.number > newest.number ? change : newest),
     undefined,
   );
+}
+
+/**
+ * Whether a lease that names `repo` may be of the repository HQ keeps at `address`
+ * (`FlowPullRequest.repositoryUrl`): the same repository, compared as zcp compares them — or not
+ * known to be another: the lease names none, the change carries no address, or the lease's is no
+ * address of HQ's beside it (a repository kept on GitHub, whose name in HQ its address does not
+ * say). Only an address beside it under `<HQ>/git/<appId>/` is another repository.
+ */
+function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
+  if (repo === undefined || repo.trim() === "" || address === undefined) return true;
+  if (sameZeropsRepo(repo, address)) return true;
+  const beside = address.slice(0, address.lastIndexOf("/") + 1).toLowerCase();
+  return !repo.trim().toLowerCase().startsWith(beside);
 }
 
 /**
