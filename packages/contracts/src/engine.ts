@@ -844,6 +844,11 @@ export const ConversationRow = Schema.Struct({
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
   /** The pool container its agent leased, which it works in; absent: none. */
   lease: Schema.optionalKey(ThreadLease),
+  /**
+   * The person archived it (Archive and start fresh, the archive's own menu): the menu reads it
+   * archived though nobody holds it. Absent while it is not, and from an older server.
+   */
+  archived: Schema.optionalKey(Schema.Literal(true)),
 });
 export type ConversationRow = typeof ConversationRow.Type;
 

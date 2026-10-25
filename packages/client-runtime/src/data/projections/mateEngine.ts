@@ -1529,6 +1529,7 @@ export function overlayEngineRow(
   // The engine's record says the access (held, its header; else its row): V1's thread never hears
   // of a pick made on an engine conversation.
   const runtimeMode = held?.runtimeMode ?? known(row.runtimeMode) ?? thread.runtimeMode;
+  const archived = held?.archived ?? row.archived;
   return {
     ...thread,
     runtimeMode,
@@ -1545,10 +1546,12 @@ export function overlayEngineRow(
         }),
     // Held, its records name the turn; until they do, the row's run — never the V1 thread's.
     latestTurn: held?.latestTurn ?? latestTurn,
-    // Held, its header says whether it is archived: the V1 thread never was, and the row never says.
-    ...(held?.archived === undefined
+    // Whether it is archived, as its records say — held, its header; else its row (an older server's
+    // never says) — the V1 thread never heard of it. Nobody holds one archived by Archive and start
+    // fresh: read live, a review's Fix asked it on a hidden composer (lab A.3).
+    ...(archived === undefined
       ? {}
-      : { archivedAt: held.archived ? (thread.archivedAt ?? thread.updatedAt) : null }),
+      : { archivedAt: archived ? (thread.archivedAt ?? thread.updatedAt) : null }),
     ...rowWords(row),
     // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
     backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,
