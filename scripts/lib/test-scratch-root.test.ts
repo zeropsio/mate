@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { TEST_RAMDISK_TMPDIR, useTestScratchRoot } from "./test-scratch-root.ts";
+import { TEST_RAMDISK_TMPDIR, testRamdiskRoot, useTestScratchRoot } from "./test-scratch-root.ts";
 
 describe("the test scratch root", () => {
   it.each([
@@ -25,5 +25,12 @@ describe("the test scratch root", () => {
     const env: NodeJS.ProcessEnv = before === undefined ? {} : { TMPDIR: before };
     useTestScratchRoot(env, (directory) => present && directory === TEST_RAMDISK_TMPDIR);
     expect(env["TMPDIR"]).toBe(after);
+  });
+
+  it.each([
+    { present: true, root: "/Volumes/mate-test" },
+    { present: false, root: undefined },
+  ])("the RAM disk root is $root when present is $present", ({ present, root }) => {
+    expect(testRamdiskRoot((directory) => present && directory === TEST_RAMDISK_TMPDIR)).toBe(root);
   });
 });

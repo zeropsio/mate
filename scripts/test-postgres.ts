@@ -6,21 +6,27 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
+import { testRamdiskRoot } from "./lib/test-scratch-root.ts";
 import { acquireProcessLock } from "./test-process-lock.ts";
 
 /**
  * Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases.
  * macOS's periodic /tmp cleanup deletes files Postgres reads only at startup, so macOS keeps the
- * cluster in the user's cache directory (outside that cleanup and Time Machine).
+ * cluster in the user's cache directory (outside that cleanup and Time Machine). While the test
+ * RAM disk is mounted the cluster lives there instead, off the indexed disk, at the home mate-hq's
+ * tests share.
  */
 export function choosePostgresHome(input: {
   readonly platform: NodeJS.Platform;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly homeDirectory: string;
   readonly user: number | string;
+  readonly ramdisk: string | undefined;
 }): string {
   const named = input.env["MATE_TEST_PG_HOME"];
   if (named !== undefined) return named;
+  if (input.ramdisk !== undefined)
+    return NodePath.join(input.ramdisk, `mate-test-pg-${input.user}`);
   if (input.platform === "darwin")
     return NodePath.join(input.homeDirectory, "Library", "Caches", "mate-test-pg");
   return NodePath.join("/tmp", `mate-test-pg-${input.user}`);
@@ -32,6 +38,7 @@ export const postgresHome = choosePostgresHome({
   env: process.env,
   homeDirectory: NodeOS.homedir(),
   user: process.getuid?.() ?? NodeOS.userInfo().username,
+  ramdisk: testRamdiskRoot(),
 });
 
 /** The PostgreSQL server and client binaries the supervisor runs; tests reach its server with them. */

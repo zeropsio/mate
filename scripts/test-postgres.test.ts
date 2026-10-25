@@ -81,9 +81,30 @@ it.each([
   },
 ])("$name", async ({ platform, env, expected }) => {
   const { choosePostgresHome } = await import("./test-postgres.ts");
-  expect(choosePostgresHome({ platform, env, homeDirectory: "/Users/dev", user: 501 })).toBe(
-    expected,
-  );
+  expect(
+    choosePostgresHome({
+      platform,
+      env,
+      homeDirectory: "/Users/dev",
+      user: 501,
+      ramdisk: undefined,
+    }),
+  ).toBe(expected);
+});
+
+it("A test database lives on the test RAM disk when it is mounted", async () => {
+  const { choosePostgresHome } = await import("./test-postgres.ts");
+  const home = (platform: NodeJS.Platform, env: Record<string, string>) =>
+    choosePostgresHome({
+      platform,
+      env,
+      homeDirectory: "/Users/dev",
+      user: 501,
+      ramdisk: "/Volumes/mate-test",
+    });
+  expect(home("darwin", {})).toBe("/Volumes/mate-test/mate-test-pg-501");
+  expect(home("linux", {})).toBe("/Volumes/mate-test/mate-test-pg-501");
+  expect(home("darwin", { MATE_TEST_PG_HOME: "/work/pg" })).toBe("/work/pg");
 });
 
 it("re-initialises a cluster directory whose PG_VERSION is gone and says why", async () => {
