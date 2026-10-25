@@ -46,14 +46,22 @@ function browserCommandWasWrong(step: BrowserStepResult): boolean {
 }
 
 /**
+ * zcp's kind for an `eval` whose promise never settled on a page that still
+ * answered (a wait for a looping animation's `finished`): the script hung,
+ * not the page.
+ */
+const SCRIPT_TIMEOUT_KIND = "script-timeout";
+
+/**
  * A failed `eval` is the check's own script failing — it threw, or its promise
- * never settled before agent-browser's CDP timeout (a wait for a looping
- * animation's `finished`) — never something the page did. zcp's class of
- * error does not tell it apart (a hung evaluate is `wedge`, like a hung
- * page), so the command says it.
+ * never settled — never something the page did. Where zcp could not tell a
+ * hung evaluate from a hung page it says `wedge` and ends the walk there, so
+ * the command says it, and the check reads unfinished.
  */
 function browserScriptFailed(label: string, step: BrowserStepResult): boolean {
-  return !step.success && label.split(" ")[0] === "eval";
+  return (
+    !step.success && (step.errorKind === SCRIPT_TIMEOUT_KIND || label.split(" ")[0] === "eval")
+  );
 }
 
 /** A failed step in the browser's own words, else its class of error. */
@@ -77,6 +85,9 @@ function buildBrowserStep(id: string, label: string, step: BrowserStepResult) {
     );
   }
   if (browserScriptFailed(label, step)) {
+    if (step.errorKind === SCRIPT_TIMEOUT_KIND) {
+      return buildStep(id, label, "not_finished", "the check's own script never settled");
+    }
     const note = browserStepNote(step);
     return buildStep(
       id,
