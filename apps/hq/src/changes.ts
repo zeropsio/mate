@@ -1723,15 +1723,21 @@ export const changesLayer: Layer.Layer<
           });
           // A squash lands content without its original commits: a commit reachable from the head
           // of any change landed before this one is landed content — whoever's, whatever its
-          // number — be the change continued from it or built on it while it was open.
-          const landed = yield* sql<{ readonly landed_head: string }>`
-            SELECT landed_head FROM hq_change
-            WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+          // number — be the change continued from it or built on it while it was open. The
+          // repository's latest landings, and its Mate's own last one at any age: what it goes on
+          // from however many landed since.
+          const before = sql`
+            app_id = ${change.appId}::uuid AND repo = ${change.repo}
               AND number <> ${number} AND state = 'merged' AND landed_head IS NOT NULL
               AND (${change.mergedAt}::timestamptz IS NULL
-                OR merged_at < ${change.mergedAt}::timestamptz)
-            ORDER BY merged_at DESC NULLS LAST, number DESC
-            LIMIT ${LANDED_BASES}`;
+                OR merged_at < ${change.mergedAt}::timestamptz)`;
+          const landed = yield* sql<{ readonly landed_head: string }>`
+            (SELECT landed_head FROM hq_change WHERE ${before}
+              ORDER BY merged_at DESC NULLS LAST, number DESC LIMIT ${LANDED_BASES})
+            UNION
+            (SELECT landed_head FROM hq_change
+              WHERE ${before} AND mate_project_id = ${change.mateProjectId}
+              ORDER BY merged_at DESC NULLS LAST, number DESC LIMIT 1)`;
           const log = yield* git.changeLog(at, branchOf(change), {
             limit: 100,
             snapshot,
