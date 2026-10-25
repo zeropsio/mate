@@ -6,7 +6,10 @@ import type { ReviewPress } from "@t3tools/client-runtime/zerops";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { Fragment } from "react";
-import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
+import {
+  useDeployAnswerFollowing,
+  useHandedOverAnswer,
+} from "~/zerops/activity/useDeployAnswerFollowing";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { GitBrowserLink, type GitLink } from "./gitBrowser/GitBrowserLink";
 
@@ -115,5 +118,17 @@ function PlatformDeployAnswer({
 /** The press's answer, only once HQ has answered it. */
 export function answeredDeploys(press: ReviewPress): HqDeployAnswer | undefined {
   if (press.kind !== "done" || press.deploys === undefined) return undefined;
-  return press.deploys.jobs.length > 0 || press.deploys.note?.trim() ? press.deploys : undefined;
+  const { jobs, note, planned } = press.deploys;
+  return jobs.length > 0 || note?.trim() || planned === false ? press.deploys : undefined;
+}
+
+/**
+ * The press's answer as its review says it: one that handed planning over, waiting for planning
+ * until its rollout's jobs show, then those jobs.
+ */
+export function useReviewDeploys(press: ReviewPress): HqDeployAnswer | undefined {
+  return useHandedOverAnswer(
+    answeredDeploys(press),
+    press.kind === "done" ? press.rollout : undefined,
+  );
 }
