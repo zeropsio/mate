@@ -4,6 +4,7 @@ import type {
   EngineCursor,
   EngineDetail,
   EnginePage,
+  EngineRowsFrame,
   Item,
   ItemId,
 } from "@t3tools/contracts";
@@ -21,6 +22,7 @@ import {
   engineConversationScopes,
   engineEarlierScope,
   engineFactId,
+  engineRowsLink,
   type EngineConversationKey,
 } from "../families/mateEngine.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -29,12 +31,13 @@ import { settle } from "../__fixtures__/zeropsWire.ts";
 import {
   callItem,
   engineHeader,
+  engineRow,
   engineRun,
   noteItem,
   personItem,
   thoughtItem,
 } from "../__fixtures__/mateEngine.ts";
-import { engineCardPaging, engineThread } from "../projections/mateEngine.ts";
+import { engineCardPaging, engineRows, engineThread } from "../projections/mateEngine.ts";
 import {
   ENGINE_FORGET_AFTER_MS,
   engineProtocol,
@@ -129,6 +132,7 @@ function rig(
     readonly after: EngineCursor | null;
     readonly frames: Queue.Queue<EngineConversationFrame, StreamFault | Cause.Done>;
   }> = [];
+  const rowOpens: Array<Queue.Queue<EngineRowsFrame, StreamFault | Cause.Done>> = [];
   let access: ((fault: StreamFault | null) => void) | null = null;
   const conversations = makeMateEngineConversations({
     store,
@@ -150,7 +154,14 @@ function rig(
             return Stream.fromQueue(frames);
           }),
         ),
-      subscribeRows: () => Stream.never,
+      subscribeRows: () =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const frames = yield* Queue.unbounded<EngineRowsFrame, StreamFault | Cause.Done>();
+            rowOpens.push(frames);
+            return Stream.fromQueue(frames);
+          }),
+        ),
       readEarlier: (_key, beforeOrdinal) => {
         pages.push({ runId: null, before: beforeOrdinal });
         return pager({ runId: null, before: beforeOrdinal });
@@ -180,6 +191,11 @@ function rig(
       for (const frame of frames) Queue.offerUnsafe(opens.at(-1)!.frames, frame);
       yield* settle;
     });
+  const sendRows = (...frames: ReadonlyArray<EngineRowsFrame>) =>
+    Effect.gen(function* () {
+      for (const frame of frames) Queue.offerUnsafe(rowOpens.at(-1)!, frame);
+      yield* settle;
+    });
   const read = () => readsOfState(store.state());
   const item = (id: string) => read().fact("mateEngineItem", engineFactId(ENV, id));
   return {
@@ -189,7 +205,9 @@ function rig(
     pages,
     details,
     opens,
+    rowOpens,
     send,
+    sendRows,
     read,
     item,
     expire: () => {
@@ -1309,5 +1327,92 @@ describe("an engine thought longer than its preview", () => {
         expect(r.item(`${run1}/i/2`)).toMatchObject({ kind: "known", value: { preview } });
         r.close();
       }),
+  );
+});
+
+describe("a Mate's engine links when its connection comes back", () => {
+  /** The conversation's row, naming the helpers still at work after its turn. */
+  const helpersAtWork = (seq: number, titles: ReadonlyArray<string>) =>
+    engineRow(ENV, ada.conversationId, {
+      revision: { environmentId: ENV, epoch: 4, seq },
+      state: {
+        kind: "working",
+        since: 1_760_000_000_000,
+        waitsOnHelpers: true,
+        work: {
+          items: titles.map((title) => ({ title, of: "helper", since: 1_760_000_000_000 })),
+          count: titles.length,
+          helpers: titles.length,
+        },
+      },
+    });
+  /** What the card at the turn's foot lists still at work, from the row the rows hold. */
+  const stillAtWork = (r: ReturnType<typeof rig>) =>
+    engineRows
+      .derive(r.read(), ENV)
+      .flatMap((row) =>
+        row.state.kind === "working" ? (row.state.work?.items ?? []).map((i) => i.title) : [],
+      );
+
+  // Kara, 2026-10-25: four minutes without its socket, then the conversation came back at once
+  // (Task 2's helper done, the Mate saying so) while its rows waited out the rest of their retry's
+  // 60 s rung, and the card at the turn's foot listed the finished helper at work for 44 s more.
+  it.live.each([
+    {
+      link: "its conversation rows subscribe",
+      hold: (r: ReturnType<typeof rig>) => r.conversations.holdRows(ENV),
+      baseline: (r: ReturnType<typeof rig>) =>
+        r.sendRows(
+          {
+            type: "snapshot",
+            protocol: 1,
+            epoch: 4,
+            rows: [helpersAtWork(10, ["Task 2", "Task 3"])],
+          },
+          { type: "synchronized", epoch: 4 },
+        ),
+      drop: (r: ReturnType<typeof rig>) =>
+        Queue.fail(r.rowOpens.at(-1)!, { outcome: "transient", message: "socket closed" }),
+      opened: (r: ReturnType<typeof rig>) => r.rowOpens.length,
+      caughtUp: (r: ReturnType<typeof rig>) =>
+        Effect.gen(function* () {
+          yield* r.sendRows(
+            { type: "snapshot", protocol: 1, epoch: 4, rows: [helpersAtWork(20, ["Task 3"])] },
+            { type: "synchronized", epoch: 4 },
+          );
+          expect(stillAtWork(r)).toEqual(["Task 3"]);
+          expect(r.read().stream(engineRowsLink(ENV)).phase).toBe("live");
+        }),
+    },
+    {
+      link: "a held conversation subscribes",
+      hold: (r: ReturnType<typeof rig>) => r.conversations.hold(ada),
+      baseline: (r: ReturnType<typeof rig>) => r.send(snapshot(), synchronized(12)),
+      drop: (r: ReturnType<typeof rig>) =>
+        Queue.fail(r.opens.at(-1)!.frames, { outcome: "transient", message: "socket closed" }),
+      opened: (r: ReturnType<typeof rig>) => r.opens.length,
+      caughtUp: (r: ReturnType<typeof rig>) =>
+        Effect.gen(function* () {
+          expect(r.opens.at(-1)!.after).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
+          yield* r.send(changes(12, 12), synchronized(12));
+          expect(r.read().stream(engineConversationLink(ada)).phase).toBe("live");
+        }),
+    },
+  ])("$link again the moment the Mate's connection is back, never after a retry's wait", (row) =>
+    Effect.gen(function* () {
+      const r = rig();
+      row.hold(r);
+      yield* settle;
+      yield* row.baseline(r);
+      yield* row.drop(r);
+      yield* settle;
+      expect(row.opened(r)).toBe(1);
+      // The Mate's socket is back: a new session.
+      r.allow();
+      yield* settle;
+      expect(row.opened(r)).toBe(2);
+      yield* row.caughtUp(r);
+      r.close();
+    }),
   );
 });
