@@ -56,6 +56,60 @@ const checkout = (git: Git, origin: string, credential: string, appId: string, d
     };
   });
 
+/** An opening's answer as the tests compare it: status, whether it opened one, its number and branch. */
+const answered = (opening: ReturnType<Call>) =>
+  Effect.map(opening, (answer) => {
+    const body = answer.body as { readonly created?: boolean; readonly change?: Body };
+    return [
+      answer.status,
+      body.created ?? null,
+      body.change?.["number"] ?? null,
+      body.change?.["branch"] ?? null,
+    ];
+  });
+
+/** A person's review of change `number` in `appdev`: the paths it touches and its commits. */
+const detailOf = (call: Call, session: string, appId: string, number: number) =>
+  Effect.map(
+    call("GET", `/api/apps/${appId}/changes/appdev/${String(number)}`, { session }),
+    (answer) => {
+      const body = answer.body as {
+        readonly files: ReadonlyArray<Body>;
+        readonly commits: ReadonlyArray<Body>;
+      };
+      return {
+        files: body.files.map((file) => file["path"]),
+        commits: body.commits.map((commit) => commit["sha"]),
+      };
+    },
+  );
+
+/** A person's merge of change `number` in `appdev` at `head`: its status and the change's state. */
+const mergeOf = (call: Call, session: string, appId: string, number: number, head: string) =>
+  Effect.map(
+    call("POST", `/api/apps/${appId}/changes/appdev/${String(number)}/merge`, {
+      session,
+      body: { expectedHead: head },
+    }),
+    (answer) => [answer.status, (answer.body as Body)["state"]],
+  );
+
+/** The Mate of `projectId` let go: its project deleted, and HQ's reconcile no longer holding it. */
+const letGo = (fake: FakeWorld, url: string, projectId: string) =>
+  Effect.andThen(
+    Effect.sync(() =>
+      fake.projects.splice(
+        fake.projects.findIndex((project) => project.id === projectId),
+        1,
+      ),
+    ),
+    rowsWhere(
+      url,
+      `SELECT 1 FROM hq_app_project WHERE project_id = '${projectId}'`,
+      (rows) => rows.length === 0,
+    ),
+  );
+
 /** HQ's record of change `number` once its head is `head`. */
 const recorded = (url: string, number: number, head: string) =>
   rowsWhere(
@@ -265,31 +319,169 @@ describe("a change is a branch", () => {
         }),
     );
 
+    it.effect("a Mate opens a change per branch it names, each pushed and merged on its own", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+        assert.deepStrictEqual(yield* answered(ada.open("Fix the login", "fix-login")), [
+          200,
+          true,
+          1,
+          "fix-login",
+        ]);
+        assert.deepStrictEqual(yield* answered(ada.open("Add a badge", "badge")), [
+          200,
+          true,
+          2,
+          "badge",
+        ]);
+        // Each branch's own change again, as it is: the title asked for now opens nothing.
+        assert.deepStrictEqual(yield* answered(ada.open("Fix it", "fix-login")), [
+          200,
+          false,
+          1,
+          "fix-login",
+        ]);
+        const git = yield* gitClient;
+        const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+        yield* work.commit("login.ts");
+        assert.strictEqual((yield* work.push("HEAD:refs/heads/fix-login")).code, 0);
+        const login = yield* work.head;
+        // The badge is cut from main, beside the login fix.
+        yield* git.checked(["reset", "--hard", "origin/main"], work.work);
+        yield* work.commit("badge.ts");
+        assert.strictEqual((yield* work.push("HEAD:refs/heads/badge")).code, 0);
+        const badge = yield* work.head;
+        yield* recorded(url, 1, login);
+        yield* recorded(url, 2, badge);
+        const review = (number: number) => detailOf(call, owner, ada.appId, number);
+        assert.deepStrictEqual((yield* review(1)).files, ["login.ts"]);
+        assert.deepStrictEqual((yield* review(2)).files, ["badge.ts"]);
+        // Merged one after the other, in either order: each lands as itself.
+        assert.deepStrictEqual(yield* mergeOf(call, owner, ada.appId, 2, badge), [200, "merged"]);
+        assert.deepStrictEqual(yield* mergeOf(call, owner, ada.appId, 1, login), [200, "merged"]);
+        yield* git.checked(["fetch", "origin"], work.work);
+        const files = yield* git.checked(["ls-tree", "--name-only", "origin/main"], work.work);
+        assert.includeMembers(files.split("\n"), ["badge.ts", "login.ts"]);
+      }),
+    );
+
     it.effect(
-      "an opening that names no branch is refused while its Mate's open change is on a branch it named",
+      "an opening that names no branch answers the Mate's default change, whatever else is open",
       () =>
         Effect.gen(function* () {
           const { call, fake } = yield* startCore(true);
           yield* untilHealth(call, "active");
           const owner = yield* sessionFor(call, "door-owner");
           const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
-          assert.strictEqual((yield* ada.open("Fix the login", "fix-login")).status, 200);
           const answers = [];
           // Released zcp names none and pushes mate/<Mate>/<number>; mono-git names one.
-          for (const branch of [undefined, "fix-signup"]) {
-            const answer = yield* ada.open("Fix it", branch);
-            const body = answer.body as Body & { readonly change?: Body };
-            answers.push([
-              answer.status,
-              body["reason"] ?? null,
-              body["created"] ?? null,
-              body.change?.["branch"] ?? null,
-            ]);
-          }
+          for (const [title, branch] of [
+            ["Fix the login", "fix-login"],
+            ["Mate: appdev", undefined],
+            ["Mate: appdev again", undefined],
+            ["Add a badge", "badge"],
+            ["Mate: appdev once more", undefined],
+          ] as const)
+            answers.push(yield* answered(ada.open(title, branch)));
           assert.deepStrictEqual(answers, [
-            [409, "change_on_branch", null, null],
-            [200, null, false, "fix-login"],
+            [200, true, 1, "fix-login"],
+            [200, true, 2, "mate/P_MATE/2"],
+            [200, false, 2, "mate/P_MATE/2"],
+            [200, true, 3, "badge"],
+            [200, false, 2, "mate/P_MATE/2"],
           ]);
+        }),
+    );
+
+    it.effect(
+      "the sixth open change is refused too_many_open, and a change answered as it is never is",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", apps);
+          const bea = yield* mateOf(call, fake, owner, "P_BEA", apps);
+          // Its default change and four on branches it named: five open.
+          assert.strictEqual((yield* answered(ada.open("Mate: appdev")))[1], true);
+          for (const n of [1, 2, 3, 4])
+            assert.strictEqual((yield* answered(ada.open(`Work ${n}`, `work-${n}`)))[1], true);
+          const refused = yield* ada.open("Work 5", "work-5");
+          assert.deepStrictEqual(
+            [refused.status, refused.body],
+            [409, { code: "conflict", reason: "too_many_open" }],
+          );
+          // An open change answered as it is, its default or a named one, is never refused.
+          assert.deepStrictEqual(yield* answered(ada.open("Mate: appdev")), [
+            200,
+            false,
+            1,
+            "mate/P_MATE/1",
+          ]);
+          assert.deepStrictEqual(yield* answered(ada.open("Work 2", "work-2")), [
+            200,
+            false,
+            3,
+            "work-2",
+          ]);
+          // Another Mate of the application counts its own.
+          assert.deepStrictEqual(yield* answered(bea.open("Fix it", "fix-it")), [
+            200,
+            true,
+            6,
+            "fix-it",
+          ]);
+          // One closed, there is room again.
+          const closed = yield* call("POST", `/api/apps/${ada.appId}/changes/appdev/2/close`, {
+            session: owner,
+            body: { expectedHead: null },
+          });
+          assert.strictEqual(closed.status, 200);
+          assert.deepStrictEqual(yield* answered(ada.open("Work 5", "work-5")), [
+            200,
+            true,
+            7,
+            "work-5",
+          ]);
+        }),
+    );
+
+    it.effect(
+      "a change's review lists only its own commits, never those of a change it was built on that landed first, whoever's it was",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", apps);
+          const bea = yield* mateOf(call, fake, owner, "P_BEA", apps);
+          assert.strictEqual((yield* ada.open("Add the base", "base")).status, 200);
+          assert.strictEqual((yield* bea.open("Build on the base", "top")).status, 200);
+          const git = yield* gitClient;
+          const adas = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          yield* adas.commit("base.ts");
+          assert.strictEqual((yield* adas.push("HEAD:refs/heads/base")).code, 0);
+          const base = yield* adas.head;
+          // Bea's branch is cut from Ada's, still open.
+          const beas = yield* checkout(git, origin, bea.credential, bea.appId, "bea");
+          yield* git.checked(["fetch", "origin", "base"], beas.work);
+          yield* git.checked(["reset", "--hard", "FETCH_HEAD"], beas.work);
+          yield* beas.commit("top.ts");
+          assert.strictEqual((yield* beas.push("HEAD:refs/heads/top")).code, 0);
+          const top = yield* beas.head;
+          yield* recorded(url, 1, base);
+          yield* recorded(url, 2, top);
+          assert.deepStrictEqual((yield* detailOf(call, owner, ada.appId, 2)).commits, [top, base]);
+          // Ada's lands as a squash: her commit is landed content, never Bea's work.
+          assert.deepStrictEqual(yield* mergeOf(call, owner, ada.appId, 1, base), [200, "merged"]);
+          assert.deepStrictEqual((yield* detailOf(call, owner, ada.appId, 2)).commits, [top]);
+          // A change merged keeps its own commits in its review.
+          assert.deepStrictEqual((yield* detailOf(call, owner, ada.appId, 1)).commits, [base]);
         }),
     );
 
@@ -373,7 +565,7 @@ describe("a change is a branch", () => {
     );
 
     it.effect(
-      "a change is handed over only while open, its Mate gone, to a Mate of its application holding no open change of its own in the repository",
+      "a change is handed over only while open, its Mate gone, to a Mate of its application, however many open changes of its own that Mate holds",
       () =>
         Effect.gen(function* () {
           const { call, fake, url } = yield* startCore(true);
@@ -382,9 +574,13 @@ describe("a change is a branch", () => {
           const apps = new Map<string, string>();
           const ada = yield* mateOf(call, fake, owner, "P_MATE", apps);
           const bea = yield* mateOf(call, fake, owner, "P_BEA", apps);
-          const cid = yield* mateOf(call, fake, owner, "P_CID", apps);
+          yield* mateOf(call, fake, owner, "P_CID", apps);
           assert.strictEqual((yield* ada.open("Fix the login")).status, 200);
-          assert.strictEqual((yield* bea.open("Fix the signup", "fix-signup")).status, 200);
+          assert.strictEqual((yield* ada.open("Fix the form", "fix-form")).status, 200);
+          // Bea holds as many open changes as a Mate may open: her default and four named.
+          assert.strictEqual((yield* bea.open("Fix the signup")).status, 200);
+          for (const n of [1, 2, 3, 4])
+            assert.strictEqual((yield* bea.open(`Work ${n}`, `work-${n}`)).status, 200);
           const hand = (number: number, mateProjectId: string) =>
             Effect.map(
               call("POST", `/api/apps/${ada.appId}/changes/appdev/${String(number)}/hand`, {
@@ -395,42 +591,92 @@ describe("a change is a branch", () => {
             );
           // Ada is still the application's.
           assert.deepStrictEqual(yield* hand(1, "P_CID"), [409, "change_has_mate"]);
-          fake.projects.splice(
-            fake.projects.findIndex((project) => project.id === "P_MATE"),
-            1,
-          );
-          yield* rowsWhere(
-            url,
-            "SELECT 1 FROM hq_app_project WHERE project_id = 'P_MATE'",
-            (rows) => rows.length === 0,
-          );
+          yield* letGo(fake, url, "P_MATE");
           const answers = [];
-          for (const to of ["P_BEA", "P_NOBODY", "P_MATE"])
+          for (const to of ["P_NOBODY", "P_MATE", "P_BEA"])
             answers.push([to, ...(yield* hand(1, to))]);
           assert.deepStrictEqual(answers, [
-            ["P_BEA", 409, "mate_has_change"],
             ["P_NOBODY", 409, "not_app_mate"],
             ["P_MATE", 409, "not_app_mate"],
+            // A person's hand-over is never held back by what the Mate holds already.
+            ["P_BEA", 200, null],
           ]);
-          assert.deepStrictEqual(yield* hand(1, "P_CID"), [200, null]);
-          assert.deepStrictEqual(yield* hand(1, "P_BEA"), [409, "change_has_mate"]);
-          // Released zcp names no branch and would push mate/P_CID/1: it is told the change is on
-          // a branch; one naming a branch is answered the handed change.
-          const released = yield* cid.open("Fix it");
+          assert.deepStrictEqual(yield* hand(2, "P_BEA"), [200, null]);
+          assert.deepStrictEqual(yield* hand(1, "P_CID"), [409, "change_has_mate"]);
+          // Released zcp names no branch: Bea's own default change, never the one handed to her on
+          // Ada's; naming a handed change's branch answers it; anything new waits for room.
+          assert.deepStrictEqual(yield* answered(bea.open("Fix it")), [
+            200,
+            false,
+            3,
+            "mate/P_BEA/3",
+          ]);
+          assert.deepStrictEqual(yield* answered(bea.open("Fix it", "fix-form")), [
+            200,
+            false,
+            2,
+            "fix-form",
+          ]);
+          const full = yield* bea.open("Fix it", "fix-it");
           assert.deepStrictEqual(
-            [released.status, (released.body as Body)["reason"]],
-            [409, "change_on_branch"],
+            [full.status, (full.body as Body)["reason"]],
+            [409, "too_many_open"],
           );
-          const named = (yield* cid.open("Fix it", "fix-it")).body as { readonly change: Body };
+          const self = (yield* call("GET", "/api/mate/self", { headers: bea.auth })).body as {
+            readonly changes: ReadonlyArray<Body>;
+          };
           assert.deepStrictEqual(
-            [named.change["number"], named.change["branch"]],
-            [1, "mate/P_MATE/1"],
+            self.changes.map((own) => [own["number"], own["state"], own["handed"] ?? false]),
+            [
+              [7, "open", false],
+              [6, "open", false],
+              [5, "open", false],
+              [4, "open", false],
+              [3, "open", false],
+              [2, "open", true],
+              [1, "open", true],
+            ],
           );
           yield* call("POST", `/api/apps/${ada.appId}/changes/appdev/1/close`, {
             session: owner,
             body: { expectedHead: null },
           });
-          assert.deepStrictEqual(yield* hand(1, "P_BEA"), [409, "change_not_open"]);
+          assert.deepStrictEqual(yield* hand(1, "P_CID"), [409, "change_not_open"]);
+        }),
+    );
+
+    it.effect(
+      "a Mate's default change handed back to it while it holds its default change again is refused mate_has_change",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateOf(call, fake, owner, "P_ADA", apps);
+          yield* mateOf(call, fake, owner, "P_BEA", apps);
+          assert.strictEqual((yield* ada.open("Fix the login")).status, 200);
+          const hand = (mateProjectId: string) =>
+            Effect.map(
+              call("POST", `/api/apps/${ada.appId}/changes/appdev/1/hand`, {
+                session: owner,
+                body: { mateProjectId },
+              }),
+              (answer) => [answer.status, (answer.body as Body | null)?.["reason"] ?? null],
+            );
+          // Ada is let go, her change handed to Bea; then Bea is let go, and Ada is back.
+          yield* letGo(fake, url, "P_ADA");
+          assert.deepStrictEqual(yield* hand("P_BEA"), [200, null]);
+          yield* letGo(fake, url, "P_BEA");
+          const back = yield* mateOf(call, fake, owner, "P_ADA", apps);
+          assert.deepStrictEqual(yield* answered(back.open("Fix the signup")), [
+            200,
+            true,
+            2,
+            "mate/P_ADA/2",
+          ]);
+          // On mate/P_ADA/1 it would be her default change a second time.
+          assert.deepStrictEqual(yield* hand("P_ADA"), [409, "mate_has_change"]);
         }),
     );
 

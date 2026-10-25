@@ -885,11 +885,24 @@ describe("a Mate's changes in HQ", () => {
             landedHead: null,
             branch: `mate/P_MATE/${String(number)}`,
           });
-          assert.deepStrictEqual(yield* self, {
+          const placed = yield* self;
+          const opened = (placed["changes"] as ReadonlyArray<Record<string, unknown>>)[0]!;
+          assert.match(String(opened["updatedAt"]), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u);
+          assert.deepStrictEqual(placed, {
             ...record,
             appId,
             appName: "Shop",
-            changes: [change(1, "open")],
+            // An open change says whether it asks for review and how it last merged.
+            changes: [
+              {
+                ...change(1, "open"),
+                ready: false,
+                mergeability: "unknown",
+                behind: false,
+                updatedAt: opened["updatedAt"],
+              },
+            ],
+            openPerBranch: true,
             gitPushes: [],
             production: false,
             repos: [{ name: "appdev" }, { name: "group" }],
@@ -914,7 +927,8 @@ describe("a Mate's changes in HQ", () => {
             { ...change(1, "merged", head), mergedSha: squash, landedHead: head },
           ]);
 
-          // Many changes later, the latest ten of the repository, newest first.
+          // Many changes later, the open one and the latest ten settled of the repository, newest
+          // first.
           for (let n = 2; n <= 12; n++) {
             yield* call("POST", "/api/mate/changes", {
               headers: auth,
@@ -933,7 +947,7 @@ describe("a Mate's changes in HQ", () => {
             ((yield* self)["changes"] as ReadonlyArray<{ number: number; state: string }>).map(
               ({ number, state }) => [number, state],
             ),
-            [[12, "open"], ...[11, 10, 9, 8, 7, 6, 5, 4, 3].map((n) => [n, "closed"])],
+            [[12, "open"], ...[11, 10, 9, 8, 7, 6, 5, 4, 3, 2].map((n) => [n, "closed"])],
           );
 
           // Out of its application, it has none.
@@ -951,6 +965,100 @@ describe("a Mate's changes in HQ", () => {
             repos: [],
           });
         }),
+    );
+
+    it.effect("the Mate's state lists every open change, however many settled since", () =>
+      Effect.gen(function* () {
+        const { call, fake, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateWithChange(call, fake, owner);
+        // Eleven of its changes settled after its open one.
+        for (let n = 2; n <= 12; n++)
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, branch,
+               closed_at)
+             VALUES ('${appId}'::uuid, 'appdev', ${String(n)}, 'P_MATE', 'Mate: appdev', 'closed',
+               'mate/P_MATE/${String(n)}', now())
+             RETURNING 1`,
+            () => true,
+          );
+        const self = (yield* call("GET", "/api/mate/self", { headers: auth })).body as {
+          readonly changes: ReadonlyArray<{ readonly number: number; readonly state: string }>;
+        };
+        assert.deepStrictEqual(
+          self.changes.map(({ number, state }) => [number, state]),
+          [...[12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n) => [n, "closed"]), [1, "open"]],
+        );
+      }),
+    );
+
+    it.effect("merging one leaves the other behind, judged, in its Mate's own state", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+        yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+        for (const [title, branch] of [
+          ["Fix the login", "fix-login"],
+          ["Add a badge", "badge"],
+        ] as const) {
+          const opened = yield* call("POST", "/api/mate/changes", {
+            headers: auth,
+            body: { repo: "appdev", title, branch },
+          });
+          assert.strictEqual((opened.body as { readonly created: boolean }).created, true);
+        }
+        const git = yield* gitClient;
+        yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "work"]);
+        const work = NodePath.join(git.dir, "work");
+        const heads: Array<string> = [];
+        for (const [file, branch] of [
+          ["login.ts", "fix-login"],
+          ["badge.ts", "badge"],
+        ] as const) {
+          yield* git.checked(["reset", "--hard", "origin/main"], work);
+          NodeFS.writeFileSync(NodePath.join(work, file), `${file}\n`);
+          yield* git.checked(["add", file], work);
+          yield* git.checked(["commit", "-m", `Add ${file}`], work);
+          yield* git.checked(["push", "origin", `HEAD:refs/heads/${branch}`], work);
+          heads.push(yield* git.checked(["rev-parse", "HEAD"], work));
+        }
+        yield* rowsWhere(
+          url,
+          "SELECT number FROM hq_change WHERE head IS NOT NULL AND mergeability = 'clean'",
+          (rows) => rows.length === 2,
+        );
+        const merged = yield* call("POST", `/api/apps/${appId}/changes/appdev/1/merge`, {
+          session: owner,
+          body: { expectedHead: heads[0] },
+        });
+        assert.strictEqual(merged.status, 200);
+        // main moved: the other change is judged again, behind it and still merging cleanly.
+        yield* rowsWhere(
+          url,
+          "SELECT behind FROM hq_change WHERE number = 2",
+          (rows) => rows[0]?.["behind"] === true,
+        );
+        const self = (yield* call("GET", "/api/mate/self", { headers: auth })).body as {
+          readonly changes: ReadonlyArray<Record<string, unknown>>;
+        };
+        assert.deepStrictEqual(
+          self.changes.map((own) => [
+            own["number"],
+            own["state"],
+            own["mergeability"] ?? null,
+            own["behind"] ?? null,
+            own["ready"] ?? null,
+          ]),
+          [
+            [2, "open", "clean", true, false],
+            [1, "merged", null, null, null],
+          ],
+        );
+      }),
     );
 
     it.effect("a Mate reads whether its application has a production in its own state", () =>
