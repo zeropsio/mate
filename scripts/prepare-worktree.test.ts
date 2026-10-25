@@ -146,6 +146,9 @@ it("with WT_ROOT set, prepare reuses and creates lanes only under $WT_ROOT/<repo
       git(main, "worktree", "add", "-q", "--detach", NodePath.join(root, path));
     const created = acquireWorktree(main, "first-job");
     expect(created).toMatchObject({ path: NodePath.join(root, "wt/z3/first-job"), reused: false });
+    NodeFS.writeFileSync(NodePath.join(created.path, "file"), "finished job");
+    git(created.path, "commit", "-qam", "finished job");
+    git(main, "update-ref", "refs/remotes/origin/main", "first-job");
     git(created.path, "switch", "-q", "--detach", "origin/main");
     expect(acquireWorktree(main, "second-job")).toMatchObject({
       path: created.path,
@@ -156,6 +159,82 @@ it("with WT_ROOT set, prepare reuses and creates lanes only under $WT_ROOT/<repo
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.each([false, true])(
+  "two preparations reserve different lanes before either builder writes (reuse first: %s)",
+  (reuseFirst) => {
+    const root = NodeFS.realpathSync(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-lane-lock-")),
+    );
+    const main = NodePath.join(root, "z3");
+    const git = (cwd: string, ...args: string[]) => {
+      const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    vi.stubEnv("WT_ROOT", undefined);
+    try {
+      NodeFS.mkdirSync(main);
+      git(main, "init", "-q");
+      git(main, "config", "user.name", "Pool fixture");
+      git(main, "config", "user.email", "pool@example.test");
+      NodeFS.writeFileSync(NodePath.join(main, "file"), "base");
+      git(main, "add", ".");
+      git(main, "commit", "-qm", "base");
+      git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+      if (reuseFirst)
+        git(main, "worktree", "add", "-qb", "idle", NodePath.join(root, "z3-wt/idle"));
+      const first = acquireWorktree(main, "first-job");
+      const second = acquireWorktree(main, "second-job");
+      expect(second.path).not.toBe(first.path);
+      expect(git(first.path, "branch", "--show-current")).toBe("first-job");
+      expect(git(second.path, "branch", "--show-current")).toBe("second-job");
+      expect(git(main, "worktree", "list", "--porcelain")).toContain("locked first-job");
+      expect(git(main, "worktree", "list", "--porcelain")).toContain("locked second-job");
+    } finally {
+      NodeFS.rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+it.each([false, true])(
+  "preparation reclaims a landed clean locked lane regardless of its remote branch (present: %s)",
+  (remotePresent) => {
+    const root = NodeFS.realpathSync(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-lane-reclaim-")),
+    );
+    const main = NodePath.join(root, "z3");
+    const git = (cwd: string, ...args: string[]) => {
+      const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    vi.stubEnv("WT_ROOT", undefined);
+    try {
+      NodeFS.mkdirSync(main);
+      git(main, "init", "-q");
+      git(main, "config", "user.name", "Pool fixture");
+      git(main, "config", "user.email", "pool@example.test");
+      NodeFS.writeFileSync(NodePath.join(main, "file"), "base");
+      git(main, "add", ".");
+      git(main, "commit", "-qm", "base");
+      git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+      const first = { path: NodePath.join(root, "z3-wt/first-job") };
+      git(main, "worktree", "add", "-qb", "first-job", first.path);
+      git(main, "worktree", "lock", "--reason", "first-job", first.path);
+      NodeFS.writeFileSync(NodePath.join(first.path, "file"), "landed work");
+      git(first.path, "commit", "-qam", "work");
+      if (remotePresent) git(main, "update-ref", "refs/remotes/origin/first-job", "first-job");
+      git(main, "update-ref", "refs/remotes/origin/main", "first-job");
+      const second = acquireWorktree(main, "second-job");
+      expect(second.path).toBe(first.path);
+      expect(second.reused).toBe(true);
+      expect(git(main, "worktree", "list", "--porcelain")).toContain("locked second-job");
+    } finally {
+      NodeFS.rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 it("counts new filesystem entries without following dependency symlinks", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-entry-test-"));

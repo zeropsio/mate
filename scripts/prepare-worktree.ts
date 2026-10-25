@@ -124,7 +124,6 @@ export function acquireWorktree(
   const cwds = liveCwds([pool]);
   for (const candidate of worktrees) {
     if (
-      candidate.locked ||
       !inside(candidate.path, pool) ||
       !NodeFS.existsSync(candidate.path) ||
       !idle(candidate, cwds)
@@ -133,12 +132,15 @@ export function acquireWorktree(
     const before = worktreeEntries(candidate.path);
     // Refresh all safety evidence after inventory, immediately before switching the lane.
     if (!idle(candidate, liveCwds([pool]))) continue;
+    if (candidate.locked) git(cwd, ["worktree", "unlock", candidate.path]);
     git(candidate.path, ["switch", "--no-track", "--create", job, "origin/main"]);
+    git(cwd, ["worktree", "lock", "--reason", job, candidate.path]);
     return { path: candidate.path, reused: true, before };
   }
   const path = NodePath.resolve(pool, job);
   if (path === pool || !inside(path, pool)) throw new Error(`Job name escapes the pool: ${job}`);
   git(cwd, ["worktree", "add", "--no-track", "-b", job, path, "origin/main"]);
+  git(cwd, ["worktree", "lock", "--reason", job, path]);
   return { path, reused: false, before: new Set() };
 }
 
