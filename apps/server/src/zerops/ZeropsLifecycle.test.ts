@@ -1111,13 +1111,14 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
           toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
           repository,
           threadOwner: conversationOfThread,
-          leaseBindings: Effect.map(Ref.get(records), (all) =>
-            Object.entries(all).map(([conversation, { alias, branch }]) => ({
+          leaseBindings: Effect.map(Ref.get(records), (all) => ({
+            bindings: Object.entries(all).map(([conversation, { alias, branch }]) => ({
               conversation: conversation as ThreadId,
               alias,
               branch,
             })),
-          ),
+            complete: true,
+          })),
           recordLease: (conversation, change) =>
             Effect.andThen(
               Ref.update(changes, (all) => [...all, change]),

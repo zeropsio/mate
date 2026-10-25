@@ -225,6 +225,13 @@ export interface LeaseBinding {
   readonly branch: string | null;
 }
 
+/** The conversations bound to a lease now, and whether every conversation's record was read. */
+export interface LeaseBindings {
+  readonly bindings: ReadonlyArray<LeaseBinding>;
+  /** False when a record could not be read: what it holds is not known, never none. */
+  readonly complete: boolean;
+}
+
 /** The tool a conversation's agent leases a pool container with. */
 const LEASE_TOOL = "zerops_lease";
 
@@ -371,6 +378,8 @@ interface LeaseFacts {
   readonly released: ReadonlyArray<string>;
   /** The leases this call read held under an alias the last checked read had of another lease. */
   readonly renewed: ReadonlyArray<string>;
+  /** This call's read, to check the next one against once every binding was checked against it. */
+  readonly checkpoint?: CheckedRead;
   /**
    * The leases this call acquired (`aliases`, never one zcp already held), the one of them its
    * conversation is bound to (`lease`), and that conversation (none: no conversation).
@@ -388,6 +397,7 @@ const leaseFactsOf = (
   read: ReadonlyArray<ZeropsLease> | undefined,
   readChanged: boolean,
   renewed: ReadonlyArray<string>,
+  checkpoint: CheckedRead | undefined,
   owner: ThreadId | undefined,
 ): LeaseFacts => {
   const held =
@@ -414,6 +424,7 @@ const leaseFactsOf = (
     ...(read === undefined ? {} : { read }),
     released,
     renewed,
+    ...(checkpoint === undefined ? {} : { checkpoint }),
     ...(acquired === undefined ? {} : { acquired: { ...acquired, by: owner } }),
   };
 };
@@ -492,9 +503,10 @@ export interface ZeropsLifecycleOptions {
   readonly threadOwner?: (threadId: ThreadId) => string | undefined;
   /**
    * The conversations bound to a lease now, as their records hold them: whom a release, an acquire
-   * or a read of zcp's leases unbinds. Absent: none is bound.
+   * or a read of zcp's leases unbinds. A read checked against bindings not all read is checked
+   * again by the next read, however alike. Absent: none is bound.
    */
-  readonly leaseBindings?: Effect.Effect<ReadonlyArray<LeaseBinding>>;
+  readonly leaseBindings?: Effect.Effect<LeaseBindings>;
   /**
    * Records a change of a conversation's lease in that conversation's own record, once per `key`
    * (derived from the call and the conversation). Absent: nothing is bound. Only the conversation
@@ -688,12 +700,14 @@ export const make = (options: ZeropsLifecycleOptions) =>
 
           let readChanged = false;
           let renewed: ReadonlyArray<string> = [];
+          let checkpoint: CheckedRead | undefined;
           if (envelope?.leases !== undefined) {
             yield* noteLeases(envelope.leases.map((lease) => lease.alias));
             const key = leasesKey(envelope.leases);
-            const prior = yield* Ref.getAndSet(checked, checkedRead(envelope.leases, key));
+            const prior = yield* Ref.get(checked);
             readChanged = prior?.key !== key;
             renewed = renewedLeases(envelope.leases, prior);
+            checkpoint = checkedRead(envelope.leases, key);
           }
           // Only what a successful call did or read; any thread's, since zcp's leases are shared.
           return resultText === undefined || failed
@@ -704,6 +718,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
                 envelope?.leases,
                 readChanged,
                 renewed,
+                checkpoint,
                 owner === undefined ? undefined : threadId,
               );
         }),
@@ -723,7 +738,9 @@ export const make = (options: ZeropsLifecycleOptions) =>
         ) {
           return;
         }
-        const bindings = yield* options.leaseBindings ?? Effect.succeed([]);
+        const { bindings, complete } = yield* (
+          options.leaseBindings ?? Effect.succeed<LeaseBindings>({ bindings: [], complete: true })
+        );
         const changes = leaseChangesFor(facts, bindings);
         for (const { conversation, change } of changes) {
           const key =
@@ -740,8 +757,11 @@ export const make = (options: ZeropsLifecycleOptions) =>
             ),
           );
         }
+        // A conversation whose record was not read is checked again by the next read.
+        if (complete && facts.checkpoint !== undefined) yield* Ref.set(checked, facts.checkpoint);
         const changedCheckouts = new Set([
           ...facts.released,
+          ...facts.renewed,
           ...(facts.acquired?.aliases ?? []),
           ...changes.flatMap(({ change }) => (change._tag === "UnbindLease" ? [change.ended] : [])),
         ]);
