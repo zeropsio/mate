@@ -214,6 +214,11 @@ export const HqChange = Schema.Struct({
   openedAt: Instant,
   mergedAt: Schema.NullOr(Instant),
   closedAt: Schema.NullOr(Instant),
+  /**
+   * On a change closed without merging: its own Mate closed it, work it gave up — a Mate closes no
+   * other's. Absent where a person or HQ closed it, and from an older HQ.
+   */
+  closedByMate: Schema.optionalKey(Schema.Literal(true)),
   /** Its last push, edit of its words, or comment. */
   updatedAt: Instant,
   /**

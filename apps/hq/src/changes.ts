@@ -566,6 +566,11 @@ const CHANGE_COLUMNS = [
       'checks', pr.checks) FROM hq_pull_request pr
     WHERE pr.app_id = hq_change.app_id AND pr.repo = hq_change.repo
       AND pr.number = hq_change.number) AS pull_request`,
+  // Closed by its own Mate (`mateCloseChange`), as the log's close of it says.
+  `(CASE WHEN state = 'closed' THEN EXISTS (SELECT 1 FROM hq_git_event e
+    WHERE e.kind = 'closed' AND e.app_id = hq_change.app_id AND e.repo = hq_change.repo
+      AND e.number = hq_change.number AND e.data->>'by' = 'mate') ELSE false END)
+    AS closed_by_mate`,
   // Its branch on GitHub diverged (`githubMirror.ts`): since when.
   `(SELECT to_char(m.diverged_since AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
     FROM hq_change_mirror m WHERE m.app_id = hq_change.app_id AND m.repo = hq_change.repo
@@ -614,6 +619,7 @@ interface ChangeRow {
   readonly comments: number;
   readonly pull_request: PullRequestRow | null;
   readonly mirror_diverged_since: string | null;
+  readonly closed_by_mate: boolean;
 }
 
 const COMMENT_COLUMNS = [
@@ -686,6 +692,7 @@ const changeOf = (row: ChangeRow): RecordedChange => ({
   openedAt: row.opened_at,
   mergedAt: row.merged_at,
   closedAt: row.closed_at,
+  ...(row.closed_by_mate ? { closedByMate: true } : {}),
   updatedAt: row.updated_at,
   mergeability: row.mergeability,
   behind: row.behind,
@@ -1017,15 +1024,12 @@ export const changesLayer: Layer.Layer<
     const asItIs = (git: HqGit, at: Repo) =>
       Effect.map(mainOf(git, at), (main) => ({ main: main ?? "" }));
 
-    /** In a fenced write, the change locked open: closed without merging, as `by` says. */
+    /**
+     * In a fenced write, the change locked open: closed without merging, as `by` says — logged
+     * first, so the change it returns says who closed it (`closed_by_mate`).
+     */
     const closeLocked = (change: RecordedChange, by: object) =>
       Effect.gen(function* () {
-        const [row] = yield* sql<ChangeRow>`
-          UPDATE hq_change
-          SET state = 'closed', closed_at = now(), updated_at = now()
-          WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-            AND number = ${change.number}
-          RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
         yield* appendEvent(sql, {
           kind: "closed",
           appId: change.appId,
@@ -1033,6 +1037,12 @@ export const changesLayer: Layer.Layer<
           number: change.number,
           data: by,
         });
+        const [row] = yield* sql<ChangeRow>`
+          UPDATE hq_change
+          SET state = 'closed', closed_at = now(), updated_at = now()
+          WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
+            AND number = ${change.number}
+          RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
         return changeOf(row!);
       });
 
