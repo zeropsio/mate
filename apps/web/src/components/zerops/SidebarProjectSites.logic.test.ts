@@ -421,6 +421,16 @@ describe("a Mate's dev pools", () => {
       dot: "off",
       url: undefined,
     },
+    // Review r4-13: an envelope's address becomes a link's href as it is.
+    {
+      title: "no preview yet, where its server's address is no web address",
+      given: lease("webpool-3", {
+        devServers: [server("running", "javascript:alert(document.cookie)")],
+      }),
+      word: "no preview yet",
+      dot: "off",
+      url: undefined,
+    },
   ])("says a workspace is $title", ({ given, word, dot, url }) => {
     const workspaces = mateWorkspaces(
       mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] }),

@@ -305,6 +305,19 @@ describe("buildDevServerFields — a lease with one dev server", () => {
       leases: [{ alias: "webpool-3", pool: "webpool", state: "held" }],
       links: [],
     },
+    // Review r4-13: an envelope's address becomes a link's href as it is.
+    {
+      name: "has no Open link where the address zcp read on the lease's one dev server is no web address",
+      leases: [
+        {
+          alias: "webpool-3",
+          pool: "webpool",
+          state: "held",
+          devServers: [{ ...preview, url: "javascript:alert(document.cookie)" }],
+        },
+      ],
+      links: [],
+    },
   ])("$name", ({ leases, links }) => {
     const fields = onLease(leases);
     expect(fields.steps.map((step) => [step.label, step.state, step.note])).toEqual([
