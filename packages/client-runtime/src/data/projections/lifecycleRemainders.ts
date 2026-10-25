@@ -16,8 +16,13 @@ export interface LifecycleRemainders {
     }
   >;
   readonly deletions: ReadonlyArray<HqLifecycleRecord>;
+  readonly unproven: ReadonlyArray<string>;
 }
-export const NO_LIFECYCLE_REMAINDERS: LifecycleRemainders = { renames: new Map(), deletions: [] };
+export const NO_LIFECYCLE_REMAINDERS: LifecycleRemainders = {
+  renames: new Map(),
+  deletions: [],
+  unproven: [],
+};
 export const lifecycleRemainders: Projection<
   { readonly orgId: string; readonly hqProjectId: string },
   LifecycleRemainders
@@ -36,6 +41,7 @@ export const lifecycleRemainders: Projection<
       }
     >();
     const deletions: HqLifecycleRecord[] = [];
+    const unproven: string[] = [];
     for (const id of read.members(hqLifecycleScope(key.orgId)).ids) {
       const fact = read.fact("hqLifecycle", id);
       if (fact.kind !== "known") continue;
@@ -51,16 +57,18 @@ export const lifecycleRemainders: Projection<
             from: remainder.from,
             to: remainder.name,
           });
-      } else if (
-        record.intent.kind === "prepare-mate-deletion" &&
-        (read.fact("project", record.intent.projectId).kind === "deleted" ||
-          operationProgress.derive(read, `${id}:complete`).stage === "done")
-      ) {
+      } else if (record.intent.kind === "prepare-mate-deletion") {
         const retirement = operationProgress.derive(read, `${id}:retired`);
-        if (retirement.stage !== "done" || retirement.outcome !== "succeeded")
+        if (retirement.stage === "done" && retirement.outcome === "succeeded") continue;
+        const project = read.fact("project", record.intent.projectId);
+        if (
+          project.kind === "deleted" ||
+          operationProgress.derive(read, `${id}:complete`).stage === "done"
+        )
           deletions.push(record);
+        else if (project.kind !== "known") unproven.push(record.intent.projectId);
       }
     }
-    return { renames, deletions };
+    return { renames, deletions, unproven };
   },
 };

@@ -3,6 +3,7 @@ import { AtomRegistry } from "effect/reactivity";
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { detailScopeOf } from "../demand.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { lifecycleRemainders } from "./lifecycleRemainders.ts";
 import { recordedMoveRemainder } from "./recordedMoveRemainder.ts";
@@ -25,6 +26,34 @@ const PREPARED: HqLifecycleRecord = {
   result: { keyTokenId: "exact-key", completion: "seal" },
 };
 const key = { orgId: ORG, hqProjectId: "hq" };
+
+it.each([
+  { project: "unlisted", unproven: ["p1"], deletions: [] },
+  { project: "deleted", unproven: [], deletions: [PREPARED] },
+  { project: "listed", unproven: [], deletions: [] },
+] as const)(
+  "a reopened deletion asks Zerops for its unlisted project and shows its cleanup once Zerops answers not found",
+  ({ project, unproven, deletions }) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({
+      running: [],
+      projects: project === "listed" ? [{ id: "p1", name: "Ada" }] : [],
+    }).forEach(store.dispatch);
+    seedHqNavigation(store, ORG, { lifecycle: [PREPARED] });
+    if (project === "deleted")
+      store.dispatch({
+        kind: "proven-deletion",
+        family: "project",
+        id: "p1",
+        scope: detailScopeOf(ORG, { family: "project", listing: "project", ownerId: "p1" }),
+        evidence: "projectNotFound",
+      });
+    expect(lifecycleRemainders.derive(readsOfState(store.state()), key)).toMatchObject({
+      unproven,
+      deletions,
+    });
+  },
+);
 
 it.each([
   "current",
@@ -110,5 +139,11 @@ it.each(["prepared", "completed", "retired", "other-HQ"] as const)(
         hqProjectId: caseName === "other-HQ" ? "replacement" : "hq",
       }).deletions,
     ).toEqual(caseName === "completed" ? [PREPARED] : []);
+    expect(
+      lifecycleRemainders.derive(readsOfState(store.state()), {
+        ...key,
+        hqProjectId: caseName === "other-HQ" ? "replacement" : "hq",
+      }).unproven,
+    ).toEqual(caseName === "prepared" ? ["p1"] : []);
   },
 );

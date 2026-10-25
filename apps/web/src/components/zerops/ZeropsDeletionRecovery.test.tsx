@@ -7,12 +7,15 @@ import { Button } from "../ui/button";
 
 const held = vi.hoisted(() => ({
   records: [] as HqLifecycleRecord[],
+  unproven: [] as string[],
+  demand: vi.fn(),
   current: true,
   run: vi.fn(),
 }));
 vi.mock("~/zerops/useLifecycleRemainders", () => ({
-  useLifecycleRemainders: () => ({ deletions: held.records }),
+  useLifecycleRemainders: () => ({ deletions: held.records, unproven: held.unproven }),
 }));
+vi.mock("~/zerops/ZeropsAccountData", () => ({ useDetailDemand: held.demand }));
 vi.mock("~/zerops/accountOperations", () => ({ useAccountOperations: () => ({ run: held.run }) }));
 vi.mock("~/zerops/accountLifetime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/zerops/accountLifetime")>()),
@@ -22,6 +25,8 @@ let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   held.current = true;
+  held.unproven = [];
+  held.demand.mockReset();
   held.run.mockReset().mockResolvedValue(undefined);
   held.records = [
     {
@@ -42,6 +47,27 @@ const finish = () =>
   act(async () => {
     tree?.root.findByType(Button).props.onClick();
   });
+
+it("a person who reopens the account after the project was deleted is offered Finish deleting Mate", () => {
+  const prepared = held.records;
+  held.records = [];
+  held.unproven = ["p"];
+  act(() => tree?.update(<ZeropsDeletionRecovery />));
+  expect(held.demand).toHaveBeenCalledWith("project", "project", "p");
+  expect(tree?.toJSON()).toBe(null);
+
+  held.unproven = [];
+  held.records = prepared;
+  act(() => tree?.update(<ZeropsDeletionRecovery />));
+  expect(tree?.root.findByType("span").children.join("")).toBe(
+    "Ada was deleted. Its cleanup still needs confirmation.",
+  );
+  expect(tree?.root.findByType(Button).props.children).toBe("Finish deleting Mate");
+
+  held.records = [];
+  act(() => tree?.update(<ZeropsDeletionRecovery />));
+  expect(tree?.toJSON()).toBe(null);
+});
 
 it("a reopened deletion never deletes the project again and retains its exact cleanup request ids", async () => {
   held.run.mockRejectedValueOnce(new Error("HQ isn't answering."));
