@@ -218,11 +218,54 @@ const ENDED_ZEROPS_LEASE_STATES: ReadonlySet<string> = new Set([
 export const isZeropsLeaseHeld = (state: string): boolean => !ENDED_ZEROPS_LEASE_STATES.has(state);
 
 /**
- * The branch whose group a lease is of: the leases zcp holds of one branch are one group, one per
- * part's pool (zcp `docs/spec-workflows.md` §8 DP-17), and a lease of no branch is of `main`'s.
+ * The branch whose group a lease is of: the leases zcp holds of one repository and branch are one
+ * group, one per part's pool (zcp `docs/spec-workflows.md` §8 DP-17), and a lease of no branch is
+ * of `main`'s.
  */
 export const zeropsLeaseGroupBranch = (branch: string | null | undefined): string =>
   branch === null || branch === undefined || branch === "" ? "main" : branch;
+
+/** A repository's address as zcp keys it (`topology.CanonicalRepoURL`): no `.git`, no trailing slash. */
+const canonicalZeropsRepo = (address: string): string =>
+  address
+    .trim()
+    .replace(/\/$/u, "")
+    .replace(/\.git$/u, "")
+    .replace(/\/$/u, "");
+
+/**
+ * Whether two addresses name one repository, as zcp compares them (`topology.SameRepoURL`): equal in
+ * canonical form but for case, which hosts like GitHub ignore in the host, owner and name.
+ */
+export const sameZeropsRepo = (left: string, right: string): boolean => {
+  const canonical = canonicalZeropsRepo(left);
+  return canonical !== "" && canonical.toLowerCase() === canonicalZeropsRepo(right).toLowerCase();
+};
+
+/** What a lease's group is keyed by: its branch, and the repository zcp names (`repo`) when it does. */
+export interface ZeropsLeaseGroupKey {
+  readonly branch?: string | null | undefined;
+  readonly repo?: string | undefined;
+}
+
+const namedRepo = (repo: string | undefined): string | undefined =>
+  repo === undefined || repo.trim() === "" ? undefined : repo;
+
+/**
+ * Whether two leases, or a binding and a lease, are of one group — the leases zcp holds of one
+ * repository and branch (zcp `docs/spec-workflows.md` §8 DP-17): two apps of one Mate both on
+ * `main` hold two groups. One that names no repository (a zcp, a record or a binding older than
+ * `repo`) is grouped by its branch alone.
+ */
+export const sameZeropsLeaseGroup = (
+  left: ZeropsLeaseGroupKey,
+  right: ZeropsLeaseGroupKey,
+): boolean => {
+  if (zeropsLeaseGroupBranch(left.branch) !== zeropsLeaseGroupBranch(right.branch)) return false;
+  const leftRepo = namedRepo(left.repo);
+  const rightRepo = namedRepo(right.repo);
+  return leftRepo === undefined || rightRepo === undefined || sameZeropsRepo(leftRepo, rightRepo);
+};
 
 /**
  * What zcp read of a lease's checkout and preview — zcp `topology.LeaseActivity` (zcp
@@ -273,10 +316,16 @@ export const ZeropsLease = Schema.Struct({
   unverified: Schema.optional(Schema.Boolean),
   /**
    * When zcp acquired the lease (RFC 3339), from its record; absent for one it has no record of.
-   * Of the leases of one branch, the earliest acquired is the one a conversation is bound to next
-   * when the lease it was bound to ends.
+   * Of the leases of one repository and branch, the earliest acquired is the one a conversation is
+   * bound to next when the lease it was bound to ends.
    */
   acquiredAt: Schema.optional(Schema.String),
+  /**
+   * The repository the lease's group is keyed by beside `branch`, canonical and credential-free;
+   * absent for one zcp has no record of, or a record older than it. Two apps of one Mate both on
+   * `main` hold leases of one branch: their repositories tell the groups apart.
+   */
+  repo: Schema.optional(Schema.String),
   /**
    * The dev servers zcp read on the lease's supervisor, only on a `zerops_dev_server` call for its
    * alias (the preview server's `url` is the pool's per-port subdomain). Absent means not read in

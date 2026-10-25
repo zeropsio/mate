@@ -24,7 +24,7 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { type ChangeReceipt, changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { type ChangeReceipt, changeUrl, type HqChange, repoUrl } from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -42,6 +42,11 @@ export interface FlowPullRequest {
   readonly pipeline?: HqChange["pipeline"] | undefined;
   /** The repository's name in the group's org. */
   readonly repository: string;
+  /**
+   * Where git reaches the repository at HQ (`repoUrl`): what a lease of it names as its `repo`,
+   * by which a lease's checkout finds its change. Absent where it was not built from HQ's address.
+   */
+  readonly repositoryUrl?: string | undefined;
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
@@ -164,6 +169,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
   return {
     pipeline: change.pipeline,
     repository: change.repo,
+    repositoryUrl: repoUrl(hqAddress, change.appId, change.repo),
     number: change.number,
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",
@@ -227,6 +233,7 @@ export function flowChanges(input: {
 function menuChange(appId: string, change: HqNavigationChange, hqAddress: string): FlowPullRequest {
   return {
     repository: change.repo,
+    repositoryUrl: repoUrl(hqAddress, appId, change.repo),
     number: change.number,
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",

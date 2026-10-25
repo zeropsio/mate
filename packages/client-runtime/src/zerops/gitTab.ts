@@ -39,8 +39,9 @@
 
 import {
   isZeropsLeaseHeld,
+  sameZeropsLeaseGroup,
+  sameZeropsRepo,
   ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
-  zeropsLeaseGroupBranch,
   type ZeropsLease,
   type ZeropsLifecycle,
 } from "@t3tools/contracts";
@@ -111,7 +112,9 @@ export interface GitChangeState {
  * if any, being the newest, since a Mate opens a number only while none is open. A change closed
  * without landing is no work of anybody's any more. A checkout one of the thread's `leases` mounts
  * is no repository of HQ's — HQ names a repository after the dev service it began on, never after
- * a pool's container — so its change is the one on the branch zcp checked out there.
+ * a pool's container — so its change is the one on the branch zcp checked out there, of the
+ * repository the lease names (`leaseOfRepository`): two apps of one Mate may each have a change on
+ * one branch name.
  */
 export function mateChangeIn(
   flow: {
@@ -127,13 +130,29 @@ export function mateChangeIn(
     change.mateProjectId === mateProjectId &&
     (lease === undefined
       ? change.repository === repository
-      : lease.branch !== null && change.branch === lease.branch);
+      : lease.branch !== null &&
+        change.branch === lease.branch &&
+        leaseOfRepository(lease.repo, change.repositoryUrl));
   return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
     FlowPullRequest | undefined
   >(
     (newest, change) => (newest === undefined || change.number > newest.number ? change : newest),
     undefined,
   );
+}
+
+/**
+ * Whether a lease that names `repo` may be of the repository HQ keeps at `address`
+ * (`FlowPullRequest.repositoryUrl`): the same repository, compared as zcp compares them — or not
+ * known to be another: the lease names none, the change carries no address, or the lease's is no
+ * address of HQ's beside it (a repository kept on GitHub, whose name in HQ its address does not
+ * say). Only an address beside it under `<HQ>/git/<appId>/` is another repository.
+ */
+function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
+  if (repo === undefined || repo.trim() === "" || address === undefined) return true;
+  if (sameZeropsRepo(repo, address)) return true;
+  const beside = address.slice(0, address.lastIndexOf("/") + 1).toLowerCase();
+  return !repo.trim().toLowerCase().startsWith(beside);
 }
 
 /**
@@ -704,33 +723,38 @@ export interface CheckoutLease {
   readonly pool: string;
   /** The branch zcp checked out there; null for none. */
   readonly branch: string | null;
+  /** The repository its group is keyed by beside the branch (zcp's `repo`); none where zcp named none. */
+  readonly repo?: string | undefined;
 }
 
 /**
- * The leases a thread reads: the one it is bound to first, then every other lease of its branch
- * zcp holds, as the thread's last read of zcp's leases (`leases[]`) names them — a branch that
- * spans several app parts holds one lease per part's pool, and the conversation that acquired them
- * shows them all. Derived on every read, never kept: none for a thread bound to no lease, and the
- * bound one alone until zcp's leases are read.
+ * The leases a thread reads: the one it is bound to first, then every other lease of its
+ * repository and branch zcp holds, as the thread's last read of zcp's leases (`leases[]`) names
+ * them — a branch that spans several app parts holds one lease per part's pool, and the
+ * conversation that acquired them shows them all, never another app's lease of the same branch
+ * (`sameZeropsLeaseGroup`). Derived on every read, never kept: none for a thread bound to no
+ * lease, and the bound one alone until zcp's leases are read.
  */
 export function threadLeases(
   lease: CheckoutLease | null | undefined,
-  read: ReadonlyArray<Pick<ZeropsLease, "alias" | "pool" | "branch" | "state">> | undefined,
+  read:
+    | ReadonlyArray<Pick<ZeropsLease, "alias" | "pool" | "branch" | "state" | "repo">>
+    | undefined,
 ): ReadonlyArray<CheckoutLease> {
   if (lease == null) return [];
-  const branch = zeropsLeaseGroupBranch(lease.branch);
   const others = (read ?? []).filter(
     (other) =>
       other.alias !== lease.alias &&
       isZeropsLeaseHeld(other.state) &&
-      zeropsLeaseGroupBranch(other.branch) === branch,
+      sameZeropsLeaseGroup(lease, other),
   );
   return [
     lease,
-    ...others.map(({ alias, pool, branch: checkedOut }) => ({
+    ...others.map(({ alias, pool, branch: checkedOut, repo }) => ({
       alias,
       pool,
       branch: checkedOut === undefined || checkedOut === "" ? null : checkedOut,
+      ...(repo === undefined || repo === "" ? {} : { repo }),
     })),
   ];
 }

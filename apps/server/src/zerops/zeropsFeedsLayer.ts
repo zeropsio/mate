@@ -248,6 +248,7 @@ const ZeropsLifecycleLive = Layer.unwrap(
                   conversation: ThreadId.make(view.conversationId),
                   alias: view.lease.alias,
                   branch: view.lease.branch,
+                  repo: view.lease.repo,
                 },
               ],
         ),

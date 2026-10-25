@@ -18,9 +18,9 @@ import {
   type OrchestrationLatestTurn,
   type ProviderInteractionMode,
   type RuntimeMode,
+  sameZeropsLeaseGroup,
   type ThreadId,
   type ZeropsLease,
-  zeropsLeaseGroupBranch,
   type ZeropsLifecycle,
 } from "@t3tools/contracts";
 
@@ -167,19 +167,18 @@ export function workspaceChip(input: {
 
 /**
  * zcp's last read of the lease a conversation is bound to, from the conversation's last read of
- * zcp's leases: the lease of its alias and branch while zcp holds it; none before a read, and none
- * for a lease that ended or another branch's under the same alias.
+ * zcp's leases: the lease of its alias, repository and branch while zcp holds it; none before a
+ * read, and none for a lease that ended or another repository's or branch's under the same alias.
  */
 export function boundLeaseRead(
   binding: CheckoutLease | null | undefined,
   leases: ReadonlyArray<ZeropsLease> | undefined,
 ): ZeropsLease | undefined {
   if (binding === null || binding === undefined) return undefined;
-  const branch = zeropsLeaseGroupBranch(binding.branch);
   return leases?.find(
     (lease) =>
       lease.alias === binding.alias &&
-      zeropsLeaseGroupBranch(lease.branch) === branch &&
+      sameZeropsLeaseGroup(binding, lease) &&
       isZeropsLeaseHeld(lease.state),
   );
 }

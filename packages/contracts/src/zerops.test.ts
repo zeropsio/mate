@@ -6,6 +6,8 @@ import {
   agentIdForDriverKind,
   isZeropsLeaseHeld,
   KNOWN_ZEROPS_LEASE_STATES,
+  sameZeropsLeaseGroup,
+  sameZeropsRepo,
   ZEROPS_AGENT_LOGIN_COMMANDS,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -562,6 +564,13 @@ describe("ZeropsStateEnvelope leases", () => {
     expect(decoded.leases?.[1]).not.toHaveProperty("devServers");
   });
 
+  it("a lease names the repository its group is keyed by beside its branch, and one zcp names none for reads without it", () => {
+    const repo = "https://hq.example.zerops.app/git/acme/web";
+    const recorded = { ...held, acquiredAt: "2026-10-23T12:00:01Z", repo };
+    expect(decodeEnvelope(envelope({ leases: [recorded] })).leases).toEqual([recorded]);
+    expect(decodeEnvelope(envelope({ leases: [held] })).leases?.[0]).not.toHaveProperty("repo");
+  });
+
   it("a lease acquired for no branch reads without one", () => {
     const { branch: _branch, ...noBranch } = held;
     expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);
@@ -629,5 +638,54 @@ describe("ZeropsStateEnvelope leases", () => {
   it("a parked lease is a state this build knows, and zcp still holds it", () => {
     expect(KNOWN_ZEROPS_LEASE_STATES).toContain("parked");
     expect(isZeropsLeaseHeld("parked")).toBe(true);
+  });
+});
+
+describe("the repository and branch a lease's group is keyed by", () => {
+  const web = "https://hq.example.zerops.app/git/acme/web";
+  const api = "https://hq.example.zerops.app/git/acme/api";
+
+  it.each([
+    { how: "the same address", other: web, same: true },
+    { how: "the address with .git", other: `${web}.git`, same: true },
+    { how: "the address with a trailing slash", other: `${web}/`, same: true },
+    { how: "the address with .git and a slash", other: `${web}.git/`, same: true },
+    { how: "the address in capitals, spaced", other: ` ${web.toUpperCase()} `, same: true },
+    { how: "another repository's address", other: api, same: false },
+    { how: "an address on another host", other: "https://github.com/acme/web", same: false },
+    { how: "an empty address", other: "", same: false },
+  ])("$how names the same repository as zcp compares them: $same", ({ other, same }) => {
+    expect(sameZeropsRepo(web, other)).toBe(same);
+    expect(sameZeropsRepo(other, web)).toBe(same);
+  });
+
+  it("no address names the same repository as another that names none", () => {
+    expect(sameZeropsRepo("", "")).toBe(false);
+    expect(sameZeropsRepo(" / ", "")).toBe(false);
+  });
+
+  it("two apps' leases of one branch are two groups", () => {
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main", repo: api })).toBe(
+      false,
+    );
+    expect(
+      sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main", repo: `${web}.git` }),
+    ).toBe(true);
+    expect(
+      sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "feat-x", repo: web }),
+    ).toBe(false);
+    expect(
+      sameZeropsLeaseGroup({ branch: null, repo: web }, { branch: "main", repo: web }),
+      "a lease of no branch is of main's group",
+    ).toBe(true);
+  });
+
+  it("a lease or a binding that names no repository is grouped by its branch alone", () => {
+    expect(sameZeropsLeaseGroup({ branch: "main" }, { branch: "main", repo: api })).toBe(true);
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main" })).toBe(true);
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: "" }, { branch: "main", repo: api })).toBe(
+      true,
+    );
+    expect(sameZeropsLeaseGroup({ branch: "main" }, { branch: "feat-x" })).toBe(false);
   });
 });

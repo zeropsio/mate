@@ -99,6 +99,14 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     },
   );
 
+  // zcp names a lease's repository by the address git reaches it at (spec-mate §2.8a.3 `repo`):
+  // for a repository HQ keeps, `<HQ>/git/<appId>/<repo>`, which a lease's change is matched by.
+  it("names where git reaches a change's repository at HQ", () => {
+    expect(flowChange(change({ appId: "g2", repo: "webdev" }), `${HQ}/`).repositoryUrl).toBe(
+      `${HQ}/git/g2/webdev`,
+    );
+  });
+
   it("carries the pull request its change is mirrored to on GitHub into review", () => {
     const pullRequest = {
       number: 14,
@@ -129,6 +137,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         kind: "code",
         mateProjectId: VERA,
         url: `${HQ}/changes/g1/appdev/3`,
+        repositoryUrl: `${HQ}/git/g1/appdev`,
         mergeability: "mergeable",
         behind: false,
         merged: false,
@@ -227,6 +236,16 @@ describe("an application's changes: the menu's rows, and its detail while a surf
     ...over,
   });
 
+  it("names where git reaches a change's repository at HQ from navigation too", () => {
+    const listed = flowAppChanges({
+      appId: "g1",
+      open: [menuRow({ repo: "apidev" })],
+      detail: undefined,
+      hqAddress: `${HQ}/`,
+    }).pullRequests;
+    expect(listed.map((pull) => pull.repositoryUrl)).toEqual([`${HQ}/git/g1/apidev`]);
+  });
+
   it("carries the pull request a change is mirrored to on GitHub, from navigation or its detail", () => {
     const pullRequest = {
       number: 14,
@@ -260,6 +279,7 @@ describe("an application's changes: the menu's rows, and its detail while a surf
           kind: "code",
           mateProjectId: VERA,
           url: `${HQ}/changes/g1/appdev/3`,
+          repositoryUrl: `${HQ}/git/g1/appdev`,
           mergeability: "mergeable",
           behind: false,
           merged: false,

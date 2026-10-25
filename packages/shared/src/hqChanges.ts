@@ -816,6 +816,14 @@ export function changeUrl(hqAddress: string, appId: string, repo: string, number
   return `${addressOf(hqAddress)}/changes/${appId}/${repo}/${String(number)}`;
 }
 
+/**
+ * Where git reaches a repository HQ keeps, canonical (no `.git`): `<HQ>/git/<appId>/<repo>`, the
+ * address zcp names a lease's repository by when the lease checks it out from HQ.
+ */
+export function repoUrl(hqAddress: string, appId: string, repo: string): string {
+  return `${addressOf(hqAddress)}/git/${appId}/${repo}`;
+}
+
 /** The client's route of a change, where HQ's change address leads. */
 export function changeRoutePath(appId: string, repo: string, number: number): string {
   return `/change/${appId}/${repo}/${String(number)}`;
