@@ -14,7 +14,7 @@
  *   every move of a change, and every minute for any move missed.
  * - Merge in Mate merges the pull request on GitHub at the head the person saw — a squash, but a
  *   merge commit keeping its commits for the first change into a repository whose `main` holds
- *   nothing that carries another repository's history, as HQ's own merge lands it as it is — then
+ *   nothing that carries another repository's history, as HQ's own merge lands it — then
  *   follows GitHub's default branch (`GithubMirror.sync`), which marks the change merged; GitHub's
  *   refusal is the merge's, in plain words, and nothing moves. Close in Mate closes it there too.
  * - From GitHub (`GithubEvents`): merged there, the change is merged here; closed unmerged, the

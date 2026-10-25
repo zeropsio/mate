@@ -140,7 +140,8 @@ export type Mergeability =
   /**
    * It merges cleanly. `keepsHistory`: `main` never held a file — HQ's empty first commit, nothing
    * merged onto it yet — and the change carries another repository's history (a root commit `main`
-   * does not hold): it lands as it is, never squashed ({@link HqGit.squashMerge}).
+   * does not hold): it lands with its history under one merge commit, never squashed
+   * ({@link HqGit.squashMerge}).
    */
   | { readonly kind: "clean"; readonly keepsHistory?: true }
   | { readonly kind: "conflict"; readonly paths: ReadonlyArray<string> }
@@ -290,9 +291,10 @@ export interface HqGit {
   ) => Effect.Effect<Mergeability, GitError>;
   /**
    * Mergeability's verdict, then main moved once by CAS — never a moved main or change head — to
-   * one squash commit; but a change that keeps its history (`keepsHistory`) lands as it is: main
-   * fast-forwards to its head where it builds on main, else takes one merge commit of main and the
-   * head, with the squash's message and trailers.
+   * one squash commit; but a change that keeps its history (`keepsHistory`) lands with it: one
+   * merge commit of main and the head, with the squash's message and trailers — never a
+   * fast-forward, even where the head builds on main, so main's first-parent line holds only HQ's
+   * merges and imports.
    */
   readonly squashMerge: (
     repo: Repo,
@@ -420,11 +422,14 @@ export interface HqGit {
     path: string,
     maxBytes: number,
   ) => Effect.Effect<FileRead, GitError>;
-  /** Opaque cursor pins the initial tip and offset, so pagination survives ref movement. */
+  /**
+   * Opaque cursor pins the initial tip and offset, so pagination survives ref movement.
+   * `firstParent`: only the first-parent line (a branch's own commits, never what a merge brought).
+   */
   readonly log: (
     repo: Repo,
     rev: string,
-    options: { readonly cursor?: string; readonly limit: number },
+    options: { readonly cursor?: string; readonly limit: number; readonly firstParent?: boolean },
   ) => Effect.Effect<Bounded<CommitSummary> & { readonly cursor: string | null }, GitError>;
   readonly commit: (repo: Repo, sha: string) => Effect.Effect<CommitRead, GitError>;
   /**

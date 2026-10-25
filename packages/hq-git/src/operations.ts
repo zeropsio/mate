@@ -289,9 +289,10 @@ export const makeOperations = (
       : { kind: "clean", tree };
   };
   /**
-   * Whether `head` lands on `main` as it is: `main` never held a file (HQ's empty first commit,
-   * nothing merged onto it yet) and `head` carries another repository's history — a root commit
-   * `main` does not hold. A main whose own tree holds a file answers at once.
+   * Whether `head` lands on `main` with its history, under one merge commit: `main` never held a
+   * file (HQ's empty first commit, nothing merged onto it yet) and `head` carries another
+   * repository's history — a root commit `main` does not hold. A main whose own tree holds a file
+   * answers at once.
    */
   const keepsHistory = async (dir: string, main: string, head: string, signal: AbortSignal) =>
     (await text(dir, ["ls-tree", "--name-only", main], signal)) === "" &&
@@ -805,18 +806,13 @@ export const makeOperations = (
       if (head !== opts.expectedHead) return { kind: "head_moved" } as const;
       const result = await inspect(dir, repo, opts, main, head, signal);
       if (result.kind !== "clean") return result;
-      // A change that keeps its history and builds on main is main's next commits as they are.
-      if (result.keepsHistory === true && (await ancestorIn(dir, main, head, signal))) {
-        if (!(await cas(dir, "refs/heads/main", head, main, signal)))
-          return { kind: "main_moved" } as const;
-        emit({ kind: "main_moved", repo, old: main, new: head, by: "merge" });
-        return { merged: head };
-      }
       // Git reads trailers only from the last paragraph, so the trusted block always ends the message.
       const message = `${opts.message.trimEnd()}\n\n${trailers
         .map(([k, v]) => `${k}: ${v}`)
         .join("\n")}\n`;
-      // One squash; a change keeping its history is joined, its head the merge's second parent.
+      // One squash; a change keeping its history is joined, its head the merge's second parent —
+      // even where it builds on main, never a fast-forward: main's own line stays HQ's merges, so
+      // a `Mate-Change` trailer in the history it brings is never read as one of them.
       const parents = result.keepsHistory === true ? ["-p", main, "-p", head] : ["-p", main];
       const sha = (
         await run(
@@ -1312,7 +1308,14 @@ export const makeOperations = (
       const shas = (
         await text(
           dir,
-          ["rev-list", `--skip=${offset}`, `--max-count=${limit + 1}`, sha, "--"],
+          [
+            "rev-list",
+            ...(opts.firstParent === true ? ["--first-parent"] : []),
+            `--skip=${offset}`,
+            `--max-count=${limit + 1}`,
+            sha,
+            "--",
+          ],
           signal,
         )
       )
