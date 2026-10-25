@@ -869,10 +869,18 @@ export function ZeropsGroupPane({
   );
 }
 
+/** Environments HQ sent that this build cannot read: said as unread, never as absent. */
+function unreadEnvironmentsWords(unreadEnvironments: CanonicalAppEnvironmentsRead["unread"]) {
+  if (unreadEnvironments.length === 0) return null;
+  const names = unreadEnvironments.map(({ name }) => name ?? "An environment");
+  return `${names.join(", ")} could not be read by this version of Mate. Reload to update it; the environment is still there.`;
+}
+
 const NO_ROUTE_ENVIRONMENT = Atom.make(undefined);
 const NO_ROUTE_ENVIRONMENTS = Atom.make<CanonicalAppEnvironmentsRead>({
   environments: undefined,
   refused: null,
+  unread: [],
 });
 const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
   structure: null,
@@ -939,7 +947,9 @@ export function ZeropsStopDetailPage({
     );
   }
   const note =
-    read.refused !== null ? hqRefusalWords({ code: "forbidden", reason: read.refused }) : unread;
+    read.refused !== null
+      ? hqRefusalWords({ code: "forbidden", reason: read.refused })
+      : (unreadEnvironmentsWords(read.unread) ?? unread);
   if (environment === undefined) {
     return (
       <ZeropsUnresolvedStopDetailPage

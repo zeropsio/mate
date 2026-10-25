@@ -170,20 +170,48 @@ export function jobsByService(
 
 /** Additive delivery reader: Git uses its push schema; older Zerops rows normalize once. */
 export type HqDeliveryEnvironment = CanonicalHqEnvironment | HqGitNavigationEnvironment;
-const readDeliveryEnvironments = Schema.decodeUnknownOption(
-  Schema.Array(
-    Schema.Union([
-      HqGitNavigationEnvironment,
-      CanonicalHqEnvironment.check(
-        Schema.makeFilter((environment) =>
-          environment.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
-        ),
+const readDeliveryEnvironment = Schema.decodeUnknownOption(
+  Schema.Union([
+    HqGitNavigationEnvironment,
+    CanonicalHqEnvironment.check(
+      Schema.makeFilter((environment) =>
+        environment.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
       ),
-    ]),
-  ),
+    ),
+  ]),
 );
+
+/** An environment HQ sent that this build cannot read: what is still legible of it, to name it. */
+export interface UnreadEnvironment {
+  readonly id: string | null;
+  readonly name: string | null;
+}
+
+const legible = (record: unknown, key: string): string | null => {
+  const value = typeof record === "object" && record !== null ? Reflect.get(record, key) : null;
+  return typeof value === "string" ? value : null;
+};
+
+/**
+ * Each environment is read on its own: one this build cannot read is listed as unread beside the
+ * ones it can, never taking them down. `undefined` where HQ sent no list at all.
+ */
+export function readDeliveryEnvironments(value: unknown): {
+  readonly environments: ReadonlyArray<HqDeliveryEnvironment>;
+  readonly unread: ReadonlyArray<UnreadEnvironment>;
+} {
+  const environments: HqDeliveryEnvironment[] = [];
+  const unread: UnreadEnvironment[] = [];
+  for (const sent of Array.isArray(value) ? value : []) {
+    const read = readDeliveryEnvironment(sent);
+    if (Option.isSome(read)) environments.push(read.value);
+    else unread.push({ id: legible(sent, "id"), name: legible(sent, "name") });
+  }
+  return { environments, unread };
+}
+
 export function deliveryEnvironmentsOf(
   value: unknown,
 ): ReadonlyArray<HqDeliveryEnvironment> | undefined {
-  return Option.getOrUndefined(readDeliveryEnvironments(value));
+  return Array.isArray(value) ? readDeliveryEnvironments(value).environments : undefined;
 }

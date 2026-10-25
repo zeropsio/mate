@@ -147,6 +147,36 @@ describe("appEnvironments", () => {
       appIds: ["shop", "blog"],
     });
     expect(read.shop?.environments).toEqual([STAGE, PRODUCTION]);
-    expect(read.blog).toEqual({ environments: undefined, refused: "read_change" });
+    expect(read.blog).toEqual({ environments: undefined, refused: "read_change", unread: [] });
   });
+
+  it.each([
+    {
+      name: "one of two",
+      sent: [STAGE, { ...PRODUCTION, id: "env-prod", jobs: [{ id: "j", state: "unheard-of" }] }],
+      readable: [STAGE],
+      unread: [{ id: "env-prod", name: "production" }],
+    },
+    {
+      name: "the only one",
+      sent: [{ ...STAGE, keyHeld: "yes" }],
+      readable: [],
+      unread: [{ id: null, name: "stage" }],
+    },
+    {
+      name: "one that is not even a record",
+      sent: [PRODUCTION, 7],
+      readable: [PRODUCTION],
+      unread: [{ id: null, name: null }],
+    },
+    { name: "none", sent: [STAGE, PRODUCTION], readable: [STAGE, PRODUCTION], unread: [] },
+  ])(
+    "An environment this build cannot read shows as unread, never as an application without it: $name",
+    ({ sent, readable, unread }) => {
+      const state = apply(demanded, [deliver([app("shop", sent)])]);
+      const read = of(state, "shop");
+      expect(read.environments).toEqual(readable);
+      expect(read.unread).toEqual(unread);
+    },
+  );
 });
