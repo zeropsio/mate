@@ -1,6 +1,9 @@
 import GateTimingReporter from "../../../../scripts/gate-timing-reporter.ts";
 import { defineConfig } from "vite-plus/test/config";
 import * as NodeURL from "node:url";
+import { useTestScratchRoot } from "../../../../scripts/lib/test-scratch-root.ts";
+
+useTestScratchRoot(process.env);
 
 export default defineConfig({
   root: NodeURL.fileURLToPath(new URL("../../", import.meta.url)),
