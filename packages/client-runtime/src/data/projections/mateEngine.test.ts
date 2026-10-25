@@ -1181,20 +1181,20 @@ describe("an engine card not held whole, as its worked line and its scroll read 
     const run2 = "thread-ada/r/2";
     const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
     const worked = long(1, { startedAt: AT, endedAt: AT + 10_000 });
-    const working = long(2, {
-      state: "running",
-      end: null,
-      endedAt: null,
-      queuedAt: AT + 5_000,
-      admittedAt: AT + 10_000,
-      startedAt: AT + 10_000,
-      summary: {
-        items: 1_700,
-        calls: { command: 800 },
-        answerItemId: null,
-        lastItemSeq: 3_700,
-      },
-    });
+    const queued = (patch: Partial<Parameters<typeof engineRun>[2]>) =>
+      long(2, {
+        queuedAt: AT + 5_000,
+        admittedAt: AT + 10_000,
+        startedAt: AT + 10_000,
+        summary: {
+          items: 1_700,
+          calls: { command: 800 },
+          answerItemId: null,
+          lastItemSeq: 3_700,
+        },
+        ...patch,
+      });
+    const working = queued({ state: "running", end: null, endedAt: null });
     const said = personItem(run2, 2_001, "GitHub is set", { at: AT + 5_000 });
     const tail = [
       callItem(run2, 3_661, { at: AT + 20_000 }),
@@ -1234,6 +1234,28 @@ describe("an engine card not held whole, as its worked line and its scroll read 
         since: iso(AT + 5_000),
         through: null,
       });
+    });
+
+    // Catches a card emptied under the person reading it: its live run, read back to its start,
+    // settled while the run before it was still not read.
+    it.each([
+      {
+        name: "holding its newest lines",
+        span: { runId: run2, from: 3_661, to: null, reading: null },
+        expected: { pageRuns: { earlier: run2, later: null }, since: iso(AT + 20_000) },
+      },
+      {
+        name: "read back to its start",
+        span: { runId: run2, from: null, to: null, reading: null },
+        expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
+      },
+    ])("keeps what it holds as its live run settles, $name", ({ span, expected }) => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, queued({ endedAt: AT + 40_000 })],
+        items: [...held, said, ...tail],
+        spans: [notRead, span],
+      });
+      expect(paging[run1]).toMatchObject({ ...expected, holdsLines: true, through: null });
     });
   });
 
