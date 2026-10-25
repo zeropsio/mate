@@ -65,6 +65,9 @@ const start = (port: number) => {
       "fsync = off",
       "synchronous_commit = off",
       "full_page_writes = off",
+      // Every checkout keeps its own cluster on the RAM disk; the 80 MB default WAL floor adds up.
+      "min_wal_size = 32MB",
+      "max_wal_size = 64MB",
       "",
     ].join("\n"),
   );
