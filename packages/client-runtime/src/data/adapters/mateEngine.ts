@@ -648,6 +648,7 @@ export function makeMateEngineConversations(options: {
     const conversations = [...(known.get(environmentId)?.values() ?? [])];
     if (fault === null) {
       if (withheld.delete(environmentId)) {
+        links.held(engineRowsLink(environmentId))?.retry();
         for (const key of conversations) links.held(engineConversationLink(key))?.retry();
         return;
       }
