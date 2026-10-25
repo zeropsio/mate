@@ -1104,6 +1104,14 @@ describe("a thread's lease", () => {
     ).toBe(undefined);
   });
 
+  // zcp names a repository kept on GitHub by its GitHub address (spec-mate §5.10), which says
+  // nothing of the repository's name in HQ: such a lease is matched as one that names none.
+  it("a lease of a repository kept outside HQ reads the Mate's newest change on its branch", () => {
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: "https://github.com/acme/web" }]),
+    ).toBe(apiChange);
+  });
+
   it("a lease that names no repository reads the Mate's newest change on its branch", () => {
     expect(mateChangeIn(twoApps, "p1", "webpool-3", [LEASE])).toBe(apiChange);
     const { repositoryUrl: _url, ...unaddressed } = webChange;
