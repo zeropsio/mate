@@ -85,9 +85,9 @@ if (command === "initdb") {
   const query = args.at(-1)!;
   const dropped = /^DROP DATABASE (?:IF EXISTS )?(\w+)/u.exec(query)?.[1];
   const created = /^CREATE DATABASE (\w+)/u.exec(query)?.[1];
-  if (query.startsWith("SELECT datname FROM pg_database"))
-    for (const name of NodeFS.readdirSync(base))
-      if (name.startsWith("mate_test_")) process.stdout.write(`${name}\n`);
+  // Every database a run made has an OID past initdb's; this fake has no roles.
+  if (query.startsWith("SELECT oid, quote_ident(datname) FROM pg_database"))
+    for (const name of NodeFS.readdirSync(base)) process.stdout.write(`16384|${name}\n`);
   if (dropped !== undefined) NodeFS.rmSync(NodePath.join(base, dropped), { recursive: true });
   if (created !== undefined) NodeFS.mkdirSync(NodePath.join(base, created));
 } else fail(`fake-postgres: unknown command ${command}`);

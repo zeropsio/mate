@@ -198,22 +198,93 @@ it.each([
   }
 });
 
-it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
-  const { reclaimLeasedDatabases } = await import("./test-postgres.ts");
-  const dropped: string[] = [];
-  reclaimLeasedDatabases((query) => {
-    if (query.startsWith("SELECT")) return "mate_test_0a1b\nmate_test_ff00\n";
-    dropped.push(query);
-    return "";
-  });
-  expect(dropped).toEqual([
-    "DROP DATABASE mate_test_0a1b WITH (FORCE)",
-    "DROP DATABASE mate_test_ff00 WITH (FORCE)",
+/**
+ * A cluster's catalog as `psql -At` answers the supervisor: `oid|quoted name` rows. initdb's own
+ * databases and roles are always there; `left` is what a killed run made beside them.
+ */
+function catalog(left: { databases: [number, string][]; roles: [number, string][] }) {
+  const databases = new Map<number, string>([
+    [1, "template1"],
+    [4, "template0"],
+    [5, "postgres"],
+    ...left.databases,
   ]);
-  expect(() => reclaimLeasedDatabases(() => "mate_test_x; DROP TABLE y\n")).toThrow(
-    "Unexpected test database: mate_test_x; DROP TABLE y",
-  );
+  const roles = new Map<number, string>([[10, "postgres"], [3373, "pg_monitor"], ...left.roles]);
+  const sql = (query: string) => {
+    const select =
+      /^SELECT oid, quote_ident\((datname|rolname)\) FROM (pg_database|pg_roles)$/u.exec(query);
+    if (select)
+      return [...(select[2] === "pg_database" ? databases : roles)]
+        .map(([oid, name]) => `${oid}|${name}\n`)
+        .join("");
+    const database = /^DROP DATABASE (.+) WITH \(FORCE\)$/u.exec(query)?.[1];
+    const role = /^DROP OWNED BY (.+); DROP ROLE \1$/u.exec(query)?.[1];
+    const from = database === undefined ? roles : databases;
+    const oid = [...from].find(([, name]) => name === (database ?? role))?.[0];
+    if (oid === undefined) throw new Error(`fake catalog: ${query}`);
+    from.delete(oid);
+    return "";
+  };
+  return { sql, databases, roles };
+}
+
+it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
+  const { reclaimDeadRuns } = await import("./test-postgres.ts");
+  const cluster = catalog({
+    databases: [
+      [70001, "mate_test_0a1b"],
+      [70002, "mate_test_ff00"],
+    ],
+    roles: [],
+  });
+  reclaimDeadRuns(cluster.sql);
+  expect([...cluster.databases.values()]).toEqual(["template1", "template0", "postgres"]);
 });
+
+it.each([
+  {
+    left: "its lease's databases",
+    databases: [[70001, "mate_test_0a1b"]] as [number, string][],
+    roles: [] as [number, string][],
+  },
+  {
+    left: "a database it made beside its lease",
+    databases: [[70002, "hq_test_0f36"]] as [number, string][],
+    roles: [] as [number, string][],
+  },
+  {
+    left: "the roles of a database it made",
+    databases: [[70003, "mate_test_ff00"]] as [number, string][],
+    roles: [
+      [70004, "mate_test_ff00_runtime"],
+      [70005, "mate_test_ff00_catalogue"],
+    ] as [number, string][],
+  },
+  {
+    left: "roles named apart from any database",
+    databases: [] as [number, string][],
+    roles: [
+      [70006, "hq_runtime_9c2a"],
+      [70007, "hq_catalogue_9c2a"],
+    ] as [number, string][],
+  },
+  {
+    left: "a database whose name needs quoting",
+    databases: [[70008, '"Weird; DROP x"']] as [number, string][],
+    roles: [] as [number, string][],
+  },
+])(
+  "A test run reclaims the databases a killed run left behind: $left, keeping initdb's own",
+  async ({ databases, roles }) => {
+    const { reclaimDeadRuns } = await import("./test-postgres.ts");
+    const cluster = catalog({ databases, roles });
+    reclaimDeadRuns(cluster.sql);
+    expect([[...cluster.databases.values()], [...cluster.roles.values()]]).toEqual([
+      ["template1", "template0", "postgres"],
+      ["postgres", "pg_monitor"],
+    ]);
+  },
+);
 
 it("a later run removes test PostgreSQL homes unused for a day unless a postmaster still runs on them", async () => {
   const { pruneStaleClusters } = await import("./test-postgres.ts");
@@ -301,7 +372,7 @@ function fakeCluster() {
       `#!/bin/sh\nexec "${process.execPath}" "${fixture}" ${command} "$@"\n`,
       { mode: 0o755 },
     );
-  // A cluster a crashed run left: its own catalog plus a database no supervisor reclaims.
+  // A cluster a crashed run left: its own catalog plus a database a run made beside its lease.
   NodeFS.mkdirSync(NodePath.join(data, "base", "hq_test_leftover"), { recursive: true });
   NodeFS.mkdirSync(NodePath.join(data, "global"), { recursive: true });
   NodeFS.writeFileSync(NodePath.join(data, "PG_VERSION"), "17\n");
