@@ -113,7 +113,10 @@ export interface HqFixtureWire {
 }
 
 export function hqFixtureWire(
-  options: { readonly open?: () => Effect.Effect<void, StreamFault> } = {},
+  options: {
+    /** Runs while the segment's socket opens; `socketCreated` says the socket exists. */
+    readonly open?: (socketCreated: Effect.Effect<void>) => Effect.Effect<void, StreamFault>;
+  } = {},
 ): HqFixtureWire {
   const sent: Array<{ readonly segment: number; readonly request: HqStreamRequest }> = [];
   let messages: Queue.Queue<string, StreamFault | Cause.Done> | null = null;
@@ -140,21 +143,22 @@ export function hqFixtureWire(
         messages === null ? Effect.void : Effect.asVoid(Queue.fail(messages, fault)),
       ),
     wire: {
-      open: Effect.gen(function* () {
-        if (options.open !== undefined) yield* options.open();
-        opens += 1;
-        const segment = opens;
-        const queue = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
-        messages = queue;
-        const finished = Deferred.makeUnsafe<void>();
-        closed = finished;
-        return {
-          messages: Stream.fromQueue(queue).pipe(
-            Stream.ensuring(Deferred.succeed(finished, undefined)),
-          ),
-          send: (request) => Effect.sync(() => void sent.push({ segment, request })),
-        };
-      }),
+      open: (socketCreated) =>
+        Effect.gen(function* () {
+          if (options.open !== undefined) yield* options.open(socketCreated);
+          opens += 1;
+          const segment = opens;
+          const queue = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
+          messages = queue;
+          const finished = Deferred.makeUnsafe<void>();
+          closed = finished;
+          return {
+            messages: Stream.fromQueue(queue).pipe(
+              Stream.ensuring(Deferred.succeed(finished, undefined)),
+            ),
+            send: (request) => Effect.sync(() => void sent.push({ segment, request })),
+          };
+        }),
     },
   };
 }

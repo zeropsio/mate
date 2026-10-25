@@ -65,34 +65,36 @@ export function makeHqWire(
               }),
             }),
         }),
-    open: Effect.gen(function* () {
-      const messages = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
-      const opened = Deferred.makeUnsafe<void, StreamFault>();
-      const socket = yield* Effect.acquireRelease(
-        Effect.tryPromise({
-          try: (signal) =>
-            api.openScopeSocket(
-              {
-                open: () => void Deferred.doneUnsafe(opened, Effect.void),
-                message: (data) => void Queue.offerUnsafe(messages, data),
-                close: (code) => {
-                  const fault = classifyHqClose(code);
-                  Deferred.doneUnsafe(opened, Effect.fail(fault));
-                  if (code === HQ_STREAM_SEGMENT_CLOSE.code) Queue.endUnsafe(messages);
-                  else Queue.failCauseUnsafe(messages, Cause.fail(fault));
+    open: (socketCreated) =>
+      Effect.gen(function* () {
+        const messages = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
+        const opened = Deferred.makeUnsafe<void, StreamFault>();
+        const socket = yield* Effect.acquireRelease(
+          Effect.tryPromise({
+            try: (signal) =>
+              api.openScopeSocket(
+                {
+                  open: () => void Deferred.doneUnsafe(opened, Effect.void),
+                  message: (data) => void Queue.offerUnsafe(messages, data),
+                  close: (code) => {
+                    const fault = classifyHqClose(code);
+                    Deferred.doneUnsafe(opened, Effect.fail(fault));
+                    if (code === HQ_STREAM_SEGMENT_CLOSE.code) Queue.endUnsafe(messages);
+                    else Queue.failCauseUnsafe(messages, Cause.fail(fault));
+                  },
                 },
-              },
-              signal,
-            ),
-          catch: classifyHqCall,
-        }),
-        (held) => Effect.sync(() => held.close()),
-      );
-      yield* Deferred.await(opened);
-      return {
-        messages: Stream.fromQueue(messages),
-        send: (request) => Effect.sync(() => socket.send(encodeRequest(request))),
-      };
-    }),
+                signal,
+              ),
+            catch: classifyHqCall,
+          }),
+          (held) => Effect.sync(() => held.close()),
+        );
+        yield* socketCreated;
+        yield* Deferred.await(opened);
+        return {
+          messages: Stream.fromQueue(messages),
+          send: (request) => Effect.sync(() => socket.send(encodeRequest(request))),
+        };
+      }),
   };
 }

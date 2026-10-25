@@ -34,7 +34,7 @@ describe("makeHqWire", () => {
       const fake = socketClosing(["a", "b"], 4410);
       const read = yield* Effect.scoped(
         Effect.gen(function* () {
-          const segment = yield* makeHqWire(fake.api).open;
+          const segment = yield* makeHqWire(fake.api).open(Effect.void);
           yield* segment.send({ type: "pong" });
           return yield* Stream.runCollect(segment.messages);
         }),
@@ -53,7 +53,7 @@ describe("makeHqWire", () => {
     Effect.gen(function* () {
       const fault = yield* Effect.flip(
         Effect.scoped(
-          Effect.flatMap(makeHqWire(socketClosing([], code).api).open, (segment) =>
+          Effect.flatMap(makeHqWire(socketClosing([], code).api).open(Effect.void), (segment) =>
             Stream.runDrain(segment.messages),
           ),
         ),
@@ -79,7 +79,9 @@ describe("an HQ socket opening", () => {
   it.effect("a segment begins only once its socket is open: until then nothing is connected", () =>
     Effect.gen(function* () {
       const socket = socketHeld();
-      const opening = yield* Effect.forkChild(Effect.scoped(makeHqWire(socket.api).open));
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
       yield* Effect.yieldNow;
       yield* Effect.promise(() => Promise.resolve());
       expect(opening.pollUnsafe()).toBeUndefined();
@@ -92,7 +94,9 @@ describe("an HQ socket opening", () => {
   it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
     Effect.gen(function* () {
       const socket = socketHeld();
-      const opening = yield* Effect.forkChild(Effect.scoped(makeHqWire(socket.api).open));
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
       yield* Effect.yieldNow;
       yield* Effect.promise(() => Promise.resolve());
       socket.on().close(4403);
