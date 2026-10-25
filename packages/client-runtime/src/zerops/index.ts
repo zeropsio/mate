@@ -267,6 +267,7 @@ export {
   mateChangeIn,
   NO_REPOSITORY_LINE,
   pullRequestBlocked,
+  leaseOfRepository,
   pullRequestBlockedReason,
   threadCheckoutHostnames,
   threadLeases,

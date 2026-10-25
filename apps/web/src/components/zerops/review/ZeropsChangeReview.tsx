@@ -459,14 +459,17 @@ function ChangeReviewData({
             title: pull.title,
             said,
           }),
-          { branch: pull.branch },
+          { branch: pull.branch, repositoryUrl: pull.repositoryUrl },
         );
         if (refusal === null) onClose();
       }}
       onClose={onClose}
       onRetry={detail.retry}
       onFix={(problem) => {
-        askMateToFix(pull.mateProjectId, problem, { branch: pull.branch });
+        askMateToFix(pull.mateProjectId, problem, {
+          branch: pull.branch,
+          repositoryUrl: pull.repositoryUrl,
+        });
         onClose();
       }}
       others={flow === undefined ? NO_OTHERS : otherOpenChanges(pull, flow.pullRequests)}

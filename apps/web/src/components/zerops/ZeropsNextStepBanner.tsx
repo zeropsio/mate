@@ -65,6 +65,8 @@ export interface ZeropsNextStepFix {
   readonly mateProjectId: string;
   /** The branch its work is on: the conversation bound to it is the one asked. */
   readonly branch?: string | undefined;
+  /** Its repository's address: of conversations bound to its branch, its own is asked. */
+  readonly repositoryUrl?: string | undefined;
   readonly problem: FixProblem;
 }
 
@@ -143,6 +145,9 @@ export function zeropsComposerTop(input: {
                         ...fix,
                         mateProjectId: line.pull.mateProjectId,
                         ...(line.pull.branch === undefined ? {} : { branch: line.pull.branch }),
+                        ...(line.pull.repositoryUrl === undefined
+                          ? {}
+                          : { repositoryUrl: line.pull.repositoryUrl }),
                       },
                     }),
               };
@@ -395,7 +400,10 @@ function ZeropsNextStepStripWithFix(
     <ZeropsNextStepStrip
       {...props}
       onFix={(fix) => {
-        askMateToFix(fix.mateProjectId, fix.problem, { branch: fix.branch });
+        askMateToFix(fix.mateProjectId, fix.problem, {
+          branch: fix.branch,
+          repositoryUrl: fix.repositoryUrl,
+        });
       }}
     />
   );
