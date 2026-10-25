@@ -22,7 +22,9 @@
  *   read "deploying". A log, not a state machine.
  *
  * The envelope's `leases` are zcp's: the pool containers it holds, one set for
- * every conversation (zcp keeps it in the shared working directory). Which one a
+ * every conversation (zcp keeps it in the shared working directory), so every
+ * thread's envelope carries them as the latest call read them, whichever thread
+ * made it, and a read that changed them is told to every thread watching. Which one a
  * conversation works in is the conversation's own fact, so it is not kept here:
  * a conversation's agent acquiring a lease (`zerops_lease`) binds that
  * conversation's record (`recordLease`) — the first lease a group acquire lists,
@@ -183,30 +185,42 @@ const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
 };
 
 /**
- * The newest envelope, with the last read of zcp's leases carried over where this call did not
- * read them: absent `leases` means "not read", never "none". A lease still held keeps what was
- * last read of it where this call did not read it (`withLastRead`); a lease that ended, or is gone
- * from the read, keeps none.
+ * zcp's leases as a call read them, with the last read of them carried over: a lease still held
+ * keeps what was last read of it where this call did not read it (`withLastRead`); a lease that
+ * ended, or is gone from the read, keeps none.
  */
 const withLastLeases = (
-  next: ZeropsStateEnvelope,
-  previous: ZeropsStateEnvelope | undefined,
-): ZeropsStateEnvelope => {
-  if (next.leases === undefined) {
-    return previous?.leases === undefined ? next : { ...next, leases: previous.leases };
-  }
-  const lastRead = new Map((previous?.leases ?? []).map((lease) => [lease.alias, lease] as const));
-  if (lastRead.size === 0) return next;
-  return {
-    ...next,
-    leases: next.leases.map((lease) => {
-      const last = lastRead.get(lease.alias);
-      return last === undefined || !isZeropsLeaseHeld(lease.state)
-        ? lease
-        : withLastRead(lease, last);
-    }),
-  };
+  read: ReadonlyArray<ZeropsLease>,
+  last: ReadonlyArray<ZeropsLease> | undefined,
+): ReadonlyArray<ZeropsLease> => {
+  const lastRead = new Map((last ?? []).map((lease) => [lease.alias, lease] as const));
+  if (lastRead.size === 0) return read;
+  return read.map((lease) => {
+    const before = lastRead.get(lease.alias);
+    return before === undefined || !isZeropsLeaseHeld(lease.state)
+      ? lease
+      : withLastRead(lease, before);
+  });
 };
+
+/** Whether two reads of zcp's leases say the same, what was last read of each lease included. */
+const sameLeases = (
+  left: ReadonlyArray<ZeropsLease> | undefined,
+  right: ReadonlyArray<ZeropsLease> | undefined,
+): boolean => left === right || JSON.stringify(left) === JSON.stringify(right);
+
+/**
+ * A thread's state as its views read it: its envelope with zcp's leases as the latest call read
+ * them, whichever thread made it, since zcp keeps one set for every conversation. None read yet:
+ * the thread's own.
+ */
+const withSharedLeases = (
+  state: ZeropsLifecycleState,
+  leases: ReadonlyArray<ZeropsLease> | undefined,
+): ZeropsLifecycleState =>
+  state.envelope === undefined || leases === undefined || state.envelope.leases === leases
+    ? state
+    : { ...state, envelope: { ...state.envelope, leases } };
 
 /**
  * A change of a conversation's lease: the same commands the conversation's record takes
@@ -535,6 +549,9 @@ export const make = (options: ZeropsLifecycleOptions) =>
     // The last read of zcp's leases the bindings were checked against: one set for every
     // conversation, so a read that says nothing new unbinds nothing.
     const checked = yield* Ref.make<CheckedRead | undefined>(undefined);
+    // zcp's leases as the latest call read them, whichever thread's, with what was last read of each
+    // carried over: every thread's views read these, never a copy its own last call left.
+    const shared = yield* Ref.make<ReadonlyArray<ZeropsLease> | undefined>(undefined);
 
     // A restart knows which mounts are leases from the last read this server kept, and which lease
     // each alias was then: its first read is checked whole against it.
@@ -544,10 +561,11 @@ export const make = (options: ZeropsLifecycleOptions) =>
         Option.match({
           onNone: () => Effect.void,
           onSome: (leases) =>
-            Effect.andThen(
+            Effect.all([
               Ref.set(checked, checkedRead(leases, undefined)),
+              Ref.set(shared, leases),
               noteLeases(leases.map((lease) => lease.alias)),
-            ),
+            ]),
         }),
       ),
       Effect.catchCause((cause) =>
@@ -668,35 +686,56 @@ export const make = (options: ZeropsLifecycleOptions) =>
           const failed = call.result?.failed === true;
           const envelope =
             resultText === undefined || failed ? undefined : extractZeropsEnvelope(resultText);
+          // Absent `leases` means "not read", never "none": a call that read none keeps the last.
+          const sharedBefore = yield* Ref.get(shared);
+          const leases =
+            envelope?.leases === undefined
+              ? sharedBefore
+              : withLastLeases(envelope.leases, sharedBefore);
+          yield* Ref.set(shared, leases);
 
-          const next: ZeropsLifecycleState = {
-            threadId,
-            // A result with no readable envelope leaves the previous one
-            // standing. Clearing it, or reaching back to an older block, would
-            // move the strip backwards over a corrupt payload.
-            ...(envelope === undefined
-              ? previous.envelope === undefined
-                ? {}
-                : { envelope: previous.envelope }
-              : {
-                  envelope: withLastLeases(
-                    withLastDevServers(envelope, previous.envelope),
-                    previous.envelope,
-                  ),
-                }),
-            recentTools: withRecentTool(previous.recentTools, {
-              toolName: call.name,
-              status:
-                event.type === "item.started" ? "inProgress" : failed ? "failed" : "completed",
-              at,
-              ...(event.itemId === undefined ? {} : { itemId: event.itemId }),
-            }),
-            updatedAt: at,
-          };
+          const next: ZeropsLifecycleState = withSharedLeases(
+            {
+              threadId,
+              // A result with no readable envelope leaves the previous one
+              // standing. Clearing it, or reaching back to an older block, would
+              // move the strip backwards over a corrupt payload.
+              ...(envelope === undefined
+                ? previous.envelope === undefined
+                  ? {}
+                  : { envelope: previous.envelope }
+                : {
+                    envelope: {
+                      ...withLastDevServers(envelope, previous.envelope),
+                      ...(previous.envelope?.leases === undefined
+                        ? {}
+                        : { leases: previous.envelope.leases }),
+                    },
+                  }),
+              recentTools: withRecentTool(previous.recentTools, {
+                toolName: call.name,
+                status:
+                  event.type === "item.started" ? "inProgress" : failed ? "failed" : "completed",
+                at,
+                ...(event.itemId === undefined ? {} : { itemId: event.itemId }),
+              }),
+              updatedAt: at,
+            },
+            leases,
+          );
 
           yield* Ref.update(cache, (current) => new Map(current).set(next.threadId, next));
           yield* persist(next, at);
           yield* PubSub.publish(yield* channel(next.threadId), next);
+          // A read that changed zcp's leases changes what every other thread's views show.
+          if (!sameLeases(leases, sharedBefore)) {
+            const states = yield* Ref.get(cache);
+            for (const [other, watching] of yield* Ref.get(channels)) {
+              const state = states.get(other);
+              if (other === threadId || state?.envelope === undefined) continue;
+              yield* PubSub.publish(watching, withSharedLeases(state, leases));
+            }
+          }
 
           let readChanged = false;
           let renewed: ReadonlyArray<string> = [];
@@ -806,15 +845,19 @@ export const make = (options: ZeropsLifecycleOptions) =>
       }
     }).pipe(Effect.forkScoped);
 
+    /** A thread's state as its views read it: with zcp's leases as the latest call read them. */
+    const view = (threadId: ThreadId) =>
+      Effect.zipWith(loadOrEmpty(threadId), Ref.get(shared), withSharedLeases);
+
     return {
-      get: (threadId) => writeMutex.withPermits(1)(loadOrEmpty(threadId)),
+      get: (threadId) => writeMutex.withPermits(1)(view(threadId)),
       // Under the write mutex no update can land between the subscription and
       // the snapshot, so a subscriber misses nothing and sees nothing twice.
       subscribe: (threadId) =>
         writeMutex.withPermits(1)(
           Effect.gen(function* () {
             const subscription = yield* PubSub.subscribe(yield* channel(threadId));
-            const latest = yield* loadOrEmpty(threadId);
+            const latest = yield* view(threadId);
             return { latest, changes: Stream.fromSubscription(subscription) };
           }),
         ),
