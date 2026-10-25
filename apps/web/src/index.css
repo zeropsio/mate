@@ -5682,6 +5682,27 @@ code {
   line-height: 16px;
 }
 
+/* A workspace of a Mate's dev pool: its state's dot in the place mark's column (centred on it,
+   18px in, as the doors' icons are), its alias beside its name, a crash's word in red. */
+.zerops-sites-workspace {
+  position: relative;
+}
+
+.zerops-sites-workspace > .zerops-envdot {
+  position: absolute;
+  inset-inline-start: 18px;
+  translate: -50% 0;
+}
+
+.zerops-sites-alias {
+  flex: none;
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-role[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
+}
+
 .zerops-sites-host {
   flex: 1 1 auto;
   min-width: 0;

@@ -148,6 +148,7 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
   deployedAt: undefined,
   deployable: [],
   statuses: [],
+  pools: [],
 };
 
 /**

@@ -11,6 +11,7 @@
  */
 import type { ZeropsService } from "./api.ts";
 import { isZcpService } from "./candidates.ts";
+import { isPoolServiceType } from "./infrastructureType.ts";
 import { isRuntimeService } from "./topology.ts";
 
 export interface ZeropsEnvironmentServices {
@@ -36,6 +37,12 @@ export interface ZeropsEnvironmentServices {
     readonly status: string;
     readonly runtime: boolean;
   }>;
+  /**
+   * The dev pools among them by hostname (`isPoolServiceType`), in name order. A pool declares a
+   * port per container slot, each with its own subdomain whether or not a container holds it: its
+   * routes are its leases' previews or nobody's, never addresses of the pool's own.
+   */
+  readonly pools: ReadonlyArray<string>;
 }
 
 function byName(left: string, right: string): number {
@@ -68,5 +75,10 @@ export function summarizeEnvironmentServices(
       status: service.status,
       runtime: isRuntimeService(service),
     })),
+    pools: ordered
+      .filter((service) =>
+        isPoolServiceType(service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? ""),
+      )
+      .map((service) => service.name),
   };
 }

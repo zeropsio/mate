@@ -107,7 +107,7 @@ function mate(
       readonly pools: ReadonlyArray<string>;
     };
     /** Its conversation the person last visited, by scoped key. */
-    readonly threadKey?: string;
+    readonly threadKey?: string | undefined;
   } = {},
 ): SitesMate {
   const id = `quill-${name.toLowerCase()}`;
@@ -468,6 +468,7 @@ describe("a Mate's dev pools", () => {
     await mount({
       production: undefined,
       stages: undefined,
+      line: undefined,
       mates: [kara("env-kara:thread-kara")],
     });
     await press(surface("sidebar-project-sites"));
