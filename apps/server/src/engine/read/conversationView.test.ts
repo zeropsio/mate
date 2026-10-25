@@ -680,6 +680,67 @@ describe("the views of every conversation", () => {
   );
 });
 
+// Review r3-6: the lifecycle reads who is bound to a lease on its one ingest fiber, at every
+// change of zcp's leases; a whole view of every conversation made each one wait on ten queries
+// per conversation. The record's lease is all it needs.
+describe("the leases of every conversation", () => {
+  const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it.effect(
+    "are read from each conversation's record alone: one whose view cannot be read still says its lease",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Lease a container for the footer" });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.tell({ _tag: "BindLease", lease }, { kind: "engine" });
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`UPDATE engine_run SET trigger_json = '{' WHERE conversation_id = ${mate}`;
+            }),
+          );
+          const engine = yield* w.engine;
+          assert.deepStrictEqual((yield* engine.conversations).unread, [mate]);
+          assert.deepStrictEqual(yield* engine.leases, {
+            leases: [{ conversationId: mate, lease }],
+            complete: true,
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "name a conversation whose record cannot be read as unread, never as bound to none",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const broken = ConversationId.make("broken");
+          yield* w.tell({ _tag: "BindLease", lease }, { kind: "engine" });
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`INSERT INTO engine_conversation (conversation_id, head_seq, updated_at)
+            VALUES (${broken}, 1, 0)`;
+              yield* sql`INSERT INTO engine_event
+            (conversation_id, seq, type, v, at, command_id, run_id, payload_json)
+            VALUES (${broken}, 1, 'SessionClosed', 1, 0, 'x', NULL, '{"sessionId":"s"}')`;
+            }),
+          );
+          const engine = yield* w.engine;
+          assert.deepStrictEqual(yield* engine.leases, {
+            leases: [{ conversationId: mate, lease }],
+            complete: false,
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("the crew's door into a conversation", () => {
   const crew = { kind: "crew", startedBy: "ana" } as const;
 
