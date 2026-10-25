@@ -46,14 +46,22 @@ function browserCommandWasWrong(step: BrowserStepResult): boolean {
 }
 
 /**
+ * zcp's kind for an `eval` whose promise never settled on a page that still
+ * answered (a wait for a looping animation's `finished`): the script hung,
+ * not the page.
+ */
+const SCRIPT_TIMEOUT_KIND = "script-timeout";
+
+/**
  * A failed `eval` is the check's own script failing — it threw, or its promise
- * never settled before agent-browser's CDP timeout (a wait for a looping
- * animation's `finished`) — never something the page did. zcp's class of
- * error does not tell it apart (a hung evaluate is `wedge`, like a hung
- * page), so the command says it.
+ * never settled — never something the page did. Where zcp could not tell a
+ * hung evaluate from a hung page it says `wedge` and ends the walk there, so
+ * the command says it, and the check reads unfinished.
  */
 function browserScriptFailed(label: string, step: BrowserStepResult): boolean {
-  return !step.success && label.split(" ")[0] === "eval";
+  return (
+    !step.success && (step.errorKind === SCRIPT_TIMEOUT_KIND || label.split(" ")[0] === "eval")
+  );
 }
 
 /** A failed step in the browser's own words, else its class of error. */
@@ -77,6 +85,9 @@ function buildBrowserStep(id: string, label: string, step: BrowserStepResult) {
     );
   }
   if (browserScriptFailed(label, step)) {
+    if (step.errorKind === SCRIPT_TIMEOUT_KIND) {
+      return buildStep(id, label, "not_finished", "the check's own script never settled");
+    }
     const note = browserStepNote(step);
     return buildStep(
       id,
@@ -238,7 +249,9 @@ function browserMediaFromLabel(label: string): "dark" | "light" | undefined {
  * `viewport`/`media` are the LAST matching step (a caller may resize more
  * than once); `stepCount`/`failedStep` look only at the non-tail steps —
  * the reporting tail is plumbing, never something a person reads as "what
- * the agent did".
+ * the agent did". `unfinished` is the tail's own word: its `errors` step
+ * never answered (zcp's walk ended at a wedge, or its deadline cut it), so
+ * the counts are unread.
  */
 function browserSummaryFor(
   steps: ReadonlyArray<ZeropsOperationStep>,
@@ -255,6 +268,11 @@ function browserSummaryFor(
   }
   const visibleSteps = steps.filter((step) => step.kind !== "tail");
   const failedStep = visibleSteps.find((step) => step.state === "failed");
+  // The canned tail's `errors` answered: the walk read what the page threw.
+  const readErrors = steps.some(
+    (step) =>
+      step.kind === "tail" && step.label.split(" ")[0] === "errors" && step.state === "done",
+  );
   return {
     ...(viewport !== undefined ? { viewport } : {}),
     ...(media !== undefined ? { media } : {}),
@@ -267,7 +285,9 @@ function browserSummaryFor(
       ...counts,
       ...(viewport !== undefined ? { viewport } : {}),
       ...(media !== undefined ? { media } : {}),
+      ...(readErrors ? {} : { unfinished: true }),
     }),
+    ...(readErrors ? {} : { unfinished: true as const }),
   };
 }
 

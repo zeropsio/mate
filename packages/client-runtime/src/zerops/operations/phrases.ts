@@ -560,6 +560,8 @@ export interface BrowserFiguresInput {
   readonly consoleErrorCount: number;
   readonly pageErrorCount: number;
   readonly failedRequestCount: number;
+  /** The walk never read the page's errors: no error figure is said, only that it did not finish. */
+  readonly unfinished?: boolean;
 }
 
 /** The viewport segment — `<w>×<h>[, dark]`, `dark` alone with no known viewport, or absent entirely. */
@@ -576,14 +578,17 @@ function browserViewportSegment(input: BrowserFiguresInput): string | undefined 
  * `<viewport w×h>[, dark] · <n> steps · <errors> errors[ · <n> failed requests]`.
  * The page is the card's subject, so the line never repeats it. `errors`
  * folds `consoleErrorCount` and `pageErrorCount` into one figure and is
- * always said, zero included; failed requests are named only when there are
- * some. `browserClosing`'s text keeps all three apart.
+ * always said, zero included — unless the walk never read them, which says
+ * "not finished" instead; failed requests are named only when there are some.
+ * `browserClosing`'s text keeps all three apart.
  */
 export function browserFiguresLine(input: BrowserFiguresInput): string {
   const segments = [
     browserViewportSegment(input),
     plural(input.stepCount, "step"),
-    plural(input.consoleErrorCount + input.pageErrorCount, "error"),
+    input.unfinished === true
+      ? "not finished"
+      : plural(input.consoleErrorCount + input.pageErrorCount, "error"),
     input.failedRequestCount > 0 ? plural(input.failedRequestCount, "failed request") : undefined,
   ].filter((segment): segment is string => segment !== undefined);
   return segments.join(" · ");

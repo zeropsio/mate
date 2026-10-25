@@ -1422,6 +1422,7 @@ function Harness() {
                   checks: [check],
                   views: 1,
                   failures: 0,
+                  unfinished: 0,
                   live: false,
                 }}
                 threadRef={null}
