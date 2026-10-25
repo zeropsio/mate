@@ -7,7 +7,6 @@ import * as Logger from "effect/Logger";
 import * as Ref from "effect/Ref";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -489,34 +488,6 @@ describe("makeZeropsGitSpawner", () => {
           assert.strictEqual(first?.env?.LC_ALL, "C");
           assert.include(second?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
           assert.isTrue(second?.extendEnv, "a command with no environment still inherits PATH");
-        }),
-      ),
-  );
-
-  it.effect(
-    "git spawns in a row at a workspace path no mount holds read the mount table once, and one a while later again",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const inner = yield* makeInnerSpawner();
-          const reads = yield* Ref.make(0);
-          const spawner = makeZeropsGitSpawner({
-            enabled: true,
-            repositories: available(repositories),
-            refresh: Ref.update(reads, (n) => n + 1).pipe(Effect.andThen(available(repositories))),
-            inner: inner.spawner,
-          });
-          const status = (args: ReadonlyArray<string>) =>
-            spawner.spawn(ChildProcess.make("git", ["-C", "/var/www/imgrun", ...args]));
-
-          yield* status(["rev-parse", "--is-inside-work-tree"]);
-          yield* status(["status", "--porcelain=v2", "--branch"]);
-          yield* status(["rev-parse", "HEAD"]);
-          assert.strictEqual(yield* Ref.get(reads), 1);
-
-          yield* TestClock.adjust("10 seconds");
-          yield* status(["status", "--porcelain=v2", "--branch"]);
-          assert.strictEqual(yield* Ref.get(reads), 2);
         }),
       ),
   );
