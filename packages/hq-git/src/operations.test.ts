@@ -359,6 +359,22 @@ describe("git operations", () => {
         expect(await value(git.mergeability(repo, alice(1)))).toEqual({ kind: "already_merged" });
       }),
   );
+  it.live(
+    "a change sharing no history with a main that never held a file reads all it carries as its diff, for its review",
+    () =>
+      fixture(async (git, dir) => {
+        await write(git, {}, null);
+        const theirs = await history(dir, ["readme.md", "app.ts"]);
+        await native(dir, ["update-ref", "refs/heads/mate/alice/1", theirs]);
+        const diff = await value(
+          git.changeDiff(repo, alice(1), { maxFiles: 10, maxBytesPerFile: 1000 }),
+        );
+        expect(diff.items.map((file) => [file.path, file.added, file.deleted])).toEqual([
+          ["app.ts", 1, 0],
+          ["readme.md", 1, 0],
+        ]);
+      }),
+  );
   it.live.each([
     ["built on a main that never held a file, with no history of its own beneath it", "empty"],
     ["carrying another repository's history onto a main that holds a file", "held"],
