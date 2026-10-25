@@ -1,8 +1,9 @@
 /**
  * A Mate's ticket as the connection runtime asks for it (spec-mate §3.8): one HQ ticket per
  * attempt, and HQ's refusal told as what it means for reconnecting. Only HQ saying the person may
- * not open the Mate ends it (`read-only`); everything else — no link, no acknowledgement, a
- * follower, an unreachable HQ, a session being renewed — waits for the next try.
+ * not open the Mate ends it — their role sees it and may not open it (`read-only`), or HQ has no
+ * Mate there for them (`not-found`); everything else — no link, no acknowledgement, a follower, an
+ * unreachable HQ, a session being renewed — waits for the next try.
  */
 import * as Effect from "effect/Effect";
 
@@ -31,6 +32,12 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
     return new ConnectionBlockedError({
       reason: "read-only",
       detail: "Your role on this Mate's project lets you see it, not open it.",
+    });
+  }
+  if (cause.code === "mate_not_found") {
+    return new ConnectionBlockedError({
+      reason: "not-found",
+      detail: "HQ has no Mate here you may open.",
     });
   }
   if (cause.code === "network") {

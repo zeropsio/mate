@@ -261,6 +261,29 @@ describe("environment machine (DESIGN §4.4)", () => {
     }
   });
 
+  it.each([
+    { block: "not-found", refusal: { kind: "not-found" } },
+    { block: "read-only", refusal: { kind: "role" } },
+  ] as const)(
+    "a Mate HQ no longer opens for the person is refused after one confirming retry: $block",
+    ({ block, refusal }) => {
+      const blocked = drive(connected(), [
+        { type: "LINK", link: { phase: "blocked", reason: block } },
+      ]).machine;
+      expect(blocked.credential).toMatchObject({ kind: "exchanging", reconnect: true });
+      const confirmed = drive(blocked, [
+        {
+          type: "EXCHANGE_SUCCEEDED",
+          attempt: lastExchange(blocked),
+          environmentId: ENV_A,
+          descriptor: null,
+        },
+        { type: "LINK", link: { phase: "blocked", reason: block } },
+      ]).machine;
+      expect(confirmed.credential).toEqual({ kind: "refused", reason: refusal });
+    },
+  );
+
   it("after a role change, the first permission block re-exchanges once before refusing the role", () => {
     const blockAndRotate = (machine: EnvironmentMachine): EnvironmentMachine => {
       const blocked = drive(machine, [

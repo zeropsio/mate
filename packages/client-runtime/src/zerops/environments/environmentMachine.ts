@@ -144,6 +144,11 @@ export type ExchangeCause =
 export type RefusalReason =
   /** The door refused the role (READ_ONLY / NO_ACCESS), or the link was blocked on it twice. */
   | { readonly kind: "role"; readonly chiefOwnerName?: string }
+  /**
+   * HQ has no Mate here the person may open, twice in a row: deleted, or their access ended. A
+   * change of their access asks again (`ROLE_CHANGED`).
+   */
+  | { readonly kind: "not-found" }
   /** The server is below the client floor, or the link was blocked as unsupported. */
   | { readonly kind: "version" }
   /** The Mate at this origin belongs to another project: presence needs a re-read. */
@@ -292,7 +297,7 @@ export interface EnvironmentMachine {
    * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
    */
   readonly authRejections: ReadonlyArray<number>;
-  /** The link was blocked on permission once and one exchange was spent on it. */
+  /** The link was blocked on permission or found no Mate once, and one exchange was spent on it. */
   readonly permissionRetried: boolean;
   /**
    * Configuration blocks in a row the descriptor did not explain (the same environment), each
@@ -717,9 +722,11 @@ const onBlocked = (
       return machine;
     case "permission":
     case "read-only":
+    case "not-found":
       if (block.chiefOwnerName !== undefined)
         return refuse(machine, { kind: "role", chiefOwnerName: block.chiefOwnerName });
-      if (machine.permissionRetried) return refuse(machine, { kind: "role" });
+      if (machine.permissionRetried)
+        return refuse(machine, { kind: block.reason === "not-found" ? "not-found" : "role" });
       return {
         ...machine,
         permissionRetried: true,

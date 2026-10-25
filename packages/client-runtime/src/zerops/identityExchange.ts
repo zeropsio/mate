@@ -85,6 +85,8 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
           kind: "role",
           ...(cause.chiefOwnerName === undefined ? {} : { chiefOwnerName: cause.chiefOwnerName }),
         });
+      case "not-found":
+        return refusalFailure({ kind: "not-found" });
       case "unsupported":
         return refusalFailure({ kind: "version" });
       case "authentication":
