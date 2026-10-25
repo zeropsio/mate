@@ -116,7 +116,8 @@ export const HQ_SILENCE_MS = 60_000;
 /**
  * The handshake of the link and of every scope on its socket: none has a deadline of its own. An
  * open socket HQ keeps pinging is working on what it was asked, however long its first frame
- * takes; only {@link HQ_SILENCE_MS} of silence, or the socket's close, gives it up.
+ * takes; only {@link HQ_SILENCE_MS} of silence, or the socket's close, gives it up. Effect's clock
+ * sleeps a non-finite duration as `never`, so the supervisor's watch on it arms no timer.
  */
 const ON_THE_SOCKET: StreamEvent = {
   kind: "handshake",
