@@ -30,7 +30,7 @@ import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
-import { renameApp, deleteApp } from "./hqAppWrites.ts";
+import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
   followGithubRepository,
@@ -106,6 +106,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   changeComment,
   renameApp,
   deleteApp,
+  answerKeptGit,
   connectGitRemoteViaApp,
   followGithubRepository,
   stopFollowingGithubRepository,

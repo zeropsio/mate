@@ -77,6 +77,7 @@ export type HqWrites = Pick<
   | "commentOnChange"
   | "renameApp"
   | "deleteApp"
+  | "answerKeptGit"
   | "createApp"
   | "recordBirth"
   | "bindBirth"
@@ -683,6 +684,23 @@ export function makeHqExecutor(ports: {
           return yield* flowWrite(requestId, api, flow, (call) =>
             Effect.tryPromise({ try: call, catch: faultOf }),
           );
+        }
+        if (intent.kind === "answer-kept-git") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          yield* Effect.tryPromise({
+            try: () => api.answerKeptGit(intent.appId, intent.answer),
+            catch: (cause) => faultOf(cause, true),
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            affected: [{ family: "hqKeptGit", id: intent.appId }],
+            outcome: { kind: "succeeded", evidence: "HQ answered the kept Git question." },
+          };
         }
         if (intent.kind === "rename-app" || intent.kind === "delete-app") {
           const api = ports.apiOf(intent.orgId);

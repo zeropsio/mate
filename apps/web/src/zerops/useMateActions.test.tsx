@@ -640,6 +640,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
       hq: makeHqExecutor({
         zerops: { mintIntegrationToken: unused, deleteIntegrationToken: unused },
         apiOf: () => ({
+          answerKeptGit: unused,
           updateMate: mock.updateMate,
           commentOnChange: unused,
           renameApp: unused,

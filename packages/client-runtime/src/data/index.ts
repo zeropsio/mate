@@ -789,3 +789,7 @@ export {
 } from "./reads.ts";
 export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
 export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
+
+export { hqKeptGitQuestions, type KeptGitQuestionView } from "./projections/hqKeptGit.ts";
+
+export { hqKeptGitFamily, hqKeptGitScope } from "./families/hqKeptGit.ts";

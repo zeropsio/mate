@@ -68,6 +68,7 @@ import {
   hqStatusFamily,
   placementFamily,
 } from "./hqNavigation.ts";
+import { hqKeptGitFamily } from "./hqKeptGit.ts";
 import { hqDiscussionFamily } from "./hqDiscussion.ts";
 import { hqAppDetailFamily } from "./hqAppDetail.ts";
 import { hqProtocolFamily } from "./hqProtocol.ts";
@@ -181,6 +182,7 @@ export const FAMILIES = defineFamilies([
   placementFamily,
   hqPersonFamily,
   hqPressFamily,
+  hqKeptGitFamily,
   hqMateFamily,
   serviceFamily,
   mateAttentionFamily,

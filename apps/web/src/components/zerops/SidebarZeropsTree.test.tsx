@@ -10,7 +10,14 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import {
+  canonicalHqStructureOf,
+  placementsOf,
+  placedMenuRows,
+  placedNames,
+  type HqMate,
+  type HqPlacement,
+} from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { act, act as act_, type ReactElement } from "react";
@@ -643,6 +650,36 @@ describe("SidebarZeropsTree", () => {
       expect(html).not.toContain("sidebar-environments-empty");
     },
   );
+
+  it("shows a plain project's HQ application without a Mate before and after inventory arrives", () => {
+    const structure = canonicalHqStructureOf({
+      apps: [
+        {
+          id: "plain-app",
+          name: "Plain Git",
+          projects: [{ projectId: "plain-project", name: "Plain Git", kind: "plain", mate: null }],
+        },
+      ],
+    })!;
+    for (const projects of [[], [{ id: "plain-project", name: "Plain Git", status: "ACTIVE" }]]) {
+      const rows = placedMenuRows({
+        organizationId: "org",
+        placements: placementsOf(structure),
+        names: placedNames(structure),
+        projects,
+        candidates: [],
+        gone: new Set<string>(),
+      });
+      const dom = markupDom(render(rows, { complete: projects.length > 0 }));
+      expect(dom.querySelector('[data-zerops-project-row="plain-app"]')?.textContent).toContain(
+        "Plain Git",
+      );
+      expect(dom.querySelector('[data-zerops-surface="sidebar-project"]')?.textContent).toContain(
+        "No Mate yet",
+      );
+      expect(dom.querySelector('[data-zerops-surface="sidebar-mate"]')).toBeNull();
+    }
+  });
 
   it("a failed listing names its cause once, with one Try again", () => {
     const html = render([], {

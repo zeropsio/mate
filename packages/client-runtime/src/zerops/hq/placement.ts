@@ -31,7 +31,7 @@ export type HqPlacement =
   | {
       readonly appId: string;
       readonly appName: string;
-      readonly kind: RoleProjectKind | "unknown";
+      readonly kind: RoleProjectKind | "plain" | "unknown";
       /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null | undefined;
       /**
@@ -48,7 +48,7 @@ export type HqPlacements = ReadonlyMap<string, HqPlacement> & {
   readonly tools?: ReadonlyMap<string, "gitea">;
 };
 
-/** Every kind this build reads: a kind HQ adds later places nothing here until it does. */
+/** Every project role this build reads; plain Git placement carries no role. */
 const PROJECT_KINDS: Readonly<Record<RoleProjectKind, true>> = {
   mate: true,
   devstage: true,
@@ -97,7 +97,7 @@ export function placementsOf(
   for (const app of structure.apps) {
     for (const project of app.projects) {
       const { kind } = project;
-      if (!isRoleProjectKind(kind) && kind !== "unknown") continue;
+      if (!isRoleProjectKind(kind) && kind !== "plain" && kind !== "unknown") continue;
       placements.set(project.projectId, {
         appId: app.id,
         appName: app.name,
@@ -150,7 +150,7 @@ export function placementsOf(
  */
 export function heldOf(project: {
   readonly hq?: HqPlacement | undefined;
-}): RoleProjectKind | "none" | "unknown" {
+}): RoleProjectKind | "plain" | "none" | "unknown" {
   const placed = project.hq;
   if (placed === undefined || ("unregistered" in placed && placed.unregistered === true))
     return "none";

@@ -101,12 +101,13 @@ export interface ZeropsMembership {
 }
 
 const ROLE_OF_KIND: Readonly<
-  Record<RoleProjectKind | "unknown", ZeropsEnvironmentRole | undefined>
+  Record<RoleProjectKind | "plain" | "unknown", ZeropsEnvironmentRole | undefined>
 > = {
   mate: "dev",
   devstage: "devstage",
   stage: "stage",
   production: "prod",
+  plain: undefined,
   unknown: undefined,
 };
 

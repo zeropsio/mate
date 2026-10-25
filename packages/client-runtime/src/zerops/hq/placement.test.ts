@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import { canonicalHqStructureOf } from "./structure.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
   birthFaceOf,
@@ -357,4 +358,25 @@ describe("heldOf — what HQ holds a project as, from where it places it", () =>
   ] as const)("%s → %s", (_name, project, held) => {
     expect(heldOf(project)).toBe(held);
   });
+});
+
+it("keeps a plain project in the application HQ sends, without a Mate", () => {
+  const structure = canonicalHqStructureOf({
+    apps: [
+      {
+        id: "app-plain",
+        name: "Plain Git",
+        projects: [{ projectId: "plain-project", name: "Plain Git", kind: "plain", mate: null }],
+      },
+    ],
+  });
+  expect(structure).toBeDefined();
+  const placement = placementsOf(structure!).get("plain-project");
+  expect(placement).toEqual({
+    appId: "app-plain",
+    appName: "Plain Git",
+    kind: "plain",
+    mate: null,
+  });
+  expect(heldOf({ hq: placement })).toBe("plain");
 });

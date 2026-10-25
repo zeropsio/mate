@@ -148,6 +148,7 @@ function hqOf(answer: () => Promise<unknown>) {
     keepDeployToken: call("keepDeployToken"),
     renameApp: call("renameApp"),
     deleteApp: call("deleteApp"),
+    answerKeptGit: call("answerKeptGit"),
     release: call("release"),
     rollback: call("rollback"),
     redeploy: call("redeploy"),

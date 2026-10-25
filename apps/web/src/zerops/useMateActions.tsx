@@ -795,6 +795,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           const held = heldOf(candidate.project);
           if (held === "unknown")
             throw new Error("HQ must read this Mate’s placement before Move.");
+          if (held === "plain") throw new Error("HQ does not offer moving this project.");
           const intent = moveAttempts.current.get(candidate.project.id)?.intent ?? {
             kind: "move-project" as const,
             orgId: activeOrganization.id,
