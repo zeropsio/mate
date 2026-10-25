@@ -1917,6 +1917,95 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
         }),
       ).pipe(Effect.provide(persistence)),
   );
+
+  // Review r3-5: the last read every binding was checked against stays behind while a record
+  // cannot be read, so the alias's new holder read as a lease handed out again under it, was
+  // unbound, and its own acquire of the branch again came back reused and bound nothing.
+  const handedOutAgain = {
+    first: member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" }),
+    again: member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z" }),
+  };
+  const releasedBy = (threadId: ThreadId, lease: ReturnType<typeof member>) =>
+    leaseCall({
+      input: { action: "release", lease: lease.alias },
+      leases: [{ ...lease, state: "released" }],
+      envelope: [],
+      threadId,
+    });
+
+  it.effect(
+    "the conversation that acquired an alias handed out again while a record could not be read stays bound at the next read",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const readable = yield* Ref.make(true);
+          const over = recordsOver(records);
+          const lifecycle = yield* ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            ...over,
+            // Another conversation's record cannot be read: the engine lists the rest, not whole.
+            leaseBindings: Effect.flatMap(Ref.get(readable), (whole) =>
+              Effect.map(over.leaseBindings, (list) => ({ ...list, complete: whole })),
+            ),
+          });
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [first]));
+          yield* Ref.set(readable, false);
+          yield* lifecycle.ingest(releasedBy(sessionOf("ada"), first));
+          yield* lifecycle.ingest(acquireLeases(sessionOf("bob"), ["webpool"], [again]));
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+
+          yield* Ref.set(readable, true);
+          yield* lifecycle.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect(
+    "after a restart, the conversation that acquired an alias handed out again stays bound while another record cannot be read",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const over = recordsOver(records);
+          const make = (whole: boolean) =>
+            ZeropsLifecycle.make({
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+              repository,
+              threadOwner: conversationOfThread,
+              ...over,
+              leaseBindings: Effect.map(over.leaseBindings, (list) => ({
+                ...list,
+                complete: whole,
+              })),
+            });
+          yield* Effect.scoped(
+            Effect.flatMap(make(true), (lifecycle) =>
+              lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [first])),
+            ),
+          );
+
+          const restarted = yield* make(false);
+          yield* restarted.ingest(releasedBy(sessionOf("ada"), first));
+          yield* restarted.ingest(acquireLeases(sessionOf("bob"), ["webpool"], [again]));
+          yield* restarted.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
 });
 
 describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not ProviderService)", () => {
