@@ -111,7 +111,10 @@ export interface GitChangeState {
  * if any, being the newest, since a Mate opens a number only while none is open. A change closed
  * without landing is no work of anybody's any more. A checkout one of the thread's `leases` mounts
  * is no repository of HQ's — HQ names a repository after the dev service it began on, never after
- * a pool's container — so its change is the one on the branch zcp checked out there.
+ * a pool's container — so its change is the one on the branch zcp checked out there, of the
+ * repository the lease names (zcp's `repo`, compared as zcp compares them): two apps of one Mate
+ * may each have a change on one branch name. A lease or a change whose repository is not known is
+ * matched by the branch alone.
  */
 export function mateChangeIn(
   flow: {
@@ -127,7 +130,9 @@ export function mateChangeIn(
     change.mateProjectId === mateProjectId &&
     (lease === undefined
       ? change.repository === repository
-      : lease.branch !== null && change.branch === lease.branch);
+      : lease.branch !== null &&
+        change.branch === lease.branch &&
+        sameZeropsLeaseGroup(lease, { branch: change.branch, repo: change.repositoryUrl }));
   return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
     FlowPullRequest | undefined
   >(
