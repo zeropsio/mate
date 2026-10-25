@@ -8,7 +8,9 @@
  * Mate whose checkout's origin is GitHub pushes its named branch there itself: that branch in HQ's
  * copy follows GitHub's forward, so HQ keeps every head it records, and HQ's own pushes only ever
  * move a branch on GitHub forward, never over commits someone else put there, never onto GitHub's
- * default branch.
+ * default branch, and only a branch HQ made there itself: one it finds there (a Mate's own push,
+ * one people keep) it follows and never pushes to, and a named one GitHub's rules keep for pull
+ * requests it never makes.
  *
  * @module githubMirror
  */
@@ -36,7 +38,7 @@ import type { SqlError } from "effect/sql/SqlError";
 import { Changes } from "./changes.ts";
 import { GithubAuth } from "./githubAuth.ts";
 import { GithubEvents } from "./githubEvents.ts";
-import { governanceOf } from "./githubProbes.ts";
+import { governanceOf, pullRequestsOnly } from "./githubProbes.ts";
 import { GitHost, holdingRepo, mainOf } from "./gitHost.ts";
 import { GitTransport, remoteIdentity } from "./gitTransport.ts";
 import { Leader, type NotLeader } from "./leader.ts";
@@ -287,6 +289,37 @@ export const githubMirrorLayer = (
             );
           if (token === undefined) return yield* unavailable("not_mirrored");
           return { url: gitUrl(connected.repository), token } satisfies MirrorRemote;
+        });
+
+      /**
+       * Refused where GitHub's rules let changes reach `branch` only by a pull request
+       * (`pullRequestsOnly`): a branch its Mate named that HQ would make there. Classic branch
+       * protection is not readable with the app's grant; GitHub not answering leaves it unmade.
+       */
+      const mayMake = (appId: string, repo: string, branch: string) =>
+        Effect.gen(function* () {
+          const connected = yield* connectedOf(appId, repo);
+          const remote =
+            connected === undefined
+              ? undefined
+              : remoteIdentity(`https://github.com/${connected.repository}`);
+          if (connected?.id == null || remote === undefined)
+            return yield* unavailable("not_mirrored");
+          const token = yield* auth
+            .tokenFor(connected.repository, "reach", connected.id)
+            .pipe(Effect.mapError(() => unavailable("unreachable", "the app's token not given")));
+          if (token === undefined) return yield* unavailable("not_mirrored");
+          const rules = yield* transport
+            .rules(remote, branch, token)
+            .pipe(Effect.mapError(() => unavailable("unreachable", "GitHub's rules not read")));
+          const only = pullRequestsOnly(rules);
+          if (only === undefined)
+            return yield* unavailable("unreachable", `GitHub's rules for ${branch} not read`);
+          if (only)
+            return yield* unavailable(
+              "refused",
+              `GitHub's rules let only a pull request reach ${branch}: HQ never makes it`,
+            );
         });
 
       /** The repository's row says how it last followed GitHub (`outcome`, on `branch`). */
@@ -561,20 +594,25 @@ export const githubMirrorLayer = (
           }),
         );
 
+      /**
+       * The change's branch on GitHub at `sha`, as HQ pushed or followed it there; `made` once HQ's
+       * own push created that branch, the only kind it moves later.
+       */
       const keepPushed = (
         appId: string,
         repo: string,
         number: number,
         branch: string,
         sha: string,
+        made: boolean,
       ) =>
         leader
           .write(
             sql`
-              INSERT INTO hq_change_mirror (app_id, repo, number, branch, pushed_sha)
-              VALUES (${appId}::uuid, ${repo}, ${number}, ${branch}, ${sha})
+              INSERT INTO hq_change_mirror (app_id, repo, number, branch, pushed_sha, made)
+              VALUES (${appId}::uuid, ${repo}, ${number}, ${branch}, ${sha}, ${made})
               ON CONFLICT (app_id, repo, number) DO UPDATE
-              SET pushed_sha = excluded.pushed_sha, pushed_at = now(),
+              SET pushed_sha = excluded.pushed_sha, pushed_at = now(), made = excluded.made,
                 diverged_head = NULL, diverged_since = NULL`,
           )
           .pipe(
@@ -613,9 +651,12 @@ export const githubMirrorLayer = (
        * The change's head to its branch on GitHub; where GitHub's branch moved since HQ pushed it
        * (`githubMoved`, or a lease refused): commits added there on top of the head come into HQ's
        * copy (on HQ's own branch only people add them, and a task's Mate is told; on a branch its
-       * Mate named, the Mate pushes there itself), a branch put back behind the head is pushed on,
-       * and histories neither contains are kept as diverged — not tried again until either side
-       * moves.
+       * Mate named, the Mate pushes there itself), a branch HQ made, put back behind the head, is
+       * pushed on, and histories neither contains are kept as diverged — not tried again until
+       * either side moves. HQ moves only a branch it made there: one GitHub lacks it makes (a named
+       * one only where GitHub's rules leave it to pushes), one it made it moves leased on what it
+       * last pushed; any other it finds there it only follows, and it reads as diverged once the
+       * change's head is past it.
        */
       const mirrorChange = (appId: string, repo: string, number: number, githubMoved?: string) =>
         serialized(
@@ -635,8 +676,12 @@ export const githubMirrorLayer = (
               return undefined;
             // A branch its Mate named is that branch on GitHub; one opened without, HQ's own there.
             const named = !allocated(change.branch);
-            const [kept] = yield* sql<{ readonly branch: string; readonly pushed_sha: string }>`
-              SELECT branch, pushed_sha FROM hq_change_mirror
+            const [kept] = yield* sql<{
+              readonly branch: string;
+              readonly pushed_sha: string;
+              readonly made: boolean;
+            }>`
+              SELECT branch, pushed_sha, made FROM hq_change_mirror
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
             const branch =
               kept?.branch ?? (named ? change.branch : changeBranch(number, change.title));
@@ -660,13 +705,20 @@ export const githubMirrorLayer = (
                   `${branch} is GitHub's default branch: only a merge moves it`,
                 );
             }
+            // A branch HQ made is leased on the commit it last pushed there; any other, on GitHub
+            // lacking it — made then, a named one only where GitHub's rules leave it to pushes.
+            const lease = kept?.made === true ? kept.pushed_sha : null;
+            const made = lease !== null;
+            const makeable = named ? mayMake(appId, repo, branch) : Effect.void;
+            if (named && !made && !news) {
+              const there = yield* git.fetchTip(at, remote, branch).pipe(Effect.mapError(fromGit));
+              if (there === null) yield* makeable;
+            }
             const pushed = news
               ? ({ kind: "rejected", reason: "stale" } as const)
-              : yield* git
-                  .pushRef(at, remote, branch, head, kept?.pushed_sha ?? null)
-                  .pipe(Effect.mapError(fromGit));
+              : yield* git.pushRef(at, remote, branch, head, lease).pipe(Effect.mapError(fromGit));
             if (pushed.kind === "pushed") {
-              yield* keepPushed(appId, repo, number, branch, head);
+              yield* keepPushed(appId, repo, number, branch, head, true);
               return { branch, sha: head };
             }
             if (pushed.reason === "refused")
@@ -676,7 +728,7 @@ export const githubMirrorLayer = (
             const ancestor = (a: string, b: string) =>
               git.isAncestor(at, a, b).pipe(Effect.mapError(fromGit));
             if (theirs === head) {
-              yield* keepPushed(appId, repo, number, branch, head);
+              yield* keepPushed(appId, repo, number, branch, head, made);
               return { branch, sha: head };
             }
             if (theirs !== null && (yield* ancestor(head, theirs))) {
@@ -690,17 +742,18 @@ export const githubMirrorLayer = (
                 .pipe(Effect.mapError(fromGit));
               if (moved.kind !== "moved")
                 return yield* unavailable("busy", "the change's head moved meanwhile");
-              yield* keepPushed(appId, repo, number, branch, theirs);
+              yield* keepPushed(appId, repo, number, branch, theirs, made);
               if (!named) yield* tellAdded(git, at, number, theirs);
               return { branch, sha: theirs };
             }
-            if (theirs === null || (yield* ancestor(theirs, head))) {
+            if (theirs === null || (made && (yield* ancestor(theirs, head)))) {
+              if (theirs === null) yield* makeable;
               const again = yield* git
                 .pushRef(at, remote, branch, head, theirs)
                 .pipe(Effect.mapError(fromGit));
               if (again.kind === "rejected")
                 return yield* unavailable("busy", `${branch} on GitHub moved meanwhile`);
-              yield* keepPushed(appId, repo, number, branch, head);
+              yield* keepPushed(appId, repo, number, branch, head, true);
               return { branch, sha: head };
             }
             yield* leader
@@ -718,7 +771,9 @@ export const githubMirrorLayer = (
               );
             return yield* unavailable(
               "refused",
-              `${branch} on GitHub holds commits HQ did not push`,
+              made
+                ? `${branch} on GitHub holds commits HQ did not push`
+                : `${branch} on GitHub is a branch HQ did not make: HQ never pushes to it`,
             );
           }),
         );

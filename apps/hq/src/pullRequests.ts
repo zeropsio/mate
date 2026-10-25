@@ -338,6 +338,8 @@ interface ChangeFactsRow {
   readonly app_name: string | null;
   readonly task_id: string | null;
   readonly task_source: unknown;
+  /** Closed by its own Mate (`mateCloseChange`), as the log's close of it says. */
+  readonly closed_by_mate: boolean;
 }
 
 /** An event's payload as `schema` reads it, parsed or still JSON; none where it does not. */
@@ -499,7 +501,10 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           const [row] = yield* sql<ChangeFactsRow>`
             SELECT c.state, c.head, COALESCE(c.ready_head = c.head, false) AS ready, c.title,
               c.body, c.receipt, c.mate_project_id, m.made_by, a.name AS app_name,
-              t.id::text AS task_id, t.source AS task_source
+              t.id::text AS task_id, t.source AS task_source,
+              (c.state = 'closed' AND EXISTS (SELECT 1 FROM hq_git_event e
+                WHERE e.kind = 'closed' AND e.app_id = c.app_id AND e.repo = c.repo
+                  AND e.number = c.number AND e.data->>'by' = 'mate')) AS closed_by_mate
             FROM hq_change c
             LEFT JOIN hq_app a ON a.id = c.app_id
             LEFT JOIN hq_mate m ON m.project_id = c.mate_project_id
@@ -602,7 +607,8 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
             return yield* closedUnmerged(row);
           if (row !== undefined && row.state !== "open") return;
           // Closed in Mate while GitHub did not answer: closed there now.
-          if (row !== undefined && change.state === "closed") return yield* closeOnGithub(row);
+          if (row !== undefined && change.state === "closed")
+            return yield* change.closed_by_mate ? closedByItsMate(row) : closeOnGithub(row);
           if (change.state !== "open" || change.head === null) return;
           // What GitHub says of it now, on the timed sweep: a merge or a close whose event never
           // came is followed as the event would have been.
@@ -758,6 +764,25 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
           if (now.pull?.merged === true)
             return yield* mergedOnGithub(row, now.pull.mergeSha, now.pull.headSha);
           if (now.pull?.state === "closed") return yield* closedUnmerged(row);
+        });
+
+      /**
+       * A change its own Mate closed takes down on GitHub only the pull request HQ's bot opened: one
+       * a person opened on its branch, which HQ took for the change (a branch its Mate named), stays
+       * theirs and open, and HQ lets it go. GitHub not saying who opened it leaves it for the sweep.
+       */
+      const closedByItsMate = (row: PullRow) =>
+        Effect.gen(function* () {
+          const app = yield* asApp(row.app_id, row.repo, row.github_repo);
+          if (app === undefined) return;
+          const now = yield* github.pull(app.remote, app.token, row.pr_number);
+          const bot = yield* auth.bot;
+          if (now.pull === undefined || bot === undefined) return;
+          if (now.pull.author === bot.login) return yield* closeOnGithub(row);
+          yield* leader.write(sql`
+            DELETE FROM hq_pull_request
+            WHERE app_id::text = ${row.app_id} AND repo = ${row.repo} AND number = ${row.number}
+              AND pr_number = ${row.pr_number}`);
         });
 
       /**
@@ -1291,14 +1316,16 @@ export const pullRequestsLayer = (options: PullRequestsOptions = {}) =>
         });
 
       /**
-       * A change just closed in Mate: its pull request closed on GitHub too, read under the permit,
-       * so a sweep that closed it meanwhile closed it once. GitHub not answering leaves it for the
-       * sweep; the close in Mate stands.
+       * A change just closed in Mate: its pull request closed on GitHub too — by its own Mate, only
+       * one HQ's bot opened (`closedByItsMate`) — read under the permit, so a sweep that closed it
+       * meanwhile closed it once. GitHub not answering leaves it for the sweep; the close in Mate
+       * stands.
        */
       const closedThere = (closed: HqChange) =>
         Effect.gen(function* () {
           const row = yield* pullOf(closed.appId, closed.repo, closed.number);
-          if (row?.state === "open") yield* closeOnGithub(row);
+          if (row?.state === "open")
+            yield* closed.closedByMate === true ? closedByItsMate(row) : closeOnGithub(row);
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("a pull request not closed on GitHub yet", { cause }),
