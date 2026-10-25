@@ -1142,7 +1142,11 @@ describe("makeHqApi — the structure socket", () => {
     const messages: Array<string> = [];
     const closes: Array<number> = [];
     const socket = api.openScopeSocket(
-      { message: (data) => messages.push(data), close: (code) => closes.push(code) },
+      {
+        open: () => {},
+        message: (data) => messages.push(data),
+        close: (code) => closes.push(code),
+      },
       signal,
     );
     return { socket, messages, closes };

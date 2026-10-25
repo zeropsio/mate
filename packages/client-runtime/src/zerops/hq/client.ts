@@ -343,12 +343,12 @@ export interface HqApi {
   readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
-   * ticket for the session, telling `on` of every text message and of its close code. A socket HQ
-   * closed for its session (`4401`) forgets that session first, so the next segment's ticket
-   * enters the door again.
+   * ticket for the session, telling `on` once it is open, of every text message and of its close
+   * code. A socket HQ closed for its session (`4401`) forgets that session first, so the next
+   * segment's ticket enters the door again.
    */
   readonly openScopeSocket: (
-    on: { readonly message: (data: string) => void; readonly close: (code: number) => void },
+    on: Parameters<OpenHqSocket>[1],
     signal: AbortSignal,
   ) => Promise<HqSocket>;
   /**
@@ -603,10 +603,14 @@ export interface HqSocket {
   readonly close: () => void;
 }
 
-/** Opens `url`, telling `on` of every text message and of the close, with its code. */
+/** Opens `url`, telling `on` once it is open, of every text message, and of the close, with its code. */
 export type OpenHqSocket = (
   url: string,
-  on: { readonly message: (data: string) => void; readonly close: (code: number) => void },
+  on: {
+    readonly open: () => void;
+    readonly message: (data: string) => void;
+    readonly close: (code: number) => void;
+  },
 ) => HqSocket;
 
 /** HQ closed a scope socket because its session ended (`hqStreamCloseFailure`). */
@@ -1315,6 +1319,7 @@ export function makeHqApi(input: {
       signal.throwIfAborted();
       const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
       return input.openSocket(url, {
+        open: on.open,
         message: on.message,
         close: (code) => {
           if (code === HQ_SESSION_ENDED_CLOSE && held !== null && token !== null) drop(held, token);

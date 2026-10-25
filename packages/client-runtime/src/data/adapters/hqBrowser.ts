@@ -7,6 +7,7 @@ const openHqSocket: OpenHqSocket = (url, on) => {
   const early: string[] = [];
   socket.addEventListener("open", () => {
     for (const data of early.splice(0)) socket.send(data);
+    on.open();
   });
   socket.addEventListener("message", (event) => {
     if (typeof event.data === "string") on.message(event.data);

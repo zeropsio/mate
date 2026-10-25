@@ -749,11 +749,10 @@ describe("hqNavigationLink", () => {
       expect(appName(store, "shop")).toBe("Shop");
       yield* TestClock.adjust(20_000);
       yield* settle;
-      expect(view().live).toBe(false);
-      expect(view().reconnecting).toBe(true);
-      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
-        "No answer came in time.",
-      );
+      // Still unconfirmed, HQ is slow on a socket that holds: the navigation is not asked again.
+      expect(view()).toMatchObject({ live: false, reconnecting: true, slow: true });
+      expect(fixture.opens()).toBe(2);
+      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault).toBeNull();
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -1343,7 +1342,90 @@ describe("a Mate's attention, relayed", () => {
   );
 });
 
+describe("a slow HQ", () => {
+  it.effect(
+    "a navigation HQ sends long after its connection opened lands on that connection, asked once",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        // HQ computes the navigation for 45 s, pinging every 20 s meanwhile.
+        for (let ping = 0; ping < 2; ping++) {
+          yield* TestClock.adjust(20_000);
+          yield* fixture.send({ type: "ping" });
+          yield* settle;
+        }
+        yield* TestClock.adjust(5_000);
+        yield* fixture.send(
+          navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
+        );
+        yield* fixture.send(ready(1));
+        yield* settle;
+        expect(fixture.opens()).toBe(1);
+        expect(
+          navigationRequests(fixture, 1).filter(({ type }) => type === "subscribe"),
+        ).toHaveLength(1);
+        expect(appName(store, "shop")).toBe("Shop");
+        expect(phase(store, hqAppsScope(ORG))).toBe("live");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a navigation HQ is still working on, past a first answer's patience, reads slow and not down",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+        // Within its first answer's patience, a wait is not worth saying.
+        expect(view()).toMatchObject({ live: false, slow: false });
+        yield* TestClock.adjust(20_000);
+        yield* fixture.send({ type: "ping" });
+        yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
+        expect(view()).toMatchObject({
+          live: false,
+          slow: true,
+          reconnecting: false,
+          capped: false,
+          refusal: null,
+        });
+        yield* fixture.send(navigation("scope-reset", 1, []));
+        yield* fixture.send(ready(1));
+        yield* settle;
+        expect(view()).toMatchObject({ live: true, slow: false });
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
 describe("an HQ outage", () => {
+  it.effect(
+    "a socket HQ closes before it says anything is a failed attempt: retries back off",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* run(store, fixture);
+        for (const failures of [1, 2, 3]) {
+          yield* fixture.drop(classifyHqClose(4401));
+          yield* settle;
+          const link = streamOf(store.state(), linkKeys.hq(ORG));
+          expect({ phase: link.phase, failures: link.failures }).toEqual({
+            phase: "recovering",
+            failures,
+          });
+          if (link.next.kind === "retry")
+            yield* TestClock.adjust(link.next.at - (yield* Clock.currentTimeMillis));
+          yield* settle;
+        }
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("a socket that says nothing, not even a ping, is given up and asked again", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -1845,10 +1927,9 @@ describe("outage scenarios at the HQ input", () => {
       expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
         live: false,
         reconnecting: true,
+        slow: true,
       });
-      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
-        "No answer came in time.",
-      );
+      expect(fixture.opens()).toBe(2);
       expect(appName(store, "shop")).toBe("Shop");
       yield* Fiber.interrupt(fiber);
     }),

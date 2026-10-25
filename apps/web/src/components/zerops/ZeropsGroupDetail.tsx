@@ -882,6 +882,7 @@ const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
   read: "unread",
   refusal: null,
   capped: false,
+  slow: false,
   updateRequired: false,
   coreBuild: undefined,
   live: false,

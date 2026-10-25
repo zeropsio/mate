@@ -306,6 +306,7 @@ export const NOT_READ_HQ: HqNavigationRead = {
   read: "unread",
   refusal: null,
   capped: false,
+  slow: false,
   live: false,
   reconnecting: false,
 };

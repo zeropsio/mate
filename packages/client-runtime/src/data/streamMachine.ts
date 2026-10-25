@@ -126,7 +126,12 @@ export interface StreamState {
 
 export type StreamEvent =
   | { readonly kind: "demand"; readonly demanded: boolean }
-  | { readonly kind: "handshake" }
+  /**
+   * `baselineWithinMs`: how long its first answer may take, where the source names its own bound
+   * ({@link STREAM_POLICY.baselineTimeoutMs} otherwise). `Infinity` names none: the connection's
+   * own liveness bounds the wait — a source still working on an open connection is slow, not gone.
+   */
+  | { readonly kind: "handshake"; readonly baselineWithinMs?: number }
   /**
    * `ages`: a source read once answered with a value that still changes without any write of
    * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
@@ -398,7 +403,10 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
         ? settle({
             ...state,
             phase: "baselining",
-            next: { kind: "await-baseline", deadlineAt: now + STREAM_POLICY.baselineTimeoutMs },
+            next: {
+              kind: "await-baseline",
+              deadlineAt: now + (event.baselineWithinMs ?? STREAM_POLICY.baselineTimeoutMs),
+            },
           })
         : settle(state);
     case "baseline-committed":

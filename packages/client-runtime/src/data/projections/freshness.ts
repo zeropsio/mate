@@ -9,6 +9,10 @@ import type { ProjectionReads } from "../store.ts";
 import { liveOrHeld, type StreamState } from "../streamMachine.ts";
 
 const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);
+/** A connection open: past its handshake, whether or not its source said anything yet. */
+const CONNECTED: ReadonlySet<StreamState["phase"]> = new Set(["baselining", "live"]);
+/** A scope asked on its connection and not answered yet. */
+const WAITING: ReadonlySet<StreamState["phase"]> = new Set(["connecting", "baselining"]);
 
 /** Why a refused scope is unavailable: its session ended, it may not read, or it was refused. */
 export type UnavailableReason = "expired-session" | "forbidden" | "refused";
@@ -46,6 +50,20 @@ export function scopeFreshness(read: ProjectionReads, scope: ScopeKey): ScopeFre
     ...(live || lost.length === 0 ? {} : { downSince: Math.min(...lost) }),
     ...(refusal === undefined ? {} : { unavailableReason: refusalReason(refusal) }),
   };
+}
+
+/**
+ * Whether a scope's source is slow, not gone: its connection is open and the scope still waits for
+ * its answer, past the patience a first answer gets (its grace). Nothing is asked again meanwhile.
+ */
+export function scopeSlow(read: ProjectionReads, scope: ScopeKey): boolean {
+  const stream = read.stream(scope);
+  return (
+    CONNECTED.has(read.stream(linkOf(scope)).phase) &&
+    WAITING.has(stream.phase) &&
+    stream.held !== true &&
+    stream.patientSince === undefined
+  );
 }
 
 function refusalReason(stream: StreamState): UnavailableReason {
