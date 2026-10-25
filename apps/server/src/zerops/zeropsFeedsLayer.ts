@@ -227,10 +227,10 @@ const ZeropsHqLinkLive = Layer.unwrap(
  * The lifecycle feed, which tells a conversation's own record the lease its agent acquired, and
  * every conversation bound to a lease that ended, through the very engine the merge runs (memoized
  * by reference): the record binds or unbinds it, under the call's own command id, so a call told
- * again acts once. Who is bound is read from the conversations' views, only when a call says
- * something new of the leases; a view that could not be read is read again with the next call that
- * reads them. A lease that changed hands has its checkout's git status forgotten
- * and read again: the same alias may be another branch's container now.
+ * again acts once. Who is bound is read from the conversations' records (their lease alone, never
+ * their views), only when a call says something new of the leases; a record that could not be read
+ * is read again with the next call that reads them. A lease that changed hands has its checkout's
+ * git status forgotten and read again: the same alias may be another branch's container now.
  */
 const ZeropsLifecycleLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -238,21 +238,15 @@ const ZeropsLifecycleLive = Layer.unwrap(
     const vcsStatus = yield* VcsStatusBroadcaster;
     return ZeropsLifecycle.layer(conversationOfThread, {
       checkoutChanged: (alias) => vcsStatus.forgetStatus(`${ZEROPS_WORKSPACE_ROOT}/${alias}`),
-      // A conversation whose view could not be read leaves the list incomplete, never unbound.
-      leaseBindings: Effect.map(engine.conversations, ({ views, complete }) => ({
-        bindings: views.flatMap((view) =>
-          view.lease == null
-            ? []
-            : [
-                {
-                  conversation: ThreadId.make(view.conversationId),
-                  alias: view.lease.alias,
-                  branch: view.lease.branch,
-                  repo: view.lease.repo,
-                  acquiredAt: view.lease.acquiredAt,
-                },
-              ],
-        ),
+      // A conversation whose record could not be read leaves the list incomplete, never unbound.
+      leaseBindings: Effect.map(engine.leases, ({ leases, complete }) => ({
+        bindings: leases.map(({ conversationId, lease }) => ({
+          conversation: ThreadId.make(conversationId),
+          alias: lease.alias,
+          branch: lease.branch,
+          repo: lease.repo,
+          acquiredAt: lease.acquiredAt,
+        })),
         complete,
       })),
       recordLease: (conversation, change, key) =>
