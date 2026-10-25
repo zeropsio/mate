@@ -52,15 +52,21 @@ function browserCommandWasWrong(step: BrowserStepResult): boolean {
  */
 const SCRIPT_TIMEOUT_KIND = "script-timeout";
 
+/** zcp's kind for a walk it ended at a browser that stopped answering. */
+const WEDGE_KIND = "wedge";
+
 /**
- * A failed `eval` is the check's own script failing — it threw, or its promise
- * never settled — never something the page did. Where zcp could not tell a
- * hung evaluate from a hung page it says `wedge` and ends the walk there, so
- * the command says it, and the check reads unfinished.
+ * The check's own script never settled — never something the page did. Where
+ * zcp could not tell a hung evaluate from a hung page it says `wedge` and ends
+ * the walk there, so an `eval` that wedged reads unfinished too. An `eval`
+ * that threw (or timed out, or missed a selector) is the check's assertion
+ * failing on the page, and fails the check.
  */
 function browserScriptFailed(label: string, step: BrowserStepResult): boolean {
+  if (step.success) return false;
   return (
-    !step.success && (step.errorKind === SCRIPT_TIMEOUT_KIND || label.split(" ")[0] === "eval")
+    step.errorKind === SCRIPT_TIMEOUT_KIND ||
+    (step.errorKind === WEDGE_KIND && label.split(" ")[0] === "eval")
   );
 }
 
@@ -72,8 +78,8 @@ function browserStepNote(step: BrowserStepResult): string | undefined {
 
 /**
  * A step that failed on the check's own terms reads muted — a wrong command
- * "Not run", the check's own script "Not finished" — and fails nothing on the
- * page: the check is judged by the page's own steps.
+ * "Not run", the check's own script that never settled "Not finished" — and
+ * fails nothing on the page: the check is judged by the page's own steps.
  */
 function buildBrowserStep(id: string, label: string, step: BrowserStepResult) {
   if (browserCommandWasWrong(step)) {

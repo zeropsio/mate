@@ -4566,7 +4566,7 @@ describe("deriveOutcome: a call's own record, read as the timeline reads it", ()
         1,
         "/",
         [
-          failed(SETTLED, "Timeout 5000ms exceeded", "timeout"),
+          failed(SETTLED, HUNG, "script-timeout"),
           failed(["wait", "--text", "Mate test"], "Timeout 25000ms exceeded", "timeout"),
           ...TAIL,
         ],
