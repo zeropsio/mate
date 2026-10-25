@@ -9,6 +9,7 @@ import { gateSlotCount } from "./gate-slots.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
   scenarioFiles,
+  affectedScenarioFiles,
   validateSelectedFiles,
   changedPaths,
   scenarioAreas,
@@ -531,6 +532,7 @@ it.each([
   let steps: ReturnType<typeof selectGateSteps>["steps"] = [];
   expect(() => {
     steps = selectGateSteps(repositoryGraph, {
+      withScenarios: true,
       comparison: "HEAD",
       existing: [path],
       paths: [path],
@@ -1389,6 +1391,61 @@ it("BigInt source edits select checks while comments alone select none", () => {
   }
 });
 
+it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
+  const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const { steps } = selectGateSteps(repositoryGraph, {
+    comparison: "HEAD",
+    existing: [scenario],
+    paths: [scenario],
+    inventory: [scenario],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: 3,
+  });
+  expect(
+    steps.filter((step) =>
+      ["edited scenario files", "state-only smoke", "state-only oracle smoke"].includes(step.name),
+    ),
+    "ASSERTION: default laptop completion never executes browser scenarios or fixed smoke",
+  ).toEqual([]);
+});
+
+it.each(["changed", "deleted"])(
+  "CI keeps every affected scenario beyond the local cap for a %s dependency",
+  (change) => {
+    const dependency = "apps/web/src/sharedWitness.ts";
+    areaFixture([[dependency, scenarioAreas]], (root) => {
+      for (const directory of ["packages", "infra"])
+        NodeFS.mkdirSync(NodePath.join(root, directory));
+      const git = (...args: string[]) => {
+        const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+        if (result.status !== 0) throw new Error(result.stderr);
+      };
+      git("init", "-q");
+      git("config", "user.name", "Gate fixture");
+      git("config", "user.email", "gate@example.test");
+      git("add", ".");
+      git("commit", "-qm", "base");
+      const path = NodePath.join(root, dependency);
+      if (change === "deleted") NodeFS.rmSync(path);
+      else NodeFS.writeFileSync(path, "export const changed = true;");
+      const expected = scenarioAreas
+        .map((area) => `apps/web/test/scenarios/areas/${area}/journey.scenario.ts`)
+        .sort();
+      expect(
+        affectedScenarioFiles(root, "HEAD"),
+        "ASSERTION: required CI selection never caps graph-related scenario files",
+      ).toEqual(expected);
+      expect(affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904")).toEqual(
+        expected,
+      );
+      // Explicit requests survive without a dependency edge and deduplicate an edited file.
+      const edited = expected[0]!;
+      NodeFS.appendFileSync(NodePath.join(root, edited), "\nexport const edited = true;");
+      expect(affectedScenarioFiles(root, "HEAD", [edited, edited])).toEqual(expected);
+    });
+  },
+);
+
 const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
   "reload restores history",
@@ -1401,6 +1458,7 @@ const smokeTitles = [
 it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
   const path = "packages/contracts/src/engine.ts";
   const selected = selectGateSteps(repositoryGraph, {
+    withScenarios: true,
     comparison: "HEAD",
     existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
     paths: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
@@ -1695,7 +1753,7 @@ it("L2 runs owned scenario-driver units through their existing project before sc
     NodeFS.appendFileSync(file, "\nexport const l2DriverWitness = true;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--with-scenarios"],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
