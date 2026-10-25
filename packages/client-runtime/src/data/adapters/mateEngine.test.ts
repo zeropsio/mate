@@ -1071,6 +1071,51 @@ describe("an engine run its card does not hold whole when it paints", () => {
     }),
   );
 
+  // Catches a live card opened onto its current step alone (Filip's card, Aleš, 2026-10-25): a run
+  // that goes on in an earlier run's card, opened once that run ended, held none of its lines.
+  it.live(
+    "pages a live card back through its live run, then the run before it on its card, until it holds them whole",
+    () =>
+      Effect.gen(function* () {
+        const cut = longRun(1_700, "cut");
+        const next = longRun(600, "live", true);
+        const r = rig((request) =>
+          request.runId === run2 ? next.pager(request) : cut.pager(request),
+        );
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(
+          snapshot({ runs: [cut.record, next.record], items: [...cut.window, ...next.window] }),
+          synchronized(12),
+        );
+        // It opens onto its live run's newest lines, through its end.
+        expect(engineCardPaging.derive(r.read(), ada)[run1]).toMatchObject({
+          holdsLines: true,
+          through: null,
+          pageRuns: { earlier: run2, later: null },
+        });
+        const read: Array<string> = [];
+        for (let page = 0; page < 20; page++) {
+          const card = engineCardPaging.derive(r.read(), ada)[run1];
+          const runId = card?.pageRuns.earlier ?? null;
+          if (runId === null) break;
+          read.push(runId);
+          expect(r.conversations.readRunPage(ada, runId, "earlier")).toBe(true);
+          yield* settle;
+        }
+        // Its live run's three pages back to its start, then the cut run's nine from its end.
+        expect(read).toEqual([...Array(3).fill(run2), ...Array(9).fill(run1)]);
+        expect(r.pages.at(-9)).toEqual({ runId: run1, before: null });
+        expect(heldSeqs(r, run1)).toHaveLength(1_700);
+        expect(heldSeqs(r, run2)).toHaveLength(600);
+        expect(engineCardPaging.derive(r.read(), ada)[run1]).toMatchObject({
+          since: null,
+          through: null,
+        });
+        r.close();
+      }),
+  );
+
   // Catches an open card emptied by a reconnect: the snapshot it resubscribes to said every run
   // held none of its lines again.
   it.live("keeps an open card's pages across a reconnect to the same sequence space", () =>
