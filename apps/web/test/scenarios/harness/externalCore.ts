@@ -134,12 +134,13 @@ export const REAL_CORE_DEFAULTS = {
   pingEvery: 20_000,
   reconcileEvery: 30_000,
   streamRecheck: 30_000,
+  viewRefresh: 300_000,
 };
 
 /**
- * The Core's wait clock (`HQ_TEST_WAIT_CLOCK_FILE`), held from before its start: its socket pings
- * and session and role rechecks come only when a case moves it past their period, never by wall
- * time. `waits` are the periods the Core started waiting out on it (`<file>.waits`), in order.
+ * The Core's wait clock (`HQ_TEST_WAIT_CLOCK_FILE`), held from before its start: its socket pings,
+ * session and role rechecks and linked organisations' view refreshes come only when a case moves it
+ * past their period, never by wall time. `waits` are the periods the Core started waiting out on it (`<file>.waits`), in order.
  */
 const heldWaitClock = Effect.gen(function* () {
   const dir = yield* Effect.acquireRelease(
@@ -221,6 +222,7 @@ export const startExternalCore = (
       HQ_STREAM_PING_MS: String(periods.pingEvery),
       HQ_RECONCILE_INTERVAL_MS: String(periods.reconcileEvery),
       HQ_STREAM_RECHECK_MS: String(periods.streamRecheck),
+      HQ_ORG_VIEW_REFRESH_MS: String(periods.viewRefresh),
     };
     const process = yield* Effect.acquireRelease(
       Effect.sync(() => {

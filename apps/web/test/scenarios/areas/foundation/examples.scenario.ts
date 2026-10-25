@@ -15,7 +15,7 @@ describe("foundation: the real hosted client", () => {
         yield* when.zerops.colleague.createsProject("Bea", { mate: true });
         yield* then.menu
           .row("Bea")
-          .appears({ within: 5000 })
+          .appears()
           .pipe(Effect.ensuring(Effect.all([then.noReload, then.noExternalNetwork])));
       }),
     );
@@ -29,7 +29,7 @@ describe("foundation: the real hosted client", () => {
         yield* given.signedIn;
         yield* then.menu.row("Ada").appears();
         yield* when.zerops.colleague.createsProject("Bea", { mate: true, enroll: true });
-        yield* then.menu.row("Bea").appears({ within: 5000 });
+        yield* then.menu.row("Bea").appears();
         yield* then.noReload;
         yield* then.noExternalNetwork;
       }),

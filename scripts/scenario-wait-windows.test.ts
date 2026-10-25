@@ -30,20 +30,7 @@ it.each([
  * Windows a scenario keeps, by file and line. Only removals: a wait ends on its predicate or at the
  * hang guard, and a case that tests a timeout drives it by the scenario clock.
  */
-const ledger: ReadonlyArray<{ file: string; line: string; reason: string }> = [
-  {
-    file: "harness/browser.ts",
-    line: "export async function menuMateRow(page: Page, name: string, timeout = 10_000) {",
-    reason:
-      "guesses a folded group from a row not drawn within 3 s; needs a receipt that tells folded from not yet drawn",
-  },
-  {
-    file: "harness/browser.ts",
-    line: "export async function visibleInMenu(page: Page, surface: string, name: string, timeout = 10_000) {",
-    reason:
-      "guesses a folded group from a row not drawn within 3 s; needs a receipt that tells folded from not yet drawn",
-  },
-];
+const ledger: ReadonlyArray<{ file: string; line: string; reason: string }> = [];
 
 it("scenario waits end on their predicate, apart from the ledgered windows", () => {
   const found = NodeFS.readdirSync(NodePath.join(root, scenarios), {

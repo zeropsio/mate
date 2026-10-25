@@ -24,6 +24,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import type * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import { FetchHttpClient, HttpServer } from "effect/http";
 
@@ -35,6 +36,7 @@ import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
 import { ZeropsOffboarding } from "../src/zerops/ZeropsOffboarding.ts";
+import { type AccessList, ZeropsMateAccessList } from "../src/zerops/ZeropsMateAccessList.ts";
 import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
@@ -82,6 +84,8 @@ export interface ScenarioMate {
   readonly providers: ProviderInstances["Service"];
   /** Runs the production signer check after a platform membership input. */
   readonly offboarding: ZeropsOffboarding["Service"];
+  /** HQ's access list as this Mate holds it now, on its own clock: none past the hold. */
+  readonly accessList: Effect.Effect<Option.Option<AccessList>>;
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -164,12 +168,15 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
         checkNow: offboardingService.checkNow.pipe(Effect.provideService(Clock.Clock, clock)),
       };
       const attention = yield* ZeropsMateAttention.pipe(Effect.provide(context));
+      const accessList = (yield* ZeropsMateAccessList.pipe(Effect.provide(context))).current.pipe(
+        Effect.provideService(Clock.Clock, clock),
+      );
       const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
         Effect.provide(context),
       );
-      return { port: address.port, engine, attention, browser, providers, offboarding };
+      return { port: address.port, engine, attention, accessList, browser, providers, offboarding };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -232,6 +239,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     get offboarding() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.offboarding;
+    },
+    get accessList() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.accessList;
     },
     get attention() {
       if (!running) throw new Error("Scenario Mate is stopped");
