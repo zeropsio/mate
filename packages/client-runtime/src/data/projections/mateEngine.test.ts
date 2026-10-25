@@ -1237,23 +1237,29 @@ describe("an engine card not held whole, as its worked line and its scroll read 
     });
 
     // Catches a card emptied under the person reading it: its live run, read back to its start,
-    // settled while the run before it was still not read.
+    // settled while the run before it was still not read. A run that started after the
+    // conversation opened (any new turn) has no span of its own: it was held whole as it came.
     it.each([
       {
         name: "holding its newest lines",
-        span: { runId: run2, from: 3_661, to: null, reading: null },
+        spans: [{ runId: run2, from: 3_661, to: null, reading: null }],
         expected: { pageRuns: { earlier: run2, later: null }, since: iso(AT + 20_000) },
       },
       {
         name: "read back to its start",
-        span: { runId: run2, from: null, to: null, reading: null },
+        spans: [{ runId: run2, from: null, to: null, reading: null }],
         expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
       },
-    ])("keeps what it holds as its live run settles, $name", ({ span, expected }) => {
+      {
+        name: "held whole from its first line",
+        spans: [],
+        expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
+      },
+    ])("keeps what it holds as its live run settles, $name", ({ spans, expected }) => {
       const paging = engineCardPagingOfRecords(key, {
         runs: [worked, queued({ endedAt: AT + 40_000 })],
         items: [...held, said, ...tail],
-        spans: [notRead, span],
+        spans: [notRead, ...spans],
       });
       expect(paging[run1]).toMatchObject({ ...expected, holdsLines: true, through: null });
     });
