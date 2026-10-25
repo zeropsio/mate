@@ -485,6 +485,43 @@ describe("a change is a branch", () => {
         }),
     );
 
+    it.effect(
+      "a change its Mate continues from its own landing lists only its new commits, however many other changes landed since",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const ada = yield* mateOf(call, fake, owner, "P_MATE", new Map());
+          assert.strictEqual((yield* ada.open("Add the login", "login")).status, 200);
+          const git = yield* gitClient;
+          const work = yield* checkout(git, origin, ada.credential, ada.appId, "ada");
+          yield* work.commit("login.ts");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/login")).code, 0);
+          const first = yield* work.head;
+          yield* recorded(url, 1, first);
+          assert.deepStrictEqual(yield* mergeOf(call, owner, ada.appId, 1, first), [200, "merged"]);
+          // Many other changes of the repository landed after hers.
+          yield* rowsWhere(
+            url,
+            `INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, branch, state,
+               head, merged_sha, landed_head, merged_at)
+             SELECT '${ada.appId}', 'appdev', n, 'P_OTHER', 'Other ' || n, 'other-' || n, 'merged',
+               lpad(to_hex(n), 40, 'a'), lpad(to_hex(n), 40, 'b'), lpad(to_hex(n), 40, 'a'),
+               now() + n * interval '1 second'
+             FROM generate_series(2, 30) n RETURNING 1`,
+            () => true,
+          );
+          // She goes on from her own history on the same branch.
+          assert.strictEqual((yield* ada.open("Remember the login", "login")).status, 200);
+          yield* work.commit("remember.ts");
+          assert.strictEqual((yield* work.push("HEAD:refs/heads/login")).code, 0);
+          const next = yield* work.head;
+          yield* recorded(url, 31, next);
+          assert.deepStrictEqual((yield* detailOf(call, owner, ada.appId, 31)).commits, [next]);
+        }),
+    );
+
     it.effect.each([
       ["a branch its Mate named", "fix-login"],
       ["its default branch", undefined],
