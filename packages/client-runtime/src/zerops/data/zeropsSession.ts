@@ -31,10 +31,10 @@ export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
 }
 
 /**
- * How long before its expiry a device-login session renews itself. The platform issues a device
- * login six hours of life and revokes the previous access token on every refresh, so a margin
- * near that life renews a session at sign-in and at every load, under the requests still
- * carrying the revoked token. Two hours leaves the hourly check two chances before the end.
+ * How long before its expiry a device-login session renews itself, ahead of the next request that
+ * carries it: the client holds every request behind a renewal under way, so none carries the
+ * token the renewal revokes. The platform issues six hours of life, so a margin near that life
+ * would renew a session at every sign-in and every load.
  */
 export const ZEROPS_RENEWAL_MARGIN_MS = 2 * 60 * 60_000;
 
@@ -73,8 +73,15 @@ export interface ZeropsSessionCalls {
   readonly revoke: (session: ZeropsSession) => Promise<void>;
 }
 
-export function makeZeropsSessionCalls(options: ZeropsApiClientOptions): ZeropsSessionCalls {
-  const client = new ZeropsApiClient(options);
+/** `wallNowMs` is the wall clock the session's expiry is read against. */
+export function makeZeropsSessionCalls(
+  options: Omit<ZeropsApiClientOptions, "renewAhead">,
+  wallNowMs: () => number = Date.now,
+): ZeropsSessionCalls {
+  const client = new ZeropsApiClient({
+    ...options,
+    renewAhead: { withinMs: ZEROPS_RENEWAL_MARGIN_MS, nowMs: wallNowMs },
+  });
   return {
     client,
     readUser: () => client.fetchUser(),

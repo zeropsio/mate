@@ -86,7 +86,7 @@ function doors() {
   const minted: string[] = [];
   return {
     minted,
-    accessToken: async (_refresh: boolean) => {
+    accessToken: async () => {
       const token = `access-${minted.length + 1}`;
       minted.push(token);
       return token;
@@ -383,7 +383,7 @@ describe("makeHqApi", () => {
   );
 
   it("asks Zerops for a new access token once when HQ refuses the one it sent as not a person's", async () => {
-    const asked: boolean[] = [];
+    const asked: Array<string | undefined> = [];
     let first = true;
     const hq = fakeHq((seen) => {
       if (seen.path !== "/api/door" || !first) return undefined;
@@ -393,14 +393,14 @@ describe("makeHqApi", () => {
     await makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      accessToken: async (refresh) => {
-        asked.push(refresh);
-        return refresh ? "fresh" : "stale";
+      accessToken: async (refused) => {
+        asked.push(refused);
+        return refused === undefined ? "stale" : "fresh";
       },
       orgId: ORG,
       openSocket: NO_SOCKET,
     }).structure();
-    expect(asked).toEqual([false, true]);
+    expect(asked).toEqual([undefined, "stale"]);
     expect(hq.seen.filter((e) => e.path === "/api/door").map((e) => e.body)).toEqual([
       { accessToken: "stale", orgId: ORG },
       { accessToken: "fresh", orgId: ORG },

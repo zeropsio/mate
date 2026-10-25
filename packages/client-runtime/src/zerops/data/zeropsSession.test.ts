@@ -152,6 +152,48 @@ describe("probeZeropsPrincipal", () => {
   });
 });
 
+describe("makeZeropsSessionCalls renews ahead", () => {
+  const at = Date.parse("2026-10-14T12:00:00Z");
+  const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+  const renewedSession = { ...next, expiresAt: iso(at + 6 * 60 * 60_000) };
+
+  it("a session's first read within the renewal margin carries the renewed token, never the one it revokes", async () => {
+    const bearers: Array<string | null> = [];
+    const { fetch, sent } = platform({
+      "/auth/refresh": () => json(200, renewedSession),
+      "/user/info": () => json(200, person),
+    });
+    const calls = makeZeropsSessionCalls(
+      {
+        fetch: (input, init) => {
+          bearers.push(new Headers(init?.headers).get("authorization"));
+          return fetch(input, init);
+        },
+        baseUrl: BASE_URL,
+      },
+      () => at,
+    );
+    calls.client.restoreSession({ ...stored, expiresAt: iso(at + ZEROPS_RENEWAL_MARGIN_MS - 1) });
+
+    await expect(calls.readUser()).resolves.toEqual(person);
+    expect(sent).toEqual(["POST /auth/refresh", "GET /user/info"]);
+    expect(bearers).toEqual([null, "Bearer access-2"]);
+  });
+
+  it("a session another tab renewed is adopted for the read, and this tab renews nothing itself", async () => {
+    const { fetch, sent } = platform({ "/user/info": () => json(200, person) });
+    const calls = makeZeropsSessionCalls(
+      { fetch, baseUrl: BASE_URL, renewSession: async () => renewedSession },
+      () => at,
+    );
+    calls.client.restoreSession({ ...stored, expiresAt: iso(at + 60_000) });
+
+    await expect(calls.readUser()).resolves.toEqual(person);
+    expect(sent).toEqual(["GET /user/info"]);
+    expect(calls.client.session).toBe(renewedSession);
+  });
+});
+
 describe("makeZeropsSessionCalls.freshBearer", () => {
   const at = Date.parse("2026-10-14T12:00:00Z");
   const margin = 15 * 60_000;
