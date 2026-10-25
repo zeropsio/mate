@@ -1,4 +1,4 @@
-import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import { layerLoopbackTest } from "../testing/loopbackHttpServer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
@@ -78,7 +78,7 @@ describe("persistent conversation assets", () => {
             expect(yield* response.text).toBe(expected);
           }
         }).pipe(
-          Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), NodeHttpServer.layerTest)),
+          Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
           Effect.scoped,
         );
       }).pipe(Effect.provide(NodeServices.layer)),
@@ -143,7 +143,7 @@ describe("persistent conversation assets", () => {
           }).pipe(Effect.flip);
           expect(wrongThread._tag).toBe("AssetWorkspaceAssetNotFoundError");
         }).pipe(
-          Effect.provide(Layer.mergeAll(serverLayer(baseDir, workspace), NodeHttpServer.layerTest)),
+          Effect.provide(Layer.mergeAll(serverLayer(baseDir, workspace), layerLoopbackTest())),
           Effect.scoped,
         );
       }).pipe(Effect.provide(NodeServices.layer)),
@@ -178,7 +178,7 @@ describe("persistent conversation assets", () => {
           "AssetWorkspaceContextNotFoundError",
         );
       }).pipe(
-        Effect.provide(Layer.mergeAll(serverLayer(workspace, workspace), NodeHttpServer.layerTest)),
+        Effect.provide(Layer.mergeAll(serverLayer(workspace, workspace), layerLoopbackTest())),
         Effect.scoped,
       );
     }).pipe(Effect.provide(NodeServices.layer)),
@@ -204,7 +204,7 @@ describe("persistent conversation assets", () => {
         expect(response.status).toBe(200);
         expect(yield* response.text).toBe("existing image");
       }).pipe(
-        Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), NodeHttpServer.layerTest)),
+        Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
         Effect.scoped,
       );
     }).pipe(Effect.provide(NodeServices.layer)),
@@ -267,7 +267,7 @@ describe("persistent conversation assets", () => {
             expect(yield* response.text).toBe("previous image");
           }
         }).pipe(
-          Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), NodeHttpServer.layerTest)),
+          Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
           Effect.scoped,
         );
       }).pipe(Effect.provide(NodeServices.layer)),
