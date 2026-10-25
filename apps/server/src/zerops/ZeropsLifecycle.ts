@@ -31,7 +31,8 @@
  * and never one it says zcp already held (`reused`) — and any call that releases
  * a lease, acquires it again, or reads it no longer held unbinds every other
  * conversation bound to it (`leaseBindings`), each then bound to the
- * earliest-acquired lease of its branch still held, if any. Every read of the
+ * earliest-acquired lease of its repository and branch still held, if any — two
+ * apps of one Mate both on `main` hold two groups. Every read of the
  * leases is told to the repository source (`noteLeases`), whose mounts named
  * after one are a lease's, never a service's, and every lease that changed hands
  * is told by its alias (`checkoutChanged`): its checkout may be another branch's
@@ -55,9 +56,9 @@ import * as Stream from "effect/Stream";
 import {
   ForwardCompatibleArray,
   isZeropsLeaseHeld,
+  sameZeropsLeaseGroup,
   ZEROPS_RECENT_TOOLS_LIMIT,
   ZeropsLease,
-  zeropsLeaseGroupBranch,
   ZeropsRecentTool,
   ZeropsStateEnvelope,
   type SpiEvent,
@@ -235,8 +236,12 @@ export type LeaseChange =
 export interface LeaseBinding {
   readonly conversation: ThreadId;
   readonly alias: string;
-  /** The lease's branch (null: none), whose other leases the conversation is bound to next. */
+  /**
+   * The lease's branch (null: none) and repository (none where zcp named none): the group whose
+   * other leases the conversation is bound to next.
+   */
   readonly branch: string | null;
+  readonly repo: string | undefined;
 }
 
 /** The conversations bound to a lease now, and whether every conversation's record was read. */
@@ -340,6 +345,7 @@ const threadLeaseOf = (lease: ZeropsLease): ThreadLease | undefined =>
       alias: lease.alias,
       pool: lease.pool,
       branch: lease.branch === undefined || lease.branch === "" ? null : lease.branch,
+      ...(lease.repo === undefined || lease.repo === "" ? {} : { repo: lease.repo }),
     }),
   );
 
@@ -449,9 +455,10 @@ const leaseFactsOf = (
  * another, or read under its alias acquired at another time (a pool hands a released container out
  * again under the same alias, so the alias alone never says whose lease it is: the binding is the
  * conversation's that acquired it) — then each is
- * bound to the earliest-acquired lease of its branch this call read still held, if any (a branch
- * spanning several app parts holds one lease per part's pool, and its conversation goes on
- * showing the others), never one another conversation acquired in this call; then the
+ * bound to the earliest-acquired lease of its repository and branch this call read still held, if
+ * any (a branch spanning several app parts holds one lease per part's pool, and its conversation
+ * goes on showing the others; another app's lease of the same branch is another group), never one
+ * another conversation acquired in this call; then the
  * conversation that acquired one is bound, which takes it only while it has no lease, and which
  * its own acquire binds rather than its branch's.
  */
@@ -471,13 +478,12 @@ const leaseChangesFor = (
   );
   const boundNext = (binding: LeaseBinding): ThreadLease | undefined => {
     if (acquired !== undefined && binding.conversation === acquired.by) return undefined;
-    const branch = zeropsLeaseGroupBranch(binding.branch);
     const earliest = (facts.read ?? [])
       .filter(
         (lease) =>
           lease.alias !== binding.alias &&
           isZeropsLeaseHeld(lease.state) &&
-          zeropsLeaseGroupBranch(lease.branch) === branch &&
+          sameZeropsLeaseGroup(binding, lease) &&
           !facts.released.includes(lease.alias) &&
           !acquiredByAnother(lease.alias, binding.conversation),
       )

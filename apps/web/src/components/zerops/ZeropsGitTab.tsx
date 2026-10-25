@@ -17,8 +17,8 @@
  * thread's last envelope says (`useThreadPoolPairs`); a tab that lists nothing then says the
  * code lives in the pool, which the chat reaches by taking a workspace (`gitEmptyLine`). A thread
  * whose agent leased a pool container reads that lease's repository and every
- * other of its branch zcp holds, alone (`threadLeases`, `threadCheckoutHostnames`),
- * each at `/var/www/{alias}`.
+ * other of its repository and branch zcp holds, alone (`threadLeases`,
+ * `threadCheckoutHostnames`), each at `/var/www/{alias}`.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
  * they are the Mate's owner's alone (D11); *Review* is offered to whoever can

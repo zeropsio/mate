@@ -114,7 +114,10 @@ export interface EngineConversationWire {
     width: number,
     height: number,
   ) => Effect.Effect<void, StreamFault>;
-  /** The Mate's access as its connection learns it: a fault, or `null` once verified again. */
+  /**
+   * The Mate's access as its connection learns it: a fault, or `null` each time it connects (a new
+   * session, or the network back under the old one), verified again.
+   */
   readonly watch?: (
     environmentId: string,
     receive: (fault: StreamFault | null) => void,
@@ -338,6 +341,8 @@ interface Held {
   stop: () => void;
   retry: () => void;
   recover: () => void;
+  /** Its transport is back: a retry it waits out is tried now; a refusal stays. */
+  resume: () => void;
   fault: (fault: StreamFault) => void;
 }
 
@@ -402,6 +407,7 @@ function makeLinks(options: {
         },
         retry: () => void Effect.runFork(supervisor.signal("manual-retry")),
         recover: () => void Effect.runFork(supervisor.signal("input-changed")),
+        resume: () => void Effect.runFork(supervisor.signal("resume")),
         fault: (fault) => {
           if (current !== null) Deferred.doneUnsafe(current, Exit.fail(fault));
         },
@@ -641,8 +647,16 @@ export function makeMateEngineConversations(options: {
     if (closed) return;
     const conversations = [...(known.get(environmentId)?.values() ?? [])];
     if (fault === null) {
-      if (!withheld.delete(environmentId)) return;
-      for (const key of conversations) links.held(engineConversationLink(key))?.retry();
+      if (withheld.delete(environmentId)) {
+        for (const key of conversations) links.held(engineConversationLink(key))?.retry();
+        return;
+      }
+      // Connected again, as the transport skips its own wait on its return: every link of the
+      // Mate's that waits out a retry tries now. Kara's rows slept out the rest of a 60 s rung
+      // after a lost socket while its freshly held conversation opened at once, and the card at the
+      // turn's foot listed a helper its records had already closed.
+      links.held(engineRowsLink(environmentId))?.resume();
+      for (const key of conversations) links.held(engineConversationLink(key))?.resume();
       return;
     }
     withheld.set(environmentId, fault);
@@ -978,9 +992,11 @@ export function makeMateEngineConversations(options: {
 
   /**
    * Reads the next page of a run not held whole, the way its card's scroll goes: `later` after
-   * the stretch it holds, `earlier` before it. Its span says while it reads; a read that fails
-   * leaves what it holds, and the next ask reads again. Nothing when the run is whole that way, a
-   * page is already being read, or the conversation has not opened.
+   * the stretch it holds, `earlier` before it — from its end for a run whose start alone is held
+   * (read from its start, or not at all), as a live card's scroll reaches the run before its live
+   * one; it is held from its end on. Its span says while it reads; a read that fails leaves what it
+   * holds, and the next ask reads again. Nothing when the run is whole that way, a page is already
+   * being read, or the conversation has not opened.
    */
   const readRunPage = (
     key: EngineConversationKey,
@@ -996,8 +1012,18 @@ export function makeMateEngineConversations(options: {
     );
     if (held.kind !== "known") return false;
     const { environmentId: _environmentId, ...span } = held.value;
-    const edge = direction === "later" ? span.to : span.from;
-    if (span.reading !== null || edge === null) return false;
+    const fromItsEnd = direction === "earlier" && span.from === null && span.to !== null;
+    const at: RunPageAt | null =
+      direction === "later"
+        ? span.to === null
+          ? null
+          : { after: span.to }
+        : span.from !== null
+          ? { before: span.from }
+          : fromItsEnd
+            ? {}
+            : null;
+    if (span.reading !== null || at === null) return false;
     const generations = Object.values(engineConversationScopes(key)).map((owned) => ({
       scope: owned,
       generation: streamOf(store.state(), owned).generation,
@@ -1014,7 +1040,7 @@ export function makeMateEngineConversations(options: {
       });
     deliver([spanRow(key, { ...span, reading: direction })]);
     const fiber = Effect.runFork(
-      wire.readRun(key, runId, direction === "later" ? { after: edge } : { before: edge }).pipe(
+      wire.readRun(key, runId, at).pipe(
         Effect.flatMap((page) =>
           page._tag === "Page"
             ? Effect.map(wholeResults(key, page.items), (items) => ({ ...page, items }))
@@ -1031,7 +1057,11 @@ export function makeMateEngineConversations(options: {
             const moved =
               direction === "later"
                 ? { ...span, to: more ? Math.max(...seqs) : null }
-                : { ...span, from: more ? Math.min(...seqs) : null };
+                : {
+                    ...span,
+                    from: more ? Math.min(...seqs) : null,
+                    ...(fromItsEnd ? { to: null } : {}),
+                  };
             Atom.batch(() =>
               deliver([
                 ...rowsOf(

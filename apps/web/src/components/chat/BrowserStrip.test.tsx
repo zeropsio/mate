@@ -45,6 +45,7 @@ const LIVE: BrowserStripModel = {
   checks: [check("op:home"), running("op:admin", { subject: "https://appdev.example.dev/admin" })],
   views: 2,
   failures: 0,
+  unfinished: 0,
   live: true,
 };
 
@@ -92,6 +93,7 @@ describe("a check that took no picture", () => {
     checks,
     views: 1,
     failures: 0,
+    unfinished: 0,
     live: false,
   });
   const page = {
@@ -149,5 +151,61 @@ describe("a check that took no picture", () => {
     );
     const markup = render(strip(takes), false);
     expect(markup).toContain(`data-browser-strip-stage="${stage}"`);
+  });
+});
+
+// A check whose walk ended before it read the page's errors neither passed nor
+// failed: the strip says it did not finish, never "all passed" or "No errors".
+describe("a check that did not finish", () => {
+  const unfinished = (key: string, subject: string): ZeropsOperation => {
+    const { screenshot: _screenshot, ...settled } = check(key);
+    return {
+      ...settled,
+      subject,
+      browserSummary: {
+        stepCount: 2,
+        errorCount: 0,
+        failedRequestCount: 0,
+        line: "2 steps · not finished",
+        unfinished: true,
+      },
+    };
+  };
+  const title = (markup: string) =>
+    markupDom(markup).body.querySelector("[data-browser-strip-title]")?.textContent;
+
+  it("says so on its own, and stages no findings it never read", () => {
+    const markup = render(
+      {
+        key: "strip:unfinished",
+        checks: [unfinished("op:home", "https://appdev.example.dev/")],
+        views: 1,
+        failures: 0,
+        unfinished: 1,
+        live: false,
+      },
+      false,
+    );
+    expect(title(markup)).toBe("the home page not finished");
+    expect(markup).not.toContain("No errors");
+    expect(markup).toContain('data-browser-strip-frame="unfinished"');
+  });
+
+  it("is counted beside the checks that passed, never as one", () => {
+    const markup = render(
+      {
+        key: "strip:unfinished",
+        checks: [
+          unfinished("op:home", "https://appdev.example.dev/"),
+          { ...check("op:admin"), subject: "https://appdev.example.dev/admin" },
+        ],
+        views: 2,
+        failures: 0,
+        unfinished: 1,
+        live: false,
+      },
+      false,
+    );
+    expect(title(markup)).toBe("2 checks · 1 not finished");
   });
 });

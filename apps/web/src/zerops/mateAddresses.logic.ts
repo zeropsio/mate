@@ -22,7 +22,7 @@
  * Infrastructure and lists no address of its own.
  *
  * A thread bound to a lease also lists the dev servers zcp read on each of its
- * leases — the one it is bound to and every other of its branch — under the
+ * leases — the one it is bound to and every other of its repository and branch — under the
  * lease's name (`<pool> · <branch>`). A lease has no address but those: the
  * pool's own route is the pool's, never the lease's.
  *

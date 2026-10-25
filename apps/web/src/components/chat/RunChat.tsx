@@ -120,6 +120,7 @@ import {
   browserCheckCaption,
   browserPageWords,
   browserTakeState,
+  checksVerdict,
   formatWorkDuration,
   operationLineWords,
   operationUnreturnedWords,
@@ -2248,7 +2249,6 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
   const disclosure = useDisclosure();
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
-  const settled = strip.checks.filter((check) => check.phase !== "running");
   // Two pages of one host by name, as one is; more by their count, and so
   // are pages of two hosts, whose paths do not say which is which ("/" on
   // another port is not the app's front page).
@@ -2264,15 +2264,7 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
           ? `Checked ${browserPageWords(pages[0]!)} and ${browserPageWords(pages[1]!)}`
           : `Checked ${strip.views} pages`
   } in the browser`;
-  const verdict = running
-    ? null
-    : strip.failures > 0
-      ? strip.failures === 1
-        ? "1 check failed"
-        : `${strip.failures} checks failed`
-      : settled.length === 1
-        ? null
-        : `${settled.length} checks passed`;
+  const verdict = checksVerdict(strip);
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
   const tookMs = endedMs - startedMs;

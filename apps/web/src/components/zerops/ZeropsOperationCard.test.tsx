@@ -820,7 +820,12 @@ describe("ZeropsOperationCard — browser", () => {
             status: "completed",
             resultText: JSON.stringify({
               url: "https://kanbandev-26a7.prg1.zerops.app",
-              steps: [{ command: ["set", "viewport", "1440", "900"], success: true }],
+              steps: [
+                { command: ["set", "viewport", "1440", "900"], success: true },
+                { command: ["errors"], success: true },
+                { command: ["console"], success: true },
+                { command: ["network", "requests", "--status", "400-599"], success: true },
+              ],
               errorsOutput: [],
               consoleOutput: [],
               networkOutput: [],

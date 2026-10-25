@@ -235,6 +235,19 @@ describe("the lease a bound conversation's chip reads", () => {
     expect(boundLeaseRead(binding, [lease({ state: "parked" })])?.state).toBe("parked");
   });
 
+  it("is none for another repository's lease of the branch under the alias", () => {
+    const web = "https://hq.example/git/g1/appdev";
+    const api = "https://hq.example/git/g1/apidev";
+    expect(boundLeaseRead({ ...binding, repo: web }, [lease({ repo: api })])).toBeUndefined();
+    expect(boundLeaseRead({ ...binding, repo: web }, [lease({ repo: web })])).toEqual(
+      lease({ repo: web }),
+    );
+    expect(
+      boundLeaseRead(binding, [lease({ repo: api })]),
+      "a binding that names no repository reads the lease of its alias and branch",
+    ).toEqual(lease({ repo: api }));
+  });
+
   it("is none for another branch's lease under the alias, an ended one, or no read", () => {
     expect(boundLeaseRead(binding, [lease({ branch: "feat-y" })])).toBeUndefined();
     expect(boundLeaseRead(binding, [lease({ state: "released" })])).toBeUndefined();

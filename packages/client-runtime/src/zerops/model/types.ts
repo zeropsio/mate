@@ -170,6 +170,12 @@ export interface ZeropsOperationBrowserSummary {
   readonly errorCount: number;
   readonly failedRequestCount: number;
   readonly line: string;
+  /**
+   * The walk ended before its canned tail read the page's errors, console and
+   * requests — zcp ended it at a wedged browser, or its deadline cut it: the
+   * zero counts are unread, never "no errors".
+   */
+  readonly unfinished?: true;
 }
 
 /**

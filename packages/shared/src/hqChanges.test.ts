@@ -32,6 +32,7 @@ import {
   mergeSubject,
   parseAttachmentUrl,
   parseChangeUrl,
+  repoUrl,
 } from "./hqChanges.ts";
 
 const HQ = "https://hqzone.prg1-zerops.zone";
@@ -48,6 +49,11 @@ describe("hqChanges — the change link", () => {
     expect(changeUrl(`${HQ}/`, APP, "appdev", 7)).toBe(url);
     expect(parseChangeUrl(url, `${HQ}/`)).toEqual({ appId: APP, repo: "appdev", number: 7 });
     expect(changeRoutePath(APP, "appdev", 7)).toBe(`/change/${APP}/appdev/7`);
+  });
+
+  it("names where git reaches a repository at HQ's address, as zcp names a lease's repository", () => {
+    expect(repoUrl(HQ, APP, "appdev")).toBe(`${HQ}/git/${APP}/appdev`);
+    expect(repoUrl(`${HQ}/`, APP, "appdev")).toBe(`${HQ}/git/${APP}/appdev`);
   });
 
   it.each([
