@@ -29,6 +29,8 @@
  *
  * @module ZeropsGitSpawner
  */
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
@@ -74,6 +76,14 @@ export const MAX_GIT_SESSIONS_PER_HOST = 4;
 
 /** The exit code ssh reserves for its own transport failures. */
 const SSH_TRANSPORT_EXIT_CODE = 255;
+
+/**
+ * How long a re-read of the mount table answers for a workspace path the cached read held no mount
+ * at. One status read names such a path in a handful of git spawns in a row, and every re-read
+ * takes the gate the repository list waits on; a mount made after a re-read is seen by the first
+ * spawn after this window.
+ */
+export const UNMOUNTED_RECHECK = Duration.seconds(1);
 
 /**
  * The only environment variables that cross the wire.
@@ -416,6 +426,20 @@ export const makeZeropsGitSpawner = (
     return created;
   };
 
+  // The last re-read of the mount table, and when it began: within UNMOUNTED_RECHECK it answers
+  // for every path no cached read held a mount at.
+  let recheck: { readonly at: number; readonly read: ZeropsRepositories } | undefined;
+  const reread = (refresh: Effect.Effect<ZeropsRepositories>) =>
+    Effect.gen(function* () {
+      const at = yield* Clock.currentTimeMillis;
+      if (recheck !== undefined && at - recheck.at < Duration.toMillis(UNMOUNTED_RECHECK)) {
+        return recheck.read;
+      }
+      const read = yield* refresh;
+      recheck = { at, read };
+      return read;
+    });
+
   const spawn: ChildProcessSpawner.ChildProcessSpawner["Service"]["spawn"] = (command) =>
     Effect.gen(function* () {
       if (command._tag === "PipedCommand" && mentionsRemoteLocation(command)) {
@@ -443,7 +467,7 @@ export const makeZeropsGitSpawner = (
         const mentioned = remoteLocationsOf(command);
         if (mentioned.length === 0) return yield* options.inner.spawn(command);
         // Read again: what the cached read holds no mount at may be one mounted since.
-        const fresh = options.refresh === undefined ? repositories : yield* options.refresh;
+        const fresh = options.refresh === undefined ? repositories : yield* reread(options.refresh);
         const mounted = fresh._tag === "available" ? fresh.repositories : [];
         invocation = rewriteGitSpawn(command, mounted);
         if (invocation === undefined) {
