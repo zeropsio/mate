@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- localhost wire drivers and failure diagnostics.
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import type * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import type { Page, BrowserContext } from "puppeteer-core";
 import { inject } from "vite-plus/test";
@@ -66,6 +67,19 @@ export interface ScenarioDrivers {
   routes: Record<string, string>;
   onMate: ((mate: MateFake) => void)[];
   links: Map<string, Effect.Success<ReturnType<ScenarioDrivers["core"]["socket"]>>>;
+  /**
+   * A new link of the enrolled Mate `name` to HQ, the way its container opens one: an external
+   * HQ takes the project key in the link's hello; the embedded Core a ticket for `credential`,
+   * by default one enrolled anew the way zcp does it.
+   */
+  linkMate: (
+    name: string,
+    credential?: string,
+  ) => Effect.Effect<
+    Effect.Success<ReturnType<ScenarioDrivers["core"]["socket"]>>,
+    never,
+    Scope.Scope
+  >;
   /** The real Mates of a `mate: "real"` scenario, by project. */
   realMates: Map<string, RealMate>;
   owner: string;
@@ -174,8 +188,26 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://app.zerops.io": api.origin,
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
+  const linkMate = Effect.fn("scenarios.linkMate")(function* (name: string, credential?: string) {
+    if (external) {
+      const link = yield* core.socket("/api/mate/link");
+      yield* link.send({
+        type: "hello",
+        key: `mate-key-${name}`,
+        serviceId: `service-${name}`,
+        origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
+      });
+      return link;
+    }
+    const issued = credential ?? (yield* enrollMate(core.call, core.fake, name));
+    const { ticket } = (yield* core.call("POST", "/api/mate/link-ticket", {
+      headers: { authorization: `Mate ${issued}` },
+    })).body as { ticket: string };
+    return yield* core.socket(`/api/mate/link?ticket=${ticket}`);
+  });
   const drivers = {
     hq,
+    linkMate,
     owner,
     appIds,
     zerops,
@@ -394,27 +426,9 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* Effect.promise(() => web.setRoutes());
     putMateService(name);
     if (options.registered === false) return;
-    const key = external ? seedProjectKey(name) : undefined;
+    if (external) seedProjectKey(name);
     const credential = yield* enroll(name, options.app);
-    const path = external
-      ? "/api/mate/link"
-      : yield* core
-          .call("POST", "/api/mate/link-ticket", {
-            headers: { authorization: `Mate ${credential}` },
-          })
-          .pipe(
-            Effect.map(
-              (response) => `/api/mate/link?ticket=${(response.body as { ticket: string }).ticket}`,
-            ),
-          );
-    const link = yield* core.socket(path);
-    if (external)
-      yield* link.send({
-        type: "hello",
-        key,
-        serviceId: `service-${name}`,
-        origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
-      });
+    const link = yield* linkMate(name, credential);
     drivers.links.set(name, link);
     yield* link.next("state");
     const overview = yield* decodeOverview({
