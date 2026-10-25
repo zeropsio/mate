@@ -64,7 +64,7 @@ export function SidebarChiefRow({
   waiting,
 }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
-  // The organization's Chief, by the viewer's name and with their picture on its mark (the owner,
+  // The person's own Chief, by their name and with their picture on its mark (the owner,
   // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
   // its setup has one to say.
   const account = useSignedInAccount();

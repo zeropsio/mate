@@ -189,7 +189,7 @@ const CARDS: ReadonlyArray<{
   {
     proposal: { ...ASK_CHIEF, id: "ask-reader" },
     stage: "open",
-    readOnlyReason: "Finding this Mate's Chief…",
+    readOnlyReason: "Only this Mate's person can ask their Chief.",
     chiefTarget: { kind: "chief", projectId: "p-chief" },
   },
   {

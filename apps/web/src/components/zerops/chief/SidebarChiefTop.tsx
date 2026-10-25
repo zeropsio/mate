@@ -1,5 +1,5 @@
 /**
- * The menu's top row as the menu mounts it (`chiefTopShown`): the organization's Chief once it is listed,
+ * The menu's top row as the menu mounts it (`chiefTopShown`): the person's Chief once it is listed,
  * read as the list's row would read it (`MenuMateLine`), else the same row with its setup's line —
  * one name and one face before and after it comes up. Its press
  * opens the Chief's conversation, or the Chief page while there is none to open (`chiefRowOpens`).
