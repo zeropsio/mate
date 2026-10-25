@@ -34,6 +34,7 @@ import { makeGrokAdapter } from "../provider/Layers/GrokAdapter.ts";
 import type { ProviderAdapterError } from "../provider/Errors.ts";
 import type { ProviderAdapterShape } from "../provider/Services/ProviderAdapter.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { parseCompleteJsonLines } from "../testUtils/jsonLines.ts";
 import { execScriptSource, writeFakeCli } from "../testUtils/fakeCli.ts";
 import {
   ThreadToolPolicyRegistry,
@@ -47,10 +48,7 @@ const CREW_THREAD = ThreadId.make("crew-thread");
 const PERSON_THREAD = ThreadId.make("person-thread");
 
 const readJsonLines = async (filePath: string) =>
-  (await NodeFSP.readFile(filePath, "utf8"))
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  parseCompleteJsonLines(await NodeFSP.readFile(filePath, "utf8"));
 
 const profile = (decided: Array<unknown>, model: string): ThreadToolProfile => ({
   sessionContext: "You are @backend on the crew.",

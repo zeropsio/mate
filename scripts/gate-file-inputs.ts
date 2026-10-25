@@ -121,6 +121,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/spi/replay/goldenCheck.test.ts": [],
   "apps/server/src/spi/replay/goldens.test.ts": ["apps/server/src/spi/fixtures/**"],
   "apps/server/src/terminal/Manager.test.ts": [],
+  "apps/server/src/testUtils/acpMockAgent.test.ts": ["apps/server/scripts/acp-mock-agent.ts"],
   "apps/server/src/testUtils/gitConfig.setup.test.ts": [],
   "apps/server/src/textGeneration/AntigravityTextGeneration.test.ts": [],
   "apps/server/src/textGeneration/CursorTextGeneration.test.ts": [],

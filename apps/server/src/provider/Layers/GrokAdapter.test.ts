@@ -28,6 +28,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 
 import { ServerConfig } from "../../config.ts";
+import { parseCompleteJsonLines } from "../../testUtils/jsonLines.ts";
 import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
 import {
@@ -57,12 +58,7 @@ async function makeMockGrokWrapper(extraEnv?: Record<string, string>) {
 }
 
 async function readJsonLines(filePath: string) {
-  const raw = await NodeFSP.readFile(filePath, "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  return parseCompleteJsonLines(await NodeFSP.readFile(filePath, "utf8"));
 }
 
 const grokAdapterTestLayer = ServerConfig.layerTest(process.cwd(), {
@@ -1344,6 +1340,9 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         Effect.promise(() => NodeFSP.rm(tempDir, { recursive: true, force: true })),
       );
       const promptStartedPath = NodePath.join(tempDir, "prompt-started");
+      // The wait must start on an existing file: its appends reach a file watcher at once, while
+      // a creation is seen only through a directory notification, which macOS delivers late.
+      yield* Effect.promise(() => NodeFSP.writeFile(promptStartedPath, ""));
       const wrapperPath = yield* Effect.promise(() =>
         makeMockGrokWrapper({
           T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
