@@ -191,7 +191,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     shownChoice === null
       ? "Diff"
       : manyRepositories
-        ? `${shownChoice.repository.name} · ${shownChoice.label}`
+        ? `${shownChoice.repository.label} · ${shownChoice.label}`
         : shownChoice.label;
   const branchDiffPreview = useEnvironmentQuery(
     activeThread && shownCwd
@@ -438,7 +438,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         Open Git
       </Button>
     ) : null;
-  const repositoryNames = [...new Set(choices.map((choice) => choice.repository.name))];
+  const repositories = [
+    ...new Map(choices.map(({ repository }) => [repository.name, repository])).values(),
+  ];
 
   const headerRow = (
     <>
@@ -458,9 +460,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                 value={shownChoice === null ? "" : choiceValue(shownChoice)}
                 onValueChange={selectChoice}
               >
-                {repositoryNames.map((name) => (
+                {repositories.map(({ name, label }) => (
                   <DropdownMenuGroup key={name}>
-                    {manyRepositories ? <DropdownMenuLabel>{name}</DropdownMenuLabel> : null}
+                    {manyRepositories ? <DropdownMenuLabel>{label}</DropdownMenuLabel> : null}
                     {choices
                       .filter((choice) => choice.repository.name === name)
                       .map((choice) => (

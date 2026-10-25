@@ -44,7 +44,7 @@ function status(
 }
 
 const read = (name: string, repositoryStatus: DiffRepositoryStatus): DiffRepositoryRead => ({
-  repository: { name, cwd: `/var/www/${name}` },
+  repository: { name, label: name, cwd: `/var/www/${name}` },
   status: repositoryStatus,
 });
 
@@ -213,13 +213,13 @@ describe("diffRepositories", () => {
         crewmate: null,
         leases: [LEASE],
       }),
-    ).toEqual([{ name: "webpool · feat-x", cwd: "/var/www/webpool-3" }]);
+    ).toEqual([{ name: "webpool-3", label: "webpool · feat-x", cwd: "/var/www/webpool-3" }]);
   });
 
   it("a thread bound to no lease diffs the Mate's checkouts by their hostnames", () => {
     expect(
       diffRepositories({ checkouts: ["appdev"], cwd: "/var/www", crewmate: null, leases: [] }),
-    ).toEqual([{ name: "appdev", cwd: "/var/www/appdev" }]);
+    ).toEqual([{ name: "appdev", label: "appdev", cwd: "/var/www/appdev" }]);
   });
 
   it("a thread bound to a lease of a branch held on several pools diffs every lease of it, each named by its pool and branch", () => {
@@ -232,8 +232,36 @@ describe("diffRepositories", () => {
         leases: [LEASE, hq],
       }),
     ).toEqual([
-      { name: "webpool · feat-x", cwd: "/var/www/webpool-3" },
-      { name: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
+      { name: "webpool-3", label: "webpool · feat-x", cwd: "/var/www/webpool-3" },
+      { name: "hqpool-2", label: "hqpool · feat-x", cwd: "/var/www/hqpool-2" },
     ]);
+  });
+});
+
+describe("two workspaces of one pool and branch", () => {
+  // zcp holds one lease per repository, branch and pool: two repositories on one pool's branch are
+  // two leases that read alike.
+  const web = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+  const docs = { alias: "webpool-4", pool: "webpool", branch: "feat-x" } as const;
+
+  it("are two repositories in Diff, each kept by its own choice", () => {
+    const repositories =
+      diffRepositories({
+        checkouts: ["webpool-3", "webpool-4"],
+        cwd: "/var/www",
+        crewmate: null,
+        leases: [web, docs],
+      }) ?? [];
+    expect(new Set(repositories.map(({ name }) => name)).size).toBe(2);
+    const reads = repositories.map((repository, index) => ({
+      repository,
+      status: status({ changed: index }),
+    }));
+    // The person chose the first, which has nothing uncommitted; the other has a file.
+    const chosen = repositories[0]?.name ?? "";
+    const shown = shownDiff(reads, { kind: "unstaged", repository: chosen });
+    expect(shown.kind === "choice" ? shown.choice.repository.cwd : shown.kind).toBe(
+      "/var/www/webpool-3",
+    );
   });
 });

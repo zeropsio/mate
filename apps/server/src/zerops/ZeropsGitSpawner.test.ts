@@ -7,6 +7,7 @@ import * as Logger from "effect/Logger";
 import * as Ref from "effect/Ref";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -259,6 +260,13 @@ const makeInnerSpawner = (options?: {
 }) =>
   Effect.gen(function* () {
     const calls = yield* Ref.make<ReadonlyArray<SpawnRecord>>([]);
+    /** Each spawn's environment, in order, and whether it extends the server's. */
+    const envs = yield* Ref.make<
+      ReadonlyArray<{
+        readonly env: Record<string, string | undefined> | undefined;
+        readonly extendEnv: boolean | undefined;
+      }>
+    >([]);
     const inFlight = yield* Ref.make(0);
     const peak = yield* Ref.make(0);
     const spawner = ChildProcessSpawner.make((command) =>
@@ -270,6 +278,10 @@ const makeInnerSpawner = (options?: {
         yield* Ref.update(calls, (previous) => [
           ...previous,
           { command: command.command, args: command.args },
+        ]);
+        yield* Ref.update(envs, (previous) => [
+          ...previous,
+          { env: command.options.env, extendEnv: command.options.extendEnv },
         ]);
         const current = yield* Ref.updateAndGet(inFlight, (n) => n + 1);
         yield* Ref.update(peak, (n) => Math.max(n, current));
@@ -291,7 +303,7 @@ const makeInnerSpawner = (options?: {
         });
       }),
     );
-    return { spawner, calls, peak } as const;
+    return { spawner, calls, envs, peak } as const;
   });
 
 const available = (list: ReadonlyArray<ZeropsRepository>): Effect.Effect<ZeropsRepositories> =>
@@ -443,6 +455,68 @@ describe("makeZeropsGitSpawner", () => {
             },
             { command: "git", args: ["status"] },
           ]);
+        }),
+      ),
+  );
+
+  // An unmounted path's directory can outlive its mount: git there must not answer for whatever
+  // repository holds the workspace root itself.
+  it.effect(
+    "git at a workspace path no mount holds never looks for a repository above that path",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: available(repositories),
+            refresh: available(repositories),
+            inner: inner.spawner,
+          });
+
+          yield* spawner.spawn(
+            ChildProcess.make("git", ["-C", "/var/www/imgrun", "status"], {
+              env: { GIT_CEILING_DIRECTORIES: "/home/zerops", LC_ALL: "C" },
+            }),
+          );
+          yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }));
+
+          const [first, second] = yield* Ref.get(inner.envs);
+          assert.includeMembers(first?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], [
+            "/var/www",
+            "/home/zerops",
+          ]);
+          assert.strictEqual(first?.env?.LC_ALL, "C");
+          assert.include(second?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
+          assert.isTrue(second?.extendEnv, "a command with no environment still inherits PATH");
+        }),
+      ),
+  );
+
+  it.effect(
+    "git spawns in a row at a workspace path no mount holds read the mount table once, and one a while later again",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const reads = yield* Ref.make(0);
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: available(repositories),
+            refresh: Ref.update(reads, (n) => n + 1).pipe(Effect.andThen(available(repositories))),
+            inner: inner.spawner,
+          });
+          const status = (args: ReadonlyArray<string>) =>
+            spawner.spawn(ChildProcess.make("git", ["-C", "/var/www/imgrun", ...args]));
+
+          yield* status(["rev-parse", "--is-inside-work-tree"]);
+          yield* status(["status", "--porcelain=v2", "--branch"]);
+          yield* status(["rev-parse", "HEAD"]);
+          assert.strictEqual(yield* Ref.get(reads), 1);
+
+          yield* TestClock.adjust("10 seconds");
+          yield* status(["status", "--porcelain=v2", "--branch"]);
+          assert.strictEqual(yield* Ref.get(reads), 2);
         }),
       ),
   );

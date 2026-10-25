@@ -13,6 +13,7 @@ import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { threadEnvironment } from "../state/threads";
 import { toastManager } from "../components/ui/toast";
+import { zeropsFeeds } from "../zerops/feeds";
 
 const commands = vi.hoisted(() => ({
   archive: vi.fn(),
@@ -240,6 +241,67 @@ describe("archiving a conversation bound to a lease", () => {
         params: { environmentId: target.environmentId, threadId: target.threadId },
       }),
     );
+  });
+
+  /** The conversation's lifecycle, as its last call read zcp's leases (`current`, read live). */
+  const readsLeases = (current: { leases: ReadonlyArray<Record<string, unknown>> }) => {
+    const lifecycle = zeropsFeeds.lifecycle({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId },
+    });
+    const read = appAtomRegistry.get.bind(appAtomRegistry);
+    vi.spyOn(appAtomRegistry, "get").mockImplementation(((atom: Parameters<typeof read>[0]) =>
+      atom === lifecycle
+        ? {
+            state: "known",
+            value: {
+              threadId: target.threadId,
+              recentTools: [],
+              envelope: { leases: current.leases },
+            },
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          }
+        : read(atom)) as typeof read);
+  };
+  const held = { ...LEASE, state: "held" };
+
+  it.each([
+    { read: "lost", leases: [{ ...held, state: "lost" }] },
+    { read: "another branch's", leases: [{ ...held, branch: "feat-y" }] },
+    { read: "gone", leases: [] },
+  ])(
+    "asks nothing once the conversation's last read of zcp's leases has its lease $read",
+    async ({ leases }) => {
+      const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+      readsLeases({ leases });
+      await useThreadActions().archiveThread(target);
+      expect(commands.archive).toHaveBeenCalledOnce();
+      expect(releaseAsk(add)).toBeUndefined();
+    },
+  );
+
+  it("a Release pressed once a later read no longer holds the lease sends nothing", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    const current = { leases: [held] as ReadonlyArray<Record<string, unknown>> };
+    readsLeases(current);
+    await useThreadActions().archiveThread(target);
+    current.leases = [{ ...held, state: "lost" }];
+    await releaseAsk(add)?.actionProps?.onClick?.(event);
+    expect(commands.unarchive).not.toHaveBeenCalled();
+    expect(commands.startTurn).not.toHaveBeenCalled();
+  });
+
+  it("Release still sends the request when the conversation is back but could not be opened", async () => {
+    const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
+    vi.spyOn(toastManager, "close").mockImplementation(() => {});
+    router.navigate.mockRejectedValueOnce(new Error("navigation cancelled"));
+    await useThreadActions().archiveThread(target);
+    await releaseAsk(add)?.actionProps?.onClick?.(event);
+    expect(commands.unarchive).toHaveBeenCalledOnce();
+    expect(commands.startTurn).toHaveBeenCalledOnce();
   });
 
   it("Not now sends nothing and keeps the conversation archived", async () => {

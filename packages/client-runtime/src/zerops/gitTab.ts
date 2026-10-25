@@ -109,7 +109,9 @@ export interface GitChangeState {
 /**
  * A Mate's newest change in a repository, as the flow carries its application's — the open one,
  * if any, being the newest, since a Mate opens a number only while none is open. A change closed
- * without landing is no work of anybody's any more.
+ * without landing is no work of anybody's any more. A checkout one of the thread's `leases` mounts
+ * is no repository of HQ's — HQ names a repository after the dev service it began on, never after
+ * a pool's container — so its change is the one on the branch zcp checked out there.
  */
 export function mateChangeIn(
   flow: {
@@ -118,9 +120,14 @@ export function mateChangeIn(
   },
   mateProjectId: string | undefined,
   repository: string,
+  leases: ReadonlyArray<CheckoutLease> = [],
 ): FlowPullRequest | undefined {
+  const lease = leases.find(({ alias }) => alias === repository);
   const own = (change: FlowPullRequest) =>
-    change.mateProjectId === mateProjectId && change.repository === repository;
+    change.mateProjectId === mateProjectId &&
+    (lease === undefined
+      ? change.repository === repository
+      : lease.branch !== null && change.branch === lease.branch);
   return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
     FlowPullRequest | undefined
   >(
@@ -173,7 +180,13 @@ export interface GitBlockAction {
 }
 
 export interface GitBlock {
+  /** The checkout: a service's hostname, or a lease's alias. */
   readonly repository: string;
+  /**
+   * The repository's name in HQ, which its change, commits and review go by: the checkout's own,
+   * or for a lease the repository of the change on its branch (`mateChangeIn`).
+   */
+  readonly hqRepository: string;
   /** What the block is called: the repository, or a lease's `<pool> · <branch>` (`checkoutLabel`). */
   readonly label?: string;
   /** The branch the container is on. `main` for a codebase nobody has touched. */
@@ -580,6 +593,7 @@ export function gitBlock(input: {
   });
   return {
     repository: checkout.repository,
+    hqRepository: change?.repository ?? checkout.repository,
     label: checkoutLabel(checkout.repository, input.leases ?? []),
     branch:
       checkout.read === false || checkout.failure !== undefined ? "" : (checkout.headRef ?? MAIN),

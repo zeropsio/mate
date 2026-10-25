@@ -16,9 +16,10 @@
  * command checks the project and service IDs in the same shell before Git.
  * A workspace path the cached read holds no mount at is read again; one a
  * whole read of the mount table still holds no mount at is this container's
- * own disk, where Git runs as anywhere else (a runtime with no checkout
- * mounted reads as no repository). Any other unresolved remote location fails
- * instead of falling back to local Git. Non-Git commands and Git outside the
+ * own disk, where Git runs as anywhere else but never looks above that path
+ * (a runtime with no checkout mounted reads as no repository). Any other
+ * unresolved remote location fails instead of falling back to local Git.
+ * Non-Git commands and Git outside the
  * remote workspace keep their platform behaviour. Compound Git pipelines
  * involving remote locations are refused.
  *
@@ -28,6 +29,8 @@
  *
  * @module ZeropsGitSpawner
  */
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
@@ -39,6 +42,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { ServerConfig } from "../config.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
+  ZEROPS_WORKSPACE_ROOT,
   ZeropsRepositorySource,
   type ZeropsRepositories,
   type ZeropsRepository,
@@ -72,6 +76,14 @@ export const MAX_GIT_SESSIONS_PER_HOST = 4;
 
 /** The exit code ssh reserves for its own transport failures. */
 const SSH_TRANSPORT_EXIT_CODE = 255;
+
+/**
+ * How long a re-read of the mount table answers for a workspace path the cached read held no mount
+ * at. One status read names such a path in a handful of git spawns in a row, and every re-read
+ * takes the gate the repository list waits on; a mount made after a re-read is seen by the first
+ * spawn after this window.
+ */
+export const UNMOUNTED_RECHECK = Duration.seconds(1);
 
 /**
  * The only environment variables that cross the wire.
@@ -209,6 +221,28 @@ const remoteLocationsOf = (command: ChildProcess.StandardCommand): ReadonlyArray
       ),
     ),
   ].filter((candidate) => candidate.startsWith("/var/www/"));
+};
+
+/**
+ * Local git at a workspace path no mount holds, kept from looking for a repository above that
+ * path: its directory can outlive its mount, and git would otherwise climb into whatever
+ * repository holds the workspace root and answer for it as this runtime's. Without an environment
+ * of its own the command inherits the server's, as it did.
+ */
+const belowWorkspaceRoot = (command: ChildProcess.StandardCommand): ChildProcess.Command => {
+  const { env, extendEnv } = command.options;
+  const ceiling = env?.GIT_CEILING_DIRECTORIES;
+  return ChildProcess.make(command.command, command.args, {
+    ...command.options,
+    env: {
+      ...env,
+      GIT_CEILING_DIRECTORIES:
+        ceiling === undefined || ceiling === ""
+          ? ZEROPS_WORKSPACE_ROOT
+          : `${ZEROPS_WORKSPACE_ROOT}:${ceiling}`,
+    },
+    extendEnv: env === undefined || extendEnv === true,
+  });
 };
 
 const mentionsRemoteLocation = (command: ChildProcess.Command): boolean =>
@@ -392,6 +426,20 @@ export const makeZeropsGitSpawner = (
     return created;
   };
 
+  // The last re-read of the mount table, and when it began: within UNMOUNTED_RECHECK it answers
+  // for every path no cached read held a mount at.
+  let recheck: { readonly at: number; readonly read: ZeropsRepositories } | undefined;
+  const reread = (refresh: Effect.Effect<ZeropsRepositories>) =>
+    Effect.gen(function* () {
+      const at = yield* Clock.currentTimeMillis;
+      if (recheck !== undefined && at - recheck.at < Duration.toMillis(UNMOUNTED_RECHECK)) {
+        return recheck.read;
+      }
+      const read = yield* refresh;
+      recheck = { at, read };
+      return read;
+    });
+
   const spawn: ChildProcessSpawner.ChildProcessSpawner["Service"]["spawn"] = (command) =>
     Effect.gen(function* () {
       if (command._tag === "PipedCommand" && mentionsRemoteLocation(command)) {
@@ -419,7 +467,7 @@ export const makeZeropsGitSpawner = (
         const mentioned = remoteLocationsOf(command);
         if (mentioned.length === 0) return yield* options.inner.spawn(command);
         // Read again: what the cached read holds no mount at may be one mounted since.
-        const fresh = options.refresh === undefined ? repositories : yield* options.refresh;
+        const fresh = options.refresh === undefined ? repositories : yield* reread(options.refresh);
         const mounted = fresh._tag === "available" ? fresh.repositories : [];
         invocation = rewriteGitSpawn(command, mounted);
         if (invocation === undefined) {
@@ -433,7 +481,7 @@ export const makeZeropsGitSpawner = (
             !mentioned.some((path) =>
               [...mounted, ...known].some((repository) => isUnderMount(path, repository)),
             );
-          if (ownDisk) return yield* options.inner.spawn(command);
+          if (ownDisk) return yield* options.inner.spawn(belowWorkspaceRoot(command));
           return yield* Effect.fail(
             PlatformError.badArgument({
               module: "ZeropsGitSpawner",

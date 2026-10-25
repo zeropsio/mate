@@ -11,6 +11,7 @@ const CHANGE_URL = "https://hq.example.test/changes/acme/api/12";
 function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
   return {
     repository: "api",
+    hqRepository: "api",
     branch: "feature/invoices",
     baseBranch: "main",
     verdict: { tone: "off", text: "Nothing is stopping it.", ask: undefined },

@@ -6223,9 +6223,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const readHistory = (historySessionId: string) =>
         Effect.tryPromise({
           try: async () => {
-            // No folder named: Claude keeps the transcript under the directory the conversation
-            // began in, which a session resumed in another folder is not.
-            const readOptions = { includeSystemMessages: true };
+            const readOptions = {
+              ...(context.session.cwd ? { dir: context.session.cwd } : {}),
+              includeSystemMessages: true,
+            };
             if (options?.getSessionMessages)
               return options.getSessionMessages(historySessionId, readOptions);
             if (claudeEnvironment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
@@ -6282,8 +6283,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const fork = rollbackAt
         ? yield* Effect.tryPromise({
             try: async () => {
-              // Forked beside its source, wherever Claude keeps it; the resume below finds it there.
-              const forkOptions = { upToMessageId: rollbackAt };
+              const forkOptions = {
+                ...(context.session.cwd ? { dir: context.session.cwd } : {}),
+                upToMessageId: rollbackAt,
+              };
               if (options?.forkSession) return options.forkSession(sessionId, forkOptions);
               if (claudeEnvironment.CLAUDE_CONFIG_DIR === process.env.CLAUDE_CONFIG_DIR) {
                 return forkSession(sessionId, forkOptions);

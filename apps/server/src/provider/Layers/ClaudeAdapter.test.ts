@@ -9909,66 +9909,56 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  // Claude keeps a transcript in the project folder of the directory its conversation began in,
-  // and a resume in another directory goes on writing there (Claude Code 2.1.296, probed). The
-  // history helpers find it there, or anywhere when no folder is named; a named folder is the only
-  // place they look.
-  it.effect.each([
-    { name: "a move into a subfolder", began: "/var/www", now: "/var/www/appdev" },
-    { name: "a move back out", began: "/var/www/appdev", now: "/var/www" },
-  ])("rewinds Claude history after $name moved the session to another folder", ({ began, now }) => {
-    const lookedIn = (dir: string | undefined) => dir === undefined || dir === began;
-    const harness = makeHarness({
-      forkSession: async (sessionId, options) => {
-        if (!lookedIn(options?.dir)) {
-          throw new Error(`Session ${sessionId} not found in project directory for ${now}`);
-        }
-        return { sessionId: CLAUDE_FORK_SESSION_ID };
-      },
-      getSessionMessages: async (sessionId, options) => {
-        if (!lookedIn(options?.dir)) return [];
-        return sessionId === CLAUDE_FORK_SESSION_ID
-          ? [
-              claudeHistoryMessage({ type: "user", uuid: "fork-turn-1", sessionId }),
-              claudeHistoryMessage({ type: "assistant", uuid: "fork-assistant-1", sessionId }),
-            ]
-          : [
-              claudeHistoryMessage({ type: "user", uuid: "turn-1" }),
-              claudeHistoryMessage({ type: "assistant", uuid: "assistant-1" }),
-              claudeHistoryMessage({ type: "user", uuid: "turn-2" }),
-              claudeHistoryMessage({ type: "assistant", uuid: "assistant-2" }),
-            ];
-      },
-    });
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-      yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-        cwd: now,
-        resumeCursor: {
-          threadId: THREAD_ID,
-          resume: CLAUDE_ORIGINAL_SESSION_ID,
-          turnCount: 2,
-          turnStartMessageIds: ["turn-1", "turn-2"],
+  // Claude keeps a transcript in the project folder of the directory its session opened in, and a
+  // session opens where it always has: naming that folder spares a scan of every project's.
+  it.effect(
+    "a Claude rollback reads and forks its transcript in its session's own project folder",
+    () => {
+      const folders: Array<string | undefined> = [];
+      const harness = makeHarness({
+        forkSession: async (_sessionId, options) => {
+          folders.push(options?.dir);
+          return { sessionId: CLAUDE_FORK_SESSION_ID };
+        },
+        getSessionMessages: async (sessionId, options) => {
+          folders.push(options?.dir);
+          return sessionId === CLAUDE_FORK_SESSION_ID
+            ? [
+                claudeHistoryMessage({ type: "user", uuid: "fork-turn-1", sessionId }),
+                claudeHistoryMessage({ type: "assistant", uuid: "fork-assistant-1", sessionId }),
+              ]
+            : [
+                claudeHistoryMessage({ type: "user", uuid: "turn-1" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-1" }),
+                claudeHistoryMessage({ type: "user", uuid: "turn-2" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-2" }),
+              ];
         },
       });
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          cwd: "/var/www",
+          resumeCursor: {
+            threadId: THREAD_ID,
+            resume: CLAUDE_ORIGINAL_SESSION_ID,
+            turnCount: 2,
+            turnStartMessageIds: ["turn-1", "turn-2"],
+          },
+        });
 
-      yield* adapter.rollbackThread(THREAD_ID, 1);
-      const [session] = yield* adapter.listSessions();
-      assert.equal(session?.cwd, now);
-      assert.deepEqual(session?.resumeCursor, {
-        threadId: THREAD_ID,
-        resume: CLAUDE_FORK_SESSION_ID,
-        turnCount: 1,
-        turnStartMessageIds: ["fork-turn-1"],
-      });
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
+        yield* adapter.rollbackThread(THREAD_ID, 1);
+        assert.isAbove(folders.length, 1);
+        assert.deepEqual([...new Set(folders)], ["/var/www"]);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("rewinds a Claude turn that includes tool results and a later steer", () => {
     const forkCalls: Array<Parameters<NonNullable<ClaudeAdapterLiveOptions["forkSession"]>>> = [];

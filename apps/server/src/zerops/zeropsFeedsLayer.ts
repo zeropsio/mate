@@ -228,7 +228,8 @@ const ZeropsHqLinkLive = Layer.unwrap(
  * every conversation bound to a lease that ended, through the very engine the merge runs (memoized
  * by reference): the record binds or unbinds it, under the call's own command id, so a call told
  * again acts once. Who is bound is read from the conversations' views, only when a call says
- * something new of the leases. A lease that changed hands has its checkout's git status forgotten
+ * something new of the leases; a view that could not be read is read again with the next call that
+ * reads them. A lease that changed hands has its checkout's git status forgotten
  * and read again: the same alias may be another branch's container now.
  */
 const ZeropsLifecycleLive = Layer.unwrap(
@@ -237,8 +238,9 @@ const ZeropsLifecycleLive = Layer.unwrap(
     const vcsStatus = yield* VcsStatusBroadcaster;
     return ZeropsLifecycle.layer(conversationOfThread, {
       checkoutChanged: (alias) => vcsStatus.forgetStatus(`${ZEROPS_WORKSPACE_ROOT}/${alias}`),
-      leaseBindings: Effect.map(engine.conversations, ({ views }) =>
-        views.flatMap((view) =>
+      // A conversation whose view could not be read leaves the list incomplete, never unbound.
+      leaseBindings: Effect.map(engine.conversations, ({ views, complete }) => ({
+        bindings: views.flatMap((view) =>
           view.lease == null
             ? []
             : [
@@ -249,7 +251,8 @@ const ZeropsLifecycleLive = Layer.unwrap(
                 },
               ],
         ),
-      ),
+        complete,
+      })),
       recordLease: (conversation, change, key) =>
         engine
           .deliver(ConversationId.make(conversation), change, CommandId.make(key), {

@@ -6,11 +6,13 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -29,8 +31,6 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
-/** The HEAD every status here is read under, unless a test moves it. */
-const HEAD = "2f6e0d1 refs/heads/feature/status-broadcast";
 
 const baseLocalStatus: VcsStatusLocalResult = {
   isRepo: true,
@@ -78,27 +78,28 @@ function makeTestLayer(state: {
   localInvalidationCalls: number;
   remoteInvalidationCalls: number;
   remoteStatusRefreshUpstreamValues?: Array<boolean | undefined>;
-  /** What HEAD reads at the path: the commit and branch the status is read under. */
-  currentHead?: string | null;
   forgottenRepositories?: Array<string>;
+  /** Every git read the status asked for: the local status and the remote one. */
+  gitReads?: number;
 }) {
   return VcsStatusBroadcaster.layer.pipe(
     Layer.provideMerge(NodeServices.layer),
     Layer.provide(makeBackgroundPolicyLayer(() => true)),
     Layer.provide(
       Layer.mock(GitWorkflowService.GitWorkflowService)({
-        readHead: () => Effect.sync(() => state.currentHead ?? HEAD),
         forgetRepository: (cwd) =>
           Effect.sync(() => {
             state.forgottenRepositories?.push(cwd);
           }),
         localStatus: () =>
           Effect.sync(() => {
+            state.gitReads = (state.gitReads ?? 0) + 1;
             state.localStatusCalls += 1;
             return state.currentLocalStatus;
           }),
         remoteStatus: (_input, options) =>
           Effect.sync(() => {
+            state.gitReads = (state.gitReads ?? 0) + 1;
             state.remoteStatusCalls += 1;
             state.remoteStatusRefreshUpstreamValues?.push(options?.refreshUpstream);
             return state.currentRemoteStatus;
@@ -234,7 +235,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -345,7 +345,6 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(makeBackgroundPolicyLayer(() => true)),
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
-            readHead: () => Effect.succeed(HEAD),
             localStatus: (input) =>
               Effect.sync(() => {
                 seenCwds.push(input.cwd);
@@ -418,7 +417,6 @@ describe("VcsStatusBroadcaster", () => {
         remoteStatusCalls: 0,
         localInvalidationCalls: 0,
         remoteInvalidationCalls: 0,
-        currentHead: "1111111 refs/heads/feat-a",
         forgottenRepositories: [] as Array<string>,
       };
 
@@ -442,7 +440,6 @@ describe("VcsStatusBroadcaster", () => {
         } satisfies VcsStatusStreamEvent);
 
         state.currentLocalStatus = onFeatB;
-        state.currentHead = "2222222 refs/heads/feat-b";
         yield* broadcaster.forgetStatus(cwd);
 
         assert.deepStrictEqual(yield* Deferred.await(reread), {
@@ -460,47 +457,182 @@ describe("VcsStatusBroadcaster", () => {
     },
   );
 
-  it.effect(
-    "a status is not served once HEAD at its path reads another branch or commit, to a reader or a new watcher",
-    () => {
-      const state = {
-        currentLocalStatus: onFeatA,
-        currentRemoteStatus: baseRemoteStatus,
-        localStatusCalls: 0,
-        remoteStatusCalls: 0,
-        localInvalidationCalls: 0,
-        remoteInvalidationCalls: 0,
-        currentHead: "1111111 refs/heads/feat-a",
-      };
-
-      return Effect.gen(function* () {
-        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-        const cwd = "/var/www/matepool-2";
-        yield* broadcaster.getStatus({ cwd });
-        yield* broadcaster.getStatus({ cwd });
-        assert.equal(state.localStatusCalls, 1, "the same HEAD serves what was read");
-
-        // Nobody told the cache: the checkout moved under the same path.
-        state.currentLocalStatus = onFeatB;
-        state.currentHead = "2222222 refs/heads/feat-b";
-        assert.deepStrictEqual(yield* broadcaster.getStatus({ cwd }), {
-          ...onFeatB,
-          ...baseRemoteStatus,
-        });
-
-        state.currentLocalStatus = { ...onFeatB, hasWorkingTreeChanges: true };
-        state.currentHead = "3333333 refs/heads/feat-b";
-        const snapshot = yield* Stream.runHead(
-          broadcaster.streamStatus({ cwd, includeRemote: false }),
-        );
-        assert.deepStrictEqual(Option.getOrUndefined(snapshot), {
-          _tag: "snapshot",
-          local: state.currentLocalStatus,
-          remote: null,
-        } satisfies VcsStatusStreamEvent);
-        assert.equal(state.localStatusCalls, 3);
-      }).pipe(Effect.provide(makeTestLayer(state)));
+  // Every git read of a Mate's checkout is an ssh round trip under the host's session cap: a
+  // status already read is served from what was read, and a lease handed on is told (`forgetStatus`).
+  it.effect.each([
+    { what: "a repository", local: baseLocalStatus },
+    {
+      what: "a folder that is no repository",
+      local: {
+        ...baseLocalStatus,
+        isRepo: false,
+        hasPrimaryRemote: false,
+        refName: null,
+      } satisfies VcsStatusLocalResult,
     },
+  ])("a status already read is served without running git again, for $what", ({ local }) => {
+    const state = {
+      currentLocalStatus: local,
+      currentRemoteStatus: baseRemoteStatus,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+      gitReads: 0,
+    };
+
+    return Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const cwd = "/var/www/appdev";
+      yield* broadcaster.getStatus({ cwd });
+      const read = state.gitReads;
+
+      yield* broadcaster.getStatus({ cwd });
+      yield* broadcaster.getStatus({ cwd });
+      yield* Stream.runHead(broadcaster.streamStatus({ cwd, includeRemote: false }));
+
+      assert.equal(state.gitReads - read, 0);
+    }).pipe(Effect.provide(makeTestLayer(state)));
+  });
+
+  // Ada's container was reset and handed to Bob on the same branch and commit: only what is not
+  // committed tells the two checkouts apart.
+  const adasEdit: VcsStatusLocalResult = {
+    ...baseLocalStatus,
+    refName: "feat-a",
+    hasWorkingTreeChanges: true,
+    workingTree: {
+      files: [{ path: "README.md", insertions: 1, deletions: 0 }],
+      insertions: 1,
+      deletions: 0,
+    },
+  };
+  const bobsClean: VcsStatusLocalResult = { ...baseLocalStatus, refName: "feat-a" };
+
+  it.effect.each([
+    {
+      read: "a status read",
+      run: (broadcaster: VcsStatusBroadcaster.VcsStatusBroadcaster["Service"], cwd: string) =>
+        broadcaster.getStatus({ cwd }),
+    },
+    {
+      read: "a refresh",
+      run: (broadcaster: VcsStatusBroadcaster.VcsStatusBroadcaster["Service"], cwd: string) =>
+        broadcaster.refreshStatus(cwd),
+    },
+    {
+      read: "a refresh of the local status",
+      run: (broadcaster: VcsStatusBroadcaster.VcsStatusBroadcaster["Service"], cwd: string) =>
+        broadcaster.refreshLocalStatus(cwd),
+    },
+    {
+      read: "a new watcher's first read",
+      run: (broadcaster: VcsStatusBroadcaster.VcsStatusBroadcaster["Service"], cwd: string) =>
+        Stream.runHead(broadcaster.streamStatus({ cwd, includeRemote: false })),
+    },
+  ])(
+    "$read begun before a checkout was forgotten never lands over what was read after",
+    ({ run }) =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const gate = yield* Deferred.make<void>();
+        const state = { current: adasEdit, holdNext: false };
+        const layer = VcsStatusBroadcaster.layer.pipe(
+          Layer.provideMerge(NodeServices.layer),
+          Layer.provide(makeBackgroundPolicyLayer(() => true)),
+          Layer.provide(
+            Layer.mock(GitWorkflowService.GitWorkflowService)({
+              forgetRepository: () => Effect.void,
+              // The held read answers what the checkout held when it began.
+              localStatus: () =>
+                Effect.suspend(() => {
+                  const local = state.current;
+                  if (!state.holdNext) return Effect.succeed(local);
+                  state.holdNext = false;
+                  return Deferred.succeed(started, undefined).pipe(
+                    Effect.andThen(Deferred.await(gate)),
+                    Effect.as(local),
+                  );
+                }),
+              remoteStatus: () => Effect.succeed(baseRemoteStatus),
+              invalidateLocalStatus: () => Effect.void,
+              invalidateRemoteStatus: () => Effect.void,
+              invalidateStatus: () => Effect.void,
+            }),
+          ),
+        );
+
+        yield* Effect.gen(function* () {
+          const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+          const cwd = "/var/www/matepool-2";
+          state.holdNext = true;
+          const stale = yield* run(broadcaster, cwd).pipe(Effect.forkChild);
+          yield* Deferred.await(started);
+
+          const heard = yield* Queue.unbounded<VcsStatusStreamEvent>();
+          yield* Stream.runForEach(
+            broadcaster.streamStatus({ cwd, includeRemote: false }),
+            (event) => Queue.offer(heard, event),
+          ).pipe(Effect.forkScoped);
+          yield* Queue.take(heard);
+
+          state.current = bobsClean;
+          yield* broadcaster.forgetStatus(cwd);
+          // Whoever watches hears the checkout read afresh.
+          while (true) {
+            const event = yield* Queue.take(heard);
+            if (event._tag !== "remoteUpdated" && event.local.workingTree.files.length === 0) break;
+          }
+
+          yield* Deferred.succeed(gate, undefined);
+          yield* Fiber.join(stale);
+          assert.deepStrictEqual(yield* broadcaster.getStatus({ cwd }), {
+            ...bobsClean,
+            ...baseRemoteStatus,
+          });
+        }).pipe(Effect.provide(layer));
+      }).pipe(Effect.scoped),
+  );
+
+  // The forget is told from the lifecycle feed, whose one fiber serves every thread: a checkout
+  // whose mount stopped answering must not hold it.
+  it.live.each([
+    {
+      stalls: "the path's mount",
+      fileSystem: FileSystem.layerNoop({
+        realPath: (path) => (path.startsWith("/var/www/") ? Effect.never : Effect.succeed(path)),
+      }),
+      forgetRepository: () => Effect.void,
+    },
+    {
+      stalls: "forgetting its repository",
+      fileSystem: FileSystem.layerNoop({ realPath: (path) => Effect.succeed(path) }),
+      forgetRepository: () => Effect.never,
+    },
+  ])(
+    "forgetting a checkout returns at once even when $stalls does not answer",
+    ({ fileSystem, forgetRepository }) =>
+      Effect.gen(function* () {
+        const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+        const returned = yield* broadcaster
+          .forgetStatus("/var/www/matepool-2")
+          .pipe(Effect.timeoutOption("2 seconds"));
+        assert.isTrue(Option.isSome(returned));
+      }).pipe(
+        Effect.provide(
+          VcsStatusBroadcaster.layer.pipe(
+            Layer.provide(fileSystem),
+            Layer.provide(makeBackgroundPolicyLayer(() => true)),
+            Layer.provide(
+              Layer.mock(GitWorkflowService.GitWorkflowService)({
+                forgetRepository,
+                localStatus: () => Effect.succeed(baseLocalStatus),
+                remoteStatus: () => Effect.succeed(baseRemoteStatus),
+              }),
+            ),
+          ),
+        ),
+      ),
   );
 
   // Sidebar and palette rows only read a Mate's status: they must not keep a
@@ -660,7 +792,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -861,7 +992,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => false)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -915,7 +1045,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;
@@ -1002,7 +1131,6 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(makeBackgroundPolicyLayer(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
-          readHead: () => Effect.succeed(HEAD),
           localStatus: () =>
             Effect.sync(() => {
               state.localStatusCalls += 1;

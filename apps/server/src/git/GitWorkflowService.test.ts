@@ -1,9 +1,6 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { VcsRepositoryDetectionError } from "@t3tools/contracts";
 
@@ -11,8 +8,6 @@ import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as VcsProcess from "../vcs/VcsProcess.ts";
-import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
 
 function makeLayer(input: {
   readonly detect: VcsDriverRegistry.VcsDriverRegistry["Service"]["detect"];
@@ -194,63 +189,4 @@ describe("GitWorkflowService", () => {
       ),
     );
   });
-
-  it.effect(
-    "reads HEAD's commit and branch, a branch with no commit yet, and none outside a repository",
-    () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const git = (cwd: string, ...args: ReadonlyArray<string>) =>
-          spawner
-            .string(ChildProcess.make("git", args, { cwd }))
-            .pipe(Effect.map((out) => out.trim()));
-        const repository = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-head-" });
-        const outside = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-head-none-" });
-        yield* git(repository, "init", "--quiet", "--initial-branch=feat-a");
-        const workflow = yield* GitWorkflowService.GitWorkflowService;
-
-        const unborn = yield* workflow.readHead(repository);
-        yield* git(
-          repository,
-          "-c",
-          "user.email=a@b",
-          "-c",
-          "user.name=A",
-          "commit",
-          "--quiet",
-          "--allow-empty",
-          "-m",
-          "one",
-        );
-        const commit = yield* git(repository, "rev-parse", "HEAD");
-        const onFeatA = yield* workflow.readHead(repository);
-        yield* git(repository, "checkout", "--quiet", "-b", "feat-b");
-        const onFeatB = yield* workflow.readHead(repository);
-
-        assert.strictEqual(unborn, "unborn refs/heads/feat-a");
-        assert.strictEqual(onFeatA, `${commit} refs/heads/feat-a`);
-        assert.strictEqual(onFeatB, `${commit} refs/heads/feat-b`);
-        assert.isNull(yield* workflow.readHead(outside));
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          GitWorkflowService.layer.pipe(
-            Layer.provide(
-              Layer.effect(VcsDriverRegistry.VcsDriverRegistry, VcsDriverRegistry.make).pipe(
-                Layer.provide(
-                  Layer.mock(VcsProjectConfig.VcsProjectConfig)({
-                    resolveKind: (input) => Effect.succeed(input.requestedKind ?? "auto"),
-                  }),
-                ),
-                Layer.provide(VcsProcess.layer),
-              ),
-            ),
-            Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
-            Layer.provide(Layer.mock(GitManager.GitManager)({})),
-            Layer.provideMerge(NodeServices.layer),
-          ),
-        ),
-      ),
-  );
 });

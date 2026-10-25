@@ -10,7 +10,6 @@ import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import type {
@@ -129,14 +128,6 @@ interface CachedValue<T> {
 interface CachedVcsStatus {
   readonly local: CachedValue<VcsStatusLocalResult> | null;
   readonly remote: CachedValue<VcsStatusRemoteResult | null> | null;
-  /** HEAD as it read just before `local` was read: `local` is served only while it still does. */
-  readonly head?: string | null;
-}
-
-/** A local status and the HEAD it was read under. */
-interface LocalRead {
-  readonly head: string | null;
-  readonly local: VcsStatusLocalResult;
 }
 
 interface ActiveRemotePoller {
@@ -175,7 +166,8 @@ export class VcsStatusBroadcaster extends Context.Service<
     readonly refreshStatus: (cwd: string) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
     /**
      * Another repository may sit at `cwd` now (a lease's checkout bound or released): nothing kept
-     * of the one before is served again, and whoever watches `cwd` hears it read afresh.
+     * of the one before is served again, and whoever watches `cwd` hears it read afresh. Returns at
+     * once; the forget and the read run on the broadcaster's own fiber.
      */
     readonly forgetStatus: (cwd: string) => Effect.Effect<void>;
     readonly streamStatus: (
@@ -207,35 +199,60 @@ export const make = Effect.gen(function* () {
   const broadcasterScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
     Scope.close(scope, Exit.void),
   );
-  const cacheRef = yield* Ref.make(new Map<string, CachedVcsStatus>());
-  // Bumped by each `forgetStatus` of a path, under `forgetting`: a read begun before the last one
-  // never lands over what it forgot.
-  const forgottenRef = yield* Ref.make(new Map<string, number>());
-  const forgetting = yield* Semaphore.make(1);
+  // What was read of each path, and how many times each path was forgotten: a read begun before the
+  // last forget of its path never lands over what was read after it. One Ref, so a write checks the
+  // count it began under and lays its read down in one step.
+  const cacheRef = yield* Ref.make<{
+    readonly entries: ReadonlyMap<string, CachedVcsStatus>;
+    readonly forgotten: ReadonlyMap<string, number>;
+  }>({ entries: new Map(), forgotten: new Map() });
   const pollersRef = yield* SynchronizedRef.make(new Map<string, ActiveRemotePoller>());
 
   const getCachedStatus = Effect.fn("VcsStatusBroadcaster.getCachedStatus")(function* (
     cwd: string,
   ) {
-    return yield* Ref.get(cacheRef).pipe(Effect.map((cache) => cache.get(cwd) ?? null));
+    return yield* Ref.get(cacheRef).pipe(Effect.map((cache) => cache.entries.get(cwd) ?? null));
   });
 
+  /** How many times `cwd` was forgotten: what a read begun now lands under. */
+  const forgottenCount = (cwd: string) =>
+    Effect.map(Ref.get(cacheRef), (cache) => cache.forgotten.get(cwd) ?? 0);
+
+  /**
+   * Lays a read of `cwd` begun under the forgotten count `began` into the cache, unless the path was
+   * forgotten since; whether it changed what was kept.
+   */
+  const landRead = (
+    cwd: string,
+    began: number,
+    next: (previous: CachedVcsStatus) => CachedVcsStatus,
+  ): Effect.Effect<boolean> =>
+    Ref.modify(cacheRef, (cache) => {
+      if ((cache.forgotten.get(cwd) ?? 0) !== began) return [false, cache] as const;
+      const previous = cache.entries.get(cwd) ?? { local: null, remote: null };
+      const entry = next(previous);
+      return [
+        previous.local?.fingerprint !== entry.local?.fingerprint ||
+          previous.remote?.fingerprint !== entry.remote?.fingerprint,
+        { ...cache, entries: new Map(cache.entries).set(cwd, entry) },
+      ] as const;
+    });
+
   const updateCachedLocalStatus = Effect.fn("VcsStatusBroadcaster.updateCachedLocalStatus")(
-    function* (cwd: string, { head, local }: LocalRead, options?: { publish?: boolean }) {
+    function* (
+      cwd: string,
+      began: number,
+      local: VcsStatusLocalResult,
+      options?: { publish?: boolean },
+    ) {
       const nextLocal = {
         fingerprint: fingerprintStatusPart(local),
         value: local,
       } satisfies CachedValue<VcsStatusLocalResult>;
-      const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
-        const previous = cache.get(cwd) ?? { local: null, remote: null };
-        const nextCache = new Map(cache);
-        nextCache.set(cwd, {
-          ...previous,
-          local: nextLocal,
-          head,
-        });
-        return [previous.local?.fingerprint !== nextLocal.fingerprint, nextCache] as const;
-      });
+      const shouldPublish = yield* landRead(cwd, began, (previous) => ({
+        ...previous,
+        local: nextLocal,
+      }));
 
       if (options?.publish && shouldPublish) {
         yield* PubSub.publish(changesPubSub, {
@@ -252,20 +269,20 @@ export const make = Effect.gen(function* () {
   );
 
   const updateCachedRemoteStatus = Effect.fn("VcsStatusBroadcaster.updateCachedRemoteStatus")(
-    function* (cwd: string, remote: VcsStatusRemoteResult | null, options?: { publish?: boolean }) {
+    function* (
+      cwd: string,
+      began: number,
+      remote: VcsStatusRemoteResult | null,
+      options?: { publish?: boolean },
+    ) {
       const nextRemote = {
         fingerprint: fingerprintStatusPart(remote),
         value: remote,
       } satisfies CachedValue<VcsStatusRemoteResult | null>;
-      const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
-        const previous = cache.get(cwd) ?? { local: null, remote: null };
-        const nextCache = new Map(cache);
-        nextCache.set(cwd, {
-          ...previous,
-          remote: nextRemote,
-        });
-        return [previous.remote?.fingerprint !== nextRemote.fingerprint, nextCache] as const;
-      });
+      const shouldPublish = yield* landRead(cwd, began, (previous) => ({
+        ...previous,
+        remote: nextRemote,
+      }));
 
       if (options?.publish && shouldPublish) {
         yield* PubSub.publish(changesPubSub, {
@@ -283,7 +300,8 @@ export const make = Effect.gen(function* () {
 
   const updateCachedStatus = Effect.fn("VcsStatusBroadcaster.updateCachedStatus")(function* (
     cwd: string,
-    { head, local }: LocalRead,
+    began: number,
+    local: VcsStatusLocalResult,
     remote: VcsStatusRemoteResult | null,
     options?: { publish?: boolean },
   ) {
@@ -295,20 +313,10 @@ export const make = Effect.gen(function* () {
       fingerprint: fingerprintStatusPart(remote),
       value: remote,
     } satisfies CachedValue<VcsStatusRemoteResult | null>;
-    const shouldPublish = yield* Ref.modify(cacheRef, (cache) => {
-      const previous = cache.get(cwd) ?? { local: null, remote: null };
-      const nextCache = new Map(cache);
-      nextCache.set(cwd, {
-        local: nextLocal,
-        remote: nextRemote,
-        head,
-      });
-      return [
-        previous.local?.fingerprint !== nextLocal.fingerprint ||
-          previous.remote?.fingerprint !== nextRemote.fingerprint,
-        nextCache,
-      ] as const;
-    });
+    const shouldPublish = yield* landRead(cwd, began, () => ({
+      local: nextLocal,
+      remote: nextRemote,
+    }));
 
     if (options?.publish && shouldPublish) {
       yield* PubSub.publish(changesPubSub, {
@@ -324,45 +332,22 @@ export const make = Effect.gen(function* () {
     return mergeGitStatusParts(local, remote);
   });
 
-  // HEAD first: a HEAD that moves during the status read leaves the status older than the HEAD it
-  // is kept under, which is read again; the other order would keep a stale status under a new HEAD.
-  const readLocal = Effect.fn("VcsStatusBroadcaster.readLocal")(function* (cwd: string) {
-    const head = yield* workflow.readHead(cwd);
-    const local = yield* workflow.localStatus({ cwd });
-    return { head, local } satisfies LocalRead;
-  });
+  const readLocal = (cwd: string) => workflow.localStatus({ cwd });
 
-  /**
-   * The cached status, while HEAD still reads as it did when its local part was read. Another
-   * branch or commit at the same path (a lease's checkout handed on, a checkout switched over ssh)
-   * drops the entry, so nothing read before it is served.
-   */
-  const getCurrentCachedStatus = Effect.fn("VcsStatusBroadcaster.getCurrentCachedStatus")(
-    function* (cwd: string) {
-      const cached = yield* getCachedStatus(cwd);
-      if (!cached?.local) return cached;
-      const head = yield* workflow.readHead(cwd);
-      if (head === cached.head) return cached;
-      yield* Ref.update(cacheRef, (cache) => {
-        if (cache.get(cwd) !== cached) return cache;
-        const nextCache = new Map(cache);
-        nextCache.delete(cwd);
-        return nextCache;
-      });
-      return null;
-    },
-  );
-
+  // A cached status is served without asking git: every git read of a Mate's checkout is an ssh
+  // round trip under the host's session cap. Another checkout at the same path (a lease's handed
+  // on) is told through `forgetStatus`.
   const loadLocalStatus = Effect.fn("VcsStatusBroadcaster.loadLocalStatus")(function* (
     cwd: string,
   ) {
-    return yield* updateCachedLocalStatus(cwd, yield* readLocal(cwd));
+    const began = yield* forgottenCount(cwd);
+    return yield* updateCachedLocalStatus(cwd, began, yield* readLocal(cwd));
   });
 
   const getOrLoadLocalStatus = Effect.fn("VcsStatusBroadcaster.getOrLoadLocalStatus")(function* (
     cwd: string,
   ) {
-    const cached = yield* getCurrentCachedStatus(cwd);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local) {
       return cached.local.value;
     }
@@ -375,26 +360,26 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.getStatus",
   )(function* (input) {
     const cwd = yield* withFileSystem(normalizeCwd(input.cwd));
-    const cached = yield* getCurrentCachedStatus(cwd);
+    const began = yield* forgottenCount(cwd);
+    const cached = yield* getCachedStatus(cwd);
     if (cached?.local && cached.remote) {
       return mergeGitStatusParts(cached.local.value, cached.remote.value);
     }
     const [local, remote] = yield* Effect.all(
       [
-        cached?.local
-          ? Effect.succeed({ head: cached.head ?? null, local: cached.local.value })
-          : readLocal(cwd),
+        cached?.local ? Effect.succeed(cached.local.value) : readLocal(cwd),
         cached?.remote ? Effect.succeed(cached.remote.value) : workflow.remoteStatus({ cwd }),
       ],
       { concurrency: "unbounded" },
     );
-    return yield* updateCachedStatus(cwd, local, remote);
+    return yield* updateCachedStatus(cwd, began, local, remote);
   });
 
   const refreshLocalStatusCore = Effect.fn("VcsStatusBroadcaster.refreshLocalStatusCore")(
     function* (cwd: string) {
+      const began = yield* forgottenCount(cwd);
       yield* workflow.invalidateLocalStatus(cwd);
-      return yield* updateCachedLocalStatus(cwd, yield* readLocal(cwd), { publish: true });
+      return yield* updateCachedLocalStatus(cwd, began, yield* readLocal(cwd), { publish: true });
     },
   );
 
@@ -409,60 +394,53 @@ export const make = Effect.gen(function* () {
     cwd: string,
     options?: { readonly refreshUpstream?: boolean },
   ) {
+    const began = yield* forgottenCount(cwd);
     if (options?.refreshUpstream !== false) {
       yield* workflow.invalidateRemoteStatus(cwd);
     }
     const remote = yield* workflow.remoteStatus({ cwd }, options);
-    return yield* updateCachedRemoteStatus(cwd, remote, { publish: true });
+    return yield* updateCachedRemoteStatus(cwd, began, remote, { publish: true });
   });
 
   const refreshStatus: VcsStatusBroadcaster["Service"]["refreshStatus"] = Effect.fn(
     "VcsStatusBroadcaster.refreshStatus",
   )(function* (rawCwd) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
+    const began = yield* forgottenCount(cwd);
     // invalidateStatus (not the two partial invalidations) so an explicit
     // refresh also bypasses GitManager's slow PR-lookup cache.
     yield* workflow.invalidateStatus(cwd);
     const [local, remote] = yield* Effect.all([readLocal(cwd), workflow.remoteStatus({ cwd })], {
       concurrency: "unbounded",
     });
-    return yield* updateCachedStatus(cwd, local, remote, { publish: true });
+    return yield* updateCachedStatus(cwd, began, local, remote, { publish: true });
   });
 
-  const forgetStatus: VcsStatusBroadcaster["Service"]["forgetStatus"] = Effect.fn(
-    "VcsStatusBroadcaster.forgetStatus",
-  )(function* (rawCwd) {
+  const forget = Effect.fn("VcsStatusBroadcaster.forgetStatus")(function* (rawCwd: string) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-    const forgotten = yield* forgetting.withPermits(1)(
-      Effect.gen(function* () {
-        const next = ((yield* Ref.get(forgottenRef)).get(cwd) ?? 0) + 1;
-        yield* Ref.update(forgottenRef, (all) => new Map(all).set(cwd, next));
-        yield* Ref.update(cacheRef, (cache) => {
-          const nextCache = new Map(cache);
-          nextCache.delete(cwd);
-          return nextCache;
-        });
-        yield* workflow.forgetRepository(cwd);
-        return next;
-      }),
-    );
-    // Read afresh for whoever watches, off the caller's fiber: the repository may be on another
-    // container, and a forget is told from a feed that must not wait on its ssh.
-    yield* Effect.all([readLocal(cwd), workflow.remoteStatus({ cwd })], {
+    yield* workflow.forgetRepository(cwd);
+    const began = yield* Ref.modify(cacheRef, (cache) => {
+      const count = (cache.forgotten.get(cwd) ?? 0) + 1;
+      const entries = new Map(cache.entries);
+      entries.delete(cwd);
+      return [count, { entries, forgotten: new Map(cache.forgotten).set(cwd, count) }] as const;
+    });
+    // Read afresh for whoever watches.
+    const [local, remote] = yield* Effect.all([readLocal(cwd), workflow.remoteStatus({ cwd })], {
       concurrency: "unbounded",
-    }).pipe(
-      Effect.flatMap(([local, remote]) =>
-        forgetting.withPermits(1)(
-          Effect.gen(function* () {
-            if ((yield* Ref.get(forgottenRef)).get(cwd) !== forgotten) return;
-            yield* updateCachedStatus(cwd, local, remote, { publish: true });
-          }),
-        ),
-      ),
+    });
+    yield* updateCachedStatus(cwd, began, local, remote, { publish: true });
+  });
+
+  // All of it off the caller's fiber, the path's own resolution included: the checkout may sit
+  // behind a mount that stopped answering, and a forget is told from a feed whose one fiber serves
+  // every thread.
+  const forgetStatus: VcsStatusBroadcaster["Service"]["forgetStatus"] = (rawCwd) =>
+    forget(rawCwd).pipe(
       Effect.ignoreCause({ log: true }),
       Effect.forkIn(broadcasterScope),
+      Effect.asVoid,
     );
-  });
 
   const makeRemoteRefreshLoop = (
     cwd: string,

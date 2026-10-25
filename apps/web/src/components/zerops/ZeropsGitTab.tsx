@@ -309,7 +309,7 @@ function KnownGitTab({
               ? { read: false, change: undefined }
               : {
                   read: true,
-                  change: mateChangeIn(props.changes, props.mateProjectId, repository),
+                  change: mateChangeIn(props.changes, props.mateProjectId, repository, leases),
                 },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
@@ -441,13 +441,13 @@ function KnownGitTab({
                 : { number: block.pullRequestNumber, head: block.pullRequestHead }
             }
             // Each repository has its own main, independent of the application's other merges.
-            main={mergedMain(block.repository, props.changes?.merged)}
+            main={mergedMain(block.hqRepository, props.changes?.merged)}
             onOpenCommit={
               threadRef === null
                 ? undefined
-                : (commit) => setOpenCommit({ repository: block.repository, ...commit })
+                : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
             }
-            repository={block.repository}
+            repository={block.hqRepository}
           />
         )}
         {...(props.onOpenChange === undefined ? {} : { onOpenChange: props.onOpenChange })}
