@@ -21,16 +21,23 @@ interface ArrivalFrame {
   readonly cards: number;
 }
 
-// Runs in every new document: records each change of the mark, the menu and the overview's cards.
+// Runs in every new document: records each change of the mark, the menu and the overview's cards
+// until the case takes the record, however long the arrival takes on this machine.
 function recordArrival() {
   const frames: ArrivalFrame[] = [];
-  (window as unknown as { arrivalFrames: ArrivalFrame[] }).arrivalFrames = frames;
+  let taken = false;
+  Object.assign(window, {
+    arrivalFrames: frames,
+    takeArrival: () => {
+      taken = true;
+      return frames;
+    },
+  });
   const seen = (element: Element | null | undefined): element is HTMLElement => {
     if (!(element instanceof Element)) return false;
     const box = element.getBoundingClientRect();
     return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== "hidden";
   };
-  const started = performance.now();
   const sample = () => {
     const shell = document.getElementById("boot-shell");
     const boot = shell !== null && !shell.hidden;
@@ -66,7 +73,7 @@ function recordArrival() {
     const cards = [...document.querySelectorAll(".ov-card")].filter(seen).length - standInCards;
     const frame: ArrivalFrame = { mark, menu, standInCards, cards };
     if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
-    if (performance.now() - started < 15_000) requestAnimationFrame(sample);
+    if (!taken) requestAnimationFrame(sample);
   };
   requestAnimationFrame(sample);
 }
@@ -139,8 +146,8 @@ describe("owner-reported layout regressions", () => {
                     ?.cards ?? 0) > 0,
                 { polling: "raf" },
               );
-              return s.page.evaluate(
-                () => (window as unknown as { arrivalFrames: ArrivalFrame[] }).arrivalFrames,
+              return s.page.evaluate(() =>
+                (window as unknown as { takeArrival(): ArrivalFrame[] }).takeArrival(),
               );
             });
           expectSettledArrival(yield* settled());
