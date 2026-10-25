@@ -31,6 +31,7 @@ import {
   type ChipMenuStop,
   type ProductionChip,
 } from "./SidebarProductionChip.logic";
+import { isServiceBrowserUrl } from "../../zerops/serviceBrowserPolicy";
 import type { HeadingLanding, HeadingLineInput } from "./SidebarHeadingLine.logic";
 import { routeMenuEntries } from "./ZeropsPublicRoutes.logic";
 
@@ -288,7 +289,7 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u,
  * name order. A free or warm slot is no lease and never shows; nor does one zcp no longer holds.
  * A row says its preview server's status and opens its preview (the server zcp read with an
  * address); a parked lease's container is stopped, so it says parked and opens nothing; one with
- * no preview read says so. None while the leases are not read.
+ * no preview read, or whose address is no web address, says so. None while the leases are not read.
  */
 function mateWorkspaces(mate: SitesMateFacts): ReadonlyArray<SitesWorkspace> {
   const held = (mate.leases ?? []).filter((lease) => isZeropsLeaseHeld(lease.state));
@@ -300,7 +301,9 @@ function mateWorkspaces(mate: SitesMateFacts): ReadonlyArray<SitesWorkspace> {
   return held
     .map((lease): SitesWorkspace => {
       const name = checkoutLabel(lease.alias, named);
-      const preview = (lease.devServers ?? []).find((server) => server.url !== undefined);
+      const preview = (lease.devServers ?? []).find(
+        (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
+      );
       const base = {
         key: `workspace:${lease.alias}`,
         name,
