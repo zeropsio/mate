@@ -119,6 +119,17 @@ const editOf = (held: string, appId: string | null, owner: string | null = "P"):
   },
 });
 
+/** Mate P, held so, closing a change of `owner`'s (`null`: no such change) without merging it. */
+const closeOf = (held: string, appId: string | null, owner: string | null = "P"): Request => ({
+  verb: "close_own_change",
+  target: {
+    projectId: "P",
+    appId,
+    held,
+    change: owner === null ? null : { mateProjectId: owner },
+  },
+});
+
 /** A fetch by Mate P, held so, of a repository of the application `repoAppId`. */
 const fetchOf = (held: string, appId: string | null, repoAppId = "A"): Request => ({
   verb: "fetch_repo",
@@ -166,6 +177,7 @@ const MATE_VERBS: ReadonlySet<Verb> = new Set([
   "ensure_repo",
   "open_change",
   "edit_change",
+  "close_own_change",
   "fetch_repo",
 ]);
 
@@ -972,6 +984,16 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ["a production, a sibling's change", {}, editOf("production", "A", "Q"), "not_a_mate"],
     ["a kind this build does not know", {}, editOf("FUTURE", "A"), "unknown_kind"],
   ],
+  close_own_change: [
+    ["its own change", {}, closeOf("mate", "A"), "allow"],
+    ["its own change, as a devstage", {}, closeOf("devstage", "A"), "allow"],
+    ["a sibling Mate's change", {}, closeOf("mate", "A", "Q"), "not_your_change"],
+    ["no such change", {}, closeOf("mate", "A", null), "unknown_change"],
+    ["its own change, its project gone", { present: false }, closeOf("mate", "A"), "project_gone"],
+    ["its Mate in no application", {}, closeOf("mate", null), "mate_not_in_app"],
+    ["a production", {}, closeOf("production", "A"), "not_a_mate"],
+    ["a kind this build does not know", {}, closeOf("FUTURE", "A"), "unknown_kind"],
+  ],
   land_recipe: [
     ["a Mate of the application adds tiers", {}, landing(), "allow"],
     ["its devstage adds them", {}, landing({ held: "devstage" }), "allow"],
@@ -1436,6 +1458,9 @@ const REQUESTS: ReadonlyArray<Request> = [
     [null, "A"].flatMap((appId) => [null, "P", "Q"].map((owner) => editOf(held, appId, owner))),
   ),
   ...HELD.flatMap((held) =>
+    [null, "A"].flatMap((appId) => [null, "P", "Q"].map((owner) => closeOf(held, appId, owner))),
+  ),
+  ...HELD.flatMap((held) =>
     [null, "A"].flatMap((appId) => ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))),
   ),
   ...(
@@ -1592,7 +1617,7 @@ describe("can — over the whole input space", () => {
       holds(target.projectId === principal.projectId, "its own project");
       holds(target.held === "mate" || target.held === "devstage", "held as a Mate");
       if (request.verb !== "enroll_mate") holds(target.appId != null, "in an application");
-      if (request.verb === "edit_change")
+      if (request.verb === "edit_change" || request.verb === "close_own_change")
         holds(target.change?.mateProjectId === principal.projectId, "its own change");
       if (request.verb === "fetch_repo")
         holds(target.repoAppId === target.appId, "its own application's repository");
@@ -1604,6 +1629,20 @@ describe("can — over the whole input space", () => {
       for (const held of HELD) {
         for (const appId of [null, "A"]) {
           const decision = outcome(decide(MATE_P, editOf(held, appId, "Q"), point));
+          expect(decision).not.toBe("allow");
+          if (appId !== null && (held === "mate" || held === "devstage")) {
+            expect(decision, `${held} at ${JSON.stringify(point)}`).toBe("not_your_change");
+          }
+        }
+      }
+    }
+  });
+
+  it("never lets a Mate close another Mate's change, and tells it so once HQ holds it as a Mate in an application", () => {
+    for (const point of POINTS) {
+      for (const held of HELD) {
+        for (const appId of [null, "A"]) {
+          const decision = outcome(decide(MATE_P, closeOf(held, appId, "Q"), point));
           expect(decision).not.toBe("allow");
           if (appId !== null && (held === "mate" || held === "devstage")) {
             expect(decision, `${held} at ${JSON.stringify(point)}`).toBe("not_your_change");
@@ -1716,6 +1755,7 @@ describe("can — over the whole input space", () => {
         "ensure_repo",
         "open_change",
         "edit_change",
+        "close_own_change",
         "fetch_repo",
       ] as const) {
         const asked = (held: string, appId: string | null): ReadonlyArray<Request> =>
@@ -1723,9 +1763,11 @@ describe("can — over the whole input space", () => {
             ? [onP(verb, held)]
             : verb === "edit_change"
               ? [null, "P", "Q"].map((owner) => editOf(held, appId, owner))
-              : verb === "fetch_repo"
-                ? ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))
-                : [ofMate(verb, held, appId)];
+              : verb === "close_own_change"
+                ? [null, "P", "Q"].map((owner) => closeOf(held, appId, owner))
+                : verb === "fetch_repo"
+                  ? ["A", "B"].map((repoAppId) => fetchOf(held, appId, repoAppId))
+                  : [ofMate(verb, held, appId)];
         const reasons = new Set(
           HELD.flatMap((held) =>
             [null, "A"].flatMap((appId) =>

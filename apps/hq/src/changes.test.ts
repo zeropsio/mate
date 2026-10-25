@@ -1061,6 +1061,91 @@ describe("a Mate's changes in HQ", () => {
       }),
     );
 
+    it.effect(
+      "a Mate closes its own open change, never another's, its branch kept, and says so in the change's conversation",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const apps = new Map<string, string>();
+          const ada = yield* mateInApp(call, fake, owner, "P_MATE", "Shop", apps);
+          addProject(fake, "P_BEA");
+          const bea = yield* mateInApp(call, fake, owner, "P_BEA", "Shop", apps);
+          yield* call("POST", "/api/mate/repos", { headers: ada.auth, body: { name: "appdev" } });
+          const open = (auth: Record<string, string>, title: string, branch: string) =>
+            Effect.map(
+              call("POST", "/api/mate/changes", {
+                headers: auth,
+                body: { repo: "appdev", title, branch },
+              }),
+              (answer) => (answer.body as { readonly change: Record<string, unknown> }).change,
+            );
+          assert.strictEqual((yield* open(ada.auth, "Fix the login", "fix-login"))["number"], 1);
+          assert.strictEqual((yield* open(bea.auth, "Fix the signup", "fix-signup"))["number"], 2);
+          const close = (auth: Record<string, string>, number: number) =>
+            Effect.map(
+              call("POST", `/api/mate/changes/appdev/${String(number)}/close`, { headers: auth }),
+              (answer) => [answer.status, answer.body as Record<string, unknown>] as const,
+            );
+          assert.deepStrictEqual(yield* close(bea.auth, 1), [
+            403,
+            { code: "forbidden", reason: "not_your_change" },
+          ]);
+          assert.deepStrictEqual(yield* close(ada.auth, 9), [
+            404,
+            { code: "change_not_found", reason: "change_not_found" },
+          ]);
+          const [status, closed] = yield* close(ada.auth, 1);
+          assert.deepStrictEqual(
+            [status, closed["state"], closed["branch"], closed["mateProjectId"]],
+            [200, "closed", "fix-login", "P_MATE"],
+          );
+          assert.deepStrictEqual(yield* close(ada.auth, 1), [
+            409,
+            { code: "conflict", reason: "change_not_open" },
+          ]);
+          // Bea's stays open; the log says the Mate closed Ada's.
+          const listed = (yield* call("GET", `/api/apps/${ada.appId}/changes`, { session: owner }))
+            .body as { readonly changes: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            listed.changes.map((change) => [change["number"], change["state"]]),
+            [
+              [2, "open"],
+              [1, "closed"],
+            ],
+          );
+          yield* rowsWhere(
+            url,
+            "SELECT data FROM hq_git_event WHERE kind = 'closed'",
+            (rows) =>
+              rows.length === 1 &&
+              JSON.stringify(rows[0]?.["data"]) ===
+                JSON.stringify({ by: "mate", mateProjectId: "P_MATE" }),
+          );
+          // The person reads it in the change's conversation, said by the Mate.
+          const comments = (yield* call("GET", `/api/apps/${ada.appId}/changes/appdev/1/comments`, {
+            session: owner,
+          })).body as { readonly comments: ReadonlyArray<Record<string, unknown>> };
+          assert.deepStrictEqual(
+            comments.comments.map((comment) => [
+              comment["authorUserId"],
+              comment["authorMateProjectId"],
+              comment["body"],
+            ]),
+            [[null, "P_MATE", "Closed without merging. Its branch fix-login stays."]],
+          );
+          // Its branch stays: a change may be opened on it again.
+          assert.deepStrictEqual(
+            [
+              (yield* open(ada.auth, "Fix the login again", "fix-login"))["number"],
+              (yield* open(ada.auth, "Fix the login again", "fix-login"))["state"],
+            ],
+            [3, "open"],
+          );
+        }),
+    );
+
     it.effect("a Mate reads whether its application has a production in its own state", () =>
       Effect.gen(function* () {
         const { call, fake, url } = yield* startCore(true);
