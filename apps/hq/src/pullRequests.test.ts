@@ -1335,6 +1335,59 @@ describe("a change's pull request", () => {
         }),
     );
 
+    it.effect(
+      "a pull request someone else opened on a named change's branch stays open on GitHub when its Mate closes the change, and HQ lets it go",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          // A person opened the pull request of `fix-x` on GitHub themselves.
+          core.github.state.pulls.set(9, {
+            title: "Fix x",
+            body: "Ada's words.",
+            head: "fix-x",
+            state: "open",
+            merged: false,
+            author: "ada",
+          });
+          core.github.state.pullNumber = 10;
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea", branch: "fix-x" },
+          });
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD} WHERE repo = 'web' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/web/1", {
+            headers: core.robot.auth,
+            body: { body: "Boils the water twice." },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 9,
+          );
+          // The test's head is HQ's record alone, never pushed to git: the close reviews none.
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed = yield* core.call("POST", "/api/mate/changes/web/1/close", {
+            headers: core.robot.auth,
+          });
+          assert.strictEqual(closed.status, 200);
+          assert.strictEqual(core.github.state.pulls.get(9)?.state, "open");
+          // HQ no longer holds it as the change's, so no sweep closes it later.
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_pull_request", (rows) => rows.length === 0);
+          assert.isFalse(
+            core.github.state.seen.some(
+              (request) =>
+                request.method === "PATCH" &&
+                request.path === "/repos/acme/tea-shop/pulls/9" &&
+                (request.body as { state?: string }).state === "closed",
+            ),
+          );
+        }),
+    );
+
     it.effect.each([
       [
         "the first change into a repository holding nothing, carrying another repository's history, as a merge commit",

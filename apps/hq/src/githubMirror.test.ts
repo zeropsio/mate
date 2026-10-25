@@ -214,6 +214,8 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
         Record<string, string>
       >,
       rules: { status: 200, headers: {}, body: "[]" } as HostReply,
+      /** The rules GitHub answers for another branch, by its name: none by default. */
+      branchRules: new Map<string, HostReply>(),
       /** While set, the app's token comes only once it completes: a follow that takes its time. */
       hold: undefined as Deferred.Deferred<void> | undefined,
     };
@@ -256,8 +258,16 @@ const mirrored = (sweepEvery = Duration.hours(1)) =>
               metadata: () => Effect.die("not the mirror's"),
               receivePack: () => Effect.die("not the mirror's"),
               rules: (remote, branch) =>
-                remote.path === REPOSITORY && branch === "main"
-                  ? Effect.sync(() => auth.rules)
+                remote.path === REPOSITORY
+                  ? Effect.sync(() =>
+                      branch === "main"
+                        ? auth.rules
+                        : (auth.branchRules.get(branch) ?? {
+                            status: 200,
+                            headers: {},
+                            body: "[]",
+                          }),
+                    )
                   : Effect.die(`rules of ${remote.path} ${branch}`),
               read: () => Effect.die("not the mirror's"),
             }),
@@ -1356,6 +1366,85 @@ describe("a repository mirrored to GitHub through the organization's app", () =>
             const refused = yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
             assert.strictEqual("reason" in refused ? refused.reason : undefined, "refused");
             assert.strictEqual(refIn(f.github, "refs/heads/trunk"), f.main);
+          }),
+        ),
+    );
+
+    it.effect.each([
+      ["kept at an ancestor of the change's head", false],
+      ["at the change's head when HQ found it there, then behind its next push", true],
+    ] as const)(
+      "a branch its Mate named that GitHub already holds, and HQ never made there, is never moved by HQ: the change says its branch there diverged, %s",
+      ([_how, foundAtHead]) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            // GitHub's `production`, kept there by people (a deploy pipeline acts on it), at a
+            // commit Mate's copy holds too.
+            const theirs = commitIn(f.hqDir, [f.main], "deploy.ts");
+            native(f.hqDir, [
+              "-c",
+              "protocol.file.allow=always",
+              "push",
+              "-q",
+              f.github,
+              `${theirs}:refs/heads/production`,
+            ]);
+            yield* f.openChange("Ship it", 1, "nova", "production");
+            /** The change at `head`, written behind HQ's back: its branch and its record. */
+            const at = (head: string) =>
+              Effect.andThen(
+                Effect.sync(() => native(f.hqDir, ["update-ref", "refs/heads/production", head])),
+                f.sql`UPDATE hq_change SET head = ${head} WHERE number = 1`,
+              );
+            if (foundAtHead) {
+              yield* at(theirs);
+              assert.deepStrictEqual(yield* f.mirror.pushChange(f.appId, "appdev", 1), {
+                branch: "production",
+                sha: theirs,
+              });
+            }
+            yield* at(commitIn(f.hqDir, [theirs], "fix.ts"));
+            const refused = yield* Effect.flip(f.mirror.pushChange(f.appId, "appdev", 1));
+            assert.strictEqual("reason" in refused ? refused.reason : undefined, "refused");
+            assert.strictEqual(refIn(f.github, "refs/heads/production"), theirs);
+            const change = yield* f.changes.change(f.appId, "appdev", 1);
+            assert.isString(change.mirrorDivergedSince);
+            assert.deepStrictEqual(yield* changesToPush(f.sql, f.appId, "appdev"), []);
+          }),
+        ),
+    );
+
+    it.effect.each([
+      ["changes reach it only by a pull request", [{ type: "pull_request" }], null],
+      [
+        "they only keep its history: no deletion, no force push",
+        [{ type: "deletion" }, { type: "non_fast_forward" }],
+        "made",
+      ],
+    ] as const)(
+      "a branch its Mate named is made on GitHub by HQ only where GitHub's rules leave it to pushes: %s",
+      ([_how, rules, outcome]) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const f = yield* mirrored();
+            yield* f.mirror.sync(f.appId, "appdev");
+            f.auth.branchRules.set("production", {
+              status: 200,
+              headers: {},
+              body: JSON.stringify(rules),
+            });
+            yield* f.openChange("Ship it", 1, "nova", "production");
+            const head = commitIn(f.hqDir, [f.main], "fix.ts");
+            native(f.hqDir, ["update-ref", "refs/heads/production", head]);
+            yield* f.sql`UPDATE hq_change SET head = ${head} WHERE number = 1`;
+            const pushed = yield* Effect.result(f.mirror.pushChange(f.appId, "appdev", 1));
+            assert.strictEqual(
+              refIn(f.github, "refs/heads/production"),
+              outcome === "made" ? head : null,
+            );
+            assert.strictEqual(pushed._tag === "Success", outcome === "made");
           }),
         ),
     );
