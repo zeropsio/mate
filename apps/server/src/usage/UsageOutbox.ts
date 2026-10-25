@@ -39,7 +39,11 @@ const CompletedUsage = Schema.Struct({
 export type CompletedUsage = typeof CompletedUsage.Type;
 export class UsageOutboxError extends Schema.TaggedError<UsageOutboxError>()("UsageOutboxError", {
   code: Schema.String,
-}) {}
+}) {
+  override get message() {
+    return this.code;
+  }
+}
 const decodeResponse = Schema.decodeUnknownSync(Schema.fromJsonString(CompletedUsage));
 const decodeBinding = Schema.decodeUnknownSync(Schema.fromJsonString(Binding));
 const validateBinding = Schema.decodeUnknownEffect(Binding);
@@ -93,11 +97,19 @@ export const makeUsageOutbox = Effect.gen(function* () {
     const rows = yield* sql<{ value: string }>`SELECT value FROM usage_binding WHERE id=1`;
     return rows[0] ? decodeBinding(rows[0].value) : undefined;
   });
+  // HQ mints a Mate's id when it creates the Mate's record, so a re-import hands the same Mate a
+  // new one. The organization and project are the Mate's fixed identity; pending turns are
+  // reported under whatever id HQ currently holds.
   const bind = Effect.fnUntraced(function* (next: UsageBinding) {
     const validated = yield* validateBinding(next);
-    yield* sql`INSERT OR IGNORE INTO usage_binding VALUES (1, ${usageCanonical(validated)})`;
-    if (usageCanonical(yield* binding) !== usageCanonical(validated))
+    const registered = yield* binding;
+    if (
+      registered &&
+      (registered.orgId !== validated.orgId || registered.projectId !== validated.projectId)
+    )
       return yield* new UsageOutboxError({ code: "mate-binding-conflict" });
+    if (registered?.mateId === validated.mateId) return;
+    yield* sql`INSERT OR REPLACE INTO usage_binding VALUES (1, ${usageCanonical(validated)})`;
   });
   const record = Effect.fnUntraced(function* (input: CompletedUsage) {
     const validated = yield* validateResponse(input);
