@@ -42,6 +42,7 @@ import {
   dismissComposerReview,
   dismissedComposerReview,
 } from "../../zerops/composerReviewDismissal";
+import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useHeldBehindReview } from "../../zerops/heldBehindReview";
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
@@ -57,11 +58,25 @@ export interface ZeropsNextStepPending {
   readonly working: boolean;
 }
 
+/** The fix a change's review offers, offered on its line in place of its Review. */
+export interface ZeropsNextStepFix {
+  /** `Ask Nova to resolve it`. */
+  readonly label: string;
+  readonly mateProjectId: string;
+  /** The branch its work is on: the conversation bound to it is the one asked. */
+  readonly branch?: string | undefined;
+  readonly problem: FixProblem;
+}
+
 /** One of several changes waiting, on a line of its own with its own Review. */
 export interface ZeropsNextStepLine {
   /** `apidev #1 Rebuild the API`, as the menu names it. */
   readonly label: string;
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
+  /** Where it does not merge as it stands: the word its row says (`Conflicts with main`). */
+  readonly verdict?: string | undefined;
+  /** Where its review offers a fix: that fix, in place of Review. */
+  readonly fix?: ZeropsNextStepFix | undefined;
 }
 
 export interface ZeropsNextStepStripModel {
@@ -110,15 +125,28 @@ export function zeropsComposerTop(input: {
       ...(nextStep.step.lines.length === 0
         ? {}
         : {
-            lines: nextStep.step.lines.map((line) => ({
-              label: line.label,
-              target: {
-                kind: "change" as const,
-                groupId: nextStep.target.groupId,
-                repository: line.pull.repository,
-                number: line.pull.number,
-              },
-            })),
+            lines: nextStep.step.lines.map((line): ZeropsNextStepLine => {
+              const fix = line.verdict?.fix;
+              return {
+                label: line.label,
+                target: {
+                  kind: "change",
+                  groupId: nextStep.target.groupId,
+                  repository: line.pull.repository,
+                  number: line.pull.number,
+                },
+                ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
+                ...(fix === undefined
+                  ? {}
+                  : {
+                      fix: {
+                        ...fix,
+                        mateProjectId: line.pull.mateProjectId,
+                        ...(line.pull.branch === undefined ? {} : { branch: line.pull.branch }),
+                      },
+                    }),
+              };
+            }),
           }),
       ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
     },
@@ -128,12 +156,15 @@ export function zeropsComposerTop(input: {
 export function ZeropsNextStepStrip({
   strip,
   onReview,
+  onFix,
   onMore,
   onDismiss,
 }: {
   readonly strip: ZeropsNextStepStripModel;
   /** Opens the review, from the button that was pressed. */
   readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
+  /** Hands a change that does not merge to its Mate, as its review's fix does. */
+  readonly onFix?: ((fix: ZeropsNextStepFix) => void) | undefined;
   /** Opens the project's page, where every change waiting is listed. */
   readonly onMore?: ((groupId: string) => void) | undefined;
   /** Puts the strip away for this change, from the button that was pressed. */
@@ -144,6 +175,7 @@ export function ZeropsNextStepStrip({
     // Several waiting: the count on the face's line, then one line per change with its own
     // Review, newest first — in blue words, as the menu's change rows have it, so no line
     // stacks a second blue button. The strip grows upward from the composer's text, which stays.
+    // A change that does not merge says its row's word, and offers its review's fix.
     return (
       <section
         aria-label={strip.title}
@@ -159,15 +191,19 @@ export function ZeropsNextStepStrip({
             data-composer-top-line=""
             key={`${line.target.repository}#${String(line.target.number)}`}
           >
-            <p className="truncate text-muted-foreground text-line leading-4.5">{line.label}</p>
+            <p className="truncate text-muted-foreground text-line leading-4.5">
+              {line.label}
+              {line.verdict === undefined ? null : <span> · {line.verdict}</span>}
+            </p>
             <Button
               onClick={(event) => {
-                onReview(line.target, event.currentTarget);
+                if (line.fix === undefined) onReview(line.target, event.currentTarget);
+                else onFix?.(line.fix);
               }}
               size="sm"
               variant="link"
             >
-              Review
+              {line.fix === undefined ? "Review" : line.fix.label}
             </Button>
           </div>
         ))}
@@ -310,19 +346,27 @@ export function useZeropsNextStepStrip(
     setHeldStrip(null);
   }, []);
   return useMemo(() => {
-    const drawn = () =>
-      shown === null ? null : (
-        <ZeropsNextStepStrip
-          onMore={(groupId) => {
-            void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-          }}
-          onDismiss={dismiss}
-          onReview={(target, from) => {
-            openReview(target, { from });
-          }}
-          strip={JSON.parse(shown) as ZeropsNextStepStripModel}
-        />
+    const drawn = () => {
+      if (shown === null) return null;
+      const strip = JSON.parse(shown) as ZeropsNextStepStripModel;
+      const props = {
+        onMore: (groupId: string) => {
+          void navigate({ to: "/group/$groupId/flow", params: { groupId } });
+        },
+        onDismiss: dismiss,
+        onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
+          openReview(target, { from });
+        },
+        strip,
+      };
+      // Only a strip that offers a fix reads what asking a Mate needs: the composer never
+      // re-renders for the threads and Mates it reads.
+      return strip.lines?.some((line) => line.fix !== undefined) === true ? (
+        <ZeropsNextStepStripWithFix {...props} />
+      ) : (
+        <ZeropsNextStepStrip {...props} />
       );
+    };
     const top = () =>
       hidden ? (
         <HeldComposerTop folding={folding !== null} onFolded={folded}>
@@ -340,6 +384,21 @@ export function useZeropsNextStepStrip(
       );
     return top();
   }, [dismiss, folded, folding, hidden, navigate, openReview, reserved, shown, yours]);
+}
+
+/** The strip with a change that does not merge: its fix asks the Mate, as its review's fix does. */
+function ZeropsNextStepStripWithFix(
+  props: Omit<Parameters<typeof ZeropsNextStepStrip>[0], "onFix">,
+) {
+  const askMateToFix = useAskMateToFix();
+  return (
+    <ZeropsNextStepStrip
+      {...props}
+      onFix={(fix) => {
+        askMateToFix(fix.mateProjectId, fix.problem, { branch: fix.branch });
+      }}
+    />
+  );
 }
 
 /**

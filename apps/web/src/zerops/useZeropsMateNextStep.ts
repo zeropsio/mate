@@ -1,8 +1,9 @@
 /**
  * What this Mate's conversation offers next, from the project's flow rather
  * than from what the agent said (the owner, 2026-09-23 — "extremely important
- * findings the whole UI should be built around"): this Mate's own change,
- * waiting for the person's review, where HQ says it merges.
+ * findings the whole UI should be built around"): this Mate's own changes,
+ * as the conversation's header counts them — those HQ says merge waiting for
+ * the person's review, one that does not merge in its row's word.
  *
  * It opens the review and nothing else (R1): the merge is the review's
  * button, so this reads the flow and never writes to it.
