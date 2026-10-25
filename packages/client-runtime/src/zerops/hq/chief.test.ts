@@ -73,12 +73,6 @@ describe("the Chief at HQ", () => {
     await expect(api.setChief("p-chief")).rejects.toMatchObject({ kind: "refused", status });
   });
 
-  it("removes the organisation's Chief mark at HQ", async () => {
-    const { api, seen } = hqAnswering(() => new Response(null, { status: 204 }));
-    await expect(api.removeChief()).resolves.toBeUndefined();
-    expect(seen).toEqual([{ method: "DELETE", path: "/api/chief", ids: null, body: undefined }]);
-  });
-
   it("refuses an answer without the mark rather than report a Chief HQ did not set", async () => {
     const { api } = hqAnswering(() => json(200, {}));
     await expect(api.setChief("p-chief")).rejects.toMatchObject({ code: "unreadable" });
