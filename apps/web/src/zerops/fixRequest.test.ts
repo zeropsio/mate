@@ -71,6 +71,23 @@ describe("fixRequestPrompt", () => {
     );
   });
 
+  // Lab A.3, 2026-10-25: a change's Fix reaches the main chat once the conversation bound to its
+  // branch is archived, and the main chat must know where the change's work is.
+  it("names the branch a change's problem is on", () => {
+    expect(
+      fixRequestPrompt(
+        {
+          what: "Change #4 is behind main",
+          branch: "a-blue",
+          ask: "Merge main into it, check it still works, and deliver it again.",
+        },
+        NOW,
+      ),
+    ).toBe(
+      "Change #4 is behind main. Its work is on branch a-blue.\n\nMerge main into it, check it still works, and deliver it again.",
+    );
+  });
+
   it("keeps only the log's last lines, without blank ones", () => {
     const lines = Array.from({ length: FIX_REQUEST_LOG_LINES + 5 }, (_, i) => `line ${String(i)}`);
     const prompt = fixRequestPrompt(

@@ -149,6 +149,13 @@ describe("the menu row", () => {
     expect(conversationRowOf(view({ lease: null }), revision)).not.toHaveProperty("lease");
   });
 
+  // Lab A.3, 2026-10-25: a conversation archived by Archive and start fresh read live in the menu
+  // once nobody held it, so a review's Fix opened it on a hidden composer.
+  it("says the conversation is archived, and nothing while it is not", () => {
+    expect(conversationRowOf(view({ archived: true }), revision).archived).toBe(true);
+    expect(conversationRowOf(view({ archived: false }), revision)).not.toHaveProperty("archived");
+  });
+
   // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
   it.each([
     {
