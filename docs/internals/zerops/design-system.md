@@ -47,6 +47,8 @@ One word for each thing:
   own object stays a **change**.
 - **release** — "Putting {version} live", "{service} gets {version}". No commit hash names a release.
   In the Git browser a commit's 7-character id may stand beside its subject, as a link, never alone.
+- **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
+  planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says

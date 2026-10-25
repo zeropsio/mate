@@ -190,7 +190,13 @@ function flowWrite(
     case "merge-change":
       return Effect.map(
         write(() => api.mergeChange(intent.link, intent.expectedHead)),
-        ({ deploys }) => receipt(requestId, changeHandle(intent.link), { deploys }, PENDING),
+        ({ made, deploys }) =>
+          receipt(
+            requestId,
+            changeHandle(intent.link),
+            { deploys, mergedSha: made.mergedSha },
+            PENDING,
+          ),
       );
     case "close-change":
       return Effect.map(

@@ -55,7 +55,7 @@ export const HqJob = Schema.Struct({
     "import",
     "migrated",
   ]),
-  /** What the event names: a merge's head, a release's tag; none else. */
+  /** What the event names: a merge's squash commit on main, a release's tag; none else. */
   ref: Schema.NullOr(Schema.String),
   /** HQ's words for how it ended. */
   reason: Schema.NullOr(Schema.String),

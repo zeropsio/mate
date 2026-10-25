@@ -245,7 +245,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
   "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],
   "scripts/test-ports.test.ts": [],
-  "scripts/test-postgres.test.ts": [],
+  "scripts/test-postgres.test.ts": ["scripts/fixtures/fake-postgres.ts"],
   "scripts/test-process-lock.test.ts": [],
   "scripts/tsconfig-basename-collisions.test.ts": [
     "apps/**",

@@ -1,8 +1,12 @@
 import type { ProjectId } from "@t3tools/contracts";
-import { deployAnswerFollowing, deployLogTarget } from "@t3tools/client-runtime/zerops/hq";
-import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
+import {
+  deployAnswerFollowing,
+  deployLogTarget,
+  followHandedOver,
+} from "@t3tools/client-runtime/zerops/hq";
+import type { AppDeployRollout, HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAppsEnvironments, useEveryAppId } from "../projectFlows";
 
 /**
@@ -37,4 +41,35 @@ export function useDeployAnswerFollowing(answer: HqDeployAnswer | undefined) {
     }
     return { answer: deployAnswerFollowing(answer, streamed), logs };
   }, [answer, environments]);
+}
+
+/**
+ * A press's answer as its review says it: one that handed planning over waits for planning until
+ * HQ's navigation shows its rollout's jobs in its application, then is those jobs — kept, so jobs
+ * that leave navigation's window later never turn it back into a wait.
+ */
+export function useHandedOverAnswer(
+  answer: HqDeployAnswer | undefined,
+  rollout: AppDeployRollout | undefined,
+): HqDeployAnswer | undefined {
+  const environments = useAppsEnvironments(useEveryAppId());
+  const [kept, setKept] = useState<{
+    readonly of: HqDeployAnswer;
+    readonly said: HqDeployAnswer;
+  }>();
+  const said = useMemo(
+    () =>
+      answer === undefined
+        ? undefined
+        : followHandedOver(
+            answer,
+            rollout,
+            rollout === undefined ? [] : (environments[rollout.appId]?.environments ?? []),
+          ),
+    [answer, environments, rollout],
+  );
+  if (answer === undefined || said === undefined) return undefined;
+  if (kept?.of === answer) return kept.said;
+  if (answer.planned === false && said.planned !== false) setKept({ of: answer, said });
+  return said;
 }

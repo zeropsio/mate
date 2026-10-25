@@ -90,7 +90,11 @@ declare module "../model.ts" {
     readonly "roll-back": FlowAnswer;
     readonly redeploy: { readonly deploys: HqDeployAnswer | undefined };
     readonly "add-service": { readonly deploys: HqDeployAnswer | undefined };
-    readonly "merge-change": { readonly deploys: HqDeployAnswer | undefined };
+    /** The commit it squashed into main names the merge's rollout. */
+    readonly "merge-change": {
+      readonly deploys: HqDeployAnswer | undefined;
+      readonly mergedSha: string | null;
+    };
   }
 }
 

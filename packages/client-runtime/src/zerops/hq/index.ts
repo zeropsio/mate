@@ -55,6 +55,12 @@ export {
   type DeployAnswerSaid,
 } from "./deployAnswer.ts";
 export {
+  followHandedOver,
+  WAITING_FOR_PLANNING,
+  type AppDeployRollout,
+  type DeployRollout,
+} from "./deployHandover.logic.ts";
+export {
   deployLogTarget,
   deployLogProcess,
   inspectDeployLog,

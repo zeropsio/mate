@@ -98,7 +98,7 @@ import {
   ZeropsReviewSurface,
   type ReviewReleaseRow,
 } from "./ZeropsReviewSurface";
-import { answeredDeploys } from "../ZeropsDeployAnswer";
+import { useReviewDeploys } from "../ZeropsDeployAnswer";
 import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { Button } from "~/components/ui/button";
@@ -305,7 +305,7 @@ function ReleaseData({
     production?.target.kind === "zerops" ? production.target.projectId : undefined;
   const productionAddresses = useProductionAddresses(productionProject);
   // Its Where row follows HQ's deploys of it: released is said with them, never before.
-  const followed = useDeployAnswerFollowing(answeredDeploys(press)).answer;
+  const followed = useDeployAnswerFollowing(useReviewDeploys(press)).answer;
   const {
     outcome,
     held: keep,
@@ -407,7 +407,7 @@ function ReleaseData({
     const answer = await verbs.release(flow, chosen.tag);
     setPress(
       answer.ok
-        ? { kind: "done", deploys: answer.deploys }
+        ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
         : { kind: "refused", reason: answer.reason },
     );
     // The tag it made is the one the review follows from here.
@@ -566,7 +566,7 @@ export interface ReleaseReviewViewProps {
 export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const { rows, press, tag } = props;
   const versionId = useId();
-  const answer = answeredDeploys(press);
+  const answer = useReviewDeploys(press);
   // Pressed, its Version stays — not to be changed — until Where takes its place: the panel's foot
   // does not jump up and back down under the pointer (the onboarding run: 110 px up, 76 px down).
   const offered = props.outcome.kind === "offered";
@@ -1061,7 +1061,7 @@ function RollbackData({
     const answer = await verbs.rollBack(flow, tag);
     setPress(
       answer.ok
-        ? { kind: "done", deploys: answer.deploys }
+        ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
         : { kind: "refused", reason: answer.reason },
     );
     if (answer.ok) setMade(answer.tag);
@@ -1202,7 +1202,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
   });
   const fix = model.verdict.fix;
   const onFix = props.onFix;
-  const answer = answeredDeploys(press);
+  const answer = useReviewDeploys(press);
   const answered = new Set(answer?.jobs.map(({ service }) => service));
   const untold = props.untold.filter((service) => !answered.has(service));
   return (

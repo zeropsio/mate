@@ -225,16 +225,22 @@ export type HqDeliveryOutcome = typeof HqDeliveryOutcome.Type;
 export const HqDeliveryAnswer = Schema.Struct({
   jobs: Schema.Array(HqDeliveryOutcome),
   note: Schema.NullOr(Schema.String),
+  planned: Schema.optionalKey(Schema.Boolean),
 });
 export type HqDeliveryAnswer = typeof HqDeliveryAnswer.Type;
 
 /**
  * Every job an event asked for, and what HQ left out of it, in its words: what the event's own
- * answer carries as `deploys`.
+ * answer carries as `deploys`. `planned: false` when HQ answered before the event's rollout was
+ * planned — another rollout of the organisation held planning, or HQ could not plan it now — and
+ * the leading HQ plans it later: its jobs come down HQ's navigation by the event (`cause`, `ref`).
+ * Absent or `true`, the rollout was planned and `jobs` are all it asked for. An HQ older than the
+ * field always planned before answering.
  */
 export const HqDeployAnswer = Schema.Struct({
   jobs: Schema.Array(HqDeployOutcome),
   note: Schema.NullOr(Schema.String),
+  planned: Schema.optionalKey(Schema.Boolean),
 });
 export type HqDeployAnswer = typeof HqDeployAnswer.Type;
 
