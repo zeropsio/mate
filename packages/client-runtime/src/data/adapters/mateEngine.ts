@@ -114,7 +114,10 @@ export interface EngineConversationWire {
     width: number,
     height: number,
   ) => Effect.Effect<void, StreamFault>;
-  /** The Mate's access as its connection learns it: a fault, or `null` once verified again. */
+  /**
+   * The Mate's access as its connection learns it: a fault, or `null` each time it connects (a new
+   * session, or the network back under the old one), verified again.
+   */
   readonly watch?: (
     environmentId: string,
     receive: (fault: StreamFault | null) => void,
@@ -338,6 +341,8 @@ interface Held {
   stop: () => void;
   retry: () => void;
   recover: () => void;
+  /** Its transport is back: a retry it waits out is tried now; a refusal stays. */
+  resume: () => void;
   fault: (fault: StreamFault) => void;
 }
 
@@ -402,6 +407,7 @@ function makeLinks(options: {
         },
         retry: () => void Effect.runFork(supervisor.signal("manual-retry")),
         recover: () => void Effect.runFork(supervisor.signal("input-changed")),
+        resume: () => void Effect.runFork(supervisor.signal("resume")),
         fault: (fault) => {
           if (current !== null) Deferred.doneUnsafe(current, Exit.fail(fault));
         },
@@ -641,8 +647,16 @@ export function makeMateEngineConversations(options: {
     if (closed) return;
     const conversations = [...(known.get(environmentId)?.values() ?? [])];
     if (fault === null) {
-      if (!withheld.delete(environmentId)) return;
-      for (const key of conversations) links.held(engineConversationLink(key))?.retry();
+      if (withheld.delete(environmentId)) {
+        for (const key of conversations) links.held(engineConversationLink(key))?.retry();
+        return;
+      }
+      // Connected again, as the transport skips its own wait on its return: every link of the
+      // Mate's that waits out a retry tries now. Kara's rows slept out the rest of a 60 s rung
+      // after a lost socket while its freshly held conversation opened at once, and the card at the
+      // turn's foot listed a helper its records had already closed.
+      links.held(engineRowsLink(environmentId))?.resume();
+      for (const key of conversations) links.held(engineConversationLink(key))?.resume();
       return;
     }
     withheld.set(environmentId, fault);
