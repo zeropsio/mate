@@ -65,7 +65,8 @@ describe("HQ review read on the account's shared link", () => {
         let reads = 0;
         let accepted = answer === "accepted";
         const wire: HqWire = {
-          open: fixture.wire.open.pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
+          open: (created) =>
+            fixture.wire.open(created).pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
           change: () =>
             Effect.suspend(() => {
               reads += 1;
