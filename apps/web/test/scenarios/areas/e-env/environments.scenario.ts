@@ -279,6 +279,26 @@ describe("E: stage, production, release and rollback", () => {
             ),
           ).toBe(true);
           expect(submissions).toHaveLength(0);
+          // The press was held behind a comparison HQ was really asked for, not behind a note.
+          yield* Effect.promise(async () => {
+            let stop: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                frames.received(),
+                new Promise<never>((_, reject) => {
+                  stop = setTimeout(async () => {
+                    reject(
+                      new Error(
+                        `No compare frame was held\n${await f.s.page.evaluate(() => document.body.innerText)}`,
+                      ),
+                    );
+                  }, 30_000);
+                }),
+              ]);
+            } finally {
+              clearTimeout(stop);
+            }
+          });
           frames.resume();
           yield* a.when.click("Roll back to v0.1.1");
           const process = yield* a.deployment("production");
