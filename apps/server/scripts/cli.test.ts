@@ -18,8 +18,13 @@ it("packs a server-only release without a web bundle", () => {
     NodeFS.cpSync(NodePath.join(source, "scripts/lib"), NodePath.join(root, "scripts/lib"), {
       recursive: true,
     });
-    for (const file of ["package.json", "pnpm-workspace.yaml", "apps/server/package.json"]) {
-      NodeFS.cpSync(NodePath.join(source, file), NodePath.join(root, file));
+    for (const file of [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "apps/server/package.json",
+      "apps/server/src/zerops/ZeropsEnvironment.ts",
+    ]) {
+      NodeFS.cpSync(NodePath.join(source, file), NodePath.join(root, file), { recursive: true });
     }
     NodeFS.symlinkSync(
       NodePath.join(source, "node_modules"),

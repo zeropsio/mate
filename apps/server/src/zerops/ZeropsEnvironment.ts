@@ -86,7 +86,11 @@ export interface ZeropsEnvironmentInput {
   readonly mateUpdateStateFile?: string | undefined;
 }
 
-/** The HQ every Mate links to unless development names another (`T3CODE_ZEROPS_HQ_ORIGIN`). */
+/**
+ * The HQ every Mate links to unless development names another (`T3CODE_ZEROPS_HQ_ORIGIN`). The
+ * release package declares it as `mate.hqOrigin` (`buildReleaseManifest`) for zcp, which starts
+ * before the server and so never inherits {@link publishHqOrigin}'s copy.
+ */
 export const DEFAULT_HQ_ORIGIN = "https://mate-hq.zerops.io";
 
 /** The variable that names HQ's origin, to the server and to every process it starts. */
