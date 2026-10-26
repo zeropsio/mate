@@ -53,7 +53,7 @@ it("announces the Zerops door without minting anything to announce", () => {
   const output = formatZeropsServeOutput("http://127.0.0.1:3773");
 
   expect(output).toContain("http://127.0.0.1:3773");
-  expect(output).toContain("Open this Mate through HQ at https://hq.zerops.io");
+  expect(output).toContain("Open this Mate through HQ at https://mate-hq.zerops.io");
   // The three things upstream prints, none of which may appear here.
   expect(output).not.toContain("Token:");
   expect(output).not.toContain("/pair");

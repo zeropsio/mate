@@ -118,7 +118,7 @@ describe("isZeropsEnvironment", () => {
 
 describe("the HQ a Mate links to", () => {
   it.each<[string, string | undefined, string]>([
-    ["production's HQ when none is named", undefined, "https://hq.zerops.io"],
+    ["Mate HQ's production origin when none is named", undefined, "https://mate-hq.zerops.io"],
     [
       "the named HQ, without its trailing slash",
       "https://hq.stage.example/",

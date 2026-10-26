@@ -2,7 +2,7 @@ import { ZeropsConnections } from "./ZeropsConnections.ts";
 import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
- * The Mate's link to its HQ (spec-mate §3.5, `@t3tools/shared/mateLink`, the keys model): one
+ * The Mate's link to its HQ (mate-hq `spec/protocol.md`, "Mate link"; `@t3tools/shared/mateLink`, the keys model): one
  * outbound WebSocket, kept open for as long as this server runs.
  *
  * - **Who it is:** the project's key (`ZeropsMateKey`), read afresh before every dial and sent as
