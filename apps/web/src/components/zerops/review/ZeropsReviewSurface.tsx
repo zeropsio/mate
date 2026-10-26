@@ -603,7 +603,7 @@ export function ReviewFiles({
       {files.map((file) => {
         const expanded = open.has(file.path);
         const { dir, name } = changeFileParts(file.path);
-        const letter = changeFileLetter(file.status);
+        const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
         return (
           <FileRow
             diff={expanded ? diffOf(file.path) : undefined}
@@ -647,7 +647,7 @@ function FileRow({
   readonly open: GitLink | undefined;
   readonly dir: string;
   readonly name: string;
-  readonly letter: string;
+  readonly letter: string | undefined;
   readonly expanded: boolean;
   readonly diff: ReviewDiffState | undefined;
   readonly onToggle: () => void;

@@ -317,7 +317,7 @@ describe("ChangeReviewView: a change's conversation", () => {
 
 describe("ChangeReviewView: a change review from what HQ recorded", () => {
   const recorded = (
-    files: ReadonlyArray<{ path: string }> | null,
+    files: ReadonlyArray<{ path: string; status?: "A" | "M" | "D" | "T" }> | null,
     commits?: ReadonlyArray<{ sha: string; subject: string; authorName: string; at: string }>,
   ) =>
     changeReadoutOfRecord(
@@ -327,7 +327,14 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       } as HqChange,
       {
         mergeBase: MAIN,
-        files: files?.map(({ path }) => ({ path, added: 2, deleted: 0, binary: false })) ?? null,
+        files:
+          files?.map(({ path, status }) => ({
+            path,
+            added: 2,
+            deleted: 0,
+            binary: false,
+            ...(status === undefined ? {} : { status }),
+          })) ?? null,
         filesTruncated: false,
         conflictPaths: [],
         commits: commits ?? null,
@@ -342,6 +349,19 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     });
     expect(textOf(markup)).toContain("The files are not known yet.");
     expect(textOf(markup)).toContain("Show files");
+  });
+
+  it("A file HQ recorded no status for draws no letter, never a guessed M", () => {
+    const markup = render(merged(), [], {
+      readout: {
+        kind: "read",
+        value: recorded([{ path: "src/a.ts", status: "A" }, { path: "src/b.ts" }]),
+      },
+    });
+    expect(markup.match(/class="rv-st"[^>]*>([^<]*)</gu)?.map((cell) => cell.slice(-2))).toEqual([
+      "A<",
+      "><",
+    ]);
   });
 
   it("A file's diff is read from the recorded merge base when the person unfolds it", () => {

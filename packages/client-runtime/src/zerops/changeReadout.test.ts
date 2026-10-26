@@ -204,6 +204,26 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
     expect(read.diff.size).toBe(0);
   });
 
+  it("A file's status letter is the one HQ recorded, and none where it recorded none", () => {
+    const read = changeReadoutOfRecord(
+      change,
+      review({
+        files: [
+          { path: "new.ts", added: 1, deleted: 0, binary: false, status: "A" },
+          { path: "gone.ts", added: 0, deleted: 1, binary: false, status: "D" },
+          { path: "edit.ts", added: 1, deleted: 1, binary: false, status: "M" },
+          { path: "old-hq.ts", added: 1, deleted: 1, binary: false },
+        ],
+      }),
+    );
+    expect(read.files.map(({ status }) => status)).toEqual([
+      "added",
+      "deleted",
+      "modified",
+      "unknown",
+    ]);
+  });
+
   it("Opening a change review shows the commits HQ recorded at its head", () => {
     const read = changeReadoutOfRecord(change, review({ commitsTruncated: true }));
     expect(read).toMatchObject({

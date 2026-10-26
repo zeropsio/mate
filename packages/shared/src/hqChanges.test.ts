@@ -638,7 +638,7 @@ describe("hqChanges — a change's metadata", () => {
   it("carries the files, merge base and conflicts HQ recorded", () => {
     const review = {
       mergeBase: "b".repeat(40),
-      files: [{ path: "a.ts", added: 1, deleted: 0, binary: false }],
+      files: [{ path: "a.ts", added: 1, deleted: 0, binary: false, status: "A" as const }],
       filesTruncated: false,
       conflictPaths: [],
       commits: null,

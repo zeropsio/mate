@@ -697,6 +697,8 @@ export const RecordedChangeFile = Schema.Struct({
   added: Schema.NullOr(Schema.Number),
   deleted: Schema.NullOr(Schema.Number),
   binary: Schema.Boolean,
+  /** Added, modified, deleted or type-changed; absent from an HQ that does not record it. */
+  status: Schema.optionalKey(Schema.Literals(["A", "M", "D", "T"])),
 });
 export type RecordedChangeFile = typeof RecordedChangeFile.Type;
 

@@ -24,7 +24,8 @@ import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
 /** A file it changes, as its row draws it. */
 export interface ChangeReadoutFile {
   readonly path: string;
-  readonly status: "added" | "deleted" | "modified";
+  /** `unknown` where HQ has not recorded it: the row draws no letter, never a guessed one. */
+  readonly status: "added" | "deleted" | "modified" | "unknown";
   readonly additions: number;
   readonly deletions: number;
 }
@@ -98,8 +99,15 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
   };
 }
 
+const recordedStatus: Record<string, ChangeReadoutFile["status"]> = {
+  A: "added",
+  M: "modified",
+  D: "deleted",
+  T: "modified",
+};
+
 /**
- * A change's review as HQ recorded it with the merge verdict: its files, sizes and commits, no diffs. A file's status is not recorded; its row reads "changed" until its diff is unfolded.
+ * A change's review as HQ recorded it with the merge verdict: its files, sizes and commits, no diffs. A file's status is as HQ recorded it, else unknown.
  */
 export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): ChangeReadout {
   return {
@@ -107,7 +115,7 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     diffBase: review.mergeBase,
     files: (review.files ?? []).map((file) => ({
       path: file.path,
-      status: "modified",
+      status: recordedStatus[file.status ?? "?"] ?? "unknown",
       additions: file.added ?? 0,
       deletions: file.deleted ?? 0,
     })),
