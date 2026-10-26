@@ -795,3 +795,9 @@ export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
 export { hqKeptGitQuestions, type KeptGitQuestionView } from "./projections/hqKeptGit.ts";
 
 export { hqKeptGitFamily, hqKeptGitScope } from "./families/hqKeptGit.ts";
+
+export { hqChangeMetadata, type HqChangeMetadata } from "./projections/hqChangeMetadata.ts";
+export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
+
+export { hqChangeCommits, type HqChangeCommits } from "./projections/hqChangeCommits.ts";
+export { changeCommitsScope } from "./families/hqChangeCommits.ts";

@@ -29,6 +29,32 @@ const socketClosing = (messages: ReadonlyArray<string>, code: number) => {
 };
 
 describe("makeHqWire", () => {
+  it.effect.each(["metadata", "commits"] as const)(
+    "%s distinguishes an unavailable endpoint from a missing change.",
+    (purpose) =>
+      Effect.gen(function* () {
+        for (const code of ["http_404", "change_not_found"]) {
+          const fail = async () => {
+            throw new HqError({
+              kind: "refused",
+              status: 404,
+              code,
+              message: "HQ refused this read.",
+            });
+          };
+          const wire = makeHqWire({
+            ...socketClosing([], 1000).api,
+            changeMetadata: fail,
+            changeCommits: fail,
+          });
+          const fault = yield* Effect.flip(
+            wire[purpose]!({ link: { appId: "app", repo: "web", number: 1 } }),
+          );
+          expect(fault.code).toBe(code === "change_not_found" ? "not_found" : "http_404");
+        }
+      }),
+  );
+
   it.effect("reads a segment's messages until HQ ends it as planned, and closes its socket", () =>
     Effect.gen(function* () {
       const fake = socketClosing(["a", "b"], 4410);

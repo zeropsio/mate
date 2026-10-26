@@ -1480,6 +1480,39 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     };
   };
 
+  it("Linked change metadata does not request commit or diff contents.", async () => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/metadata"
+        ? json(200, { change: CHANGE })
+        : undefined,
+    );
+    await expect(hqApi.changeMetadata(LINK)).resolves.toEqual({ change: CHANGE });
+    expect(hq.seen.filter((request) => request.path.includes("/changes/"))).toEqual([
+      expect.objectContaining({ path: "/api/apps/app-1/changes/app/3/metadata", method: "GET" }),
+    ]);
+  });
+
+  it("Explicit change history reads commits for the displayed head and main without requesting patches.", async () => {
+    const commits = {
+      change: CHANGE,
+      mainHead: DETAIL.mainHead,
+      commits: DETAIL.commits,
+      commitsTruncated: false,
+    };
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3/commits" ? json(200, commits) : undefined,
+    );
+    const snapshot = { expectedHead: SHA, expectedMain: DETAIL.mainHead };
+    await expect(hqApi.changeCommits(LINK, undefined, snapshot)).resolves.toEqual(commits);
+    expect(hq.seen.filter((request) => request.path.includes("/changes/"))).toEqual([
+      expect.objectContaining({
+        path: "/api/apps/app-1/changes/app/3/commits",
+        method: "GET",
+        search: `?expectedHead=${SHA}&expectedMain=${DETAIL.mainHead}`,
+      }),
+    ]);
+  });
+
   it("reads a change with what its review reads, as the person", async () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3" ? json(200, DETAIL) : undefined,

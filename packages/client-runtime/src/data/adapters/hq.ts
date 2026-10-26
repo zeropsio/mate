@@ -81,6 +81,12 @@ export interface HqWire {
   readonly change?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
+  readonly metadata?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeMetadataResponse, StreamFault>;
+  readonly commits?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeCommitsResponse, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
@@ -699,6 +705,15 @@ export function hqNavigationLink(options: {
       wakeAttempt = wake;
       const pictures = yield* makeHqPictureReads({
         refresh,
+        metadata: (request) =>
+          wire.metadata?.(request) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "HQ cannot read change metadata.",
+          }),
+        commits: (request) =>
+          wire.commits?.(request) ??
+          Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read change history." }),
         change: (request) =>
           wire.change?.(request) ??
           Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }),

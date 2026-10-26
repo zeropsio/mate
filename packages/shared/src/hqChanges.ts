@@ -691,6 +691,19 @@ export const ChangeDetailResponse = Schema.Struct({
 });
 export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
 
+/** Database metadata for a linked change; never requests repository contents. */
+export const ChangeMetadataResponse = Schema.Struct({ change: HqChange });
+export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
+
+/** Commit history requested explicitly, without file statistics or patches. */
+export const ChangeCommitsResponse = Schema.Struct({
+  change: HqChange,
+  mainHead: Schema.NullOr(Sha),
+  commits: Schema.Array(ChangeCommit),
+  commitsTruncated: Schema.Boolean,
+});
+export type ChangeCommitsResponse = typeof ChangeCommitsResponse.Type;
+
 export const CommentBody = upTo(COMMENT_BODY_MAX).check(
   Schema.makeFilter((body: string) => (body.trim() === "" ? "Expected words" : undefined)),
 );

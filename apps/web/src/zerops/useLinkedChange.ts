@@ -13,7 +13,7 @@ import { Atom } from "effect/reactivity";
  * flow already has never gets here. Nothing is read until the organization's official HQ is known.
  */
 import { flowChange, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import { changeReadOwner, hqChangeRead } from "@t3tools/client-runtime/data";
+import { changeReadOwner, hqChangeMetadata } from "@t3tools/client-runtime/data";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { useCallback, useMemo } from "react";
 import { useOfficialHq } from "./accountHq";
@@ -27,7 +27,7 @@ export type LinkedChangeState =
   | { readonly kind: "refused" | "unavailable"; readonly reason: string };
 
 const READING = { kind: "reading" } as const;
-const UNREAD = Atom.make<import("@t3tools/client-runtime/data").HqChangeRead>(READING);
+const UNREAD = Atom.make<import("@t3tools/client-runtime/data").HqChangeMetadata>(READING);
 export function useLinkedChange(
   link: ChangeLink | null,
 ): LinkedChangeState & { readonly readAgain?: () => void } {
@@ -35,10 +35,10 @@ export function useLinkedChange(
   const hq = useOfficialHq();
   const owner = link === null ? null : changeReadOwner({ link });
   const address = hq?.address ?? null;
-  useDetailDemand("hqChangeRead", undefined, owner);
+  useDetailDemand("hqChangeMetadata", undefined, owner);
   useDetailDemand("hqAppDetail", undefined, link?.appId ?? null);
   const read = useProjection(
-    hqChangeRead,
+    hqChangeMetadata,
     owner === null || account?.orgId == null ? null : { orgId: account.orgId, owner },
     UNREAD,
   );
@@ -48,7 +48,7 @@ export function useLinkedChange(
     [read, address],
   );
   const readAgain = useCallback(() => {
-    if (owner !== null) account?.retryDetail({ family: "hqChangeRead", ownerId: owner });
+    if (owner !== null) account?.retryDetail({ family: "hqChangeMetadata", ownerId: owner });
   }, [account, owner]);
   if (owner === null || hq === null) return { kind: "idle" };
   // One opened before its branch was pushed is read too: its review says so, and closes it.
