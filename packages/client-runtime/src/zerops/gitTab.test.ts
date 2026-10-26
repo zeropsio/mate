@@ -1128,6 +1128,59 @@ describe("a thread's lease", () => {
     ).toBe(unaddressed);
   });
 
+  // The shared HQ serves git at `/git/<orgId>/<appId>/<repo>.git`, and zcp names a lease's
+  // repository by that address; the change's own is built without the organization (`repoUrl`).
+  const SHARED = "https://hq.example/git/org-1";
+  const otherApp = change("mergeable", {
+    number: 11,
+    repository: "appdev",
+    repositoryUrl: "https://hq.example/git/g2/appdev",
+    branch: "feat-x",
+  });
+  it.each([
+    {
+      title: "a lease named by the shared HQ's address reads its own repository's change",
+      flow: twoApps,
+      repo: `${SHARED}/g1/appdev`,
+      read: webChange,
+    },
+    {
+      title: "a lease named by the shared HQ's address with .git reads its own repository's change",
+      flow: twoApps,
+      repo: `${SHARED}/g1/apidev.git`,
+      read: apiChange,
+    },
+    {
+      title: "a lease of another repository of its application on the shared HQ reads none",
+      flow: twoApps,
+      repo: `${SHARED}/g1/docsdev`,
+      read: undefined,
+    },
+    {
+      title: "a lease of another application's repository of one name reads that one's change",
+      flow: { pullRequests: [webChange, otherApp], merged: [] },
+      repo: `${SHARED}/g1/appdev`,
+      read: webChange,
+    },
+    {
+      title: "a lease named by an address without the organization still reads its own change",
+      flow: { pullRequests: [webChange, otherApp], merged: [] },
+      repo: "https://hq.example/git/g2/appdev",
+      read: otherApp,
+    },
+    {
+      title: "a lease of a change whose own address names the organization reads it",
+      flow: {
+        pullRequests: [{ ...webChange, repositoryUrl: `${SHARED}/g1/appdev.git` }, apiChange],
+        merged: [],
+      },
+      repo: WEB,
+      read: { ...webChange, repositoryUrl: `${SHARED}/g1/appdev.git` },
+    },
+  ])("two apps' changes on one branch: $title", ({ flow, repo, read }) => {
+    expect(mateChangeIn(flow, "p1", "webpool-3", [{ ...LEASE, repo }])).toEqual(read);
+  });
+
   /** zcp's leases as the thread last read them: its branch is held on two more pools. */
   const READ = [
     { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },

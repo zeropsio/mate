@@ -184,6 +184,67 @@ describe("askMateThread: a change's branch", () => {
   ])("a change of one of two apps on one branch asks $name", ({ chats, url, asked }) => {
     expect(askMateThread(chats, undefined, "fix-login", url)?.id).toBe(asked);
   });
+
+  // The shared HQ serves git at `/git/<orgId>/<appId>/<repo>.git`: zcp names a lease's repository
+  // by that address, while the change's own is built without the organization (`repoUrl`).
+  const SHARED = "https://hq.example/git/org-1";
+  const sharedWebChat = thread("web-login", {
+    lease: {
+      alias: "webpool-3",
+      pool: "webpool",
+      branch: "fix-login",
+      repo: `${SHARED}/g1/appdev`,
+    },
+    latestUserMessageAt: "2026-10-25T09:00:00.000Z",
+  });
+  const sharedApiChat = thread("api-login", {
+    lease: {
+      alias: "apipool-4",
+      pool: "apipool",
+      branch: "fix-login",
+      repo: `${SHARED}/g1/apidev`,
+    },
+  });
+  const otherAppChat = thread("other-app-login", {
+    lease: {
+      alias: "webpool-5",
+      pool: "webpool",
+      branch: "fix-login",
+      repo: `${SHARED}/g2/apidev`,
+    },
+    latestUserMessageAt: "2026-10-25T10:00:00.000Z",
+  });
+  it.each([
+    {
+      name: "its own repository's chat",
+      chats: [main, sharedWebChat, sharedApiChat],
+      url: API,
+      asked: "api-login",
+    },
+    {
+      name: "its own repository's chat, not another application's repository of one name",
+      chats: [main, otherAppChat, sharedApiChat],
+      url: API,
+      asked: "api-login",
+    },
+    {
+      name: "the main chat when no chat is of its repository",
+      chats: [main, sharedWebChat],
+      url: API,
+      asked: "main",
+    },
+    {
+      name: "its own repository's chat by an address without the organization, as before",
+      chats: [main, webChat, apiChat],
+      url: `${SHARED}/g1/apidev.git`,
+      asked: "api-login",
+    },
+  ])(
+    "a change of one of two apps on one branch, leased on the shared HQ, asks $name",
+    ({ chats, url, asked }) => {
+      expect(askMateThread(chats, undefined, "fix-login", url)?.id).toBe(asked);
+    },
+  );
 });
 
 describe("askedDraft: a request left unsent joins what the person had typed, never replaces it", () => {
