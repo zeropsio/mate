@@ -5,6 +5,8 @@ import { AtomRegistry } from "effect/reactivity";
 import type { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { changeReadOwner, changeReadScope } from "../families/hqChangeRead.ts";
+import { hqChangeMetadata } from "../projections/hqChangeMetadata.ts";
+import { hqChangeCommits } from "../projections/hqChangeCommits.ts";
 import { hqChangeRead } from "../projections/hqChangeRead.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
@@ -117,6 +119,67 @@ describe("HQ review read on the account's shared link", () => {
           });
           release();
         }
+        link.stop();
+      }).pipe(Effect.scoped),
+  );
+  it.live.each(["metadata", "commits"] as const)(
+    "A %s demand uses its own answer without loading review contents.",
+    (purpose) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const opened = yield* Deferred.make<void>();
+        let reviewReads = 0;
+        const requests: Array<unknown> = [];
+        const answer =
+          purpose === "metadata"
+            ? { change: DETAIL.change }
+            : {
+                change: DETAIL.change,
+                mainHead: DETAIL.mainHead,
+                commits: DETAIL.commits,
+                commitsTruncated: false,
+              };
+        const wire: HqWire = {
+          open: (created) =>
+            fixture.wire.open(created).pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
+          change: () => {
+            reviewReads += 1;
+            return Effect.succeed(DETAIL);
+          },
+          metadata: (request) => {
+            requests.push(request);
+            return Effect.succeed({ change: DETAIL.change });
+          },
+          commits: (request) => {
+            requests.push(request);
+            return Effect.succeed({
+              change: DETAIL.change,
+              mainHead: DETAIL.mainHead,
+              commits: DETAIL.commits,
+              commitsTruncated: false,
+            });
+          },
+        };
+        const link = hqNavigationLink({ orgId: "org", store, wire });
+        const family = purpose === "metadata" ? "hqChangeMetadata" : "hqChangeCommits";
+        const projection = purpose === "metadata" ? hqChangeMetadata : hqChangeCommits;
+        const release = link.demandDetail({ family, ownerId: owner });
+        const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+        yield* Effect.forkScoped(supervisor.run);
+        yield* Deferred.await(opened);
+        yield* fixture.send({ type: "ping" });
+        yield* until(
+          store,
+          () => projection.derive(readsOfState(store.state()), key).kind === "read",
+        );
+        expect(projection.derive(readsOfState(store.state()), key)).toEqual({
+          kind: "read",
+          detail: answer,
+        });
+        expect(requests).toEqual([request]);
+        expect(reviewReads).toBe(0);
+        release();
         link.stop();
       }).pipe(Effect.scoped),
   );

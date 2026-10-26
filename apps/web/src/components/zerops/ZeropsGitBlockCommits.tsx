@@ -1,18 +1,14 @@
 /**
- * The commits under a Git tab block: the Mate's change's own, as HQ's detail of it reads them
- * (`useZeropsChangeDetail`) — the same read, kept by the same head and `main`, its review makes.
- *
- * A child per block because a hook cannot be called in a loop, and each read then lives and dies
- * with the block it belongs to. Nothing to say is nothing drawn: a "Reading…" line under every
- * block on every open would be four words of chrome for a list that is usually short.
- *
- * A row opens that commit's changes (`onOpenCommit`); without a conversation to open them beside,
- * rows are only read.
+ * Explicit History reads the change's commits without file patches. Empty, pending and failed
+ * lists draw nothing, matching the Git block's existing quiet readout. Rows open a commit's
+ * changes only when a conversation can display them beside the list.
  */
+import { useState } from "react";
+import { Button } from "~/components/ui/button";
 import { historyAge } from "@t3tools/client-runtime/zerops";
 
 import { useNowMs } from "~/zerops/useNowMs";
-import { useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
+import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
 
 export function ZeropsGitBlockCommits({
   appId,
@@ -32,13 +28,27 @@ export function ZeropsGitBlockCommits({
     | ((commit: { readonly sha: string; readonly subject: string }) => void)
     | undefined;
 }) {
-  const now = useNowMs();
-  const detail = useZeropsChangeDetail(
+  const identity =
     appId === undefined || change === undefined
+      ? null
+      : JSON.stringify([appId, repository, change.number]);
+  const [openedChange, setOpenedChange] = useState<string | null>(null);
+  const historyOpen = identity !== null && openedChange === identity;
+  const now = useNowMs();
+  const detail = useZeropsChangeCommits(
+    !historyOpen || appId === undefined || change === undefined
       ? null
       : { link: { appId, repo: repository, number: change.number }, head: change.head, main },
   );
   const readout = detail.readout;
+  if (appId === undefined || change === undefined) return null;
+  if (!historyOpen)
+    return (
+      <Button variant="ghost" size="sm" onClick={() => setOpenedChange(identity)}>
+        History
+      </Button>
+    );
+
   if (readout.kind !== "read" || readout.value.commits.length === 0) return null;
   const commits = readout.value.commits;
   return (

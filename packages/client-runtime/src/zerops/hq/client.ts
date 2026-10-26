@@ -29,6 +29,8 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 import {
   attachmentPath,
   ChangeDetailResponse,
+  ChangeMetadataResponse,
+  ChangeCommitsResponse,
   type ChangeDetailQuery,
   HqChange,
   HqChangeComment,
@@ -549,6 +551,17 @@ export interface HqApi {
     signal?: AbortSignal,
     snapshot?: ChangeDetailQuery,
   ) => Promise<ChangeDetailResponse>;
+  /** Reads database metadata without opening Git. */
+  readonly changeMetadata: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+  ) => Promise<ChangeMetadataResponse>;
+  /** Reads explicitly requested commit history without file patches. */
+  readonly changeCommits: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+    snapshot?: ChangeDetailQuery,
+  ) => Promise<ChangeCommitsResponse>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
   /**
@@ -778,6 +791,8 @@ const unreadable = () =>
   });
 
 const readChangeDetail = decoded(ChangeDetailResponse);
+const readChangeMetadata = decoded(ChangeMetadataResponse);
+const readChangeCommits = decoded(ChangeCommitsResponse);
 const readIntakeView = decoded(HqIntakeView);
 const readAiKeys = decoded(Schema.Array(HqAiKeyView));
 const readAiKey = decoded(HqAiKeyView);
@@ -1494,6 +1509,19 @@ export function makeHqApi(input: {
         },
       ),
     change: changeOf,
+    changeMetadata: async (link, signal) =>
+      readChangeMetadata(
+        await authorized(`${changePath(link)}/metadata`, signal === undefined ? {} : { signal }),
+      ),
+    changeCommits: async (link, signal, snapshot = {}) => {
+      const search = new URLSearchParams(snapshot).toString();
+      return readChangeCommits(
+        await authorized(
+          `${changePath(link)}/commits${search === "" ? "" : `?${search}`}`,
+          signal === undefined ? {} : { signal },
+        ),
+      );
+    },
     // A comment has no name of its own: one whose answer was lost stays uncertain here, and the
     // account's operation tells it from HQ's conversation by its author.
     commentOnChange: async (link, body) =>

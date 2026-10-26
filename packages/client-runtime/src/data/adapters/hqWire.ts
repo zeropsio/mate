@@ -41,7 +41,8 @@ export function classifyHqCall(cause: unknown): StreamFault {
 }
 
 export function makeHqWire(
-  api: Pick<HqApi, "openScopeSocket"> & Partial<Pick<HqApi, "changeAttachment" | "change">>,
+  api: Pick<HqApi, "openScopeSocket"> &
+    Partial<Pick<HqApi, "changeAttachment" | "change" | "changeMetadata" | "changeCommits">>,
 ): HqWire {
   return {
     ...(api.changeAttachment === undefined
@@ -62,6 +63,34 @@ export function makeHqWire(
               catch: (cause) => ({
                 ...classifyHqCall(cause),
                 ...(cause instanceof HqError && cause.status === 404 ? { code: "not_found" } : {}),
+              }),
+            }),
+        }),
+    ...(api.changeMetadata === undefined
+      ? {}
+      : {
+          metadata: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeMetadata!(request.link, signal),
+              catch: (cause) => ({
+                ...classifyHqCall(cause),
+                ...(cause instanceof HqError && cause.code === "change_not_found"
+                  ? { code: "not_found" }
+                  : {}),
+              }),
+            }),
+        }),
+    ...(api.changeCommits === undefined
+      ? {}
+      : {
+          commits: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeCommits!(request.link, signal, request.snapshot),
+              catch: (cause) => ({
+                ...classifyHqCall(cause),
+                ...(cause instanceof HqError && cause.code === "change_not_found"
+                  ? { code: "not_found" }
+                  : {}),
               }),
             }),
         }),

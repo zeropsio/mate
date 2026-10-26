@@ -51,7 +51,9 @@ vi.mock("../../state/sourceControlActions", () => ({
 }));
 vi.mock("~/zerops/useZeropsChangeDetail", () => ({
   mergedMain: () => undefined,
-  useZeropsChangeDetail: () => ({
+}));
+vi.mock("~/zerops/useZeropsChangeCommits", () => ({
+  useZeropsChangeCommits: () => ({
     readout: {
       kind: "read",
       value: { commits: [{ sha: SHA, subject: "Add the menu", at: "2026-10-02T11:00:00Z" }] },
@@ -170,6 +172,11 @@ const visible = (element: Element | null) =>
 
 /** Presses the row, then lets the code view's chunk arrive. */
 const openCommit = async () => {
+  act(() =>
+    [...host.querySelectorAll("button")]
+      .find((button) => button.textContent === "History")
+      ?.click(),
+  );
   act(() => commitRow()?.click());
   await vi.waitFor(() => expect(host.querySelector('[aria-label="Changed files"]')).not.toBeNull());
 };
