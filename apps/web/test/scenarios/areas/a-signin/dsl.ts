@@ -69,12 +69,23 @@ export function account(page: Page) {
       expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
       expect(await page.$('[role="textbox"]')).toBeNull();
     }),
-    needsAdministrator: Effect.promise(async () => {
-      await page.waitForFunction(
-        () => document.body.innerText.includes("An admin sets up HQ for this organization."),
-        { polling: "raf" },
-      );
-    }),
+    needsAdministrator: (core: Scenario["drivers"]["core"]["kind"]) =>
+      Effect.promise(async () => {
+        const notices = {
+          "in-process": "An admin sets up HQ for this organization.",
+          external:
+            "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
+        };
+        await page.waitForFunction(
+          (notices) => notices.some((notice) => document.body.innerText.includes(notice)),
+          { polling: "raf" },
+          Object.values(notices),
+        );
+        expect(
+          await page.evaluate(() => document.body.innerText),
+          "ASSERTION: the selected organization shows its HQ's administrator requirement",
+        ).toContain(notices[core]);
+      }),
     reload: Effect.promise(async () => {
       await page.reload();
     }),

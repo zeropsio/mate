@@ -18,6 +18,7 @@ import {
   declaredEnvironmentSummary,
   hasNoZeropsProject,
   projectsGroupLine,
+  creationCovers,
   projectsFreshnessNotice,
   projectsListingNotice,
   projectsTroubleView,
@@ -659,6 +660,28 @@ describe("a group's one line about itself", () => {
     ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
+  });
+});
+
+describe("the environment a creation on this page covers", () => {
+  const creation = (outcome: NonNullable<Parameters<typeof creationCovers>[0]>["outcome"]) => ({
+    groupId: "shop",
+    tier: "stage" as const,
+    outcome,
+  });
+  const settled = { groupId: "shop", tier: "stage" as const };
+  // The stage-paint run: the stage went through and its creation closed a frame before the setup
+  // read caught up, and the card's header said "Setting up stage isn't finished" for that frame.
+  it.each([
+    ["while it runs", creation(undefined), null, "shop", "stage"],
+    ["once it went through, until the setup read catches up", null, settled, "shop", "stage"],
+    ["never another project's that went through", null, settled, "other", undefined],
+    ["never once it was handed off", creation({ kind: "handed-off" }), null, "shop", undefined],
+    ["never another project's", creation(undefined), null, "other", undefined],
+    ["never a Mate's", { groupId: "shop", tier: "mate" as const }, null, "shop", undefined],
+    ["never without a creation", null, null, "shop", undefined],
+  ] as const)("covers its environment %s", (_case, input, went, groupId, expected) => {
+    expect(creationCovers(input, went, groupId)).toBe(expected);
   });
 });
 

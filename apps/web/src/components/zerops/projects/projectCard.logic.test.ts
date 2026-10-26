@@ -3,6 +3,7 @@ import {
   canonicalEnvironmentRowInputsOf,
   groupFlow,
   placeAddresses,
+  PRODUCTION_DEPLOYING,
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
@@ -28,7 +29,9 @@ import {
   mateChangeForReview,
   mateChangesForReview,
   panelAddresses,
+  historyHeld,
   historyOffered,
+  productionBuilding,
   releaseProductionRuns,
   placeLines,
   putLiveHasChange,
@@ -675,6 +678,11 @@ describe("a release on its way", () => {
 describe("production's line while a release is on its way", () => {
   const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
   const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
+  const deploying = {
+    kind: "deploying",
+    stop: stop({ state: "deploying" }),
+    line: PRODUCTION_DEPLOYING,
+  } as const;
   it.each([
     { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
     {
@@ -682,6 +690,17 @@ describe("production's line while a release is on its way", () => {
       production: releasing,
       rollsBackTo: "v2.3.0",
       opens: { kind: "rollback", tag: "v2.3.0" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production, before HQ names it",
+      production: deploying,
+      chip: chip({ state: "releasing", next: "v2.4.1" }),
+      opens: { kind: "release" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production it cannot name yet",
+      production: deploying,
+      opens: { kind: "release" },
     },
     { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
     {
@@ -1111,6 +1130,56 @@ describe("production's actions", () => {
   ])("offers production's history only once it runs a release: $case", (input) => {
     expect(historyOffered(input)).toBe(input.offered);
   });
+});
+
+describe("production's room while a release is on its way", () => {
+  // CI's held card: the platform's build said Deploying with no History room at 248 px, then HQ's
+  // accepted release said Releasing with it at 292 px; one release on its way keeps one height.
+  it.each([
+    {
+      case: "the platform's build, before HQ names it",
+      kind: "deploying",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    {
+      case: "HQ's accepted release",
+      kind: "releasing",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    { case: "a version it runs", kind: "live", dot: "running", runsNamed: true, held: true },
+    {
+      case: "running nothing it can name",
+      kind: "live",
+      dot: "running",
+      runsNamed: false,
+      held: false,
+    },
+    { case: "nothing released yet", kind: "empty", dot: "none", runsNamed: false, held: false },
+  ] as const)("holds History's room whatever names the release first: $case", (input) => {
+    expect(historyHeld(input)).toBe(input.held);
+  });
+
+  const BUILD = { from: "v1.0.0", to: "v1.1.0" };
+  it.each([
+    { case: "the flow says production deploys", kind: "deploying", building: BUILD, read: BUILD },
+    {
+      case: "the flow still offers the release",
+      kind: "ready-to-release",
+      building: BUILD,
+      read: undefined,
+    },
+    { case: "the flow says it runs", kind: "live", building: BUILD, read: undefined },
+    { case: "no build", kind: "deploying", building: undefined, read: undefined },
+  ] as const)(
+    "the card's chip reads a build only where its flow says production deploys: $case",
+    (input) => {
+      expect(productionBuilding(input.kind, input.building)).toEqual(input.read);
+    },
+  );
 });
 
 describe("the version production runs", () => {

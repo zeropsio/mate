@@ -17,8 +17,8 @@ describe("C: agent selection and contextual drafts", () => {
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installArea]);
-          const change = yield* changeFixture(s);
           s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
+          const change = yield* changeFixture(s);
           const chat = mateChat(s);
           chat.fixture().history();
           yield* s.given.signedIn;

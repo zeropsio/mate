@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { ANSWER, TITLE, journey, sampled } from "./pageJourney.ts";
+import { ANSWER, TITLE, journey, sampled, type Sample } from "./pageJourney.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof journey>>["s"];
 
@@ -357,15 +357,33 @@ describe("C: a page the Mate publishes", () => {
         "a page its viewport sizes stands a screen tall and scrolls inside, never growing without end",
         () =>
           Effect.gen(function* () {
-            const { s, publish } = yield* journey("600vh");
-            const samples = yield* sampled(
+            const { s, publish, measured } = yield* journey("600vh");
+            yield* sampled(
               s,
               Effect.sync(() => publish()),
             );
+            // The view records the page's height once it held still; every frame after that
+            // receipt stands at one height.
+            yield* measured;
+            const samples = yield* Effect.promise(async () => {
+              const settledAt = await s.page.evaluate(
+                () => (window as unknown as { pageSamples: Sample[] }).pageSamples.length,
+              );
+              await s.page.waitForFunction(
+                (at) =>
+                  (window as unknown as { pageSamples: Sample[] }).pageSamples.length > at + 20,
+                { polling: 100 },
+                settledAt,
+              );
+              return s.page.evaluate(
+                (at) => (window as unknown as { pageSamples: Sample[] }).pageSamples.slice(at),
+                settledAt,
+              );
+            });
             const last = samples.at(-1)!;
             expect(
-              new Set(samples.slice(-20).map((sample) => sample.frame)).size,
-              "ASSERTION: the frame holds still",
+              new Set(samples.map((sample) => sample.frame)).size,
+              `ASSERTION: the frame holds still: ${samples.map((sample) => sample.frame).join(" ")}`,
             ).toBe(1);
             expect(last.frame, "ASSERTION: a screen tall, inside the window").toBeLessThan(1000);
             expect(last.frame, "ASSERTION: past its first box").toBeGreaterThan(240);

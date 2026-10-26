@@ -1,4 +1,3 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -44,9 +43,7 @@ describe("Opt-in read-only scenario stack", () => {
         yield* s.given.project("Ada", { mate: true });
         const isolated = yield* createScenario();
         expect(isolated.web.origin).not.toBe(s.web.origin);
-        expect(inProcessCore(isolated.drivers.core).url).not.toBe(
-          inProcessCore(s.drivers.core).url,
-        );
+        expect(isolated.drivers.core.url).not.toBe(s.drivers.core.url);
         expect(isolated.page.browserContext().id).not.toBe(s.page.browserContext().id);
         expect(isolated.drivers.zerops.world.projects.some((project) => project.id === "Ada")).toBe(
           false,

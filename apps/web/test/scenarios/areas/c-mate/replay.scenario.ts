@@ -19,12 +19,12 @@ describe("C: reading, replay and attention", () => {
     it.effect("a source epoch and each person's reading evidence keep their own meaning", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.project("Bea", { mate: true, app: "Shop" });
         s.given.person("dev", {
           role: "Developer",
           grants: { Ada: "BASIC_USER", Bea: "BASIC_USER" },
         });
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
         const chat = mateChat(s);
         const wire = chat.fixture();
         wire.history();

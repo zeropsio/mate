@@ -61,6 +61,7 @@ describe("owner-reported layout regressions", () => {
     const ownershipArrives = (anchor: boolean) =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
+        s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         yield* s.given.project("Ada", {
           mate: true,
           provider: { driverKind: ProviderDriverKind.make("claudeAgent") },
@@ -107,7 +108,6 @@ describe("owner-reported layout regressions", () => {
           }),
         );
         const url = s.page.url();
-        s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         const colleague = yield* s.given.browserActor({ person: "dev" });
         yield* colleague.given.signedIn;
         yield* Effect.promise(() => colleague.page.setViewport({ width: 1786, height: 1000 }));

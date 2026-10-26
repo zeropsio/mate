@@ -513,8 +513,9 @@ function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): G
   if (stop.state === "checking") return { kind: "checking", stop, line };
   if (input.release.inFlight !== undefined)
     return { kind: "releasing", stop, line, tag: input.release.inFlight };
-  if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
+  // The platform's build on production says one is on its way before HQ records the release.
   if (stop.state === "deploying") return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING };
+  if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };
 }
 

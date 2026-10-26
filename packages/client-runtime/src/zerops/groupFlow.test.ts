@@ -737,6 +737,26 @@ describe("groupFlow", () => {
     expect(production).toMatchObject(expected);
   });
 
+  // The platform's build on production and HQ's release record arrive apart: the build alone
+  // already says one is on its way, so the card's line and its ready block read the same answer.
+  it.each([
+    { case: "with a release counted", waiting: 1, untold: [] },
+    { case: "where what production runs cannot be told", waiting: 0, untold: ["app"] },
+  ])("offers no Release while the platform builds production, $case", ({ waiting, untold }) => {
+    const production = productionOf(
+      {
+        deployment: known({
+          kind: "deploying",
+          version: deployedVersion(MAIN_SHA),
+          previous: { kind: "running", activatedAt: null, version: deployedVersion(released) },
+        }),
+      },
+      { gate: { allowed: true }, suggestion: "v0.1.1", waiting, waitingAtLeast: false, untold },
+    );
+    expect(production).toMatchObject({ kind: "deploying", stop: { state: "deploying" } });
+    expect("candidate" in production).toBe(false);
+  });
+
   // A production service whose commit cannot be told counts nothing, and is no proof that nothing
   // waits: the release stays offered.
   it("offers the release where what production runs cannot be told, though nothing is counted", () => {
