@@ -195,6 +195,57 @@ describe("buildZcpServiceImportYaml", () => {
   });
 });
 
+describe("a Mate's birthplace", () => {
+  const input = { serviceName: "zcp", vscodePassword: "pw" };
+  const envLine = (yaml: string, key: string) =>
+    yaml
+      .split("\n")
+      .find((line) => line.trimStart().startsWith(`${key}:`))
+      ?.trim();
+
+  it.each([
+    {
+      birthplace: {
+        hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
+        webOrigin: "https://web-1a2b.prg1.zerops.app",
+      },
+      hq: 'T3CODE_ZEROPS_HQ_ORIGIN: "https://hq-31d9-8080.prg1.zerops.app"',
+      allowed: 'ZCP_MATE_ALLOWED_ORIGINS: "https://web-1a2b.prg1.zerops.app"',
+    },
+    {
+      birthplace: { hqOrigin: "https://hq.zerops.io", webOrigin: "https://mate.zerops.io" },
+      hq: 'T3CODE_ZEROPS_HQ_ORIGIN: "https://hq.zerops.io"',
+      allowed: 'ZCP_MATE_ALLOWED_ORIGINS: "https://mate.zerops.io"',
+    },
+  ])(
+    "a Mate born from a web whose HQ is known enrols with that HQ and admits that web: $birthplace.hqOrigin",
+    ({ birthplace, hq, allowed }) => {
+      const yaml = buildZcpServiceImportYaml({ ...input, birthplace });
+      expect(envLine(yaml, "T3CODE_ZEROPS_HQ_ORIGIN")).toBe(hq);
+      expect(envLine(yaml, "ZCP_MATE_ALLOWED_ORIGINS")).toBe(allowed);
+    },
+  );
+
+  // zcp admits only `https://<host>[:port]` entries and drops any other with a diagnostic on
+  // every boot: a web served over plain http (local development) is not written at all.
+  it("a web served over plain http is not admitted, while its HQ still is", () => {
+    const yaml = buildZcpServiceImportYaml({
+      ...input,
+      birthplace: { hqOrigin: "https://hq.zerops.io", webOrigin: "http://localhost:5733" },
+    });
+    expect(envLine(yaml, "T3CODE_ZEROPS_HQ_ORIGIN")).toBe(
+      'T3CODE_ZEROPS_HQ_ORIGIN: "https://hq.zerops.io"',
+    );
+    expect(yaml).not.toContain("ZCP_MATE_ALLOWED_ORIGINS");
+  });
+
+  it("a Mate born where no HQ is known names neither", () => {
+    const yaml = buildZcpServiceImportYaml(input);
+    expect(yaml).not.toContain("T3CODE_ZEROPS_HQ_ORIGIN");
+    expect(yaml).not.toContain("ZCP_MATE_ALLOWED_ORIGINS");
+  });
+});
+
 describe("a Chief's container", () => {
   const input = { serviceName: "zcp", vscodePassword: "pw" };
 

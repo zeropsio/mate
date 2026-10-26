@@ -6,8 +6,8 @@
  * The import document is emitted verbatim rather than through a YAML library:
  * it must match what the platform GUI produces for the same configuration,
  * traced from its `ZeropsYamlBuilder` on 2026-08-28, and a serializer's
- * quoting choices would drift from that — plus `ZCP_MATE_ENABLED`, the one key
- * this client adds to the GUI's document. zcp keys every mate-shaped effect off
+ * quoting choices would drift from that — plus the keys this client adds to the
+ * GUI's document, `ZCP_MATE_ENABLED` first. zcp keys every mate-shaped effect off
  * that flag: without it `zcp init` installs no bundle, registers no unit and
  * publishes no `/mate/` location, so a container created here would come up
  * unable to serve the very product that created it. The GUI has no reason to
@@ -137,6 +137,18 @@ export function encodeSetupRuntimes(yaml: string): string {
   return btoa(binary);
 }
 
+/**
+ * Where a Mate was born: the HQ that created it and the web it was created from. Its container
+ * enrols with that HQ (`T3CODE_ZEROPS_HQ_ORIGIN`, read by zcp and by the Mate's server alike)
+ * and admits that web's browsers (`ZCP_MATE_ALLOWED_ORIGINS`, spec-mate §2.3; an `https://` web
+ * only), so a Mate born from any web links to the HQ that made it, never to the one its
+ * organization's anchor names.
+ */
+export interface MateBirthplace {
+  readonly hqOrigin: string;
+  readonly webOrigin: string;
+}
+
 export function buildZcpServiceImportYaml(input: {
   readonly serviceName: string;
   readonly vscodePassword: string;
@@ -155,6 +167,8 @@ export function buildZcpServiceImportYaml(input: {
    * `services: []`, and a container made before the press — which carries neither — never does.
    */
   readonly setupRuntimesYaml?: string;
+  /** Absent where no HQ is known: the container then enrols with the one zcp defaults to. */
+  readonly birthplace?: MateBirthplace;
 }): string {
   if (!input.vscodePassword) {
     throw new Error("A zcp container with a public subdomain needs a VSCODE_PASSWORD.");
@@ -175,6 +189,13 @@ export function buildZcpServiceImportYaml(input: {
   const runtimesLine = input.apiKey
     ? `      MATE_SETUP_RUNTIMES: "${encodeSetupRuntimes(input.setupRuntimesYaml || NO_SETUP_RUNTIMES)}"\n`
     : "";
+  const hqOriginLine = input.birthplace
+    ? `      T3CODE_ZEROPS_HQ_ORIGIN: "${input.birthplace.hqOrigin}"\n`
+    : "";
+  // zcp admits only `https://` entries and names any other in a diagnostic on every boot.
+  const allowedOriginsLine = input.birthplace?.webOrigin.startsWith("https://")
+    ? `      ZCP_MATE_ALLOWED_ORIGINS: "${input.birthplace.webOrigin}"\n`
+    : "";
   return `services:
   - hostname: ${input.serviceName}
     type: zcp@1
@@ -187,7 +208,7 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
-${keyLine}${runtimesLine}    zeropsYaml:
+${keyLine}${runtimesLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
 ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .split("\n")
   .map((line) => `      ${line}`)

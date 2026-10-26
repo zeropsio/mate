@@ -47,6 +47,7 @@ import {
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
+  type MateBirthplace,
   type ZeropsAgentType,
 } from "./newProject.ts";
 import {
@@ -1988,6 +1989,7 @@ export class ZeropsApiClient {
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
       readonly setupRuntimesYaml?: string;
+      readonly birthplace?: MateBirthplace;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -2097,6 +2099,7 @@ export class ZeropsApiClient {
               ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
+              ...(input.birthplace ? { birthplace: input.birthplace } : {}),
             }),
           }),
         ),

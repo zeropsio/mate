@@ -36,6 +36,7 @@ import type { Deployment } from "./flow/deployment.ts";
 import { deployedVersion } from "./groupRows.ts";
 import type { Known } from "./knowledge/known.ts";
 import { isUncertainZeropsFailure } from "./errors.ts";
+import type { MateBirthplace } from "./newProject.ts";
 
 /**
  * What a creation acts through: each Zerops write as the account's operation, waited to its end
@@ -53,6 +54,8 @@ export interface EnvironmentCreationPlatform {
    * with the reason a write did not go through.
    */
   readonly register: (projectId: string) => Promise<void>;
+  /** The HQ and the web a Mate's container is born from; absent where no HQ is known. */
+  readonly birthplace?: MateBirthplace;
   /**
    * Resolves with the project's services once every one of them has settled
    * (`servicesSettled`), as the account's services listing holds them: read as they change,
@@ -281,6 +284,9 @@ export async function runEnvironmentCreation(
               projectName: projectName ?? "",
               agents: step.agents,
               ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+              ...(input.platform.birthplace === undefined
+                ? {}
+                : { birthplace: input.platform.birthplace }),
             },
             { orgId, unobserved: UNCONFIRMED_WRITE },
           );

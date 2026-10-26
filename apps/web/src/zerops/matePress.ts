@@ -935,6 +935,10 @@ export function pressPlatform(
     register: async (projectId) => {
       await options.register?.(projectId);
     },
+    // Its container enrols with the HQ this press runs through and admits this web.
+    ...(options.hq === null
+      ? {}
+      : { birthplace: { hqOrigin: options.hq.address, webOrigin: window.location.origin } }),
     untilServicesSettled: options.untilServicesSettled,
   };
 }

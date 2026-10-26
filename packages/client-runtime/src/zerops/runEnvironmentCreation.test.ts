@@ -735,6 +735,22 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(calls.at(-1)).toBe("closedOff:proj-1");
   });
 
+  it("a Mate's container is imported with the HQ and the web it is born from", async () => {
+    const birthplace = {
+      hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
+      webOrigin: "https://web-1a2b.prg1.zerops.app",
+    };
+    const imported: Array<unknown> = [];
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: (intent) => {
+        imported.push(intent);
+        return Promise.resolve({ serviceName: "zcp", imported: true });
+      },
+    });
+    await run(plan("dev"), { ...platform, birthplace });
+    expect(imported).toEqual([expect.objectContaining({ birthplace })]);
+  });
+
   it("registers a Mate before its container, and closes it off after", async () => {
     const { platform, calls } = fakePlatform();
     await run(plan("dev"), platform);
