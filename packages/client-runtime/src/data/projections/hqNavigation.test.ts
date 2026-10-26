@@ -757,3 +757,52 @@ describe("release offers from navigation", () => {
     expect(flow?.releasesKnown).toBe(false);
   });
 });
+
+it("Navigation projects recorded release change titles and counts without app detail.", () => {
+  const offer = {
+    head: "a".repeat(40),
+    suggestion: "v1.0.0",
+    gate: { allow: true },
+    inFlight: null,
+    summary: {
+      subjects: ["#7 Search the catalogue"],
+      changeCount: 1,
+      total: 6,
+      more: 0,
+      atLeast: false,
+    },
+  } as const;
+  const next = reduceAccount(read, {
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: generations,
+    reset: false,
+    removals: [],
+    rows: [
+      {
+        family: "hqApp",
+        id: "shop",
+        revision: { ...revision, revision: 2 },
+        value: {
+          ...(rows[2]!.value as import("../families/hqNavigation.ts").HqAppValue),
+          releaseOffer: offer,
+        },
+      },
+    ],
+  }).state;
+  const flow = canonicalProjectFlow.derive(readsOfState(next), {
+    orgId: ORG,
+    appId: "shop",
+    hqAddress: undefined,
+    viewer: undefined,
+  });
+  expect(flow?.release.summary).toEqual({
+    subjects: ["#7 Search the catalogue"],
+    changeCount: 1,
+    total: 6,
+    more: 0,
+    atLeast: false,
+  });
+  expect(flow?.releasesKnown).toBe(false);
+  expect(flow?.recipeRead).toBe(false);
+});

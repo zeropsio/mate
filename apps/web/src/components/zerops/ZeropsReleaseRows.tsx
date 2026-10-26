@@ -31,6 +31,8 @@ export interface ZeropsReleasesCarried {
   /** `tag → what it carried`, as HQ compared it (`movedCommits` over `carriedReads`). */
   readonly carried: ReadonlyMap<string, ComparedCommits>;
   readonly names: HistoryNames;
+  /** The owning surface starts a compare only after this explicit row expansion. */
+  readonly onExpandedChange?: ((tag: string, open: boolean) => void) | undefined;
   /** Opens the review of the change that landed a carried commit, in its repository. */
   readonly onOpenChange?:
     | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
@@ -173,12 +175,24 @@ function CarriedReleaseRow({
       ? undefined
       : back !== undefined
         ? rolledBackDescription(back, release.line)
-        : releaseDescription(moved, release.line, now, carried.names);
+        : carried.onExpandedChange === undefined
+          ? releaseDescription(moved, release.line, now, carried.names)
+          : release.history === undefined
+            ? { primary: release.line, secondary: "Earlier membership not recorded · Open History" }
+            : {
+                primary:
+                  release.history.changes.map((change) => change.title).join(" · ") || "No changes",
+                secondary: `${String(release.history.changes.length)} ${release.history.changes.length === 1 ? "change" : "changes"} · ${String(release.history.commitCount)} ${release.history.commitCount === 1 ? "commit" : "commits"}${release.history.outsideCommitCount === 0 ? "" : ` · ${String(release.history.outsideCommitCount)} ${release.history.outsideCommitCount === 1 ? "commit" : "commits"} outside Mate`}`,
+              };
   const parts = releaseRowParts(release, groupId, pending, onRollBack);
   const expansion = open ? (
     <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
       {what?.state === "failed" ? (
         <ZeropsReadFailure action="Compare again" reason={what.reason} again={what.again} />
+      ) : what?.state === "reading" ? (
+        <p className="text-sm text-muted-foreground">Reading commit messages…</p>
+      ) : moved.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No commits.</p>
       ) : (
         moved.map((read) => (
           <ReleaseService
@@ -205,13 +219,14 @@ function CarriedReleaseRow({
     </div>
   ) : undefined;
   const leading =
-    moved.length > 0 || what?.state === "failed" ? (
+    carried.onExpandedChange !== undefined || moved.length > 0 || what?.state === "failed" ? (
       <button
         aria-expanded={open}
         aria-label={releaseCarriedToggleLabel(release.tag, open)}
         className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
         onClick={() => {
-          setOpen((current) => !current);
+          carried.onExpandedChange?.(release.tag, !open);
+          setOpen(!open);
         }}
         type="button"
       >

@@ -34,8 +34,8 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * (the owner, 2026-09-19).
  *
  * The flow is the application's, read while the page is drawn (`projectFlows`),
- * and the history and what each release carried are HQ's comparisons, asked
- * while they are shown (`useReleaseComparisons`).
+ * and history summaries use recorded domain rows. Commit comparisons are requested only after
+ * the person expands a release (`useReleaseComparisons`).
  *
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
@@ -54,7 +54,6 @@ import {
   environmentSlots,
   productionRunsOf,
   type EnvironmentSlotRow,
-  releaseContentsCommits,
   releaseContentsSummary,
   carriedReads,
   movedCommits,
@@ -133,7 +132,7 @@ import { useOpenPutLive } from "~/zerops/putLive";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
-import { useRepositoryHistory, type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
+import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -155,6 +154,7 @@ import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel, VerdictPanelWaiting } from
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+import { RecordedStageHistory, type RecordedStageHistoryProps } from "./RecordedStageHistory";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -564,7 +564,11 @@ function KnownGroupAside({
           production?.target.kind !== "zerops"
             ? "unknown"
             : productionRunsOf(deployments.get(production.target.projectId)),
-        waiting: { count: waiting.total, atLeast: waiting.atLeast },
+        waiting: {
+          count: waiting.total,
+          atLeast: waiting.atLeast,
+          changeCount: waiting.changeCount,
+        },
         // Entries are what `main` would put in a release: none says it holds no code, once the
         // repositories and the recipe that names their services are both read.
         mainHasCode:
@@ -1028,11 +1032,15 @@ function ZeropsProjectStopDetailPage({
   const production = stop?.tier === "production";
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
-  const history = useRepositoryHistory({
-    appId: groupId,
-    repo: stage ? repo : undefined,
-    repos: flow?.repos,
-  });
+  const history: ZeropsHistoryState = { kind: "read", commits: [], total: 0 };
+  const [expandedReleases, setExpandedReleases] = useState<ReadonlySet<string>>(() => new Set());
+  const onReleaseExpanded = (tag: string, open: boolean) =>
+    setExpandedReleases((current) => {
+      const next = new Set(current);
+      if (open) next.add(tag);
+      else next.delete(tag);
+      return next;
+    });
   const mainHead =
     repo === undefined
       ? undefined
@@ -1044,6 +1052,7 @@ function ZeropsProjectStopDetailPage({
     groupId,
     flow?.releases,
     production && withheld === null ? declared?.services : undefined,
+    expandedReleases,
   );
   const release = useReleaseOffer(groupId, flow);
   const openReview = useOpenReview();
@@ -1136,6 +1145,7 @@ function ZeropsProjectStopDetailPage({
     failed: failedDeploys.map((entry) => ({ ...entry, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
+    changeCount: flow.release.summary?.changeCount,
     untold: production ? flow.release.untold : NO_UNTOLD,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
@@ -1161,6 +1171,18 @@ function ZeropsProjectStopDetailPage({
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
         }
         carried={carried}
+        onReleaseExpanded={onReleaseExpanded}
+        recordedHistory={
+          stage && repo !== undefined
+            ? {
+                repo: { appId: groupId, repo },
+                changes: flow.changesKnown
+                  ? flow.merged.filter((change) => change.repository === repo)
+                  : undefined,
+                publication: flow.repos?.find((entry) => entry.name === repo),
+              }
+            : undefined
+        }
         crumbs={crumbs}
         deployed={deployed}
         enablingServiceId={route.enablingServiceId}
@@ -1242,9 +1264,11 @@ function ZeropsProjectStopDetailPage({
           production
             ? {
                 commits:
-                  flow.release.summary?.subjects.map((subject) => ({ subject })) ??
-                  releaseContentsCommits(flow.release.contents),
+                  flow.release.summary?.changeCount !== undefined
+                    ? flow.release.summary.subjects.map((subject) => ({ subject }))
+                    : [],
                 total: notLive.count,
+                changeCount: flow.release.summary?.changeCount,
                 atLeast: notLive.atLeast,
               }
             : NOTHING_WAITING
@@ -1265,6 +1289,7 @@ interface WaitingCommit {
  * all — at least that many where HQ stopped counting.
  */
 interface StopWaiting {
+  readonly changeCount?: number | undefined;
   readonly commits: ReadonlyArray<WaitingCommit>;
   readonly total: number;
   readonly atLeast: boolean;
@@ -1340,13 +1365,14 @@ function useOpenCarriedChange(
 
 /**
  * What each of a production's releases carried, by its tag, as HQ compares it (`carriedReads`):
- * every release against the one before it, read once and held. `undefined` without the services —
- * a stage, or a withheld stop.
+ * only expanded rows ask for commit content. Recorded exact ranges outrank legacy tag comparisons.
+ * `undefined` without the services — a stage, or a withheld stop.
  */
 function useStopCarried(
   groupId: string,
   releases: ReadonlyArray<FlowReleaseRow> | undefined,
   services: GroupEnvironmentRowInput["services"] | undefined,
+  expanded: ReadonlySet<string>,
 ): ReadonlyMap<string, ComparedCommits> | undefined {
   const reads = useMemo(() => {
     if (services === undefined || releases === undefined) return undefined;
@@ -1355,11 +1381,33 @@ function useStopCarried(
         entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
       ),
     );
-    return carriedReads({ releases, repositoryOf });
+    const legacy = carriedReads({ releases, repositoryOf });
+    return new Map(
+      releases.map((release) => [
+        release.tag,
+        release.history?.ranges === undefined
+          ? (legacy.get(release.tag) ?? [])
+          : release.history.ranges.map((range) => ({
+              repository: range.repo,
+              query: { head: range.head, ...(range.base === null ? {} : { base: range.base }) },
+              services: [...repositoryOf]
+                .filter(([, repo]) => repo === range.repo)
+                .map(([service]) => service),
+            })),
+      ]),
+    );
   }, [releases, services]);
   const asks = useMemo(
-    () => (reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.values()].flat()]])),
-    [groupId, reads],
+    () =>
+      reads === undefined
+        ? NO_ASKS
+        : new Map([
+            [
+              groupId,
+              [...reads].filter(([tag]) => expanded.has(tag)).flatMap(([, entries]) => entries),
+            ],
+          ]),
+    [groupId, reads, expanded],
   );
   const compares = useReleaseComparisons(asks);
   return useMemo(() => {
@@ -1398,6 +1446,8 @@ export function ZeropsStopPane({
   readFailures,
   readAgain,
   carried,
+  onReleaseExpanded,
+  recordedHistory,
   crumbs,
   deployed,
   enablingServiceId,
@@ -1490,6 +1540,8 @@ export function ZeropsStopPane({
    * stage, where the rows are their shas.
    */
   readonly carried?: ReadonlyMap<string, ComparedCommits> | undefined;
+  readonly onReleaseExpanded?: ((tag: string, open: boolean) => void) | undefined;
+  readonly recordedHistory?: RecordedStageHistoryProps | undefined;
   /** Opens the review of the change that landed a commit a release carried. */
   readonly onOpenCarriedChange?:
     | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
@@ -1657,8 +1709,21 @@ export function ZeropsStopPane({
 
       <Card variant="flat">
         <div className="flex flex-col divide-y divide-border px-4">
-          {waiting.commits.length === 0 ? null : (
-            <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
+          {waiting.total === 0 && waiting.commits.length === 0 ? null : (
+            <CardGroup
+              title={stopCardTitle(
+                "waiting",
+                waiting.changeCount === undefined ? waiting.total : undefined,
+                waiting.atLeast,
+              )}
+            >
+              {waiting.changeCount === undefined ? null : (
+                <p className="py-2 text-sm text-muted-foreground">
+                  {waiting.changeCount} {waiting.changeCount === 1 ? "change" : "changes"} ·{" "}
+                  {waiting.total}
+                  {waiting.atLeast ? "+" : ""} {waiting.total === 1 ? "commit" : "commits"}
+                </p>
+              )}
               <ul className="flex flex-col">
                 {waiting.commits.map((commit, index) => (
                   <li
@@ -1766,7 +1831,14 @@ export function ZeropsStopPane({
                 <ZeropsReleaseRows
                   {...(carried === undefined
                     ? {}
-                    : { carried: { carried, names, onOpenChange: onOpenCarriedChange } })}
+                    : {
+                        carried: {
+                          carried,
+                          names,
+                          onOpenChange: onOpenCarriedChange,
+                          onExpandedChange: onReleaseExpanded,
+                        },
+                      })}
                   groupId={groupId}
                   onRollBack={onRollBack}
                   pending={pending}
@@ -1790,13 +1862,19 @@ export function ZeropsStopPane({
 
           {production ? null : (
             <CardGroup
-              aside={DEPLOYS_ASIDE}
-              title={stopCardTitle(
-                "deploys",
-                repo !== undefined && history.kind === "read" ? history.total : undefined,
-              )}
+              {...(recordedHistory === undefined ? { aside: DEPLOYS_ASIDE } : {})}
+              title={
+                recordedHistory !== undefined
+                  ? "History"
+                  : stopCardTitle(
+                      "deploys",
+                      repo !== undefined && history.kind === "read" ? history.total : undefined,
+                    )
+              }
             >
-              {readServices === undefined ? (
+              {recordedHistory !== undefined ? (
+                <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
+              ) : readServices === undefined ? (
                 <p className="py-2 text-sm text-muted-foreground">Repository not known yet.</p>
               ) : repo === undefined ? (
                 <p className="py-2 text-sm text-muted-foreground">

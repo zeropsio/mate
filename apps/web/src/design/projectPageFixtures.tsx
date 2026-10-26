@@ -9,7 +9,6 @@ import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { FlowPullRequest, FlowReleaseRow } from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
-import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ReactNode } from "react";
 
 import {
@@ -106,75 +105,89 @@ function landed(
   };
 }
 
-/** A commit on `main` no change of a Mate's landed: a person's push, GitHub's merge, a Mate's bot. */
-function pushed(subject: string, minutes: number, authorName = "Nova Dev"): CompareCommit {
-  return {
-    sha: sha(subject.length.toString(16) + String(minutes)),
-    subject,
-    authorName,
-    at: ago(minutes),
-    change: null,
-  };
-}
-
 function shipped(
   tag: string,
   minutes: number,
   over: Partial<FlowReleaseRow> = {},
-): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing"> {
+): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing" | "history"> {
   return { tag, taggedAt: ago(minutes), verdict: "approved", standing: undefined, ...over };
 }
 
-/**
- * Tea Shop's history as the owner's live page read it (2026-10-19): squashes with GitHub's `(#n)`,
- * a GitHub merge commit and the bot commit it brought, and a person's push straight to `main`.
- */
+/** Recorded release membership for the overview fixtures. */
+function recordedHistory(
+  input: Parameters<typeof historyReleases>[0],
+  members: readonly (readonly number[])[],
+  outside: readonly number[],
+) {
+  return historyReleases({
+    ...input,
+    releases: input.releases.map((release, index) => {
+      const changes = (members[index] ?? []).flatMap((number) =>
+        input.merged
+          .filter((change) => change.number === number)
+          .map((change) => ({ repo: change.repository, number, title: change.title })),
+      );
+      return {
+        ...release,
+        history: {
+          changes,
+          commitCount: changes.length + (outside[index] ?? 0),
+          outsideCommitCount: outside[index] ?? 0,
+          ranges: [],
+        },
+      };
+    }),
+  });
+}
+
 const DAY = 24 * 60;
-const TEA_HISTORY = historyReleases({
-  releases: [
-    shipped("v0.1.3", 6 * DAY, { standing: "live" }),
-    shipped("v0.1.2", 6.5 * DAY),
-    shipped("v0.1.1", 7 * DAY),
-    shipped("v0.1.0", 8 * DAY),
-  ],
-  merged: [
-    landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
-    landed(16, "Hide sold out switch remembered across visits", "vera-t", 6 * DAY + 18),
-    landed(13, "Price per 100 g leads on tea cards", "vera-t", 6 * DAY + 40),
-    landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
-    landed(10, "Back to top link in the footer, reading “↑ Top”", "vera-t", 6.6 * DAY),
-    landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
-    landed(5, "In stock and Sold out labels with a Hide sold out switch", "vera-t", 7.2 * DAY),
-    landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
-    landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
-  ],
-  commits: [
-    pushed("Merge pull request #16 from acme/mate/13-hide-sold-out-switch", 6 * DAY + 18),
-    pushed("Hide sold out switch remembered across visits (#14)", 6 * DAY + 26, "acme-mate[bot]"),
-    pushed("Fix the footer year (#12)", 6.55 * DAY),
-  ],
-});
+const TEA_HISTORY = recordedHistory(
+  {
+    releases: [
+      shipped("v0.1.3", 6 * DAY, { standing: "live" }),
+      shipped("v0.1.2", 6.5 * DAY),
+      shipped("v0.1.1", 7 * DAY),
+      shipped("v0.1.0", 8 * DAY),
+    ],
+    merged: [
+      landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
+      landed(16, "Hide sold out switch remembered across visits", "vera-t", 6 * DAY + 18),
+      landed(13, "Price per 100 g leads on tea cards", "vera-t", 6 * DAY + 40),
+      landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
+      landed(10, "Back to top link in the footer, reading “↑ Top”", "vera-t", 6.6 * DAY),
+      landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
+      landed(5, "In stock and Sold out labels with a Hide sold out switch", "vera-t", 7.2 * DAY),
+      landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
+      landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
+    ],
+  },
+  [[17, 16, 13, 11], [10, 7], [5, 6], [4]],
+  [0, 1, 0, 0],
+);
 
 /** Acme Store: seven releases, the newest five shown, one rolled back from. */
-const ACME_HISTORY = historyReleases({
-  releases: [
-    shipped("v0.1.59", 60, { standing: "live", rollbackOf: "v0.1.57" }),
-    shipped("v0.1.58", 3 * 60),
-    shipped("v0.1.57", 20 * 60),
-    shipped("v0.1.56", 2 * 24 * 60),
-    shipped("v0.1.55", 3 * 24 * 60),
-    shipped("v0.1.54", 5 * 24 * 60),
-    shipped("v0.1.53", 8 * 24 * 60),
-  ],
-  merged: [
-    landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
-    landed(12, "Fix the VAT rate table for Ireland", "mira-s", 21 * 60),
-    landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
-    landed(10, "Gift cards at checkout", "mira-s", 30 * 60),
-    landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
-  ],
-  commits: [pushed("Bump Node to 22 (#8)", 2.5 * 24 * 60)],
-});
+const ACME_HISTORY = recordedHistory(
+  {
+    releases: [
+      shipped("v0.1.59", 60, { standing: "live", rollbackOf: "v0.1.57" }),
+      shipped("v0.1.58", 3 * 60),
+      shipped("v0.1.57", 20 * 60),
+      shipped("v0.1.56", 2 * 24 * 60),
+      shipped("v0.1.55", 3 * 24 * 60),
+      shipped("v0.1.54", 5 * 24 * 60),
+      shipped("v0.1.53", 8 * 24 * 60),
+    ],
+    merged: [
+      landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
+      landed(12, "Fix the VAT rate table for Ireland", "mira-s", 21 * 60),
+      landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
+      landed(10, "Gift cards at checkout", "mira-s", 30 * 60),
+      landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
+    ],
+  },
+  [[], [14], [12, 10], [], [9], [], [11]],
+  [0, 0, 0, 1, 0, 0, 0],
+);
 
 /** A Mate's face, as the harness's cards draw it. */
 function mateFace(projectId: string): ReactNode {

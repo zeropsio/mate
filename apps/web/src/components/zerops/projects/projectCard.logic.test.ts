@@ -1776,3 +1776,19 @@ describe("a card's unread places", () => {
     },
   );
 });
+
+it("Release overview counts distinguish recorded changes from the commits they carry.", () => {
+  const ready = cardReady({
+    production: {
+      kind: "ready-to-release",
+      stop: stop(),
+      line: "",
+      candidate: { tag: "v1.0.0", waiting: 6 },
+    },
+    stages: [],
+    main: { head: undefined, hasCode: true, notLive: 6, notLiveAtLeast: false, changeCount: 1 },
+  });
+  expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
+    "1 change · 6 commits ready to release",
+  );
+});

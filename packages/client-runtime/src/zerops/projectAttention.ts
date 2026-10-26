@@ -70,6 +70,7 @@ export interface ProjectAttentionInput {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /** How many commits are merged and not in front of people yet. */
   readonly notLive: number;
+  readonly changeCount?: number | undefined;
   /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
   readonly notLiveAtLeast: boolean;
   /** Whether *Release* is offered at all; it is not always the account's to press. */
@@ -139,7 +140,7 @@ export function projectAttention(
   if (input.notLive > 0 && input.canRelease) {
     items.push({
       kind: "not-live",
-      text: changesNotLive(input.notLive, input.notLiveAtLeast),
+      text: changesNotLive(input.notLive, input.notLiveAtLeast, input.changeCount),
       verb: "Release",
       target: undefined,
     });
@@ -153,12 +154,17 @@ export function projectAttention(
  * projects page, the project page and the left menu's next step — with `+` where it is only how
  * many at least, as the release's summary says it.
  */
-export function changesNotLive(count: number, atLeast: boolean): string {
-  return `${changesCountWords(count, atLeast)} waiting for production`;
+export function changesNotLive(count: number, atLeast: boolean, changeCount?: number): string {
+  return `${changesCountWords(count, atLeast, changeCount)} waiting for production`;
 }
 
 /** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */
-export function changesCountWords(count: number, atLeast: boolean): string {
+export function changesCountWords(count: number, atLeast: boolean, changeCount?: number): string {
+  if (changeCount !== undefined) {
+    const changes = `${changeCount} ${changeCount === 1 ? "change" : "changes"}`;
+    const commits = `${count}${atLeast ? "+" : ""} ${count === 1 && !atLeast ? "commit" : "commits"}`;
+    return `${changes} · ${commits}`;
+  }
   return count === 1 && !atLeast ? "1 change" : `${String(count)}${atLeast ? "+" : ""} changes`;
 }
 

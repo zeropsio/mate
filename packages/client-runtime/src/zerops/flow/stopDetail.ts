@@ -137,6 +137,7 @@ export function stopVerdict(input: {
   readonly waiting: number;
   /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
   readonly waitingAtLeast: boolean;
+  readonly changeCount?: number | undefined;
   /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
   readonly untold: ReadonlyArray<string>;
   readonly release: {
@@ -272,7 +273,7 @@ export function stopVerdict(input: {
   if (input.waiting > 0)
     return {
       tone: "busy",
-      text: `${changesNotLive(input.waiting, input.waitingAtLeast)}.`,
+      text: `${changesNotLive(input.waiting, input.waitingAtLeast, input.changeCount)}.`,
       detail: `Production runs ${label}`,
       verb: releaseVerb,
     };

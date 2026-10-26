@@ -586,7 +586,13 @@ export interface GroupFlowReads {
     readonly inFlight?: string | undefined;
     /** What it would put live, per comparison HQ answered (`Moved`). */
     readonly contents: ReadonlyArray<Moved>;
-    readonly summary?: { readonly total: number; readonly atLeast: boolean } | undefined;
+    readonly summary?:
+      | {
+          readonly total: number;
+          readonly atLeast: boolean;
+          readonly changeCount?: number | undefined;
+        }
+      | undefined;
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
@@ -610,6 +616,9 @@ function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["rel
     gate: release.gate,
     suggestion: release.suggestion,
     waiting: total,
+    ...(release.summary?.changeCount === undefined
+      ? {}
+      : { changeCount: release.summary.changeCount }),
     waitingAtLeast: atLeast,
     untold: release.untold,
     inFlight: release.inFlight,

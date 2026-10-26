@@ -441,7 +441,13 @@ export interface SidebarProjectFlow {
    * What a release would carry, per production service: how many changes wait
    * for production, the count the production chip wears.
    */
-  readonly releaseSummary?: { readonly total: number; readonly atLeast: boolean } | undefined;
+  readonly releaseSummary?:
+    | {
+        readonly total: number;
+        readonly atLeast: boolean;
+        readonly changeCount?: number | undefined;
+      }
+    | undefined;
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** The Mate tier as `main` holds it, which pairs each Mate's previews (`servicePairs`). */
   readonly mateTier?: string | undefined;
@@ -1317,6 +1323,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           : buildingOf(stopDeployments(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
       waitingAtLeast: projectFlow.main.notLiveAtLeast,
+      changeCount: projectFlow.main.changeCount,
       untold: flow?.releaseUntold ?? NO_UNTOLD,
       serving: productionServing,
       stages,

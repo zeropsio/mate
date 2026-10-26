@@ -1,9 +1,4 @@
-/**
- * A project page's History: its releases, newest first, one row each — its version, Live or
- * Rolled back, when, how many changes — opening to the changes it put live, each the row the
- * card's Changes draws (`historyReleases`). What no release put live yet stays in the card's
- * Changes alone.
- */
+/** Application history reads recorded release membership; only an expanded row requests Git content. */
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { createContext, useMemo, useState, type ReactNode } from "react";
@@ -15,6 +10,7 @@ import { useRepositoryHistory } from "~/zerops/useRepositoryHistory";
 import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
 import { ChangeAge, ChangeRow } from "./ChangeRow";
 import {
+  changeTitle,
   groupRepository,
   historyReleases,
   outsideLine,
@@ -27,9 +23,7 @@ import {
 /** The page's History section, which the page's flow alone can draw, for its column. */
 export const ProjectPageHistory = createContext<ReactNode>(null);
 
-const NO_COMMITS: never[] = [];
-
-/** A project's History from its flow, with `main`'s commits for the ones no Mate's change landed. */
+/** A project's History from its recorded release membership and domain change rows. */
 export function ProjectHistory({
   groupId,
   flow,
@@ -45,14 +39,12 @@ export function ProjectHistory({
   readonly onOpen: (change: FlowPullRequest, from: HTMLElement) => void;
 }) {
   const repository = flow === undefined ? undefined : groupRepository(flow.environments);
-  const history = useRepositoryHistory({ appId: groupId, repo: repository, repos: flow?.repos });
-  const commits = history.kind === "read" ? history.commits : NO_COMMITS;
   const releases = useMemo(
     () =>
       flow?.releasesKnown === true
-        ? historyReleases({ releases: flow.releases, merged: flow.merged, commits })
+        ? historyReleases({ releases: flow.releases, merged: flow.merged })
         : undefined,
-    [commits, flow],
+    [flow],
   );
   return (
     <ProjectHistoryView
@@ -148,7 +140,7 @@ function ReleaseRow({
   readonly onOpen: (change: FlowPullRequest, from: HTMLElement) => void;
 }) {
   // A roll back put nothing of its own live: nothing to open.
-  const opens = release.changes.length > 0 || release.outside.length > 0;
+  const opens = repo !== undefined || release.changes.length > 0;
   const head = (
     <>
       <span aria-hidden="true" className="ov-history-chevron">
@@ -163,7 +155,23 @@ function ReleaseRow({
             </span>
           )}
         </span>
-        <span className="ov-change-line">{releaseLine(release)}</span>
+        <span className="ov-change-line">
+          {releaseLine(release)}
+          {release.commitCount === undefined
+            ? null
+            : ` · ${String(release.commitCount)} ${release.commitCount === 1 ? "commit" : "commits"}`}
+        </span>
+        {release.changeTitles?.map((title, index) => (
+          <span className="ov-change-line" key={`${String(index)}-${title}`}>
+            {title}
+          </span>
+        ))}
+        {release.outsideCommitCount ? (
+          <span className="ov-change-line">{outsideLine(release.outsideCommitCount)}</span>
+        ) : null}
+        {release.changeTitles === undefined && repo !== undefined ? (
+          <span className="ov-change-line">Earlier membership not recorded · Open History</span>
+        ) : null}
       </span>
       <span className="ov-change-end">
         <ChangeAge at={release.taggedAt} />
@@ -197,57 +205,71 @@ function ReleaseRow({
               />
             );
           })}
-          {release.outside.length === 0 ? null : (
-            <OutsideLine commits={release.outside} repo={repo} />
-          )}
+          {repo === undefined ? null : <ExpandedRelease release={release} repo={repo} />}
         </ul>
       ) : null}
     </li>
   );
 }
 
-/**
- * A release's commits no Mate's change landed: one quiet line, opening to their subjects, each
- * opening its page in the Git browser.
- */
-function OutsideLine({
-  commits,
+/** Git content is requested only while the person has opened this release. */
+function ExpandedRelease({
+  release,
   repo,
 }: {
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
-  readonly repo: GitRepoAt | undefined;
+  readonly release: HistoryRelease;
+  readonly repo: GitRepoAt;
 }) {
-  const [open, setOpen] = useState(false);
+  if (release.ranges === undefined)
+    return (
+      <li className="ov-change-line">
+        <GitBrowserLink to={{ ...repo, view: "commits" }}>History</GitBrowserLink>
+      </li>
+    );
+  const ranges = release.ranges;
   return (
-    <li data-zerops-surface="project-history-outside">
-      <button
-        aria-expanded={open}
-        className="ov-change"
-        onClick={() => {
-          setOpen((current) => !current);
-        }}
-        type="button"
-      >
-        <span aria-hidden="true" className="ov-history-chevron">
-          <ChevronRightIcon data-open={open ? "true" : undefined} />
-        </span>
-        <span className="ov-change-line">{outsideLine(commits.length)}</span>
-      </button>
-      {open ? (
-        <ul className="ov-history-subjects">
-          {commits.map((commit) => (
-            <li className="ov-change-line" key={commit.sha}>
-              {repo === undefined ? (
-                commit.subject
-              ) : (
-                <GitBrowserLink to={gitCommitLink(repo, commit.sha)} tone="muted">
-                  {commit.subject}
-                </GitBrowserLink>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </li>
+    <>
+      {ranges.map((range) => (
+        <ExpandedRange
+          key={`${range.repo}-${range.head}`}
+          repo={{ ...repo, repo: range.repo }}
+          head={range.head}
+          base={range.base ?? undefined}
+        />
+      ))}
+    </>
+  );
+}
+
+function ExpandedRange({
+  repo,
+  head,
+  base,
+}: {
+  readonly repo: GitRepoAt;
+  readonly head: string;
+  readonly base: string | undefined;
+}) {
+  const history = useRepositoryHistory({
+    appId: repo.appId,
+    repo: repo.repo,
+    repos: undefined,
+    revision: head,
+    base,
+  });
+  if (history.kind === "reading")
+    return <li className="ov-change-line">Reading commit messages…</li>;
+  if (history.kind === "failed") return <li className="ov-change-line">{history.reason}</li>;
+  if (history.commits.length === 0) return <li className="ov-change-line">No commits.</li>;
+  return (
+    <>
+      {history.commits.map((commit) => (
+        <li className="ov-change-line" key={commit.sha}>
+          <GitBrowserLink to={gitCommitLink(repo, commit.sha)}>
+            {changeTitle(commit.subject)}
+          </GitBrowserLink>
+        </li>
+      ))}
+    </>
   );
 }

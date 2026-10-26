@@ -4,6 +4,7 @@
  * every project whose release is offered. The Waiting on you row says the first two in a few plain
  * words; its list holds each with the buttons that act on it.
  */
+import { changesCountWords } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -36,6 +37,7 @@ export interface WaitingMate {
 
 /** A project whose next release is offered: what is on its stage, not yet in production. */
 export interface WaitingRelease {
+  readonly changeCount?: number | undefined;
   readonly groupId: string;
   readonly name: string;
   /** How many changes the release would carry; unknown where HQ did not count. */
@@ -121,5 +123,7 @@ export function waitingTitle(item: WaitingItem): string {
 export function releaseWaitingLine(release: WaitingRelease): string {
   const { ahead } = release;
   if (ahead === undefined || ahead <= 0) return "What is on stage is not in production yet.";
+  if (release.changeCount !== undefined)
+    return `${changesCountWords(ahead, false, release.changeCount)} waiting for production.`;
   return `${String(ahead)} change${ahead === 1 ? " is" : "s are"} on stage, not yet in production.`;
 }

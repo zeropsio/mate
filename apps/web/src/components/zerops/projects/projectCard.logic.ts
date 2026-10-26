@@ -13,6 +13,7 @@ import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/dat
 import {
   addressComing,
   changeState,
+  changesCountWords,
   placeAddresses,
   PRODUCTION_DEPLOYING,
   type FlowPullRequest,
@@ -418,6 +419,7 @@ export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
 export interface CardReady {
+  readonly changeCount?: number | undefined;
   readonly count: number;
   readonly atLeast: boolean;
   /** The stage they were tested on; `undefined` where the project has none. */
@@ -445,6 +447,7 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
     flow.stages[0];
   return {
     count: production.candidate.waiting,
+    ...(flow.main.changeCount === undefined ? {} : { changeCount: flow.main.changeCount }),
     atLeast: flow.main.notLiveAtLeast,
     stage: stage?.name,
     from: production.stop.version?.label,
@@ -519,6 +522,8 @@ export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">)
 
 /** "3 changes ready to release", "1 change ready to release". */
 export function readyTitle(ready: CardReady): string {
+  if (ready.changeCount !== undefined)
+    return `${changesCountWords(ready.count, ready.atLeast, ready.changeCount)} ready to release`;
   const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
   return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
 }

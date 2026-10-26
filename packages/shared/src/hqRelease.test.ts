@@ -455,3 +455,25 @@ it("A Git release cannot submit a diverged or refused-token preflight or an unre
     );
   }
 });
+
+it("Release records retain domain history while older releases omit it.", () => {
+  const value = {
+    tag: "v1.0.0",
+    sha: A,
+    entries: [{ service: "api", sha: B }],
+    by: "u1",
+    at: "2026-10-26T09:25:00.000Z",
+    state: "approved",
+    reason: null,
+    rollbackOf: null,
+    history: {
+      ranges: [{ repo: "api", base: A, head: B }],
+      changes: [{ repo: "api", number: 7, title: "Search the catalogue" }],
+      commitCount: 6,
+      outsideCommitCount: 5,
+    },
+  };
+  expect(Schema.decodeUnknownSync(Release)(value)).toEqual(value);
+  const { history: _, ...legacy } = value;
+  expect(Schema.decodeUnknownSync(Release)(legacy)).toEqual(legacy);
+});

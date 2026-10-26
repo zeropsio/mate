@@ -1287,3 +1287,26 @@ describe("overviewPaints — the overview paints its projects once, whole", () =
     expect(overviewPaints(input)).toBe(paints);
   });
 });
+
+it("Recorded change and commit counts reach the overview flow separately.", () => {
+  const input = groupFlowInputOf({
+    groupId: "g",
+    members: [],
+    deployments: new Map(),
+    pending: [],
+    flow: {
+      environments: [],
+      pullRequests: [],
+      merged: [],
+      release: {
+        gate: { allowed: true },
+        suggestion: "v1.0.0",
+        contents: [],
+        untold: [],
+        summary: { total: 6, atLeast: false, changeCount: 1 },
+      },
+    },
+  });
+  const flow = groupFlow(input);
+  expect(flow.main).toMatchObject({ notLive: 6, changeCount: 1 });
+});

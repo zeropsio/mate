@@ -167,6 +167,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         ),
         waiting: entry.flow.main.notLive,
         waitingAtLeast: entry.flow.main.notLiveAtLeast,
+        changeCount: entry.flow.main.changeCount,
         untold: read?.release.untold ?? NO_UNTOLD,
         serving: prodServing,
         releases,
