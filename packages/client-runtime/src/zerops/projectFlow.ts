@@ -43,8 +43,10 @@ export interface FlowPullRequest {
   /** The repository's name in the group's org. */
   readonly repository: string;
   /**
-   * Where git reaches the repository at HQ (`repoUrl`): what a lease of it names as its `repo`,
-   * by which a lease's checkout finds its change. Absent where it was not built from HQ's address.
+   * The repository at HQ (`repoUrl`), by which a lease's checkout finds its change: a lease names
+   * its `repo` by the shared HQ's git address, with the organization, and the two are compared by
+   * the application and repository they name (`leaseOfRepository`). Absent where it was not built
+   * from HQ's address.
    */
   readonly repositoryUrl?: string | undefined;
   readonly number: number;

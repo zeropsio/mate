@@ -880,11 +880,57 @@ export function changeUrl(hqAddress: string, appId: string, repo: string, number
 }
 
 /**
- * Where git reaches a repository HQ keeps, canonical (no `.git`): `<HQ>/git/<appId>/<repo>`, the
- * address zcp names a lease's repository by when the lease checks it out from HQ.
+ * A repository HQ keeps, canonical (no `.git`): `<HQ>/git/<appId>/<repo>`. It names the repository
+ * the way a lease's address does as `repoOfUrl` reads them — the shared HQ's git address also names
+ * the organization, which the client does not know — and is no address to clone from.
  */
 export function repoUrl(hqAddress: string, appId: string, repo: string): string {
   return `${addressOf(hqAddress)}/git/${appId}/${repo}`;
+}
+
+/** A repository HQ keeps, as a git address of it names it (`repoOfUrl`). */
+export interface HqRepoAddress {
+  /** The HQ's own address: scheme, host, port, and the path HQ is served under, if any. */
+  readonly hq: string;
+  readonly appId: string;
+  readonly repo: string;
+}
+
+/**
+ * The repository a git address of an HQ names: `<HQ>/git/<orgId>/<appId>/<repo>` as the shared HQ
+ * serves it — the address it lists (`RepoListEntry.url`) and zcp names a lease's repository by — or
+ * `<HQ>/git/<appId>/<repo>` as `repoUrl` builds it, `.git` or not; `null` for any other address.
+ * The organization is no part of it: the application names the repository's place in HQ, as zcp
+ * reads the same address (`hq.RepoOfURL`).
+ */
+export function repoOfUrl(address: string): HqRepoAddress | null {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const parts = url.pathname
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/u, "")
+    .split("/");
+  // `git`, then the organization or not, then the application and the repository.
+  const git = [parts.length - 4, parts.length - 3].find(
+    (at) => at >= 1 && parts[at]?.toLowerCase() === "git",
+  );
+  if (git === undefined) return null;
+  const named = parts.slice(git + 1);
+  if (named.some((part) => part === "")) return null;
+  try {
+    return {
+      hq: `${url.origin}${parts.slice(0, git).join("/")}`,
+      appId: decodeURIComponent(named.at(-2)!),
+      repo: decodeURIComponent(named.at(-1)!),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** The client's route of a change, where HQ's change address leads. */
