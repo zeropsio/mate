@@ -458,7 +458,7 @@ export const MateLinkDown = Schema.Union([
 export type MateLinkDown = typeof MateLinkDown.Type;
 
 /*
- * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"; spec-mate §3.5): the Mate dials
+ * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
  * its state, then the organisation's access with a version and the time of the view it was
  * computed from. Today's frames of tasks, usage and the update policy ride on it unchanged.
