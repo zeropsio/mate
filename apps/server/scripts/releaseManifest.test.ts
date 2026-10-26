@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 
 import serverPackageJson from "../package.json" with { type: "json" };
+import { DEFAULT_HQ_ORIGIN } from "../src/zerops/ZeropsEnvironment.ts";
 
 import {
   buildReleaseManifest,
@@ -40,6 +41,18 @@ describe("buildReleaseManifest", () => {
     assert.deepStrictEqual(manifest.files, ["dist"]);
     assert.deepStrictEqual(manifest.engines, sourceManifest.engines);
     assert.strictEqual(manifest.type, "module");
+  });
+
+  // zcp starts before the server and holds no HQ default of its own, so it reads the one the
+  // installed package declares (spec-mate §3.5).
+  it("the released package declares the HQ origin the server links to by default", () => {
+    const manifest = buildReleaseManifest({
+      serverPackageJson: sourceManifest,
+      catalog,
+      version: "0.1.8",
+    });
+
+    assert.deepStrictEqual(manifest.mate, { hqOrigin: DEFAULT_HQ_ORIGIN });
   });
 
   // The whole point: everything the bundler inlined is dead weight in the

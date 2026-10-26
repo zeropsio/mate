@@ -3,6 +3,7 @@ import {
   selectCliRuntimeExternalDependencies,
 } from "../../../scripts/lib/cli-external-packages.ts";
 import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog.ts";
+import { DEFAULT_HQ_ORIGIN } from "../src/zerops/ZeropsEnvironment.ts";
 
 /**
  * The workspace keeps upstream's `t3` name because 124 Effect service-tag keys
@@ -30,6 +31,12 @@ export interface ReleaseManifest {
   readonly engines: Readonly<Record<string, string>>;
   readonly files: ReadonlyArray<string>;
   readonly dependencies: Readonly<Record<string, string>>;
+  /**
+   * What the installed Mate declares to zcp, which starts before the server and holds no HQ
+   * default of its own: the HQ the server links to unless `T3CODE_ZEROPS_HQ_ORIGIN` names another
+   * (spec-mate §3.5).
+   */
+  readonly mate: { readonly hqOrigin: string };
 }
 
 /**
@@ -74,6 +81,7 @@ export function buildReleaseManifest(input: {
     engines: input.serverPackageJson.engines,
     files: input.serverPackageJson.files,
     dependencies,
+    mate: { hqOrigin: DEFAULT_HQ_ORIGIN },
   };
 }
 
