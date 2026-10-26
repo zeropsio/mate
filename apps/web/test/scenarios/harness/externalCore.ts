@@ -196,7 +196,10 @@ const heldWaitClock = Effect.gen(function* () {
 
 /**
  * The command owns the Core; its readiness line means HTTP is active and names the Core's
- * database (as its owner) and the wait clock it honours. A scenario's timings become the Core's
+ * database (as its owner) and the wait clock it honours. It also takes one control command per
+ * stdin line and answers each with one line (`{"done":…}` or `{"error":…}`): `stop` ends the Core's
+ * process, `start` launches it again on the same origin and database, `start-new-build` as a
+ * redeployed Core. A scenario's timings become the Core's
  * periods; the case moves the clock past one where it waits for it.
  */
 export const startExternalCore = (
@@ -301,7 +304,24 @@ export const startExternalCore = (
               }
             })()),
         );
-        return { child, lines, ready, exit, stop };
+        // Answers come in the order the commands went out.
+        const answers: Array<(line: string) => void> = [];
+        lines.on("line", (line) => answers.shift()?.(line));
+        const control = (name: "stop" | "start" | "start-new-build") =>
+          Effect.promise(() =>
+            deadline(
+              new Promise<void>((resolve, reject) => {
+                answers.push((line) => {
+                  const answer = decodeJson(line) as { error?: unknown };
+                  if (answer.error === undefined) resolve();
+                  else reject(new Error(`External Core refused ${name}: ${String(answer.error)}`));
+                });
+                child.stdin.write(`${name}\n`);
+              }),
+              `External Core ${name}`,
+            ),
+          );
+        return { child, lines, ready, exit, stop, control };
       }),
       ({ stop }) => stop,
     );
@@ -321,6 +341,8 @@ export const startExternalCore = (
       call: makeHttpCall(new URL(origin).host, agent),
       fake: zeropsHttp.world,
       stop: process.stop,
+      /** The Core's process down, then up again on its origin: as it was, or as a redeployed build. */
+      control: process.control,
       socket: (path: string) => openLink(origin, path),
     };
   });
