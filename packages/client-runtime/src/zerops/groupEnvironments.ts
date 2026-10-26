@@ -316,7 +316,11 @@ export function environmentSlots(input: {
   /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
   readonly productionRuns: ProductionRuns;
   /** The changes merged and waiting for production, as the release counts them. */
-  readonly waiting: { readonly count: number; readonly atLeast: boolean };
+  readonly waiting: {
+    readonly count: number;
+    readonly atLeast: boolean;
+    readonly changeCount?: number | undefined;
+  };
   /** Whether `main` holds code; `undefined` where it is not known. */
   readonly mainHasCode: boolean | undefined;
   /** Whether *Review release* is offered to this person (the release gate allows). */
@@ -415,7 +419,11 @@ export function environmentSlots(input: {
 
 function productionNote(input: {
   readonly productionRuns: ProductionRuns;
-  readonly waiting: { readonly count: number; readonly atLeast: boolean };
+  readonly waiting: {
+    readonly count: number;
+    readonly atLeast: boolean;
+    readonly changeCount?: number | undefined;
+  };
   readonly mainHasCode: boolean | undefined;
   readonly releaseOffered: boolean;
   readonly releasing: string | undefined;
@@ -429,7 +437,7 @@ function productionNote(input: {
   }
   if (input.waiting.count > 0)
     return {
-      text: `${changesCountWords(input.waiting.count, input.waiting.atLeast)} waiting for production`,
+      text: `${changesCountWords(input.waiting.count, input.waiting.atLeast, input.waiting.changeCount)} waiting for production`,
       review: input.releaseOffered,
     };
   return undefined;

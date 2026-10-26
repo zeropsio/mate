@@ -2094,6 +2094,7 @@ export function ZeropsProjectsContent({
                 groupId: entry.group.groupId,
                 name: entry.group.name,
                 ahead: release.summary?.total,
+                changeCount: release.summary?.changeCount,
               },
             ]
           : [];

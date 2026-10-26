@@ -1,9 +1,4 @@
-/**
- * A repository's history as HQ compares it, asked while it is drawn (`useReleaseComparisons`): every commit up to `main`'s head,
- * newest first, at most a hundred, with how many HQ counted — each naming the change of HQ's that
- * landed it. `main`'s head is HQ's own answer (`ZeropsProjectFlow.repos`), so the history never
- * reads further than what HQ says the repository holds.
- */
+/** Commit content for an explicitly opened History or release row, through the shared comparison reader. */
 import { compareReadKey, type CompareRead } from "@t3tools/client-runtime/zerops";
 import type { CompareCommit, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { useMemo } from "react";
@@ -28,19 +23,28 @@ const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
 
 export function useRepositoryHistory(input: {
   readonly appId: string;
+  /** Set only by an explicit History or row expansion. */
+  readonly revision?: string | undefined;
+  readonly base?: string | undefined;
   /** The repository, as the recipe names it; `undefined` where the stop names none. */
   readonly repo: string | undefined;
   /** The application's repositories as HQ last listed them (`ZeropsProjectFlow.repos`). */
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
 }): ZeropsHistoryState {
-  const { appId, repo, repos } = input;
-  const head = repo === undefined ? undefined : repos?.find(({ name }) => name === repo)?.mainHead;
+  const { appId, repo, repos, revision, base } = input;
+  const head =
+    revision ??
+    (repo === undefined ? undefined : repos?.find(({ name }) => name === repo)?.mainHead);
   const read = useMemo<CompareRead | undefined>(
     () =>
       repo === undefined || head === undefined || head === null
         ? undefined
-        : { repository: repo, query: { head }, services: [] },
-    [head, repo],
+        : {
+            repository: repo,
+            query: { head, ...(base === undefined ? {} : { base }) },
+            services: [],
+          },
+    [head, repo, base],
   );
   const asks = useMemo(
     () => (read === undefined ? NO_ASKS : new Map([[appId, [read]]])),
@@ -48,7 +52,7 @@ export function useRepositoryHistory(input: {
   );
   const compares = useReleaseComparisons(asks);
   if (repo === undefined) return NOTHING_LANDED;
-  if (repos === undefined) return READING;
+  if (repos === undefined && revision === undefined) return READING;
   if (read === undefined) return NOTHING_LANDED;
   const answered = compares.get(appId);
   const answer = answered?.answers.get(compareReadKey(read));

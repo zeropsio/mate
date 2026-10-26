@@ -1248,6 +1248,7 @@
         "apps/web/src/components/zerops/ZeropsProjectLink.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseVerb.tsx",
         "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+        "apps/web/src/components/zerops/RecordedStageHistory.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
         "apps/web/src/components/zerops/ZeropsDeployAnswer.tsx",
         "apps/web/src/components/zerops/ZeropsDeployLog.tsx",

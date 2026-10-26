@@ -169,3 +169,9 @@ describe("changesCountWords: how many, and at least how many where HQ stopped co
     expect(changesCountWords(count, atLeast)).toBe(words);
   });
 });
+
+it("Release attention distinguishes recorded changes from commit counts.", () => {
+  expect(
+    projectAttention({ ...EMPTY, notLive: 6, changeCount: 1, canRelease: true })[0]?.text,
+  ).toBe("1 change · 6 commits waiting for production");
+});

@@ -355,3 +355,30 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     });
   });
 });
+
+it("Production release summaries use recorded change titles and counts before expansion.", () => {
+  const onExpandedChange = vi.fn();
+  const html = renderToStaticMarkup(
+    <ZeropsReleaseRows
+      groupId={GROUP}
+      pending={new Set()}
+      onRollBack={() => {}}
+      releases={[
+        {
+          ...LIVE,
+          history: {
+            changes: [{ repo: "app", number: 3, title: "Fix checkout" }],
+            commitCount: 6,
+            outsideCommitCount: 5,
+            ranges: [{ repo: "app", base: null, head: RUNS }],
+          },
+        },
+      ]}
+      carried={{ carried: new Map(), names: {}, onExpandedChange }}
+    />,
+  );
+  expect(html).toContain("Fix checkout");
+  expect(html).toContain("1 change · 6 commits · 5 commits outside Mate");
+  expect(html).not.toContain('data-zerops-surface="release-carried"');
+  expect(onExpandedChange).not.toHaveBeenCalled();
+});

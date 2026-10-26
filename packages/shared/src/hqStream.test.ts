@@ -446,3 +446,25 @@ it("Push navigation carries attempted and confirmed hand-over evidence without t
     "TOKEN_MARKER",
   );
 });
+
+it("A release offer preserves recorded change counts without requiring them from older HQs.", () => {
+  const value = {
+    head: "a".repeat(40),
+    suggestion: "v1.0.0",
+    gate: { allow: true },
+    inFlight: null,
+    summary: {
+      subjects: ["#7 Search the catalogue"],
+      changeCount: 1,
+      total: 6,
+      more: 0,
+      atLeast: false,
+    },
+  };
+  expect(Schema.decodeUnknownSync(Stream.HqNavigationReleaseOffer)(value)).toEqual(value);
+  const { changeCount: _, ...legacySummary } = value.summary;
+  expect(
+    Schema.decodeUnknownSync(Stream.HqNavigationReleaseOffer)({ ...value, summary: legacySummary })
+      .summary,
+  ).toEqual(legacySummary);
+});

@@ -350,12 +350,14 @@ export function flowReleaseOf(release: Release): FlowRelease {
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
+    ...(release.history === undefined ? {} : { history: release.history }),
     ...(release.rollbackOf === null ? {} : { rollbackOf: release.rollbackOf }),
   };
 }
 
 /** One release of the application, as HQ judged it. */
 export interface FlowRelease {
+  readonly history?: Release["history"];
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
   /** Why HQ refused it, when it did. */

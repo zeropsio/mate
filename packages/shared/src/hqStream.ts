@@ -482,7 +482,9 @@ export const HqNavigationReleaseOffer = Schema.Struct({
   head: Schema.NullOr(Schema.String),
   suggestion: Schema.String,
   summary: Schema.Struct({
+    /** Change titles when changeCount is present; legacy commit subjects are not overview labels. */
     subjects: Schema.Array(Schema.String).check(Schema.isMaxLength(20)),
+    changeCount: Schema.optionalKey(Schema.Int),
     total: Schema.Int,
     more: Schema.Int,
     atLeast: Schema.Boolean,

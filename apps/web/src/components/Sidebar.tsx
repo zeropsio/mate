@@ -1851,7 +1851,14 @@ export default function Sidebar() {
       zeropsMenuProjects.flatMap((project) => {
         const release = zeropsProjectFlows.get(project.id)?.release;
         return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
-          ? [{ groupId: project.id, name: project.name, ahead: release.summary?.total }]
+          ? [
+              {
+                groupId: project.id,
+                name: project.name,
+                ahead: release.summary?.total,
+                changeCount: release.summary?.changeCount,
+              },
+            ]
           : [];
       }),
     [releaseOfferedIn, zeropsMenuProjects, zeropsProjectFlows],

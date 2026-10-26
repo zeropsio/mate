@@ -608,6 +608,8 @@ export function pullRequestMergeLine(pull: {
 
 /** What a release would carry, as much of it as a hover has room for. */
 export interface ReleaseContentsSummary {
+  /** Present for DB-backed offers: subjects are change titles, total counts commits. */
+  readonly changeCount?: number;
   /** The tasks, newest first, in the words the person asked for them in. */
   readonly subjects: ReadonlyArray<string>;
   /** How many more there are than the summary lists. */
