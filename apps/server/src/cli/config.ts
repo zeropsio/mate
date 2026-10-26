@@ -182,7 +182,8 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  // The HQ the Mate links to, in development; production's is the server's default (ZeropsHqLink).
+  // Shared HQ origin, set per Mate at web birth or for development; otherwise the server's
+  // default is https://mate-hq.zerops.io (ZeropsHqLink).
   zeropsHqOrigin: Config.String("T3CODE_ZEROPS_HQ_ORIGIN").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),

@@ -206,10 +206,10 @@ describe("a Mate's birthplace", () => {
   it.each([
     {
       birthplace: {
-        hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
+        hqOrigin: "https://mate-hq.zerops.io",
         webOrigin: "https://web-1a2b.prg1.zerops.app",
       },
-      hq: 'T3CODE_ZEROPS_HQ_ORIGIN: "https://hq-31d9-8080.prg1.zerops.app"',
+      hq: 'T3CODE_ZEROPS_HQ_ORIGIN: "https://mate-hq.zerops.io"',
       allowed: 'ZCP_MATE_ALLOWED_ORIGINS: "https://web-1a2b.prg1.zerops.app"',
     },
     {
