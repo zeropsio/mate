@@ -1,6 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off -- the case recomputes the SHA-256 fingerprint.
+import * as NodeCrypto from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
@@ -43,6 +46,29 @@ describe("ZeropsGitCredentialFile", () => {
         yield* file.write(null);
         assert.isFalse(yield* file.held);
         assert.deepStrictEqual(yield* listing, []);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "reports the fingerprint of the credential it holds, the digest of the credential's digest, and none while it holds none",
+    () =>
+      Effect.gen(function* () {
+        const { file } = yield* fileIn;
+        assert.isTrue(Option.isNone(yield* file.fingerprint));
+        yield* file.write("ORG.secret-1");
+        const digest = (value: string) =>
+          NodeCrypto.createHash("sha256").update(value).digest("hex");
+        assert.deepStrictEqual(
+          yield* file.fingerprint,
+          Option.some(digest(digest("ORG.secret-1"))),
+        );
+        yield* file.write("ORG.secret-2");
+        assert.deepStrictEqual(
+          yield* file.fingerprint,
+          Option.some(digest(digest("ORG.secret-2"))),
+        );
+        yield* file.write(null);
+        assert.isTrue(Option.isNone(yield* file.fingerprint));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

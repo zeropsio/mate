@@ -193,6 +193,8 @@ export interface ZeropsHqLinkOptions {
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
+  /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
+  readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
   readonly chief?: (projectId: string | null) => Effect.Effect<void>;
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
@@ -354,7 +356,14 @@ export const makeZeropsHqLink = (
         yield* quit;
         return Option.none<Link>();
       }
-      yield* send({ type: "hello", key, serviceId: options.serviceId, origin });
+      const gitFingerprint = yield* options.gitFingerprint;
+      yield* send({
+        type: "hello",
+        key,
+        serviceId: options.serviceId,
+        origin,
+        ...(Option.isSome(gitFingerprint) ? { gitFingerprint: gitFingerprint.value } : {}),
+      });
       const keyChanged = yield* Deferred.make<LinkClose>();
       const keyRefusals = options.keyRefusal
         ? Stream.runForEach(options.keyRefusal.changes, (notice) =>
@@ -825,6 +834,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ticket: tickets.heard,
         closeSession: connections.closeSession,
         gitCredential: credential.write,
+        gitFingerprint: credential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({
           conversations: Effect.map(engine.conversations, (list) => [

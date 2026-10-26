@@ -85,6 +85,7 @@ const rig = (open = true) =>
       attention: Stream.never,
       access: () => Effect.void,
       gitCredential: () => Effect.void,
+      gitFingerprint: Effect.succeed(Option.none()),
       reconnectDelaysMs: [20],
     });
     const socket = yield* Queue.take(connected);
