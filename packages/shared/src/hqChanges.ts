@@ -709,6 +709,9 @@ export const ChangeReview = Schema.Struct({
   files: Schema.NullOr(Schema.Array(RecordedChangeFile)),
   filesTruncated: Schema.Boolean,
   conflictPaths: Schema.Array(Schema.String),
+  /** The newest commits, `null` while not recorded for the change's current head. */
+  commits: Schema.NullOr(Schema.Array(ChangeCommit)),
+  commitsTruncated: Schema.Boolean,
 });
 export type ChangeReview = typeof ChangeReview.Type;
 

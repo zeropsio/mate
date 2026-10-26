@@ -51,6 +51,10 @@ export interface ChangeReadout {
   readonly diff: ReadonlyMap<string, ChangeDiffFile>;
   /** Newest first. */
   readonly commits: ReadonlyArray<ChangeReadoutCommit>;
+  /** Whether `commits` is the change's commits: false where HQ has not recorded them yet. */
+  readonly commitsKnown: boolean;
+  /** Only the newest commits are held. */
+  readonly commitsCut: boolean;
   readonly mergeability: MergeabilityKind;
   /** The files it conflicts with `main` in; none named for a change that shares no history. */
   readonly conflict: ReadonlyArray<string>;
@@ -85,6 +89,8 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     filesCut: detail.filesTruncated,
     diff,
     commits: detail.commits.map(({ sha, subject, at }) => ({ sha, subject, at })),
+    commitsKnown: true,
+    commitsCut: detail.commitsTruncated,
     mergeability: mergeabilityKindOf(detail.mergeability.kind),
     conflict: detail.mergeability.kind === "conflict" ? detail.mergeability.paths : [],
     behind:
@@ -93,8 +99,7 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
 }
 
 /**
- * A change's review as HQ recorded it with the merge verdict: its files and sizes, no diffs and no
- * commits. A file's status is not recorded; its row reads "changed" until its diff is unfolded.
+ * A change's review as HQ recorded it with the merge verdict: its files, sizes and commits, no diffs. A file's status is not recorded; its row reads "changed" until its diff is unfolded.
  */
 export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): ChangeReadout {
   return {
@@ -108,7 +113,9 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     })),
     filesCut: review.filesTruncated,
     diff: new Map(),
-    commits: [],
+    commits: (review.commits ?? []).map(({ sha, subject, at }) => ({ sha, subject, at })),
+    commitsKnown: review.commits !== null,
+    commitsCut: review.commitsTruncated,
     mergeability: mergeabilityKindOf(change.mergeability),
     conflict: review.conflictPaths,
     behind: change.behind,

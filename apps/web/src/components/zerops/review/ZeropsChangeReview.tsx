@@ -353,13 +353,14 @@ function ChangeReviewData({
     base: detail.readout.kind === "read" ? detail.readout.value.diffBase : null,
     head: pull.headSha,
   });
-  // The commits are read when the person opens their section, never with the review.
+  // Commits HQ never recorded are read from the repository only on the person's press.
   const [commitsWanted, setCommitsWanted] = useState(false);
-  const wantCommits = useCallback(() => {
+  const showCommits = useCallback(() => {
     setCommitsWanted(true);
   }, []);
+  const commitsUnrecorded = detail.readout.kind === "read" && !detail.readout.value.commitsKnown;
   const commits = useZeropsChangeCommits(
-    commitsWanted
+    commitsWanted && commitsUnrecorded
       ? {
           link: { appId: target.groupId, repo: pull.repository, number: pull.number },
           head: pull.headSha,
@@ -369,16 +370,15 @@ function ChangeReviewData({
         }
       : null,
   );
-  const recordedCommits = useMemo<ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>>(
+  const readCommits = useMemo<ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> | undefined>(
     () =>
-      !commitsWanted
-        ? { kind: "reading" }
+      !commitsWanted || !commitsUnrecorded
+        ? undefined
         : commits.readout.kind === "read"
           ? { kind: "read", value: commits.readout.value.commits }
           : commits.readout,
-    [commitsWanted, commits.readout],
+    [commitsWanted, commitsUnrecorded, commits.readout],
   );
-  const recordedReview = detail.readout.kind === "read" && detail.readout.value.diffBase !== null;
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
     appId: target.groupId,
@@ -497,8 +497,8 @@ function ChangeReviewData({
       onRetry={detail.retry}
       showFiles={detail.showFiles}
       fileDiffs={fileDiffs}
-      commits={recordedReview ? recordedCommits : undefined}
-      onCommitsOpen={wantCommits}
+      commits={readCommits}
+      showCommits={commitsUnrecorded && !commitsWanted ? showCommits : undefined}
       onFix={(problem) => {
         askMateToFix(pull.mateProjectId, problem);
         onClose();
@@ -617,11 +617,12 @@ export interface ChangeReviewViewProps {
   /** For a change whose files were never recorded: reads them from its repository on a press. */
   readonly showFiles?: (() => void) | undefined;
   /**
-   * The commits, where they are read only once the Commits section is opened
-   * (`onCommitsOpen`); absent, the readout holds them.
+   * The commits read from the repository on the person's press, for a change whose commits HQ
+   * never recorded; absent, the readout holds them.
    */
   readonly commits?: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> | undefined;
-  readonly onCommitsOpen?: (() => void) | undefined;
+  /** For a change whose commits were never recorded: reads them on a press. */
+  readonly showCommits?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -650,10 +651,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     props.commits ??
     (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
   const history = useReviewFold();
-  const { onCommitsOpen } = props;
-  useEffect(() => {
-    if (history.open) onCommitsOpen?.();
-  }, [history.open, onCommitsOpen]);
   const downstream = {
     production: props.environments.some((entry) => entry.tier === "production"),
     stage: props.environments.some((entry) => entry.tier === "stage"),
@@ -1019,7 +1016,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       <ReviewCommits
         at={repo}
         commits={commits}
-        fold={props.frame === "page" && props.commits === undefined ? undefined : history}
+        cut={read?.commitsCut === true}
+        notRecorded={
+          read !== undefined && !read.commitsKnown && props.commits === undefined
+            ? { onShow: props.showCommits }
+            : undefined
+        }
+        fold={props.frame === "page" ? undefined : history}
         now={props.now}
         onRetry={props.onRetry}
       />

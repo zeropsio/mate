@@ -316,7 +316,10 @@ describe("ChangeReviewView: a change's conversation", () => {
 });
 
 describe("ChangeReviewView: a change review from what HQ recorded", () => {
-  const recorded = (files: ReadonlyArray<{ path: string }> | null) =>
+  const recorded = (
+    files: ReadonlyArray<{ path: string }> | null,
+    commits?: ReadonlyArray<{ sha: string; subject: string; authorName: string; at: string }>,
+  ) =>
     changeReadoutOfRecord(
       {
         mergeability: "clean",
@@ -327,6 +330,8 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
         files: files?.map(({ path }) => ({ path, added: 2, deleted: 0, binary: false })) ?? null,
         filesTruncated: false,
         conflictPaths: [],
+        commits: commits ?? null,
+        commitsTruncated: false,
       },
     );
 
@@ -354,13 +359,33 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(asked).toEqual([]);
   });
 
-  it("Commits are read when the person opens the Commits section", () => {
+  it("Commits HQ recorded show at once", () => {
+    const markup = render(merged(), [], {
+      readout: {
+        kind: "read",
+        value: recorded(
+          [{ path: "src/a.ts" }],
+          [
+            {
+              sha: MAIN,
+              subject: "Add a status page",
+              authorName: "Nova",
+              at: "2026-10-02T09:00:00.000Z",
+            },
+          ],
+        ),
+      },
+    });
+    expect(textOf(markup)).toContain("Add a status page");
+  });
+
+  it("Commits not recorded yet read not known yet, and a press reads them", () => {
     const markup = render(merged(), [], {
       readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
-      commits: { kind: "reading" },
+      showCommits: noop,
     });
-    expect(textOf(markup)).toContain("Commits");
-    expect(markup).not.toContain("rv-commit-t");
+    expect(textOf(markup)).toContain("The commits are not known yet.");
+    expect(textOf(markup)).toContain("Show commits");
   });
 });
 

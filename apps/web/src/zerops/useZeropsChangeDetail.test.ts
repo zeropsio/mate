@@ -181,6 +181,8 @@ describe("useZeropsChangeDetail", () => {
       files: [{ path: "src/a.ts", added: 3, deleted: 1, binary: false }],
       filesTruncated: false,
       conflictPaths: [],
+      commits: [],
+      commitsTruncated: false,
     };
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
     expect(probe.latest().readout).toMatchObject({
@@ -194,7 +196,14 @@ describe("useZeropsChangeDetail", () => {
 
   it("Files not recorded yet read not known yet, and a press reads them once", async () => {
     hq.answers = ["detail"];
-    hq.review = { mergeBase: MAIN, files: null, filesTruncated: false, conflictPaths: [] };
+    hq.review = {
+      mergeBase: MAIN,
+      files: null,
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: null,
+      commitsTruncated: false,
+    };
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
     expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: false } });
     expect(hq.reads).toEqual([]);

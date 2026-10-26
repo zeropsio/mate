@@ -171,6 +171,15 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
     ],
     filesTruncated: false,
     conflictPaths: [],
+    commits: [
+      {
+        sha: HEAD,
+        subject: "Add a /status page",
+        authorName: "Nova",
+        at: "2026-10-02T09:00:00.000Z",
+      },
+    ],
+    commitsTruncated: false,
     ...over,
   });
 
@@ -193,6 +202,22 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
     });
     // Its diffs are read when a file is unfolded, never with the review.
     expect(read.diff.size).toBe(0);
+  });
+
+  it("Opening a change review shows the commits HQ recorded at its head", () => {
+    const read = changeReadoutOfRecord(change, review({ commitsTruncated: true }));
+    expect(read).toMatchObject({
+      commits: [{ sha: HEAD, subject: "Add a /status page" }],
+      commitsKnown: true,
+      commitsCut: true,
+    });
+  });
+
+  it("A change whose commits are not recorded reads commits not known yet", () => {
+    expect(changeReadoutOfRecord(change, review({ commits: null }))).toMatchObject({
+      commits: [],
+      commitsKnown: false,
+    });
   });
 
   it("A change whose files are not recorded reads files not known yet", () => {

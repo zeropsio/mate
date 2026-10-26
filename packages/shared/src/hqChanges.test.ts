@@ -641,6 +641,8 @@ describe("hqChanges — a change's metadata", () => {
       files: [{ path: "a.ts", added: 1, deleted: 0, binary: false }],
       filesTruncated: false,
       conflictPaths: [],
+      commits: null,
+      commitsTruncated: false,
     };
     expect(decode({ change: CHANGE, review }).review).toEqual(review);
   });
