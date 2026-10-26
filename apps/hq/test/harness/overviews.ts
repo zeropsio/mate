@@ -45,7 +45,7 @@ export const row = (
 /** A Mate's whole overview: one idle chat, nothing signed in, no crew; `patch` over it. */
 export const overviewOf = (patch: Partial<MateOverview> = {}): MateOverview =>
   ({
-    identity: { environmentId: "env-1", serverVersion: "0.11.90", update: null },
+    identity: { environmentId: "env-1", serverVersion: "0.16.0", update: null },
     main: null,
     threads: { list: [digest("t1")], omitted: 0 },
     logins: {},
