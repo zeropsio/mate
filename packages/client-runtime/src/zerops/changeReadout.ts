@@ -11,7 +11,12 @@
  *
  * @module changeReadout
  */
-import type { ChangeDetailResponse, ChangeFile } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeFile,
+  ChangeReview,
+  HqChange,
+} from "@t3tools/shared/hqChanges";
 
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
@@ -33,6 +38,13 @@ export interface ChangeReadoutCommit {
 
 export interface ChangeReadout {
   readonly files: ReadonlyArray<ChangeReadoutFile>;
+  /** Whether `files` is the change's files: false where HQ has not recorded them yet. */
+  readonly filesKnown: boolean;
+  /**
+   * The merge base a file's diff is read from when the person unfolds it; `null` where `diff`
+   * already holds them.
+   */
+  readonly diffBase: string | null;
   /** HQ read only so many of its files. */
   readonly filesCut: boolean;
   /** Each file's diff, by its path. */
@@ -62,6 +74,8 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     if (read !== undefined) diff.set(file.path, read);
   }
   return {
+    filesKnown: true,
+    diffBase: null,
     files: detail.files.map((file) => ({
       path: file.path,
       status: statusOf(file),
@@ -75,5 +89,28 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     conflict: detail.mergeability.kind === "conflict" ? detail.mergeability.paths : [],
     behind:
       detail.mainHead !== null && detail.mergeBase !== null && detail.mainHead !== detail.mergeBase,
+  };
+}
+
+/**
+ * A change's review as HQ recorded it with the merge verdict: its files and sizes, no diffs and no
+ * commits. A file's status is not recorded; its row reads "changed" until its diff is unfolded.
+ */
+export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): ChangeReadout {
+  return {
+    filesKnown: review.files !== null,
+    diffBase: review.mergeBase,
+    files: (review.files ?? []).map((file) => ({
+      path: file.path,
+      status: "modified",
+      additions: file.added ?? 0,
+      deletions: file.deleted ?? 0,
+    })),
+    filesCut: review.filesTruncated,
+    diff: new Map(),
+    commits: [],
+    mergeability: mergeabilityKindOf(change.mergeability),
+    conflict: review.conflictPaths,
+    behind: change.behind,
   };
 }

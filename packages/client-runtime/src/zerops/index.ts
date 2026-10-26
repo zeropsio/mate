@@ -498,6 +498,7 @@ export {
 export { formatRunClock } from "./runClock.ts";
 export {
   changeReadout,
+  changeReadoutOfRecord,
   type ChangeReadout,
   type ChangeReadoutCommit,
   type ChangeReadoutFile,
@@ -509,6 +510,11 @@ export {
   type ChangeDiffHunk,
   type ChangeDiffLine,
 } from "./changeDiff.ts";
+export {
+  changeFileDiffState,
+  type ChangeFileDiffState,
+  type ChangeFileDiffView,
+} from "./changeFileDiff.ts";
 export {
   changeKindTag,
   flowChange,

@@ -59,6 +59,8 @@ import {
 } from "~/zerops/useZeropsChangeDetail";
 import { useChangeDiscussion, type ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
+import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
+import { useZeropsChangeFileDiffs } from "~/zerops/useZeropsChangeFileDiffs";
 import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { useLinkedChange } from "~/zerops/useLinkedChange";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -344,6 +346,39 @@ function ChangeReviewData({
       flow?.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
       mergedMain(pull.repository, flow?.merged),
   });
+  // The recorded review holds no diff: a file's is read when the person unfolds it.
+  const fileDiffs = useZeropsChangeFileDiffs({
+    appId: target.groupId,
+    repo: pull.repository,
+    base: detail.readout.kind === "read" ? detail.readout.value.diffBase : null,
+    head: pull.headSha,
+  });
+  // The commits are read when the person opens their section, never with the review.
+  const [commitsWanted, setCommitsWanted] = useState(false);
+  const wantCommits = useCallback(() => {
+    setCommitsWanted(true);
+  }, []);
+  const commits = useZeropsChangeCommits(
+    commitsWanted
+      ? {
+          link: { appId: target.groupId, repo: pull.repository, number: pull.number },
+          head: pull.headSha,
+          main:
+            flow?.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
+            mergedMain(pull.repository, flow?.merged),
+        }
+      : null,
+  );
+  const recordedCommits = useMemo<ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>>(
+    () =>
+      !commitsWanted
+        ? { kind: "reading" }
+        : commits.readout.kind === "read"
+          ? { kind: "read", value: commits.readout.value.commits }
+          : commits.readout,
+    [commitsWanted, commits.readout],
+  );
+  const recordedReview = detail.readout.kind === "read" && detail.readout.value.diffBase !== null;
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,
     appId: target.groupId,
@@ -460,6 +495,10 @@ function ChangeReviewData({
       }}
       onClose={onClose}
       onRetry={detail.retry}
+      showFiles={detail.showFiles}
+      fileDiffs={fileDiffs}
+      commits={recordedReview ? recordedCommits : undefined}
+      onCommitsOpen={wantCommits}
       onFix={(problem) => {
         askMateToFix(pull.mateProjectId, problem);
         onClose();
@@ -565,6 +604,24 @@ export interface ChangeReviewViewProps {
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
+  /**
+   * Where a file's diff is read from its repository when the person unfolds it (the recorded
+   * review carries none); absent, the readout holds them.
+   */
+  readonly fileDiffs?:
+    | {
+        readonly diffOf: (path: string) => ReviewDiffState;
+        readonly ask: (path: string) => void;
+      }
+    | undefined;
+  /** For a change whose files were never recorded: reads them from its repository on a press. */
+  readonly showFiles?: (() => void) | undefined;
+  /**
+   * The commits, where they are read only once the Commits section is opened
+   * (`onCommitsOpen`); absent, the readout holds them.
+   */
+  readonly commits?: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> | undefined;
+  readonly onCommitsOpen?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -587,6 +644,16 @@ export interface ChangeReviewViewProps {
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
+  // Recorded diffs come with the readout; where they are left for later a file's is read on unfold.
+  const laterDiffs = read?.diffBase != null ? props.fileDiffs : undefined;
+  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+    props.commits ??
+    (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
+  const history = useReviewFold();
+  const { onCommitsOpen } = props;
+  useEffect(() => {
+    if (history.open) onCommitsOpen?.();
+  }, [history.open, onCommitsOpen]);
   const downstream = {
     production: props.environments.some((entry) => entry.tier === "production"),
     stage: props.environments.some((entry) => entry.tier === "stage"),
@@ -604,7 +671,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           },
     mateName: mate.name,
     readout: readout.kind === "read" ? "read" : readout.kind === "failed" ? "failed" : "reading",
-    commits: read?.commits.length,
+    commits: commits.kind === "read" ? commits.value.length : undefined,
     conflict:
       read === undefined || read.mergeability !== "conflicting"
         ? undefined
@@ -642,13 +709,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   });
   // A file missing from what HQ read lies past where its read stopped.
   const diffOf = (path: string): ReviewDiffState =>
-    readout.kind === "read"
-      ? { kind: "read", file: readout.value.diff.get(path), cut: readout.value.filesCut }
-      : readout.kind === "failed"
-        ? { kind: "failed", reason: readout.reason }
-        : { kind: "reading" };
-  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
-    readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
+    laterDiffs !== undefined
+      ? laterDiffs.diffOf(path)
+      : readout.kind === "read"
+        ? { kind: "read", file: readout.value.diff.get(path), cut: readout.value.filesCut }
+        : readout.kind === "failed"
+          ? { kind: "failed", reason: readout.reason }
+          : { kind: "reading" };
   const mine = mate.mine ? mate : undefined;
   const [questionClosed, setQuestionClosed] = useState(false);
   const answer = useReviewDeploys(press);
@@ -667,7 +734,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const files = useReviewFold();
   const checks = useReviewFold();
   const talk = useReviewFold();
-  const history = useReviewFold();
   // "Ask Nova to change it…" opens the conversation and puts the cursor in its box.
   const talkAt = useRef<HTMLDivElement | null>(null);
   const [asking, setAsking] = useState(0);
@@ -895,6 +961,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           failed={readout.kind === "failed" ? readout.reason : undefined}
           files={read?.files}
           initiallyOpen={props.initiallyOpen}
+          notRecorded={
+            read !== undefined && !read.filesKnown ? { onShow: props.showFiles } : undefined
+          }
+          onOpen={laterDiffs?.ask}
           onRetry={props.onRetry}
         />
       </ReviewSection>
@@ -949,7 +1019,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       <ReviewCommits
         at={repo}
         commits={commits}
-        fold={props.frame === "page" ? undefined : history}
+        fold={props.frame === "page" && props.commits === undefined ? undefined : history}
         now={props.now}
         onRetry={props.onRetry}
       />

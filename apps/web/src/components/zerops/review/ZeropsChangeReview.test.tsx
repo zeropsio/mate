@@ -5,6 +5,7 @@
  */
 import {
   changeReadout,
+  changeReadoutOfRecord,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -311,6 +312,55 @@ describe("ChangeReviewView: a change's conversation", () => {
       },
     });
     expect(markup.match(/<li aria-hidden="true"/gu)?.length).toBe(2);
+  });
+});
+
+describe("ChangeReviewView: a change review from what HQ recorded", () => {
+  const recorded = (files: ReadonlyArray<{ path: string }> | null) =>
+    changeReadoutOfRecord(
+      {
+        mergeability: "clean",
+        behind: false,
+      } as HqChange,
+      {
+        mergeBase: MAIN,
+        files: files?.map(({ path }) => ({ path, added: 2, deleted: 0, binary: false })) ?? null,
+        filesTruncated: false,
+        conflictPaths: [],
+      },
+    );
+
+  it("Files not recorded yet read not known yet", () => {
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded(null) },
+      showFiles: noop,
+    });
+    expect(textOf(markup)).toContain("The files are not known yet.");
+    expect(textOf(markup)).toContain("Show files");
+  });
+
+  it("A file's diff is read from the recorded merge base when the person unfolds it", () => {
+    const asked: Array<string> = [];
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
+      initiallyOpen: ["src/a.ts"],
+      fileDiffs: {
+        diffOf: () => ({ kind: "reading" }),
+        ask: (path) => asked.push(path),
+      },
+    });
+    expect(textOf(markup)).toContain("a.ts");
+    expect(textOf(markup)).toContain("Reading the diff");
+    expect(asked).toEqual([]);
+  });
+
+  it("Commits are read when the person opens the Commits section", () => {
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
+      commits: { kind: "reading" },
+    });
+    expect(textOf(markup)).toContain("Commits");
+    expect(markup).not.toContain("rv-commit-t");
   });
 });
 

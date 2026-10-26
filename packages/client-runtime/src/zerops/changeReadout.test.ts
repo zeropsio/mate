@@ -1,7 +1,12 @@
-import type { ChangeDetailResponse, ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeFile,
+  ChangeReview,
+  HqChange,
+} from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeReadout } from "./changeReadout.ts";
+import { changeReadout, changeReadoutOfRecord } from "./changeReadout.ts";
 
 const MAIN = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -154,5 +159,44 @@ describe("changeReadout: a change's review as HQ's detail reads it", () => {
       { sha: HEAD, subject: "Refresh it", at: "2026-10-02T10:00:00.000Z" },
       { sha: BASE, subject: "Add it", at: "2026-10-02T09:00:00.000Z" },
     ]);
+  });
+});
+
+describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
+  const review = (over: Partial<ChangeReview> = {}): ChangeReview => ({
+    mergeBase: BASE,
+    files: [
+      { path: "src/a.ts", added: 4, deleted: 1, binary: false },
+      { path: "logo.png", added: null, deleted: null, binary: true },
+    ],
+    filesTruncated: false,
+    conflictPaths: [],
+    ...over,
+  });
+
+  it("Opening a change review reads its files, sizes and verdict from what HQ recorded", () => {
+    const read = changeReadoutOfRecord(
+      { ...change, mergeability: "conflict", behind: true },
+      review({ conflictPaths: ["src/a.ts"] }),
+    );
+    expect(read).toMatchObject({
+      files: [
+        { path: "src/a.ts", additions: 4, deletions: 1 },
+        { path: "logo.png", additions: 0, deletions: 0 },
+      ],
+      filesKnown: true,
+      filesCut: false,
+      diffBase: BASE,
+      mergeability: "conflicting",
+      conflict: ["src/a.ts"],
+      behind: true,
+    });
+    // Its diffs are read when a file is unfolded, never with the review.
+    expect(read.diff.size).toBe(0);
+  });
+
+  it("A change whose files are not recorded reads files not known yet", () => {
+    const read = changeReadoutOfRecord(change, review({ files: null }));
+    expect(read).toMatchObject({ files: [], filesKnown: false });
   });
 });

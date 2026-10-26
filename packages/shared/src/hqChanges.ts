@@ -691,8 +691,35 @@ export const ChangeDetailResponse = Schema.Struct({
 });
 export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
 
-/** Database metadata for a linked change; never requests repository contents. */
-export const ChangeMetadataResponse = Schema.Struct({ change: HqChange });
+/** A file a change delivers as HQ recorded it, with its line counts and no patch. */
+export const RecordedChangeFile = Schema.Struct({
+  path: Schema.String,
+  added: Schema.NullOr(Schema.Number),
+  deleted: Schema.NullOr(Schema.Number),
+  binary: Schema.Boolean,
+});
+export type RecordedChangeFile = typeof RecordedChangeFile.Type;
+
+/**
+ * What HQ recorded of a change when its head or `main` last moved: the merge base its files were
+ * measured from, the files (`null` while not recorded), and the files that conflict with `main`.
+ */
+export const ChangeReview = Schema.Struct({
+  mergeBase: Schema.NullOr(Sha),
+  files: Schema.NullOr(Schema.Array(RecordedChangeFile)),
+  filesTruncated: Schema.Boolean,
+  conflictPaths: Schema.Array(Schema.String),
+});
+export type ChangeReview = typeof ChangeReview.Type;
+
+/**
+ * Database metadata for a linked change; never requests repository contents. `review` is absent
+ * from an HQ that does not record it.
+ */
+export const ChangeMetadataResponse = Schema.Struct({
+  change: HqChange,
+  review: Schema.optionalKey(ChangeReview),
+});
 export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
 
 /** Commit history requested explicitly, without file statistics or patches. */
