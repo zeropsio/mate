@@ -1293,9 +1293,9 @@ export function makeHqApi(input: {
       ),
     );
   };
-  /** The change as HQ holds it, if it is in `state`. */
+  /** The change as HQ holds it, if it is in `state`; its record, never its diff. */
   const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
-    const { change } = await changeOf(link);
+    const { change } = await readChangeMetadata(await authorized(`${changePath(link)}/metadata`));
     return change.state === state ? change : undefined;
   };
 

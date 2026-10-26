@@ -1680,22 +1680,22 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     readonly made: unknown;
   }>([
     {
-      name: "a merge HQ holds merged",
+      name: "a merge HQ holds merged, read back from its metadata",
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
       // Its deploys are HQ's stream's to bring.
       made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
     },
     {
-      name: "a close HQ holds closed",
+      name: "a close HQ holds closed, read back from its metadata",
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "closed" } })
           : undefined,
       ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: { ...CHANGE, state: "closed" },
@@ -1818,8 +1818,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
       reason: "already_merged",
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
       made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
@@ -1829,8 +1829,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/merge" },
       reason: "change_not_open",
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.mergeChange(LINK, SHA),
       made: { made: { ...CHANGE, state: "merged" }, deploys: undefined },
@@ -1840,8 +1840,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
       reason: "change_not_open",
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "closed" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "closed" } })
           : undefined,
       ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: { ...CHANGE, state: "closed" },
@@ -1863,8 +1863,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       write: { method: "POST", path: "/api/apps/app-1/changes/app/3/close" },
       reason: "change_not_open",
       holds: (seen) =>
-        seen.path === "/api/apps/app-1/changes/app/3"
-          ? json(200, { ...DETAIL, change: { ...CHANGE, state: "merged" } })
+        seen.path === "/api/apps/app-1/changes/app/3/metadata"
+          ? json(200, { change: { ...CHANGE, state: "merged" } })
           : undefined,
       ask: (hqApi) => hqApi.closeChange(LINK, "a".repeat(40)),
       made: "refused",
@@ -1897,7 +1897,9 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
   it("says to check the project when HQ still holds the change open after its merge was lost", async () => {
     const { api: hqApi } = api((seen) => {
       if (seen.path.endsWith("/merge")) throw new TypeError("Failed to fetch");
-      return seen.path === "/api/apps/app-1/changes/app/3" ? json(200, DETAIL) : undefined;
+      return seen.path === "/api/apps/app-1/changes/app/3/metadata"
+        ? json(200, { change: DETAIL.change })
+        : undefined;
     });
     await expect(hqApi.mergeChange(LINK, SHA)).rejects.toMatchObject({
       kind: "uncertain",
