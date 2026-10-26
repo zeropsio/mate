@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Chrome and the static localhost server are Node test tools.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import { afterAll, expect, inject } from "vite-plus/test";
+import { afterAll, expect, inject, TestRunner } from "vite-plus/test";
 import puppeteer, {
   type ElementHandle,
   type Page,
@@ -147,6 +147,23 @@ export async function openBrowser(
   const route = async (page: Page) => {
     // A wait ends on its predicate or at the hang guard, never at a window sized to one machine.
     page.setDefaultTimeout(0);
+    // The test's stop ends a wait that never found its element; the page then says where it stood.
+    const stop = TestRunner.getCurrentTest()?.context.signal;
+    stop?.addEventListener(
+      "abort",
+      () => {
+        void Promise.race([
+          page.evaluate(() => `${location.href}\n${document.body.innerText}`),
+          new Promise<string>((resolve) => setTimeout(resolve, 2_000, "(page did not answer)")),
+        ]).then(
+          (text) => {
+            console.error(`Test stopped while the page showed\n${text}`);
+          },
+          () => {},
+        );
+      },
+      { once: true },
+    );
     await page.setBypassServiceWorker(true);
     page.on("popup", (popup) => {
       if (popup === null) return;
