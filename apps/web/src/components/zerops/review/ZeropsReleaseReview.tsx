@@ -22,6 +22,7 @@ import {
   type GroupFlowAddress,
   servicesDeploying,
   carriedByRecords,
+  outsideMoved,
   carriedMoved,
   changesCountWords,
   holdReleaseFacts,
@@ -410,8 +411,23 @@ function ReleaseData({
     now,
     ages: false,
   });
+  const outsideRecorded = useMemo<RecordedOutside | undefined>(() => {
+    const stored = legacy ? undefined : detail.releaseOutside;
+    if (stored === undefined) return undefined;
+    return stored.summaryRead === "pending"
+      ? { state: "pending" }
+      : {
+          state: "known",
+          count: stored.count,
+          moved: outsideMoved({
+            commits: stored.commits,
+            repositories: flow.release.repositories,
+          }),
+        };
+  }, [detail.releaseOutside, flow.release.repositories, legacy]);
   const outside = useOutsideCommits({
     flow,
+    recorded: outsideRecorded,
     // The count is the offer's commits less the changes the release carries: known when both are.
     count:
       legacy || carried?.state !== "known" || flow.release.summary === undefined
@@ -552,6 +568,9 @@ function OutsideCommitsList({
   readonly onOpen: ((row: ReviewReleaseRow) => void) | undefined;
 }) {
   const { list } = outside;
+  if (list.state === "pending") {
+    return <p className="rv-note">Commits outside changes: not known yet.</p>;
+  }
   return (
     <>
       <p className="rv-note">
@@ -572,6 +591,9 @@ function OutsideCommitsList({
       {list.state === "known" ? (
         <ReviewReleaseRows appId={appId} onOpen={onOpen} rows={list.rows} />
       ) : null}
+      {list.state === "known" && list.rows.length < outside.count ? (
+        <p className="rv-note">{`The newest ${String(list.rows.length)} are shown.`}</p>
+      ) : null}
     </>
   );
 }
@@ -583,6 +605,7 @@ export interface OutsideCommits {
   readonly atLeast: boolean;
   readonly list:
     | { readonly state: "closed"; readonly onShow: () => void }
+    | { readonly state: "pending" }
     | { readonly state: "reading" }
     | {
         readonly state: "failed";
@@ -592,12 +615,19 @@ export interface OutsideCommits {
     | { readonly state: "known"; readonly rows: ReadonlyArray<ReviewReleaseRow> };
 }
 
+/** The commits outside changes as HQ stored them: not known yet, or their number and newest. */
+type RecordedOutside =
+  | { readonly state: "pending" }
+  | { readonly state: "known"; readonly count: number; readonly moved: ReadonlyArray<Moved> };
+
 /**
- * The commits outside changes are counted from the offer; HQ compares the release, and so reads its
- * repositories, only once the person asks to see them.
+ * The commits outside changes come from what HQ stored when it has stored them: the person's ask
+ * only unfolds them. An HQ that stores none counts them from the offer, and compares the release,
+ * so reads its repositories, only once the person asks to see them.
  */
 function useOutsideCommits({
   flow,
+  recorded,
   count,
   stage,
   mainHeads,
@@ -606,6 +636,7 @@ function useOutsideCommits({
   now,
 }: {
   readonly flow: ZeropsProjectFlow;
+  readonly recorded: RecordedOutside | undefined;
   readonly count: { readonly total: number; readonly atLeast: boolean } | undefined;
   readonly stage: ReturnType<typeof stageStandings> | undefined;
   readonly mainHeads: ReadonlyMap<string, string>;
@@ -614,10 +645,33 @@ function useOutsideCommits({
   readonly now: number;
 }): OutsideCommits | undefined {
   const [asked, setAsked] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
   const { flows } = useProjectFlows(
     useMemo(() => (asked ? [flow.groupId] : NO_APP_IDS), [asked, flow.groupId]),
     asked ? COMPARED : undefined,
   );
+  if (recorded?.state === "pending") {
+    return { count: 0, atLeast: false, list: { state: "pending" } };
+  }
+  if (recorded?.state === "known") {
+    if (recorded.count === 0) return undefined;
+    return {
+      count: recorded.count,
+      atLeast: false,
+      list: unfolded
+        ? {
+            state: "known",
+            rows: reviewRowsOf(
+              releaseChangeRows({
+                moved: recorded.moved,
+                marks: releaseStageMarks({ contents: recorded.moved }, stage, mainHeads),
+              }),
+              { mates, mateNames, now, ages: false },
+            ),
+          }
+        : { state: "closed", onShow: () => setUnfolded(true) },
+    };
+  }
   if (count === undefined || (count.total === 0 && !count.atLeast)) return undefined;
   const compared = flows.get(flow.groupId)?.release;
   const list: OutsideCommits["list"] = !asked

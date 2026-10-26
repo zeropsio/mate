@@ -177,6 +177,15 @@ describe("hqAppDetail", () => {
     expect(detail(read).releaseChanges).toBeUndefined();
   });
 
+  it("reads the commits outside a release's changes as HQ said them, and absent from an older HQ", () => {
+    const value = { count: 0, commits: [], summaryRead: "pending" } as const;
+    const outside = apply(demanded, [
+      deliver([row("releaseOutside", { kind: "releaseOutside", value })]),
+    ]);
+    expect(detail(outside).releaseOutside).toEqual(value);
+    expect(detail(read).releaseOutside).toBeUndefined();
+  });
+
   it("keeps what it read through an outage and a refusal", () => {
     const { releases, repos, changes, recipes } = detail(read);
     expect(detail(down)).toMatchObject({ releases, repos, changes, recipes });

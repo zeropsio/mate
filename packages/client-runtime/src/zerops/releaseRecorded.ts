@@ -66,6 +66,38 @@ export function carriedMoved(input: {
   }));
 }
 
+/** A commit a release carries that no change landed, as HQ stores it. */
+export interface OutsideCommit {
+  readonly repo: string;
+  readonly sha: string;
+  readonly subject: string;
+  readonly authorName: string;
+  readonly at: string;
+}
+
+/** HQ's stored commits outside changes as the comparison would list them: no change on a commit. */
+export function outsideMoved(input: {
+  readonly commits: ReadonlyArray<OutsideCommit>;
+  readonly repositories: ReadonlyMap<string, string> | undefined;
+}): ReadonlyArray<Moved> {
+  const byRepository = new Map<string, Moved["commits"][number][]>();
+  for (const { repo, sha, subject, authorName, at } of input.commits) {
+    byRepository.set(repo, [
+      ...(byRepository.get(repo) ?? []),
+      { sha, subject, authorName, at, change: null },
+    ]);
+  }
+  return [...byRepository].map(([repository, commits]) => ({
+    repository,
+    services: [...(input.repositories ?? [])].flatMap(([hostname, repo]) =>
+      repo === repository ? [hostname] : [],
+    ),
+    commits: commits.toSorted((a, b) => b.at.localeCompare(a.at)),
+    total: commits.length,
+    truncated: false,
+  }));
+}
+
 /** What a release would put live from HQ's records: `reading` until HQ recorded the changes. */
 export function carriedByRecords(input: {
   readonly carried:

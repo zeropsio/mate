@@ -381,8 +381,10 @@ export {
 export {
   carriedByRecords,
   carriedMoved,
+  outsideMoved,
   rollbackFromHistories,
   type CarriedChange,
+  type OutsideCommit,
   type RecordedSide,
 } from "./releaseRecorded.ts";
 export {

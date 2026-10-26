@@ -529,6 +529,54 @@ describe("a review from what HQ already stores", () => {
     expect(showCommits(container)).toBeUndefined();
   });
 
+  it("A release review lists the commits outside changes from what HQ stored, with no compare on ask", async () => {
+    const { container } = await mount(
+      noRelease,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      detailOf({
+        releaseOutside: {
+          count: 3,
+          commits: [
+            {
+              repo: "acme/web",
+              sha: "d".repeat(40),
+              subject: "Bump lockfile",
+              authorName: "Toby",
+              at: new Date(NOW).toISOString(),
+            },
+          ],
+        },
+      }),
+    );
+    expect(container.textContent).toContain("3 commits outside changes");
+    expect(container.textContent).not.toContain("Bump lockfile");
+    await act(async () => showCommits(container)!.click());
+    expect(container.textContent).toContain("Bump lockfile");
+    expect(container.textContent).toContain("The newest 1 are shown.");
+    expect(comparedOnOpen()).toBe(false);
+    expect(
+      state.value.asked.every(
+        ({ options }) => options === undefined || !(options as { compare?: boolean }).compare,
+      ),
+    ).toBe(true);
+  });
+
+  it("A release review says the commits outside changes are not known yet while HQ has not stored them", async () => {
+    const { container } = await mount(
+      noRelease,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      detailOf({ releaseOutside: { count: 0, commits: [], summaryRead: "pending" } }),
+    );
+    expect(container.textContent).toContain("Commits outside changes: not known yet.");
+    expect(showCommits(container)).toBeUndefined();
+  });
+
   describe("a rollback", () => {
     const target = { kind: "rollback", groupId: "xyz", tag: "v0.1.4" } as const;
     const releases = (history: boolean) =>

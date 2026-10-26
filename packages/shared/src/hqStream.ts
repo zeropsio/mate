@@ -592,6 +592,23 @@ export const HqAppDetailFields = {
       ),
     }),
   ]),
+  /**
+   * The commits a release would carry that no change landed: their number and the newest few.
+   * `summaryRead: "pending"` while HQ has not read them (count 0, no commits).
+   */
+  releaseOutside: Schema.Struct({
+    count: Schema.Int,
+    commits: Schema.Array(
+      Schema.Struct({
+        repo: Schema.String,
+        sha: Schema.String,
+        subject: Schema.String,
+        authorName: Schema.String,
+        at: Schema.String,
+      }),
+    ),
+    summaryRead: Schema.optionalKey(Schema.Literal("pending")),
+  }),
 };
 
 export const HqAttentionScopeValue = Schema.Struct({

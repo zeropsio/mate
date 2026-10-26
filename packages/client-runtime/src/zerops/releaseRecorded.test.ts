@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   carriedByRecords,
   carriedMoved,
+  outsideMoved,
   rollbackFromHistories,
   type CarriedChange,
 } from "./releaseRecorded.ts";
@@ -169,5 +170,27 @@ describe("rollbackFromHistories", () => {
     },
   ])("$name", ({ releases, live, target, leaving, comingBack }) => {
     expect(rollbackFromHistories({ releases, live, target })).toEqual({ leaving, comingBack });
+  });
+});
+
+describe("outsideMoved", () => {
+  it("groups the stored commits outside changes by repository, newest first, with no change on them", () => {
+    const commit = (repo: string, sha: string, at: string) => ({
+      repo,
+      sha,
+      subject: sha,
+      authorName: "T",
+      at,
+    });
+    const moved = outsideMoved({
+      commits: [commit("api", "a", "2026-10-01"), commit("api", "b", "2026-10-02")],
+      repositories: new Map([["apistage", "api"]]),
+    });
+    expect(moved).toHaveLength(1);
+    expect(moved[0]).toMatchObject({ repository: "api", services: ["apistage"], total: 2 });
+    expect(moved[0]!.commits.map((c) => [c.sha, c.change])).toEqual([
+      ["b", null],
+      ["a", null],
+    ]);
   });
 });
