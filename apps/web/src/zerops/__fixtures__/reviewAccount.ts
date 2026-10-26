@@ -56,9 +56,18 @@ export function reviewAccount(
     store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
     const generation = streamOf(store.state(), scope).generation;
     store.dispatch({ kind: "baseline-begin", scope, generation });
+    // Existing scenarios seed one complete record; project its fields for narrower reads.
+    // Explicit readers let request-boundary witnesses reject any full-review read.
     const reader =
-      family === "hqChangeRead" ? read : family === "hqChangeMetadata" ? metadata : commits;
-    if (reader === undefined) throw new Error(`No fixture reader for ${family}`);
+      family === "hqChangeRead"
+        ? read
+        : family === "hqChangeMetadata"
+          ? (metadata ?? (async (request) => ({ change: (await read(request)).change })))
+          : (commits ??
+            (async (request) => {
+              const { change, mainHead, commits, commitsTruncated } = await read(request);
+              return { change, mainHead, commits, commitsTruncated };
+            }));
     void reader(changeReadRequest(owner)!).then(
       (value) => {
         store.dispatch({
