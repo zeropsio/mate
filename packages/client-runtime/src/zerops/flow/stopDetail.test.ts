@@ -330,6 +330,17 @@ describe("stopVerdict", () => {
       },
     },
     {
+      // HQ sends a zero summary while it has not read the offer: never "nothing new on main".
+      name: "production while HQ has not read what a release would carry",
+      input: { waitingUnread: true },
+      expected: {
+        tone: "busy",
+        text: "Not known yet what a release would carry.",
+        detail: "Production runs v0.1.13",
+        verb: null,
+      },
+    },
+    {
       // What production runs on a service cannot be told: nothing is known to be live, and the
       // release is offered — never "already runs what is merged".
       name: "production none of whose services can be told, nothing counted",
