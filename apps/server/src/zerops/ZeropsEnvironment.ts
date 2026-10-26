@@ -87,7 +87,7 @@ export interface ZeropsEnvironmentInput {
 }
 
 /** The HQ every Mate links to unless development names another (`T3CODE_ZEROPS_HQ_ORIGIN`). */
-export const DEFAULT_HQ_ORIGIN = "https://hq.zerops.io";
+export const DEFAULT_HQ_ORIGIN = "https://mate-hq.zerops.io";
 
 /** The variable that names HQ's origin, to the server and to every process it starts. */
 export const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";

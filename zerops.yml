@@ -47,6 +47,9 @@ zerops:
         # The consent page is HQ's, whatever origin the API's verificationUrl
         # names: HQ approves a fresh log-in directly and closes its window.
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        # Mate HQ, the one every Mate and this client share (`configuredHq`):
+        # named here, no organization's anchor is read to find it.
+        VITE_HQ_ORIGIN: https://mate-hq.zerops.io
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
