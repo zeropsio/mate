@@ -365,7 +365,7 @@ describe("C: a page the Mate publishes", () => {
             const last = samples.at(-1)!;
             expect(
               new Set(samples.slice(-20).map((sample) => sample.frame)).size,
-              "ASSERTION: the frame holds still",
+              `ASSERTION: the frame holds still: ${samples.map((sample) => `${sample.t}:${sample.frame}${sample.loaded ? "L" : ""}`).join(" ")}`,
             ).toBe(1);
             expect(last.frame, "ASSERTION: a screen tall, inside the window").toBeLessThan(1000);
             expect(last.frame, "ASSERTION: past its first box").toBeGreaterThan(240);
