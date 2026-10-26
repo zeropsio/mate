@@ -6,6 +6,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { guardScopePaths, runtimeCycleSourceRoots, retainedTestFile } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
+import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
 export { stateOnlySmoke } from "./state-smoke-cases.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
@@ -1466,6 +1467,11 @@ if (import.meta.main) {
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
     process.exit(0);
+  }
+  const stale = staleDependencies(root);
+  if (stale) {
+    console.error(`gate refused: ${stale}`);
+    process.exit(1);
   }
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");

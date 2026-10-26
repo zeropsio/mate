@@ -26,6 +26,7 @@ import {
 const gateRunnerFiles = [
   "gate-changed.ts",
   "gate-input-scopes.ts",
+  "gate-installed-dependencies.ts",
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "chat-gate.ts",
@@ -74,6 +75,15 @@ it("includes relay consumers when discovering related tests for shared changes",
   ];
   expect(relatedTestPackages(packages)).toEqual(packages.slice(0, 2));
 });
+
+// What `vp i` leaves behind: pnpm's copy of the lockfile it installed from.
+function installLockfile(root: string) {
+  NodeFS.mkdirSync(NodePath.join(root, "node_modules/.pnpm"), { recursive: true });
+  NodeFS.copyFileSync(
+    NodePath.join(root, "pnpm-lock.yaml"),
+    NodePath.join(root, "node_modules/.pnpm/lock.yaml"),
+  );
+}
 
 function areaFixture(
   imports: ReadonlyArray<readonly [string, ReadonlyArray<string>]>,
@@ -435,6 +445,7 @@ beforeAll(() => {
     NodePath.join(import.meta.dirname, "node_modules"),
     NodePath.join(repositoryFixture, "scripts/node_modules"),
   );
+  installLockfile(repositoryFixture);
   fixtureGit("init", "-q");
   fixtureGit("config", "user.name", "Gate fixture");
   fixtureGit("config", "user.email", "gate@example.test");
@@ -1333,6 +1344,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
             ? "\n// selection revision\n"
             : "# lock revision\n",
       );
+      if (path === "pnpm-lock.yaml") installLockfile(root);
       git("add", path);
       git("commit", "-qm", "selection inputs changed");
       git("checkout", "-q", "lane");
@@ -1552,6 +1564,7 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
           ? original.replace(/\}\s*$/u, ', "l2Witness": true\n}\n')
           : original + "\n# L2 witness\n",
       );
+      if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
       const result = NodeChildProcess.spawnSync(
         process.execPath,
         ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
@@ -1576,6 +1589,7 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
       expect(result.stdout).not.toContain("vp run -r");
     } finally {
       NodeFS.writeFileSync(file, original);
+      if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
       NodeFS.rmSync(NodePath.join(repositoryFixture, ownedTest));
     }
   },

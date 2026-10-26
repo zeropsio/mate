@@ -11,6 +11,7 @@ const gateRunnerFiles = [
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "gate-input-scopes.ts",
+  "gate-installed-dependencies.ts",
   "chat-gate.ts",
   "gate-log.ts",
   "gate-slots.ts",
