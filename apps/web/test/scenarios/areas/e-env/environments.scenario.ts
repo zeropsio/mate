@@ -269,7 +269,6 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.rollBack("v0.1.1");
           yield* a.then.text("Not known yet.");
           yield* a.when.click("Compare");
-          yield* Effect.promise(() => frames.received());
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
             f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
@@ -280,6 +279,26 @@ describe("E: stage, production, release and rollback", () => {
             ),
           ).toBe(true);
           expect(submissions).toHaveLength(0);
+          // The press was held behind a comparison HQ was really asked for, not behind a note.
+          yield* Effect.promise(async () => {
+            let stop: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                frames.received(),
+                new Promise<never>((_, reject) => {
+                  stop = setTimeout(async () => {
+                    reject(
+                      new Error(
+                        `No compare frame was held\n${await f.s.page.evaluate(() => document.body.innerText)}`,
+                      ),
+                    );
+                  }, 30_000);
+                }),
+              ]);
+            } finally {
+              clearTimeout(stop);
+            }
+          });
           frames.resume();
           yield* a.when.click("Roll back to v0.1.1");
           const process = yield* a.deployment("production");
