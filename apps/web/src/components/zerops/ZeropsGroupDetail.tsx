@@ -259,9 +259,6 @@ function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<
   return deployed;
 }
 
-/** A surface that shows what a release would put live: it compares it while drawn. */
-const COMPARED = { compare: true } as const;
-
 /** What a history may call a Mate: its name rather than its bot login. */
 function useHistoryNames(): HistoryNames {
   const mateNames = useMateNames();
@@ -474,11 +471,7 @@ const NO_SEARCH = {};
 /** The page's column: what the project's card has no room for, once its flow is read. */
 function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
   const recipeFailure = useHqRecipeFailure(groupId);
-  // The application's flow, what a release would put live compared while the page is drawn.
-  const { flows } = useProjectFlows(
-    useMemo(() => [groupId], [groupId]),
-    COMPARED,
-  );
+  const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   if (flow === undefined) return null;
   return <KnownGroupAside groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
@@ -1013,11 +1006,7 @@ function ZeropsProjectStopDetailPage({
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
   const [vaultOpen, toggleVault] = useStopVaultOpen();
-  // The application's flow, what a release would put live compared while the page is drawn.
-  const { flows } = useProjectFlows(
-    useMemo(() => [groupId], [groupId]),
-    COMPARED,
-  );
+  const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
   const verbs = useFlowVerbs();
@@ -1252,7 +1241,9 @@ function ZeropsProjectStopDetailPage({
         waiting={
           production
             ? {
-                commits: releaseContentsCommits(flow.release.contents),
+                commits:
+                  flow.release.summary?.subjects.map((subject) => ({ subject })) ??
+                  releaseContentsCommits(flow.release.contents),
                 total: notLive.count,
                 atLeast: notLive.atLeast,
               }
@@ -1265,7 +1256,7 @@ function ZeropsProjectStopDetailPage({
 
 /** A commit merged to `main` and not in front of people yet. */
 interface WaitingCommit {
-  readonly sha: string;
+  readonly sha?: string;
   readonly subject: string;
 }
 
@@ -1669,14 +1660,19 @@ export function ZeropsStopPane({
           {waiting.commits.length === 0 ? null : (
             <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
               <ul className="flex flex-col">
-                {waiting.commits.map((commit) => (
+                {waiting.commits.map((commit, index) => (
                   <li
-                    className={cn(CARD_ROW_CLASS, "grid-cols-[4.5rem_minmax(0,1fr)]")}
-                    key={commit.sha}
+                    className={cn(
+                      CARD_ROW_CLASS,
+                      commit.sha === undefined ? "grid-cols-1" : "grid-cols-[4.5rem_minmax(0,1fr)]",
+                    )}
+                    key={commit.sha ?? index}
                   >
-                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                      {shortCommit(commit.sha)}
-                    </span>
+                    {commit.sha === undefined ? null : (
+                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                        {shortCommit(commit.sha)}
+                      </span>
+                    )}
                     <span className="min-w-0 truncate text-sm text-foreground">
                       {commit.subject}
                     </span>
