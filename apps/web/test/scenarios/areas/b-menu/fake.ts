@@ -43,7 +43,7 @@ export const reportConversation = Effect.fn("menu.reportConversation")(function*
   const overview = yield* decode({
     identity: {
       environmentId: mate.descriptor.environmentId,
-      serverVersion: "0.14.11",
+      serverVersion: "0.16.0",
       update: null,
       runsWithoutSignIn: true,
     },

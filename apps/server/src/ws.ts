@@ -133,7 +133,6 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
-import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import * as ZeropsCrewProposals from "./zerops/ZeropsCrewProposals.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
@@ -443,6 +442,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+      const { serverVersion } = yield* serverEnvironment.getDescriptor;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
       yield* Effect.addFinalizer(() =>
@@ -1304,7 +1304,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           zeropsCli,
           zeropsMateUpdate,
           isZeropsEnvironment: isZeropsEnvironment(config),
-          serverVersion: serverPackageJson.version,
+          serverVersion,
           zeropsDataConsole,
           zeropsGitRemoteProbe,
           zeropsCrewProposals,
