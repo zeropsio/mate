@@ -80,7 +80,8 @@ The loop:
 Shipping: push tested work to `wt/<card>` and stop; the integrator verifies and promotes to `main`,
 which deploys the hosted web client (mate.zerops.io) through `zerops.yml`'s `prod` setup. That build
 also packages the retained legacy HQ Core under `hq-core/`; the shared production HQ deploys from
-mate-hq's `scripts/deploy-hq.ts`. Hotfixes may push `main`; keep it releasable.
+mate-hq's `scripts/deploy-hq.ts`. The `staging` setup builds the alfa test web against alfa's HQ
+(`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. Hotfixes may push `main`; keep it releasable.
 Release: `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run` prints
 the plan). Running-container delivery: `../zcp/eval/scripts/mate-dev-push.sh`, not a release;
 container restart wipes a dev build.
