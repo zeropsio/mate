@@ -127,6 +127,8 @@ describe("the list's words for each thing", () => {
     { ahead: 3, line: "3 changes are on stage, not yet in production." },
     { ahead: 1, line: "1 change is on stage, not yet in production." },
     { ahead: undefined, line: "What is on stage is not in production yet." },
+    // HQ's offer that is not read yet counts nothing: its zero is never said as a count.
+    { ahead: 0, line: "What is on stage is not in production yet." },
   ])("says what a release would carry: $line", ({ ahead, line }) => {
     expect(releaseWaitingLine({ groupId: "tea", name: "Tea Shop", ahead })).toBe(line);
   });
