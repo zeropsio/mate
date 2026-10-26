@@ -104,6 +104,14 @@ it("A kh-bisect push without a manifest is refused naming the file, and unknown 
   );
 });
 
+it.each([
+  ["a job name", "Test Web 1"],
+  ["every job", "all"],
+  ["no job", "an empty file"],
+])("A kh-bisect push without a manifest is told how to write it: %s", (_case, wording) => {
+  expect(() => blameSelection("refs/heads/kh-bisect/abc1234", undefined)).toThrow(wording);
+});
+
 it.each([["\n"], [""], ["  \n\n"]])(
   "A kh-bisect push with an empty manifest %j selects no job",
   (manifest) => {

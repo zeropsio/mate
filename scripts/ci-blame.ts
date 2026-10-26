@@ -37,7 +37,8 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   const bisect = ref.startsWith("refs/heads/kh-bisect/");
   if (bisect && manifest === undefined) {
     throw new Error(
-      'kh-bisect needs .ci-blame-jobs: name the jobs to run, "all", or leave it empty for none',
+      "kh-bisect needs .ci-blame-jobs at the repository root, committed normally (git add, git commit; no --no-verify). " +
+        'One job per line: a name such as "Test Web 1", the word "all" for every job, or an empty file for none.',
     );
   }
   const requested = new Set(
