@@ -130,7 +130,9 @@ zerops:
 
   # The same web client against the production HQ project (`mate-hq-prod`)
   # before its final domain exists, served beside it as `web`: `staging` with
-  # that project's HQ and own origin.
+  # that project's HQ and own origin. The HQ origin is the project zone, whose
+  # balancer carries the project's body and timeout limits; a zerops.app
+  # subdomain caps request bodies at 50 MB.
   - setup: stage
     build:
       base: ubuntu/nodejs@24
@@ -144,7 +146,7 @@ zerops:
       envVariables:
         VITE_HOSTED_APP_CHANNEL: latest
         VITE_HOSTED_APP_URL: https://web-15e.prg1.zerops.app
-        VITE_HQ_ORIGIN: https://hq-15e-8080.prg1.zerops.app
+        VITE_HQ_ORIGIN: https://ienjc61a87dpdepkmuiqiapq9o0.prg1-zerops.zone
         VITE_ZEROPS_SIGN_IN: device-login
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
