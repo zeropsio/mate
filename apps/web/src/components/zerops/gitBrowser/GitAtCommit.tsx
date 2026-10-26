@@ -8,6 +8,15 @@ import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 
+/** Missing commit facts are pending, not evidence of an empty branch. */
+export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
+  return (
+    <p className="text-sm text-muted-foreground">
+      {pending === true ? "Commit metadata is pending." : "No commits on this branch yet."}
+    </p>
+  );
+}
+
 /** A read not answered yet: reading, or waiting for HQ before it can. */
 export function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
   return (
@@ -129,7 +138,7 @@ export function GitAtCommit({
   if (home.state === "known")
     return home.answer.sha === null ? (
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        <p>No commits on this branch yet.</p>
+        <GitNoCommit pending={home.answer.pending} />
         <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
       </div>
     ) : (

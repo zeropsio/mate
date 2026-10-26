@@ -22,7 +22,7 @@ import { Toggle as GroupToggle, ToggleGroup } from "~/components/ui/toggle-group
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
-import { GitReadStopped } from "./GitAtCommit";
+import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitFileFinder, GitPageLink } from "./GitFileFinder";
 
@@ -340,7 +340,7 @@ export function GitSearchView(props: GitRepoPageProps) {
       </ToggleGroup>
       {home.state === "known" ? (
         home.answer.sha === null ? (
-          <p className="text-sm text-muted-foreground">No commits on this branch yet.</p>
+          <GitNoCommit pending={home.answer.pending} />
         ) : scope === "name" ? (
           <GitFileFinder
             key={home.answer.sha}

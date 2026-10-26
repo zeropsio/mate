@@ -75,7 +75,7 @@ async function browser(
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () =>
+  const draw = () =>
     root.render(
       <ZeropsRepositoryBrowser
         appId="app"
@@ -86,8 +86,8 @@ async function browser(
         onNavigate={onNavigate}
         onBack={() => {}}
       />,
-    ),
-  );
+    );
+  await act(draw);
   // Each page is its own chunk: wait for the one the link names.
   await act(async () => {
     await Promise.all([import("./gitBrowser/GitRepoHome"), import("./gitBrowser/GitRepoCode")]);
@@ -95,6 +95,7 @@ async function browser(
   return {
     // The Clone popover opens in a portal, outside the page's own element.
     host: document.body,
+    refresh: () => act(draw),
     close: async () => {
       await act(async () => root.unmount());
       host.remove();
@@ -212,6 +213,73 @@ afterEach(() => {
   held.asked = [];
 });
 
+it("Opening History, Compare, Search or Blame does not read the repository README.", async () => {
+  for (const view of ["commits", "compare", "search", "blame"] as const) {
+    held.views = {};
+    held.asked = [];
+    const { close, refresh } = await browser("appdev", "Shop", { view });
+    try {
+      held.views = { home: knownHome(null) };
+      await refresh();
+      expect(
+        held.asked.filter(
+          ({ read, params }) =>
+            read === "home" && (params as { content?: string }).content === undefined,
+        ),
+        view,
+      ).toEqual([]);
+      expect(held.asked).toContainEqual({ read: "home", params: { content: "metadata" } });
+    } finally {
+      await close();
+    }
+  }
+});
+
+it("A pending tag says its commit metadata is pending, while an unborn branch has no commits.", async () => {
+  for (const pending of [true, false]) {
+    const known = knownHome(null);
+    held.views = {
+      home: { ...known, answer: { ...known.answer, sha: null, ...(pending ? { pending } : {}) } },
+    };
+    const { host, close } = await browser("appdev", "Shop", { view: "commits", rev: "v1" });
+    try {
+      await act(async () => {
+        await import("./gitBrowser/GitCommitsView");
+      });
+      expect(host.textContent).toContain(
+        pending ? "Commit metadata is pending." : "No commits on this branch yet.",
+      );
+      expect(held.asked.filter(({ read }) => read === "log")).toEqual([]);
+    } finally {
+      await close();
+    }
+  }
+});
+
+it.each(["abcdef0", "a".repeat(48)])(
+  "An explicitly selected short commit resolves without asking for the README.",
+  async (rev) => {
+    const { close } = await browser("appdev", "Shop", { view: "commits", rev });
+    try {
+      expect(held.asked).toContainEqual({
+        read: "home",
+        params: { rev, content: "revision" },
+      });
+    } finally {
+      await close();
+    }
+  },
+);
+
+it("An explicitly selected tag resolves without asking for the README.", async () => {
+  const { close } = await browser("appdev", "Shop", { view: "commits", rev: "v1" });
+  try {
+    expect(held.asked).toContainEqual({ read: "home", params: { rev: "v1", content: "revision" } });
+  } finally {
+    await close();
+  }
+});
+
 describe("repository frame", () => {
   it("Clone and the token guide open from the repository header", async () => {
     const { host, close } = await browser();
@@ -269,7 +337,9 @@ describe("repository frame", () => {
       const { host, close } = await browser("appdev", "Shop", query);
       try {
         // The link's branch, tag or commit is resolved once; its path is read at that commit.
-        expect(held.asked.find((asked) => asked.read === "home")?.params).toEqual({ rev: "v1" });
+        expect(held.asked.find((asked) => asked.read === "home")?.params).toMatchObject({
+          rev: "v1",
+        });
         expect(held.asked.findLast((asked) => asked.read === read)?.params).toEqual({
           sha,
           path: query.path,
