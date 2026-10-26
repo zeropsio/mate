@@ -24,6 +24,7 @@ import {
   reviewPictureBox,
   reviewKindLine,
   reviewOrigin,
+  outsideCommitsWords,
   rollbackListNote,
   runWords,
   sizeWords,
@@ -548,6 +549,7 @@ describe("rollbackListNote: what a roll back's list says where it lists nothing"
       { state: "failed", reason: "HQ is not answering right now." },
       "Can't tell what comes back: HQ is not answering right now.",
     ],
+    ["leaving", { state: "unrecorded" }, "Not known yet."],
     ["leaving", { state: "known" }, "Nothing leaves production."],
     ["coming-back", { state: "known" }, "Nothing comes back."],
   ] as const)("%s, %o", (side, list, words) => {
@@ -1087,5 +1089,15 @@ describe("productionCode: the code production runs, to browse before a release r
     ["nothing while its repositories are not known", new Map(), undefined, []],
   ])("%s", (_, runs, repos, expected) => {
     expect(productionCode({ runs, repositories: repos })).toEqual(expected);
+  });
+});
+
+describe("outsideCommitsWords: the commits no change landed", () => {
+  it.each([
+    [1, false, "1 commit outside changes"],
+    [4, false, "4 commits outside changes"],
+    [10000, true, "10000+ commits outside changes"],
+  ] as const)("%i, at least %s: %s", (count, atLeast, words) => {
+    expect(outsideCommitsWords(count, atLeast)).toBe(words);
   });
 });

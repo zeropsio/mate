@@ -379,6 +379,13 @@ export {
   type ProductionRun,
 } from "./releaseCompare.ts";
 export {
+  carriedByRecords,
+  carriedMoved,
+  rollbackFromHistories,
+  type CarriedChange,
+  type RecordedSide,
+} from "./releaseRecorded.ts";
+export {
   groupFlow,
   pairPreviewRoutes,
   placeAddresses,

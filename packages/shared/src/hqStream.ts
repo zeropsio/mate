@@ -582,6 +582,16 @@ export const HqAppDetailFields = {
   "recipe:stage": RecipeTierResponse,
   "recipe:production": RecipeTierResponse,
   changes: Schema.Array(HqChange),
+  /** Every change a release would put live now; `pending` while HQ has not recorded them. */
+  releaseChanges: Schema.Union([
+    Schema.Struct({ state: Schema.Literal("pending") }),
+    Schema.Struct({
+      state: Schema.Literal("known"),
+      changes: Schema.Array(
+        Schema.Struct({ repo: Schema.String, number: Schema.Int, title: Schema.String }),
+      ),
+    }),
+  ]),
 };
 
 export const HqAttentionScopeValue = Schema.Struct({

@@ -371,9 +371,12 @@ export function useCompactProjectFlows(
 
 export function useProjectFlows(
   apps: FlowApps,
-  options: { readonly compare?: boolean } = {},
+  options: { readonly compare?: boolean; readonly plan?: boolean } = {},
 ): ProjectFlows {
   const compare = options.compare === true;
+  // Planned, a release is read from what the store holds (what production runs, what it builds
+  // from); compared, HQ is also asked what its commits move.
+  const planned = compare || options.plan === true;
   const canonical = useCompactProjectFlows(apps);
   const session = useZeropsSession();
   const inventory = useZeropsInventory();
@@ -459,7 +462,7 @@ export function useProjectFlows(
   const stated = useStatedVersions(statedServices);
 
   // Comparing a release is detail demand; navigation only reads already held detail.
-  useHqAppDetailHold(compare ? appIds : NO_APPS);
+  useHqAppDetailHold(planned ? appIds : NO_APPS);
   const recipes = useHqAppRecipes(appIds);
   const {
     releases: releaseRecords,
@@ -526,7 +529,7 @@ export function useProjectFlows(
   // running nothing.
   const releasePlans = useMemo(() => {
     const plans = new Map<string, ReleasePlan>();
-    if (!compare) return plans;
+    if (!planned) return plans;
     for (const groupId of appIds) {
       const recipe = recipes.get(groupId);
       const repos = appRepos.get(groupId);
@@ -593,7 +596,7 @@ export function useProjectFlows(
   }, [
     appIds,
     appRepos,
-    compare,
+    planned,
     groupProjects,
     canonical.flows,
     gitLive,
@@ -604,8 +607,8 @@ export function useProjectFlows(
     withheld,
   ]);
   const compareAsks = useMemo(
-    () => new Map([...releasePlans].map(([groupId, plan]) => [groupId, plan.reads])),
-    [releasePlans],
+    () => new Map(compare ? [...releasePlans].map(([groupId, plan]) => [groupId, plan.reads]) : []),
+    [compare, releasePlans],
   );
   const compares = useReleaseComparisons(compareAsks);
   const live = useMemo(
@@ -616,8 +619,9 @@ export function useProjectFlows(
           return [
             groupId,
             {
-              moved:
-                answered === undefined
+              moved: !compare
+                ? undefined
+                : answered === undefined
                   ? NOT_COMPARED
                   : {
                       ...movedCommits({ reads: plan.reads, ...answered }),
@@ -629,25 +633,29 @@ export function useProjectFlows(
           ];
         }),
       ),
-    [compares, releasePlans],
+    [compare, compares, releasePlans],
   );
   const reviews = useMemo(
     () =>
-      compare
+      planned
         ? new Map(
             appIds.map((id) => [
               id,
               {
                 permission: permissions.get(id),
                 live: {
-                  ...(live.get(id) ?? { moved: NOT_COMPARED, untold: [], runs: undefined }),
+                  ...(live.get(id) ?? {
+                    moved: compare ? NOT_COMPARED : undefined,
+                    untold: [],
+                    runs: undefined,
+                  }),
                   git: gitLive.get(id),
                 },
               },
             ]),
           )
         : undefined,
-    [appIds, compare, permissions, live, gitLive],
+    [appIds, compare, planned, permissions, live, gitLive],
   );
   const reviewed = useCompactProjectFlows(apps, reviews);
   const flows = reviewed.flows;

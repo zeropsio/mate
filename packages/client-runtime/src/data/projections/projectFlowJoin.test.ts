@@ -19,6 +19,7 @@ import type { HqNavigationApp } from "@t3tools/shared/hqStream";
 import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
+import { creationHandoff } from "./creationHandoff.ts";
 import { joinProjectFlows } from "./projectFlowJoin.ts";
 
 const GROUPS = [
@@ -141,6 +142,32 @@ describe("joinProjectFlows", () => {
       }).get("g1")?.release.summaryRead;
     expect([read("pending"), read()]).toEqual(["pending", undefined]);
   });
+
+  it.each([
+    { name: "opens the review once the offer allows it", gate: { allow: true }, handoff: "open" },
+    {
+      name: "waits while the offer is still being checked",
+      gate: { allow: false, reason: RELEASE_CHECKING },
+      handoff: "wait",
+    },
+  ] as const)(
+    "A production just added decides its handoff from the release offer: $name",
+    (row) => {
+      const flow = join({
+        navigationOffers: {
+          g1: {
+            head: "9".repeat(40),
+            suggestion: "v0.1.0",
+            gate: row.gate,
+            inFlight: null,
+            summary: { total: 0, more: 0, subjects: [], atLeast: false },
+          },
+        },
+        review: false,
+      }).get("g1")!;
+      expect(creationHandoff({ hasProduction: true, gate: flow.release.gate })).toBe(row.handoff);
+    },
+  );
 
   it("shows an omitted navigation release offer as unknown", () => {
     const flow = join({

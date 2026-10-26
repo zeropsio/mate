@@ -1,5 +1,7 @@
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
 import type { FlowReleaseRow } from "@t3tools/client-runtime/zerops";
+import type { HqChange } from "@t3tools/shared/hqChanges";
 import {
   Window,
   type HTMLButtonElement as TestButton,
@@ -19,17 +21,24 @@ import { ZeropsReleaseReview } from "./ZeropsReleaseReview";
 const state = vi.hoisted(() => ({
   value: {} as {
     flows: Map<string, ZeropsProjectFlow>;
+    detail: HqAppDetailRead;
+    /** What the review asked of the project flows, each draw: the apps and the options. */
+    asked: Array<{ ids: ReadonlyArray<string>; options: unknown }>;
     mateNames: Map<string, string>;
     release: (group: string, tag?: string) => Promise<FlowVerbOutcome>;
     rollBack: (group: string, tag: string) => Promise<FlowVerbOutcome>;
   },
 }));
 vi.mock("~/zerops/projectFlows", () => ({
-  useProjectFlows: () => ({ flows: state.value.flows }),
+  useProjectFlows: (ids: ReadonlyArray<string>, options?: unknown) => {
+    state.value.asked.push({ ids, options });
+    return { flows: state.value.flows };
+  },
   useMateNames: () => state.value.mateNames,
   useEveryAppId: () => [],
   useAppsEnvironments: () => ({}),
 }));
+vi.mock("~/zerops/useHqAppDetail", () => ({ useHqAppDetail: () => state.value.detail }));
 vi.mock("~/zerops/flowVerbs", () => ({
   useFlowVerbs: () => ({
     pending: new Set(),
@@ -65,6 +74,35 @@ vi.mock("./ZeropsReleaseSteps", () => ({
 const NOW = Date.parse("2026-10-03T22:45:09Z");
 const BEFORE = "0fb60a1".padEnd(40, "0");
 const HEAD = "18270a2".padEnd(40, "0");
+
+/** The application's merged change #6, as its change list holds it. */
+const CHANGE_6 = {
+  repo: "appdev",
+  number: 6,
+  title: "Set version to 1.0.0",
+  mateProjectId: "toby",
+  mergedSha: HEAD,
+  mergedAt: new Date(NOW).toISOString(),
+} as unknown as HqChange;
+
+/** The application's detail as HQ says it: the release carries #6, recorded. */
+function detailOf(over: Partial<HqAppDetailRead> = {}): HqAppDetailRead {
+  return {
+    releases: [],
+    repos: undefined,
+    changes: [CHANGE_6],
+    releaseChanges: {
+      state: "known",
+      changes: [{ repo: "appdev", number: 6, title: "Set version to 1.0.0" }],
+    },
+    recipes: {},
+    read: "read",
+    failure: null,
+    live: true,
+    reconnecting: false,
+    ...over,
+  };
+}
 function row(tag: string, commit: string, live = true): FlowReleaseRow {
   return {
     tag,
@@ -168,6 +206,7 @@ async function mount(
   rollBack: typeof state.value.rollBack = async () => ({ ok: false, reason: "unused" }),
   shape: (base: ZeropsProjectFlow) => ZeropsProjectFlow = (base) => base,
   wrap: (children: ReactNode) => ReactNode = (children) => children,
+  detail: HqAppDetailRead = detailOf(),
 ) {
   const window = new Window();
   for (const name of [
@@ -184,6 +223,8 @@ async function mount(
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   state.value = {
     flows: new Map([["xyz", shape(flow())]]),
+    detail,
+    asked: [],
     mateNames: new Map(),
     release,
     rollBack,
@@ -396,5 +437,156 @@ describe("the release dialog's way to a domain of your own", () => {
     } as unknown as typeof PRODUCTION;
     const { container } = await released({ "p-prod": placeAddresses([]) }, git);
     expect(domainDoor(container)).toBeUndefined();
+  });
+});
+
+describe("a review from what HQ already stores", () => {
+  const comparedOnOpen = () =>
+    state.value.asked.some(
+      ({ options }) => (options as { compare?: boolean } | undefined)?.compare,
+    );
+  const OUTSIDE = {
+    sha: "c".repeat(40),
+    subject: "Bump lockfile",
+    authorName: "Toby",
+    at: new Date(NOW).toISOString(),
+    change: null,
+  };
+  const withOutside =
+    (summary: { total: number; pending?: boolean }) =>
+    (base: ZeropsProjectFlow): ZeropsProjectFlow => ({
+      ...base,
+      release: {
+        ...base.release,
+        summary: { total: summary.total, more: 0, subjects: [], atLeast: false },
+        summaryRead: summary.pending === true ? "pending" : undefined,
+        contents: [
+          {
+            ...base.release.contents[0]!,
+            commits: [...base.release.contents[0]!.commits, OUTSIDE],
+          },
+        ],
+      },
+    });
+  const noRelease = async (): Promise<FlowVerbOutcome> => ({ ok: false, reason: "unused" });
+  const showCommits = (container: Awaited<ReturnType<typeof mount>>["container"]) =>
+    [...container.querySelectorAll<TestButton>("button")].find(
+      (button) => button.textContent === "Show commits",
+    );
+
+  it("A release review lists the changes going live from the release offer, with no compare on open", async () => {
+    const { container } = await mount(noRelease);
+    expect(container.textContent).toContain("Set version to 1.0.0");
+    expect(comparedOnOpen()).toBe(false);
+  });
+
+  it("A release review says the changes going live are not known yet while HQ has not recorded them", async () => {
+    const { container } = await mount(
+      noRelease,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      detailOf({ releaseChanges: { state: "pending" } }),
+    );
+    expect(container.textContent).toContain("Not known yet.");
+    expect(container.textContent).not.toContain("Set version to 1.0.0");
+    expect(container.textContent).not.toContain("0 changes");
+    expect(comparedOnOpen()).toBe(false);
+  });
+
+  it("A release review compares what goes out when HQ records no changes for a release", async () => {
+    await mount(
+      noRelease,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      detailOf({ releaseChanges: undefined }),
+    );
+    expect(comparedOnOpen()).toBe(true);
+  });
+
+  it("A release review counts commits outside changes and lists them only when asked", async () => {
+    const { container } = await mount(noRelease, undefined, undefined, withOutside({ total: 3 }));
+    expect(container.textContent).toContain("2 commits outside changes");
+    expect(container.textContent).not.toContain("Bump lockfile");
+    expect(comparedOnOpen()).toBe(false);
+    await act(async () => showCommits(container)!.click());
+    expect(comparedOnOpen()).toBe(true);
+    expect(container.textContent).toContain("Bump lockfile");
+    expect(showCommits(container)).toBeUndefined();
+  });
+
+  it("A release review counts no commits outside changes while HQ has not read the offer", async () => {
+    const { container } = await mount(
+      noRelease,
+      undefined,
+      undefined,
+      withOutside({ total: 0, pending: true }),
+    );
+    expect(container.textContent).not.toContain("outside changes");
+    expect(showCommits(container)).toBeUndefined();
+  });
+
+  describe("a rollback", () => {
+    const target = { kind: "rollback", groupId: "xyz", tag: "v0.1.4" } as const;
+    const releases = (history: boolean) =>
+      [
+        {
+          tag: "v0.1.5",
+          state: "approved",
+          rollbackOf: null,
+          ...(history
+            ? {
+                history: {
+                  ranges: [],
+                  changes: [{ repo: "appdev", number: 6, title: "Set version to 1.0.0" }],
+                  commitCount: 1,
+                  outsideCommitCount: 0,
+                },
+              }
+            : {}),
+        },
+        { tag: "v0.1.4", state: "approved", rollbackOf: null, history: undefined },
+      ] as unknown as HqAppDetailRead["releases"];
+    const shape = (base: ZeropsProjectFlow): ZeropsProjectFlow => ({
+      ...base,
+      releases: [row("v0.1.5", HEAD), row("v0.1.4", BEFORE, false)],
+    });
+
+    it("A rollback review lists what leaves and comes back from recorded release histories", async () => {
+      compared.asks.length = 0;
+      const { container } = await mount(
+        noRelease,
+        target,
+        undefined,
+        shape,
+        undefined,
+        detailOf({ releases: releases(true) }),
+      );
+      expect(container.textContent).toContain("Set version to 1.0.0");
+      expect(container.textContent).toContain("Nothing comes back.");
+      expect(compared.asks.every((asks) => (asks as Map<string, unknown>).size === 0)).toBe(true);
+    });
+
+    it("A rollback review says what leaves is not known yet for a release HQ recorded no history of, and compares only when asked", async () => {
+      compared.asks.length = 0;
+      const { container } = await mount(
+        noRelease,
+        target,
+        undefined,
+        shape,
+        undefined,
+        detailOf({ releases: releases(false) }),
+      );
+      expect(container.textContent).toContain("Not known yet.");
+      expect(compared.asks.every((asks) => (asks as Map<string, unknown>).size === 0)).toBe(true);
+      const compare = [...container.querySelectorAll<TestButton>("button")].find(
+        (button) => button.textContent === "Compare",
+      );
+      await act(async () => compare!.click());
+      expect((compared.asks.at(-1) as Map<string, unknown>).size).toBe(1);
+    });
   });
 });

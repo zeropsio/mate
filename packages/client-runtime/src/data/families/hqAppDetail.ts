@@ -25,12 +25,17 @@ export type HqAppDetailValue =
   | { readonly kind: "releases"; readonly value: typeof HqAppDetailFields.releases.Type }
   | { readonly kind: "repos"; readonly value: typeof HqAppDetailFields.repos.Type }
   | { readonly kind: "changes"; readonly value: typeof HqAppDetailFields.changes.Type }
+  | {
+      readonly kind: "releaseChanges";
+      readonly value: typeof HqAppDetailFields.releaseChanges.Type;
+    }
   | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] }
   | HqGitTargetRecord;
 
 const readReleases = Schema.decodeUnknownOption(HqAppDetailFields.releases);
 const readRepos = Schema.decodeUnknownOption(HqAppDetailFields.repos);
 const readChanges = Schema.decodeUnknownOption(HqAppDetailFields.changes);
+const readReleaseChanges = Schema.decodeUnknownOption(HqAppDetailFields.releaseChanges);
 const readTier = Schema.decodeUnknownOption(HqAppDetailFields["recipe:stage"]);
 
 function decodeDetail(raw: unknown, key: string): HqAppDetailValue | null {
@@ -49,6 +54,11 @@ function decodeDetail(raw: unknown, key: string): HqAppDetailValue | null {
     return Option.match(readChanges(raw), {
       onNone: () => null,
       onSome: (value) => ({ kind: "changes", value }),
+    });
+  if (key === "releaseChanges")
+    return Option.match(readReleaseChanges(raw), {
+      onNone: () => null,
+      onSome: (value) => ({ kind: "releaseChanges", value }),
     });
   if (!key.startsWith("recipe:") || !KEYS.has(key)) return null;
   return Option.match(readTier(raw), {

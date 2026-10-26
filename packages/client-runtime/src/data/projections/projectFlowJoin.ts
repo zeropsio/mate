@@ -214,7 +214,8 @@ const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
  */
 export interface ReleaseLive {
   readonly git?: Omit<GitReleaseReviewFacts, "repositories"> | undefined;
-  readonly moved: ComparedCommits;
+  /** What HQ compared; `undefined` where nothing was asked of it (the release stays unasked). */
+  readonly moved: ComparedCommits | undefined;
   readonly untold: ReadonlyArray<string>;
   readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
 }
@@ -226,11 +227,11 @@ export interface ReleasePlan extends CompareReads {
 
 /** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
 export const NOT_COMPARED: MovedCommits = { state: "reading" };
-const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [], runs: undefined };
+const NOT_ASKED: ReleaseLive = { moved: undefined, untold: [], runs: undefined };
 
 /** What a flow's key says of what goes live: the commits each comparison moves, or its state. */
-function liveKey(live: MovedCommits): unknown {
-  if (live.state !== "known") return live;
+function liveKey(live: MovedCommits | undefined): unknown {
+  if (live?.state !== "known") return live;
   return live.moved.map(({ repository, services, commits, total }) => [
     repository,
     services,
@@ -496,8 +497,8 @@ function projectFlow(
       candidate,
       production: gitTarget ? (delivery?.lastPushed ?? NOTHING_TO_LIST) : sides.production,
     }),
-    contents: live.moved.state === "known" ? live.moved.moved : [],
-    contentsKnown: live.moved.state === "known",
+    contents: live.moved?.state === "known" ? live.moved.moved : [],
+    contentsKnown: live.moved?.state === "known",
     suggestion: "",
   };
   const ownerGate: ReleaseGate =
@@ -525,14 +526,14 @@ function projectFlow(
         ? { allowed: false, reason: delivery.release.reason ?? delivery.line }
         : offered.review &&
             (read === undefined ||
-              live.moved.state === "reading" ||
+              live.moved?.state === "reading" ||
               (gitTarget &&
                 (delivery === undefined ||
                   navigation == null ||
                   "refused" in navigation ||
                   navigation.head === null)))
           ? { allowed: false, reason: "Checking what can be released…" }
-          : offered.review && live.moved.state === "failed"
+          : offered.review && live.moved?.state === "failed"
             ? {
                 allowed: false,
                 reason: `Can't check what can be released: ${live.moved.reason.replace(/\.$/u, "")}.`,
@@ -568,7 +569,7 @@ function projectFlow(
               navigation != null && !("refused" in navigation) ? navigation.summary : undefined,
             summaryRead:
               navigation != null && !("refused" in navigation) ? navigation.summaryRead : undefined,
-            comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
+            comparisonFailure: live.moved?.state === "failed" ? live.moved : undefined,
             permission,
             groupHead:
               gitTarget && navigation != null && !("refused" in navigation)

@@ -470,24 +470,32 @@ export function releaseChangeRows(input: {
 export type RollbackSide = "leaving" | "coming-back";
 
 /**
- * What a roll back's list says where it has no rows: HQ still comparing, why it could not, or —
- * an answer as well — that nothing moves that way.
+ * What a roll back's list says where it has no rows: HQ still comparing, why it could not, a
+ * release HQ recorded no membership for, or — an answer as well — that nothing moves that way.
  */
 export function rollbackListNote(
   side: RollbackSide,
   list:
     | { readonly state: "reading" }
+    | { readonly state: "unrecorded" }
     | { readonly state: "failed"; readonly reason: string }
     | { readonly state: "known" },
 ): string {
   switch (list.state) {
     case "reading":
       return "Comparing in HQ…";
+    case "unrecorded":
+      return "Not known yet.";
     case "failed":
       return `Can't tell what ${side === "leaving" ? "leaves production" : "comes back"}: ${list.reason.replace(/\.$/u, "")}.`;
     case "known":
       return side === "leaving" ? "Nothing leaves production." : "Nothing comes back.";
   }
+}
+
+/** The commits a release carries that no change landed: counted from HQ's offer, listed on ask. */
+export function outsideCommitsWords(count: number, atLeast: boolean): string {
+  return `${String(count)}${atLeast ? "+" : ""} ${count === 1 && !atLeast ? "commit" : "commits"} outside changes`;
 }
 
 /**
