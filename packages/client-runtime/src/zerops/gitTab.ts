@@ -40,12 +40,12 @@
 import {
   isZeropsLeaseHeld,
   sameZeropsLeaseGroup,
-  sameZeropsRepo,
   ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
   type ZeropsLease,
   type ZeropsLifecycle,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { repoOfUrl } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -143,17 +143,21 @@ export function mateChangeIn(
 
 /**
  * Whether a lease that names `repo` may be of the repository HQ keeps at `address`
- * (`FlowPullRequest.repositoryUrl`): the same repository, compared as zcp compares them — or not
- * known to be another: the lease names none, the change carries no address, or the lease's is no
- * address of HQ's beside it (a repository kept on GitHub, whose name in HQ its address does not
- * say). Only an address beside it under `<HQ>/git/<appId>/` is another repository.
+ * (`FlowPullRequest.repositoryUrl`): the same application and repository at the same HQ, read from
+ * either address with its organization or without (`repoOfUrl`), but for case — or not known to be
+ * another: the lease names none, the change carries no address, or the lease's is no repository
+ * address of the change's HQ (a repository kept on GitHub, whose name in HQ its address does not
+ * say). Only another application or repository at the change's HQ is another repository.
  */
 export function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
-  if (repo === undefined || repo.trim() === "" || address === undefined) return true;
-  if (sameZeropsRepo(repo, address)) return true;
-  const beside = address.slice(0, address.lastIndexOf("/") + 1).toLowerCase();
-  return !repo.trim().toLowerCase().startsWith(beside);
+  if (repo === undefined || address === undefined) return true;
+  const leased = repoOfUrl(repo);
+  const own = repoOfUrl(address);
+  if (leased === null || own === null || !sameText(leased.hq, own.hq)) return true;
+  return sameText(leased.appId, own.appId) && sameText(leased.repo, own.repo);
 }
+
+const sameText = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
 
 /**
  * The fact that has to be proved rather than assumed. `undefined` means not
