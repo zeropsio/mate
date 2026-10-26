@@ -1,4 +1,5 @@
 import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
+import { parseMateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { describe, expect, it } from "vite-plus/test";
 
 import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
@@ -174,6 +175,25 @@ describe("arrivalSteps — Git access that failed", () => {
     arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
       (step) => step.id === "git",
     );
+
+  it("a missing HQ Git credential explains the bounded wait and recovers when access arrives", () => {
+    for (const [state, reason, expected] of [
+      [
+        "failed",
+        "credential_unavailable",
+        {
+          id: "git",
+          label: "Wren's Git access",
+          state: "failed",
+          why: "HQ has not provided Git access yet. Check this Mate's connection to HQ.",
+        },
+      ],
+      ["done", undefined, { id: "git", label: "Wren's Git access", state: "done" }],
+    ] as const) {
+      const setup = parseMateSetup({ version: 1, at: "", steps: [{ id: "git", state, reason }] });
+      expect(gitStep(setup)).toEqual(expected);
+    }
+  });
 
   it.each([
     {

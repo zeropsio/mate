@@ -26,6 +26,16 @@ it.each(["Karlos", "another person"])(
 describe("the web Mate's link notice", () => {
   const say = (reachability: Reachability | null) =>
     mateNoticeVoice({ reachability, conversationShown: false, nowMs: 0, mateName: "Rosa" });
+  it("A Mate HQ holds no link for says it is not connected to HQ and offers Try now, with a sleeping face", () => {
+    const voice = say({ kind: "connecting", waitingOn: "mate-link" });
+    expect(voice).toMatchObject({
+      headline: "Rosa is not connected to HQ.",
+      actions: ["try-now"],
+      face: "sleep",
+    });
+    expect(voice).not.toHaveProperty("opening");
+    expect(JSON.stringify(voice)).not.toContain("opening the conversation");
+  });
   it.each(["restarting", "updating"] as const)("speaks %s only from platform evidence", (level) => {
     expect(
       say({

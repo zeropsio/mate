@@ -69,9 +69,7 @@ const config = ServerConfig.of({
   }),
 } as ServerConfig["Service"]);
 const org = ZeropsOrgRead.of({
-  forgetAccess: () => Effect.void,
   project: () => Effect.succeed({ kind: "answered", status: 200, body: { clientId: "org" } }),
-  members: () => Effect.succeed({ kind: "no-key" }),
 });
 
 describe("usage capture admission", () => {

@@ -27,15 +27,15 @@ import type { Presence, ServiceTransition } from "./environmentMachine.ts";
 import type { TargetKey } from "./exchange.ts";
 
 /**
- * A Mate an earlier load reached, as the session it kept names it (`keptSessions.ts`): personal
- * context, never authority for its existence or access — absent means "not reached here".
+ * A Mate an earlier load reached, as the catalog's registration names it: personal context,
+ * never authority for its existence or access — absent means "not reached here".
  */
 export interface RememberedTarget {
   readonly targetKey: TargetKey;
   readonly environmentId: EnvironmentId;
-  /** The address its session was opened at; null when it names none. */
+  /** The address it was registered at; null when it names none. */
   readonly origin: string | null;
-  /** The organization it was reached in; null where the session does not say. */
+  /** The organization it was reached in; null where the registration does not say. */
   readonly orgId: string | null;
 }
 

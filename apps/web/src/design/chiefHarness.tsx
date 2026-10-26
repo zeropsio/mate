@@ -2,10 +2,10 @@
  * The Chief as the owner sees it (1786 wide, the left menu at 435, `?menu=` for another): the
  * menu's top row in the state `?top=` names — `none` (no Chief yet: its place, the mark and
  * what waits on you), `setting-up`, `stopped`,
- * `unfinished`, `rest`, `working`, `asks`, `sign-in` or `coming` — with what waits on you counted
+ * `rest`, `working`, `asks`, `sign-in` or `coming` — with what waits on you counted
  * beside the squares (`?waiting=0` for none), and the Chief page beside it in the state `?page=`
- * names: `offer`, `blocked`, `project`, `hq` or `variables` (that step running), `failed-project`,
- * `failed-hq` or `failed-variables` (that step stopped, with Try again), or `finish`. Set up Chief
+ * names: `offer`, `blocked`, `project` or `hq` (that step running), `failed-project` or
+ * `failed-hq` (that step stopped, with Try again). Set up Chief
  * walks the steps 700 ms apart. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-chief.html`. Fixtures only: nothing here ships, and no route
@@ -56,7 +56,6 @@ const WAITING = params.get("waiting") !== "0";
 const REASONS: Readonly<Record<ChiefSetupStep, string>> = {
   project: "Zerops refused the project: the organization has no room for another one.",
   hq: "HQ is not answering right now.",
-  variables: "ZCP_ORG_TOKEN is already in this service, as a value or in its zerops.yml.",
 };
 
 function setupOf(name: string): ChiefSetup {
@@ -106,7 +105,6 @@ const TOPS: Readonly<Record<string, { readonly face?: MateMarkState; readonly li
     none: {},
     "setting-up": { line: <ChiefSetupRowLine state="running" /> },
     stopped: { line: <ChiefSetupRowLine state="stopped" /> },
-    unfinished: { line: <ChiefSetupRowLine state="unfinished" /> },
     rest: { face: "idle" },
     working: {
       face: "working",
@@ -124,7 +122,6 @@ const TOPS: Readonly<Record<string, { readonly face?: MateMarkState; readonly li
 
 function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading" | "coming" }> {
   if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
-  if (PAGE === "finish") return { kind: "finish", projectId: "p-chief" };
   return {
     kind: "offer",
     blocked: PAGE === "blocked" ? "Reaching your organization's HQ…" : undefined,
@@ -138,8 +135,7 @@ function Harness() {
     const events = [
       { type: "start", birthId: "b1" },
       { type: "project-made", projectId: "p-chief" },
-      { type: "hq-answered" },
-      { type: "variables-written" },
+      { type: "registered" },
     ] as const;
     events.forEach((event, index) =>
       setTimeout(() => setSetup((now) => chiefSetupAfter(now, event)), index * 700),
@@ -211,7 +207,6 @@ function Harness() {
             ) : (
               <ChiefStage
                 onAgain={() => setSetup((now) => chiefSetupAfter(now, { type: "again" }))}
-                onFinish={() => setSetup(setupOf("hq"))}
                 onSetUp={walk}
                 view={view}
               />

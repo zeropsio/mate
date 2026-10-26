@@ -6,6 +6,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { guardScopePaths, runtimeCycleSourceRoots, retainedTestFile } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
+import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
 export { stateOnlySmoke } from "./state-smoke-cases.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
@@ -31,7 +32,7 @@ export const repositoryInvariants = [
   "scripts/mate-readiness.test.ts",
 ];
 
-// Local witnesses stay in the gate; full browser coverage runs in non-blocking Signal.
+// Opt-in local witnesses are bounded; required CI witnesses use the full affected selection.
 // Full related scenario files, nearest first; edited and explicitly named files are uncapped.
 export const relatedScenarioLimit = 8;
 
@@ -134,11 +135,12 @@ function sourceShape(path: string, text: string): string | undefined {
 /** Compare parsed source, preserving syntax and literal content while ignoring comments. */
 export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
   const previous = new Map<string, string>();
-  const tracked = NodeChildProcess.spawnSync(
-    "git",
-    ["ls-tree", "-r", "--name-only", "-z", base, "--", ...paths],
-    { cwd: root, encoding: "utf8" },
-  );
+  const tracked = NodeChildProcess.spawnSync("git", ["ls-tree", "-r", "--name-only", "-z", base], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (tracked.error) throw tracked.error;
   if (tracked.status !== 0) throw new Error(tracked.stderr);
   const oldFiles = new Set(tracked.stdout.split("\0"));
   const meaningful = paths.filter((path) => {
@@ -749,6 +751,8 @@ export function touchedPackages(
 }
 
 export function comparisonBase(root: string, base: string): string {
+  // A new branch has no previous commit: CI conservatively compares its whole tree.
+  if (base === "4b825dc642cb6eb9a060e54bf8d69288fbee4904") return base;
   const result = NodeChildProcess.spawnSync("git", ["merge-base", base, "HEAD"], {
     cwd: root,
     encoding: "utf8",
@@ -759,7 +763,12 @@ export function comparisonBase(root: string, base: string): string {
 
 export function changedPaths(root: string, base: string): string[] {
   const git = (args: string[]) => {
-    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    const result = NodeChildProcess.spawnSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
     return result.stdout.split("\0").filter(Boolean);
   };
@@ -1060,10 +1069,16 @@ function stageHashes(
           ...stage,
           args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
         };
+        // A receipt from the in-process Core cannot prove scenarios against an external HQ.
+        const hqCommand = stage.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts"))
+          ? (process.env.MATE_HQ_TEST_COMMAND ?? null)
+          : null;
         return [
           stage.name,
           NodeCrypto.createHash("sha256")
-            .update(JSON.stringify([selection, command, digest(files, baseline), trailers]))
+            .update(
+              JSON.stringify([selection, command, digest(files, baseline), trailers, hqCommand]),
+            )
             .digest("hex"),
         ];
       }),
@@ -1172,6 +1187,63 @@ export function buildGateGraph(
   return Object.freeze({ workspace, units, scenarios, related });
 }
 
+function selectScenarioFiles(
+  graph: ReturnType<typeof buildGateGraph>,
+  paths: ReadonlyArray<string>,
+  existing: ReadonlyArray<string>,
+  namedScenarios: ReadonlyArray<string>,
+  limit: number,
+) {
+  const scenarioPaths = paths.filter(browserPath);
+  const explicit = new Set([
+    ...namedScenarios,
+    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
+  ]);
+  const ranked =
+    graph.related
+      ?.rank(scenarioPaths)
+      .filter(({ file }) => graph.scenarios.includes(file) && !explicit.has(file)) ?? [];
+  const selectedScenarios = ranked.slice(0, limit);
+  return {
+    selectedScenarios,
+    overflowScenarios: ranked.slice(limit),
+    inventory: [...new Set([...explicit, ...selectedScenarios.map(({ file }) => file)])].sort(),
+  };
+}
+
+function validateNamedScenarios(root: string, files: ReadonlyArray<string>): void {
+  for (const file of files) {
+    if (
+      !/^apps\/web\/test\/scenarios\/areas\/.+\.scenario\.ts$/u.test(file) ||
+      NodePath.posix.normalize(file) !== file
+    )
+      throw new Error(`Expected a repository-relative scenario file: ${file}`);
+  }
+  validateSelectedFiles(root, files);
+}
+
+/** Required CI witnesses use the same import graph as the gate, without its local cap. */
+export function affectedScenarioFiles(
+  root: string,
+  base: string,
+  namedScenarios: ReadonlyArray<string> = [],
+): string[] {
+  validateNamedScenarios(root, namedScenarios);
+  const comparison = comparisonBase(root, base);
+  const paths = changedPaths(root, comparison);
+  const meaningful = meaningfulChanges(root, comparison, paths);
+  const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
+  const { inventory } = selectScenarioFiles(
+    graph,
+    meaningful.paths,
+    paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path))),
+    namedScenarios,
+    Infinity,
+  );
+  validateSelectedFiles(root, inventory);
+  return inventory;
+}
+
 export function selectGateSteps(
   graph: ReturnType<typeof buildGateGraph>,
   {
@@ -1181,6 +1253,7 @@ export function selectGateSteps(
     inventory,
     smokeFiles,
     slots,
+    withScenarios = false,
   }: {
     readonly comparison: string;
     readonly existing: ReadonlyArray<string>;
@@ -1188,10 +1261,13 @@ export function selectGateSteps(
     readonly inventory: ReadonlyArray<string>;
     readonly smokeFiles: ReadonlyArray<string>;
     readonly slots: number;
+    readonly withScenarios?: boolean;
   },
 ) {
   const { workspace, units, related } = graph;
-  const files = inventory.map((file) => NodePath.posix.relative("apps/web", file));
+  const files = (withScenarios ? inventory : []).map((file) =>
+    NodePath.posix.relative("apps/web", file),
+  );
   const packages = typecheckPackages(paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
@@ -1331,7 +1407,7 @@ export function selectGateSteps(
       args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
     });
   // Edited smoke files already ran in full, so do not run their cases a second time.
-  const smoke = smokeFiles.filter((file) => !inventory.includes(file));
+  const smoke = withScenarios ? smokeFiles.filter((file) => !inventory.includes(file)) : [];
   for (const [name, configArgs, files] of [
     [
       "state-only smoke",
@@ -1386,19 +1462,32 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--scenarios <file...>]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
     process.exit(0);
   }
+  const stale = staleDependencies(root);
+  if (stale) {
+    console.error(`gate refused: ${stale}`);
+    process.exit(1);
+  }
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
+  const withScenarios = args.includes("--with-scenarios") || args.includes("--scenarios");
   let base = "origin/main";
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--list" || arg === "--force" || arg === "--full" || arg === "--verbose") continue;
+    if (
+      arg === "--list" ||
+      arg === "--force" ||
+      arg === "--full" ||
+      arg === "--verbose" ||
+      arg === "--with-scenarios"
+    )
+      continue;
     if (arg === "--base") {
       const ref = args[++index];
       if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
@@ -1410,18 +1499,11 @@ if (import.meta.main) {
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]",
       );
     }
   }
-  for (const file of namedScenarios) {
-    if (
-      !/^apps\/web\/test\/scenarios\/areas\/.+\.scenario\.ts$/u.test(file) ||
-      NodePath.posix.normalize(file) !== file
-    )
-      throw new Error(`Expected a repository-relative scenario file: ${file}`);
-  }
-  validateSelectedFiles(root, namedScenarios);
+  validateNamedScenarios(root, namedScenarios);
   const comparison = comparisonBase(root, base);
   const paths = changedPaths(root, comparison);
   if (paths.length === 0 && namedScenarios.length === 0) {
@@ -1434,23 +1516,13 @@ if (import.meta.main) {
   const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];
   validateSelectedFiles(root, smokeFiles);
   const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
-  const explicitScenarios = new Set([
-    ...namedScenarios,
-    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-  ]);
-  const rankedScenarios =
-    graph.related
-      ?.rank(scenarioPaths)
-      .filter(({ file }) => graph.scenarios.includes(file) && !explicitScenarios.has(file)) ?? [];
-  const selectedScenarios = rankedScenarios.slice(0, relatedScenarioLimit);
-  const overflowScenarios = rankedScenarios.slice(relatedScenarioLimit);
-  const inventory = [
-    ...new Set([
-      ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-      ...namedScenarios,
-      ...selectedScenarios.map(({ file }) => file),
-    ]),
-  ].sort();
+  const { inventory, selectedScenarios, overflowScenarios } = selectScenarioFiles(
+    graph,
+    meaningful.paths,
+    existing,
+    namedScenarios,
+    relatedScenarioLimit,
+  );
   validateSelectedFiles(root, inventory);
   if (verbose || args.includes("--list")) {
     console.log(
@@ -1479,6 +1551,7 @@ if (import.meta.main) {
     inventory,
     smokeFiles,
     slots,
+    withScenarios,
   });
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);

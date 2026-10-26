@@ -1,12 +1,4 @@
-import {
-  mateServerCompatibility,
-  MINIMUM_MATE_SERVER_VERSION,
-} from "../zerops/serverCompatibility.ts";
-import type {
-  DesktopSshEnvironmentTarget,
-  EnvironmentId,
-  ExecutionEnvironmentDescriptor,
-} from "@t3tools/contracts";
+import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
@@ -18,7 +10,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { bootstrapRemoteBearerSession } from "../authorization/remote.ts";
-import { presentZeropsThrowaway } from "../authorization/zerops.ts";
 import { deriveWsBaseUrl, normalizeHttpBaseUrl } from "../environment/endpoint.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
@@ -53,27 +44,6 @@ export interface SshConnectionInput {
   readonly label?: string;
 }
 
-export interface ZeropsDoorConnectionInput {
-  readonly expectedProjectId?: string;
-  /**
-   * The container's mate base URL — the public origin plus the path prefix it is
-   * proxied under, `https://<container>/mate`.
-   */
-  readonly httpBaseUrl: string;
-  /**
-   * A throwaway minted for **this one Mate** and deleted the moment the door
-   * answers (`zerops/doorThrowaway.ts`). It carries no rights; what the door
-   * reads out of it is who minted it. The signed-in account's own Zerops token
-   * never comes here.
-   */
-  readonly doorToken: string;
-  /**
-   * The descriptor the caller judged this Mate on just before minting the throwaway; read again
-   * when absent. Checked here the same way either way.
-   */
-  readonly descriptor?: ExecutionEnvironmentDescriptor;
-}
-
 export interface BearerConnectionUpdateInput {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -85,12 +55,6 @@ export class ConnectionOnboarding extends Context.Service<
   {
     readonly registerPairing: (
       input: PairingConnectionInput,
-    ) => Effect.Effect<
-      EnvironmentId,
-      ConnectionAttemptError | Persistence.ConnectionPersistenceError
-    >;
-    readonly registerZeropsIdentity: (
-      input: ZeropsDoorConnectionInput,
     ) => Effect.Effect<
       EnvironmentId,
       ConnectionAttemptError | Persistence.ConnectionPersistenceError
@@ -174,92 +138,6 @@ export const preparePairingRegistration = Effect.fn(
       origin: "pairing" as const,
     }),
   });
-});
-
-/**
- * The Zerops door, which differs from pairing only in where the one-time
- * credential comes from: instead of a code the user typed, the environment
- * reads who minted the throwaway it was handed and mints one on that proof.
- * Everything after that — the RFC 8693 exchange, the registration shape — is
- * upstream's, unchanged.
- *
- * The throwaway is spent here and nowhere else. It travels in the request's
- * body as the subject being proven, never as an Authorization header, and
- * never reaches the token exchange.
- */
-export const prepareZeropsIdentityRegistration = Effect.fn(
-  "clientRuntime.connection.onboarding.prepareZeropsIdentityRegistration",
-)(function* (input: ZeropsDoorConnectionInput) {
-  const httpBaseUrl = yield* Effect.try({
-    try: () => normalizeHttpBaseUrl(input.httpBaseUrl),
-    catch: (cause) =>
-      new ConnectionBlockedError({
-        reason: "configuration",
-        detail: cause instanceof Error ? cause.message : "The container URL is invalid.",
-      }),
-  });
-  const presentation = yield* ClientCapabilities.ClientPresentation;
-  const descriptor =
-    input.descriptor ??
-    (yield* fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
-      Effect.mapError(mapRemoteEnvironmentError),
-    ));
-  if (mateServerCompatibility(descriptor.serverVersion) === "too-old") {
-    return yield* new ConnectionBlockedError({
-      reason: "unsupported",
-      serverVersion: descriptor.serverVersion,
-      minimumServerVersion: MINIMUM_MATE_SERVER_VERSION,
-      detail: `Mate server ${descriptor.serverVersion} is below the minimum supported version ${MINIMUM_MATE_SERVER_VERSION}. Restart the container to check for updates.`,
-    });
-  }
-  if (input.expectedProjectId && descriptor.zerops?.projectId !== input.expectedProjectId) {
-    return yield* new ConnectionBlockedError({
-      reason: "configuration",
-      detail:
-        "This URL no longer belongs to the selected Zerops project. Refresh your projects before connecting.",
-    });
-  }
-  const minted = yield* presentZeropsThrowaway({
-    httpBaseUrl,
-    doorToken: input.doorToken,
-  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
-  const access = yield* bootstrapRemoteBearerSession({
-    httpBaseUrl,
-    credential: minted.credential,
-    scopes: presentation.scopes,
-    clientMetadata: presentation.metadata,
-  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
-  const lifetime = yield* bearerCredentialLifetime(access.expires_in);
-  const connectionId = `bearer:${descriptor.environmentId}`;
-
-  return new BearerConnectionRegistration({
-    target: new BearerConnectionTarget({
-      environmentId: descriptor.environmentId,
-      label: descriptor.label,
-      connectionId,
-    }),
-    profile: new BearerConnectionProfile({
-      connectionId,
-      environmentId: descriptor.environmentId,
-      label: descriptor.label,
-      httpBaseUrl,
-      wsBaseUrl: deriveWsBaseUrl(httpBaseUrl),
-    }),
-    credential: new BearerConnectionCredential({
-      token: access.access_token,
-      ...lifetime,
-      origin: "zerops-identity" as const,
-    }),
-  });
-});
-
-export const registerZeropsIdentityConnection = Effect.fn(
-  "clientRuntime.connection.onboarding.registerZeropsIdentityConnection",
-)(function* (input: ZeropsDoorConnectionInput) {
-  const registration = yield* prepareZeropsIdentityRegistration(input);
-  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-  yield* registry.register(registration);
-  return registration.target.environmentId;
 });
 
 const registerPairingConnection = Effect.fn(
@@ -397,12 +275,6 @@ export const make = Effect.gen(function* () {
   return ConnectionOnboarding.of({
     registerPairing: (input) =>
       registerPairingConnection(input).pipe(
-        Effect.provideService(EnvironmentRegistry.EnvironmentRegistry, registry),
-        Effect.provideService(ClientCapabilities.ClientPresentation, presentation),
-        Effect.provideService(HttpClient.HttpClient, httpClient),
-      ),
-    registerZeropsIdentity: (input) =>
-      registerZeropsIdentityConnection(input).pipe(
         Effect.provideService(EnvironmentRegistry.EnvironmentRegistry, registry),
         Effect.provideService(ClientCapabilities.ClientPresentation, presentation),
         Effect.provideService(HttpClient.HttpClient, httpClient),

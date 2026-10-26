@@ -1,17 +1,19 @@
-// @effect-diagnostics nodeBuiltinImport:off -- git fixtures use temporary directories only.
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import { HqChange } from "@t3tools/shared/hqChanges";
+import { ChangeReceipt, HqChange } from "@t3tools/shared/hqChanges";
+import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 import * as Schema from "effect/Schema";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
 import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
-import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import type { createScenario } from "../../harness/scenario.ts";
+import { mateAccess, publishRecipe } from "../../harness/mateAccess.ts";
 
 const decodeChange = Schema.decodeUnknownSync(HqChange);
+const encodeReceipt = Schema.encodeSync(ChangeReceipt);
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 export const TITLE = "Add the order summary";
@@ -32,23 +34,16 @@ export const changeFixture = Effect.fn(function* (
   const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
   const appId = s.appIds.get("Shop")!;
   if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
-  const headers = { authorization: `Mate ${credential}` };
-  const created = yield* s.drivers.core.call("POST", "/api/mate/repos", {
-    headers,
-    body: { name: "appdev" },
-  });
-  expect(created.status).toBe(200);
+  const access = mateAccess(s.drivers.core, s.owner, credential);
+  const headers = access.headers;
+  yield* access.repo(appId, "appdev");
   const opened = yield* s.drivers.core.call("POST", "/api/mate/changes", {
     headers,
     body: { repo: "appdev", title },
   });
   expect(opened.status).toBe(200);
   const git = yield* gitClient;
-  yield* git.checked([
-    "clone",
-    remoteOf(s.drivers.core.origin, credential, appId, "appdev"),
-    "work",
-  ]);
+  yield* access.clone(git, appId, "appdev", "work");
   const work = NodePath.join(git.dir, "work");
   yield* Effect.sync(() =>
     NodeFS.writeFileSync(
@@ -85,8 +80,21 @@ export const changeFixture = Effect.fn(function* (
   const path = `/api/apps/${appId}/changes/appdev/1`;
   return {
     title,
+    head,
     description: DESCRIPTION,
+    /** zcp's receipt of the change's last push, as the Mate reports it. */
+    reports: (receipt: ChangeReceipt) =>
+      Effect.gen(function* () {
+        const reported = yield* s.drivers.core.call("PATCH", "/api/mate/changes/appdev/1", {
+          headers,
+          body: { receipt: encodeReceipt(receipt) },
+        });
+        expect(reported.status, JSON.stringify(reported.body)).toBe(200);
+      }),
     direct: `/change/${appId}/appdev/1`,
+    /** Ada publishes `tier`'s recipe, so the application can add that environment. */
+    publishesRecipe: (tier: RecipeTier) =>
+      publishRecipe(s.drivers.core, s.owner, credential, appId, tier),
     colleagueMerges: Effect.gen(function* () {
       const response = yield* s.drivers.core.call("POST", `${path}/merge`, {
         session: s.owner,

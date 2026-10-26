@@ -62,7 +62,7 @@ import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
-import type { HqJob } from "./hq/environments.ts";
+import { UNREAD_ENVIRONMENT_LINE, type HqJob, type UnreadEnvironment } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   PROJECT_ALL_CLEAR,
@@ -156,6 +156,7 @@ export interface GroupFlowInput {
     readonly suggestion: string;
     /** How many changes are merged and not live (`releaseContentsSummary(...).total`). */
     readonly waiting: number;
+    readonly changeCount?: number | undefined;
     /** Whether that is only how many at least (`releaseContentsSummary(...).atLeast`). */
     readonly waitingAtLeast: boolean;
     /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
@@ -172,6 +173,8 @@ export interface GroupFlowInput {
   readonly mainHead: string | undefined;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
+  /** Environments HQ sent that this build cannot read; none where nothing was unreadable. */
+  readonly unread?: ReadonlyArray<UnreadEnvironment>;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -190,6 +193,7 @@ export interface GroupFlowMain {
   readonly hasCode: boolean | undefined;
   /** Changes merged and not live. */
   readonly notLive: number;
+  readonly changeCount?: number | undefined;
   /** Whether that is only how many at least: HQ stopped counting. */
   readonly notLiveAtLeast: boolean;
 }
@@ -226,6 +230,8 @@ export type GroupFlowProduction =
   | { readonly kind: "pushed"; readonly stop: GroupFlowStop; readonly line: string }
   /** No production: nothing is said of it, and nothing waits on it. */
   | { readonly kind: "absent" }
+  /** HQ sent a production this build cannot read: it is there, and its standing is not told. */
+  | { readonly kind: "unread"; readonly line: string }
   /** Its creation is under way and the listing does not hold it yet; nothing is offered. */
   | { readonly kind: "creating"; readonly line: string; readonly creation: GroupFlowPending }
   | {
@@ -292,6 +298,8 @@ export interface GroupFlow {
   /** Stages being created that the listing does not hold yet, oldest first. */
   readonly creatingStages: ReadonlyArray<GroupFlowPending>;
   readonly production: GroupFlowProduction;
+  /** The stages HQ sent that this build cannot read, by name; their place is there, unread. */
+  readonly unreadStages: ReadonlyArray<string>;
   readonly nextStep: GroupNextStep;
 }
 
@@ -464,11 +472,32 @@ function runningState(tone: GroupRowTone): GroupFlowStopState {
   }
 }
 
+/**
+ * Where the unreadable environments belong. An unreadable one whose tier is not told is production
+ * while no production was read, else a stage: it is never an application without it.
+ */
+function unreadPlaces(input: GroupFlowInput): {
+  readonly production: boolean;
+  readonly stages: ReadonlyArray<string>;
+} {
+  const productionRead = input.stops.some((stop) => stop.tier === "production");
+  const unread = input.unread ?? [];
+  const isProduction = (entry: UnreadEnvironment) =>
+    entry.tier === "production" || (entry.tier === null && !productionRead);
+  return {
+    production: unread.some(isProduction),
+    stages: unread.filter((entry) => !isProduction(entry)).map((entry) => entry.name ?? "Stage"),
+  };
+}
+
 function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): GroupFlowProduction {
   const creation = input.pending.find((entry) => entry.kind === "production");
   if (stop === undefined && creation !== undefined)
     return { kind: "creating", line: PRODUCTION_SETTING_UP, creation };
-  if (stop === undefined) return { kind: "absent" };
+  if (stop === undefined)
+    return unreadPlaces(input).production
+      ? { kind: "unread", line: UNREAD_ENVIRONMENT_LINE }
+      : { kind: "absent" };
   if (stop.git !== undefined)
     return {
       kind: stop.git.standing === "pushed" ? "pushed" : "checking",
@@ -486,8 +515,9 @@ function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): G
   if (stop.state === "checking") return { kind: "checking", stop, line };
   if (input.release.inFlight !== undefined)
     return { kind: "releasing", stop, line, tag: input.release.inFlight };
-  if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
+  // The platform's build on production says one is on its way before HQ records the release.
   if (stop.state === "deploying") return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING };
+  if (candidate !== undefined) return { kind: "ready-to-release", stop, line, candidate };
   return { kind: stop.state === "empty" ? "empty" : "live", stop, line };
 }
 
@@ -528,6 +558,7 @@ function nextStepOf(
     failedStops: [...failedProduction, ...failedStages],
     pullRequests: input.pullRequests,
     notLive: input.release.waiting,
+    ...(input.release.changeCount === undefined ? {} : { changeCount: input.release.changeCount }),
     notLiveAtLeast: input.release.waitingAtLeast,
     canRelease:
       production.kind !== "absent" && production.kind !== "creating" && releaseAllowed(input),
@@ -596,6 +627,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     head: input.mainHead === undefined ? undefined : shortCommit(input.mainHead),
     hasCode: input.mainHasCode ?? (landedCode ? true : undefined),
     notLive: input.release.waiting,
+    ...(input.release.changeCount === undefined ? {} : { changeCount: input.release.changeCount }),
     notLiveAtLeast: input.release.waitingAtLeast,
   };
   const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop));
@@ -635,6 +667,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     stages,
     creatingStages: pending.filter((entry) => entry.kind === "stage"),
     production,
+    unreadStages: unreadPlaces(input).stages,
     nextStep: nextStepOf(input, pullRequests, stages, production),
   };
 }

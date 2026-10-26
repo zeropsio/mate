@@ -265,7 +265,8 @@ describe("HQ source client", () => {
     const calls: string[] = [];
     const api = makeHqApi({
       address: "https://hq.example",
-      throughDoor: async (use) => use("door"),
+      accessToken: async () => "access",
+      orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
       },
@@ -291,12 +292,13 @@ describe("HQ source client", () => {
     let kept: string | null = "expired";
     const api = makeHqApi({
       address: "https://hq.example",
-      throughDoor: async (use) => use("door"),
+      accessToken: async () => "access",
+      orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
       },
       kept: {
-        read: () => kept,
+        read: () => (kept === null ? null : { token: kept, expiresAtMs: Number.MAX_SAFE_INTEGER }),
         keep: ({ token }) => {
           kept = token;
         },
@@ -307,9 +309,17 @@ describe("HQ source client", () => {
       fetch: async (url, init) => {
         calls.push(url);
         if (url.endsWith("/api/door"))
-          return new Response(JSON.stringify({ session: "fresh", expiresAt: "later" }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({
+              session: "fresh",
+              expiresAt: "2999-01-01T00:00:00.000Z",
+              orgId: "org-1",
+              userId: "u",
+            }),
+            {
+              status: 200,
+            },
+          );
         if (new Headers(init?.headers).get("authorization") === "Bearer expired")
           return new Response(JSON.stringify({ code: "session_required" }), { status: 401 });
         return new Response(JSON.stringify({ entries: [], truncated: false }), { status: 200 });
@@ -333,7 +343,8 @@ describe("HQ source client", () => {
     async (sent, held) => {
       const api = makeHqApi({
         address: "https://hq.example",
-        throughDoor: async (use) => use("door"),
+        accessToken: async () => "access",
+        orgId: "org-1",
         openSocket: () => {
           throw new Error("unused");
         },

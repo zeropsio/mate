@@ -10,6 +10,7 @@ import { makeAccountStore, readsOfState, type Projection } from "../store.ts";
 import { mateArrival, mateNoticeDecision } from "./mateArrival.ts";
 import {
   hqMates,
+  hqMateAnswered,
   hqMatesAnswered,
   hqMateOverview,
   hqMatePresence,
@@ -30,6 +31,38 @@ const mate: MateOverview & { readonly presence: typeof presence } = {
 const key = (projectId: string) => ({ orgId: "org", projectId });
 
 describe("keyed HQ Mate readers", () => {
+  it("a Mate's admission is unanswered until its own HQ attention scope answers", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const answer = store.data.project(hqMateAnswered, key("chief"));
+    const stop = registry.subscribe(answer, () => undefined);
+    const refuse = (orgId: string, projectId: string) =>
+      store.dispatch({
+        kind: "stream",
+        key: hqMateScope(orgId, projectId),
+        now: 100,
+        event: {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "definitive-refusal", code: "forbidden", message: "no-access" },
+        },
+      });
+    expect(registry.get(answer), "ASSERTION: an unread target has no admission answer").toBe(false);
+    refuse("org", "unrelated");
+    refuse("another-org", "chief");
+    expect(
+      registry.get(answer),
+      "ASSERTION: another target's refusal is no answer for this Mate",
+    ).toBe(false);
+    refuse("org", "chief");
+    expect(
+      registry.get(answer),
+      "ASSERTION: this Mate's definitive refusal answers its admission",
+    ).toBe(true);
+    stop();
+    registry.dispose();
+  });
+
   it("a targeted Chief refusal names its owner without listing their Chief", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

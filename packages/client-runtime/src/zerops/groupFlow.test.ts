@@ -19,7 +19,7 @@ import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRow
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import { jobInFlight, type HqJob } from "./hq/environments.ts";
+import { jobInFlight, UNREAD_ENVIRONMENT_LINE, type HqJob } from "./hq/environments.ts";
 
 /** HQ's job of a deploy in `state`. */
 const deployRecord = (state: HqJob["state"]): HqJob => ({
@@ -737,6 +737,26 @@ describe("groupFlow", () => {
     expect(production).toMatchObject(expected);
   });
 
+  // The platform's build on production and HQ's release record arrive apart: the build alone
+  // already says one is on its way, so the card's line and its ready block read the same answer.
+  it.each([
+    { case: "with a release counted", waiting: 1, untold: [] },
+    { case: "where what production runs cannot be told", waiting: 0, untold: ["app"] },
+  ])("offers no Release while the platform builds production, $case", ({ waiting, untold }) => {
+    const production = productionOf(
+      {
+        deployment: known({
+          kind: "deploying",
+          version: deployedVersion(MAIN_SHA),
+          previous: { kind: "running", activatedAt: null, version: deployedVersion(released) },
+        }),
+      },
+      { gate: { allowed: true }, suggestion: "v0.1.1", waiting, waitingAtLeast: false, untold },
+    );
+    expect(production).toMatchObject({ kind: "deploying", stop: { state: "deploying" } });
+    expect("candidate" in production).toBe(false);
+  });
+
   // A production service whose commit cannot be told counts nothing, and is no proof that nothing
   // waits: the release stays offered.
   it("offers the release where what production runs cannot be told, though nothing is counted", () => {
@@ -1392,4 +1412,35 @@ it("a Git production's blocker reaches group flow without a runtime read or Rele
     stop: { version: undefined, addresses: [], git },
   });
   expect(flow.nextStep.kind).not.toBe("release");
+});
+
+describe("an environment this build cannot read", () => {
+  it.each([
+    {
+      case: "a production of that tier",
+      unread: [{ id: "e1", name: "production", tier: "production" as const }],
+      production: { kind: "unread", line: UNREAD_ENVIRONMENT_LINE },
+      stages: [],
+    },
+    {
+      case: "one of no legible tier, where no production was read",
+      unread: [{ id: null, name: null, tier: null }],
+      production: { kind: "unread", line: UNREAD_ENVIRONMENT_LINE },
+      stages: [],
+    },
+    {
+      case: "a stage, which leaves production absent",
+      unread: [{ id: null, name: "stage", tier: "stage" as const }],
+      production: { kind: "absent" },
+      stages: ["stage"],
+    },
+    { case: "none", unread: [], production: { kind: "absent" }, stages: [] },
+  ])(
+    "An environment this build cannot read shows as unread, never as an application without it: $case",
+    ({ unread, production, stages }) => {
+      const flow = groupFlow({ ...SM_FIXTURE, stops: [], unread });
+      expect(flow.production).toEqual(production);
+      expect(flow.unreadStages).toEqual(stages);
+    },
+  );
 });

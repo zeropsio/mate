@@ -100,7 +100,6 @@ describe("finishMateSetupVerb", () => {
     { registration: "unplaced" as MateRegistration },
     { recordMissing: true, mayCreateRecord: true },
     { pressStopped: true },
-    { keyWider: true, mayEditRecord: true },
   ])("waits for the container read before finishing $registration", (reason) => {
     expect(
       finishMateSetupVerb({
@@ -234,26 +233,6 @@ describe("finishMateSetupVerb", () => {
       name: "nobody, on a Mate another browser still presses, whose record is not written yet",
       input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true, pressedElsewhere: true },
       writer: true,
-      expected: undefined,
-    },
-    // ADR 0003's fallout: HQ says its key reads other projects — Finish setup takes that off, at
-    // once, for whoever HQ offers editing the Mate's record: the one it tells the key's id to.
-    {
-      name: "the project's admin, on a Mate whose key reads other projects",
-      input: { ...HALF_MADE, keyWider: true, mayEditRecord: true },
-      writer: false,
-      expected: "Finish setup",
-    },
-    {
-      name: "a registry writer HQ does not offer the Mate's record, on a Mate whose key reads other projects",
-      input: { ...HALF_MADE, keyWider: true, mayEditRecord: false },
-      writer: true,
-      expected: undefined,
-    },
-    {
-      name: "a member, on a Mate whose key reads other projects",
-      input: { ...HALF_MADE, keyWider: true, mayEditRecord: false, viewerIsAdder: true },
-      writer: false,
       expected: undefined,
     },
     {

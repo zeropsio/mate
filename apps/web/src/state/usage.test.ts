@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { UsageDay, EnvironmentId, type UsageSummaryInput } from "@t3tools/contracts";
-import { usageReportQuery, usageReportTotals } from "./usage.logic";
+import { usageChartDays, usageReportQuery, usageReportTotals } from "./usage.logic";
 import { recordedReport } from "../components/usage/usageTestFixtures";
 const window: UsageSummaryInput = {
   sinceDay: UsageDay.make("2026-10-01"),
@@ -97,3 +97,54 @@ it("A daily Usage input produces a day row rather than an hourly row", async () 
   expect(row).toHaveProperty("day", "2026-10-07");
   expect(row).not.toHaveProperty("hourStart");
 });
+
+it("Earlier history over all of it asks HQ for no start, so history recorded without a day is counted", () => {
+  expect(usageReportQuery({ ...window, allTime: true }, {}, "legacy-scanner")).toMatchObject({
+    since: null,
+    until: "2026-10-08T00:00:00.000Z",
+    mode: "utc-days",
+  });
+  expect(usageReportQuery(window, {}, "legacy-scanner").since).toBe("2026-10-01T00:00:00.000Z");
+});
+
+it("History recorded without a day is never drawn or listed as a day", async () => {
+  const { usageReportView } = await import("./usage");
+  const report = recordedReport();
+  const periods = recordedReport({
+    groups: [
+      { ...report.groups[0]!, provider: "claude", period: "2026-10-07" },
+      { ...report.groups[0]!, provider: "claude", period: "unallocated" },
+    ],
+  });
+  expect(usageReportView(report, null, null, periods).daily.map((row) => row.day)).toEqual([
+    "2026-10-07",
+  ]);
+});
+
+it.each([
+  {
+    name: "a bounded window draws every day it spans",
+    allTime: false,
+    daily: [],
+    days: ["2026-10-01", "2026-10-02", "2026-10-03"],
+  },
+  {
+    name: "all of it starts at the first recorded day",
+    allTime: true,
+    daily: ["2026-10-02"],
+    days: ["2026-10-02", "2026-10-03"],
+  },
+  {
+    name: "all of it with no dated day draws only the last day",
+    allTime: true,
+    daily: [],
+    days: ["2026-10-03"],
+  },
+])("$name", ({ allTime, daily, days }) =>
+  expect(
+    usageChartDays(
+      { ...window, untilDay: UsageDay.make("2026-10-03"), ...(allTime ? { allTime } : {}) },
+      daily.map((day) => ({ day })),
+    ),
+  ).toEqual(days),
+);

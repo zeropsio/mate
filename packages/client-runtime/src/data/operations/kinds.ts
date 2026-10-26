@@ -30,7 +30,7 @@ import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
-import { renameApp, deleteApp } from "./hqAppWrites.ts";
+import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
   followGithubRepository,
@@ -48,7 +48,6 @@ import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
 import { stopService } from "./stopService.ts";
 import { deleteService } from "./deleteService.ts";
-import { throwawaySweep } from "./throwawaySweep.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
 import { ADDRESS_WRITE_KINDS } from "./addressWrites.ts";
@@ -79,7 +78,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateSendTurn,
   ...MATE_ENGINE_KINDS,
   mateAction,
-  throwawaySweep,
   mateRestart,
   mateDeploy,
   mateUpdate,
@@ -108,6 +106,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   changeComment,
   renameApp,
   deleteApp,
+  answerKeptGit,
   connectGitRemoteViaApp,
   followGithubRepository,
   stopFollowingGithubRepository,

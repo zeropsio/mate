@@ -5,10 +5,11 @@
  * projections. What the menu says while HQ does not answer is said here.
  *
  * - **First paint:** nothing of HQ until it answers: no structure this browser kept.
+ * - **HQ slow:** its connection holds and it is still working: the menu says so, and waits.
  * - **HQ down:** what was read stands, and the menu says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  */
-import { makeHqWire, type HqNavigationRead } from "@t3tools/client-runtime/data";
+import { HQ_SLOW, makeHqWire, type HqNavigationRead } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
 
@@ -23,11 +24,12 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** How the menu says HQ's standing: `null` while it answers, or before anything is known. */
 export interface HqOutage {
   /**
-   * `syncing`: its first read is catching up, nothing of it shown yet; `last-known`: what it last
+   * `syncing`: its first read is catching up, nothing of it shown yet; `slow`: HQ's connection
+   * holds and it is still working — nothing to try again; `last-known`: what it last
    * said stands; `unavailable`: retries have reached their backoff cap before it ever answered;
    * `refused`: HQ's actual refusal and the next action, whether or not it answered before.
    */
-  readonly kind: "syncing" | "last-known" | "unavailable" | "refused";
+  readonly kind: "syncing" | "slow" | "last-known" | "unavailable" | "refused";
   readonly line: string;
   /** Whether the person's *Try again* is offered: HQ refused, or its retries are capped. */
   readonly again: boolean;
@@ -41,7 +43,7 @@ export interface HqOutage {
  * retrying often.
  */
 export function hqOutage(
-  navigation: Pick<HqNavigationRead, "live" | "refusal" | "capped" | "reconnecting"> & {
+  navigation: Pick<HqNavigationRead, "live" | "refusal" | "capped" | "reconnecting" | "slow"> & {
     readonly structure: unknown;
   },
   downSince: number | null,
@@ -56,6 +58,7 @@ export function hqOutage(
       line: `${navigation.refusal}${read ? " Showing what HQ last said." : ""}`,
       again: true,
     };
+  if (navigation.slow) return { kind: "slow", line: HQ_SLOW, again: false };
   const stopped = navigation.capped;
   if (!stopped && !navigation.reconnecting) return null;
   const since =

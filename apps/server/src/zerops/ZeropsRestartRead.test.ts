@@ -71,10 +71,8 @@ it.effect.each(
       zerops: environment,
     } as ServerConfig.ServerConfig["Service"]),
     Effect.provideService(ZeropsOrgRead, {
-      forgetAccess: () => Effect.void,
       project: () =>
         Effect.succeed({ kind: "answered", status: 200, body: { name: "Fen", clientId: "org" } }),
-      members: () => Effect.die("unused"),
     }),
     Effect.provide(NodeServices.layer),
   ),

@@ -111,10 +111,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               projectName: appProjectName(name, botName),
               // After its attach: a press that stops before it leaves a Mate HQ holds in its
               // application, which any browser finishes.
-              container: {
-                agents: ask.agents,
-                ...(ask.chief === true ? { chief: true as const } : {}),
-              },
+              container: { agents: ask.agents },
               registration: {
                 hq,
                 groupId: appId,

@@ -1,12 +1,14 @@
 /**
  * The HQ wire over today's HQ client: each segment a socket opened with a fresh ticket for the
- * session (`HqApi.openScopeSocket`). HQ's planned segment end (`4410`) ends the segment's
- * messages; any other ending, and a ticket HQ would not mint, fails them with its class.
+ * session (`HqApi.openScopeSocket`), begun once the socket is open. HQ's planned segment end
+ * (`4410`) ends the segment's messages; any other ending, and a ticket HQ would not mint, fails
+ * them with its class.
  *
  * @module data/adapters/hqWire
  */
 import { HQ_STREAM_SEGMENT_CLOSE, HqStreamRequest } from "@t3tools/shared/hqStream";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -39,7 +41,8 @@ export function classifyHqCall(cause: unknown): StreamFault {
 }
 
 export function makeHqWire(
-  api: Pick<HqApi, "openScopeSocket"> & Partial<Pick<HqApi, "changeAttachment" | "change">>,
+  api: Pick<HqApi, "openScopeSocket"> &
+    Partial<Pick<HqApi, "changeAttachment" | "change" | "changeMetadata" | "changeCommits">>,
 ): HqWire {
   return {
     ...(api.changeAttachment === undefined
@@ -63,29 +66,64 @@ export function makeHqWire(
               }),
             }),
         }),
-    open: Effect.gen(function* () {
-      const messages = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
-      const socket = yield* Effect.acquireRelease(
-        Effect.tryPromise({
-          try: (signal) =>
-            api.openScopeSocket(
-              {
-                message: (data) => void Queue.offerUnsafe(messages, data),
-                close: (code) =>
-                  void (code === HQ_STREAM_SEGMENT_CLOSE.code
-                    ? Queue.endUnsafe(messages)
-                    : Queue.failCauseUnsafe(messages, Cause.fail(classifyHqClose(code)))),
-              },
-              signal,
-            ),
-          catch: classifyHqCall,
+    ...(api.changeMetadata === undefined
+      ? {}
+      : {
+          metadata: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeMetadata!(request.link, signal),
+              catch: (cause) => ({
+                ...classifyHqCall(cause),
+                ...(cause instanceof HqError && cause.code === "change_not_found"
+                  ? { code: "not_found" }
+                  : {}),
+              }),
+            }),
         }),
-        (opened) => Effect.sync(() => opened.close()),
-      );
-      return {
-        messages: Stream.fromQueue(messages),
-        send: (request) => Effect.sync(() => socket.send(encodeRequest(request))),
-      };
-    }),
+    ...(api.changeCommits === undefined
+      ? {}
+      : {
+          commits: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeCommits!(request.link, signal, request.snapshot),
+              catch: (cause) => ({
+                ...classifyHqCall(cause),
+                ...(cause instanceof HqError && cause.code === "change_not_found"
+                  ? { code: "not_found" }
+                  : {}),
+              }),
+            }),
+        }),
+    open: (socketCreated) =>
+      Effect.gen(function* () {
+        const messages = yield* Queue.unbounded<string, StreamFault | Cause.Done>();
+        const opened = Deferred.makeUnsafe<void, StreamFault>();
+        const socket = yield* Effect.acquireRelease(
+          Effect.tryPromise({
+            try: (signal) =>
+              api.openScopeSocket(
+                {
+                  open: () => void Deferred.doneUnsafe(opened, Effect.void),
+                  message: (data) => void Queue.offerUnsafe(messages, data),
+                  close: (code) => {
+                    const fault = classifyHqClose(code);
+                    Deferred.doneUnsafe(opened, Effect.fail(fault));
+                    if (code === HQ_STREAM_SEGMENT_CLOSE.code) Queue.endUnsafe(messages);
+                    else Queue.failCauseUnsafe(messages, Cause.fail(fault));
+                  },
+                },
+                signal,
+              ),
+            catch: classifyHqCall,
+          }),
+          (held) => Effect.sync(() => held.close()),
+        );
+        yield* socketCreated;
+        yield* Deferred.await(opened);
+        return {
+          messages: Stream.fromQueue(messages),
+          send: (request) => Effect.sync(() => socket.send(encodeRequest(request))),
+        };
+      }),
   };
 }

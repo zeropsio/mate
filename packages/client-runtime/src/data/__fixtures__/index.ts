@@ -30,5 +30,13 @@ export {
   thoughtItem,
   workItem,
 } from "./mateEngine.ts";
-export { graceOver, liveZerops, ORG, pastGrace } from "./account.ts";
+export {
+  graceOver,
+  liveZerops,
+  liveProjects,
+  projectValue,
+  zeropsVersion,
+  ORG,
+  pastGrace,
+} from "./account.ts";
 export { membershipInputs } from "./membership.ts";

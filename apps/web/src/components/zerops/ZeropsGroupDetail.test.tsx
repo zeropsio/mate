@@ -669,7 +669,7 @@ interface StopCase {
   readonly deployment?: Shown<Deployment>;
   /** What the platform lists for each service; unread unless given. */
   readonly platform?: Shown<ReadonlyArray<StopService>>;
-  readonly waiting?: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
+  readonly waiting?: ReadonlyArray<{ readonly sha?: string; readonly subject: string }>;
   /** How many wait in all, where HQ counted more than it listed. */
   readonly notLive?: { readonly total: number; readonly atLeast: boolean };
   readonly offered?: string;
@@ -1217,6 +1217,24 @@ describe("ZeropsStopPane — the environment's vault", () => {
 });
 
 describe("ZeropsStopPane", () => {
+  it("Production shows the recorded release candidate subjects without inventing commit IDs.", () => {
+    let markup = "";
+    expect(() => {
+      markup = renderStop({
+        tier: "production",
+        services: TWO_LIVE,
+        offered: "v0.1.14",
+        waiting: [{ subject: "Two-step checkout" }, { subject: "Fix VAT" }],
+        notLive: { total: 10000, atLeast: true },
+      });
+    }).not.toThrow();
+    const { document } = new Window();
+    document.body.innerHTML = markup;
+    expect(document.body.textContent).toContain("Waiting for release · 10000+");
+    expect(document.body.textContent).toContain("Two-step checkout");
+    expect(document.body.textContent).toContain("Fix VAT");
+    expect(document.body.textContent).not.toContain("undefined");
+  });
   it.each(["stage", "production"] as const)(
     "the %s environment's page shows who reaches its project, under its card",
     (tier) => {

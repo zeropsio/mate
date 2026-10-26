@@ -20,27 +20,28 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
         (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
       );
     });
-  let beforeFault: number | undefined;
-  const rollbacks = async () =>
-    Number(
-      await query("SELECT xact_rollback FROM pg_stat_database WHERE datname = current_database()"),
-    );
+  // A backend reports a failed read to the statistics views only seconds later when it idles, so
+  // the read's receipt is a sequence step, which the read's rollback does not undo.
+  const reads = "SELECT is_called FROM public.scenario_session_reads";
   return {
-    unavailable: async () => {
-      beforeFault = await rollbacks();
-      await query("ALTER TABLE public.hq_session RENAME TO scenario_unavailable_session");
-    },
+    unavailable: () =>
+      query(`ALTER TABLE public.hq_session RENAME TO scenario_unavailable_session;
+        CREATE SEQUENCE public.scenario_session_reads;
+        CREATE FUNCTION public.scenario_session_unavailable() RETURNS boolean
+          LANGUAGE plpgsql VOLATILE SECURITY DEFINER AS $$
+          BEGIN
+            PERFORM nextval('public.scenario_session_reads');
+            RAISE EXCEPTION 'scenario: the session relation is unavailable';
+          END $$;
+        CREATE VIEW public.hq_session AS SELECT * FROM public.scenario_unavailable_session
+          WHERE public.scenario_session_unavailable();
+        GRANT SELECT ON public.hq_session TO PUBLIC`),
     sawSessionRead: async () => {
-      const baseline = beforeFault;
-      if (baseline === undefined) throw new Error("Start the session-read fault first");
       let waiting = true;
       try {
         await deadline(
           (async () => {
-            while (waiting) {
-              const observed = await rollbacks();
-              waiting = waiting && observed <= baseline;
-            }
+            while (waiting) waiting = (await query(reads)) !== "t";
           })(),
           "Core attempted a read while its session relation was unavailable",
         );
@@ -48,10 +49,14 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
         waiting = false;
       }
     },
-    returns: () => query("ALTER TABLE public.scenario_unavailable_session RENAME TO hq_session"),
+    returns: () =>
+      query(`DROP VIEW public.hq_session;
+        DROP FUNCTION public.scenario_session_unavailable();
+        DROP SEQUENCE public.scenario_session_reads;
+        ALTER TABLE public.scenario_unavailable_session RENAME TO hq_session`),
     expires: () =>
       query(
-        `UPDATE public.hq_session SET expires_at = now() - interval '1 second' WHERE revoked_at IS NULL AND token_hash <> '${NodeCrypto.createHash("sha256").update(fixtureSession).digest("hex")}'`,
+        `UPDATE public.hq_session SET expires_at = now() - interval '1 second' WHERE token_hash <> '${NodeCrypto.createHash("sha256").update(fixtureSession).digest("hex")}'`,
       ),
   };
 }

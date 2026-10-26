@@ -231,23 +231,18 @@ function chiefRowName(account: { readonly name: string } | null): string {
 const SETUP_WORDS: Readonly<Record<ChiefSetupRowState, string>> = {
   running: "Being set up",
   stopped: "Setting up stopped",
-  unfinished: "Finish its setup",
 };
 
 /**
  * Its line before it is up: its setup running, muted; stopped, in the attention ink with its mark,
- * as a Mate's that did not come; or waiting on the person to finish it, in ink.
+ * as a Mate's that did not come.
  */
 export function ChiefSetupRowLine({ state }: { readonly state: ChiefSetupRowState }) {
   return (
     <span
       className={cn(
         "menu-line2 truncate",
-        state === "running"
-          ? "text-muted-foreground"
-          : state === "stopped"
-            ? "text-status-attention-text"
-            : "text-sidebar-foreground",
+        state === "running" ? "text-muted-foreground" : "text-status-attention-text",
       )}
       data-chief-setup={state}
       data-zerops-surface="sidebar-chief-setup"

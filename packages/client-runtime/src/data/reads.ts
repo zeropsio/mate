@@ -45,6 +45,7 @@ import { mateAttention, matesAttention, attentionProjects } from "./projections/
 import {
   hqMateOverview,
   hqMateRefusal,
+  hqMateAnswered,
   hqMatePresence,
   hqMateLogins,
   hqMateReady,
@@ -306,6 +307,7 @@ export const NOT_READ_HQ: HqNavigationRead = {
   read: "unread",
   refusal: null,
   capped: false,
+  slow: false,
   live: false,
   reconnecting: false,
 };
@@ -515,6 +517,7 @@ function projectReader<Key, Value>(
 const mateKey = (orgId: string, projectId: string) => ({ orgId, projectId });
 export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
 export const hqMateRefusalAtom = projectReader(hqMateRefusal, mateKey, null);
+export const hqMateAnsweredAtom = projectReader(hqMateAnswered, mateKey, false);
 export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, {
   presence: null,
   live: false,

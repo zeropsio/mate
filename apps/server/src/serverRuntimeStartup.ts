@@ -329,7 +329,7 @@ export const make = (options?: StartupOptions) =>
           const connectionString = yield* resolveServeConnectionString();
           yield* runStartupPhase(
             "zerops.output",
-            Console.log(formatZeropsServeOutput(connectionString)),
+            Console.log(formatZeropsServeOutput(connectionString, serverConfig.zerops?.hqOrigin)),
           );
           if (!serverConfig.noBrowser) {
             yield* runStartupPhase(

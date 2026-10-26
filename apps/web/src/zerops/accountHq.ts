@@ -20,7 +20,6 @@ import { captureAccountLifetime } from "./accountLifetime";
  * - **Its Core:** this very build carries it, same-origin under `hq-core/`
  *   (`apps/hq/scripts/pack-core.ts`); a birth's deploy and HQ's update read it from there.
  */
-import { accountThrowawayDebt } from "./throwawayDebt";
 import {
   findOfficialHq,
   HqError,
@@ -33,22 +32,14 @@ import {
   type HqParts,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
-import {
-  connectThroughThrowaway,
-  zeropsHqOrgKey,
-  zeropsThrowawayPlatform,
-} from "@t3tools/client-runtime/zerops/doorThrowaway";
-import { makeBrowserHqApi, readAccountHqHealth } from "@t3tools/client-runtime/data";
+import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
 import { organizationMembers } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-import { randomUUID } from "~/lib/utils";
-
 import { onAccountLifetimeClose } from "./accountLifetime";
 import {
-  forgetHqVerdict,
   forgetNoHqVerdict,
   keepHqVerdict,
   keepNoHqVerdict,
@@ -335,24 +326,24 @@ async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
 }
 
 /**
- * HQ's API for this account and org, with the session the account kept for this HQ, else entered
- * through its door on the first call. A door that answers not serving, from an HQ whose health says
- * it is not the official one, makes this page forget its verdict, so the member list is read
- * again. The HQ this build names is no member list's to verify: its door and writes wait for none,
- * and an organization it has not started is started by its Owner's or Admin's door.
+ * HQ's API for this account and org, with the session the account kept for this HQ, else signed in
+ * with the person's Zerops access token on the first call. A door is entered only into an HQ the
+ * member list named. The HQ this build names is no member list's to verify: its door and writes
+ * wait for none, and an organization it has not started is started by its Owner's or Admin's
+ * sign-in.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const configured = isConfiguredHq(hq);
-  const platform = zeropsThrowawayPlatform(client, {
-    asked: true,
-    debt: accountThrowawayDebt(client),
-  });
+  const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
   const active = captureAccountLifetime();
   const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
-      read: () => keptHqSessions.read(keptKey)?.token ?? null,
+      read: () => {
+        const kept = keptHqSessions.read(keptKey);
+        return kept === null ? null : { token: kept.token, expiresAtMs: kept.expiresAtEpochMs };
+      },
       keep: ({ token, expiresAt }) => {
         const expiresAtEpochMs = Date.parse(expiresAt);
         if (!Number.isFinite(expiresAtEpochMs)) return;
@@ -370,28 +361,10 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     },
     beforeWrite: () => (configured ? Promise.resolve() : writeChecked(clientId, hq)),
     isCurrent: () => active() && (configured || verdictNames(clientId, hq) === true),
-    ...(configured ? { orgKey: zeropsHqOrgKey(client, clientId) } : {}),
-    throughDoor: (use) =>
-      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() =>
-        connectThroughThrowaway({
-          platform,
-          clientId,
-          projectId: hq.projectId,
-          nonce: randomUUID(),
-          // A door HQ did not answer as serving — unreached, past its deadline, or not serving — did
-          // not take the throwaway: its next try presents it again, while young, and mints nothing
-          // (Example Org, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
-          keep: (outcome) =>
-            !outcome.ok && outcome.cause instanceof HqError && outcome.cause.kind === "unavailable",
-          connect: use,
-        }).catch(async (cause: unknown) => {
-          if (cause instanceof HqError && cause.code === "not_active") {
-            const health = await readAccountHqHealth(hq.address);
-            if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
-          }
-          throw cause;
-        }),
-      ),
+    accessToken: (refused) =>
+      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() => accessToken(refused)),
+    orgId: clientId,
+    startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });
   return api;
 }

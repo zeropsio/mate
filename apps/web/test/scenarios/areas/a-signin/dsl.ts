@@ -6,7 +6,12 @@ import { openAccountMenu, showsText, visibleText } from "../../harness/browser.t
 import { rendered } from "../../harness/completedHttp.ts";
 import { deadline } from "../../harness/http.ts";
 import { answerInZerops, openZeropsWindow } from "../../harness/deviceLogin.ts";
-import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
+import {
+  secondOrganization,
+  endSessionCheck,
+  everySocketRechecked,
+  handoverCount,
+} from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -64,12 +69,23 @@ export function account(page: Page) {
       expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
       expect(await page.$('[role="textbox"]')).toBeNull();
     }),
-    needsAdministrator: Effect.promise(async () => {
-      await page.waitForFunction(
-        () => document.body.innerText.includes("An admin sets up HQ for this organization."),
-        { polling: "raf" },
-      );
-    }),
+    needsAdministrator: (core: Scenario["drivers"]["core"]["kind"]) =>
+      Effect.promise(async () => {
+        const notices = {
+          "in-process": "An admin sets up HQ for this organization.",
+          external:
+            "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
+        };
+        await page.waitForFunction(
+          (notices) => notices.some((notice) => document.body.innerText.includes(notice)),
+          { polling: "raf" },
+          Object.values(notices),
+        );
+        expect(
+          await page.evaluate(() => document.body.innerText),
+          "ASSERTION: the selected organization shows its HQ's administrator requirement",
+        ).toContain(notices[core]);
+      }),
     reload: Effect.promise(async () => {
       await page.reload();
     }),
@@ -113,6 +129,11 @@ export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
 ) {
   yield* Effect.promise(() => s.hq.ready());
   yield* Effect.promise(() => endSessionCheck(s.drivers, [...s.hq.links.values()], fault));
+});
+
+/** HQ looks at every socket's session again, and every one stays open. */
+export const hqKeepsEverySession = Effect.fn("signin.hqKeepsEverySession")(function* (s: Scenario) {
+  yield* Effect.promise(() => everySocketRechecked(s.drivers, s.hq.links));
 });
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {

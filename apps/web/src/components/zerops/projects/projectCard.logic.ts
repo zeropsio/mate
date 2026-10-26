@@ -13,6 +13,7 @@ import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/dat
 import {
   addressComing,
   changeState,
+  changesCountWords,
   placeAddresses,
   PRODUCTION_DEPLOYING,
   type FlowPullRequest,
@@ -23,6 +24,7 @@ import {
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
+import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { domainFaceWords } from "../addresses/addresses.logic";
@@ -98,14 +100,20 @@ function releasingWords(tag: string, rollsBackTo: string | undefined): string {
 /**
  * What production's line opens while it says a release on its way: that release's review, or a
  * roll back's by the release it goes back to — the door the card's "Putting v2.4.0 live" block
- * had. Nothing while none is on its way, or while the line says production's trouble instead.
+ * had. The platform's build is on its way before HQ names it, and its line opens the same review
+ * from that frame, its words only what the build or HQ reports. Nothing while none is on its way,
+ * or while the line says production's trouble instead.
  */
 export function releaseLineOpens(
   line: PlaceLine,
   production: GroupFlowProduction,
   rollsBackTo: string | undefined,
 ): { readonly kind: "release" } | { readonly kind: "rollback"; readonly tag: string } | undefined {
-  if (line.kind !== "production" || line.dot !== "releasing" || production.kind !== "releasing")
+  if (
+    line.kind !== "production" ||
+    line.dot !== "releasing" ||
+    (production.kind !== "releasing" && production.kind !== "deploying")
+  )
     return undefined;
   return rollsBackTo === undefined ? { kind: "release" } : { kind: "rollback", tag: rollsBackTo };
 }
@@ -171,7 +179,7 @@ function chipLine(
 
 /** What production's line says from the flow alone, where no chip was read. */
 function flowLine(
-  production: Exclude<GroupFlowProduction, { readonly kind: "absent" }>,
+  production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" }>,
   since: string | undefined,
   rollsBackTo: string | undefined,
 ): Pick<PlaceLine, "dot" | "words" | "trouble"> {
@@ -303,7 +311,8 @@ function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "
  * nothing runs there, so every card ends on it.
  */
 export function placeLines(input: {
-  readonly flow: Pick<GroupFlow, "production" | "stages">;
+  readonly flow: Pick<GroupFlow, "production" | "stages"> &
+    Partial<Pick<GroupFlow, "unreadStages">>;
   /** Production's chip as the menu reads it; `undefined` where none was read. */
   readonly chip?: ProductionChip | undefined;
   /** Each stage's own chip, by its project. */
@@ -324,15 +333,38 @@ export function placeLines(input: {
   const { production, stages } = input.flow;
   const downOf = (projectId: string | undefined) =>
     (projectId === undefined ? undefined : input.down?.get(projectId)) ?? [];
-  const staged = stages.map((stop) =>
-    stageLine(
-      stop,
-      input.stageChips?.get(stop.projectId),
-      downOf(stop.projectId),
-      input.addressOffered?.get(stop.projectId),
+  const staged: ReadonlyArray<PlaceLine> = [
+    ...stages.map((stop) =>
+      stageLine(
+        stop,
+        input.stageChips?.get(stop.projectId),
+        downOf(stop.projectId),
+        input.addressOffered?.get(stop.projectId),
+      ),
     ),
-  );
+    ...(input.flow.unreadStages ?? []).map((name): PlaceLine => ({
+      kind: "stage",
+      name,
+      projectId: undefined,
+      addresses: [],
+      dot: "unknown",
+      words: [UNREAD_ENVIRONMENT_LINE],
+      trouble: false,
+    })),
+  ];
   const prod = { kind: "production" as const, name: "prod" };
+  if (production.kind === "unread")
+    return [
+      ...staged,
+      {
+        ...prod,
+        projectId: undefined,
+        addresses: [],
+        dot: "unknown",
+        words: [production.line],
+        trouble: false,
+      },
+    ];
   if (production.kind === "absent")
     return [
       ...staged,
@@ -387,6 +419,7 @@ export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
 export interface CardReady {
+  readonly changeCount?: number | undefined;
   readonly count: number;
   readonly atLeast: boolean;
   /** The stage they were tested on; `undefined` where the project has none. */
@@ -414,6 +447,7 @@ export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main"
     flow.stages[0];
   return {
     count: production.candidate.waiting,
+    ...(flow.main.changeCount === undefined ? {} : { changeCount: flow.main.changeCount }),
     atLeast: flow.main.notLiveAtLeast,
     stage: stage?.name,
     from: production.stop.version?.label,
@@ -434,6 +468,49 @@ export function historyOffered(input: {
 }
 
 /**
+ * Whether production's panel holds History's room where it does not offer it yet: while a release
+ * is on its way, whichever names it first (the platform's build says Deploying before HQ's accepted
+ * release says Releasing), and while it runs a version it can name. One release on its way keeps
+ * one height: CI's held card drew the build without the room and HQ's release with it, 44 px apart.
+ */
+export function historyHeld(input: {
+  readonly kind: GroupFlowProduction["kind"];
+  readonly dot: PlaceLine["dot"];
+  /** It runs a version it can name. */
+  readonly runsNamed: boolean;
+}): boolean {
+  return (
+    input.kind === "releasing" ||
+    input.kind === "deploying" ||
+    input.dot === "releasing" ||
+    (input.dot === "running" && input.runsNamed)
+  );
+}
+
+/**
+ * The platform's build as the card's chip reads it: only where the card's flow says production
+ * deploys, so the chip's Releasing and the ready block's leaving are one answer, never a frame apart.
+ */
+export function productionBuilding<Building>(
+  kind: GroupFlowProduction["kind"],
+  building: Building | undefined,
+): Building | undefined {
+  return kind === "deploying" ? building : undefined;
+}
+
+/**
+ * The tag of the release production runs: one that has landed. A release on its way (`inFlight`)
+ * has not, even once production's services name its commit; a first release on its way names none
+ * and a second keeps the first.
+ */
+export function releaseProductionRuns(
+  releases: ReadonlyArray<Pick<PanelRelease, "tag" | "standing">>,
+  inFlight: string | undefined,
+): string | undefined {
+  return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
+}
+
+/**
  * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
  * it open that its one press merges. A Mate's setup files are no app.
  */
@@ -445,6 +522,8 @@ export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">)
 
 /** "3 changes ready to release", "1 change ready to release". */
 export function readyTitle(ready: CardReady): string {
+  if (ready.changeCount !== undefined)
+    return `${changesCountWords(ready.count, ready.atLeast, ready.changeCount)} ready to release`;
   const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
   return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
 }

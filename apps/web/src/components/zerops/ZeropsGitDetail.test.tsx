@@ -247,9 +247,10 @@ it("Branch selection resets the path without switching the Mate’s checkout", a
   await draw();
   await press("main", detail());
   const feature = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (option) => option.textContent === "feature",
+    (option) => option.textContent?.startsWith("feature"),
   );
   expect(feature, "the picker lists the feature branch").toBeDefined();
+  expect(feature!.textContent).toContain("Subject");
   await act(() => feature!.click());
   await draw();
   expect(fixture.navigate).toHaveBeenCalledExactlyOnceWith({

@@ -58,6 +58,8 @@ import { MATE_ENGINE_FAMILIES } from "./mateEngine.ts";
 import { databaseFamily, databaseSessionFamily } from "./database.ts";
 import { mateBrowserFrameFamily } from "./mateBrowserFrame.ts";
 import { mateMacViewFamily } from "./mateMacView.ts";
+import { hqChangeMetadataFamily } from "./hqChangeMetadata.ts";
+import { hqChangeCommitsFamily } from "./hqChangeCommits.ts";
 import { hqChangeReadFamily } from "./hqChangeRead.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
@@ -68,6 +70,7 @@ import {
   hqStatusFamily,
   placementFamily,
 } from "./hqNavigation.ts";
+import { hqKeptGitFamily } from "./hqKeptGit.ts";
 import { hqDiscussionFamily } from "./hqDiscussion.ts";
 import { hqAppDetailFamily } from "./hqAppDetail.ts";
 import { hqProtocolFamily } from "./hqProtocol.ts";
@@ -181,6 +184,7 @@ export const FAMILIES = defineFamilies([
   placementFamily,
   hqPersonFamily,
   hqPressFamily,
+  hqKeptGitFamily,
   hqMateFamily,
   serviceFamily,
   mateAttentionFamily,
@@ -208,6 +212,8 @@ export const FAMILIES = defineFamilies([
   hqProtocolFamily,
   hqPictureFamily,
   hqChangeReadFamily,
+  hqChangeCommitsFamily,
+  hqChangeMetadataFamily,
   projectVariablesFamily,
   serviceVariableFamily,
   databaseFamily,

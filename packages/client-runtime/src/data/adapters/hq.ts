@@ -74,10 +74,19 @@ export interface HqSegment {
 
 /** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
 export interface HqWire {
-  readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+  /** Opens a segment; `socketCreated` runs once its socket exists, before the upgrade finishes. */
+  readonly open: (
+    socketCreated: Effect.Effect<void>,
+  ) => Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
   readonly change?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
+  readonly metadata?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeMetadataResponse, StreamFault>;
+  readonly commits?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeCommitsResponse, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
@@ -112,6 +121,20 @@ export interface HqMoveOffers {
  * a socket a sleeping laptop or a stalled path left open carries nothing, though it never closed.
  */
 export const HQ_SILENCE_MS = 60_000;
+
+/**
+ * The handshake of the link and of every scope on its socket: none has a deadline of its own. An
+ * open socket HQ keeps pinging is working on what it was asked, however long its first frame
+ * takes; only {@link HQ_SILENCE_MS} of silence, or the socket's close, gives it up. Effect's clock
+ * sleeps a non-finite duration as `never`, so the supervisor's watch on it arms no timer.
+ */
+const ON_THE_SOCKET: StreamEvent = {
+  kind: "handshake",
+  baselineWithinMs: Number.POSITIVE_INFINITY,
+};
+
+/** The link's socket exists; its upgrade is waited for. */
+const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
 /** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
 export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
@@ -369,7 +392,7 @@ export function hqNavigationLink(options: {
           ]) {
             yield* signal(scope, { kind: "demand", demanded: true });
             yield* signal(scope, { kind: "attempt" });
-            yield* signal(scope, { kind: "handshake" });
+            yield* signal(scope, ON_THE_SOCKET);
             generations.push({ scope, generation: streamOf(store.state(), scope).generation });
           }
           subscribed.set(hqScopeKey(registered.wire), { registered, generations });
@@ -682,6 +705,15 @@ export function hqNavigationLink(options: {
       wakeAttempt = wake;
       const pictures = yield* makeHqPictureReads({
         refresh,
+        metadata: (request) =>
+          wire.metadata?.(request) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "HQ cannot read change metadata.",
+          }),
+        commits: (request) =>
+          wire.commits?.(request) ??
+          Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read change history." }),
         change: (request) =>
           wire.change?.(request) ??
           Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }),
@@ -714,7 +746,7 @@ export function hqNavigationLink(options: {
       const segment = (first: boolean) =>
         Effect.scoped(
           Effect.gen(function* () {
-            const opened = yield* wire.open;
+            const opened = yield* wire.open(first ? signal(key, SOCKET_CREATED) : Effect.void);
             open = opened;
             usageSupported = null;
             for (const { registered } of subscribed.values()) {
@@ -722,7 +754,7 @@ export function hqNavigationLink(options: {
                 for (const { scope } of registered.families)
                   yield* signal(scope, { kind: "parent-lost" });
             }
-            if (first) yield* signal(key, { kind: "handshake" });
+            if (first) yield* signal(key, ON_THE_SOCKET);
             if (refusedWhole) {
               refusedWhole = false;
               yield* opened.send({ type: "retry" });

@@ -71,6 +71,7 @@ export function standUpFailureWords(
  */
 export type MateSetupGitFailure =
   | { readonly reason: "no_hq" }
+  | { readonly reason: "credential_unavailable" }
   | { readonly reason: "refused"; readonly code?: string };
 
 export interface MateSetup {
@@ -129,7 +130,8 @@ function gitFailureOf(step: {
   readonly reason?: unknown;
   readonly code?: unknown;
 }): MateSetupGitFailure | undefined {
-  if (step.reason === "no_hq") return { reason: "no_hq" };
+  if (step.reason === "no_hq" || step.reason === "credential_unavailable")
+    return { reason: step.reason };
   if (step.reason !== "refused") return undefined;
   return typeof step.code === "string"
     ? { reason: "refused", code: step.code }

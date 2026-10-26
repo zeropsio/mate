@@ -241,7 +241,10 @@ describe("owner-reported layout regressions", () => {
       "merge moves nothing behind the review: the composer and the header's goal stay",
       () =>
         Effect.gen(function* () {
-          const { s, r, area } = yield* setup;
+          const { s, r, area, change } = yield* setup;
+          // The first merge's question offers an environment the application can add: a stage
+          // its recipe holds (the shared HQ offers no Git environment).
+          yield* change.publishesRecipe("stage");
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.signedIn;
           yield* r.open;

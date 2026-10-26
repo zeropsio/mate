@@ -20,6 +20,10 @@ import {
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
+import { Badge } from "~/components/ui/badge";
+import { STATUS_BADGE_TONE } from "./primitives";
+import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { gitPushHistory } from "./GitHistory.logic";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
@@ -124,6 +128,7 @@ export function GitStopDetail({
 }) {
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const pushes = gitPushHistory(environment.jobs);
   return (
     <div data-zerops-surface="git-stop-detail">
       <GitDeliveryStatus environment={environment} delivery={delivery} repos={repos} />
@@ -178,13 +183,37 @@ export function GitStopDetail({
           ))
         : null}
       <h2 className="mt-6 text-sm font-medium">History</h2>
-      {releases === undefined ? (
+      {environment.tier === "stage" ? (
+        pushes.length === 0 ? (
+          <p className="rv-note">No pushes recorded.</p>
+        ) : (
+          <ul className="space-y-2">
+            {pushes.map((push) => (
+              <ZeropsEnvironmentRow
+                key={push.id}
+                name={push.name}
+                tag={push.cause}
+                summary={<span className="whitespace-normal">{push.summary}</span>}
+                status={
+                  <Badge dot tone={STATUS_BADGE_TONE[push.attention ? "attention" : "off"]}>
+                    {push.word}
+                  </Badge>
+                }
+              />
+            ))}
+          </ul>
+        )
+      ) : releases === undefined ? (
         <p className="rv-note">Reading release history…</p>
       ) : releases.length === 0 ? (
         <p className="rv-note">No releases recorded.</p>
       ) : (
         <ul className="space-y-2">
-          <GitReleaseRows releases={releases.map(flowReleaseOf)} delivery={delivery} />
+          <GitReleaseRows
+            releases={releases.map(flowReleaseOf)}
+            delivery={delivery}
+            jobs={environment.jobs}
+          />
         </ul>
       )}
       <GitEnvironmentRemoval
@@ -320,7 +349,11 @@ export function GitEnvironmentRemoval({
   );
 }
 
-const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({ environments: undefined, refused: null });
+const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({
+  environments: undefined,
+  refused: null,
+  unread: [],
+});
 
 /** Menu and Settings read the same authoritative environment and its removal verdict. */
 export function ProductionRemoval({

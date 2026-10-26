@@ -28,6 +28,7 @@ export interface PickerRow {
   /** The branch's own name under a change's title. */
   readonly detail: string | null;
   readonly outsideMate: boolean;
+  readonly commit?: { readonly subject: string | null; readonly committedAt: string | null };
 }
 
 export interface PickerSection {
@@ -84,12 +85,18 @@ export const pickerSections = (input: {
       name: group.name,
       rows: group.items.map((item): PickerRow => {
         const title = changeTitle(item, input.changes);
+        const metadataPending =
+          item.metadataPending === true || item.subject == null || !item.committedAt;
         return {
           value: item.ref,
           rev: refRevision(item),
           label: title ?? item.name,
           detail: title === null ? null : item.name,
           outsideMate: item.outsideMate,
+          commit: {
+            subject: metadataPending ? null : (item.subject ?? null),
+            committedAt: metadataPending ? null : (item.committedAt ?? null),
+          },
         };
       }),
     })),

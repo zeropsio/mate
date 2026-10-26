@@ -784,3 +784,28 @@ describe("Git release candidates", () => {
     ]);
   });
 });
+
+it("Release rows preserve recorded change titles and outside-Mate commit counts.", () => {
+  const history = {
+    ranges: [{ repo: "api", base: OLD, head: API }],
+    changes: [{ repo: "api", number: 7, title: "Search the catalogue" }],
+    commitCount: 6,
+    outsideCommitCount: 5,
+  };
+  const row = releaseRow(
+    flowReleaseOf({
+      tag: "v1.0.0",
+      sha: OLD,
+      entries: [{ service: "api", sha: API }],
+      by: "u1",
+      at: "2026-10-26T09:25:00.000Z",
+      state: "approved",
+      reason: null,
+      rollbackOf: null,
+      history,
+    }),
+    0,
+    { production: new Map(), failed: [], live: false },
+  );
+  expect(row.history).toEqual(history);
+});

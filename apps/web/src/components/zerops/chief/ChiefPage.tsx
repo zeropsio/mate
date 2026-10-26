@@ -7,13 +7,7 @@
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
-import {
-  resumeChiefSetup,
-  startChiefSetup,
-  tryChiefSetupAgain,
-  useChiefSetup,
-  useChiefUnfinished,
-} from "~/zerops/chiefSetup";
+import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
 import { useOwnChief } from "~/zerops/ownChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
@@ -48,7 +42,6 @@ export function ChiefPage() {
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const accountHq = useAccountHq(orgId);
-  const unfinished = useChiefUnfinished(typeof own === "string" ? own : null);
   const create = useOrgOffers()("create_app");
   // An HQ on an older Core than this app's records no Chief: its update comes first.
   const standing = useAtomValue(hqStandingAtom);
@@ -58,7 +51,6 @@ export function ChiefPage() {
   const view = chiefPageView({
     own,
     setup,
-    unfinished,
     hq:
       accountHq.hq.kind === "official"
         ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
@@ -79,10 +71,6 @@ export function ChiefPage() {
         {view.kind === "reading" ? null : (
           <ChiefStage
             onAgain={tryChiefSetupAgain}
-            onFinish={() => {
-              if (orgId !== undefined && view.kind === "finish")
-                resumeChiefSetup(orgId, view.projectId);
-            }}
             onSetUp={startChiefSetup}
             startedAtMs={startedAtMs}
             view={view}
@@ -108,13 +96,11 @@ export function ChiefStage({
   view,
   onSetUp,
   onAgain,
-  onFinish,
   startedAtMs = null,
 }: {
   readonly view: Exclude<ChiefPageView, { kind: "reading" | "coming" }>;
   readonly onSetUp: () => void;
   readonly onAgain: () => void;
-  readonly onFinish: () => void;
   /** When this tab pressed *Set up Chief*: the row's clock; `null` when unknown. */
   readonly startedAtMs?: number | null;
 }) {
@@ -142,26 +128,6 @@ export function ChiefStage({
                   <p className="text-sm text-muted-foreground">{view.blocked}</p>
                 )}
               </div>
-            </ArrivalSwap>
-          ),
-        };
-      case "finish":
-        return {
-          kind: "coming",
-          face: "needs",
-          headline: "Your Chief is not finished.",
-          sentence:
-            "Its view of your organization never reached it. Finishing hands it over again.",
-          below: (
-            <ArrivalSwap id="finish" kind="slot">
-              <Button
-                data-zerops-surface="chief-finish"
-                onClick={onFinish}
-                size="lg"
-                variant="primary"
-              >
-                Finish setting up
-              </Button>
             </ArrivalSwap>
           ),
         };

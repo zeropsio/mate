@@ -6,10 +6,11 @@ import * as NodePath from "node:path";
 import type { JsonTestResults } from "vite-plus/test/node";
 import { chatGateStages, chatGateTestFiles } from "./chat-gate.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
+import type { SignalProgress } from "./signal-reporter.ts";
 
 export interface SignalReport {
   /** `path` is the test's describe titles then its own: what Vitest's name filter reads. */
-  tests: { file: string; title: string; path: string[]; status: string }[];
+  tests: { file: string; title: string; path: string[]; status: string; reason?: string }[];
   errors: string[];
 }
 
@@ -50,6 +51,8 @@ export interface SignalFailure {
   title: string;
   class: "fail-pass" | "fail-fail";
   run: number;
+  /** Set when the case hung (hit the case ceiling, or ran when its shard was killed). */
+  reason?: string;
 }
 
 export function classifyFailures(
@@ -57,11 +60,17 @@ export function classifyFailures(
   rerun: SignalReport,
   run: number,
 ): SignalFailure[] {
-  return failedTests(initial).map(({ file, title }) => {
+  return failedTests(initial).map(({ file, title, reason }) => {
     const test = rerun.tests.find((test) => test.file === file && test.title === title);
     if (!test || !["passed", "failed"].includes(test.status))
       throw new Error(`Signal rerun did not execute ${file}: ${title}`);
-    return { file, title, class: test.status === "passed" ? "fail-pass" : "fail-fail", run };
+    return {
+      file,
+      title,
+      class: test.status === "passed" ? "fail-pass" : "fail-fail",
+      run,
+      ...(reason === undefined ? {} : { reason }),
+    };
   });
 }
 
@@ -109,18 +118,70 @@ const cScenarioDurations = {
   "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts": 3402,
 };
 
+const relativeFile = (file: string) => NodePath.relative(root, file).split(NodePath.sep).join("/");
+
+function readProgress(output: string): SignalProgress[] {
+  const path = `${output}.progress.jsonl`;
+  if (!NodeFS.existsSync(path)) return [];
+  return NodeFS.readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as SignalProgress);
+}
+
+/**
+ * What a shard that never wrote its report leaves: every case that ended, and the case that was
+ * still running, which is the one to name. A case's title is its full name, so no `path` is known.
+ */
+export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): SignalReport {
+  const cases = new Map<string, SignalReport["tests"][number]>();
+  for (const line of lines) {
+    const file = relativeFile(line.file);
+    const base = { file, title: line.title, path: [line.title] };
+    cases.set(
+      JSON.stringify([file, line.title]),
+      line.event === "start"
+        ? {
+            ...base,
+            status: "failed",
+            reason: "hung: the shard ended while this case was running",
+          }
+        : {
+            ...base,
+            status: line.status,
+            ...(line.reason === undefined ? {} : { reason: line.reason }),
+          },
+    );
+  }
+  return { tests: [...cases.values()], errors: [] };
+}
+
+const shardReports = ["c-1", "c-2", "c-3", "c-4", "non-c-1", "non-c-2", "non-c-3"];
+
 export function readSignalReport(output: string): SignalReport {
   const evidence = JSON.parse(
     NodeFS.readFileSync(`${output}.vitest.json`, "utf8"),
   ) as JsonTestResults;
+  const reasons = new Map(
+    readProgress(output).flatMap((line) =>
+      line.event === "end" && line.reason !== undefined
+        ? [[JSON.stringify([relativeFile(line.file), line.title]), line.reason] as const]
+        : [],
+    ),
+  );
   return {
     tests: evidence.testResults.flatMap((file) =>
-      file.assertionResults.map((test) => ({
-        file: NodePath.relative(root, file.name).split(NodePath.sep).join("/"),
-        title: test.fullName,
-        path: [...test.ancestorTitles, test.title],
-        status: test.status,
-      })),
+      file.assertionResults.map((test) => {
+        const found = relativeFile(file.name);
+        const reason = reasons.get(JSON.stringify([found, test.fullName]));
+        return {
+          file: found,
+          title: test.fullName,
+          path: [...test.ancestorTitles, test.title],
+          status: test.status,
+          ...(reason === undefined ? {} : { reason }),
+        };
+      }),
     ),
     errors: JSON.parse(NodeFS.readFileSync(`${output}.errors.json`, "utf8")) as string[],
   };
@@ -131,6 +192,7 @@ function runScenarios(args: string[], output: string): SignalReport {
   NodeFS.rmSync(output, { force: true });
   NodeFS.rmSync(`${output}.vitest.json`, { force: true });
   NodeFS.rmSync(`${output}.errors.json`, { force: true });
+  NodeFS.rmSync(`${output}.progress.jsonl`, { force: true });
   const result = NodeChildProcess.spawnSync(
     "vp",
     [
@@ -191,15 +253,16 @@ if (import.meta.main) {
           ];
     runScenarios(args, NodePath.join(directory, `${group}-${index}.json`));
   } else if (mode === "classify") {
-    const paths = NodeFS.readdirSync(directory).filter((path) =>
-      /^(?:c|non-c)-\d+\.json$/u.test(path),
-    );
-    if (paths.length !== 7)
-      throw new Error(`Signal expected seven shard reports, got ${paths.length}`);
-    const initial = paths.map(
-      (path) =>
-        JSON.parse(NodeFS.readFileSync(NodePath.join(directory, path), "utf8")) as SignalReport,
-    );
+    const killed: string[] = [];
+    const initial = shardReports.map((name) => {
+      const report = NodePath.join(directory, `${name}.json`);
+      if (NodeFS.existsSync(report))
+        return JSON.parse(NodeFS.readFileSync(report, "utf8")) as SignalReport;
+      const lines = readProgress(report);
+      if (!lines.length) throw new Error(`Signal has no report or progress for shard ${name}`);
+      killed.push(name);
+      return reportFromProgress(lines);
+    });
     const { files, testNamePattern } = failedSelection(initial);
     const rerun = files.length
       ? runScenarios(
@@ -211,6 +274,10 @@ if (import.meta.main) {
     if (!Number.isSafeInteger(run) || run <= 0)
       throw new Error("Signal requires its workflow run id");
     const failures = classifyFailures(initial, rerun, run);
+    for (const failure of failures.filter((failure) => failure.reason !== undefined))
+      console.log(
+        `::error file=${failure.file},title=Signal case hung::${failure.title}: ${failure.reason}`,
+      );
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
     // The previous kh-next run's classification, when the workflow fetched one.
@@ -225,5 +292,7 @@ if (import.meta.main) {
       if (reds.length)
         throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
     } else console.log("Signal has no previous kh-next classification to compare");
+    if (killed.length)
+      throw new Error(`Signal: shards ${killed.join(", ")} ended without writing their report`);
   } else throw new Error("Usage: node scripts/signal.ts shard c|non-c <index/count> | classify");
 }

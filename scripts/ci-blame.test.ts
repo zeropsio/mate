@@ -5,7 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
-import { blameSelection } from "./ci-blame.ts";
+import { blameMatrices, blameSelection } from "./ci-blame.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 const workflow = parse(
@@ -38,7 +38,7 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
     selection.selected.sort(),
     "ASSERTION: blocking State Smoke selects only its execution dependencies",
   ).toEqual(["changes", "state_smoke"]);
-  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 2 }] });
+  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 8 }] });
   for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
     expect(
       () => blameSelection("refs/heads/kh-bisect/abc1234", context),
@@ -89,7 +89,7 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
         .sort(),
     );
     expect(selection.matrices.test_server!.include).toEqual(
-      [1, 2, 3, 4, 5, 6].map((shard) => ({ shard, total: 6 })),
+      [1, 2, 3].map((shard) => ({ shard, total: 3 })),
     );
     expect(selection.selected).not.toContain("chat_scenarios");
   },
@@ -102,6 +102,14 @@ it("A kh-bisect push without a manifest is refused naming the file, and unknown 
   expect(() => blameSelection("refs/heads/kh-bisect/abc1234", "unknown\n")).toThrow(
     "No known failed CI job",
   );
+});
+
+it.each([
+  ["a job name", "Test Web 1"],
+  ["every job", "all"],
+  ["no job", "an empty file"],
+])("A kh-bisect push without a manifest is told how to write it: %s", (_case, wording) => {
+  expect(() => blameSelection("refs/heads/kh-bisect/abc1234", undefined)).toThrow(wording);
 });
 
 it.each([["\n"], [""], ["  \n\n"]])(
@@ -122,7 +130,7 @@ it("A kh-bisect manifest of all selects every job at full partition size", () =>
       .filter((job) => job !== "prepare" && job !== "cache")
       .sort(),
   );
-  expect(selection.matrices.test_server!.include).toHaveLength(6);
+  expect(selection.matrices.test_server!.include).toHaveLength(3);
 });
 
 it("CI's real selector command publishes its narrowed job and matrix outputs", () => {
@@ -133,7 +141,7 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
       NodePath.join(root, "scripts/ci-blame.ts"),
       NodePath.join(dir, "scripts/ci-blame.ts"),
     );
-    NodeFS.writeFileSync(NodePath.join(dir, ".ci-blame-jobs"), "Test Server 4\n");
+    NodeFS.writeFileSync(NodePath.join(dir, ".ci-blame-jobs"), "Test Server 2\n");
     const output = NodePath.join(dir, "output");
     const step = workflow.jobs.prepare.steps.find((entry: { id?: string }) => entry.id === "blame");
     const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
@@ -155,8 +163,45 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
       JSON.parse(outputs.jobs!),
       "ASSERTION: CI runs the selected job through its real command",
     ).toEqual(["test_server"]);
-    expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 4, total: 6 }] });
+    expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 2, total: 3 }] });
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// GitHub-hosted runners run at most 20 jobs at once for this account; jobs that
+// become ready together start in no promised order.
+const hostedRunnerPool = 20;
+
+it.each([
+  { nativeClients: false, mainPush: false },
+  { nativeClients: true, mainPush: false },
+  { nativeClients: false, mainPush: true },
+  { nativeClients: true, mainPush: true },
+])(
+  "the first wave of jobs fits the hosted runner pool with every State Smoke shard in it (%o)",
+  ({ nativeClients, mainPush }) => {
+    const jobs = workflow.jobs as Record<
+      string,
+      { needs?: string | string[]; if?: string; strategy?: { matrix: { os?: string[] } } }
+    >;
+    const needsOf = (job: string) => [jobs[job]!.needs ?? []].flat();
+    const smokeNeeds = new Set(needsOf("state_smoke"));
+    // Running or ready when the smoke shards become ready: every job whose needs
+    // the smoke shards' needs cover, minus those needs themselves (already done).
+    const wave = Object.keys(jobs)
+      .filter((job) => job !== "prepare" && !smokeNeeds.has(job))
+      .filter((job) => needsOf(job).every((need) => smokeNeeds.has(need)))
+      .filter((job) => nativeClients || !jobs[job]!.if?.includes("native_clients"))
+      .filter((job) => mainPush || job !== "cache")
+      .map((job) =>
+        job === "cache"
+          ? jobs.cache!.strategy!.matrix.os!.length
+          : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
+      )
+      .reduce((sum, count) => sum + count, 0);
+    expect(wave, "ASSERTION: no State Smoke shard queues behind a full pool").toBeLessThanOrEqual(
+      hostedRunnerPool,
+    );
+  },
+);

@@ -495,7 +495,9 @@ export function arrivalSteps(
           ? undefined
           : failure.reason === "no_hq"
             ? NO_HQ_WORDS
-            : enrollmentRefusalWords(failure.code),
+            : failure.reason === "credential_unavailable"
+              ? "HQ has not provided Git access yet. Check this Mate's connection to HQ."
+              : enrollmentRefusalWords(failure.code),
       ),
     });
   }

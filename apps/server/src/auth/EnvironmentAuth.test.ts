@@ -1,6 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import { AuthSessionId } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
+import * as ZeropsConnections from "../zerops/ZeropsConnections.ts";
+import * as ZeropsTicketDoor from "../zerops/ZeropsTicketDoor.ts";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -9,7 +12,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientResponse } from "effect/http";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import * as ServerConfig from "../config.ts";
@@ -20,21 +22,10 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
-import { awaitSessionEnd } from "./sessionLifetime.ts";
-import { layer as ZeropsIdentityStatusLayer } from "../zerops/ZeropsIdentityStatus.ts";
-import { snapshotOnlyReader, ZeropsMateKey } from "../zerops/ZeropsMateKey.ts";
-import { layer as ZeropsMembershipWatchLayer } from "../zerops/ZeropsMembershipWatch.ts";
-import { ZeropsOrgRead, layer as ZeropsOrgReadLayer } from "../zerops/ZeropsOrgRead.ts";
-import {
-  ACCESS_HOLDS,
-  ZeropsProjectAccess,
-  layer as projectAccessLayer,
-} from "../zerops/ZeropsProjectAccess.ts";
-import { ZeropsSessionAdmissionLive } from "../zerops/zeropsFeedsLayer.ts";
+import { layer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import type * as PtyAdapter from "../terminal/PtyAdapter.ts";
-import { layer as terminalsEndWithSessionLayer } from "../terminal/terminalsEndWithSession.ts";
 
 /** Pinned so dev-mode cookie tests can assert the port-scoped name. */
 const TEST_SERVER_PORT = 13_773;
@@ -62,46 +53,34 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-const makeAdmissionAuthLayer = (platformAnswers = false) => {
-  const access = projectAccessLayer.pipe(
-    Layer.provide(
-      Layer.succeed(ZeropsOrgRead, {
-        project: () =>
-          platformAnswers
-            ? Effect.succeed({
-                kind: "answered" as const,
-                status: 200,
-                body: { clientId: "org", userRoles: [], tagList: ["mate", "chief"] },
-              })
-            : Effect.die("Enrolled admission must not fall back to platform roles"),
-        members: () =>
-          platformAnswers
-            ? Effect.succeed({
-                kind: "answered" as const,
-                status: 200,
-                body: {
-                  clientUserList: [
-                    { id: "member", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
-                  ],
-                },
-              })
-            : Effect.die("Enrolled admission must not fall back to platform roles"),
-        forgetAccess: () => Effect.void,
-      }),
+/** The auth boundary inside a Zerops Mate, its admission read from HQ's access list. */
+const makeAdmissionAuthLayer = () =>
+  EnvironmentAuth.zeropsLayer.pipe(
+    Layer.provideMerge(
+      ZeropsConnections.layer.pipe(
+        Layer.provideMerge(ZeropsTicketDoor.layer),
+        Layer.provideMerge(accessListLayer),
+      ),
     ),
+    Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
   );
-  return EnvironmentAuth.layer.pipe(
-    Layer.provide(ZeropsSessionAdmissionLive),
-    Layer.provideMerge(access),
-    Layer.provide(SqlitePersistenceMemory),
-    Layer.provide(ServerSecretStore.layer),
-    Layer.provide(
-      makeServerConfigLayer({
-        zerops: { ...zeropsTestEnvironment!, hqEnrollmentPath: "/test/hq/enrollment.json" },
-      }),
-    ),
-  );
-};
+
+/** HQ's full list, opening the project for `open` and listing `listed`. */
+const accessFrame = (
+  version: number,
+  open: ReadonlyArray<string>,
+  listed: ReadonlyArray<string> = [],
+) =>
+  ({
+    type: "access",
+    version,
+    viewAt: "2026-10-24T10:00:00.000Z",
+    full: true,
+    members: [
+      ...open.map((userId) => ({ userId, role: "ADMIN", visibility: "open" }) as const),
+      ...listed.map((userId) => ({ userId, role: "READ_ONLY", visibility: "listed" }) as const),
+    ],
+  }) as const;
 
 const makeCookieRequest = (
   cookieName: string,
@@ -126,12 +105,9 @@ const makeBearerRequest = (
     EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
   >[0];
 
-const SESSION_MAX_AGE_SECONDS = 900;
-
 const zeropsTestEnvironment = resolveZeropsEnvironment({
   projectId: "TEST000000000000000023",
   apiHost: undefined,
-  sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
 });
 
 const requestMetadata = {
@@ -226,46 +202,6 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
   );
 
-  it.effect("caps a session from the identity door at the membership window", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* serverAuth.createPairingLink({
-        method: "zerops-throwaway",
-        subject: "zerops-user:a-zerops-user-id",
-      });
-      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        issued.credential,
-        undefined,
-        requestMetadata,
-      );
-
-      // The window IS this session's lifetime: the holder has a Zerops token
-      // and re-mints with it, and that re-mint is the real membership check.
-      expect(access.expires_in).toBeLessThanOrEqual(SESSION_MAX_AGE_SECONDS);
-      expect(access.expires_in).toBeGreaterThan(SESSION_MAX_AGE_SECONDS - 30);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-
-  it.effect("caps a DPoP session from the identity door at the window, not the hour", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* serverAuth.createPairingLink({
-        method: "zerops-throwaway",
-        subject: "zerops-user:a-zerops-user-id",
-        proofKeyThumbprint: "a-jwk-thumbprint",
-      });
-      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        issued.credential,
-        undefined,
-        requestMetadata,
-        { proofKeyThumbprint: "a-jwk-thumbprint" },
-      );
-
-      expect(access.token_type).toBe("DPoP");
-      expect(access.expires_in).toBeLessThanOrEqual(SESSION_MAX_AGE_SECONDS);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-
   it.effect("revokes every session belonging to one subject and leaves the rest", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -312,186 +248,86 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 });
 
 it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
-  it.effect("a Mate admits by today's rules while HQ has not classified it", () =>
-    Effect.gen(function* () {
-      const auth = yield* EnvironmentAuth.EnvironmentAuth;
-      const access = yield* ZeropsProjectAccess;
-      const session = yield* auth.issueSession({ subject: "zerops-user:owner" });
-      for (const state of ["missing", "expired", "ordinary"] as const) {
-        if (state !== "missing") {
-          yield* access.relayed({
-            ageMs: state === "expired" ? Duration.toMillis(ACCESS_HOLDS) + 1 : 0,
-            chief: state === "ordinary" ? null : { userId: "another-person", ownerName: "Ada" },
-            members:
-              state === "ordinary" ? [{ userId: "owner", role: "OWNER", visibility: "open" }] : [],
-          });
-        }
-        const ticket = yield* auth.issueWebSocketTicket(session);
-        const http = yield* auth.authenticateHttpRequest(makeBearerRequest(session.token));
-        const websocket = yield* auth.authenticateWebSocketUpgrade(
-          HttpServerRequest.fromWeb(
-            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
-          ),
-        );
-        expect([http.subject, websocket.subject]).toEqual([
-          "zerops-user:owner",
-          "zerops-user:owner",
-        ]);
-      }
-    }).pipe(Effect.provide(makeAdmissionAuthLayer(true))),
-  );
-
-  it.effect.each([
-    ["another person's", "other", "current", false],
-    ["the owner's", "owner", "current", true],
-  ] as const)(
-    "%s existing session opens its Chief only with current ownership",
-    ([, person, , allowed]) =>
+  it.effect(
+    "an existing session opens only while HQ's access list opens the project for its person",
+    () =>
       Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
-        const access = yield* ZeropsProjectAccess;
-        const session = yield* auth.issueSession({ subject: `zerops-user:${person}` });
-        // Mint the ticket before the current ownership verdict: restored credentials cannot bypass it.
-        const ticket = yield* auth.issueWebSocketTicket(session);
-        yield* access.relayed({
-          ageMs: 0,
-          chief: { userId: "owner", ownerName: "Ada" },
-          members: [
-            { userId: "owner", role: "OWNER", visibility: "open" },
-            { userId: "other", role: "OWNER", visibility: "open" },
-          ],
+        const list = yield* ZeropsConnections.ZeropsConnections;
+        const ticket = "owner-ticket";
+        yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
+          type: "ticket",
+          ticket,
+          userId: "owner",
+          sessionId: "hq-owner",
+          expiresIn: 60,
         });
-        const http = yield* auth
-          .authenticateHttpRequest(makeBearerRequest(session.token))
-          .pipe(Effect.result);
-        const websocket = yield* auth
-          .authenticateWebSocketUpgrade(
-            HttpServerRequest.fromWeb(
-              new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
-            ),
-          )
-          .pipe(Effect.result);
-        expect({ http: http._tag, websocket: websocket._tag }).toEqual({
-          http: allowed ? "Success" : "Failure",
-          websocket: allowed ? "Success" : "Failure",
-        });
-        if (http._tag === "Success") expect(http.success.subject).toBe("zerops-user:owner");
-        if (websocket._tag === "Success")
-          expect(websocket.success.subject).toBe("zerops-user:owner");
+        const opens = () =>
+          auth
+            .authenticateHttpRequest(makeBearerRequest(ticket))
+            .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
+        const admitted = [yield* opens()];
+        yield* list.heard(accessFrame(1, ["owner"]));
+        expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
+        admitted.push(yield* opens());
+        yield* list.heard(accessFrame(2, [], ["owner"]));
+        admitted.push(yield* opens());
+        yield* list.heard(accessFrame(3, ["owner"]));
+        yield* list.heard({ type: "access", version: 4, full: true, refused: true, members: [] });
+        admitted.push(yield* opens());
+        expect(admitted).toEqual([false, true, false, false]);
       }).pipe(Effect.provide(makeAdmissionAuthLayer())),
   );
 });
 
-// F1 (permission audit): an open bearer session outlived the person's org role. The bound is two
-// re-checks: a member list or HQ relay read just before the change holds one, the next reads it.
-const DEMOTED_PROJECT = "TEST000000000000000023";
-const jsonResponse = (body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-const beaListedAs = (roleCode: string) => ({
-  clientUserList: [
-    { id: "cu-owner", userId: "owner", roleCode: "OWNER", status: "ACTIVE" },
-    { id: "cu-bea", userId: "bea", roleCode, status: "ACTIVE" },
-  ],
-});
+// F1 (permission audit): an open bearer session outlived the person's org role. HQ's next list
+// after the change ends it at once.
 const demotions = [
-  { case: "lowered to Developer while the Mate reads Zerops", to: "NO_ACCESS", hq: false },
-  { case: "lowered to Read only while the Mate reads Zerops", to: "READ_ONLY", hq: false },
-  { case: "lowered to Developer just after HQ relayed", to: "NO_ACCESS", hq: true },
-  { case: "lowered to Read only just after HQ relayed", to: "READ_ONLY", hq: true },
-];
+  { case: "lowered to Developer: HQ's next list leaves her out", to: "NO_ACCESS" },
+  { case: "lowered to Read only: HQ's next list only lists her", to: "READ_ONLY" },
+] as const;
 
-/** A Zerops Mate whose platform lists Bea as Admin until a test lowers her. */
-const makeDemotionScene = () => {
-  const zerops = { members: beaListedAs("ADMIN") };
-  const platform = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) =>
-        Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            request.url.endsWith("/user/list")
-              ? jsonResponse(zerops.members)
-              : jsonResponse({ id: DEMOTED_PROJECT, clientId: "org", userRoles: [] }),
-          ),
-        ),
-      ),
-    ),
-    Layer.succeed(ZeropsMateKey, snapshotOnlyReader("the-mates-own-zerops-key")),
-    ZeropsIdentityStatusLayer,
-  );
-  const layer = ZeropsMembershipWatchLayer.pipe(
-    Layer.provideMerge(
-      EnvironmentAuth.layer.pipe(
-        Layer.provide(ZeropsSessionAdmissionLive),
-        Layer.provideMerge(projectAccessLayer),
-        Layer.provideMerge(ZeropsOrgReadLayer),
-        Layer.provideMerge(platform),
-        Layer.provide(SqlitePersistenceMemory),
-        Layer.provide(ServerSecretStore.layer),
-      ),
-    ),
-    Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
-  );
-  return { zerops, layer };
-};
+const makeDemotionScene = () => ({ layer: makeAdmissionAuthLayer() });
 
-/** Bea signs in through the door and holds a bearer session; with `hq`, HQ relayed her as Admin first. */
-const signInBea = Effect.fn("signInBea")(function* (hq: boolean) {
+/** HQ's next list after Bea is lowered: without her, or listing her only. */
+const demote = (to: (typeof demotions)[number]["to"]) =>
+  Effect.flatMap(ZeropsConnections.ZeropsConnections, (list) =>
+    list.heard(to === "READ_ONLY" ? accessFrame(2, ["owner"], ["bea"]) : accessFrame(2, ["owner"])),
+  );
+
+/** HQ admits Bea's connection, which also authorizes her HTTP requests. */
+const signInBea = Effect.fn("signInBea")(function* (close: Effect.Effect<void> = Effect.void) {
   const auth = yield* EnvironmentAuth.EnvironmentAuth;
-  if (hq) {
-    yield* (yield* ZeropsProjectAccess).relayed({
-      ageMs: 0,
-      members: [
-        { userId: "owner", role: "OWNER", visibility: "open" },
-        { userId: "bea", role: "ADMIN", visibility: "open" },
-      ],
-    });
-  }
-  yield* TestClock.adjust(Duration.zero);
-  const issued = yield* auth.createPairingLink({
-    method: "zerops-throwaway",
-    subject: "zerops-user:bea",
+  const connections = yield* ZeropsConnections.ZeropsConnections;
+  yield* connections.heard(accessFrame(1, ["owner", "bea"]));
+  const ticket = "bea-ticket";
+  yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
+    type: "ticket",
+    ticket,
+    userId: "bea",
+    sessionId: "hq-bea",
+    expiresIn: 60,
   });
-  const access = yield* auth.exchangeBootstrapCredentialForAccessToken(
-    issued.credential,
-    undefined,
-    requestMetadata,
-  );
-  const session = yield* auth.authenticateHttpRequest(makeBearerRequest(access.access_token));
-  return { access, session };
+  expect(Option.isSome(yield* connections.admit({ ticket }, close))).toBe(true);
+  const session = yield* auth.authenticateHttpRequest(makeBearerRequest(ticket));
+  return { access: { access_token: ticket }, session };
 });
 
 it.layer(NodeServices.layer)(
   "a person whose Zerops access ended loses their open session within 60 seconds",
   (it) => {
-    it.effect.each(demotions)("$case", ({ to, hq }) => {
-      const { zerops, layer } = makeDemotionScene();
+    it.effect.each(demotions)("$case", ({ to }) => {
+      const { layer } = makeDemotionScene();
       return Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
-        const sessions = yield* SessionStore.SessionStore;
+        const ended = yield* Deferred.make<"revoked">();
+        const live = yield* Effect.forkChild(Deferred.await(ended));
+        const { access } = yield* signInBea(Deferred.succeed(ended, "revoked").pipe(Effect.asVoid));
+        const later = { ticket: "unused-ticket" };
+        // The live socket is listening before HQ's next list lands, as a connected one is.
+        yield* TestClock.adjust(Duration.zero);
 
-        // Bea signs in through the door and holds a bearer session and a live socket.
-        const { access, session } = yield* signInBea(hq);
-        const ticket = yield* auth.issueWebSocketTicket(session);
-        const socket = yield* auth.authenticateWebSocketUpgrade(
-          HttpServerRequest.fromWeb(
-            new Request(`http://localhost/ws?wsTicket=${encodeURIComponent(ticket.ticket)}`),
-          ),
-        );
-        const live = yield* Effect.forkChild(
-          awaitSessionEnd({
-            sessionId: socket.sessionId,
-            expiresAt: socket.expiresAt,
-            changes: sessions.streamChanges,
-          }),
-        );
-        const later = yield* auth.issueWebSocketTicket(session);
-
-        zerops.members = beaListedAs(to);
+        yield* demote(to);
         yield* TestClock.adjust(Duration.seconds(60));
 
         const http = yield* auth
@@ -522,8 +358,8 @@ it.layer(NodeServices.layer)(
 
 // Decision: removal ends every channel within one bound, terminals included.
 it.layer(NodeServices.layer)("Terminals a removed person opened end with their session", (it) => {
-  it.effect.each(demotions)("$case", ({ to, hq }) => {
-    const { zerops, layer } = makeDemotionScene();
+  it.effect.each(demotions)("$case", ({ to }) => {
+    const { layer } = makeDemotionScene();
     const signals: Array<string | undefined> = [];
     const typed: Array<string> = [];
     const pty: PtyAdapter.PtyAdapter["Service"] = {
@@ -559,7 +395,15 @@ it.layer(NodeServices.layer)("Terminals a removed person opened end with their s
     ).pipe(Layer.provide(ProcessRunner.layer));
     return Effect.gen(function* () {
       const manager = yield* TerminalManager.TerminalManager;
-      const { session } = yield* signInBea(hq);
+      let openedBy: AuthSessionId | undefined;
+      const { session } = yield* signInBea(
+        Effect.suspend(() =>
+          openedBy === undefined
+            ? Effect.void
+            : manager.closeOpenedBy(openedBy).pipe(Effect.asVoid),
+        ),
+      );
+      openedBy = session.sessionId;
       const terminal = { threadId: "thread-bea", terminalId: "default" };
       yield* manager.open({
         ...terminal,
@@ -569,7 +413,7 @@ it.layer(NodeServices.layer)("Terminals a removed person opened end with their s
         openedBy: session.sessionId,
       });
 
-      zerops.members = beaListedAs(to);
+      yield* demote(to);
       yield* TestClock.adjust(Duration.seconds(60));
 
       yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
@@ -587,9 +431,7 @@ it.layer(NodeServices.layer)("Terminals a removed person opened end with their s
           yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
         }),
       ),
-      Effect.provide(
-        terminalsEndWithSessionLayer.pipe(Layer.provideMerge(terminals), Layer.provideMerge(layer)),
-      ),
+      Effect.provide(Layer.mergeAll(terminals, layer)),
     );
   });
 });

@@ -25,6 +25,7 @@ import {
   type RouteTarget,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
+import { rosterAnswered } from "@t3tools/client-runtime/data";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -41,6 +42,7 @@ import {
   useDescriptorIndex,
   useEnvironmentMachines,
 } from "../zerops/accountEnvironments";
+import { useAccountOrgId, useProjection } from "../zerops/accountData";
 import { conversationAccess, InventoryContext } from "../zerops/inventoryContext";
 import { useZeropsSession, type ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
 
@@ -50,6 +52,7 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
   error: Option.none(),
 }).pipe(Atom.withLabel("route-gate:no-environment"));
 const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
+const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read"));
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
@@ -65,6 +68,14 @@ export function routeTarget(input: {
   readonly environmentId: EnvironmentId;
   /** The listed Mate HQ names for the environment (`hqNamedTarget`), where no machine does. */
   readonly hqNamed?: { readonly machine: EnvironmentMachine } | undefined;
+  /** HQ names a project for the environment, listed or not (`hqProjectAtom`). */
+  readonly hqNames: boolean;
+  /**
+   * The Zerops listing's latest read has answered (`rosterAnswered`). HQ naming a project the
+   * listing lacks has it read again (`zerops/account/hqView.ts`): until that read answers, the
+   * listing's silence is not absence.
+   */
+  readonly listingAnswered: boolean;
   /** The inventory is read under verified access, not loading or failing. */
   readonly inventoryKnown: boolean;
   readonly organization: RouteOrganization;
@@ -87,7 +98,10 @@ export function routeTarget(input: {
       content: input.content,
     };
   }
-  const discovering = input.organization === "choosing" || !input.inventoryKnown;
+  const discovering =
+    input.organization === "choosing" ||
+    !input.inventoryKnown ||
+    (input.hqNames && !input.listingAnswered);
   if (discovering) return { kind: "unresolved", discovery: "pending" };
   return {
     kind: "unresolved",
@@ -158,6 +172,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     environmentId === null ? NO_PROJECT : hqProjectAtom(environmentId),
   );
   const hqNamed = hqNamedTarget(machines, hqProject);
+  const listingAnswered = useProjection(rosterAnswered, useAccountOrgId(), ANSWERED);
   const target =
     environmentId === null
       ? null
@@ -166,6 +181,8 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           environmentId,
           hqNamed,
+          hqNames: hqProject !== null,
+          listingAnswered,
           inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
           organization: ORGANIZATION[organizationStatus],
           content,

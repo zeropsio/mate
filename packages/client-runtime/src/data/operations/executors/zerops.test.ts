@@ -23,9 +23,6 @@ function executorFor(
     readDetail: async () => false,
     demandDetail: () => () => undefined,
     revalidate: () => undefined,
-    debtOf: () => {
-      throw new Error("No credentials in this operation.");
-    },
     nowMs: () => 0,
     run: () => Promise.reject(new Error("No nested operation.")),
     makeId: () => "nested",

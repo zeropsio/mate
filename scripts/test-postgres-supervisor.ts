@@ -12,8 +12,9 @@ import {
   postgresBinDir,
   postgresHome,
   pruneStaleClusters,
-  reclaimLeasedDatabases,
+  reclaimDeadRuns,
   startCluster,
+  startRecord,
 } from "./test-postgres.ts";
 import { reservePort } from "./test-ports.ts";
 
@@ -32,50 +33,61 @@ const run = (command: string, args: string[]) => {
     );
   return result.stdout;
 };
+/** A clean stop removes the start record; any other end leaves it for the next start to rebuild. */
+const stopPostgres = () => {
+  run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
+  NodeFS.rmSync(startRecord(data), { force: true });
+};
 const urlOf = (port: number, name: string) => `postgres://postgres@127.0.0.1:${port}/${name}`;
+
+const report = (line: string) => process.stderr.write(`${line}\n`);
+const initialise = () =>
+  run("initdb", [
+    "-D",
+    data,
+    "-U",
+    "postgres",
+    "--auth=trust",
+    "--no-sync",
+    "--locale=C",
+    "-E",
+    "UTF8",
+  ]);
+const log = NodePath.join(postgresHome, "postgres.log");
+const start = (port: number) => {
+  // Each start reads only its own log; the last one stays beside it for forensics.
+  if (NodeFS.existsSync(log)) NodeFS.renameSync(log, `${log}.previous`);
+  NodeFS.writeFileSync(
+    NodePath.join(data, "postgresql.auto.conf"),
+    [
+      `port = ${port}`,
+      "listen_addresses = '127.0.0.1'",
+      "unix_socket_directories = ''",
+      "max_connections = 400",
+      "fsync = off",
+      "synchronous_commit = off",
+      "full_page_writes = off",
+      // Every checkout keeps its own cluster on the RAM disk; the 80 MB default WAL floor adds up.
+      "min_wal_size = 32MB",
+      "max_wal_size = 64MB",
+      "",
+    ].join("\n"),
+  );
+  run("pg_ctl", ["-D", data, "-l", log, "-w", "start"]);
+  // A cluster that needed recovery crashed before; with fsync off its pages cannot be trusted.
+  if (/PANIC:|automatic recovery in progress/u.test(NodeFS.readFileSync(log, "utf8"))) {
+    run("pg_ctl", ["-D", data, "-m", "immediate", "-w", "stop"]);
+    throw new Error(`PostgreSQL test cluster ${data} ran crash recovery`);
+  }
+};
 
 async function guardPostgres() {
   // The guard holds the reservation until it ends, so no other test is handed PostgreSQL's port.
   const { port, release } = await reservePort();
   try {
-    startCluster(data, {
-      initialise: () =>
-        run("initdb", [
-          "-D",
-          data,
-          "-U",
-          "postgres",
-          "--auth=trust",
-          "--no-sync",
-          "--locale=C",
-          "-E",
-          "UTF8",
-        ]),
-      start: () => {
-        NodeFS.writeFileSync(
-          NodePath.join(data, "postgresql.auto.conf"),
-          [
-            `port = ${port}`,
-            "listen_addresses = '127.0.0.1'",
-            "unix_socket_directories = ''",
-            "max_connections = 400",
-            "fsync = off",
-            "synchronous_commit = off",
-            "full_page_writes = off",
-            "",
-          ].join("\n"),
-        );
-        run("pg_ctl", [
-          "-D",
-          data,
-          "-l",
-          NodePath.join(postgresHome, "postgres.log"),
-          "-w",
-          "start",
-        ]);
-      },
-      report: (line) => process.stderr.write(`${line}\n`),
-    });
+    startCluster(data, { initialise, start: () => start(port), report });
+    const postmaster = NodeFS.readFileSync(NodePath.join(data, "postmaster.pid"), "utf8");
+    NodeFS.writeFileSync(startRecord(data), `${postmaster.split("\n")[0]}\n`);
   } catch (error) {
     // The held socket would keep a guard whose PostgreSQL never started alive.
     await release();
@@ -84,7 +96,7 @@ async function guardPostgres() {
   let running = true;
   const stop = () => {
     if (!running) return;
-    run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
+    stopPostgres();
     running = false;
   };
   process.once("exit", stop);
@@ -101,11 +113,7 @@ async function guardPostgres() {
 }
 
 async function supervise() {
-  pruneStaleClusters({
-    home: postgresHome,
-    now: Date.now(),
-    report: (line) => process.stderr.write(`${line}\n`),
-  });
+  pruneStaleClusters({ home: postgresHome, now: Date.now(), report });
   let bootstrapOwner = process.connected;
   let onIdle: (() => void) | undefined;
   process.once("disconnect", () => {
@@ -189,8 +197,8 @@ async function supervise() {
         END LOOP; END $$`,
       ]);
     };
-    // A healed cluster has none; a reused one still holds the leases its killed supervisor left.
-    reclaimLeasedDatabases(sql);
+    // A healed cluster has none; a reused one still holds what its killed runs left.
+    reclaimDeadRuns(sql);
     const owners = new Set<NodeNet.Socket>();
     let shutdown: Promise<void> | undefined;
     const idle = (): Promise<void> => {
@@ -337,7 +345,7 @@ async function supervise() {
       })
       .catch((error: unknown) => {
         // The guard was our child. If it was killed, stop the server it started before failing.
-        if (!stopping) run("pg_ctl", ["-D", data, "-m", "fast", "-w", "stop"]);
+        if (!stopping) stopPostgres();
         process.stderr.write(`${String(error)}\n`);
         process.exitCode = 1;
         for (const owner of owners) owner.destroy();

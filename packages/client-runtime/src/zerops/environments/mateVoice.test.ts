@@ -40,6 +40,56 @@ const stage = (text: string | null, actions: ReadonlyArray<string> = [], process
   processes,
 });
 
+describe("mateVoice — a Mate HQ holds no link for", () => {
+  it.each([
+    {
+      case: "no-link, on the stage",
+      reachability: { kind: "connecting", waitingOn: "mate-link" },
+      shown: false,
+      voice: stage("This Mate is not connected to HQ.", ["try-now"]),
+    },
+    {
+      case: "no-link, over a shown conversation",
+      reachability: { kind: "connecting", waitingOn: "mate-link" },
+      shown: true,
+      voice: banner("This Mate is not connected to HQ.", ["try-now"]),
+    },
+    {
+      case: "no-ack still opens",
+      reachability: {
+        kind: "connecting",
+        waitingOn: "exchange",
+        unavailableReason: "Mate did not acknowledge the ticket (no-ack).",
+      },
+      shown: false,
+      voice: stage(
+        "Mate did not acknowledge the ticket (no-ack). Opening Quinn…",
+        ["try-now"],
+        true,
+      ),
+    },
+    {
+      case: "a plain first connect still opens",
+      reachability: { kind: "connecting", waitingOn: "exchange" },
+      shown: false,
+      voice: stage("Opening Quinn…", ["try-now"], true),
+    },
+  ] as const)(
+    "A Mate HQ holds no link for says it is not connected to HQ, never that it is opening the conversation: $case",
+    ({ reachability, shown, voice }) => {
+      expect(
+        mateVoice({
+          reachability,
+          conversationShown: shown,
+          heldMs: SLOW,
+          nowMs: NOW,
+          mateName: "Quinn",
+        }),
+      ).toMatchObject(voice);
+    },
+  );
+});
+
 // One surface speaks in each state of the link: the stage where no conversation is shown, the
 // banner where one is, and nothing where nothing needs saying (the owner, 2026-09-30).
 describe("mateVoice — the one voice of a Mate's link", () => {
@@ -113,6 +163,13 @@ describe("mateVoice — the one voice of a Mate's link", () => {
       shown: true,
       held: LONG,
       voice: banner("Reconnecting to Quinn…", ["try-now"]),
+    },
+    {
+      state: "reconnecting on the ticket schedule: when it asks next, and Try now",
+      reachability: { kind: "reconnecting", retryAtMs: NOW + 7_200 },
+      shown: true,
+      held: LONG,
+      voice: banner("Reconnecting to Quinn — next try in 8 s.", ["try-now"]),
     },
     {
       state: "Zerops restarting it, conversation shown",

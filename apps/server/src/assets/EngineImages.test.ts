@@ -1,4 +1,4 @@
-import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import { layerLoopbackTest } from "../testing/loopbackHttpServer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthOrchestrationReadScope, AuthSessionId, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
@@ -112,7 +112,7 @@ it.effect.each(["screenshot", "attachment"] as const)(
       }).pipe(
         Effect.provideService(MateEngine, engine),
         Effect.provideService(ServerConfig, config),
-        Effect.provide(Layer.mergeAll(auth, NodeHttpServer.layerTest)),
+        Effect.provide(Layer.mergeAll(auth, layerLoopbackTest())),
       );
       yield* w.shutdown;
     }).pipe(Effect.provide(layer)),

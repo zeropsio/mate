@@ -189,7 +189,12 @@ describe("useFlowVerbs", () => {
       groupHead: HEAD,
       entries: [{ service: "api", sha: SHA }],
     });
-    expect(outcome).toEqual({ ok: true, tag: "v1.0.1", deploys: DEPLOYS });
+    expect(outcome).toEqual({
+      ok: true,
+      tag: "v1.0.1",
+      deploys: DEPLOYS,
+      rollout: { appId: "shop", cause: "release", ref: "v1.0.1" },
+    });
     expect(verbs.pending.has("release shop")).toBe(true);
 
     // A second press while it is on its way sends nothing.

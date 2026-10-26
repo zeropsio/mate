@@ -13,12 +13,30 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { GitCredentialSnapshot } from "@t3tools/client-runtime/zerops/hq";
 import { selectGitCredentials } from "@t3tools/client-runtime/zerops/hq";
-import { ZeropsGitCredentialsView } from "./ZeropsGitCredentials";
+import { ZeropsGitCredentials, ZeropsGitCredentialsView } from "./ZeropsGitCredentials";
+
+const hqRepos = vi.hoisted(() => ({
+  repos: new Map<string, ReadonlyArray<{ readonly name: string; readonly url?: string }>>(),
+}));
+vi.mock("~/zerops/useHqAppDetail", () => ({ useHqAppReleases: () => hqRepos }));
+vi.mock("~/zerops/useGitCredentials", () => ({
+  useGitCredentials: () => ({
+    state: selectGitCredentials({
+      action: { kind: "idle" },
+      credentials: { state: "unread", waitingFor: null },
+    }),
+    onIssue: () => {},
+    onRevoke: () => {},
+    onAgain: () => {},
+    onCopy: () => {},
+    copied: null,
+  }),
+}));
 const render = (state: GitCredentialSnapshot) =>
   renderToStaticMarkup(
     <ZeropsGitCredentialsView
       state={selectGitCredentials(state)}
-      cloneUrl="https://hq.example/git/app/code.git"
+      cloneUrl="https://hq.example/git/org/app/code.git"
       onIssue={() => {}}
       onRevoke={() => {}}
       onAgain={() => {}}
@@ -31,7 +49,7 @@ describe("personal HTTPS Git access", () => {
       action: { kind: "idle" },
       credentials: { state: "unread", waitingFor: null },
     });
-    expect(html).toContain("git clone https://hq.example/git/app/code.git");
+    expect(html).toContain("git clone https://hq.example/git/org/app/code.git");
     expect(html).toContain("person");
     expect(html).toContain("Create Git password");
     expect(html).not.toContain("No Git password");
@@ -93,7 +111,7 @@ it("copies the HTTPS clone command and reports a refused clipboard without repea
             action: { kind: "idle" },
             credentials: { state: "unread", waitingFor: null },
           })}
-          cloneUrl="https://hq.example/git/app/code.git"
+          cloneUrl="https://hq.example/git/org/app/code.git"
           onIssue={issue}
           onRevoke={() => {}}
           onAgain={() => {}}
@@ -107,7 +125,7 @@ it("copies the HTTPS clone command and reports a refused clipboard without repea
     expect(copy).toBeDefined();
     await act(() => copy!.click());
     expect(writeText).toHaveBeenCalledExactlyOnceWith(
-      "git clone https://hq.example/git/app/code.git",
+      "git clone https://hq.example/git/org/app/code.git",
     );
     expect(host.textContent).toContain("Copied");
     writeText.mockRejectedValueOnce(new Error("Clipboard refused"));
@@ -134,7 +152,7 @@ function credentialConsumer(api: Parameters<typeof makeGitCredentials>[0]["api"]
     root.render(
       <ZeropsGitCredentialsView
         state={read()}
-        cloneUrl="https://hq.example/git/app/code.git"
+        cloneUrl="https://hq.example/git/org/app/code.git"
         onIssue={() => {
           void credentials.issue(key);
         }}
@@ -273,4 +291,20 @@ it("An unknown credential outcome never creates another password", async () => {
     await r.close();
     vi.unstubAllGlobals();
   }
+});
+
+describe("the clone command of a repository", () => {
+  const cloneOf = (entry: { readonly name: string; readonly url?: string }) => {
+    hqRepos.repos = new Map([["app-1", [entry]]]);
+    return renderToStaticMarkup(<ZeropsGitCredentials appId="app-1" repo="code" />);
+  };
+  it("The clone command is the repository address HQ gives, never one the web composes", () => {
+    const html = cloneOf({ name: "code", url: "https://hq.example/git/org-1/app-1/code.git" });
+    expect(html).toContain("git clone https://hq.example/git/org-1/app-1/code.git");
+  });
+  it("A repository HQ has given no address for shows no clone command", () => {
+    const html = cloneOf({ name: "code" });
+    expect(html).toContain("Waiting for HQ…");
+    expect(html).not.toContain("git clone");
+  });
 });

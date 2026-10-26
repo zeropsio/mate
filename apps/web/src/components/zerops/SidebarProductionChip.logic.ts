@@ -212,6 +212,7 @@ export interface ProductionChip {
   readonly waiting?: number;
   /** Whether `waiting` is only how many at least: HQ stopped counting. */
   readonly waitingAtLeast?: true;
+  readonly changeCount?: number | undefined;
   /**
    * Production's services whose commit cannot be told, while it serves: the chip says so where it
    * would say healthy.
@@ -296,6 +297,7 @@ function chipOf(
     readonly rollsBackTo?: string | undefined;
     readonly waiting?: number | undefined;
     readonly waitingAtLeast?: boolean;
+    readonly changeCount?: number | undefined;
     readonly untold?: ReadonlyArray<string>;
   } = {},
 ): ChipView {
@@ -309,6 +311,7 @@ function chipOf(
       ? {}
       : { rollsBackTo: facts.rollsBackTo }),
     ...(facts.waiting === undefined ? {} : { waiting: facts.waiting }),
+    ...(facts.changeCount === undefined ? {} : { changeCount: facts.changeCount }),
     ...(facts.waiting !== undefined && facts.waitingAtLeast === true
       ? { waitingAtLeast: true as const }
       : {}),
@@ -336,6 +339,7 @@ export function productionChip(input: {
   readonly waiting: number;
   /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
   readonly waitingAtLeast: boolean;
+  readonly changeCount?: number | undefined;
   /** Production's services whose commit cannot be told (`ZeropsReleaseOffer.untold`). */
   readonly untold: ReadonlyArray<string>;
   readonly serving: StopServing;
@@ -343,13 +347,13 @@ export function productionChip(input: {
 }): ChipView {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
-  if (production.kind === "absent") return NONE;
+  if (production.kind === "absent" || production.kind === "unread") return NONE;
   if (production.stop.git !== undefined)
     return { kind: "chip", chip: gitChip("prod", production.stop.git) };
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
-  const { serving, waitingAtLeast, untold } = input;
+  const { serving, waitingAtLeast, untold, changeCount } = input;
   const rollsBack = (next: string | undefined) =>
     next === undefined || input.releases.kind !== "answered"
       ? undefined
@@ -363,6 +367,7 @@ export function productionChip(input: {
       rollsBackTo: rollsBack(next),
       waiting,
       waitingAtLeast,
+      changeCount,
     });
   }
   if (
@@ -392,9 +397,16 @@ export function productionChip(input: {
       });
     }
     if (failed) return chipOf("prod", "failed", { version: served, untold });
-    if (served === undefined) return chipOf("prod", "empty", { waiting, waitingAtLeast });
+    if (served === undefined)
+      return chipOf("prod", "empty", { waiting, waitingAtLeast, changeCount });
     if (waiting !== undefined)
-      return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast, untold });
+      return chipOf("prod", "waiting", {
+        version: served,
+        waiting,
+        waitingAtLeast,
+        untold,
+        changeCount,
+      });
     return chipOf("prod", "ok", { version: served, untold });
   };
   return asReleasesStand(chip(), input.releases);
@@ -539,6 +551,7 @@ export function projectChips(input: {
   readonly waiting: number;
   /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
   readonly waitingAtLeast: boolean;
+  readonly changeCount?: number | undefined;
   /** Production's services whose commit cannot be told (`ZeropsReleaseOffer.untold`). */
   readonly untold: ReadonlyArray<string>;
   /** How production serves. */
@@ -602,7 +615,7 @@ function alongside(chip: ProductionChip): string | undefined {
   const coming = onItsWayWords(chip);
   if (coming !== undefined) return lowerFirst(coming);
   if (chip.waiting !== undefined) {
-    return `${changesCountWords(chip.waiting, chip.waitingAtLeast === true)} waiting`;
+    return `${changesCountWords(chip.waiting, chip.waitingAtLeast === true, chip.changeCount)} waiting`;
   }
   return undefined;
 }

@@ -41,7 +41,7 @@ import {
   closeAccountLifetime,
   openAccountLifetime,
 } from "./accountLifetime";
-import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
+import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
@@ -474,12 +474,6 @@ vi.mock("./accountHq", async (original) => ({
     createApp: mock.createApp,
     prepareProjectDeletion: mock.prepareProjectDeletion,
     completeProjectDeletion: mock.completeProjectDeletion,
-    mateKey: async () => {
-      mock.keyReads++;
-      if (mock.keyAnswer !== null) return mock.keyAnswer();
-      if (mock.mateKeyFailure) throw new Error("HQ is unavailable");
-      return mock.mateKey;
-    },
   }),
 }));
 vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
@@ -640,6 +634,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
       hq: makeHqExecutor({
         zerops: { mintIntegrationToken: unused, deleteIntegrationToken: unused },
         apiOf: () => ({
+          answerKeptGit: unused,
           updateMate: mock.updateMate,
           commentOnChange: unused,
           renameApp: unused,
@@ -1164,65 +1159,6 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
   });
 });
 
-// ADR 0003's fallout: HQ says the key of a Mate it holds still reads other projects. No page's read
-// repairs it (2026-10-03): its menu offers Finish setup, saying why, to whoever HQ offers editing
-// the Mate's record — the one HQ tells the key's id to — and Finish setup's harden takes those
-// grants off.
-describe("useMateActions — Finish setup on a Mate whose key reads other projects", () => {
-  const wider = (() => {
-    const base = mate("Ivo");
-    return {
-      ...base,
-      project: {
-        ...base.project,
-        created: "2026-09-01T10:00:00Z",
-        hq: { ...base.project.hq!, mate: { face: "", keyWider: true } },
-      },
-    } as ZeropsCandidatePresentation;
-  })();
-  const finishVerb = () =>
-    verbs(wider).find((verb): verb is ZeropsMenuAction => verb.id === "finish-setup");
-  const listing = () => {
-    mock.listing.current = {
-      state: "known",
-      value: [wider],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  };
-
-  it.each([
-    { who: "one HQ offers its record", edit: { kind: "allowed" } as const, want: KEY_WIDER_WHY },
-    {
-      who: "one HQ refuses its record",
-      edit: { kind: "refused", reason: "not_project_admin" } as const,
-      want: undefined,
-    },
-  ])("$who: offered, saying why: $want", ({ edit, want }) => {
-    mock.roleCode = "BASIC_USER";
-    mock.mateOffers = () => ({ ...OWNER_OFFERS, edit });
-    listing();
-    mount();
-    expect(finishVerb()?.why).toBe(want);
-  });
-
-  it("hardens it, by the key HQ names as it runs", async () => {
-    mock.roleCode = "BASIC_USER";
-    mock.finishMateSetup.mockResolvedValue({ ok: true });
-    listing();
-    mount();
-    await act(async () => {
-      finishVerb()!.onSelect();
-    });
-    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
-      projectId: wider.project.id,
-      harden: true,
-      keyWider: true,
-    });
-  });
-});
-
 // A Mate HQ holds no record of — claimed from the pool, or its record lost — is finished by whoever
 // HQ's rule lets create the record (`create_mate_record`): its record, then its birth, closed off.
 // Only once HQ's structure is known does a Mate it places nowhere have no record.
@@ -1507,36 +1443,6 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       registration: null,
       // A Mate HQ holds is not adopted: its key is not touched.
       harden: false,
-    });
-  });
-
-  // Its key widened too, for one HQ does not tell that key: Finish setup is offered for its
-  // container, and says nothing of a key it will not touch.
-  it("says nothing of a widened key it will not narrow", async () => {
-    mock.finishMateSetup.mockResolvedValue({ ok: true });
-    mock.mateOffers = () => ({ ...OWNER_OFFERS, edit: { kind: "refused", reason: "not_admin" } });
-    const wider = {
-      ...IVO,
-      project: { ...IVO.project, hq: { ...IVO.project.hq!, mate: { face: "", keyWider: true } } },
-    } as ZeropsCandidatePresentation;
-    mock.listing.current = {
-      state: "known",
-      value: [wider],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-    mount(known());
-    const finish = verbs(wider).find(
-      (verb): verb is ZeropsMenuAction => verb.id === "finish-setup",
-    );
-    expect(finish?.why).toBeUndefined();
-    await act(async () => {
-      finish!.onSelect();
-    });
-    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
-      harden: false,
-      keyWider: false,
     });
   });
 });

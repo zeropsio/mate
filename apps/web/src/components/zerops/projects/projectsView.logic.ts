@@ -4,7 +4,7 @@
  * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
-import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
+import type { OfficialHq, UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployWord,
   firstDeployLine,
@@ -575,6 +575,8 @@ export interface GroupFlowReads {
   /** The Mate tier as `main` holds it (`servicePairs`); `undefined` while unread. */
   readonly mateTier?: string | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
+  /** Environments HQ sent that this build cannot read; absent where the menu holds none. */
+  readonly unreadEnvironments?: ReadonlyArray<UnreadEnvironment>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   readonly release: {
@@ -584,7 +586,13 @@ export interface GroupFlowReads {
     readonly inFlight?: string | undefined;
     /** What it would put live, per comparison HQ answered (`Moved`). */
     readonly contents: ReadonlyArray<Moved>;
-    readonly summary?: { readonly total: number; readonly atLeast: boolean } | undefined;
+    readonly summary?:
+      | {
+          readonly total: number;
+          readonly atLeast: boolean;
+          readonly changeCount?: number | undefined;
+        }
+      | undefined;
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
@@ -608,6 +616,9 @@ function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["rel
     gate: release.gate,
     suggestion: release.suggestion,
     waiting: total,
+    ...(release.summary?.changeCount === undefined
+      ? {}
+      : { changeCount: release.summary.changeCount }),
     waitingAtLeast: atLeast,
     untold: release.untold,
     inFlight: release.inFlight,
@@ -654,25 +665,43 @@ export function groupFlowInputOf(input: {
     ),
     pullRequests: flow?.pullRequests ?? [],
     merged: flow?.merged ?? [],
-    stops: input.members.flatMap((member) => {
-      const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
-      if (tier === undefined) return [];
-      const row = flow?.environments.find(
-        (entry) => entry.target.kind === "zerops" && entry.target.projectId === member.projectId,
-      );
-      return [
-        {
-          projectId: row?.id ?? member.projectId,
-          projectStatus: member.projectStatus,
-          services: member.services,
-          name: row?.name ?? member.name,
-          tier,
-          row,
-          deployment: input.deployments?.get(member.projectId),
-          addresses: placeAddresses(member.routes),
-        },
-      ];
-    }),
+    stops: [
+      ...input.members.flatMap((member) => {
+        const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
+        if (tier === undefined) return [];
+        const row = flow?.environments.find(
+          (entry) => entry.target.kind === "zerops" && entry.target.projectId === member.projectId,
+        );
+        return [
+          {
+            projectId: row?.id ?? member.projectId,
+            projectStatus: member.projectStatus,
+            services: member.services,
+            name: row?.name ?? member.name,
+            tier,
+            row,
+            deployment: input.deployments?.get(member.projectId),
+            addresses: placeAddresses(member.routes),
+          },
+        ];
+      }),
+      // An environment HQ delivers to a Git branch has no Zerops project, so no member of the
+      // group tree stands for it: its row alone is the stop.
+      ...(flow?.environments ?? []).flatMap((row) =>
+        row.target.kind === "git"
+          ? [
+              {
+                projectId: row.id,
+                name: row.name,
+                tier: row.tier,
+                row,
+                deployment: undefined,
+                addresses: [],
+              },
+            ]
+          : [],
+      ),
+    ],
     release:
       flow === undefined
         ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }
@@ -680,6 +709,7 @@ export function groupFlowInputOf(input: {
     mainHasCode: undefined,
     mainHead: undefined,
     pending: input.pending,
+    unread: flow?.unreadEnvironments ?? [],
   };
 }
 

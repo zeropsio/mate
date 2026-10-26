@@ -17,6 +17,7 @@ import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
 import type { ZeropsOrganization } from "../../zerops/api.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
+import { acceptedReleaseOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
 import { canonicalAppEnvironments } from "./appEnvironments.ts";
 import { hqAppDetail } from "./hqAppDetail.ts";
@@ -32,7 +33,7 @@ import {
   type ReleaseLive,
 } from "./projectFlowJoin.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness } from "./freshness.ts";
+import { scopeFreshness, scopeSlow } from "./freshness.ts";
 import type { HqAppContents } from "../../zerops/hq/index.ts";
 
 /** Application membership and availability, without joining placements, people or history. */
@@ -52,8 +53,10 @@ export const projectApplications: Projection<
     return {
       ids: read.members(scope).ids.filter((id) => read.fact("hqApp", id).kind === "known"),
       read: freshness.complete && freshness.live,
+      // A slow HQ on a connection that holds is working, not unanswered.
       unavailable:
         !freshness.live &&
+        !scopeSlow(read, scope) &&
         (freshness.complete || freshness.reconnecting || freshness.unavailableReason !== undefined),
     };
   },
@@ -205,6 +208,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       environments === undefined
         ? undefined
         : canonicalGroupStopsOf({
+            unread: canonicalAppEnvironments.derive(read, key).unread,
             environments,
             projects,
             versions,
@@ -231,9 +235,15 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       link.phase === "recovering" ||
       link.phase === "reauthenticating" ||
       link.phase === "unsupported";
+    let acceptedRelease: string | undefined;
+    for (const requestId of read.index("accepted-release", appId)) {
+      const accepted = acceptedReleaseOf(read.operation(requestId));
+      if (accepted?.orgId === orgId) acceptedRelease = accepted.tag;
+    }
     const flow = joinProjectFlows({
       groups: [{ groupId: appId }],
       navigationOffers: { [appId]: app.releaseOffer },
+      acceptedReleases: new Map(acceptedRelease === undefined ? [] : [[appId, acceptedRelease]]),
       stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),
@@ -338,6 +348,7 @@ export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefin
     const stops = zeropsStops({
       declarations: flow.declarations,
       environments: flow.environmentInputs,
+      unread: flow.unreadEnvironments,
     });
     return {
       ...flow,

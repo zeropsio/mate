@@ -27,7 +27,8 @@
  * `hasProjectAccess` is the one answer to whether a person may use this Mate
  * at all — the one that keeps their session open — for a turn no session of
  * theirs stands behind (X3), and for offboarding, which signs every login of a
- * person it says no for out (`ZeropsOffboarding`, X4).
+ * person it says no for out (`ZeropsOffboarding`, X4). It reads HQ's access list
+ * (`ZeropsMateAccessList`) and nothing of Zerops.
  *
  * @module ZeropsProjectSigners
  */
@@ -49,10 +50,10 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
+import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { accessHolds, ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
@@ -133,12 +134,11 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether this project opens for `userId` — the door's own rule, over the project's roles and
-     * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — as
-     * `ZeropsProjectAccess` answers it: HQ's relay while it holds, else this Mate's own read. What
-     * admits a turn no session stands behind: the crew's, the stand-up's (X3). While nothing
-     * answers, the last answer holds `ACCESS_HOLDS` from when Zerops answered it; past that,
-     * or with none, `undefined`.
+     * Whether this project opens for `userId`, as HQ's latest access list says — the answer that
+     * keeps a connection open (`ZeropsConnections`). What admits a turn no session stands behind:
+     * the crew's, the stand-up's (X3). The list holds at most 15 min from the frame that brought it
+     * (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says the organisation's key was
+     * refused, `undefined`: nobody is vouched for, and nobody's logins are taken on a guess.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
@@ -148,34 +148,19 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
   const signIns = yield* ZeropsSignIns;
-  // Who the project lets in, one answer for the door, the watch and this —
-  // provided by the layer this service's own layer composes above
-  // (`zeropsFeedsLayer.ts`).
-  const projectAccess = yield* ZeropsProjectAccess;
-  /** Whom this project opened for at the last answer, and when Zerops answered it. */
-  const lastAccess = yield* Ref.make<
-    { readonly opensFor: ReadonlySet<string>; readonly atMs: number } | undefined
-  >(undefined);
+  // Who the project lets in, one list for the door, the watch and this — provided by the layer
+  // this service's own layer composes above (`zeropsFeedsLayer.ts`).
+  const accessList = yield* ZeropsMateAccessList;
 
   const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
-      : Effect.gen(function* () {
-          const read = yield* projectAccess.read;
-          const now = yield* Clock.currentTimeMillis;
-          if (read.ok) {
-            const opensFor = new Set(
-              read.members
-                .filter((member) => member.visibility === "open")
-                .map((member) => member.userId),
-            );
-            yield* Ref.set(lastAccess, { opensFor, atMs: read.readAtMs });
-            return opensFor.has(userId);
-          }
-          const last = yield* Ref.get(lastAccess);
-          return last !== undefined && accessHolds(last.atMs, now)
-            ? last.opensFor.has(userId)
-            : undefined;
+      : Effect.map(accessList.current, (current) => {
+          const list = Option.getOrUndefined(current);
+          if (list === undefined || list.refused) return undefined;
+          return list.members.some(
+            (member) => member.userId === userId && member.visibility === "open",
+          );
         });
 
   const signers: ZeropsProjectSigners["Service"]["signers"] = signIns.load.pipe(

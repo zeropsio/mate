@@ -26,6 +26,7 @@ import { MateMacViews } from "./macViewLinks";
 import { useAccountWorkspace } from "./accountWorkspace";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
+import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
 import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
@@ -87,6 +88,15 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   // disposes the registry right after: the account's data ends first, so what the unmounting
   // screens still release publishes nothing.
   useEffect(() => onAccountLifetimeClose(observation.close), [observation]);
+  // The one owner of the Zerops listing: an organization's inventory invalidated is read again.
+  useEffect(
+    () =>
+      onZeropsInvalidation((invalidation) => {
+        if (invalidation.topic === "inventory")
+          observation.rereadListing(invalidation.organization.organizationId);
+      }),
+    [observation],
+  );
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);

@@ -38,11 +38,29 @@ export class SshConnectionTarget extends Schema.TaggedClass<SshConnectionTarget>
   },
 ) {}
 
+/**
+ * A Mate opened through HQ (spec-mate §3.8): it holds no credential of its own. Every attempt asks
+ * HQ for a ticket for the Mate's project and opens the socket at the origin HQ names, with the
+ * ticket as its first frame; the connection is the session.
+ */
+export class ZeropsMateConnectionTarget extends Schema.TaggedClass<ZeropsMateConnectionTarget>()(
+  "ZeropsMateConnectionTarget",
+  {
+    ...ConnectionTargetBase,
+    /** The organisation whose HQ session asks for the tickets. */
+    orgId: Schema.String,
+    projectId: Schema.String,
+    /** The Mate's base URL as it was found; the socket goes where each ticket says. */
+    httpBaseUrl: Schema.String,
+  },
+) {}
+
 export const ConnectionTarget = Schema.Union([
   PrimaryConnectionTarget,
   BearerConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
 ]);
 export type ConnectionTarget = typeof ConnectionTarget.Type;
 
@@ -50,6 +68,7 @@ export const PersistedConnectionTarget = Schema.Union([
   BearerConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
 ]);
 export type PersistedConnectionTarget = typeof PersistedConnectionTarget.Type;
 
@@ -64,6 +83,9 @@ export const ConnectionTransientReason = Schema.Literals([
   "endpoint-unavailable",
   "relay-unavailable",
   "remote-unavailable",
+  // HQ holds no live link to the Mate's container (an imported Mate): retried like any transient
+  // reason, but its own cause so the page can say so.
+  "mate-not-linked",
 ]);
 export type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 
@@ -76,6 +98,9 @@ export const ConnectionBlockedReason = Schema.Literals([
   // open (D5). Its own reason because it is not a fault to recover from —
   // there is nothing to retry and nothing to fix.
   "read-only",
+  // HQ has no Mate here this person may open: it was deleted, or their access to its project
+  // ended. HQ does not say which, and nothing to retry changes it until their access does.
+  "not-found",
   "unsupported",
 ]);
 export type ConnectionBlockedReason = typeof ConnectionBlockedReason.Type;
@@ -138,6 +163,8 @@ export interface PreparedConnection {
   readonly label: string;
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
+  /** Sent as the socket's first frame: a Mate connection's ticket (`{"ticket": …}`). */
+  readonly firstFrame?: string;
   readonly httpAuthorization: PreparedHttpAuthorization | null;
   readonly target: ConnectionTarget;
 }

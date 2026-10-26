@@ -34,7 +34,7 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness, scopeSlow, type ScopeFreshness } from "./freshness.ts";
 import type { RosterRead } from "./projects.ts";
 
 export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
@@ -50,6 +50,8 @@ export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
   readonly refusal: string | null;
   /** HQ does not answer, and its retries are as far apart as they get. */
   readonly capped: boolean;
+  /** HQ's connection holds, and it is still working on the navigation: slow, not down. */
+  readonly slow: boolean;
   /** A caught-up Core has not proved support for the navigation facts this client needs. */
   readonly updateRequired: boolean;
   readonly coreBuild: string | undefined;
@@ -106,7 +108,6 @@ function mateOf(
     standupRequestedBy: mate.standupRequestedBy,
     closedOff: mate.closedOff,
     setupMarker: mate.setupMarker,
-    keyWider: mate.keyWider,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
@@ -241,6 +242,7 @@ function navigationOf(
     refusal: refused?.fault?.message ?? null,
     capped:
       link.phase === "recovering" && retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
+    slow: scopeSlow(read, scope),
     ...freshness,
     // What was read and is not live now is catching up, whatever step its next attempt is at.
     reconnecting:

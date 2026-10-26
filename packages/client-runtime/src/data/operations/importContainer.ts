@@ -5,7 +5,7 @@
  *
  * @module data/operations/importContainer
  */
-import type { ZeropsAgentType } from "../../zerops/newProject.ts";
+import type { MateBirthplace, ZeropsAgentType } from "../../zerops/newProject.ts";
 import type { OperationKind } from "./kind.ts";
 
 declare module "../model.ts" {
@@ -17,8 +17,7 @@ declare module "../model.ts" {
       readonly projectName: string;
       readonly agents: ReadonlyArray<ZeropsAgentType>;
       readonly setupRuntimesYaml?: string;
-      /** A Chief's container: its zcp serves the organization `orgId` names. */
-      readonly chief?: true;
+      readonly birthplace?: MateBirthplace;
     };
   }
   interface OperationResults {

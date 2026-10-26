@@ -444,6 +444,8 @@ export const RepoListEntry = Schema.Struct({
   follows: Schema.optionalKey(HqRemoteUrl),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
+  /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */
+  url: Schema.optionalKey(Schema.String),
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
   releaseVersion: Schema.optionalKey(
     Schema.Struct({
@@ -735,6 +737,19 @@ export const ChangeDetailResponse = Schema.Struct({
   commitsTruncated: Schema.Boolean,
 });
 export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
+
+/** Database metadata for a linked change; never requests repository contents. */
+export const ChangeMetadataResponse = Schema.Struct({ change: HqChange });
+export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
+
+/** Commit history requested explicitly, without file statistics or patches. */
+export const ChangeCommitsResponse = Schema.Struct({
+  change: HqChange,
+  mainHead: Schema.NullOr(Sha),
+  commits: Schema.Array(ChangeCommit),
+  commitsTruncated: Schema.Boolean,
+});
+export type ChangeCommitsResponse = typeof ChangeCommitsResponse.Type;
 
 export const CommentBody = upTo(COMMENT_BODY_MAX).check(
   Schema.makeFilter((body: string) => (body.trim() === "" ? "Expected words" : undefined)),

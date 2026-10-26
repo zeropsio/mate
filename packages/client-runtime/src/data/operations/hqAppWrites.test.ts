@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 
 import { HqError } from "../../zerops/hq/client.ts";
+import { hqKeptGitScope } from "../families/hqKeptGit.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -166,3 +167,131 @@ describe("HQ application verbs", () => {
     }),
   );
 });
+
+describe("HQ kept Git answers", () => {
+  it.effect.each(["keep", "delete"] as const)(
+    "%s records the answer before sending and ends on HQ's receipt",
+    (answer) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const calls: unknown[] = [];
+        const api = {
+          answerKeptGit: async (...args: unknown[]) => {
+            expect(store.state().operations.get("kept-git")?.intent).toEqual({
+              kind: "answer-kept-git",
+              orgId,
+              appId,
+              answer,
+            });
+            calls.push(args);
+          },
+        } as unknown as HqWrites;
+        const operations = makeOperations({
+          store,
+          makeId: () => "kept-git",
+          executors: { hq: makeHqExecutor({ apiOf: () => api, zerops }) },
+        });
+        yield* operations.submit({ kind: "answer-kept-git", orgId, appId, answer });
+        expect(calls).toEqual([[appId, answer]]);
+        expect(operationProgress.derive(readsOfState(store.state()), "kept-git")).toMatchObject({
+          stage: "done",
+          outcome: "succeeded",
+        });
+      }),
+  );
+
+  it.effect("a refused kept Git answer retains HQ's reason without repeating the write", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let sends = 0;
+      const api = {
+        answerKeptGit: async () => {
+          sends += 1;
+          throw new HqError({
+            kind: "refused",
+            code: "conflict",
+            reason: "not_asked",
+            message: "This question is already closed.",
+          });
+        },
+      } as unknown as HqWrites;
+      const operations = makeOperations({
+        store,
+        makeId: () => "kept-git",
+        executors: { hq: makeHqExecutor({ apiOf: () => api, zerops }) },
+      });
+      yield* operations.submit({ kind: "answer-kept-git", orgId, appId, answer: "keep" });
+      expect(operationProgress.derive(readsOfState(store.state()), "kept-git")).toMatchObject({
+        stage: "refused",
+        reason: "This question is already closed.",
+      });
+      yield* operations.retry("kept-git");
+      expect(sends).toBe(1);
+    }),
+  );
+});
+
+it.effect.each(["keep", "delete"] as const)(
+  "a lost %s answer remains uncertain after HQ removes the question and is never resent",
+  (answer) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const scope = hqKeptGitScope(orgId);
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation: 0,
+        via: "hq-stream",
+        members: [appId],
+        rows: [
+          {
+            family: "hqKeptGit",
+            id: appId,
+            value: {
+              appId,
+              appName: "Shop",
+              projectId: "gone",
+              projectName: null,
+              askedAt: "2026-10-25T09:00:00Z",
+            },
+            revision: { kind: "hq", incarnation: "fixture", revision: 1 },
+          },
+        ],
+      });
+      let sends = 0;
+      const api = {
+        answerKeptGit: async () => {
+          sends += 1;
+          throw new HqError({ kind: "uncertain", code: "network", message: "Answer lost." });
+        },
+      } as unknown as HqWrites;
+      const operations = makeOperations({
+        store,
+        makeId: () => "kept-git",
+        executors: { hq: makeHqExecutor({ apiOf: () => api, zerops }) },
+      });
+      const intent = { kind: "answer-kept-git", orgId, appId, answer } as const;
+      yield* operations.submit(intent, "kept-git");
+      expect(operationProgress.derive(readsOfState(store.state()), "kept-git").stage).toBe(
+        "uncertain",
+      );
+      store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: [{ scope, generation: 0 }],
+        reset: false,
+        rows: [],
+        removals: [{ family: "hqKeptGit", id: appId, reason: "no-access" }],
+      });
+      yield* operations.retry("kept-git");
+      yield* operations.submit(intent, "kept-git");
+      expect(readsOfState(store.state()).fact("hqKeptGit", appId)).toMatchObject({
+        kind: "withheld",
+        reason: "denied",
+      });
+      expect(operationProgress.derive(readsOfState(store.state()), "kept-git").stage).toBe(
+        "uncertain",
+      );
+      expect(sends).toBe(1);
+    }),
+);

@@ -1,5 +1,4 @@
 import type { FlowReleaseRow } from "@t3tools/client-runtime/zerops";
-import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
 import { pull } from "./flowTestFixtures";
@@ -18,22 +17,23 @@ function release(
   tag: string,
   minute: number,
   over: Partial<FlowReleaseRow> = {},
-): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing"> {
-  return { tag, taggedAt: at(minute), verdict: "approved", standing: undefined, ...over };
+): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing" | "history"> {
+  return {
+    tag,
+    taggedAt: at(minute),
+    verdict: "approved",
+    standing: undefined,
+    history: recorded([]),
+    ...over,
+  };
 }
 
-function commit(
-  subject: string,
-  minute: number,
-  over: Partial<CompareCommit> = {},
-): Pick<CompareCommit, "sha" | "subject" | "authorName" | "at" | "change"> {
+function recorded(numbers: readonly number[]) {
   return {
-    sha: `${subject.length.toString(16)}${String(minute)}`.padEnd(40, "0"),
-    subject,
-    authorName: "Ines Vale",
-    at: at(minute),
-    change: null,
-    ...over,
+    changes: numbers.map((number) => ({ repo: "app", number, title: `Change ${String(number)}` })),
+    commitCount: numbers.length,
+    outsideCommitCount: 0,
+    ranges: [],
   };
 }
 
@@ -41,7 +41,10 @@ const landed = (number: number, minute: number, title = `Change ${String(number)
   pull({ number, title, merged: true, mergedAt: at(minute) });
 
 /** Newest first, as the flow lists them: v0.1.1 runs production. */
-const RELEASES = [release("v0.1.1", 30, { standing: "live" }), release("v0.1.0", 10)];
+const RELEASES = [
+  release("v0.1.1", 30, { standing: "live", history: recorded([3, 2]) }),
+  release("v0.1.0", 10, { history: recorded([1]) }),
+];
 
 const titles = (row: HistoryRelease | undefined) => row?.changes.map((change) => change.title);
 
@@ -58,7 +61,7 @@ describe("a project page's Changes and History", () => {
       limit: 5,
       unreleased: true,
     }).map((change) => change.pull.title);
-    const history = historyReleases({ releases: RELEASES, merged, commits: [] });
+    const history = historyReleases({ releases: RELEASES, merged });
     const released = history.flatMap((row) => row.changes.map((change) => change.title));
 
     expect(changes).toEqual(["Change 5", "Change 4"]);
@@ -70,26 +73,6 @@ describe("a project page's Changes and History", () => {
     expect([...changes, ...released].toSorted()).toEqual(
       [...open, ...merged].map((change) => change.title).toSorted(),
     );
-  });
-
-  it("History shows a GitHub merge commit as no row of its own", () => {
-    const history = historyReleases({
-      releases: RELEASES,
-      merged: [landed(2, 20)],
-      commits: [
-        commit("Merge pull request #16 from fxck/mate/13-hide-sold-out", 21),
-        commit("Merge branch 'main' into mate/13-hide-sold-out", 19),
-        // The Mate's own commits that merge brought: its change's, never someone's outside it.
-        commit("Hide sold out switch remembered across visits (#14)", 18, {
-          authorName: "mate-s-r-o-mate[bot]",
-        }),
-        commit("Change 2", 20, { change: { number: 2, title: "Change 2", mateProjectId: "w" } }),
-      ],
-    });
-    expect(history.map((row) => [row.tag, titles(row), row.outside])).toEqual([
-      ["v0.1.1", ["Change 2"], []],
-      ["v0.1.0", [], []],
-    ]);
   });
 
   it.each([
@@ -105,28 +88,13 @@ describe("a project page's Changes and History", () => {
     expect(changeTitle(subject)).toBe(title);
   });
 
-  it("a person's direct push on main shows inside its release as a commit outside Mate, its title without GitHub's (#n)", () => {
-    const history = historyReleases({
-      releases: RELEASES,
-      merged: [],
-      commits: [
-        commit("Bump the footer year (#3)", 22, { authorName: "Ines Vale" }),
-        commit("Not released yet", 50, { authorName: "Ines Vale" }),
-      ],
-    });
-    expect(history.map((row) => [row.tag, row.outside.map((line) => line.subject)])).toEqual([
-      ["v0.1.1", ["Bump the footer year"]],
-      ["v0.1.0", []],
-    ]);
-  });
-
   it.each([
     {
       case: "the release production runs reads Live, the one it rolled back from Rolled back",
       releases: [
         release("v0.1.3", 50, { standing: "live", rollbackOf: "v0.1.1" }),
-        release("v0.1.2", 40),
-        release("v0.1.1", 30),
+        release("v0.1.2", 40, { history: recorded([2]) }),
+        release("v0.1.1", 30, { history: recorded([1]) }),
         release("v0.1.0", 10),
       ],
       rows: [
@@ -139,7 +107,7 @@ describe("a project page's Changes and History", () => {
     {
       case: "a refused release is no release of History's, and its changes wait for the next",
       releases: [
-        release("v0.1.2", 45, { standing: "live" }),
+        release("v0.1.2", 45, { standing: "live", history: recorded([2, 1]) }),
         release("v0.1.1", 30, { verdict: "refused" }),
         release("v0.1.0", 10, { standing: "deploy-failed" }),
       ],
@@ -152,7 +120,6 @@ describe("a project page's Changes and History", () => {
     const history = historyReleases({
       releases,
       merged: [landed(1, 25), landed(2, 35)],
-      commits: [],
     });
     expect(history.map((row) => [row.tag, row.state, releaseLine(row)])).toEqual(rows);
   });
@@ -167,7 +134,7 @@ describe("a project page's Changes and History", () => {
       const releases = Array.from({ length: count }, (_, index) =>
         release(`v0.1.${String(count - index)}`, 50 - index),
       );
-      const rows = historyReleases({ releases, merged: [], commits: [] });
+      const rows = historyReleases({ releases, merged: [] });
       const drawn = shownReleases(rows, all);
       expect([drawn.rows.length, drawn.all]).toEqual([shown, more]);
     },

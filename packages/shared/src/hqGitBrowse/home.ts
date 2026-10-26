@@ -8,7 +8,10 @@ import * as Schema from "effect/Schema";
 import { HqRepoGovernance, Sha } from "../hqChanges.ts";
 import { GitRef, GitRevision } from "./common.ts";
 
-export const GitHomeQuery = Schema.Struct({ rev: Schema.optionalKey(GitRevision) });
+export const GitHomeQuery = Schema.Struct({
+  rev: Schema.optionalKey(GitRevision),
+  content: Schema.optionalKey(Schema.Literals(["metadata", "revision"])),
+});
 export type GitHomeQuery = typeof GitHomeQuery.Type;
 
 /** README bytes a home shows; past them it says the README is cut. */
@@ -47,5 +50,6 @@ export const GitHome = Schema.Struct({
   ref: GitRef,
   about: GitHomeAbout,
   readme: Schema.NullOr(GitReadme),
+  pending: Schema.optionalKey(Schema.Boolean),
 });
 export type GitHome = typeof GitHome.Type;

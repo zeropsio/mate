@@ -7,10 +7,20 @@ import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { accountReadsAtom, type AccountStore } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  type AccountObservation,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
 import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
+import {
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+} from "@t3tools/client-runtime/zerops/data";
 
 import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
+import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { useDetailDemand, ZeropsAccountData } from "./ZeropsAccountData";
 
@@ -18,13 +28,19 @@ const shown = vi.hoisted(() => ({
   organization: { id: "org-1", name: "Org", membershipId: "m-1" },
 }));
 // The account's store, so a test can hand it what Zerops answered about the person's memberships.
-const made = vi.hoisted(() => ({ store: undefined as AccountStore | undefined }));
+// The account's observation too, so a test can see what was asked of it.
+const made = vi.hoisted(() => ({
+  store: undefined as AccountStore | undefined,
+  observation: undefined as AccountObservation | undefined,
+}));
 vi.mock("@t3tools/client-runtime/data", async (actual) => {
   const data = await actual<typeof import("@t3tools/client-runtime/data")>();
   return {
     ...data,
     makeAccountStore: (...args: Parameters<typeof data.makeAccountStore>) =>
       (made.store = data.makeAccountStore(...args)),
+    observeAccount: (...args: Parameters<typeof data.observeAccount>) =>
+      (made.observation = data.observeAccount(...args)),
   };
 });
 vi.mock("./ZeropsSessionProvider", () => {
@@ -116,5 +132,44 @@ describe("ZeropsAccountData — another organization shown", () => {
       tree?.unmount();
     });
     tree = undefined;
+  });
+});
+
+describe("ZeropsAccountData — an organization's inventory invalidated", () => {
+  it("reads that organization's Zerops listing again, once for invalidations that arrive together", async () => {
+    // Fake timers on both of the bus's clocks, as `accountInvalidations.test.ts` drives them.
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
+      BigInt(Math.round(performance.now() * 1_000_000)),
+    );
+    const bus = bindTestInvalidationBus();
+    await act(async () => {
+      tree = create(
+        createElement(AppAtomRegistryProvider, null, createElement(ZeropsAccountData, null)),
+      );
+    });
+    const reread = vi.spyOn(made.observation!, "rereadListing");
+    const organization = {
+      kind: "organization" as const,
+      account: {
+        apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+        accountId: ZeropsAccountId.make("user-1"),
+      },
+      organizationId: ZeropsOrganizationId.make("org-1"),
+    };
+
+    bus.invalidate({ topic: "inventory", organization });
+    bus.invalidate({ topic: "inventory", organization });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(reread.mock.calls).toEqual([["org-1"]]);
+    bus.close();
+    await act(async () => {
+      tree?.unmount();
+    });
+    tree = undefined;
+    vi.useRealTimers();
   });
 });

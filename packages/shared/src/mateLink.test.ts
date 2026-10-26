@@ -3,7 +3,10 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  KeyLinkDown,
+  KeyLinkUp,
   MATE_LINK_FRAME_MAX,
+  MateLinkClosed,
   MATE_LINK_TEXT_MAX,
   MateLinkDown,
   LoginDigest,
@@ -427,4 +430,118 @@ it("carries display ownership separately from current signer authority", () => {
   expect(
     decodeLogin({ signedInBy: null, lastSignedInBy: "U1", present: false, token: false }),
   ).toEqual({ signedInBy: null, lastSignedInBy: "U1", present: false, token: false });
+});
+
+describe("the keys model's link", () => {
+  const decodeKeyUp = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkUp));
+  const decodeKeyDown = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkDown));
+  const self = {
+    projectId: "P_MATE",
+    name: "Ada",
+    face: "face-1",
+    standupRequestedBy: null,
+    closedOff: true,
+    signers: { "claude-code": "U1" },
+    appId: "A1",
+    appName: "Shop",
+    changes: [],
+    chief: { projectId: "P_CHIEF" },
+  };
+  const member = { userId: "U1", role: "ADMIN", visibility: "open" };
+
+  it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
+    const up = [
+      { type: "hello", key: "zcp-key", serviceId: "S_ZCP", origin: "https://mate.zerops.app" },
+      { type: "pong" },
+      { type: "ticket-ack", ticket: "tk-1" },
+      { type: "key-refused" },
+      { type: "auto-update-policy", requestId: "r1" },
+    ];
+    for (const frame of up)
+      expect([frame.type, decodeKeyUp(JSON.stringify(frame))._tag]).toEqual([
+        frame.type,
+        "Success",
+      ]);
+    const down = [
+      { type: "ping" },
+      { type: "state", mate: self },
+      {
+        type: "state",
+        mate: { ...self, chief: null, ownerUserId: "U1" },
+        autoUpdate: { orgId: "O", enabled: true, revision: 1 },
+      },
+      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
+      {
+        type: "access",
+        version: 4,
+        viewAt: AT,
+        full: false,
+        members: [{ ...member, visibility: "none" }],
+      },
+      { type: "access", version: 5, viewAt: AT, full: false, members: [] },
+      { type: "access", version: 6, full: true, refused: true, members: [] },
+      { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
+      { type: "close-session", sessionId: "hs-1" },
+      { type: "git-credential", credential: "gc-1" },
+      { type: "git-credential", credential: null },
+      // Today's frames a Mate keeps: its tasks, its usage and its update policy.
+      { type: "task-stop", taskId: "task-1", reason: "closed" },
+      { type: "provider-keys", keys: [] },
+      { type: "usage-error", batchId: "b1", code: "x", disposition: "transient" },
+      {
+        type: "auto-update-policy",
+        requestId: "r1",
+        policy: { orgId: "O", enabled: false, revision: 2 },
+      },
+    ];
+    for (const frame of down)
+      expect([frame.type, decodeKeyDown(JSON.stringify(frame))._tag]).toEqual([
+        frame.type,
+        "Success",
+      ]);
+    const refused = decodeKeyDown(JSON.stringify(down[6]));
+    expect(
+      refused._tag === "Success" && refused.value.type === "access" && "refused" in refused.value,
+    ).toBe(true);
+  });
+
+  it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
+    const { chief: _chief, ...withoutChief } = self;
+    for (const hello of [
+      { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
+      { key: "zcp-key", serviceId: "S" },
+    ])
+      expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
+    const down = [
+      {
+        type: "access",
+        version: 1,
+        viewAt: AT,
+        full: false,
+        members: [{ ...member, visibility: "hidden" }],
+      },
+      { type: "access", version: 1, full: true, refused: true, members: [member] },
+      { type: "state", mate: withoutChief },
+    ];
+    for (const frame of down) expect(decodeKeyDown(JSON.stringify(frame))._tag).toBe("Failure");
+  });
+
+  it("HQ closes a link with a known code, and a key it does not admit names its refusal as the close reason", () => {
+    const decodeClosed = Schema.decodeUnknownExit(MateLinkClosed);
+    const known = [
+      { code: 4409 },
+      { code: 4408 },
+      { code: 1001 },
+      { code: 4401, reason: "key_refused" },
+      { code: 4403, reason: "key_too_wide" },
+      { code: 4403, reason: "key_not_sensitive" },
+    ];
+    for (const closed of known) expect(decodeClosed(closed)._tag).toBe("Success");
+    for (const closed of [
+      { code: 4403, reason: "nope" },
+      { code: 4401, reason: "key_too_wide" },
+      { code: 4000 },
+    ])
+      expect(decodeClosed(closed)._tag).toBe("Failure");
+  });
 });

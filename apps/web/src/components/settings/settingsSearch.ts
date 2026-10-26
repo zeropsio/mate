@@ -268,11 +268,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/zerops",
   },
   {
-    id: "zerops-sign-in-tokens",
-    title: "Sign-in tokens",
-    to: "/settings/zerops",
-  },
-  {
     id: "automation-model-key",
     title: "Model key",
     to: "/settings/automation",

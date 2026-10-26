@@ -142,6 +142,31 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(JSON.parse(storedSession(harness)!)).toEqual(approved);
   });
 
+  // The platform issues a device login six hours of life and revokes the previous access token on
+  // every refresh, so a refresh at sign-in or at load sends the first door and the first
+  // websocket login with a token the platform has just revoked.
+  it("the first door after a device login carries the access token that login issued", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+    const approved = {
+      ...harness.rest.issueSession("user-1"),
+      expiresAt: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
+    };
+    await tab.run(() => tab.session().adoptDeviceLogin(approved));
+    await settle();
+
+    expect(harness.rest.refreshes()).toBe(0);
+    expect(tab.session().client.session?.accessToken).toBe(approved.accessToken);
+    expect(storedToken(harness)).toBe(approved.accessToken);
+
+    const reloaded = await mountTab(harness, harness.browser.openTab());
+    await settle();
+
+    expect(reloaded.session().status).toBe("signed-in");
+    expect(harness.rest.refreshes()).toBe(0);
+    expect(storedToken(harness)).toBe(approved.accessToken);
+  });
+
   // The owner, 2026-10-14: a sign-out left the address of a conversation of the account just left.
   it("a person's sign-out ends on the sign-in at the app's root, leaving the account's address behind", async () => {
     const harness = harnessWith();

@@ -383,16 +383,11 @@ describe("setupDocument", () => {
     }
   });
 
-  // The Mate's Git access is its enrollment with HQ (zcp's `outcome.json`, C-7): done once
-  // enrolled, waiting while zcp has said nothing, failed with zcp's reason where it said why not.
+  // The Mate's Git access is the credential HQ sends down its link: done once its file holds it,
+  // waiting until then, failed with HQ's close reason where HQ refused the project's key.
   const gitSteps: ReadonlyArray<[string, SetupFacts["git"], SetupStep]> = [
-    ["enrolled", { state: "done", at: NOW }, { id: "git", state: "done", at: NOW }],
+    ["credential kept", { state: "done", at: NOW }, { id: "git", state: "done", at: NOW }],
     ["pending", { state: "waiting" }, { id: "git", state: "waiting", at: "" }],
-    [
-      "no official HQ",
-      { state: "failed", reason: "no_hq" },
-      { id: "git", state: "failed", at: "", reason: "no_hq" },
-    ],
     [
       "HQ refused",
       { state: "failed", reason: "refused", code: "not_a_mate" },
@@ -757,22 +752,12 @@ describe("setupDocument", () => {
   // A stand-up nothing started waits, and says why where the server knows: the client words it.
   const waits: ReadonlyArray<[string, StandUpWait | undefined, SetupStep]> = [
     [
-      "zcp found no official HQ",
-      { reason: "no_hq" },
-      { id: "standup", state: "waiting", at: "", reason: "no_hq" },
+      "HQ refused the project's key, with its reason",
+      { reason: "not_linked", code: "not_a_mate" },
+      { id: "standup", state: "waiting", at: "", reason: "not_linked", code: "not_a_mate" },
     ],
     [
-      "HQ refused the enrollment, with its code",
-      { reason: "not_enrolled", code: "not_a_mate" },
-      { id: "standup", state: "waiting", at: "", reason: "not_enrolled", code: "not_a_mate" },
-    ],
-    [
-      "not enrolled, with nothing more said",
-      { reason: "not_enrolled" },
-      { id: "standup", state: "waiting", at: "", reason: "not_enrolled" },
-    ],
-    [
-      "enrolled, HQ has not sent the Mate",
+      "HQ has not sent the Mate",
       { reason: "not_linked" },
       { id: "standup", state: "waiting", at: "", reason: "not_linked" },
     ],

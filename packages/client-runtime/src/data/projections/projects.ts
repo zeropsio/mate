@@ -66,6 +66,17 @@ export const organizationProjects: Projection<string, OrganizationProjects> = {
   equals: sameValue,
 };
 
+/**
+ * Whether the roster's latest read has answered: its scope is live, not waiting on a read asked
+ * again (`AccountObservation.rereadListing`). Unlike `live`, a reconnect's grace does not hold it.
+ */
+export const rosterAnswered: Projection<string, boolean> = {
+  name: "rosterAnswered",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => read.stream(projectsScope(orgId)).phase === "live",
+  equals: Object.is,
+};
+
 /** One project as the account's store holds it; `null` while it holds no value of it. */
 export const listedProject: Projection<
   { readonly orgId: string; readonly projectId: string },

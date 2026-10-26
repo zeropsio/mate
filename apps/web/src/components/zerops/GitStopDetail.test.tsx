@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
+import type { Release } from "@t3tools/shared/hqRelease";
 import type { HqPushCi } from "@t3tools/shared/hqDeploys";
 import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqEnvironmentId } from "@t3tools/contracts";
@@ -278,4 +279,150 @@ it("Production removal waits for the repository address it will name", async () 
   } finally {
     await act(async () => root.unmount());
   }
+});
+
+const historyRelease: Release = {
+  tag: "v0.1.2",
+  sha: "a".repeat(40),
+  entries: [{ service: "web", sha: "b".repeat(40) }],
+  by: "ada",
+  at: "2026-10-14T10:00:00Z",
+  state: "approved",
+  reason: null,
+  rollbackOf: null,
+};
+const historyPush = (overrides: Partial<HqPushNavigationJob> = {}): HqPushNavigationJob => ({
+  id: "58",
+  kind: "push",
+  service: "web",
+  sha: "b".repeat(40),
+  state: "refused",
+  cause: "release",
+  ref: "v0.1.2",
+  reason: 'Stage CI "check" failed.',
+  appVersionId: null,
+  processId: null,
+  requestedBy: "ada",
+  at: "2026-10-14T10:00:00Z",
+  endedAt: "2026-10-14T10:05:00Z",
+  supersededBy: null,
+  ...overrides,
+});
+const historyRows = (props: Parameters<typeof GitStopDetail>[0]) => {
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(<GitStopDetail {...props} />);
+  return [...host.querySelectorAll("[data-zerops-environment-row]")].map((row) => row.textContent);
+};
+
+it("A Git stage's history lists its merge pushes and their outcomes, never the application's releases.", () => {
+  expect(
+    historyRows({
+      environment: {
+        ...environment,
+        tier: "stage",
+        jobs: [historyPush({ cause: "merge", ref: "main" })],
+      },
+      releases: [historyRelease],
+    }),
+  ).toEqual(['webmergebbbbbbb · Stage CI "check" failed.Refused']);
+});
+
+it("A Git production's history row for a release whose push HQ refused says it was refused and why.", () => {
+  expect(
+    historyRows({
+      environment: { ...environment, jobs: [historyPush()] },
+      releases: [historyRelease],
+    }),
+  ).toEqual(['v0.1.2releaseweb bbbbbbb · Stage CI "check" failed.Refused']);
+});
+
+it("A Git release without a matching release push keeps its unreported hand-over.", () => {
+  expect(
+    historyRows({
+      environment: {
+        ...environment,
+        jobs: [historyPush({ cause: "merge" }), historyPush({ ref: "v0.1.1" })],
+      },
+      releases: [historyRelease],
+    }),
+  ).toEqual(["v0.1.2releaseweb bbbbbbbHand-over not reported"]);
+});
+
+it("A Git production's history updates when its release push arrives after the release.", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () =>
+      root.render(<GitStopDetail environment={environment} releases={[historyRelease]} />),
+    );
+    expect(host.textContent).toContain("Hand-over not reported");
+    await act(async () =>
+      root.render(
+        <GitStopDetail
+          environment={{ ...environment, jobs: [historyPush()] }}
+          releases={[historyRelease]}
+        />,
+      ),
+    );
+    expect(host.textContent).toContain('Stage CI "check" failed.');
+    expect(host.textContent).toContain("Refused");
+    expect(host.textContent).not.toContain("Hand-over not reported");
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+it.each([
+  ["queued", "Queued"],
+  ["submitting", "Pushing"],
+  ["pushed", "Pushed"],
+  ["refused", "Refused"],
+  ["unresolved", "Outcome unresolved"],
+  ["superseded", "Superseded"],
+] as const)("A Git stage shows a %s push as %s without waiting for releases.", (state, word) => {
+  expect(
+    historyRows({
+      environment: {
+        ...environment,
+        tier: "stage",
+        jobs: [historyPush({ state, cause: "merge", reason: null })],
+      },
+    }),
+  ).toEqual([`webmergebbbbbbb${word}`]);
+});
+
+it("A Git stage with no pushes reports no pushes even when application releases exist.", () => {
+  const html = renderToStaticMarkup(
+    <GitStopDetail environment={{ ...environment, tier: "stage" }} releases={[historyRelease]} />,
+  );
+  expect(html).toContain("No pushes recorded.");
+  expect(html).not.toContain("v0.1.2");
+  expect(html).not.toContain("Reading release history");
+});
+
+it("A Git release's latest push for each repository supplies its outcome and reason.", () => {
+  expect(
+    historyRows({
+      environment: {
+        ...environment,
+        jobs: [
+          historyPush({ state: "pushed", reason: null }),
+          historyPush({ id: "57", reason: "Earlier refusal" }),
+        ],
+      },
+      releases: [historyRelease],
+    }),
+  ).toEqual(["v0.1.2releaseweb bbbbbbbPushed"]);
+});
+
+it("A Git release keeps a refused repository visible beside a pushed repository.", () => {
+  expect(
+    historyRows({
+      environment: {
+        ...environment,
+        jobs: [historyPush({ service: "api", state: "pushed", reason: null }), historyPush()],
+      },
+      releases: [historyRelease],
+    }),
+  ).toEqual(['v0.1.2releaseweb bbbbbbb · web: Stage CI "check" failed.api: Pushed · web: Refused']);
 });

@@ -1,0 +1,15 @@
+diff --git a/dist/chunks/index.DzobfTyw.js b/dist/chunks/index.DzobfTyw.js
+--- a/dist/chunks/index.DzobfTyw.js
++++ b/dist/chunks/index.DzobfTyw.js
+@@ -21433,6 +21433,11 @@
+ 				for (const error of errors) this.logger.error("error during close", error);
+ 				this._checkUnhandledErrors(errors);
+ 			});
++			// the pool is down: forked workers read tmp module copies from disk
++			await rm(this._tmpDir, {
++				recursive: true,
++				force: true
++			}).catch(noop$1);
+ 			await this._traces?.finish();
+ 		})();
+ 		return this.closingPromise;

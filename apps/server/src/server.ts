@@ -38,13 +38,12 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { mateUpdateRouteLayer } from "./zerops/mateUpdateHttp.ts";
 import {
   ZeropsLayerLive,
-  ZeropsProjectAccessLive,
   ZeropsSessionAdmissionLive,
+  ZeropsConnectionsLive,
 } from "./zerops/zeropsFeedsLayer.ts";
 import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
 import * as ThreadFileWrites from "./zerops/ThreadFileWrites.ts";
 import * as MacCommandShim from "./zerops/mac/MacCommandShim.ts";
-import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
@@ -110,7 +109,7 @@ import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http
 import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ChildHome from "./process/childHome.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
-import { zeropsHttpApiLayer, zeropsSetupRouteLayer } from "./zerops/http.ts";
+import { zeropsSetupRouteLayer } from "./zerops/http.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
@@ -409,12 +408,25 @@ const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(T3ProjectFileLoader.layer),
 );
 
-const AuthLayerLive = EnvironmentAuth.layer.pipe(
+const StoredAuthLayerLive = EnvironmentAuth.layer.pipe(
   Layer.provide(ZeropsSessionAdmissionLive),
-  Layer.provideMerge(ZeropsProjectAccessLive),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provide(ServerSecretStore.layer),
 );
+const AuthLayerLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const auth: Layer.Layer<
+      Layer.Success<typeof EnvironmentAuth.zeropsLayer>,
+      Layer.Error<typeof EnvironmentAuth.zeropsLayer> | Layer.Error<typeof StoredAuthLayerLive>,
+      | Layer.Services<typeof EnvironmentAuth.zeropsLayer>
+      | Layer.Services<typeof StoredAuthLayerLive>
+    > = config.zerops !== undefined && config.zeropsFixtures === undefined
+      ? EnvironmentAuth.zeropsLayer
+      : StoredAuthLayerLive;
+    return auth;
+  }),
+).pipe(Layer.provideMerge(ZeropsConnectionsLive));
 
 const CloudManagedEndpointRuntimeLive = Layer.mergeAll(
   RelayClientLive,
@@ -517,15 +529,6 @@ const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
     Layer.provideMerge(ProjectFaviconResolverLayerLive),
     Layer.provideMerge(RepositoryIdentityResolverLayerLive),
     Layer.provideMerge(ServerEnvironment.layer),
-    // `ServerEnvironment.getDescriptor` reads this Ref for the `zerops.identity`
-    // fields (S4). Self-sufficient (no deps of its own), so it can be added
-    // once here to satisfy `ServerEnvironment.layer`'s requirement for it — and
-    // because this whole chain (`makeRuntimeBaseDependencies`) is later used to
-    // satisfy `ZeropsLayerLive`'s requirements in `makeRuntimeDependencies`
-    // below, the SAME instance also reaches the membership watch and (through
-    // the runtime composition further down) the door — one shared status, one
-    // writer's worth of readers.
-    Layer.provideMerge(ZeropsIdentityStatusModule.layer),
     Layer.provideMerge(AuthLayerLive),
     Layer.provideMerge(AssetSigningKey.layer),
     Layer.provideMerge(ServerSecretStore.layer),
@@ -599,7 +602,6 @@ export const makeRoutesLayer = Layer.mergeAll(
     Layer.provide(connectHttpApiLayer),
     Layer.provide(orchestrationHttpApiLayer),
     Layer.provide(serverEnvironmentHttpApiLayer),
-    Layer.provide(zeropsHttpApiLayer),
     Layer.provide(environmentAuthenticatedAuthLayer),
   ),
   otlpTracesProxyRouteLayer,

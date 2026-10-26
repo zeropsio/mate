@@ -1,7 +1,14 @@
 /** HQ attachment reads beside the scope socket, using each demanded scope's stream policy. */
 import { changeReadId, changeReadRequest, hqChangeReadFamily } from "../families/hqChangeRead.ts";
 import type { ChangeReadRequest } from "../families/hqChangeRead.ts";
-import type { ChangeDetailResponse, AttachmentLink } from "@t3tools/shared/hqChanges";
+import { hqChangeMetadataFamily } from "../families/hqChangeMetadata.ts";
+import { hqChangeCommitsFamily } from "../families/hqChangeCommits.ts";
+import type {
+  ChangeMetadataResponse,
+  ChangeCommitsResponse,
+  ChangeDetailResponse,
+  AttachmentLink,
+} from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -20,6 +27,12 @@ export const makeHqPictureReads = (options: {
   readonly change?: (
     request: ChangeReadRequest,
   ) => Effect.Effect<ChangeDetailResponse, StreamFault>;
+  readonly metadata?: (
+    request: ChangeReadRequest,
+  ) => Effect.Effect<ChangeMetadataResponse, StreamFault>;
+  readonly commits?: (
+    request: ChangeReadRequest,
+  ) => Effect.Effect<ChangeCommitsResponse, StreamFault>;
   readonly signal: (scope: ScopeKey, event: StreamEvent) => Effect.Effect<unknown>;
   readonly wake: () => void;
   readonly refresh?: Set<ScopeKey>;
@@ -33,9 +46,12 @@ export const makeHqPictureReads = (options: {
     const observe = Effect.fnUntraced(function* (scopes: ReadonlyArray<ScopeKey>) {
       const wanted = new Set(
         scopes.filter((scope) =>
-          [hqPictureFamily.scope.suffix, hqChangeReadFamily.scope.suffix].includes(
-            scope.split(":")[2]!,
-          ),
+          [
+            hqPictureFamily.scope.suffix,
+            hqChangeReadFamily.scope.suffix,
+            hqChangeMetadataFamily.scope.suffix,
+            hqChangeCommitsFamily.scope.suffix,
+          ].includes(scope.split(":")[2]!),
         ),
       );
       for (const [scope, entry] of active) {
@@ -54,8 +70,17 @@ export const makeHqPictureReads = (options: {
           continue;
         }
         const owner = scope.split(":").slice(3).join(":");
-        const isChange = scope.split(":")[2] === hqChangeReadFamily.scope.suffix;
-        const family = isChange ? "hqChangeRead" : "hqPicture";
+        const suffix = scope.split(":")[2];
+        const spec =
+          suffix === hqChangeReadFamily.scope.suffix
+            ? hqChangeReadFamily
+            : suffix === hqChangeMetadataFamily.scope.suffix
+              ? hqChangeMetadataFamily
+              : suffix === hqChangeCommitsFamily.scope.suffix
+                ? hqChangeCommitsFamily
+                : hqPictureFamily;
+        const isChange = spec !== hqPictureFamily;
+        const family = spec.family;
         const link = isChange ? changeReadRequest(owner) : pictureLink(owner);
         if (link === null) {
           yield* signal(scope, {
@@ -83,8 +108,17 @@ export const makeHqPictureReads = (options: {
           continue;
         }
         store.dispatch({ kind: "baseline-begin", scope, generation });
-        const request: Effect.Effect<Blob | ChangeDetailResponse, StreamFault> = isChange
-          ? (options.change?.(link as ChangeReadRequest) ??
+        const readChange =
+          spec === hqChangeMetadataFamily
+            ? options.metadata
+            : spec === hqChangeCommitsFamily
+              ? options.commits
+              : options.change;
+        const request: Effect.Effect<
+          Blob | ChangeMetadataResponse | ChangeCommitsResponse | ChangeDetailResponse,
+          StreamFault
+        > = isChange
+          ? (readChange?.(link as ChangeReadRequest) ??
             Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }))
           : options.read(link as AttachmentLink);
         const read = request.pipe(
@@ -97,7 +131,7 @@ export const makeHqPictureReads = (options: {
                 current.phase !== "baselining"
               )
                 return;
-              if ((isChange ? hqChangeReadFamily : hqPictureFamily).sampled!.decode(blob) === null)
+              if (spec.sampled!.decode(blob) === null)
                 return yield* Effect.fail<StreamFault>({
                   outcome: "definitive-refusal",
                   message: isChange

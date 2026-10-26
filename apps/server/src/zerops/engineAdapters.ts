@@ -37,7 +37,7 @@ import {
 import { ProviderInstances, layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 

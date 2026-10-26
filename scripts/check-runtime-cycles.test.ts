@@ -76,14 +76,13 @@ it("Account assembly and adapter facades have no runtime cycles", async () => {
   const scan = await scanRuntimeCycles(root, [
     "apps/web/src/zerops/ZeropsAccountData.tsx",
     "packages/client-runtime/src/zerops/containerHealth.ts",
-    "packages/client-runtime/src/zerops/doorThrowaway.ts",
     "packages/client-runtime/src/zerops/mateSetup.ts",
   ]);
   const owners = new Set([
     "apps/web/src/zerops/ZeropsAccountData.tsx",
     "packages/client-runtime/src/data/projections/operationEnd.ts",
     "packages/client-runtime/src/data/adapters/containerHealth.ts",
-    "packages/client-runtime/src/data/adapters/doorThrowaway.ts",
+    "packages/client-runtime/src/data/adapters/hqMateTicket.ts",
     "packages/client-runtime/src/data/adapters/mateSetupWire.ts",
   ]);
   expect(scan.components.filter((component) => component.some((file) => owners.has(file)))).toEqual(

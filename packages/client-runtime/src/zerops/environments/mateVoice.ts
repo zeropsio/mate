@@ -15,8 +15,9 @@
  * | updating it                      | "Quinn is updating."     | the same words on the stage    |
  * | anything else on its way         | its cause, in the banner | its cause, on the stage        |
  *
- * Its face is asleep on the stage until the link is up. A terminal verdict (gone, replaced) is the
- * route's own view, not the link's voice. Pure.
+ * A lost link whose next ticket is timed counts down to it: "Reconnecting to Quinn — next try in
+ * 8 s.", with Try now. Its face is asleep on the stage until the link is up. A terminal verdict
+ * (gone, replaced) is the route's own view, not the link's voice. Pure.
  */
 import {
   reachabilityPhrase,
@@ -68,20 +69,25 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
   const { reachability, conversationShown, heldMs, nowMs, mateName } = input;
   const surface = conversationShown ? "banner" : "stage";
   const quiet = heldMs < MATE_VOICE_QUIET_MS;
+  const unavailableReason =
+    reachability?.kind === "connecting" || reachability?.kind === "reconnecting"
+      ? reachability.unavailableReason
+      : undefined;
   const speak = (
     text: string | null,
     actions: ReadonlyArray<ReachabilityAction> = [],
     processes = false,
   ): MateVoice => ({ surface, text, actions, processes });
+  const connectionLead = unavailableReason === undefined ? "" : `${unavailableReason} `;
   const slow = heldMs >= MATE_VOICE_SLOW_MS;
   // Opening it: on the stage, nothing for a blip, then its line and the platform's processes; over
   // a shown conversation, nothing until it is slow. Slow, it offers Try now wherever it speaks.
   const opening = (): MateVoice => {
     if (conversationShown) {
-      return slow ? speak(`Opening ${mateName}…`, ["try-now"]) : NONE;
+      return slow ? speak(`${connectionLead}Opening ${mateName}…`, ["try-now"]) : NONE;
     }
     if (quiet) return speak(null);
-    return speak(`Opening ${mateName}…`, slow ? ["try-now"] : [], true);
+    return speak(`${connectionLead}Opening ${mateName}…`, slow ? ["try-now"] : [], true);
   };
   // Nothing names its target yet: it is being looked for, which is opening it.
   if (reachability === null) return opening();
@@ -106,18 +112,21 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
       // A wait with a cause of its own says it; the link itself being made says the Mate opens.
       const own =
         reachability.kind === "connecting" &&
-        (reachability.waitingOn === "access" || reachability.waitingOn === "visible");
+        (reachability.waitingOn === "access" ||
+          reachability.waitingOn === "visible" ||
+          reachability.waitingOn === "mate-link");
       if (!own) return opening();
       if (conversationShown ? !slow : quiet) return conversationShown ? NONE : speak(null);
-      return speak(reachabilityPhrase(reachability, { nowMs, mateName }).text);
+      const phrase = reachabilityPhrase(reachability, { nowMs, mateName });
+      return speak(phrase.text, phrase.actions);
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);
-      // Where its link said when it tries again, the wait is its server not answering.
+      // Where its link said when it asks for its next ticket, the line counts down to it.
       return reachability.retryAtMs === undefined
-        ? speak(`Reconnecting to ${mateName}…`, ["try-now"])
+        ? speak(`${connectionLead}Reconnecting to ${mateName}…`, ["try-now"])
         : speak(
-            `${mateName} isn't answering. Trying again in ${Math.max(1, Math.ceil((reachability.retryAtMs - nowMs) / 1_000))} s.`,
+            `${connectionLead}Reconnecting to ${mateName} — next try in ${Math.max(1, Math.ceil((reachability.retryAtMs - nowMs) / 1_000))} s.`,
             ["try-now"],
           );
     default: {
@@ -138,7 +147,9 @@ export function mateVoiceQuietKey(reachability: Reachability | null): string {
     case "resolving":
       return "opening";
     case "connecting":
-      return reachability.waitingOn === "access" || reachability.waitingOn === "visible"
+      return reachability.waitingOn === "access" ||
+        reachability.waitingOn === "visible" ||
+        reachability.waitingOn === "mate-link"
         ? `connecting:${reachability.waitingOn}`
         : "opening";
     case "container":

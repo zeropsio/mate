@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- supervisor protocol compatibility fixture.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
@@ -80,9 +81,30 @@ it.each([
   },
 ])("$name", async ({ platform, env, expected }) => {
   const { choosePostgresHome } = await import("./test-postgres.ts");
-  expect(choosePostgresHome({ platform, env, homeDirectory: "/Users/dev", user: 501 })).toBe(
-    expected,
-  );
+  expect(
+    choosePostgresHome({
+      platform,
+      env,
+      homeDirectory: "/Users/dev",
+      user: 501,
+      ramdisk: undefined,
+    }),
+  ).toBe(expected);
+});
+
+it("A test database lives on the test RAM disk when it is mounted", async () => {
+  const { choosePostgresHome } = await import("./test-postgres.ts");
+  const home = (platform: NodeJS.Platform, env: Record<string, string>) =>
+    choosePostgresHome({
+      platform,
+      env,
+      homeDirectory: "/Users/dev",
+      user: 501,
+      ramdisk: "/Volumes/mate-test",
+    });
+  expect(home("darwin", {})).toBe("/Volumes/mate-test/mate-test-pg-501");
+  expect(home("linux", {})).toBe("/Volumes/mate-test/mate-test-pg-501");
+  expect(home("darwin", { MATE_TEST_PG_HOME: "/work/pg" })).toBe("/work/pg");
 });
 
 it("re-initialises a cluster directory whose PG_VERSION is gone and says why", async () => {
@@ -197,22 +219,93 @@ it.each([
   }
 });
 
-it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
-  const { reclaimLeasedDatabases } = await import("./test-postgres.ts");
-  const dropped: string[] = [];
-  reclaimLeasedDatabases((query) => {
-    if (query.startsWith("SELECT")) return "mate_test_0a1b\nmate_test_ff00\n";
-    dropped.push(query);
-    return "";
-  });
-  expect(dropped).toEqual([
-    "DROP DATABASE mate_test_0a1b WITH (FORCE)",
-    "DROP DATABASE mate_test_ff00 WITH (FORCE)",
+/**
+ * A cluster's catalog as `psql -At` answers the supervisor: `oid|quoted name` rows. initdb's own
+ * databases and roles are always there; `left` is what a killed run made beside them.
+ */
+function catalog(left: { databases: [number, string][]; roles: [number, string][] }) {
+  const databases = new Map<number, string>([
+    [1, "template1"],
+    [4, "template0"],
+    [5, "postgres"],
+    ...left.databases,
   ]);
-  expect(() => reclaimLeasedDatabases(() => "mate_test_x; DROP TABLE y\n")).toThrow(
-    "Unexpected test database: mate_test_x; DROP TABLE y",
-  );
+  const roles = new Map<number, string>([[10, "postgres"], [3373, "pg_monitor"], ...left.roles]);
+  const sql = (query: string) => {
+    const select =
+      /^SELECT oid, quote_ident\((datname|rolname)\) FROM (pg_database|pg_roles)$/u.exec(query);
+    if (select)
+      return [...(select[2] === "pg_database" ? databases : roles)]
+        .map(([oid, name]) => `${oid}|${name}\n`)
+        .join("");
+    const database = /^DROP DATABASE (.+) WITH \(FORCE\)$/u.exec(query)?.[1];
+    const role = /^DROP OWNED BY (.+); DROP ROLE \1$/u.exec(query)?.[1];
+    const from = database === undefined ? roles : databases;
+    const oid = [...from].find(([, name]) => name === (database ?? role))?.[0];
+    if (oid === undefined) throw new Error(`fake catalog: ${query}`);
+    from.delete(oid);
+    return "";
+  };
+  return { sql, databases, roles };
+}
+
+it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
+  const { reclaimDeadRuns } = await import("./test-postgres.ts");
+  const cluster = catalog({
+    databases: [
+      [70001, "mate_test_0a1b"],
+      [70002, "mate_test_ff00"],
+    ],
+    roles: [],
+  });
+  reclaimDeadRuns(cluster.sql);
+  expect([...cluster.databases.values()]).toEqual(["template1", "template0", "postgres"]);
 });
+
+it.each([
+  {
+    left: "its lease's databases",
+    databases: [[70001, "mate_test_0a1b"]] as [number, string][],
+    roles: [] as [number, string][],
+  },
+  {
+    left: "a database it made beside its lease",
+    databases: [[70002, "hq_test_0f36"]] as [number, string][],
+    roles: [] as [number, string][],
+  },
+  {
+    left: "the roles of a database it made",
+    databases: [[70003, "mate_test_ff00"]] as [number, string][],
+    roles: [
+      [70004, "mate_test_ff00_runtime"],
+      [70005, "mate_test_ff00_catalogue"],
+    ] as [number, string][],
+  },
+  {
+    left: "roles named apart from any database",
+    databases: [] as [number, string][],
+    roles: [
+      [70006, "hq_runtime_9c2a"],
+      [70007, "hq_catalogue_9c2a"],
+    ] as [number, string][],
+  },
+  {
+    left: "a database whose name needs quoting",
+    databases: [[70008, '"Weird; DROP x"']] as [number, string][],
+    roles: [] as [number, string][],
+  },
+])(
+  "A test run reclaims the databases a killed run left behind: $left, keeping initdb's own",
+  async ({ databases, roles }) => {
+    const { reclaimDeadRuns } = await import("./test-postgres.ts");
+    const cluster = catalog({ databases, roles });
+    reclaimDeadRuns(cluster.sql);
+    expect([[...cluster.databases.values()], [...cluster.roles.values()]]).toEqual([
+      ["template1", "template0", "postgres"],
+      ["postgres", "pg_monitor"],
+    ]);
+  },
+);
 
 it("a later run removes test PostgreSQL homes unused for a day unless a postmaster still runs on them", async () => {
   const { pruneStaleClusters } = await import("./test-postgres.ts");
@@ -262,5 +355,159 @@ it("a later run removes test PostgreSQL homes unused for a day unless a postmast
     );
   } finally {
     NodeFS.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+/** Taking server.lock is the kernel's receipt that the supervisor's guard stopped PostgreSQL. */
+const guardStopped = (home: string) =>
+  new Promise<void>((resolve, reject) => {
+    const probe = NodeChildProcess.spawn(
+      "flock",
+      ["-x", NodePath.join(home, "server.lock"), "true"],
+      { stdio: "ignore" },
+    );
+    probe.once("error", reject);
+    probe.once("exit", (code) =>
+      code === 0 ? resolve() : reject(new Error(`flock exited ${String(code)}`)),
+    );
+  });
+
+const exitedPid = () =>
+  new Promise<number>((resolve, reject) => {
+    const child = NodeChildProcess.spawn("true");
+    child.once("error", reject);
+    child.once("exit", () => resolve(child.pid!));
+  });
+
+/** A home whose PostgreSQL binaries are fake-postgres.ts behind initdb, pg_ctl, postgres and psql. */
+function fakeCluster() {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-rebuild-"));
+  const home = NodePath.join(root, "home");
+  const bin = NodePath.join(root, "bin");
+  const data = NodePath.join(home, "data");
+  NodeFS.mkdirSync(bin, { recursive: true });
+  const fixture = NodePath.join(import.meta.dirname, "fixtures/fake-postgres.ts");
+  for (const command of ["initdb", "pg_ctl", "postgres", "psql"])
+    NodeFS.writeFileSync(
+      NodePath.join(bin, command),
+      `#!/bin/sh\nexec "${process.execPath}" "${fixture}" ${command} "$@"\n`,
+      { mode: 0o755 },
+    );
+  // A cluster a crashed run left: its own catalog plus a database a run made beside its lease.
+  NodeFS.mkdirSync(NodePath.join(data, "base", "hq_test_leftover"), { recursive: true });
+  NodeFS.mkdirSync(NodePath.join(data, "global"), { recursive: true });
+  NodeFS.writeFileSync(NodePath.join(data, "PG_VERSION"), "17\n");
+  NodeFS.writeFileSync(NodePath.join(data, "global", "pg_control"), "valid");
+  return { root, home, bin, data };
+}
+
+it.each([
+  {
+    name: "a cluster whose last start was never followed by a clean stop",
+    arrange: async ({ home }: ReturnType<typeof fakeCluster>) => {
+      NodeFS.writeFileSync(NodePath.join(home, "postmaster.started"), `${await exitedPid()}\n`);
+    },
+  },
+  {
+    name: "a cluster whose start PANICs on a corrupt pg_control",
+    arrange: async ({ data }: ReturnType<typeof fakeCluster>) => {
+      NodeFS.writeFileSync(NodePath.join(data, "global", "pg_control"), "corrupt");
+    },
+  },
+  {
+    name: "a cluster whose start runs crash recovery",
+    arrange: async ({ data }: ReturnType<typeof fakeCluster>) => {
+      NodeFS.writeFileSync(NodePath.join(data, "crashed"), "");
+    },
+  },
+  {
+    name: "a cluster whose recorded postmaster outlived its supervisor",
+    arrange: async ({ home, bin, data }: ReturnType<typeof fakeCluster>) => {
+      const orphan = NodeChildProcess.spawn(NodePath.join(bin, "postgres"), ["-D", data], {
+        stdio: "ignore",
+      });
+      NodeFS.writeFileSync(NodePath.join(data, "postmaster.pid"), `${orphan.pid}\n${data}\n`);
+      NodeFS.writeFileSync(NodePath.join(home, "postmaster.started"), `${orphan.pid}\n`);
+      return orphan;
+    },
+  },
+])("$name is rebuilt into an empty, leasable cluster with no manual step", async ({ arrange }) => {
+  const cluster = fakeCluster();
+  const orphan = await arrange(cluster);
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const owner = await acquireTestPostgres();
+    // The supervisor waits until the orphan is gone, which needs this process to reap it first.
+    if (orphan) expect(orphan.signalCode).toBe("SIGQUIT");
+    try {
+      const name = new URL(await owner.createDatabase()).pathname.slice(1);
+      expect(NodeFS.readdirSync(NodePath.join(cluster.data, "base"))).toEqual([name]);
+    } finally {
+      await owner.close();
+    }
+    await guardStopped(cluster.home);
+  } finally {
+    if (orphan?.exitCode === null && orphan.signalCode === null) orphan.kill("SIGKILL");
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+  }
+});
+
+it("a live postmaster no supervisor recorded keeps running, and the start names its PID", async () => {
+  const cluster = fakeCluster();
+  const stranger = NodeChildProcess.spawn(
+    NodePath.join(cluster.bin, "postgres"),
+    ["-D", cluster.data],
+    { stdio: "ignore" },
+  );
+  NodeFS.writeFileSync(
+    NodePath.join(cluster.data, "postmaster.pid"),
+    `${stranger.pid}\n${cluster.data}\n`,
+  );
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    await expect(acquireTestPostgres()).rejects.toThrow(
+      `PostgreSQL ${stranger.pid} runs ${cluster.data}, but no supervisor recorded it`,
+    );
+    expect(stranger.exitCode ?? stranger.signalCode).toBeNull();
+    expect(NodeFS.readdirSync(NodePath.join(cluster.data, "base"))).toEqual(["hq_test_leftover"]);
+  } finally {
+    stranger.kill("SIGKILL");
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+  }
+});
+
+it("a run whose cluster volume has less free space than the floor is refused before any supervisor starts, naming the volume", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-full-"));
+  const home = NodePath.join(root, "home");
+  NodeFS.writeFileSync(NodePath.join(root, "ballast"), Buffer.alloc(3 * 1024 * 1024));
+  const volume = NodeChildProcess.spawnSync("df", ["-P", root], { encoding: "utf8" })
+    .stdout.trim()
+    .split("\n")
+    .at(-1)!
+    .split(/\s+/u)
+    .at(-1)!;
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const refusal = await acquireTestPostgres().then(
+      () => "",
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toContain(`The disk ${volume} holding the PostgreSQL test cluster is full:`);
+    expect(refusal).toMatch(/ballast \(3\.0 MiB\)/u);
+    expect(NodeFS.existsSync(NodePath.join(home, "supervisor.log"))).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });

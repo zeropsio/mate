@@ -19,7 +19,8 @@ const hqStreaming = (size: number, cut?: { readonly after: number }) => {
   const chunk = new Uint8Array(MiB);
   const api = makeHqApi({
     address: "https://hq.example",
-    throughDoor: async (use) => use("door"),
+    accessToken: async () => "access",
+    orgId: "org-1",
     openSocket: () => {
       throw new Error("unused");
     },

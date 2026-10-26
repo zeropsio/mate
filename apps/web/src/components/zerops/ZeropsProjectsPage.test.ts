@@ -1,5 +1,4 @@
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
-import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   ZeropsAccountId,
@@ -9,9 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
-import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
-import { AsyncResult } from "effect/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -21,6 +18,7 @@ import {
   declaredEnvironmentSummary,
   hasNoZeropsProject,
   projectsGroupLine,
+  creationCovers,
   projectsFreshnessNotice,
   projectsListingNotice,
   projectsTroubleView,
@@ -33,20 +31,8 @@ import {
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
-/** A throwaway the door tests hand over in place of a person's own token. */
-const TEST_THROWAWAY = {
-  platform: {
-    mint: async () => ({ id: "token-1", token: "a-throwaway-value" }),
-    remove: async () => undefined,
-  },
-  clientId: "an-org",
-  projectId: "a-project",
-  nonce: "n1",
-};
-
 const ZEROPS_DOOR_GATE = {
   status: "requires-auth",
   auth: {
@@ -247,57 +233,6 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     expect(connect).not.toHaveBeenCalled();
     expect(attempted.current).toBe(false);
-  });
-
-  it("surfaces the identity exchange failure reason", async () => {
-    const connect = vi
-      .fn()
-      .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Session token expired."))));
-
-    const result = await exchangeZeropsContainerIdentity(
-      { throwaway: TEST_THROWAWAY, connect },
-      APP_ORIGIN,
-      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
-    );
-
-    expect(connect).toHaveBeenCalledWith({
-      httpBaseUrl: `${APP_ORIGIN}/mate`,
-      doorToken: "a-throwaway-value",
-    });
-    expect(result).toEqual({
-      _tag: "Failure",
-      error: "Could not connect to this container. Session token expired.",
-      retryable: false,
-    });
-  });
-
-  it("does not attempt an exchange without the Zerops account token", async () => {
-    const connect = vi.fn();
-
-    const result = await exchangeZeropsContainerIdentity({ throwaway: null, connect }, APP_ORIGIN, {
-      reason: "user",
-      servedApp: { origin: APP_ORIGIN, basePath: "/mate/" },
-    });
-
-    expect(connect).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      _tag: "Failure",
-      error: "Sign in to Zerops again to connect this container.",
-      retryable: false,
-    });
-  });
-
-  it("returns the authenticated environment", async () => {
-    const environmentId = EnvironmentId.make("environment-1");
-    const connect = vi.fn().mockResolvedValue(AsyncResult.success(environmentId));
-
-    const result = await exchangeZeropsContainerIdentity(
-      { throwaway: TEST_THROWAWAY, connect },
-      APP_ORIGIN,
-      { reason: "user", servedApp: { origin: APP_ORIGIN, basePath: "/mate/" } },
-    );
-
-    expect(result).toEqual({ _tag: "Success", environmentId });
   });
 });
 
@@ -725,6 +660,28 @@ describe("a group's one line about itself", () => {
     ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
+  });
+});
+
+describe("the environment a creation on this page covers", () => {
+  const creation = (outcome: NonNullable<Parameters<typeof creationCovers>[0]>["outcome"]) => ({
+    groupId: "shop",
+    tier: "stage" as const,
+    outcome,
+  });
+  const settled = { groupId: "shop", tier: "stage" as const };
+  // The stage-paint run: the stage went through and its creation closed a frame before the setup
+  // read caught up, and the card's header said "Setting up stage isn't finished" for that frame.
+  it.each([
+    ["while it runs", creation(undefined), null, "shop", "stage"],
+    ["once it went through, until the setup read catches up", null, settled, "shop", "stage"],
+    ["never another project's that went through", null, settled, "other", undefined],
+    ["never once it was handed off", creation({ kind: "handed-off" }), null, "shop", undefined],
+    ["never another project's", creation(undefined), null, "other", undefined],
+    ["never a Mate's", { groupId: "shop", tier: "mate" as const }, null, "shop", undefined],
+    ["never without a creation", null, null, "shop", undefined],
+  ] as const)("covers its environment %s", (_case, input, went, groupId, expected) => {
+    expect(creationCovers(input, went, groupId)).toBe(expected);
   });
 });
 

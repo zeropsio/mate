@@ -47,6 +47,7 @@ function installCli(root: string): void {
     "check-test-sentences.ts",
     "gate-changed.ts",
     "gate-input-scopes.ts",
+    "gate-installed-dependencies.ts",
     "state-smoke-cases.ts",
     "gate-file-inputs.ts",
     "chat-gate.ts",

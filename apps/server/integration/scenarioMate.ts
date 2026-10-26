@@ -24,6 +24,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import type * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import { FetchHttpClient, HttpServer } from "effect/http";
 
@@ -35,6 +36,7 @@ import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
 import { ZeropsOffboarding } from "../src/zerops/ZeropsOffboarding.ts";
+import { type AccessList, ZeropsMateAccessList } from "../src/zerops/ZeropsMateAccessList.ts";
 import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
@@ -53,7 +55,9 @@ export interface ScenarioMateOptions {
   readonly zeropsApiToken: string;
   /** Where the browser reaches it, e.g. `https://zcp-a-8080.prg1.zerops.app`. */
   readonly publicOrigin: string;
-  /** The HQ it is enrolled with; absent leaves it unenrolled. */
+  /** The scenario browser's own origins, allowed by the real WebSocket origin check. */
+  readonly allowedOrigins?: ReadonlyArray<string>;
+  /** The HQ it links to; the credential is the fake HQ's own. Absent, it links to none that answers. */
   readonly hq?: { readonly origin: string; readonly credential: string };
   /** The scenario's wall clock, in epoch milliseconds. */
   readonly now: () => number;
@@ -80,6 +84,8 @@ export interface ScenarioMate {
   readonly providers: ProviderInstances["Service"];
   /** Runs the production signer check after a platform membership input. */
   readonly offboarding: ZeropsOffboarding["Service"];
+  /** HQ's access list as this Mate holds it now, on its own clock: none past the hold. */
+  readonly accessList: Effect.Effect<Option.Option<AccessList>>;
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -122,17 +128,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       JSON.stringify({ providers: { opencode: { enabled: true } } }),
     );
   }
-  let hqEnrollmentPath: string | undefined;
-  if (options.hq) {
-    hqEnrollmentPath = NodePath.join(root, "hq", "enrollment.json");
-    await NodeFSP.mkdir(NodePath.dirname(hqEnrollmentPath), { recursive: true });
-    await NodeFSP.writeFile(
-      hqEnrollmentPath,
-      JSON.stringify({ hq: options.hq.origin, credential: options.hq.credential }),
-      { mode: 0o600 },
-    );
-  }
-
   const nativeServices = options.claudeSignIn
     ? await scriptedClaudeSignIn({ root, homeDir, cwd })
     : undefined;
@@ -173,12 +168,15 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
         checkNow: offboardingService.checkNow.pipe(Effect.provideService(Clock.Clock, clock)),
       };
       const attention = yield* ZeropsMateAttention.pipe(Effect.provide(context));
+      const accessList = (yield* ZeropsMateAccessList.pipe(Effect.provide(context))).current.pipe(
+        Effect.provideService(Clock.Clock, clock),
+      );
       const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
         Effect.provide(context),
       );
-      return { port: address.port, engine, attention, browser, providers, offboarding };
+      return { port: address.port, engine, attention, accessList, browser, providers, offboarding };
     }).pipe(
       Effect.updateService(ServerConfig.ServerConfig, (config) => ({
         ...config,
@@ -197,10 +195,11 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           projectId: options.projectId,
           apiBaseUrl: options.zeropsApiBaseUrl,
           publicOrigin: options.publicOrigin,
+          allowedOrigins: options.allowedOrigins ?? [],
           apiToken: options.zeropsApiToken,
-          roleRecheckInterval: Duration.minutes(5),
-          sessionMaxAge: Duration.days(30),
-          hqEnrollmentPath,
+          // A scene without an HQ links to none that answers: never production's.
+          hqOrigin: options.hq?.origin ?? "http://127.0.0.1:9",
+          hqGitCredentialPath: NodePath.join(root, "hq", "git-credential"),
           serviceId: options.serviceId,
           hostname: options.hostname,
           statusFile: NodePath.join(root, "zcp", "status.json"),
@@ -240,6 +239,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     get offboarding() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.offboarding;
+    },
+    get accessList() {
+      if (!running) throw new Error("Scenario Mate is stopped");
+      return running.accessList;
     },
     get attention() {
       if (!running) throw new Error("Scenario Mate is stopped");

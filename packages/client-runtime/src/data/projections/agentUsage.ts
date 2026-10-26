@@ -4,8 +4,11 @@ import { agentUsageId, agentUsageScope } from "../families/agentUsage.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { liveOrHeld } from "../streamMachine.ts";
+import { hqAppsScope } from "../families/hqNavigation.ts";
+import { HQ_SLOW, scopeSlow } from "./freshness.ts";
 export type AgentUsageRead =
-  | { readonly kind: "reading" }
+  /** `line`: what the read waits for, where it is not its own read under way. */
+  | { readonly kind: "reading"; readonly line?: string }
   | {
       readonly kind: "read";
       readonly report: UsageReport;
@@ -34,6 +37,10 @@ export const agentUsage: Projection<
         kind: "unavailable",
         reason: stream.fault?.message ?? "HQ usage access is unavailable. Retry HQ access.",
       };
+    // Usage is asked only once HQ's navigation said which reports it serves.
+    if (scopeSlow(read, hqAppsScope(orgId)) || scopeSlow(read, agentUsageScope(orgId, owner)))
+      return { kind: "reading", line: HQ_SLOW };
+    if (stream.generation === 0) return { kind: "reading", line: "Waiting for HQ…" };
     return { kind: "reading" };
   },
   equals: sameValue,

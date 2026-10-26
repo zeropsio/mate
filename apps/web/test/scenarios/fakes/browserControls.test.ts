@@ -3,13 +3,47 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it, vi } from "vite-plus/test";
-import { openBrowser, clickText } from "../harness/browser.ts";
+import { openBrowser, clickText, menuMateRow } from "../harness/browser.ts";
 import { completedHttp } from "../harness/completedHttp.ts";
 import { MateFake } from "./mate.ts";
 import { AuthSessionState, AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const decodeSessionState = Schema.decodeUnknownSync(AuthSessionState);
+
+it.each(["Ada", "Shop · Ada"])(
+  "a replaced menu row still receives its intended click (%s)",
+  async (label) => {
+    const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-menu-row-"));
+    await NodeFSP.writeFile(
+      NodePath.join(dist, "index.html"),
+      '<!doctype html><button data-zerops-surface="sidebar-mate"><span data-zerops-surface="sidebar-mate-name">Ada</span></button>',
+    );
+    const web = await openBrowser(dist, {});
+    try {
+      await web.page.goto(web.origin);
+      await web.page.evaluate((label) => {
+        document.querySelector("span")!.textContent = label;
+        document.addEventListener("click", () => {
+          document.body.dataset.clicked = "Ada";
+        });
+      }, label);
+      const row = await menuMateRow(web.page, "Ada");
+      await web.page.evaluate(() => {
+        const previous = document.querySelector("button")!;
+        previous.replaceWith(previous.cloneNode(true));
+      });
+      await expect(
+        row.click(),
+        "ASSERTION: a replacement row receives the pending click",
+      ).resolves.toBeUndefined();
+      expect(await web.page.evaluate(() => document.body.dataset.clicked)).toBe("Ada");
+    } finally {
+      await web.close();
+      await NodeFSP.rm(dist, { recursive: true, force: true });
+    }
+  },
+);
 
 it("a Mate answers the browser's authenticated session read, including its preflight", async () => {
   const { serve } = await import("../harness/http.ts");

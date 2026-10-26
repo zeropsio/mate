@@ -19,7 +19,6 @@ const HQ_MATE = {
   standupRequestedBy: null,
   closedOff: false,
   setupMarker: null,
-  keyWider: false,
 };
 
 const mateLiveView = Schema.decodeUnknownSync(MateLiveView);

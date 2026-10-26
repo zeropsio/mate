@@ -247,7 +247,7 @@ describe("hqOfferWords — what a control says beside a verb HQ does not offer",
       "HQ's refusal, as of the roles it was decided over",
       { kind: "refused", reason: "not_releaser" },
       "1970-01-01T00:00:01.000Z",
-      "You need more than Read access to this project's production to release it. Zerops roles as of @1000.",
+      "To release, this project needs a Zerops project, and you need more than Read access to its production. Zerops roles as of @1000.",
     ],
     [
       "HQ's refusal alone where it named no time",

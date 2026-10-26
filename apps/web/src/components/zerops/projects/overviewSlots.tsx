@@ -56,11 +56,14 @@ import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
 import {
   broughtBy,
+  historyHeld,
   historyOffered,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
+  productionBuilding,
   releaseLineOpens,
+  releaseProductionRuns,
   rollBackTarget,
   type CardMateReading,
   type CardStage,
@@ -158,10 +161,13 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     const chip = drawnChip(
       productionChip({
         production,
-        building:
+        building: productionBuilding(
+          production.kind,
           prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.projectId)),
+        ),
         waiting: entry.flow.main.notLive,
         waitingAtLeast: entry.flow.main.notLiveAtLeast,
+        changeCount: entry.flow.main.changeCount,
         untold: read?.release.untold ?? NO_UNTOLD,
         serving: prodServing,
         releases,
@@ -368,12 +374,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           </Button>
         )}
         {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
-            history stands beside the card. Its first release on its way holds History's room, so
-            the release lands moving nothing (the run's card grew 42 px as it landed) — through the
-            beat production's chip names what it runs before the flow's releases say it. */}
+            history stands beside the card. Production runs a release only once it has landed
+            (`releaseProductionRuns`), so a first release on its way holds History's room and a
+            second keeps History. */}
         {input.onPage === true ? null : historyOffered({
             releases: releases.length,
-            runs: stop?.version !== undefined,
+            runs:
+              releaseProductionRuns(
+                releases,
+                entry.flow.production.kind === "releasing" ? entry.flow.production.tag : undefined,
+              ) !== undefined,
           }) ? (
           <Button
             onClick={() => {
@@ -383,8 +393,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           >
             History
           </Button>
-        ) : entry.flow.production.kind === "releasing" ||
-          (line.dot === "running" && (chip?.version ?? stop?.version) !== undefined) ? (
+        ) : historyHeld({
+            kind: entry.flow.production.kind,
+            dot: line.dot,
+            runsNamed: (chip?.version ?? stop?.version) !== undefined,
+          }) ? (
           <ActionHeld>History</ActionHeld>
         ) : null}
       </>

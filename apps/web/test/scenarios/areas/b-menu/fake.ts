@@ -7,7 +7,6 @@ import {
   type OverviewMain,
   type MateThreadKind,
 } from "@t3tools/shared/mateLink";
-import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import type { MateFake } from "../../fakes/mate.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
 
@@ -104,16 +103,12 @@ export const relayAttention = Effect.fn("menu.relayAttention")(function* (
   yield* drivers.links.get(name)!.send(yield* encode({ type: "attention", attention }));
 });
 
-/** A new link of Mate `name` to HQ, enrolled the way zcp does it, its state read. */
+/** A new link of Mate `name` to HQ, its state read. */
 const openLink = Effect.fn("menu.openLink")(function* (
-  drivers: Pick<ScenarioDrivers, "core">,
+  drivers: Pick<ScenarioDrivers, "linkMate">,
   name: string,
 ) {
-  const credential = yield* enrollMate(drivers.core.call, drivers.core.fake, name);
-  const { ticket } = (yield* drivers.core.call("POST", "/api/mate/link-ticket", {
-    headers: { authorization: `Mate ${credential}` },
-  })).body as { ticket: string };
-  const link = yield* drivers.core.socket(`/api/mate/link?ticket=${ticket}`);
+  const link = yield* drivers.linkMate(name);
   yield* link.next("state");
   return link;
 });
@@ -123,7 +118,7 @@ const openLink = Effect.fn("menu.openLink")(function* (
  * its attention goes on in its next epoch, a new incarnation.
  */
 export const restartMate = Effect.fn("menu.restartMate")(function* (
-  drivers: Pick<ScenarioDrivers, "mates" | "core" | "links">,
+  drivers: Pick<ScenarioDrivers, "mates" | "linkMate" | "links">,
   name: string,
 ) {
   drivers.mates.get(name)!.restart();
@@ -136,7 +131,7 @@ export const restartMate = Effect.fn("menu.restartMate")(function* (
  * reaches HQ on a link newer than the restarted run's and says `says` of its own epoch.
  */
 export const speakFromRunBefore = Effect.fn("menu.speakFromRunBefore")(function* (
-  drivers: Pick<ScenarioDrivers, "mates" | "core">,
+  drivers: Pick<ScenarioDrivers, "mates" | "linkMate">,
   name: string,
   says: Parameters<MateFake["lateFromRunBefore"]>[0],
 ) {

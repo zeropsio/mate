@@ -67,7 +67,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
-import { answeredDeploys } from "../ZeropsDeployAnswer";
+import { useReviewDeploys } from "../ZeropsDeployAnswer";
 import {
   changeChecks,
   changeCode,
@@ -296,7 +296,7 @@ function ChangeReviewData({
     const outcome = await verbs.merge(target.groupId, change, pull.headSha);
     setPress(
       outcome.ok
-        ? { kind: "done", deploys: outcome.deploys }
+        ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
         : { kind: "refused", reason: outcome.reason },
     );
   };
@@ -688,7 +688,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
   const mine = mate.mine ? mate : undefined;
   const [questionClosed, setQuestionClosed] = useState(false);
-  const answer = answeredDeploys(press);
+  const answer = useReviewDeploys(press);
   const fix = model.verdict.fix;
   // Asked to close it: the button closes it, and the quiet word keeps it open.
   const asked =

@@ -32,6 +32,13 @@ type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 const history = "The existing conversation is still here";
 const routes = new WeakMap<Scenario, Map<string, string>>();
 const seededDoors = new WeakMap<Scenario, Map<string, number>>();
+const openedDoors = (s: Scenario, name: string) => {
+  const gate = s.drivers.realMates.get(name)!.gate;
+  return s.drivers.core.kind === "external"
+    ? gate.openedConnections
+    : gate.requests.filter((request) => request.startsWith("POST /mate/api/auth/zerops-throwaway "))
+        .length;
+};
 
 // Seed through another isolated browser, so the case's browser still crosses a cold door.
 const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", history]]) =>
@@ -42,7 +49,7 @@ const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", histo
     yield* Effect.promise(async () => {
       s.web.setPerson(page, "personal");
       await s.web.gotoWithSession(page, "personal");
-      await (await menuMateRow(page, name, 8000)).click();
+      await (await menuMateRow(page, name)).click();
       await page.waitForSelector('[role="textbox"]', { visible: true });
     });
     for (const [question, answer] of exchanges) {
@@ -64,21 +71,13 @@ const seed = (s: Scenario, name = "Ada", exchanges = [["Earlier question", histo
     map.set(name, new URL(page.url()).pathname);
     routes.set(s, map);
     const doors = seededDoors.get(s) ?? new Map<string, number>();
-    doors.set(
-      name,
-      mate.gate.requests.filter((request) =>
-        request.startsWith("POST /mate/api/auth/zerops-throwaway "),
-      ).length,
-    );
+    doors.set(name, openedDoors(s, name));
     seededDoors.set(s, doors);
     yield* Effect.promise(() => context.close());
   });
 const route = (s: Scenario, name = "Ada") => routes.get(s)!.get(name)!;
 const doorCount = (s: Scenario, name = "Ada") =>
-  s.drivers.realMates
-    .get(name)!
-    .gate.requests.filter((request) => request.startsWith("POST /mate/api/auth/zerops-throwaway "))
-    .length - (seededDoors.get(s)?.get(name) ?? 0);
+  openedDoors(s, name) - (seededDoors.get(s)?.get(name) ?? 0);
 const archived = (s: Scenario, name = "Ada") =>
   s.drivers.realMates
     .get(name)!

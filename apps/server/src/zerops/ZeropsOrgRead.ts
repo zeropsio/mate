@@ -1,23 +1,7 @@
 /**
- * ZeropsOrgRead — this Mate's own project and its org's member list, read once for everything in
- * this Mate that asks.
- *
- * The door (`ZeropsThrowawayIdentity`), the membership watch (`ZeropsMembershipWatch`) and the
- * signers' checks (`ZeropsProjectSigners`) each read the same two documents with the Mate's own
- * key: the project, for its org and what it says about people, and the org's member list. Read
- * apart, that was three reads of each, on timers of their own — and the member list carries every
- * integration token of the org as a member: 181 rows on Example Org (2026-10-03), which a slow Zerops
- * took up to 35 s to answer.
- *
- * So each is read once for all of them. An answer at most {@link ORG_READ_MAX_AGE} old is the
- * answer, and a read already under way is joined rather than asked again. Only an answer the
- * callers can use is kept: a project that names its org, a member list that names somebody (an
- * org always has a member, so an empty list is an outage dressed as an answer). A failure goes to
- * whoever joined that read, and the next asker reads again. Each caller still reads the answer by
- * its own rules. An access refusal discards both reads, so the next door attempt can
- * observe a regrant without waiting for their age limit.
- *
- * @module ZeropsOrgRead
+ * ZeropsOrgRead — this Mate's project, shared by restart and usage reads.
+ * A usable answer is kept for 30 seconds; concurrent readers share one request.
+ * Failed reads are not cached.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -43,18 +27,6 @@ export type OwnKeyRead =
   /** The platform could not be reached, or its `200` carried no JSON. */
   | { readonly kind: "unreachable"; readonly reason: string };
 
-/**
- * The member list's rows. `GET /client/{id}/user/list` answers
- * `{ clientUserList: [...] }` — not the `items` the search endpoints use, and
- * not a bare array (measured 2026-09-16 on a real Mate: the door refused every
- * caller with "not in the expected shape" until this read the right key).
- */
-export function readMemberEntries(body: unknown): ReadonlyArray<unknown> | null {
-  if (typeof body !== "object" || body === null) return null;
-  const rows = (body as Record<string, unknown>)["clientUserList"];
-  return Array.isArray(rows) ? rows : null;
-}
-
 /** A project read worth keeping: one that names the org it belongs to. */
 const namesItsOrg = (read: OwnKeyRead): boolean => {
   if (read.kind !== "answered" || read.status !== 200) return false;
@@ -63,12 +35,6 @@ const namesItsOrg = (read: OwnKeyRead): boolean => {
   return typeof clientId === "string" && clientId.length > 0;
 };
 
-/** A member list worth keeping: one that lists somebody. */
-const listsMembers = (read: OwnKeyRead): boolean =>
-  read.kind === "answered" &&
-  read.status === 200 &&
-  (readMemberEntries(read.body)?.length ?? 0) > 0;
-
 export class ZeropsOrgRead extends Context.Service<
   ZeropsOrgRead,
   {
@@ -76,17 +42,6 @@ export class ZeropsOrgRead extends Context.Service<
     readonly project: (input: {
       readonly apiBaseUrl: string;
       readonly projectId: string;
-    }) => Effect.Effect<OwnKeyRead>;
-    /** Discard the evidence behind an access refusal; the next asker reads Zerops again. */
-    readonly forgetAccess: (input: {
-      readonly apiBaseUrl: string;
-      readonly projectId: string;
-      readonly clientId: string;
-    }) => Effect.Effect<void>;
-    /** `GET /client/{clientId}/user/list` with the Mate's own key, shared as the module says. */
-    readonly members: (input: {
-      readonly apiBaseUrl: string;
-      readonly clientId: string;
     }) => Effect.Effect<OwnKeyRead>;
   }
 >()("t3/zerops/ZeropsOrgRead") {}
@@ -148,8 +103,7 @@ export const make = Effect.gen(function* () {
         ];
       });
       if (step.kind === "kept") return step.read;
-      // A read outlives whoever started it: a door whose caller left must not take the watch's
-      // answer down with it.
+      // A read outlives its first caller so other readers keep their shared answer.
       if (step.kind === "start") {
         yield* readOnce(url).pipe(
           Effect.onExit((exit) =>
@@ -173,17 +127,8 @@ export const make = Effect.gen(function* () {
     });
 
   return ZeropsOrgRead.of({
-    forgetAccess: ({ apiBaseUrl, projectId, clientId }) =>
-      Ref.update(shared, (current) => {
-        const kept = new Map(current.kept);
-        kept.delete(`${apiBaseUrl}/project/${encodeURIComponent(projectId)}`);
-        kept.delete(`${apiBaseUrl}/client/${encodeURIComponent(clientId)}/user/list`);
-        return { ...current, kept };
-      }),
     project: ({ apiBaseUrl, projectId }) =>
       read(`${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, namesItsOrg),
-    members: ({ apiBaseUrl, clientId }) =>
-      read(`${apiBaseUrl}/client/${encodeURIComponent(clientId)}/user/list`, listsMembers),
   });
 });
 

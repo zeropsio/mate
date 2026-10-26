@@ -9,6 +9,7 @@ import { gateSlotCount } from "./gate-slots.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
   scenarioFiles,
+  affectedScenarioFiles,
   validateSelectedFiles,
   changedPaths,
   scenarioAreas,
@@ -25,6 +26,7 @@ import {
 const gateRunnerFiles = [
   "gate-changed.ts",
   "gate-input-scopes.ts",
+  "gate-installed-dependencies.ts",
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "chat-gate.ts",
@@ -34,6 +36,37 @@ const gateRunnerFiles = [
   "test-process-lock-holder.ts",
 ];
 
+it("new-branch selection includes every path when Git output exceeds one mebibyte", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-large-diff-"));
+  try {
+    const scenario = "apps/web/test/scenarios/areas/c-mate/large-selection.scenario.ts";
+    for (const directory of ["scripts", "packages", "infra", NodePath.dirname(scenario)])
+      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+    const paths = [
+      ...Array.from({ length: 6000 }, (_, index) => `${"x".repeat(180)}-${index}.md`),
+      scenario,
+    ].sort();
+    for (const path of paths) NodeFS.writeFileSync(NodePath.join(root, path), "");
+    expect(NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: root }).status).toBe(0);
+    expect(NodeChildProcess.spawnSync("git", ["add", "."], { cwd: root }).status).toBe(0);
+    expect(Buffer.byteLength(paths.join("\0"))).toBeGreaterThan(1024 * 1024);
+    let selected: string[] | undefined;
+    expect(() => {
+      selected = changedPaths(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+    }, "ASSERTION: a new branch must retain its complete file selection beyond the default subprocess buffer").not.toThrow();
+    expect(selected).toEqual(paths);
+    expect(
+      () => affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904"),
+      "ASSERTION: the State Smoke selector must consume the entire new-branch diff",
+    ).not.toThrow();
+    expect(affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904")).toEqual([
+      scenario,
+    ]);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("includes relay consumers when discovering related tests for shared changes", () => {
   const packages = [
     { directory: "apps/web", name: "web", typecheck: true },
@@ -42,6 +75,15 @@ it("includes relay consumers when discovering related tests for shared changes",
   ];
   expect(relatedTestPackages(packages)).toEqual(packages.slice(0, 2));
 });
+
+// What `vp i` leaves behind: pnpm's copy of the lockfile it installed from.
+function installLockfile(root: string) {
+  NodeFS.mkdirSync(NodePath.join(root, "node_modules/.pnpm"), { recursive: true });
+  NodeFS.copyFileSync(
+    NodePath.join(root, "pnpm-lock.yaml"),
+    NodePath.join(root, "node_modules/.pnpm/lock.yaml"),
+  );
+}
 
 function areaFixture(
   imports: ReadonlyArray<readonly [string, ReadonlyArray<string>]>,
@@ -403,6 +445,7 @@ beforeAll(() => {
     NodePath.join(import.meta.dirname, "node_modules"),
     NodePath.join(repositoryFixture, "scripts/node_modules"),
   );
+  installLockfile(repositoryFixture);
   fixtureGit("init", "-q");
   fixtureGit("config", "user.name", "Gate fixture");
   fixtureGit("config", "user.email", "gate@example.test");
@@ -531,6 +574,7 @@ it.each([
   let steps: ReturnType<typeof selectGateSteps>["steps"] = [];
   expect(() => {
     steps = selectGateSteps(repositoryGraph, {
+      withScenarios: true,
       comparison: "HEAD",
       existing: [path],
       paths: [path],
@@ -1128,7 +1172,13 @@ esac
     );
     NodeFS.writeFileSync(
       NodePath.join(root, "node_modules/.bin/vp"),
-      '#!/bin/sh\necho vp >> checks.log\nexit "${GATE_FIXTURE_FAIL:-0}"\n',
+      `#!/bin/sh
+echo vp >> checks.log
+case "$*" in
+  *test/scenarios/vitest.config.ts*) printf '%s' "\${MATE_HQ_TEST_COMMAND-<unset>}" > "$GATE_FIXTURE_HQ_COMMAND_LOG" ;;
+esac
+exit "\${GATE_FIXTURE_FAIL:-0}"
+`,
       { mode: 0o755 },
     );
     NodeFS.writeFileSync(NodePath.join(root, ".gitignore"), "node_modules/\nchecks.log\n");
@@ -1140,7 +1190,7 @@ esac
     git("commit", "-qm", "base");
     git("branch", "base");
     NodeFS.writeFileSync(NodePath.join(root, "README.md"), "after");
-    const run = (args: string[] = [], fail = false) =>
+    const run = (args: string[] = [], fail = false, hqCommand?: string) =>
       NodeChildProcess.spawnSync(
         process.execPath,
         ["scripts/gate-changed.ts", "--base", "base", ...args],
@@ -1150,6 +1200,8 @@ esac
           env: {
             ...process.env,
             GATE_FIXTURE_FAIL: fail ? "9" : "0",
+            GATE_FIXTURE_HQ_COMMAND_LOG: NodePath.join(root, "node_modules/hq-command.log"),
+            MATE_HQ_TEST_COMMAND: hqCommand,
             // Dozens of real CLI launches share compilation, never gate results or Git state.
             NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
           },
@@ -1292,6 +1344,7 @@ esac
             ? "\n// selection revision\n"
             : "# lock revision\n",
       );
+      if (path === "pnpm-lock.yaml") installLockfile(root);
       git("add", path);
       git("commit", "-qm", "selection inputs changed");
       git("checkout", "-q", "lane");
@@ -1331,6 +1384,18 @@ esac
       ),
     );
     expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
+    const commandLog = NodePath.join(root, "node_modules/hq-command.log");
+    for (const hqCommand of ["node /fixtures/hq-a.ts", "node /fixtures/hq-b.ts", undefined]) {
+      NodeFS.rmSync(commandLog);
+      const changedHq = run(["--scenarios", scenario], false, hqCommand);
+      expect(changedHq.status, changedHq.stderr).toBe(0);
+      expect(
+        changedHq.stdout,
+        "ASSERTION: changing the HQ test command runs scenarios against the selected backend",
+      ).toContain("ok edited scenario files");
+      expect(NodeFS.readFileSync(commandLog, "utf8")).toBe(hqCommand ?? "<unset>");
+      expect(run(["--scenarios", scenario], false, hqCommand).stdout).toContain("reused receipt");
+    }
     expect(run().stdout).not.toContain("reused receipt");
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
@@ -1369,6 +1434,61 @@ it("BigInt source edits select checks while comments alone select none", () => {
   }
 });
 
+it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
+  const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const { steps } = selectGateSteps(repositoryGraph, {
+    comparison: "HEAD",
+    existing: [scenario],
+    paths: [scenario],
+    inventory: [scenario],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: 3,
+  });
+  expect(
+    steps.filter((step) =>
+      ["edited scenario files", "state-only smoke", "state-only oracle smoke"].includes(step.name),
+    ),
+    "ASSERTION: default laptop completion never executes browser scenarios or fixed smoke",
+  ).toEqual([]);
+});
+
+it.each(["changed", "deleted"])(
+  "CI keeps every affected scenario beyond the local cap for a %s dependency",
+  (change) => {
+    const dependency = "apps/web/src/sharedWitness.ts";
+    areaFixture([[dependency, scenarioAreas]], (root) => {
+      for (const directory of ["packages", "infra"])
+        NodeFS.mkdirSync(NodePath.join(root, directory));
+      const git = (...args: string[]) => {
+        const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+        if (result.status !== 0) throw new Error(result.stderr);
+      };
+      git("init", "-q");
+      git("config", "user.name", "Gate fixture");
+      git("config", "user.email", "gate@example.test");
+      git("add", ".");
+      git("commit", "-qm", "base");
+      const path = NodePath.join(root, dependency);
+      if (change === "deleted") NodeFS.rmSync(path);
+      else NodeFS.writeFileSync(path, "export const changed = true;");
+      const expected = scenarioAreas
+        .map((area) => `apps/web/test/scenarios/areas/${area}/journey.scenario.ts`)
+        .sort();
+      expect(
+        affectedScenarioFiles(root, "HEAD"),
+        "ASSERTION: required CI selection never caps graph-related scenario files",
+      ).toEqual(expected);
+      expect(affectedScenarioFiles(root, "4b825dc642cb6eb9a060e54bf8d69288fbee4904")).toEqual(
+        expected,
+      );
+      // Explicit requests survive without a dependency edge and deduplicate an edited file.
+      const edited = expected[0]!;
+      NodeFS.appendFileSync(NodePath.join(root, edited), "\nexport const edited = true;");
+      expect(affectedScenarioFiles(root, "HEAD", [edited, edited])).toEqual(expected);
+    });
+  },
+);
+
 const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
   "reload restores history",
@@ -1381,6 +1501,7 @@ const smokeTitles = [
 it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
   const path = "packages/contracts/src/engine.ts";
   const selected = selectGateSteps(repositoryGraph, {
+    withScenarios: true,
     comparison: "HEAD",
     existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
     paths: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
@@ -1443,6 +1564,7 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
           ? original.replace(/\}\s*$/u, ', "l2Witness": true\n}\n')
           : original + "\n# L2 witness\n",
       );
+      if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
       const result = NodeChildProcess.spawnSync(
         process.execPath,
         ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
@@ -1467,6 +1589,7 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
       expect(result.stdout).not.toContain("vp run -r");
     } finally {
       NodeFS.writeFileSync(file, original);
+      if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
       NodeFS.rmSync(NodePath.join(repositoryFixture, ownedTest));
     }
   },
@@ -1675,7 +1798,7 @@ it("L2 runs owned scenario-driver units through their existing project before sc
     NodeFS.appendFileSync(file, "\nexport const l2DriverWitness = true;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--with-scenarios"],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);

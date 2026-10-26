@@ -55,7 +55,7 @@ export const HqJob = Schema.Struct({
     "import",
     "migrated",
   ]),
-  /** What the event names: a merge's head, a release's tag; none else. */
+  /** What the event names: a merge's squash commit on main, a release's tag; none else. */
   ref: Schema.NullOr(Schema.String),
   /** HQ's words for how it ended. */
   reason: Schema.NullOr(Schema.String),
@@ -170,20 +170,66 @@ export function jobsByService(
 
 /** Additive delivery reader: Git uses its push schema; older Zerops rows normalize once. */
 export type HqDeliveryEnvironment = CanonicalHqEnvironment | HqGitNavigationEnvironment;
-const readDeliveryEnvironments = Schema.decodeUnknownOption(
-  Schema.Array(
-    Schema.Union([
-      HqGitNavigationEnvironment,
-      CanonicalHqEnvironment.check(
-        Schema.makeFilter((environment) =>
-          environment.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
-        ),
+const readDeliveryEnvironment = Schema.decodeUnknownOption(
+  Schema.Union([
+    HqGitNavigationEnvironment,
+    CanonicalHqEnvironment.check(
+      Schema.makeFilter((environment) =>
+        environment.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
       ),
-    ]),
-  ),
+    ),
+  ]),
 );
+
+/** An environment HQ sent that this build cannot read: what is still legible of it, to name it. */
+export interface UnreadEnvironment {
+  readonly id: string | null;
+  readonly name: string | null;
+  /** Its tier where that much is legible. */
+  readonly tier: "stage" | "production" | null;
+}
+
+/** The one place an unreadable environment is said: every surface that draws it uses these words. */
+export const UNREAD_ENVIRONMENT_LINE = "Could not be read by this version";
+
+export function unreadEnvironmentsWords(unread: ReadonlyArray<UnreadEnvironment>): string | null {
+  if (unread.length === 0) return null;
+  const names = unread.map(({ name, tier }) => name ?? tier ?? "An environment");
+  return `${names.join(", ")} could not be read by this version of Mate. Reload to update it; the environment is still there.`;
+}
+
+const legible = (record: unknown, key: string): string | null => {
+  const value = typeof record === "object" && record !== null ? Reflect.get(record, key) : null;
+  return typeof value === "string" ? value : null;
+};
+
+/**
+ * Each environment is read on its own: one this build cannot read is listed as unread beside the
+ * ones it can, never taking them down. `undefined` where HQ sent no list at all.
+ */
+export function readDeliveryEnvironments(value: unknown): {
+  readonly environments: ReadonlyArray<HqDeliveryEnvironment>;
+  readonly unread: ReadonlyArray<UnreadEnvironment>;
+} {
+  const environments: HqDeliveryEnvironment[] = [];
+  const unread: UnreadEnvironment[] = [];
+  for (const sent of Array.isArray(value) ? value : []) {
+    const read = readDeliveryEnvironment(sent);
+    if (Option.isSome(read)) environments.push(read.value);
+    else {
+      const tier = legible(sent, "tier");
+      unread.push({
+        id: legible(sent, "id"),
+        name: legible(sent, "name"),
+        tier: tier === "stage" || tier === "production" ? tier : null,
+      });
+    }
+  }
+  return { environments, unread };
+}
+
 export function deliveryEnvironmentsOf(
   value: unknown,
 ): ReadonlyArray<HqDeliveryEnvironment> | undefined {
-  return Option.getOrUndefined(readDeliveryEnvironments(value));
+  return Array.isArray(value) ? readDeliveryEnvironments(value).environments : undefined;
 }

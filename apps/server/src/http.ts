@@ -32,7 +32,6 @@ import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { contentAssetsAt, ContentAssetError } from "./assets/ContentAssets.ts";
 import { contentAssetFailure, protectedContentAsset } from "./assets/ContentAssetHttp.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
-import { ZeropsIdentityStatus } from "./zerops/ZeropsIdentityStatus.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
@@ -407,9 +406,6 @@ export const assetRouteLayer = HttpRouter.add(
           );
         if (!session.success.scopes.includes(AuthOrchestrationReadScope))
           return contentAssetFailure("access-denied", 403);
-        const identity = yield* Effect.serviceOption(ZeropsIdentityStatus);
-        if (Option.isSome(identity) && (yield* identity.value.current).identity === "failed")
-          return contentAssetFailure("access-unverified", 503);
         return null;
       });
       const resolve = Effect.gen(function* () {
@@ -601,6 +597,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
 
     const config = yield* ServerConfig.ServerConfig;
     const requestPath = url.value.pathname;
+    if (config.zerops !== undefined) return HttpServerResponse.text("Not Found", { status: 404 });
 
     // The catch-all below answers every unrecognised path with the SPA shell,
     // which is right for app routes and wrong for everything else: a misrouted

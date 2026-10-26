@@ -2,10 +2,12 @@
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import { expect } from "@effect/vitest";
-import { enrollMate, sessionFor } from "../../../../../hq/test/harness/runningCore.ts";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
-import { groupCheckout, propose, stateBecomes } from "../../../../../hq/test/harness/recipe.ts";
-import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
+import { stateBecomes } from "../../../../../hq/test/harness/recipe.ts";
+import { mateAccess, personDoor } from "../../harness/mateAccess.ts";
 import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBuildProtocol } from "../../fakes/e-env/builds.ts";
@@ -21,15 +23,17 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     role: "Developer",
     grants: { Ada: "BASIC_USER", "Shop-stage": "BASIC_USER", "Shop-production": "BASIC_USER" },
   });
-  yield* s.given.project("Ada", { mate: true, app: "Shop" });
+  const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
+  if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
   const { core, zerops } = s.drivers;
-  // Core's person door takes a scoped hand-over token, as the browser creates from its account.
+  // The embedded Core's person door takes a scoped hand-over token, as the browser creates from
+  // its account; the real Core takes the colleague's own access token.
   zerops.world.tokens.set("door-colleague", {
     ...zerops.world.tokens.get("door-owner")!,
     id: "door-colleague",
     createdByUser: "colleague",
   });
-  const colleague = yield* sessionFor(core.call, "door-colleague");
+  const colleague = yield* personDoor(core, "colleague");
   const appId = s.appIds.get("Shop")!;
   const tiers =
     shape.stage === false ? (["production"] as const) : (["stage", "production"] as const);
@@ -68,19 +72,41 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     });
     expect(kept.status).toBe(200);
   }
-  const credential = yield* enrollMate(core.call, zerops.world, "Ada");
-  const auth = { authorization: `Mate ${credential}` };
-  expect(
-    (yield* core.call("POST", "/api/mate/repos", { headers: auth, body: { name: "web" } })).status,
-  ).toBe(200);
+  const access = mateAccess(core, s.owner, credential);
+  const auth = access.headers;
+  yield* access.repo(appId, "web");
   const git = yield* gitClient;
-  const recipeNumber = yield* propose(core.call, auth);
-  const recipe = yield* groupCheckout(git, core.origin, credential, appId, "recipe");
+  yield* access.repo(appId, RECIPE_REPO);
+  const proposal = yield* core.call("POST", "/api/mate/changes", {
+    headers: auth,
+    body: { repo: RECIPE_REPO, title: RECIPE_PROPOSAL_TITLE },
+  });
+  expect(proposal.status, JSON.stringify(proposal.body)).toBe(200);
+  const recipeNumber = (proposal.body as { change: { number: number } }).change.number;
+  yield* access.clone(git, appId, RECIPE_REPO, "recipe");
+  const recipeWork = NodePath.join(git.dir, "recipe");
+  const recipe = {
+    write: (files: Record<string, string>, message: string) =>
+      Effect.sync(() => {
+        for (const [path, content] of Object.entries(files)) {
+          NodeFS.mkdirSync(NodePath.dirname(NodePath.join(recipeWork, path)), { recursive: true });
+          NodeFS.writeFileSync(NodePath.join(recipeWork, path), content);
+        }
+      }).pipe(
+        Effect.andThen(git.checked(["add", "-A"], recipeWork)),
+        Effect.andThen(git.checked(["commit", "-q", "-m", message], recipeWork)),
+      ),
+    push: (number: number) =>
+      git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${number}`], recipeWork),
+    main: git
+      .checked(["fetch", "-q", "origin"], recipeWork)
+      .pipe(Effect.andThen(git.checked(["rev-parse", "origin/main"], recipeWork))),
+  };
   const tierYaml = [
     "services:",
     "  - hostname: web",
     "    type: nodejs@22",
-    `    buildFromGit: ${core.origin}/git/${appId}/web.git`,
+    `    buildFromGit: ${access.url(appId, "web")}`,
     "    zeropsSetup: web",
     "",
   ].join("\n");
@@ -88,9 +114,9 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     { "3 — Stage/import.yaml": tierYaml, "4 — Small Production/import.yaml": tierYaml },
     "Declare Shop environments",
   );
-  yield* recipe.push("Ada", recipeNumber);
+  yield* recipe.push(recipeNumber);
   yield* stateBecomes(core.call, s.owner, appId, recipeNumber, "merged");
-  yield* git.checked(["clone", remoteOf(core.origin, credential, appId, "web"), "web"]);
+  yield* access.clone(git, appId, "web", "web");
   const work = `${git.dir}/web`;
   const change = Effect.fn("e-env.change")(function* (title = "Ship the storefront") {
     const opened = yield* core.call("POST", "/api/mate/changes", {
@@ -100,7 +126,12 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     expect(opened.status).toBe(200);
     const number = (opened.body as { change: { number: number } }).change.number;
     yield* git.checked(["fetch", "origin"], work);
-    yield* git.checked(["checkout", "-B", "change", "origin/main"], work);
+    // The real Core makes a repository empty: its first change starts the history `main` takes.
+    const born = (yield* git.run(["rev-parse", "--verify", "-q", "origin/main"], work)).code === 0;
+    yield* git.checked(
+      born ? ["checkout", "-B", "change", "origin/main"] : ["checkout", "--orphan", "change"],
+      work,
+    );
     yield* git.checked(["config", "user.name", "Ada"], work);
     // Content goes through ordinary git, never Core's internal GitHost or database.
     yield* Effect.promise(async () => {

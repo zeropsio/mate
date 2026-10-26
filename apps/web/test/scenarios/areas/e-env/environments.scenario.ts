@@ -5,7 +5,7 @@ import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
-import { environmentActions } from "./dsl.ts";
+import { addGitEnvironment, environmentActions, environmentJobs, gitEnvironments } from "./dsl.ts";
 
 const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
@@ -19,14 +19,9 @@ describe("E: stage, production, release and rollback", () => {
           const a = environmentActions(f);
           yield* f.s.given.signedIn;
           yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
-          yield* f.s.drivers.core
-            .sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-admit','git',${f.appId}::uuid,'stage','git-witness','{main}','staging','direct','owner')`;
-          yield* f.s.drivers.core.call("PATCH", `/api/apps/${f.appId}`, {
-            session: f.s.owner,
-            body: { name: "Shop" },
-          });
+          const environmentId = yield* addGitEnvironment(f, { tier: "stage", name: "git-witness" });
           yield* Effect.promise(() =>
-            f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/git-admit`),
+            f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/${environmentId}`),
           );
           yield* a.then.text(
             "Nothing pushed yet · pushes on the next merge",
@@ -49,21 +44,19 @@ describe("E: stage, production, release and rollback", () => {
               response.status() === 200,
           );
           yield* a.when.click("Confirm removal");
-          expect((yield* Effect.promise(() => removed)).status()).toBe(200);
-          const accepted = yield* f.s.drivers.core.sql<{
-            readonly receipt: {
-              readonly executor: string;
-              readonly requestId: string;
-              readonly acceptance: { readonly kind: string };
-            };
-          }>`SELECT receipt FROM hq_git_target_receipt WHERE intent->>'kind'='remove-git-environment' AND app_id=${f.appId}::uuid`;
-          expect(accepted).toHaveLength(1);
-          expect(accepted[0]!.receipt.executor).toBe("hq");
-          expect(accepted[0]!.receipt.requestId).not.toBe("");
-          expect(accepted[0]!.receipt.acceptance.kind).toBe("accepted");
-          expect(
-            yield* f.s.drivers.core.sql`SELECT 1 FROM hq_environment WHERE id='git-admit'`,
-          ).toHaveLength(0);
+          const removedResponse = yield* Effect.promise(() => removed);
+          expect(removedResponse.status()).toBe(200);
+          const receipt = (yield* Effect.promise(() => removedResponse.json())) as {
+            readonly executor: string;
+            readonly requestId: string;
+            readonly acceptance: { readonly kind: string };
+          };
+          expect(receipt.executor).toBe("hq");
+          expect(receipt.requestId).not.toBe("");
+          expect(receipt.acceptance.kind).toBe("accepted");
+          yield* gitEnvironments(f, (environments) =>
+            environments.every((environment) => environment.id !== environmentId),
+          );
           yield* f.s.then.noExternalNetwork;
         }),
     );
@@ -281,11 +274,23 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Roll back to v0.1.0");
           const process = yield* a.deployment("production");
           expect(submissions).toHaveLength(1);
-          const jobs = yield* f.s.drivers.core.sql`
-          SELECT label, sha, process_id FROM hq_deploy_job
-          WHERE project_id = ${"Shop-production"} AND label = ${"v0.1.2"}`;
-          expect(jobs).toEqual([
-            expect.objectContaining({ label: "v0.1.2", sha: earlier, process_id: process.id }),
+          // The rollback is release v0.1.2 of the earlier commit, and its build is that release's job.
+          const releases = (yield* f.s.drivers.core.call("GET", `/api/apps/${f.appId}/releases`, {
+            session: f.s.owner,
+          })).body as {
+            releases: { tag: string; rollbackOf: string | null; entries: { sha: string }[] }[];
+          };
+          expect(releases.releases.filter((release) => release.tag === "v0.1.2")).toEqual([
+            expect.objectContaining({
+              rollbackOf: "v0.1.0",
+              entries: [expect.objectContaining({ sha: earlier })],
+            }),
+          ]);
+          const jobs = yield* environmentJobs(f, "production", (jobs) =>
+            jobs.some((job) => job.processId === process.id),
+          );
+          expect(jobs.filter((job) => job.processId === process.id)).toEqual([
+            expect.objectContaining({ cause: "release", sha: earlier, processId: process.id }),
           ]);
           yield* a.when.finish("production");
           yield* a.then.text("Rolled back to v0.1.0");

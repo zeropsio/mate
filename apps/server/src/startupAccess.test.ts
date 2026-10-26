@@ -53,10 +53,17 @@ it("announces the Zerops door without minting anything to announce", () => {
   const output = formatZeropsServeOutput("http://127.0.0.1:3773");
 
   expect(output).toContain("http://127.0.0.1:3773");
+  expect(output).toContain("Open this Mate through HQ at https://mate-hq.zerops.io");
   // The three things upstream prints, none of which may appear here.
   expect(output).not.toContain("Token:");
   expect(output).not.toContain("/pair");
   expect(output).not.toContain("#token=");
   // And no QR code, which is only ever a rendering of a credential.
   assert.isFalse(output.includes("\u2588"));
+});
+
+it("names the configured HQ as the way into a development Mate", () => {
+  expect(formatZeropsServeOutput("http://127.0.0.1:3773", "https://hq.example.test")).toContain(
+    "Open this Mate through HQ at https://hq.example.test",
+  );
 });

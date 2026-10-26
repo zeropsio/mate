@@ -35,13 +35,14 @@ export function menuRows<Row extends CandidateRow>(input: {
  * HQ, and for an official one until its navigation is read or refused. A source whose first read
  * failed is retried within a second, so the menu holds on until it answers; only once the wait
  * ran out (`waitedOut`) does one still catching up count as stopped answering, and the rows stand
- * without it — names alone, not ordered on a guess and taken back a moment later. HQ read, the menu
+ * without it — names alone, not ordered on a guess and taken back a moment later; an HQ slow on a
+ * connection that holds stands so past the wait too, while it works on. HQ read, the menu
  * waits too for each Mate's last words HQ relays (`matesAnswered`), so a row paints with its time
  * and its words; past the wait, a row whose words are late paints without them, and they follow.
  */
 export function menuSourcesSettled(input: {
   readonly projects: Pick<OrganizationProjects, "read" | "reconnecting" | "unavailableReason">;
-  readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "reconnecting">;
+  readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "reconnecting" | "slow">;
   readonly verdict: HqVerdict;
   /** HQ answered for every Mate it places: each one's last words (`hqMatesAnswered`). */
   readonly matesAnswered: boolean;
@@ -57,7 +58,7 @@ export function menuSourcesSettled(input: {
     (hq.read === "read" && (input.matesAnswered || waitedOut)) ||
     hq.refusal !== null ||
     hq.capped ||
-    (waitedOut && hq.reconnecting);
+    (waitedOut && (hq.reconnecting || hq.slow));
   const placed =
     input.verdict === "none" ||
     input.verdict === "unreadable" ||

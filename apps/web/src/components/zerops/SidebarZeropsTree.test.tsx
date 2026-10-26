@@ -1,3 +1,4 @@
+import { HQ_SLOW } from "@t3tools/client-runtime/data";
 import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import {
@@ -9,7 +10,14 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import {
+  canonicalHqStructureOf,
+  placementsOf,
+  placedMenuRows,
+  placedNames,
+  type HqMate,
+  type HqPlacement,
+} from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { act, act as act_, type ReactElement } from "react";
@@ -155,6 +163,11 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
       everSignedIn: signers,
     };
   },
+}));
+// HQ has heard every Mate here: its overview is live, so its row may speak of a sign-in.
+vi.mock("~/zerops/useMenuMateReadings", async (original) => ({
+  ...(await original<typeof import("~/zerops/useMenuMateReadings")>()),
+  useMateOverviewInHq: () => "live",
 }));
 afterEach(() => {
   stops.deployments = new Map();
@@ -638,6 +651,36 @@ describe("SidebarZeropsTree", () => {
     },
   );
 
+  it("shows a plain project's HQ application without a Mate before and after inventory arrives", () => {
+    const structure = canonicalHqStructureOf({
+      apps: [
+        {
+          id: "plain-app",
+          name: "Plain Git",
+          projects: [{ projectId: "plain-project", name: "Plain Git", kind: "plain", mate: null }],
+        },
+      ],
+    })!;
+    for (const projects of [[], [{ id: "plain-project", name: "Plain Git", status: "ACTIVE" }]]) {
+      const rows = placedMenuRows({
+        organizationId: "org",
+        placements: placementsOf(structure),
+        names: placedNames(structure),
+        projects,
+        candidates: [],
+        gone: new Set<string>(),
+      });
+      const dom = markupDom(render(rows, { complete: projects.length > 0 }));
+      expect(dom.querySelector('[data-zerops-project-row="plain-app"]')?.textContent).toContain(
+        "Plain Git",
+      );
+      expect(dom.querySelector('[data-zerops-surface="sidebar-project"]')?.textContent).toContain(
+        "No Mate yet",
+      );
+      expect(dom.querySelector('[data-zerops-surface="sidebar-mate"]')).toBeNull();
+    }
+  });
+
   it("a failed listing names its cause once, with one Try again", () => {
     const html = render([], {
       complete: false,
@@ -697,10 +740,13 @@ describe("SidebarZeropsTree", () => {
 
   // The menu's header says it instead (the owner, 2026-10-05: a notice pushed the menu down and
   // back on every reconnect): a spinner while HQ's first read catches up, and words — in view,
-  // not only in a tooltip — once what HQ said is no longer current, or it never answered.
+  // not only in a tooltip — once what HQ said is no longer current, it never answered, or it is
+  // slow on a connection that holds (a spinner beside those words, and nothing to try again).
   it.each([
     ["syncing", false, null, false],
     ["syncing", true, null, false],
+    ["slow", false, HQ_SLOW, false],
+    ["slow", true, HQ_SLOW, false],
     ["last-known", false, "HQ is not reachable since 14:05 — showing what it last said.", false],
     ["last-known", true, "HQ is not reachable since 14:05 — showing what it last said.", true],
     ["unavailable", false, "HQ unavailable", false],
@@ -709,7 +755,9 @@ describe("SidebarZeropsTree", () => {
     const line =
       kind === "unavailable"
         ? "HQ unavailable"
-        : "HQ is not reachable since 14:05 — showing what it last said.";
+        : kind === "slow"
+          ? HQ_SLOW
+          : "HQ is not reachable since 14:05 — showing what it last said.";
     const html = renderToStaticMarkup(
       <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
     );

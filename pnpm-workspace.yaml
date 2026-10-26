@@ -168,6 +168,8 @@ patchedDependencies:
   # Preserve the final layout frame. Backport of [#10171](https://github.com/software-mansion/react-native-reanimated/pull/10171).
   react-native-reanimated@4.5.5: patches/react-native-reanimated@4.5.5.patch
   react-native-screens@4.26.2: patches/react-native-screens@4.26.2.patch
+  # Remove the root temp dir of module copies on close. Backport of vitest 5.0.5's `_clearTmpDir`.
+  vitest@5.0.1: patches/vitest@5.0.1.patch
 
 peerDependencyRules:
   allowAny:

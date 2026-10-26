@@ -13,6 +13,7 @@ import {
   unchangedHandovers,
   allowHqRetries,
   firstHqAnswer,
+  hqKeepsEverySession,
 } from "./dsl.ts";
 
 const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
@@ -69,21 +70,30 @@ describe("A: sign-in, session and organizations", () => {
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.given.signedIn;
           yield* s.then.menu.row("Shop").appears();
-          const mints = () =>
-            s.drivers.zerops.requests.get("POST /client/ORG/integration-token") ?? 0;
+          // Each door crossing is the browser's one `POST /api/door` to HQ, whatever token it carries.
+          const mints = () => s.drivers.hq.requests.get("POST /api/door") ?? 0;
           const first = mints();
           expect(first, "The first load enters HQ's door once").toBe(1);
           for (let load = 0; load < 2; load++) {
             const reads = (s.drivers.zerops.requests.get("GET /client/ORG/user/list") ?? 0) + 1;
             yield* account(s.page).reload;
             yield* s.then.menu.row(load === 0 ? "Shop" : "Shop 0").appears();
-            // The member list read behind verifies the kept HQ; HQ's next word comes after it.
-            yield* Effect.promise(() =>
-              s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", reads),
-            );
+            // Only a discovered HQ needs the browser's member list to verify it. A configured
+            // HQ skips that read; an endpoint-wide wait would catch its periodic reconcile.
+            if (s.drivers.core.kind === "in-process")
+              yield* Effect.promise(() =>
+                s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", reads),
+              );
             // The application keeps its id: the colleague renames it by its first name each time.
             yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
-            yield* s.then.menu.row(`Shop ${load}`).appears({ within: lateMs + 10_000 });
+            yield* s.then.menu.row(`Shop ${load}`).appears();
+            if (s.drivers.core.kind === "external")
+              expect(
+                s.drivers.zerops.requestsByCredential
+                  .get("personal")
+                  ?.get("GET /client/ORG/user/list") ?? 0,
+                "ASSERTION: a configured HQ needs no browser member-list verification",
+              ).toBe(0);
           }
           expect(mints(), "Two reloads mint no further door token").toBe(first);
           yield* s.then.noExternalNetwork;
@@ -98,7 +108,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* signInOrganization(s);
         yield* s.then.menu.row("Shop").appears();
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* account(s.page).selectOrganization("ACME");
         yield* s.then.menu.row("Shop").appears();
@@ -113,11 +123,11 @@ describe("A: sign-in, session and organizations", () => {
         yield* organizations(s);
         yield* signInOrganization(s);
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
         const retainedAuthorization = yield* unchangedHandovers(s);
         yield* account(s.page).reload;
         yield* account(s.page).showsOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* retainedAuthorization();
         yield* s.then.noExternalNetwork;
@@ -154,7 +164,7 @@ describe("A: sign-in, session and organizations", () => {
         slowMemberList(s.drivers, MEMBERS_MS);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+        yield* s.then.menu.row("Shop").appears();
         const reloaded = firstHqAnswer(s.page);
         reloaded.from();
         yield* account(s.page).reload;
@@ -209,7 +219,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
         yield* s.then.menu
           .row("HQ returned")
-          .appears({ within: 10_000 })
+          .appears()
           .pipe(Effect.ensuring(Effect.all([s.then.noReload, s.then.noExternalNetwork])));
       }),
     );
@@ -273,10 +283,11 @@ describe("A: sign-in, session and organizations", () => {
         yield* s.then.menu.row("Shop").appears();
         yield* Effect.promise(() => b.page.bringToFront());
         yield* b.then.menu.row("Shop").appears();
+        yield* hqKeepsEverySession(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Both live");
-        yield* b.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* b.then.menu.row("Both live").appears();
         yield* Effect.promise(() => s.page.bringToFront());
-        yield* s.then.menu.row("Both live").appears({ within: 10_000 });
+        yield* s.then.menu.row("Both live").appears();
         yield* account(s.page).showsPerson("owner");
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
@@ -295,7 +306,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* sessionEnds(s, "expiry");
         yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
         yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
-        yield* s.then.menu.row("Automatically renewed").appears({ within: 10_000 });
+        yield* s.then.menu.row("Automatically renewed").appears();
         yield* retainedAuthorization();
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;

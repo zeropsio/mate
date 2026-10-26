@@ -36,9 +36,7 @@ import { createContext, useContext } from "react";
 import { randomUUID } from "~/lib/utils";
 
 import { readCarriedCore } from "./bundledCore";
-import { handChiefAccess } from "./chiefAccess";
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
-import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 type SessionClient = ZeropsSessionValue["client"];
@@ -115,7 +113,6 @@ export function accountOperations(
     zerops: client,
     active: captureAccountLifetime(),
     hqProjectIdOf,
-    chiefAccess: handChiefAccess,
     gitStore: store,
   });
   const operations = makeOperations({
@@ -133,7 +130,6 @@ export function accountOperations(
         revalidate: (orgId, demand) => {
           if (registry.get(accountReadsAtom)?.orgId === orgId) revalidate(demand);
         },
-        debtOf: () => accountThrowawayDebt(client),
         nowMs: () => Date.now(),
         makeId: randomUUID,
         run: (intent, options) => run(intent, options),

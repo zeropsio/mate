@@ -142,3 +142,9 @@ describe("waitingItemsOf — everything waiting on the viewer, one list", () => 
     expect(items.map((waiting) => waiting.kind)).toEqual(["failed", "plan", "release"]);
   });
 });
+
+it("A waiting release shows its recorded changes and commits separately.", () => {
+  expect(releaseWaitingLine({ groupId: "tea", name: "Tea Shop", ahead: 6, changeCount: 1 })).toBe(
+    "1 change · 6 commits waiting for production.",
+  );
+});

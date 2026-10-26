@@ -7,6 +7,7 @@ import {
   PrimaryConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
+  ZeropsMateConnectionTarget,
   type ConnectionTarget,
 } from "./model.ts";
 
@@ -98,10 +99,19 @@ export class SshConnectionRegistration extends Schema.TaggedClass<SshConnectionR
   },
 ) {}
 
+/** A Mate opened through HQ: nothing to keep but where it is, its tickets asked for per attempt. */
+export class ZeropsMateConnectionRegistration extends Schema.TaggedClass<ZeropsMateConnectionRegistration>()(
+  "ZeropsMateConnectionRegistration",
+  {
+    target: ZeropsMateConnectionTarget,
+  },
+) {}
+
 export const ConnectionRegistration = Schema.Union([
   RelayConnectionRegistration,
   BearerConnectionRegistration,
   SshConnectionRegistration,
+  ZeropsMateConnectionRegistration,
 ]);
 export type ConnectionRegistration = typeof ConnectionRegistration.Type;
 
@@ -132,6 +142,7 @@ export function connectionRegistrationCatalogEntry(
   switch (registration._tag) {
     case "PrimaryConnectionRegistration":
     case "RelayConnectionRegistration":
+    case "ZeropsMateConnectionRegistration":
       return {
         target: registration.target,
         profile: Option.none(),

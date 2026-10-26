@@ -155,6 +155,32 @@ describe("the Chief", () => {
     );
 
     it.effect(
+      "PUT registers the person's Chief and answers only its registration, as HQ does",
+      () =>
+        Effect.gen(function* () {
+          const { call, dev, owner } = yield* running;
+          const answer = yield* call("PUT", "/api/chief", {
+            session: dev,
+            body: { projectId: "P_CHIEF" },
+          });
+          assert.strictEqual(answer.status, 200);
+          const { chief } = answer.body as {
+            readonly chief: { readonly projectId: string; readonly since: string };
+          };
+          assert.deepStrictEqual(Object.keys(answer.body as object), ["chief"]);
+          assert.strictEqual(chief.projectId, "P_CHIEF");
+          assert.match(chief.since, /^\d{4}-\d\d-\d\dT/u);
+          const theirs = yield* call("PUT", "/api/chief", {
+            session: owner,
+            body: { projectId: "P_CHIEF" },
+          });
+          assert.strictEqual(theirs.status, 409);
+          const mine = yield* call("GET", "/api/chief", { session: dev });
+          assert.deepStrictEqual(mine.body, { chief });
+        }),
+    );
+
+    it.effect(
       "a registration answers the credential once, kept only as its hash, and the next revokes it",
       () =>
         Effect.gen(function* () {

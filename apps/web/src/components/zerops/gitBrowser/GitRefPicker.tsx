@@ -23,6 +23,8 @@ import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { isEditableFocused } from "~/lib/editableFocus";
 import { useDebouncedValue } from "~/state/queries";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
+import { GitWhen } from "./GitWhen";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { GitReadStopped, type GitReadStop } from "./GitAtCommit";
 import { pickerSections, type PickerChange, type PickerRow } from "./GitRefPicker.logic";
 
@@ -183,6 +185,20 @@ export function GitRefPicker({
                     {row.detail === null ? null : (
                       <span className="truncate font-mono text-xs text-muted-foreground">
                         {row.detail}
+                      </span>
+                    )}
+                    {row.commit === undefined ? null : (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {row.commit.subject ?? "Commit metadata pending"}
+                        {row.commit.committedAt === null ? null : (
+                          <>
+                            {" "}
+                            ·{" "}
+                            <GitWhen at={row.commit.committedAt}>
+                              {formatRelativeTimeLabel(row.commit.committedAt)}
+                            </GitWhen>
+                          </>
+                        )}
                       </span>
                     )}
                   </span>

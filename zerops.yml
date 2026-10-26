@@ -47,6 +47,9 @@ zerops:
         # The consent page is HQ's, whatever origin the API's verificationUrl
         # names: HQ approves a fresh log-in directly and closes its window.
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        # Mate HQ, the one every Mate and this client share (`configuredHq`):
+        # named here, no organization's anchor is read to find it.
+        VITE_HQ_ORIGIN: https://mate-hq.zerops.io
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -105,6 +108,45 @@ zerops:
         # hosted-static; this only names its canonical origin.
         VITE_HOSTED_APP_URL: https://staging-web-origin-placeholder.invalid
         VITE_HQ_ORIGIN: https://hq-31d9-8080.prg1.zerops.app
+        VITE_ZEROPS_SIGN_IN: device-login
+        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+        CI: "1"
+        # VITE_BASE_PATH, VITE_HTTP_URL and VITE_WS_URL stay unset, as in prod.
+    run:
+      base: alpine/static@1.0
+      routing:
+        root: dist
+        headers:
+          - for: "/*"
+            values:
+              Cache-Control: "'no-cache' always"
+              X-Content-Type-Options: "'nosniff' always"
+          - for: "/assets/*"
+            values:
+              Cache-Control: "'public, max-age=31536000, immutable' always"
+              X-Content-Type-Options: "'nosniff' always"
+
+  # The same web client against the production HQ project (`mate-hq-prod`)
+  # before its final domain exists, served beside it as `web`: `staging` with
+  # that project's HQ and own origin. The HQ origin is the project zone, whose
+  # balancer carries the project's body and timeout limits; a zerops.app
+  # subdomain caps request bodies at 50 MB.
+  - setup: stage
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
+        - $HOME/.local/bin/pnpm --filter @t3tools/web build
+        - node apps/hq/scripts/pack-core.ts apps/web/dist
+      deployFiles:
+        - apps/web/~dist
+      envVariables:
+        VITE_HOSTED_APP_CHANNEL: latest
+        VITE_HOSTED_APP_URL: https://web-15e.prg1.zerops.app
+        VITE_HQ_ORIGIN: https://ienjc61a87dpdepkmuiqiapq9o0.prg1-zerops.zone
         VITE_ZEROPS_SIGN_IN: device-login
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"

@@ -87,3 +87,53 @@ describe("ref picker", () => {
     ).toEqual([["From GitHub", [{ label: "main", detail: null, rev: "refs/github/heads/main" }]]]);
   });
 });
+
+it("The branch picker carries the recorded commit facts and leaves missing facts pending.", () => {
+  const sections = pickerSections({
+    items: [
+      item({ name: "main", kind: "branch" }),
+      item({ name: "pending", kind: "branch", subject: null, committedAt: null }),
+    ],
+    query: "",
+    changes: [],
+  });
+  expect(sections.flatMap(({ rows }) => rows.map(({ commit }) => commit))).toEqual([
+    { subject: "Subject", committedAt: "2026-10-21T00:00:00.000Z" },
+    { subject: null, committedAt: null },
+  ]);
+});
+
+it.each([
+  { name: "flagged", subject: "", committedAt: "", metadataPending: true },
+  { name: "empty timestamp", subject: "Subject", committedAt: "" },
+  { name: "null", subject: null, committedAt: null },
+])("The branch picker shows pending metadata conservatively: $name", (fields) => {
+  const sections = pickerSections({
+    items: [item({ ...fields, kind: "branch" })],
+    query: "",
+    changes: [],
+  });
+  expect(sections[0]?.rows[0]?.commit).toEqual({ subject: null, committedAt: null });
+});
+
+it("The branch picker keeps a recorded empty commit subject when its timestamp is known.", () => {
+  const sections = pickerSections({
+    items: [item({ name: "empty subject", subject: "", kind: "branch" })],
+    query: "",
+    changes: [],
+  });
+  expect(sections[0]?.rows[0]?.commit).toEqual({
+    subject: "",
+    committedAt: "2026-10-21T00:00:00.000Z",
+  });
+});
+
+it("The branch picker keeps omitted commit facts pending.", () => {
+  const {
+    subject: _subject,
+    committedAt: _committedAt,
+    ...missing
+  } = item({ name: "missing", kind: "branch" });
+  const sections = pickerSections({ items: [missing], query: "", changes: [] });
+  expect(sections[0]?.rows[0]?.commit).toEqual({ subject: null, committedAt: null });
+});

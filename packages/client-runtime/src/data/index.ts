@@ -39,6 +39,7 @@ export {
 export {
   hqMateOverview,
   hqMateRefusal,
+  hqMateAnswered,
   hqMatePresence,
   hqMateLogins,
   hqMateReady,
@@ -109,6 +110,7 @@ export {
   type MateLinksRead,
 } from "./projections/mateLinks.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
+export { hqMateScope } from "./families/hqMate.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope, type ServiceValue } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
@@ -197,10 +199,11 @@ export {
   organizationProjects,
   ownRowWanted,
   projectGone,
+  rosterAnswered,
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
-export type { UnavailableReason } from "./projections/freshness.ts";
+export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export {
   creationStepId,
@@ -239,7 +242,6 @@ export {
   type RecordedEnvironment,
 } from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
-export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
@@ -265,6 +267,7 @@ export {
   NOT_READ_HQ,
   hqMateOverviewAtom,
   hqMateRefusalAtom,
+  hqMateAnsweredAtom,
   hqMatePresenceAtom,
   hqMateLoginsAtom,
   hqMateReadyAtom,
@@ -521,7 +524,6 @@ export {
   PRESS_STEP_RENEW_MS,
   type PressHold,
 } from "./operations/executors/hqPressLease.ts";
-export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
 
 export { creationHandoff } from "./projections/creationHandoff.ts";
 export {
@@ -787,3 +789,15 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
+export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
+
+export { hqKeptGitQuestions, type KeptGitQuestionView } from "./projections/hqKeptGit.ts";
+
+export { hqKeptGitFamily, hqKeptGitScope } from "./families/hqKeptGit.ts";
+
+export { hqChangeMetadata, type HqChangeMetadata } from "./projections/hqChangeMetadata.ts";
+export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
+
+export { hqChangeCommits, type HqChangeCommits } from "./projections/hqChangeCommits.ts";
+export { changeCommitsScope } from "./families/hqChangeCommits.ts";

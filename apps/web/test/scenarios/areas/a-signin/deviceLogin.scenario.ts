@@ -33,7 +33,7 @@ describe("A: sign-in through the Zerops window", () => {
     );
 
     // Catches Sign up losing its intent on the way to Zerops, or a brand-new account landing
-    // anywhere but Mate's setup for its own, empty organization.
+    // anywhere but Mate's onboarding for its own, empty organization.
     it.effect("sign-up through Zerops opens the new, empty account into Mate's onboarding", () =>
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
@@ -43,8 +43,24 @@ describe("A: sign-in through the Zerops window", () => {
         const consent = yield* window.lastConsentPage;
         expect(consent.searchParams.get("intent")).toBe("register");
         expect(consent.searchParams.get("display")).toBe("popup");
-        yield* window.says("Set up HQ for Newcomer");
+        yield* Effect.promise(async () => {
+          // A configured HQ starts the owner's organization at sign-in; a discovered HQ
+          // still asks its owner to set one up before the first project.
+          await s.page.waitForFunction(
+            () =>
+              document.body.innerText.includes("Set up HQ for Newcomer") ||
+              document.querySelector('[data-zerops-surface="first-run"]') !== null,
+            { polling: "raf" },
+          );
+          const configured = s.drivers.core.kind === "external";
+          expect(
+            await s.page.evaluate(() => document.body.innerText),
+            "ASSERTION: sign-up opens the new account's onboarding",
+          ).toContain(configured ? "Start a project" : "Set up HQ for Newcomer");
+          if (configured) await s.page.locator('::-p-aria(New project[role="button"])').wait();
+        });
         yield* account(s.page).showsPerson("newcomer");
+        yield* account(s.page).showsOrganization("Newcomer");
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -182,6 +198,34 @@ describe("A: sign-in through the Zerops window", () => {
         expect(s.drivers.zerops.requests.get("POST /auth/device-login"), "No second sign-in").toBe(
           1,
         );
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a sign-in or a load renewing a session with hours left: the platform revokes the old
+    // access token on every refresh, so the first door, the Zerops reads and the websocket login
+    // went out with a revoked token and were refused before they were repeated.
+    it.effect("a sign-in and a load of the app renew no session and meet no refusal", () =>
+      Effect.gen(function* () {
+        const s = yield* deviceLoginScenario();
+        const refused: string[] = [];
+        const doors: number[] = [];
+        s.page.on("response", (response) => {
+          const { pathname } = new URL(response.url());
+          if (response.status() === 401) refused.push(pathname);
+          if (pathname === "/api/door" && response.request().method() === "POST")
+            doors.push(response.status());
+        });
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        yield* account(s.page).reload;
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        expect(s.drivers.zerops.requests.get("POST /auth/refresh") ?? 0).toBe(0);
+        expect(refused).toEqual([]);
+        expect(doors[0], "The first door answered").toBe(200);
+        expect(s.drivers.zerops.sockets.size, "The Zerops websocket opened").toBeGreaterThan(0);
         yield* s.then.noExternalNetwork;
       }),
     );

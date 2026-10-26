@@ -5,6 +5,8 @@
  * - `GET /api/chief` → `{ chief: { projectId, since } | null }`: the person's own Chief here.
  * - `POST /api/chief` `{ projectId }` → `{ chief, credential, proxyUrl }`: registers it; `403` for
  *   a project that does not open for them or carries no `chief` tag, `409` for another's Chief.
+ * - `PUT /api/chief` `{ projectId }` → `{ chief: { projectId, since } }`: the same registration
+ *   answered as the shared HQ answers it, with no credential.
  * - `GET /api/proposals?ids=a,b` (at most 100) → `{ decisions }`, those on projects that open for
  *   the person; `PUT /api/proposals/:id` `{ projectId, decision, outcome?, words? }` → the decision
  *   held, `409` for one that would change what is held.
@@ -97,6 +99,20 @@ export const chiefRoutes = Layer.mergeAll(
         const chiefs = yield* Chiefs;
         return yield* (yield* Writes).outliving(
           Effect.map(chiefs.register(userId, projectId), (registered) => json(registered, 200)),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "PUT",
+    "/api/chief",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        const { projectId } = yield* jsonBody(RegisterBody, BODY_LIMIT);
+        const chiefs = yield* Chiefs;
+        return yield* (yield* Writes).outliving(
+          Effect.map(chiefs.register(userId, projectId), ({ chief }) => json({ chief }, 200)),
         );
       }),
     ),

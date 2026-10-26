@@ -4,12 +4,18 @@ import {
   changeReadId,
   changeReadRequest,
   changeReadScope,
+  changeMetadataScope,
+  changeCommitsScope,
   readsOfState,
   streamOf,
   classifyHqCall,
   accountReadsAtom,
 } from "@t3tools/client-runtime/data";
-import type { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeMetadataResponse,
+  ChangeCommitsResponse,
+} from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/reactivity";
 import type { AccountData } from "../ZeropsAccountData";
@@ -18,13 +24,28 @@ export function reviewAccount(
   read: (
     request: NonNullable<ReturnType<typeof changeReadRequest>>,
   ) => Promise<ChangeDetailResponse>,
+  metadata?: (
+    request: NonNullable<ReturnType<typeof changeReadRequest>>,
+  ) => Promise<ChangeMetadataResponse>,
+  commits?: (
+    request: NonNullable<ReturnType<typeof changeReadRequest>>,
+  ) => Promise<ChangeCommitsResponse>,
 ) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const orgId = "org";
   const held = new Set<string>();
-  const ask = (owner: string) => {
-    const scope = changeReadScope(orgId, owner);
+  const scopeOf = (
+    family: "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits",
+    owner: string,
+  ) =>
+    (family === "hqChangeRead"
+      ? changeReadScope
+      : family === "hqChangeMetadata"
+        ? changeMetadataScope
+        : changeCommitsScope)(orgId, owner);
+  const ask = (family: "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits", owner: string) => {
+    const scope = scopeOf(family, owner);
     store.dispatch({
       kind: "stream",
       key: scope,
@@ -35,7 +56,19 @@ export function reviewAccount(
     store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
     const generation = streamOf(store.state(), scope).generation;
     store.dispatch({ kind: "baseline-begin", scope, generation });
-    void read(changeReadRequest(owner)!).then(
+    // Existing scenarios seed one complete record; project its fields for narrower reads.
+    // Explicit readers let request-boundary witnesses reject any full-review read.
+    const reader =
+      family === "hqChangeRead"
+        ? read
+        : family === "hqChangeMetadata"
+          ? (metadata ?? (async (request) => ({ change: (await read(request)).change })))
+          : (commits ??
+            (async (request) => {
+              const { change, mainHead, commits, commitsTruncated } = await read(request);
+              return { change, mainHead, commits, commitsTruncated };
+            }));
+    void reader(changeReadRequest(owner)!).then(
       (value) => {
         store.dispatch({
           kind: "baseline-commit",
@@ -45,11 +78,14 @@ export function reviewAccount(
           members: [changeReadId(orgId, owner)],
           rows: [
             {
-              family: "hqChangeRead",
+              family,
               id: changeReadId(orgId, owner),
               value,
               revision: { kind: "hq", incarnation: value.change.head ?? "empty", revision: 0 },
-            },
+            } as Extract<
+              Parameters<typeof store.dispatch>[0],
+              { kind: "baseline-commit" }
+            >["rows"][number],
           ],
         });
         store.dispatch({
@@ -80,14 +116,27 @@ export function reviewAccount(
     data: store.data,
     orgId,
     demandDetail: (demand: DetailDemand) => {
-      if (demand.family === "hqChangeRead") {
+      if (
+        demand.family === "hqChangeRead" ||
+        demand.family === "hqChangeMetadata" ||
+        demand.family === "hqChangeCommits"
+      ) {
         held.add(demand.ownerId);
         if (
-          readsOfState(store.state()).fact("hqChangeRead", changeReadId(orgId, demand.ownerId))
+          readsOfState(store.state()).fact(demand.family, changeReadId(orgId, demand.ownerId))
             .kind !== "known" &&
-          streamOf(store.state(), changeReadScope(orgId, demand.ownerId)).phase !== "refused"
+          streamOf(
+            store.state(),
+            scopeOf(
+              demand.family as "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits",
+              demand.ownerId,
+            ),
+          ).phase !== "refused"
         )
-          ask(demand.ownerId);
+          ask(
+            demand.family as "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits",
+            demand.ownerId,
+          );
       }
       return () => {
         held.delete(demand.ownerId);
@@ -97,11 +146,17 @@ export function reviewAccount(
       if (held.has(demand.ownerId)) {
         store.dispatch({
           kind: "stream",
-          key: changeReadScope(orgId, demand.ownerId),
+          key: scopeOf(
+            demand.family as "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits",
+            demand.ownerId,
+          ),
           now: 0,
           event: { kind: "manual-retry" },
         });
-        ask(demand.ownerId);
+        ask(
+          demand.family as "hqChangeRead" | "hqChangeMetadata" | "hqChangeCommits",
+          demand.ownerId,
+        );
       }
     },
   } as unknown as AccountData;

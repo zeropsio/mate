@@ -1,7 +1,9 @@
 import {
   canonicalEnvironmentRow,
   canonicalEnvironmentRowInputsOf,
+  groupFlow,
   placeAddresses,
+  PRODUCTION_DEPLOYING,
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
@@ -13,6 +15,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { MateRowView } from "../SidebarMateRow.logic";
 import { entry, pull, WREN } from "./flowTestFixtures";
+import { groupFlowInputOf } from "./projectsView.logic";
 import {
   broughtBy,
   cardChangeRows,
@@ -26,7 +29,10 @@ import {
   mateChangeForReview,
   mateChangesForReview,
   panelAddresses,
+  historyHeld,
   historyOffered,
+  productionBuilding,
+  releaseProductionRuns,
   placeLines,
   putLiveHasChange,
   readyLine,
@@ -181,6 +187,120 @@ describe("production's line at a card's foot", () => {
         addresses: [],
       },
     ]);
+  });
+
+  it("An application whose environments deliver to Git says each environment's push on its card, never Not released yet", () => {
+    const at = "2026-10-13T10:00:00Z";
+    const sha = "a".repeat(40);
+    const remote = {
+      url: "https://github.com/acme/app.git",
+      repositoryId: "1",
+      keptAt: at,
+      keptBy: "custodian",
+      expiresAt: null,
+      invalidSince: null,
+    };
+    const gitEnvironment = (
+      id: string,
+      tier: "stage" | "production",
+      name: string,
+      branch: string,
+      order: number,
+      tag: string,
+    ): HqGitNavigationEnvironment => {
+      const target = { kind: "git", branch, delivery: "direct" } as const;
+      const attachment = { environmentId: HqEnvironmentId.make(id), createdAt: at, target };
+      return {
+        id: attachment.environmentId,
+        target,
+        tier,
+        name,
+        sources: tier === "production" ? ["release"] : ["main"],
+        order,
+        keyHeld: false,
+        keyInvalid: false,
+        can: {},
+        birth: null,
+        release: {
+          id: `rollout-${id}`,
+          target: "git",
+          releaseTarget: attachment,
+          tag,
+          planned: true,
+          ended: true,
+          endedAt: at,
+          landed: false,
+          leftOut: [],
+        },
+        jobs: [
+          {
+            id: `push-${id}`,
+            kind: "push",
+            service: "app",
+            sha,
+            state: "pushed",
+            cause: "release",
+            ref: tag,
+            reason: null,
+            appVersionId: null,
+            processId: null,
+            requestedBy: "releaser",
+            at,
+            endedAt: at,
+            supersededBy: null,
+            evidence: {
+              confirmed: {
+                remote,
+                ref: `refs/heads/${branch}`,
+                before: null,
+                after: sha,
+                at,
+                via: "answer",
+              },
+              nextActor: "none",
+              nextAction: "",
+            },
+          },
+        ],
+      };
+    };
+    const rows = canonicalEnvironmentRowInputsOf({
+      environments: [
+        gitEnvironment("git-prod", "production", "Production", "main", 1, "v2.0.0"),
+        gitEnvironment("git-stage", "stage", "Stage", "mate-stage", 2, "v2.1.0-rc"),
+      ],
+      projectNames: new Map(),
+      services: [],
+      versions: new Map(),
+    }).map((input) => canonicalEnvironmentRow(input));
+    const flow = groupFlow(
+      groupFlowInputOf({
+        groupId: "g",
+        members: [],
+        flow: {
+          environments: rows,
+          pullRequests: [],
+          merged: [],
+          release: {
+            gate: { allowed: false, reason: "" },
+            suggestion: "",
+            untold: [],
+            contents: [],
+          },
+        },
+        deployments: new Map(),
+        pending: [],
+      }),
+    );
+    const lines = placeLines({ flow, nowMs: NOW });
+    const lineOf = (tier: "stage" | "production") =>
+      rows.find((row) => row.tier === tier)?.git?.line;
+    expect(lines.map((line) => [line.name, line.git?.line])).toEqual([
+      ["Stage", lineOf("stage")],
+      ["prod", lineOf("production")],
+    ]);
+    expect(lines.flatMap((line) => line.words)).not.toContain("Not released yet");
+    expect(lines).toHaveLength(2);
   });
 
   const since = sinceWords("2026-10-09T08:00:00Z", NOW);
@@ -558,6 +678,11 @@ describe("a release on its way", () => {
 describe("production's line while a release is on its way", () => {
   const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
   const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
+  const deploying = {
+    kind: "deploying",
+    stop: stop({ state: "deploying" }),
+    line: PRODUCTION_DEPLOYING,
+  } as const;
   it.each([
     { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
     {
@@ -565,6 +690,17 @@ describe("production's line while a release is on its way", () => {
       production: releasing,
       rollsBackTo: "v2.3.0",
       opens: { kind: "rollback", tag: "v2.3.0" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production, before HQ names it",
+      production: deploying,
+      chip: chip({ state: "releasing", next: "v2.4.1" }),
+      opens: { kind: "release" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production it cannot name yet",
+      production: deploying,
+      opens: { kind: "release" },
     },
     { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
     {
@@ -994,6 +1130,97 @@ describe("production's actions", () => {
   ])("offers production's history only once it runs a release: $case", (input) => {
     expect(historyOffered(input)).toBe(input.offered);
   });
+});
+
+describe("production's room while a release is on its way", () => {
+  // CI's held card: the platform's build said Deploying with no History room at 248 px, then HQ's
+  // accepted release said Releasing with it at 292 px; one release on its way keeps one height.
+  it.each([
+    {
+      case: "the platform's build, before HQ names it",
+      kind: "deploying",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    {
+      case: "HQ's accepted release",
+      kind: "releasing",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    { case: "a version it runs", kind: "live", dot: "running", runsNamed: true, held: true },
+    {
+      case: "running nothing it can name",
+      kind: "live",
+      dot: "running",
+      runsNamed: false,
+      held: false,
+    },
+    { case: "nothing released yet", kind: "empty", dot: "none", runsNamed: false, held: false },
+  ] as const)("holds History's room whatever names the release first: $case", (input) => {
+    expect(historyHeld(input)).toBe(input.held);
+  });
+
+  const BUILD = { from: "v1.0.0", to: "v1.1.0" };
+  it.each([
+    { case: "the flow says production deploys", kind: "deploying", building: BUILD, read: BUILD },
+    {
+      case: "the flow still offers the release",
+      kind: "ready-to-release",
+      building: BUILD,
+      read: undefined,
+    },
+    { case: "the flow says it runs", kind: "live", building: BUILD, read: undefined },
+    { case: "no build", kind: "deploying", building: undefined, read: undefined },
+  ] as const)(
+    "the card's chip reads a build only where its flow says production deploys: $case",
+    (input) => {
+      expect(productionBuilding(input.kind, input.building)).toEqual(input.read);
+    },
+  );
+});
+
+describe("the version production runs", () => {
+  const row = (tag: string, standing?: "live" | "deploy-failed") => ({ tag, standing });
+  it.each([
+    { case: "no release", releases: [], inFlight: undefined, names: undefined },
+    {
+      case: "a first release still building",
+      releases: [row("v1.0.0")],
+      inFlight: "v1.0.0",
+      names: undefined,
+    },
+    {
+      case: "a first release on its way that production's services already name",
+      releases: [row("v1.0.0", "live")],
+      inFlight: "v1.0.0",
+      names: undefined,
+    },
+    {
+      case: "a first release whose deploy failed",
+      releases: [row("v1.0.0", "deploy-failed")],
+      names: undefined,
+    },
+    {
+      case: "a first release that landed",
+      releases: [row("v1.0.0", "live")],
+      inFlight: undefined,
+      names: "v1.0.0",
+    },
+    {
+      case: "a second release still building",
+      releases: [row("v1.1.0"), row("v1.0.0", "live")],
+      inFlight: "v1.1.0",
+      names: "v1.0.0",
+    },
+  ])(
+    "A card names the version production runs only from a release that has landed: $case",
+    (input) => {
+      expect(releaseProductionRuns(input.releases, input.inFlight)).toBe(input.names);
+    },
+  );
 });
 
 describe("production's panel", () => {
@@ -1520,4 +1747,48 @@ describe("a place's addresses on its panel", () => {
     const said = panelAddresses({ kind: "production", listed: [], place: own, runs: true });
     expect(said.head).toEqual({ host: "example.xyz", url: "https://example.xyz" });
   });
+});
+
+describe("a card's unread places", () => {
+  it.each([
+    {
+      case: "an unreadable production",
+      flow: { production: { kind: "unread", line: "Could not be read by this version" } },
+      lines: [{ name: "prod", words: "Could not be read by this version" }],
+    },
+    {
+      case: "an unreadable stage beside no production",
+      flow: { production: { kind: "absent" }, unreadStages: ["stage"] },
+      lines: [
+        { name: "stage", words: "Could not be read by this version" },
+        { name: "prod", words: "Not released yet" },
+      ],
+    },
+  ] as const)(
+    "An environment this build cannot read shows as unread, never as an application without it: $case",
+    ({ flow, lines }) => {
+      expect(
+        placeLines({ flow: { stages: [], ...flow }, nowMs: 0 }).map((line) => ({
+          name: line.name,
+          words: line.words.join(" · "),
+        })),
+      ).toEqual(lines);
+    },
+  );
+});
+
+it("Release overview counts distinguish recorded changes from the commits they carry.", () => {
+  const ready = cardReady({
+    production: {
+      kind: "ready-to-release",
+      stop: stop(),
+      line: "",
+      candidate: { tag: "v1.0.0", waiting: 6 },
+    },
+    stages: [],
+    main: { head: undefined, hasCode: true, notLive: 6, notLiveAtLeast: false, changeCount: 1 },
+  });
+  expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
+    "1 change · 6 commits ready to release",
+  );
 });

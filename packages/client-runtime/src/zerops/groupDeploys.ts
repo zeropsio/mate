@@ -38,6 +38,7 @@ import {
   type HqEnvironment,
   type CanonicalHqEnvironment,
   canonicalEnvironmentsOf,
+  type UnreadEnvironment,
   jobFailed,
   jobsByService,
 } from "./hq/environments.ts";
@@ -89,6 +90,8 @@ export type CanonicalGroupEnvironmentDeclaration = Omit<GroupEnvironment, "proje
 export interface CanonicalGroupStops {
   readonly declarations: ReadonlyArray<CanonicalGroupEnvironmentDeclaration>;
   readonly environments: ReadonlyArray<CanonicalGroupEnvironmentRowInput>;
+  /** Environments HQ sent that this build cannot read. */
+  readonly unread: ReadonlyArray<UnreadEnvironment>;
 }
 
 /** Temporary outward address fields exist only for Zerops targets. */
@@ -100,6 +103,7 @@ export function zeropsStops(stops: CanonicalGroupStops): GroupStops {
     environments: stops.environments.flatMap(({ id: _id, target, projectId: _legacy, ...entry }) =>
       target.kind === "zerops" ? [{ ...entry, projectId: target.projectId }] : [],
     ),
+    unread: stops.unread,
   };
 }
 
@@ -295,6 +299,7 @@ export interface GroupStopProject {
 export interface GroupStops {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
+  readonly unread: ReadonlyArray<UnreadEnvironment>;
 }
 
 /**
@@ -313,6 +318,8 @@ export function canonicalGroupStopsOf(input: {
   /** The id of the version each service runs, by service id. */
   readonly activeVersions?: ReadonlyMap<string, string | null> | undefined;
   readonly recipe: AppRecipe | undefined;
+  /** Environments HQ sent that this build cannot read. */
+  readonly unread?: ReadonlyArray<UnreadEnvironment>;
 }): CanonicalGroupStops {
   const { recipe } = input;
   const hasZerops = input.environments.some((environment) => environment.target.kind === "zerops");
@@ -327,6 +334,7 @@ export function canonicalGroupStopsOf(input: {
   );
   return {
     declarations,
+    unread: input.unread ?? [],
     environments: canonicalEnvironmentRowInputsOf({
       environments: input.environments,
       ...(input.git === undefined ? {} : { git: input.git }),
@@ -462,7 +470,7 @@ export function environmentRowInputsOf(
       projectId: ProjectId.make(entry.projectId),
     })),
   });
-  return zeropsStops({ declarations: [], environments: rows }).environments;
+  return zeropsStops({ declarations: [], environments: rows, unread: [] }).environments;
 }
 /** @deprecated Unmigrated callers keep the Zerops DTO, derived from canonical stops. */
 export function groupStopsOf(
@@ -472,7 +480,7 @@ export function groupStopsOf(
   },
 ): GroupStops {
   const environments = canonicalEnvironmentsOf(input.environments);
-  if (environments === undefined) return { declarations: [], environments: [] };
+  if (environments === undefined) return { declarations: [], environments: [], unread: [] };
   return zeropsStops(
     canonicalGroupStopsOf({
       ...input,

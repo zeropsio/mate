@@ -1,16 +1,13 @@
 /**
  * A terminal ends with the session that opened it.
  *
- * A revoked session — its person removed or lowered by the membership re-check
- * (`ZeropsMembershipWatch`), signed out from another device — loses its sockets
- * through `awaitSessionEnd`, but the PTY it opened is not a socket: it ran on
- * with nobody able to reach it. Here every revocation closes the terminals that
- * session opened, by the process handle the manager holds, within the same
- * bound as every other channel.
+ * Stored-session revocations close their terminals. In Zerops mode the socket's
+ * finalizer closes the terminals owned by its live connection instead.
  *
  * @module terminalsEndWithSession
  */
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
@@ -19,7 +16,9 @@ import { TerminalManager } from "./Manager.ts";
 
 export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
-    const sessions = yield* SessionStore;
+    const held = yield* Effect.serviceOption(SessionStore);
+    if (Option.isNone(held)) return;
+    const sessions = held.value;
     const terminals = yield* TerminalManager;
     yield* sessions.streamChanges.pipe(
       Stream.runForEach((change) =>

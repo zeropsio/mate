@@ -148,6 +148,7 @@ function hqOf(answer: () => Promise<unknown>) {
     keepDeployToken: call("keepDeployToken"),
     renameApp: call("renameApp"),
     deleteApp: call("deleteApp"),
+    answerKeptGit: call("answerKeptGit"),
     release: call("release"),
     rollback: call("rollback"),
     redeploy: call("redeploy"),
@@ -215,6 +216,7 @@ const ADD_SERVICE = {
   environment: "stage",
   service: "db",
 } as const;
+const SQUASH = "e".repeat(40);
 const MERGE = { kind: "merge-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
 const CLOSE = { kind: "close-change", orgId: ORG, link: LINK, expectedHead: HEAD } as const;
 const HAND = { kind: "hand-change", orgId: ORG, link: LINK, mateProjectId: "bea" } as const;
@@ -260,10 +262,10 @@ describe("a flow's writes, executed by HQ", () => {
     {
       name: "a merge",
       intent: MERGE,
-      answer: { made: change("merged"), deploys: DEPLOYS },
+      answer: { made: { ...change("merged"), mergedSha: SQUASH }, deploys: DEPLOYS },
       call: ["mergeChange", LINK, HEAD],
       operationId: "web#7",
-      result: { deploys: DEPLOYS },
+      result: { deploys: DEPLOYS, mergedSha: SQUASH },
       before: (store: AccountStore) => detail(store, "changes", [change("open")]),
       after: (store: AccountStore) => detail(store, "changes", [change("merged")]),
     },

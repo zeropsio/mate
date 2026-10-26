@@ -60,7 +60,6 @@ interface FakeWrites {
     readonly projectName: string;
     readonly agents: ReadonlyArray<string>;
     readonly setupRuntimesYaml?: string;
-    readonly chief?: true;
   }) => Promise<{
     readonly serviceName: string;
     readonly imported: boolean;
@@ -324,30 +323,6 @@ describe("runEnvironmentCreation", () => {
       "harden:proj-1",
       "closedOff:proj-1",
     ]);
-  });
-
-  it.each<[string, true | undefined, boolean]>([
-    ["a Chief's container step imports a Chief's container", true, true],
-    ["any other Mate's container step imports no Chief", undefined, false],
-  ])("%s", async (_title, chief, imported) => {
-    const asked: Array<boolean> = [];
-    const { platform } = fakePlatform({
-      importDevelopmentContainer: (input) => {
-        asked.push(input.chief === true);
-        return Promise.resolve({ serviceName: "zcp", imported: true });
-      },
-    });
-    const steps: ReadonlyArray<EnvironmentCreationStep> = [
-      {
-        kind: "create-project",
-        name: "Chief · Ales",
-        tagList: ["mate", "chief"],
-        location: undefined,
-      },
-      { kind: "import-container", agents: [], ...(chief === undefined ? {} : { chief }) },
-    ];
-    await run(steps, platform);
-    expect(asked).toEqual([imported]);
   });
 
   it.each<{ readonly title: string; readonly yaml: string; readonly calls: ReadonlyArray<string> }>(
@@ -758,6 +733,22 @@ describe("runEnvironmentCreation — closing the project off", () => {
     });
     expect(calls.filter((call) => call === "harden:proj-1").length).toBe(1);
     expect(calls.at(-1)).toBe("closedOff:proj-1");
+  });
+
+  it("a Mate's container is imported with the HQ and the web it is born from", async () => {
+    const birthplace = {
+      hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
+      webOrigin: "https://web-1a2b.prg1.zerops.app",
+    };
+    const imported: Array<unknown> = [];
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: (intent) => {
+        imported.push(intent);
+        return Promise.resolve({ serviceName: "zcp", imported: true });
+      },
+    });
+    await run(plan("dev"), { ...platform, birthplace });
+    expect(imported).toEqual([expect.objectContaining({ birthplace })]);
   });
 
   it("registers a Mate before its container, and closes it off after", async () => {

@@ -10,6 +10,7 @@
  */
 // This reducer reads restart intent fields even in clients without the restart executor.
 import type {} from "./operations/mateRestart.ts";
+import { releaseInFlight } from "../zerops/release.ts";
 import {
   FAMILIES,
   familySpec,
@@ -41,6 +42,7 @@ import {
 } from "./model.ts";
 import {
   acceptedProjectOf,
+  acceptedReleaseOf,
   isOperationInput,
   reduceOperation,
   requestIdOf,
@@ -594,6 +596,20 @@ function indexKey(
   return index.keyOf(fact.content.value, listed);
 }
 
+/** Only HQ's explicit rollout end retires acceptance; listing a tag alone does not. */
+function releaseEnded(state: AccountState, appId: string, tag: string): boolean {
+  const fact = state.facts.get(factKey("hqApp", appId)) as Fact<FamilyValues["hqApp"]> | undefined;
+  const environments = fact?.content.kind === "value" ? fact.content.value.environments : undefined;
+  if (environments === undefined || "refused" in environments) return false;
+  const rollouts = environments
+    .filter((environment) => environment.tier === "production")
+    .map((environment) => environment.release);
+  return (
+    rollouts.some((rollout) => rollout?.tag === tag) &&
+    releaseInFlight({ newest: { tag, verdict: "approved" }, rollouts }) === undefined
+  );
+}
+
 /**
  * Each indexed family's index for the ids a reduction touched: moved out of the key it counted
  * under, into the one it counts under now. A deleted or withheld fact counts under none.
@@ -627,6 +643,14 @@ function reindex(before: AccountState, after: AccountState, changed: Set<ReadKey
     const key = `accepted-project:${id}`;
     if (after.facts.has(factKey("project", id)) && (after.indexes.get(key)?.size ?? 0) > 0)
       draftOf(key).clear();
+  }
+  for (const appId of touched("hqApp", before, after, changed)) {
+    const key = `accepted-release:${appId}`;
+    for (const requestId of after.indexes.get(key) ?? []) {
+      const accepted = acceptedReleaseOf(after.operations.get(requestId));
+      if (accepted !== null && releaseEnded(after, appId, accepted.tag))
+        draftOf(key).delete(requestId);
+    }
   }
   if (drafts.size === 0) return after;
   const indexes = new Map(after.indexes);
@@ -823,6 +847,28 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       if (isKey !== null) {
         updated.set(isKey, new Set([...(indexes.get(isKey) ?? []), requestId]));
         changed.add(`index:${isKey}`);
+      }
+      indexes = updated;
+    }
+    const beforeRelease = acceptedReleaseOf(current);
+    const afterRelease = acceptedReleaseOf(next);
+    const beforeReleaseKey =
+      beforeRelease === null ? null : `accepted-release:${beforeRelease.appId}`;
+    const afterReleaseKey =
+      afterRelease === null || releaseEnded(state, afterRelease.appId, afterRelease.tag)
+        ? null
+        : `accepted-release:${afterRelease.appId}`;
+    if (beforeReleaseKey !== afterReleaseKey) {
+      const updated = new Map(indexes);
+      if (beforeReleaseKey !== null) {
+        const ids = new Set(indexes.get(beforeReleaseKey));
+        ids.delete(requestId);
+        updated.set(beforeReleaseKey, ids);
+        changed.add(`index:${beforeReleaseKey}`);
+      }
+      if (afterReleaseKey !== null) {
+        updated.set(afterReleaseKey, new Set([...(indexes.get(afterReleaseKey) ?? []), requestId]));
+        changed.add(`index:${afterReleaseKey}`);
       }
       indexes = updated;
     }

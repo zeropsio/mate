@@ -64,6 +64,13 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/integration/scenarioMate.integration.test.ts": [],
   "apps/server/integration/scriptedVocabulary.integration.test.ts": [],
   "apps/server/scripts/bundleNodePty.test.ts": [],
+  "apps/server/scripts/cli.test.ts": [
+    "apps/server/scripts/**",
+    "scripts/lib/**",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "apps/server/package.json",
+  ],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
   "apps/server/src/assets/ContentAssetHttp.test.ts": [],
@@ -114,6 +121,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/spi/replay/goldenCheck.test.ts": [],
   "apps/server/src/spi/replay/goldens.test.ts": ["apps/server/src/spi/fixtures/**"],
   "apps/server/src/terminal/Manager.test.ts": [],
+  "apps/server/src/testUtils/acpMockAgent.test.ts": ["apps/server/scripts/acp-mock-agent.ts"],
   "apps/server/src/testUtils/gitConfig.setup.test.ts": [],
   "apps/server/src/textGeneration/AntigravityTextGeneration.test.ts": [],
   "apps/server/src/textGeneration/CursorTextGeneration.test.ts": [],
@@ -125,6 +133,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/ZeropsAgentAuthIo.test.ts": [],
   "apps/server/src/zerops/ZeropsAgentLogin.test.ts": [],
   "apps/server/src/zerops/ZeropsCrewProposals.test.ts": [],
+  "apps/server/src/zerops/ZeropsGitCredentialFile.test.ts": [],
   "apps/server/src/zerops/ZeropsGitWorkingTreeDiff.test.ts": [],
   "apps/server/src/zerops/ZeropsLoginsIo.test.ts": [],
   "apps/server/src/zerops/ZeropsMateAttention.test.ts": [],
@@ -191,6 +200,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   ],
   "scripts/ensure-electron-runtime.test.ts": [],
   "scripts/gate-changed.test.ts": [],
+  "scripts/state-smoke.test.ts": [".github/workflows/ci.yml"],
   "scripts/gate-rerun.test.ts": [],
   "scripts/gate-file-inputs.test.ts": [
     "scripts/**/*.test.ts",
@@ -238,7 +248,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
   "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],
   "scripts/test-ports.test.ts": [],
-  "scripts/test-postgres.test.ts": [],
+  "scripts/test-postgres.test.ts": ["scripts/fixtures/fake-postgres.ts"],
   "scripts/test-process-lock.test.ts": [],
   "scripts/tsconfig-basename-collisions.test.ts": [
     "apps/**",
@@ -255,6 +265,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/web/vite.config.ts",
   ],
   "scripts/update-release-package-versions.test.ts": [],
+  "scripts/vitest-tmp.test.ts": ["patches/vitest@*.patch"],
 };
 
 // Inspect calls, not source text: comments and scripts held in strings are not filesystem reads.

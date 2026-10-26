@@ -108,7 +108,7 @@ it.each([
 it("reads worktree paths with spaces and lsof cwd records", () => {
   expect(
     parseWorktrees("worktree /repo/a b\0HEAD abc\0branch refs/heads/done\0locked maintainer\0\0"),
-  ).toEqual([{ path: "/repo/a b", head: "abc", branch: "refs/heads/done", locked: true }]);
+  ).toMatchObject([{ path: "/repo/a b", head: "abc", branch: "refs/heads/done", locked: true }]);
   expect(parseCwds("p123\nfcwd\nn/repo/a b\np456\nfcwd\nn/repo/other\n")).toEqual([
     "/repo/a b",
     "/repo/other",
@@ -289,6 +289,114 @@ it("prune never removes a locked, live, dirty, unpushed, unlanded or nesting wor
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.each([
+  { name: "its remote branch present", remote: true },
+  { name: "its remote branch deleted", remote: false },
+  { name: "a pool reservation", remote: false, pooled: true },
+])("prune releases a landed clean assigned lane with $name", ({ remote, pooled }) => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+  );
+  const { main, git, add, run } = fixture(root);
+  try {
+    const lane = add(pooled ? "wt/z3/assigned" : "z3-wt/assigned", "-b", "assigned");
+    git(main, "worktree", "lock", "--reason", "assigned", lane);
+    NodeFS.writeFileSync(NodePath.join(lane, "file"), "finished");
+    git(lane, "commit", "-qam", "finished job");
+    git(main, "update-ref", "refs/remotes/origin/assigned", "assigned");
+    NodeFS.writeFileSync(NodePath.join(main, "file"), "finished");
+    git(main, "commit", "-qam", "squashed job");
+    git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+    if (!remote) git(main, "update-ref", "-d", "refs/remotes/origin/assigned");
+
+    const preview = run();
+    expect(preview.status, preview.stderr).toBe(0);
+    expect(preview.stdout).toContain(
+      pooled ? `keep ${lane}: in the pool` : `would remove ${lane} (refs/heads/assigned)`,
+    );
+    expect(git(main, "worktree", "list", "--porcelain")).toContain("locked assigned");
+
+    const apply = run("--apply");
+    expect(apply.status, apply.stderr).toBe(0);
+    expect(apply.stdout).toContain(
+      pooled ? `keep ${lane}: in the pool` : `removed ${lane} (refs/heads/assigned)`,
+    );
+    expect(NodeFS.existsSync(lane)).toBe(Boolean(pooled));
+    expect(git(main, "worktree", "list", "--porcelain")).not.toContain("locked assigned");
+    expect(git(main, "log", "-1", "--format=%s", "assigned")).toBe("finished job");
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  { name: "a freshly assigned lane still at its starting commit", commit: false, landed: true },
+  { name: "a landed assigned lane with dirty work", commit: true, landed: true, dirty: true },
+  { name: "a pushed assigned lane that has not landed", commit: true, landed: false },
+  { name: "a manually locked landed lane", commit: true, landed: true, manual: true },
+  {
+    name: "a freshly assigned lane after the base advances independently",
+    commit: false,
+    landed: true,
+    advanceBase: true,
+  },
+  {
+    name: "a landed assignment whose creation reflog expired",
+    commit: true,
+    landed: true,
+    expired: true,
+  },
+  {
+    name: "an unlanded assignment after its checkout switches to the base",
+    commit: true,
+    landed: false,
+    detached: true,
+  },
+])(
+  "prune keeps $name locked",
+  ({ commit, landed, dirty, manual, detached, advanceBase, expired }) => {
+    const root = NodeFS.realpathSync(
+      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-")),
+    );
+    const { main, git, add, run } = fixture(root);
+    try {
+      const lane = add("z3-wt/assigned", "-b", "assigned");
+      const reason = manual ? "maintenance" : "assigned";
+      git(main, "worktree", "lock", "--reason", reason, lane);
+      if (commit) {
+        NodeFS.writeFileSync(NodePath.join(lane, "file"), "finished");
+        git(lane, "commit", "-qam", "job commit");
+      }
+      git(main, "update-ref", "refs/remotes/origin/assigned", "assigned");
+      if (landed) git(main, "update-ref", "refs/remotes/origin/main", "assigned");
+      if (advanceBase) {
+        NodeFS.writeFileSync(NodePath.join(main, "file"), "unrelated progress");
+        git(main, "commit", "-qam", "another job landed");
+        git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+      }
+      if (expired)
+        git(
+          main,
+          "reflog",
+          "expire",
+          "--expire=all",
+          "--expire-unreachable=all",
+          "refs/heads/assigned",
+        );
+      if (detached) git(lane, "switch", "-q", "--detach", "origin/main");
+      if (dirty) NodeFS.writeFileSync(NodePath.join(lane, "file"), "unfinished");
+
+      const apply = run("--apply");
+      expect(apply.status, apply.stderr).toBe(0);
+      expect(apply.stdout).toContain(`keep ${lane}: locked`);
+      expect(NodeFS.existsSync(lane)).toBe(true);
+      expect(git(main, "worktree", "list", "--porcelain")).toContain(`locked ${reason}`);
+    } finally {
+      NodeFS.rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 it("prune keeps a worktree whose .git link broke instead of judging the repository around it", () => {
   const root = NodeFS.realpathSync(

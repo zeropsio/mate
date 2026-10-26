@@ -208,6 +208,7 @@ function project(input: {
     },
     stages: input.stages ?? [],
     creatingStages: [],
+    unreadStages: [],
     production: input.production,
     nextStep: { kind: "none", text: "", verb: undefined, target: undefined },
   };
@@ -617,7 +618,9 @@ function HarnessPage() {
             renderChanges={(entry) => {
               const found = byId.get(entry.group.groupId);
               const live =
-                entry.flow.production.kind === "absent" || entry.flow.production.kind === "creating"
+                entry.flow.production.kind === "absent" ||
+                entry.flow.production.kind === "unread" ||
+                entry.flow.production.kind === "creating"
                   ? undefined
                   : entry.flow.production.stop.version?.label;
               const merged =

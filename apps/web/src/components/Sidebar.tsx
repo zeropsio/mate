@@ -225,7 +225,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
+import { useChiefSetupLine } from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { useAccountHq } from "~/zerops/accountHq";
@@ -1851,7 +1851,14 @@ export default function Sidebar() {
       zeropsMenuProjects.flatMap((project) => {
         const release = zeropsProjectFlows.get(project.id)?.release;
         return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
-          ? [{ groupId: project.id, name: project.name, ahead: release.summary?.total }]
+          ? [
+              {
+                groupId: project.id,
+                name: project.name,
+                ahead: release.summary?.total,
+                changeCount: release.summary?.changeCount,
+              },
+            ]
           : [];
       }),
     [releaseOfferedIn, zeropsMenuProjects, zeropsProjectFlows],
@@ -1989,7 +1996,6 @@ export default function Sidebar() {
   const zeropsListed = zeropsCandidates;
   const chiefSetupLine = useChiefSetupLine();
   const ownChief = useOwnChief();
-  const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2755,7 +2761,6 @@ export default function Sidebar() {
         setup={chiefSetupLine}
         tile={tile}
         timestampFormat={timestampFormat}
-        unfinished={chiefUnfinished}
         waiting={
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }

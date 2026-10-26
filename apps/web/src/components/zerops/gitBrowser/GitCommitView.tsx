@@ -11,7 +11,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { Button } from "../../ui/button";
-import { GitReadStopped } from "./GitAtCommit";
+import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
@@ -223,8 +223,7 @@ export function GitCommitView({
         : undefined;
   if (sha === undefined)
     return <PageState at={{ appId, repo }} view={home} onAgain={onHomeAgain} what="commit" />;
-  if (sha === null)
-    return <p className="text-sm text-muted-foreground">No commits on this branch yet</p>;
+  if (sha === null) return <GitNoCommit pending={home.state === "known" && home.answer.pending} />;
   return (
     <CommitPage
       appId={appId}

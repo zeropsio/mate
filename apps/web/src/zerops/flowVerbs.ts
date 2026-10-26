@@ -9,7 +9,11 @@
 import { RegistryContext } from "@effect/atom-react";
 import { flowAnswer, releaseRequestOf, type FlowWriteIntent } from "@t3tools/client-runtime/data";
 import { flowVerbKey, type FlowVerb } from "@t3tools/client-runtime/zerops";
-import { HQ_WRITE_UNCERTAIN, hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+import {
+  HQ_WRITE_UNCERTAIN,
+  hqRefusalWords,
+  type AppDeployRollout,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -33,6 +37,8 @@ export type FlowVerbOutcome =
       readonly ok: true;
       readonly tag?: string | undefined;
       readonly deploys?: HqDeployAnswer | undefined;
+      /** The rollout its deploys are of: what an answer that handed planning over follows. */
+      readonly rollout?: AppDeployRollout | undefined;
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -180,7 +186,7 @@ export function useFlowVerbs(): FlowVerbs {
       }
       if (says) publish(board, { trouble: null });
       const answer = registry.get(data.project(flowAnswer, requestId));
-      return { ok: true, tag: answer?.tag, deploys: answer?.deploys };
+      return { ok: true, tag: answer?.tag, deploys: answer?.deploys, rollout: answer?.rollout };
     },
     [board, data, operations, orgId, registry],
   );

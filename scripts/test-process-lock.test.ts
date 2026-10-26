@@ -22,19 +22,18 @@ it("kills a queued flock child when its waiting client loses its pipe", async ()
   // exec preserves this captured PID as the actual flock child, including through our pipe watcher.
   NodeFS.writeFileSync(
     NodePath.join(bin, "flock"),
-    '#!/bin/sh\nprintf "%s\\n" "$$" > "$MATE_TEST_LOCK_PID.tmp"\nmv "$MATE_TEST_LOCK_PID.tmp" "$MATE_TEST_LOCK_PID"\nexec "$MATE_TEST_REAL_FLOCK" "$@"\n',
+    '#!/bin/sh\nprintf "%s\\n" "$$" > "$MATE_TEST_LOCK_PID"\nexec "$MATE_TEST_REAL_FLOCK" "$@"\n',
     { mode: 0o700 },
   );
   vi.stubEnv("PATH", `${bin}${NodePath.delimiter}${process.env.PATH}`);
   vi.stubEnv("MATE_TEST_REAL_FLOCK", realFlock);
   vi.stubEnv("MATE_TEST_LOCK_PID", NodePath.join(home, "waiter.pid"));
-  let watcher: NodeFS.FSWatcher;
-  const spawned = new Promise<number>((resolve) => {
-    watcher = NodeFS.watch(home, (_, filename) => {
-      if (filename === "waiter.pid" && NodeFS.existsSync(NodePath.join(home, filename)))
-        resolve(Number(NodeFS.readFileSync(NodePath.join(home, filename), "utf8")));
-    });
-  });
+  // The shim writes its PID into a FIFO: the read returns once the shim has run, with no
+  // filesystem event involved.
+  NodeChildProcess.execFileSync("mkfifo", [NodePath.join(home, "waiter.pid")]);
+  const spawned = NodeFS.promises
+    .readFile(NodePath.join(home, "waiter.pid"), "utf8")
+    .then((text) => Number(text));
   const spawn = vi.mocked(NodeChildProcess.spawn);
   spawn.mockClear();
   const waiting = acquireProcessLock(path).then(
@@ -68,7 +67,6 @@ it("kills a queued flock child when its waiting client loses its pipe", async ()
     expect(probe.status).toBe(1);
   } finally {
     clearTimeout(deadline);
-    watcher!.close();
     vi.unstubAllEnvs();
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     await exited;

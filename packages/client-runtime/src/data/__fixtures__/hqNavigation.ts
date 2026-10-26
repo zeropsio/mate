@@ -137,7 +137,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     standupRequestedBy: mate.standupRequestedBy ?? null,
     closedOff: mate.closedOff ?? false,
     setupMarker: mate.setupMarker ?? null,
-    keyWider: mate.keyWider ?? false,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),

@@ -20,7 +20,4 @@ describe("Mate GUI server compatibility", () => {
       expect(mateServerCompatibility(version)).toBe("unknown");
     },
   );
-  it("requires the server that carries the throwaway door and the role re-check", () => {
-    expect(MINIMUM_MATE_SERVER_VERSION).toBe("0.11.0");
-  });
 });

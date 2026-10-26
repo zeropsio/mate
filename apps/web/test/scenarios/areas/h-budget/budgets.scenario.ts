@@ -259,11 +259,13 @@ describe("H: hosted client budgets", () => {
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);
-        yield* b.given.mates(names);
+        // The grants exist before HQ reads the projects: HQ's organisation view ages before it
+        // learns a grant made after that read.
         s.given.person("dev", {
           role: "Developer",
           grants: Object.fromEntries(names.map((name) => [name, "BASIC_USER"])),
         });
+        yield* b.given.mates(names);
         s.given.asPerson("dev");
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;

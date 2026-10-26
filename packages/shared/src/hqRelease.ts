@@ -102,6 +102,17 @@ export const HqGitReleasePreflight = Schema.Struct({
 });
 export type HqGitReleasePreflight = typeof HqGitReleasePreflight.Type;
 
+/** Domain membership recorded when a release is made; no commit content is stored here. */
+export const ReleaseHistory = Schema.Struct({
+  ranges: Schema.Array(Schema.Struct({ repo: RepoName, base: Schema.NullOr(Sha), head: Sha })),
+  changes: Schema.Array(
+    Schema.Struct({ repo: RepoName, number: Schema.Int, title: Schema.String }),
+  ),
+  commitCount: Schema.Int,
+  outsideCommitCount: Schema.Int,
+});
+export type ReleaseHistory = typeof ReleaseHistory.Type;
+
 /**
  * A release as HQ records it: its name, the recipe repository's `main` head it tags, what it lists,
  * who asked for it and when, HQ's verdict — the reason beside a refusal, none beside an approval —
@@ -117,6 +128,8 @@ export const Release = Schema.Struct({
   state: Schema.Literals(["approved", "refused"]),
   reason: Schema.NullOr(Schema.String),
   rollbackOf: Schema.NullOr(ReleaseTag),
+  /** Older releases have no recorded membership; absence does not trigger a Git read. */
+  history: Schema.optionalKey(ReleaseHistory),
   /** Saved before production existed; the press requested no deployment. */
   snapshot: Schema.optionalKey(Schema.Boolean),
 }).check(Schema.makeFilter(releaseTargetMatches));

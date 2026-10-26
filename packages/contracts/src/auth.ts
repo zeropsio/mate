@@ -40,29 +40,15 @@ export const ServerAuthPolicy = Schema.Literals([
 export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
 
 /**
- * A credential type that can be exchanged for a real authenticated session.
- *
- * Bootstrap methods are for establishing trust at the start of a connection or
- * pairing flow. They are not the long-lived credential used for ordinary
- * authenticated HTTP / WebSocket traffic after pairing succeeds.
- *
- * Current methods:
- * - `desktop-bootstrap`: a trusted local desktop handoff, used so the desktop
- *   shell can pair the renderer without a login screen
- * - `one-time-token`: a short-lived pairing token, suitable for manual pairing
- *   flows such as `/pair?token=...`
- * - `zerops-throwaway`: the caller presents a Zerops integration token with no
- *   rights at all, minted seconds ago and named for this one Mate, and the
- *   server reads who made it. Nothing of the caller's outlives the request, so
- *   a container never holds a credential of theirs — which is the point: a
- *   person's own Zerops token reaches every org they belong to and never
- *   expires, and no container is ever handed one. Offered only inside a Zerops
- *   project container.
+ * How a client starts authenticated access. Zerops offers only `ticket`: HQ
+ * admits one WebSocket, and that live connection is the session. The other
+ * values describe the non-Zerops credential protocol.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
   "desktop-bootstrap",
   "one-time-token",
   "zerops-throwaway",
+  "ticket",
 ]);
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
 

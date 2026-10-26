@@ -16,6 +16,7 @@ const hq = vi.hoisted(() => ({
   official: false,
   answers: [] as Array<"change" | "unpushed" | "absent" | "unavailable" | "forbidden">,
   reads: 0,
+  detailReads: 0,
 }));
 
 const HQ_ADDRESS = "https://hq.example.test";
@@ -140,6 +141,7 @@ describe("useLinkedChange", () => {
     hq.official = false;
     hq.answers = [];
     hq.reads = 0;
+    hq.detailReads = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -159,7 +161,13 @@ describe("useLinkedChange", () => {
       seen.push(useLinkedChange(link));
       return null;
     }
-    const account = reviewAccount(({ link, snapshot }) => api.change(link, undefined, snapshot));
+    const account = reviewAccount(
+      ({ link, snapshot }) => {
+        hq.detailReads += 1;
+        return api.change(link, undefined, snapshot);
+      },
+      ({ link }) => api.change(link),
+    );
     const renderProbe = (render: number) =>
       createElement(
         RegistryContext.Provider,
@@ -187,6 +195,16 @@ describe("useLinkedChange", () => {
     });
     return seen;
   }
+
+  it("A change-link chip resolves its title and state without loading commits or diffs.", async () => {
+    hq.answers = ["change"];
+    const seen = await settle(LINK, true);
+    expect(seen.at(-1)).toMatchObject({
+      kind: "read",
+      pull: { number: 31, title: "Cache the link previews", state: "closed", merged: true },
+    });
+    expect(hq.detailReads).toBe(0);
+  });
 
   it("reads once when the official HQ becomes known", async () => {
     hq.answers = ["change"];

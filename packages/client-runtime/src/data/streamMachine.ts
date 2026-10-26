@@ -126,7 +126,17 @@ export interface StreamState {
 
 export type StreamEvent =
   | { readonly kind: "demand"; readonly demanded: boolean }
-  | { readonly kind: "handshake" }
+  /**
+   * `baselineWithinMs`: how long its first answer may take, where the source names its own bound
+   * ({@link STREAM_POLICY.baselineTimeoutMs} otherwise). `Infinity` names none: the connection's
+   * own liveness bounds the wait — a source still working on an open connection is slow, not gone.
+   */
+  | { readonly kind: "handshake"; readonly baselineWithinMs?: number }
+  /**
+   * The root's socket exists and its upgrade is under way, queued or slow. The upgrade is waited
+   * for until the ticket it carries would have expired, not for the attempt's fixed window.
+   */
+  | { readonly kind: "socket-created" }
   /**
    * `ages`: a source read once answered with a value that still changes without any write of
    * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
@@ -177,7 +187,14 @@ export interface StreamTransition {
 }
 
 export const STREAM_POLICY = {
+  /** The attempt's window to get a ticket and create the socket. */
   handshakeTimeoutMs: 10_000,
+  /**
+   * A created socket's window to open: the life of the one-use ticket it carries (HQ's 60 s). A
+   * browser queues handshakes per address, so a slow upgrade is in progress, not dead; past the
+   * ticket's life it cannot succeed and the attempt starts over from a new one.
+   */
+  socketHandshakeTimeoutMs: 60_000,
   baselineTimeoutMs: 20_000,
   backoffBaseMs: 1_000,
   backoffCapMs: 60_000,
@@ -398,7 +415,20 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
         ? settle({
             ...state,
             phase: "baselining",
-            next: { kind: "await-baseline", deadlineAt: now + STREAM_POLICY.baselineTimeoutMs },
+            next: {
+              kind: "await-baseline",
+              deadlineAt: now + (event.baselineWithinMs ?? STREAM_POLICY.baselineTimeoutMs),
+            },
+          })
+        : settle(state);
+    case "socket-created":
+      return state.phase === "connecting"
+        ? settle({
+            ...state,
+            next: {
+              kind: "await-handshake",
+              deadlineAt: now + STREAM_POLICY.socketHandshakeTimeoutMs,
+            },
           })
         : settle(state);
     case "baseline-committed":

@@ -79,9 +79,6 @@ vi.mock("./matePress", () => ({
   finishMateSetup: source.finish,
   whilePressing: <T,>(run: () => Promise<T>) => run(),
 }));
-vi.mock("../components/zerops/vault/VaultPanelContainer", () => ({
-  useVaultWriter: () => ({ run: vi.fn() }),
-}));
 vi.mock("../components/zerops/SidebarZeropsTree", () => ({ MenuMateLine: () => null }));
 vi.mock("../components/zerops/ZeropsMateComingPage", () => ({
   MateComingFrame: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -207,7 +204,7 @@ describe("every Chief creation entry uses the same setup intent", () => {
         expect.anything(),
       );
       expect(source.finish).toHaveBeenCalledWith(
-        expect.objectContaining({ container: { agents: [], chief: true } }),
+        expect.objectContaining({ container: { agents: [] } }),
       );
       expect(source.begin).toHaveBeenCalledWith(expect.objectContaining({ placement: null }));
     },

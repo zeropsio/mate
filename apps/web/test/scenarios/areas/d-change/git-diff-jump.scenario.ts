@@ -4,7 +4,6 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
-import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
@@ -20,16 +19,12 @@ describe("Git browser diff", () => {
         const appId = s.appIds.get("Shop")!;
         expect(
           (yield* s.drivers.core.call("POST", "/api/mate/repos", {
-            headers: { authorization: `Mate ${credential}` },
+            headers: { authorization: s.drivers.mateAuthorization(credential!) },
             body: { name: "appdev" },
           })).status,
         ).toBe(200);
         const git = yield* gitClient;
-        yield* git.checked([
-          "clone",
-          remoteOf(s.drivers.core.origin, credential!, appId, "appdev"),
-          "work",
-        ]);
+        yield* git.checked(s.drivers.mateClone(credential!, appId, "appdev", "work"));
         const work = NodePath.join(git.dir, "work");
         // A long file the viewer has not measured, then short files that end the diff.
         const files = {

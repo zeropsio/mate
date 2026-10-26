@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
@@ -12,6 +13,7 @@ const socketClosing = (messages: ReadonlyArray<string>, code: number) => {
   const api: Pick<HqApi, "openScopeSocket"> = {
     openScopeSocket: async (on) => {
       queueMicrotask(() => {
+        on.open();
         for (const message of messages) on.message(message);
         on.close(code);
       });
@@ -27,12 +29,38 @@ const socketClosing = (messages: ReadonlyArray<string>, code: number) => {
 };
 
 describe("makeHqWire", () => {
+  it.effect.each(["metadata", "commits"] as const)(
+    "%s distinguishes an unavailable endpoint from a missing change.",
+    (purpose) =>
+      Effect.gen(function* () {
+        for (const code of ["http_404", "change_not_found"]) {
+          const fail = async () => {
+            throw new HqError({
+              kind: "refused",
+              status: 404,
+              code,
+              message: "HQ refused this read.",
+            });
+          };
+          const wire = makeHqWire({
+            ...socketClosing([], 1000).api,
+            changeMetadata: fail,
+            changeCommits: fail,
+          });
+          const fault = yield* Effect.flip(
+            wire[purpose]!({ link: { appId: "app", repo: "web", number: 1 } }),
+          );
+          expect(fault.code).toBe(code === "change_not_found" ? "not_found" : "http_404");
+        }
+      }),
+  );
+
   it.effect("reads a segment's messages until HQ ends it as planned, and closes its socket", () =>
     Effect.gen(function* () {
       const fake = socketClosing(["a", "b"], 4410);
       const read = yield* Effect.scoped(
         Effect.gen(function* () {
-          const segment = yield* makeHqWire(fake.api).open;
+          const segment = yield* makeHqWire(fake.api).open(Effect.void);
           yield* segment.send({ type: "pong" });
           return yield* Stream.runCollect(segment.messages);
         }),
@@ -51,12 +79,55 @@ describe("makeHqWire", () => {
     Effect.gen(function* () {
       const fault = yield* Effect.flip(
         Effect.scoped(
-          Effect.flatMap(makeHqWire(socketClosing([], code).api).open, (segment) =>
+          Effect.flatMap(makeHqWire(socketClosing([], code).api).open(Effect.void), (segment) =>
             Stream.runDrain(segment.messages),
           ),
         ),
       );
       expect(fault.outcome).toBe(outcome);
+    }),
+  );
+});
+
+describe("an HQ socket opening", () => {
+  /** A socket the test opens or closes by hand. */
+  const socketHeld = () => {
+    let on: Parameters<HqApi["openScopeSocket"]>[0] | undefined;
+    const api: Pick<HqApi, "openScopeSocket"> = {
+      openScopeSocket: async (handlers) => {
+        on = handlers;
+        return { send: () => {}, close: () => {} };
+      },
+    };
+    return { api, on: () => on! };
+  };
+
+  it.effect("a segment begins only once its socket is open: until then nothing is connected", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      expect(opening.pollUnsafe()).toBeUndefined();
+      socket.on().open();
+      const opened = yield* Fiber.await(opening);
+      expect(opened._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      socket.on().close(4403);
+      const fault = yield* Effect.flip(Fiber.join(opening));
+      expect(fault.outcome).toBe("definitive-refusal");
     }),
   );
 });

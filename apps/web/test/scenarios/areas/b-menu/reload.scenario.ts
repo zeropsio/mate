@@ -104,7 +104,7 @@ describe("B: menu reload", () => {
           });
           yield* s.given.signedIn;
           yield* Effect.promise(() => resizeMenu(s.page, 435));
-          yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+          yield* s.then.menu.row("Shop").appears();
           const widths = yield* Effect.promise(async () => {
             await s.page.waitForFunction(
               () =>
@@ -125,7 +125,6 @@ describe("B: menu reload", () => {
           });
           expect(widths, `The menu column after the reload: ${widths.join(" → ")}`).toEqual([88]);
         }),
-      10_000,
     );
   });
 });
@@ -215,7 +214,7 @@ describe("owner-reported layout regressions", () => {
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.given.project("Cara", { mate: true, app: "Other" });
           yield* s.given.signedIn;
-          yield* s.then.menu.row("Shop").appears({ within: 15_000 });
+          yield* s.then.menu.row("Shop").appears();
           const frames = yield* Effect.promise(async () => {
             // Reload at the width the person left in their account's menu preference.
             await s.page.evaluate(() => {
