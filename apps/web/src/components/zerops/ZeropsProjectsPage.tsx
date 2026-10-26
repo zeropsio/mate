@@ -577,6 +577,25 @@ export function projectsGroupLine(input: {
   return undefined;
 }
 
+/**
+ * The environment a creation on this page covers on its project's line: while it runs, and once it
+ * went through until the setup read stops calling it half made (`settled`).
+ */
+export function creationCovers(
+  creation: {
+    readonly groupId: string;
+    readonly tier: EnvironmentCreationView["tier"];
+    readonly outcome?: EnvironmentCreationView["outcome"] | undefined;
+  } | null,
+  settled: { readonly groupId: string; readonly tier: GroupEnvironmentTier } | null,
+  groupId: string,
+): GroupEnvironmentTier | undefined {
+  if (settled !== null && settled.groupId === groupId) return settled.tier;
+  if (creation === null || creation.groupId !== groupId || creation.tier === "mate")
+    return undefined;
+  return creation.outcome === undefined ? creation.tier : undefined;
+}
+
 function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
 }
@@ -962,6 +981,11 @@ export function ZeropsProjectsContent({
 
   const [toolError, setToolError] = useState<string | null>(null);
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
+  // A creation that went through, until the setup read catches up: it is not half made meanwhile.
+  const [settled, setSettled] = useState<{
+    readonly groupId: string;
+    readonly tier: GroupEnvironmentTier;
+  } | null>(null);
   // Ticks once a second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
   const [creationNowMs, setCreationNowMs] = useState(() => Date.now());
@@ -1873,6 +1897,7 @@ export function ZeropsProjectsContent({
         );
         return;
       }
+      if (tier !== null) setSettled({ groupId, tier });
       // A stage added is its card's Stage line from here: its own reading says the rest.
       if (role === "stage" && !outcome.awaitingAgent) {
         setCreation(null);
@@ -1912,6 +1937,13 @@ export function ZeropsProjectsContent({
   const { halfMade, finishing } = useEnvironmentSetup(
     useMemo(() => candidates.map(({ project }) => project.id), [candidates]),
   );
+  useEffect(() => {
+    if (
+      settled !== null &&
+      !halfMade.some((entry) => entry.groupId === settled.groupId && entry.tier === settled.tier)
+    )
+      setSettled(null);
+  }, [settled, halfMade]);
 
   useEffect(() => {
     autoConnectServedZeropsEnvironment({
@@ -2000,17 +2032,11 @@ export function ZeropsProjectsContent({
             unfinished: finishing.unfinished.get(group.groupId),
             finishing: finishing.finishing.get(group.groupId),
             halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
-            creating:
-              creation !== null &&
-              creation.outcome === undefined &&
-              creation.groupId === group.groupId &&
-              creation.tier !== "mate"
-                ? creation.tier
-                : undefined,
+            creating: creationCovers(creation, settled, group.groupId),
           }),
         ]),
       ),
-    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade, creation],
+    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade, creation, settled],
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
