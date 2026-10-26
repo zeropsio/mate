@@ -8,7 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { upgradeRecoveryFromEvidence } from "./mateUpgradeRecovery.ts";
 const accepted = { stage: "accepted", operationId: "restart" } as const;
 const old = "0.10.0";
-const current = "0.12.0";
+const current = "0.16.0";
 
 describe("upgrade restart evidence", () => {
   it("an old ready descriptor cannot complete a restart whose return is not proved", () => {

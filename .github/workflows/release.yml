@@ -222,6 +222,7 @@ jobs:
           cd "$install_prefix"
           npm init -y
           npm install "./$TARBALL_NAME"
+          node -e 'require("node:assert/strict").equal(require("./node_modules/zerops-mate/package.json").mate.hqOrigin, "https://mate-hq.zerops.io")'
 
           installed_version="$(./node_modules/.bin/mate --version)"
           echo "Installed binary version: $installed_version"
@@ -299,6 +300,7 @@ jobs:
           cd "$install_prefix"
           npm init -y
           npm install "./$TARBALL_NAME"
+          node -e 'require("node:assert/strict").equal(require("./node_modules/zerops-mate/package.json").mate.hqOrigin, "https://mate-hq.zerops.io")'
           help_output="$(./node_modules/.bin/mate serve --help)"
           for flag in --mode --host --port --base-path --base-dir --no-browser --auto-bootstrap-project-from-cwd; do
             if ! grep -q -- "$flag" <<<"$help_output"; then

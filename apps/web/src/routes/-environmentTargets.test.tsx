@@ -274,7 +274,7 @@ const readyAt = (environmentId: EnvironmentId, projectId: string): ProbeReading 
   kind: "ready",
   descriptor: {
     environmentId,
-    serverVersion: "0.12.0",
+    serverVersion: "0.16.0",
     update: null,
     identity: "ok",
     identityCheckedAt: null,
@@ -300,7 +300,7 @@ function admittingAdapter(): MateAdapter {
       environmentId: ENV_A,
       descriptor: {
         environmentId: ENV_A,
-        serverVersion: "0.12.0",
+        serverVersion: "0.16.0",
         update: null,
         identity: "ok",
         identityCheckedAt: null,
@@ -500,7 +500,7 @@ const VERDICTS: ReadonlyArray<readonly [Reachability["kind"], EnvironmentMachine
     "refused-configuration",
     machine({ credential: { kind: "refused", reason: { kind: "configuration" } } }),
   ],
-  ["update-required", machine(below("0.12.0"))],
+  ["update-required", machine(below("0.16.0"))],
   ["update-unavailable", machine(below("0.10.4"))],
   [
     "connecting",
@@ -915,7 +915,7 @@ const answering = (environmentId: EnvironmentId, projectId: string): ProbeReadin
   kind: "ready",
   descriptor: {
     environmentId,
-    serverVersion: "0.12.0",
+    serverVersion: "0.16.0",
     update: null,
     identity: "ok",
     identityCheckedAt: null,

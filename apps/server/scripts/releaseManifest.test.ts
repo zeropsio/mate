@@ -53,6 +53,7 @@ describe("buildReleaseManifest", () => {
     });
 
     assert.deepStrictEqual(manifest.mate, { hqOrigin: DEFAULT_HQ_ORIGIN });
+    assert.deepStrictEqual(manifest.mate, { hqOrigin: "https://mate-hq.zerops.io" });
   });
 
   // The whole point: everything the bundler inlined is dead weight in the

@@ -57,6 +57,7 @@
  */
 
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeURL from "node:url";
 import * as NodePath from "node:path";
@@ -372,7 +373,7 @@ async function main() {
     sdkVersion,
     model: system.model,
     capturedAt: new Date().toISOString(),
-    capturedOn: "z3-eval/zcp",
+    capturedOn: NodeOS.hostname(),
     capturedBy: "spi-3",
     cwd: args.cwd,
     prompt: args.prompt,
