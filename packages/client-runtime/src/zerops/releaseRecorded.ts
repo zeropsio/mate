@@ -60,7 +60,7 @@ export function carriedMoved(input: {
     services: [...(input.repositories ?? [])].flatMap(([hostname, repo]) =>
       repo === repository ? [hostname] : [],
     ),
-    commits: commits.toSorted((a, b) => b.at.localeCompare(a.at)),
+    commits: [...commits].sort((a, b) => b.at.localeCompare(a.at)),
     total: commits.length,
     truncated: false,
   }));
@@ -92,7 +92,7 @@ export function outsideMoved(input: {
     services: [...(input.repositories ?? [])].flatMap(([hostname, repo]) =>
       repo === repository ? [hostname] : [],
     ),
-    commits: commits.toSorted((a, b) => b.at.localeCompare(a.at)),
+    commits: [...commits].sort((a, b) => b.at.localeCompare(a.at)),
     total: commits.length,
     truncated: false,
   }));
