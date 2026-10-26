@@ -7,6 +7,7 @@ import type { Page, BrowserContext } from "puppeteer-core";
 import { inject } from "vite-plus/test";
 import { expect } from "@effect/vitest";
 // The policy module alone: the data barrel would put the whole data layer in every scenario's graph.
+import { MINIMUM_MATE_SERVER_VERSION } from "../../../../../packages/client-runtime/src/zerops/serverCompatibility.ts";
 import { STREAM_POLICY } from "../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
@@ -366,9 +367,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         drivers: [provider.driver],
         ...(spawnDataConsole === undefined ? {} : { spawnDataConsole }),
         ...(options.claudeSignIn ? { claudeSignIn: true } : {}),
-        ...(options.launchEnvironment === undefined
-          ? {}
-          : { launchEnvironment: options.launchEnvironment }),
+        // The real server announces its package version; a scene's Mate is one the client opens.
+        launchEnvironment: {
+          T3CODE_SERVER_VERSION: MINIMUM_MATE_SERVER_VERSION,
+          ...options.launchEnvironment,
+        },
       }),
     );
     cleanup.push(server.remove, server.stop);
@@ -453,7 +456,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       ...overviewOf(),
       identity: {
         environmentId: mate.descriptor.environmentId,
-        serverVersion: "0.14.11",
+        serverVersion: "0.16.0",
         update: null,
         runsWithoutSignIn: true,
       },

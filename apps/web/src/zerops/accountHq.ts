@@ -3,8 +3,8 @@ import { captureAccountLifetime } from "./accountLifetime";
  * The organization's HQ, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
  * - **Which HQ:** the one this build names (`VITE_HQ_ORIGIN`, {@link configuredHq}), shared by every
- *   organization: no member list is read for it and no HQ is born. Without one, the one its anchor
- *   names in the org's member list (`findOfficialHq`), read with
+ *   organization: no member list is read for it and no HQ is born. Without one, the legacy per-org
+ *   path reads the HQ its anchor names in the org's member list (`findOfficialHq`), with
  *   the person's own token — never a project's name or tag, which anybody who can create a
  *   project could copy. The verdict — that HQ, or that there is none — is held in this page's
  *   memory (`hqVerdict.ts`), and a reader while it holds one reads no member list.
@@ -17,8 +17,9 @@ import { captureAccountLifetime } from "./accountLifetime";
  * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
  *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
  *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
- * - **Its Core:** this very build carries it, same-origin under `hq-core/`
- *   (`apps/hq/scripts/pack-core.ts`); a birth's deploy and HQ's update read it from there.
+ * - **Its Core:** the shared production HQ deploys from mate-hq's `scripts/deploy-hq.ts`.
+ *   This build retains legacy Core under `hq-core/` (`apps/hq/scripts/pack-core.ts`)
+ *   for the per-org birth and update paths.
  */
 import {
   findOfficialHq,
@@ -73,7 +74,7 @@ export interface AccountHq {
 
 /**
  * The HQ this build names (`VITE_HQ_ORIGIN`): clients take HQ's origin from their configuration
- * (mate-hq `spec/protocol.md` Conventions "Origin"). Unset, each organization's anchor names its own.
+ * (mate-hq `spec/protocol.md` Conventions "Origin"). Unset, the legacy per-org path reads its anchor.
  */
 export function configuredHq(): HqEndpoint | undefined {
   const origin = import.meta.env.VITE_HQ_ORIGIN?.trim();

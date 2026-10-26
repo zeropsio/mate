@@ -102,7 +102,7 @@ export function makeFakeMate(options: FakeMateOptions): FakeMate {
   const calls: Array<{ readonly doorToken: string }> = [];
   const serverVersion = options.oldServer
     ? OLD_SERVER_VERSION
-    : (options.serverVersion ?? "0.12.0");
+    : (options.serverVersion ?? "0.16.0");
 
   const descriptor = (): ExecutionEnvironmentDescriptor => ({
     environmentId,

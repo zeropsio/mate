@@ -285,7 +285,7 @@ describe("C: opening a Mate and chat", () => {
         const s = yield* createScenario([], { mate: "real" });
         const chat = realChat(s);
         for (const [name, version] of [
-          ["Ada", "0.14.11"],
+          ["Ada", "0.16.0"],
           ["Bea", "999.0.0"],
         ] as const) {
           yield* s.given.project(name, {

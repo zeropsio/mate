@@ -47,8 +47,9 @@ export interface ZeropsEnvironment {
    */
   readonly apiToken: string | undefined;
   /**
-   * The HQ the Mate links to (`ZeropsHqLink`): `T3CODE_ZEROPS_HQ_ORIGIN` in development, else
-   * {@link DEFAULT_HQ_ORIGIN}. Nothing discovers it (mate-hq `spec/protocol.md`, Conventions "Origin").
+   * The shared HQ the Mate links to (`ZeropsHqLink`): `T3CODE_ZEROPS_HQ_ORIGIN`, set at
+   * web birth or explicitly for development, else {@link DEFAULT_HQ_ORIGIN}. The default is
+   * https://mate-hq.zerops.io. Nothing discovers it (mate-hq `spec/protocol.md`, Conventions "Origin").
    */
   readonly hqOrigin: string;
   /** Additional exact browser origins admitted in development. */

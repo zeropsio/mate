@@ -26,8 +26,8 @@ user-facing copy and quotes its replacement; `packages/shared/src/legacyVocabula
 
 One word for each thing:
 
-- **HQ** — only the organization's headquarters app. Its Zerops project is "the Headquarters project"; setup steps say
-  what they make ("Creating the Headquarters project"), never "HQ's project". Zerops's own account site is "Zerops".
+- **HQ** — the shared headquarters app, with one tenant per organization. Organizations do not create an HQ project.
+  Zerops's own account site is "Zerops".
 - **project** — what the menu lists. Source words: environment (a server connection), application, an HQ application.
   A Zerops project beside an application is called by its name. A Zerops-level part of a project is never a project:
   it is Stage, Production or a Mate's workspace.

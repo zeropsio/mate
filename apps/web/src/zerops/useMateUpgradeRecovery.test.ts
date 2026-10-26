@@ -146,7 +146,7 @@ describe("useMateUpgradeRecovery", () => {
     expect(mock.reconnect).not.toHaveBeenCalled();
 
     mock.container.verdict = { level: "ready" };
-    mock.container.serverVersion = "0.12.0";
+    mock.container.serverVersion = "0.16.0";
     render();
     recovery = render();
     expect(mock.reconnect).toHaveBeenCalledTimes(1);
@@ -171,7 +171,7 @@ describe("useMateUpgradeRecovery", () => {
     expect(recovery.state).toBe("unresolved");
     expect(recovery.error).toMatch(/has not come back yet/);
     mock.container.verdict = { level: "ready" };
-    mock.container.serverVersion = "0.12.0";
+    mock.container.serverVersion = "0.16.0";
     render();
     expect(render().state).toBe("idle");
     expect(mock.reconnect).toHaveBeenCalledOnce();

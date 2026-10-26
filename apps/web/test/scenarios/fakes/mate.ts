@@ -135,7 +135,7 @@ export class MateFake {
       environmentId: `env-${projectId}`,
       label: name,
       platform: { os: "linux", arch: "x64" },
-      serverVersion: "0.14.11",
+      serverVersion: "0.16.0",
       basePath: "/mate",
       capabilities: { repositoryIdentity: true, accountLifecycleVersion: 1, connectionProbe: true },
       zerops: { projectId, identity: "ok" },

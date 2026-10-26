@@ -131,13 +131,13 @@ const ROWS: ReadonlyArray<{
         serverVersion: "0.10.4",
         update: {
           installed: "0.10.4",
-          latest: "0.12.0",
+          latest: "0.16.0",
           available: true,
           checkedAt: "2026-09-23T10:00:00.000Z",
         },
       }),
     }),
-    verdict: { kind: "update-required", actual: "0.10.4", minimum: "0.11.0" },
+    verdict: { kind: "update-required", actual: "0.10.4", minimum: "0.16.0" },
   },
   {
     row: 3,
@@ -585,9 +585,35 @@ describe("reachability over the machine's own transitions", () => {
     expect(environmentLinkable(selectReachability(reread, ENV_A))).toBe(false);
   });
 
+  it.each([
+    ["0.15.101", { kind: "update-unavailable" }],
+    ["0.16.0-rc.1", { kind: "update-unavailable" }],
+    ["0.16.0", { kind: "update-required", actual: "0.15.101", minimum: "0.16.0" }],
+  ] as const)(
+    "a below-floor Mate offers restart only when release %s reaches the shared HQ floor",
+    (latest, expected) => {
+      const old = drive(connectedMachine(), [
+        {
+          type: "DESCRIPTOR",
+          descriptor: descriptor({
+            serverVersion: "0.15.101",
+            update: {
+              installed: "0.15.101",
+              latest,
+              available: true,
+              checkedAt: "2026-10-26T18:00:00.000Z",
+            },
+          }),
+        },
+        { type: "LINK", link: { phase: "blocked", reason: "unsupported" } },
+      ]).machine;
+      expect(selectReachability(old, ENV_A)).toEqual(expected);
+    },
+  );
+
   it("blocked(unsupported) → update-required or update-unavailable by update.latest (T-L22)", () => {
     for (const [latest, verdict] of [
-      ["0.12.0", { kind: "update-required", actual: "0.10.4", minimum: "0.11.0" }],
+      ["0.16.0", { kind: "update-required", actual: "0.10.4", minimum: "0.16.0" }],
       ["0.10.9", { kind: "update-unavailable" }],
     ] as const) {
       const old = drive(connectedMachine(), [
@@ -636,7 +662,7 @@ describe("reachability over the machine's own transitions", () => {
             serverVersion: "0.10.4",
             update: {
               installed: "0.10.4",
-              latest: "0.12.0",
+              latest: "0.16.0",
               available: true,
               checkedAt: "2026-09-23T10:00:00.000Z",
             },
@@ -647,7 +673,7 @@ describe("reachability over the machine's own transitions", () => {
     expect(selectReachability(read, ENV_A)).toEqual({
       kind: "update-required",
       actual: "0.10.4",
-      minimum: "0.11.0",
+      minimum: "0.16.0",
     });
   });
 

@@ -92,7 +92,7 @@ export const reportsWork = Effect.fn("outage.reportsWork")(function* (
     ...overviewOf(),
     identity: {
       environmentId: mate.descriptor.environmentId,
-      serverVersion: "0.14.11",
+      serverVersion: "0.16.0",
       update: null,
     },
     main: {

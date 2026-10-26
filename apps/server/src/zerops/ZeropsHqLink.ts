@@ -82,7 +82,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
-import packageJson from "../../package.json" with { type: "json" };
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
@@ -798,10 +797,11 @@ export const layer = (crew: OverviewSources["crew"]) =>
         // The revision an engine row carries: the attention's source, as the engine wire's.
         Effect.map(attention.current, ({ source }) => source),
       );
+      const descriptor = yield* (yield* ServerEnvironment).getDescriptor;
       const feed = yield* mateOverviewFeed({
         providers: { latest: providers.providers, changes: providers.changes },
-        environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
-        serverVersion: packageJson.version,
+        environmentId: descriptor.environmentId,
+        serverVersion: descriptor.serverVersion,
         threads: chats.threads,
         crew,
         agentAuth: yield* ZeropsAgentAuth,

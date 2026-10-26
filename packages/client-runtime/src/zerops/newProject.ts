@@ -167,7 +167,7 @@ export function buildZcpServiceImportYaml(input: {
    * `services: []`, and a container made before the press — which carries neither — never does.
    */
   readonly setupRuntimesYaml?: string;
-  /** Absent where no HQ is known: the container then enrols with the one zcp defaults to. */
+  /** Absent where no HQ is known: zcp reads `mate.hqOrigin` from the installed Mate package. */
   readonly birthplace?: MateBirthplace;
 }): string {
   if (!input.vscodePassword) {
