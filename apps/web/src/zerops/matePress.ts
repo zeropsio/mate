@@ -27,11 +27,7 @@ import { randomUUID } from "~/lib/utils";
  * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
  * group at birth — draws the rest.
  */
-import {
-  acquireHqPressLease,
-  hardenMateProject,
-  type PressHold,
-} from "@t3tools/client-runtime/data";
+import { acquireHqPressLease, type PressHold } from "@t3tools/client-runtime/data";
 import type { MateRegistration } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
@@ -1155,12 +1151,6 @@ export async function finishMateSetup(input: {
    * dropped and its key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
-  /**
-   * HQ says the Mate's key reads other projects too (`keyWider`, ADR 0003's fallout): its harden
-   * matches that widened key on the token list — HQ never takes it for the Mate's key — takes its
-   * sibling grants off, and asks HQ to read the key again.
-   */
-  readonly keyWider?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
@@ -1293,18 +1283,17 @@ async function finishLocked(
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
     try {
-      ({ keyNotLowered } = await hardenMateProject({
-        api:
-          input.hq === null
-            ? null
-            : accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
-        orgId: input.inputs.organizationId,
-        projectId: input.projectId,
-        keyWider: input.keyWider === true,
-        active: input.isCurrent,
-        run: input.inputs.operations.run,
-        unobserved: PRESS_MAY_HAVE_LANDED,
-      }));
+      if (!input.isCurrent()) throw new Error("This account is no longer active.");
+      // HQ names no key: the harden finds the Mate's key on the project by name.
+      ({ keyNotLowered } = await input.inputs.operations.run(
+        {
+          kind: "harden-project",
+          orgId: input.inputs.organizationId,
+          projectId: input.projectId,
+        },
+        { orgId: input.inputs.organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
+      ));
+      if (!input.isCurrent()) throw new Error("This account is no longer active.");
     } catch (cause) {
       return finishStopped(input, { kind: "close-off" }, zeropsErrorMessage(cause));
     }

@@ -219,14 +219,6 @@ const NO_FACE_REQUEST = Atom.make<FaceRequestIntent | null>(null);
 const EMPTY_FACE_ACTION = Atom.make(NO_FACE_ACTION);
 const UNPRESSED: DialogPress = { pending: false, error: null };
 
-/** HQ says this Mate's key reads other projects too (`keyWider`, ADR 0003's fallout). */
-const keyWiderOf = (candidate: ZeropsCandidatePresentation): boolean =>
-  candidate.project.hq?.mate?.keyWider === true;
-
-/** Why *Finish setup* is on a Mate whose key reads other projects: what it takes off. */
-export const KEY_WIDER_WHY =
-  "Its key still reads other projects, production included. Finish setup leaves it on its own project.";
-
 export interface MateActions {
   /**
    * The menu entries for one Mate, already gated by what this person may
@@ -882,17 +874,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
     [hqKnown],
   );
-  /**
-   * Whether HQ offers the viewer editing the record of a Mate it holds (`edit_mate_record`): the
-   * one HQ tells its key's id to, which a widened key's harden narrows.
-   */
-  const mayEditRecord = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
-      const offers = mateOffersOf(candidate.project.id);
-      return offers?.held === true && offers.edit.kind === "allowed";
-    },
-    [mateOffersOf],
-  );
   /** Whether HQ offers the viewer writing the record of a Mate it holds none of. */
   const mayCreateRecord = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
@@ -940,15 +921,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
-        keyWider: keyWiderOf(candidate),
-        mayEditRecord: mayEditRecord(candidate),
       });
     },
     [
       groupTree.groups,
       interrupted,
       mayCreateRecord,
-      mayEditRecord,
       orgOffer,
       pressedElsewhere,
       presses,
@@ -970,11 +948,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
       const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";
       // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
-      // the harden itself, which reads its key as it runs; never from a token list read on a load
-      // (step A, A11). A Mate whose key HQ says reads other projects has its harden too, for
-      // whoever HQ tells that key's id, which takes those grants off (ADR 0003's fallout).
+      // the harden itself, which finds its key by name as it runs; never from a token list read on
+      // a load (step A, A11).
       const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
-      const keyWider = keyWiderOf(candidate) && mayEditRecord(candidate);
       // What it registers, by the rule Set up Mate registers by: in the application HQ or the
       // press this tab holds places it in, under that face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
@@ -1021,8 +997,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             projectId,
             projectName: candidate.project.name,
             container,
-            harden: adopting || keyWider,
-            keyWider,
+            harden: adopting,
             registration,
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
@@ -1041,7 +1016,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       hqStructure?.structure,
       interrupted,
       mayCreateRecord,
-      mayEditRecord,
       operations,
       orgOffer,
       pressedElsewhere,
@@ -1410,9 +1384,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               {
                 id: "finish-setup",
                 label: finishSetupLabel,
-                ...(keyWiderOf(candidate) && mayEditRecord(candidate)
-                  ? { why: KEY_WIDER_WHY }
-                  : {}),
                 disabled:
                   busy ||
                   finishSetupRunning(
@@ -1519,7 +1490,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       unrenamed,
       finishSetup,
       finishSetupVerbFor,
-      mayEditRecord,
       presses,
       rowInputFor,
       serverVersions,

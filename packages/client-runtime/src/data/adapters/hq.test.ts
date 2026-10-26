@@ -69,7 +69,6 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
         standupRequestedBy: null,
         closedOff: false,
         setupMarker: null,
-        keyWider: false,
       }
     : null,
   person: {

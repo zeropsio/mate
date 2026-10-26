@@ -569,25 +569,6 @@ describe("makeHqApi", () => {
     expect(hq.seen.some((entry) => entry.path === "/api/apps")).toBe(false);
   });
 
-  // Key by id (audit K3): the id of the key a Mate's container holds, as the Mate named it to HQ.
-  it("reads the id of the key a Mate named, and none where it named none", async () => {
-    const hq = fakeHq((seen) =>
-      seen.path === "/api/mates/P_ADA/key"
-        ? json(200, { keyTokenId: "tok-ada" })
-        : seen.path === "/api/mates/P_BEA/key"
-          ? json(200, { keyTokenId: null })
-          : undefined,
-    );
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    expect([await api.mateKey("P_ADA"), await api.mateKey("P_BEA")]).toEqual(["tok-ada", null]);
-  });
-
   it("renews a session HQ ended once, through the door, and the call goes on", async () => {
     const hq = fakeHq();
     const door = doors();
@@ -1336,12 +1317,6 @@ describe("makeHqApi — application name and a project's application", () => {
       "records that a Mate's project is closed off",
       (api) => api.recordClosedOff("p1"),
       { method: "POST", path: "/api/mates/p1/closed-off" },
-    ],
-    // ADR 0003's fallout: once Finish setup took a widened key's siblings off, HQ reads it again.
-    [
-      "asks HQ to read a Mate's widened key again",
-      (api) => api.recheckKey("p1"),
-      { method: "POST", path: "/api/mates/p1/key-check" },
     ],
     // SPEC §3.2b: a stage or a production attached as an environment of the application, named.
     [

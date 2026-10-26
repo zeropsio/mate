@@ -524,7 +524,6 @@ export {
   PRESS_STEP_RENEW_MS,
   type PressHold,
 } from "./operations/executors/hqPressLease.ts";
-export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
 
 export { creationHandoff } from "./projections/creationHandoff.ts";
 export {

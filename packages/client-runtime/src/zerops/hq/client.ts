@@ -142,12 +142,6 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly closedOff?: boolean | undefined;
   /** HQ’s read of the setup press marker; null while unknown. */
   readonly setupMarker?: boolean | null | undefined;
-  /**
-   * The key it last named reads other projects too — READ_ONLY grants on siblings an earlier client
-   * gave it (ADR 0003's fallout): it needs *Finish setup*, whose harden takes them off. Absent where
-   * it does not, and from an older HQ.
-   */
-  readonly keyWider?: boolean | undefined;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
@@ -350,17 +344,12 @@ export interface HqApi {
     on: Parameters<OpenHqSocket>[1],
     signal: AbortSignal,
   ) => Promise<HqSocket>;
-  /**
-   * The id of the key a Mate's container holds, as the Mate named it to HQ (`GET
-   * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
-   */
   /** Original lifecycle requests and results, retained by the accepting HQ for this person. */
   readonly lifecycleWrite: (
     requestId: string,
     intent: HqLifecycleIntent,
   ) => Promise<HqLifecycleRecord>;
   readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
-  readonly mateKey: (projectId: string, signal?: AbortSignal) => Promise<string | null>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
@@ -380,12 +369,6 @@ export interface HqApi {
    * (`mate_not_found`).
    */
   readonly recordClosedOff: (projectId: string) => Promise<void>;
-  /**
-   * HQ reads the Mate's widened key again (`POST /api/mates/{projectId}/key-check`), asked by its
-   * project's admin once *Finish setup* took its sibling grants off: its record stops saying
-   * `keyWider` once the key reaches its own project alone.
-   */
-  readonly recheckKey: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
@@ -1461,15 +1444,6 @@ export function makeHqApi(input: {
           await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`),
         )
       ).record,
-    mateKey: async (projectId, signal) =>
-      (
-        await json<{ readonly keyTokenId: string | null }>(
-          await authorized(
-            `/api/mates/${encodeURIComponent(projectId)}/key`,
-            signal === undefined ? {} : { signal },
-          ),
-        )
-      ).keyTokenId,
     updateMate: async (projectId, change) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}`,
@@ -1877,13 +1851,6 @@ export function makeHqApi(input: {
     recordClosedOff: async (projectId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
-        { method: "POST" },
-        true,
-      );
-    },
-    recheckKey: async (projectId) => {
-      await authorized(
-        `/api/mates/${encodeURIComponent(projectId)}/key-check`,
         { method: "POST" },
         true,
       );
