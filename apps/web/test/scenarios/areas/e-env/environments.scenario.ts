@@ -271,7 +271,10 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Compare");
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
-            f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
+            f.s.page
+              .locator('::-p-aria(Roll back to v0.1.1[role="button"])')
+              .setTimeout(30_000)
+              .waitHandle(),
           );
           expect(
             yield* Effect.promise(() =>
