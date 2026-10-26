@@ -13,7 +13,7 @@ const descriptor = (
   environmentId: ENV,
   label: "zcp",
   platform: { os: "linux", arch: "x64" },
-  serverVersion: "0.12.0",
+  serverVersion: "0.16.0",
   capabilities: { repositoryIdentity: true },
   basePath: "/mate",
   zerops: { projectId: "P1", identity: "ok", identityCheckedAt: "2026-10-24T09:00:00.000Z" },
@@ -44,7 +44,7 @@ describe("exchangeAtMate", () => {
     expect(await answer).toMatchObject({
       ok: true,
       environmentId: ENV,
-      descriptor: { environmentId: ENV, serverVersion: "0.12.0", identity: "ok" },
+      descriptor: { environmentId: ENV, serverVersion: "0.16.0", identity: "ok" },
       credential: {
         _tag: "ZeropsMateConnectionRegistration",
         target: {
