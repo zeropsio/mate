@@ -905,6 +905,9 @@ export function pressRegistration(
 export const PRESS_MAY_HAVE_LANDED =
   "Zerops may have done it anyway: Try again reads what is there before it writes.";
 
+/** This web's origin; empty outside a browser, where the container admits no web of its own. */
+const thisWebOrigin = (): string => (typeof window === "undefined" ? "" : window.location.origin);
+
 /**
  * The press's platform: its Zerops writes as the account's operations, its close-off marked at HQ,
  * its registration, and the wait for its services on the account's services listing.
@@ -938,7 +941,7 @@ export function pressPlatform(
     // Its container enrols with the HQ this press runs through and admits this web.
     ...(options.hq === null
       ? {}
-      : { birthplace: { hqOrigin: options.hq.address, webOrigin: window.location.origin } }),
+      : { birthplace: { hqOrigin: options.hq.address, webOrigin: thisWebOrigin() } }),
     untilServicesSettled: options.untilServicesSettled,
   };
 }
