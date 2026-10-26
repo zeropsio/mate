@@ -190,6 +190,8 @@ const rig = (
   Effect.gen(function* () {
     const key = yield* Ref.make<string | undefined>(options.keyless === true ? undefined : "zk-1");
     const current = yield* Ref.make(overview("Add a login page"));
+    /** The fingerprint of the Git credential the Mate holds; none until a test gives it one. */
+    const fingerprint = yield* Ref.make(Option.none<string>());
     /** How often the link read the overview. */
     const reads = { count: 0 };
     const changes = yield* PubSub.unbounded<void>();
@@ -229,6 +231,7 @@ const rig = (
       ...(options.health === undefined ? {} : { health: options.health }),
       access: (frame) => Effect.sync(() => void relayed.push(frame)),
       gitCredential: (credential) => Effect.sync(() => void credentials.push(credential)),
+      gitFingerprint: Ref.get(fingerprint),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
         heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
@@ -266,6 +269,7 @@ const rig = (
       autoUpdatePolicy,
       link,
       key,
+      fingerprint,
       current,
       changes,
       sockets,
@@ -408,6 +412,29 @@ describe("ZeropsHqLink", () => {
       ),
   );
 
+  it.effect(
+    "tells HQ in its hello the fingerprint of the Git credential it holds, read afresh for every dial, and nothing while it holds none",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fingerprint, sockets } = yield* rig();
+          const first = yield* opened(sockets, 0);
+          assert.deepStrictEqual(first.sent, [hello("zk-1")]);
+          yield* Ref.set(fingerprint, Option.some("f".repeat(64)));
+          first.emit("close");
+          yield* TestClock.adjust(Duration.millis(30));
+          const second = yield* opened(sockets, 1);
+          assert.deepStrictEqual(second.sent, [
+            { ...hello("zk-1"), gitFingerprint: "f".repeat(64) },
+          ]);
+          yield* Ref.set(fingerprint, Option.none());
+          second.emit("close");
+          yield* TestClock.adjust(Duration.millis(30));
+          assert.deepStrictEqual((yield* opened(sockets, 2)).sent, [hello("zk-1")]);
+        }),
+      ),
+  );
+
   it.effect("says it does not link while its public origin is unknown, and dials nothing", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -507,6 +534,7 @@ describe("ZeropsHqLink", () => {
             ),
           closeSession: connections.closeSession,
           gitCredential: () => Effect.void,
+          gitFingerprint: Effect.succeed(Option.none()),
         });
         const socket = yield* linked(sockets, 0);
         socket.hear({
@@ -1150,6 +1178,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         },
         access: () => Effect.void,
         gitCredential: () => Effect.void,
+        gitFingerprint: Effect.succeed(Option.none()),
         attention: Stream.never,
         ...feed,
       });
