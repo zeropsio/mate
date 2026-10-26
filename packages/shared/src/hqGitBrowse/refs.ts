@@ -32,8 +32,9 @@ export const GitRefItem = Schema.Struct({
   ref: Schema.String,
   sha: Sha,
   kind: GitRefKind,
-  committedAt: Schema.String,
-  subject: Schema.String,
+  committedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  subject: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  metadataPending: Schema.optionalKey(Schema.Boolean),
   /** A change's branch, `mate/<mateId>/<number>`. */
   change: Schema.optionalKey(Schema.Struct({ mateId: Schema.String, number: Schema.Int })),
   /** Followed from GitHub, never written by Mate. */

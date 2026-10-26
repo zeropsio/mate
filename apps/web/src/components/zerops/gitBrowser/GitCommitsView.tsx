@@ -14,7 +14,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
-import { GitReadStopped } from "./GitAtCommit";
+import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { changeTitle, type PickerChange } from "./GitRefPicker.logic";
@@ -249,7 +249,7 @@ export function GitCommitsView(props: GitRepoPageProps) {
   const { home, onHomeAgain } = props;
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <p className="text-sm text-muted-foreground">No commits on this branch yet.</p>
+      <GitNoCommit pending={home.answer.pending} />
     ) : (
       <HistoryAt {...props} sha={home.answer.sha} />
     );

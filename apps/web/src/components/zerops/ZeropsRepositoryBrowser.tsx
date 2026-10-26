@@ -40,11 +40,26 @@ export function ZeropsRepositoryBrowser({
   readonly onBack: () => void;
 }) {
   const { rev } = query;
+  const view = gitView(query);
   const home = useGitBrowse(
-    { appId, repo, read: "home", params: rev === undefined ? {} : { rev } },
+    {
+      appId,
+      repo,
+      read: "home",
+      params: {
+        ...(rev === undefined ? {} : { rev }),
+        ...(view === "home"
+          ? {}
+          : {
+              content:
+                rev !== undefined && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(rev)
+                  ? ("revision" as const)
+                  : ("metadata" as const),
+            }),
+      },
+    },
     allowed,
   );
-  const view = gitView(query);
   const drawn = pageRead(view, query, home.view, { appId, repo });
   const page = useGitBrowseReads(drawn === null ? [] : [drawn], allowed);
   const changes = useMemo(
