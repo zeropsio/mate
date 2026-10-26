@@ -550,6 +550,8 @@ export function ReviewFiles({
   failed,
   diffOf,
   fileAt,
+  notRecorded,
+  onOpen,
   onRetry,
   initiallyOpen,
 }: {
@@ -559,6 +561,10 @@ export function ReviewFiles({
   /** Why the files could not be read, where they could not. */
   readonly failed?: string | undefined;
   readonly diffOf: (path: string) => ReviewDiffState;
+  /** HQ has not recorded the files yet: said as that, with a press that reads them where offered. */
+  readonly notRecorded?: { readonly onShow: (() => void) | undefined } | undefined;
+  /** A file was unfolded: where its diff is read on demand. */
+  readonly onOpen?: ((path: string) => void) | undefined;
   /** Reads what could not be read again. */
   readonly onRetry?: (() => void) | undefined;
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
@@ -568,6 +574,18 @@ export function ReviewFiles({
     return (
       <div className="rv-files">
         <ReviewFailed onRetry={onRetry} reason={failed} what="The files couldn't be read." />
+      </div>
+    );
+  }
+  if (notRecorded !== undefined) {
+    return (
+      <div className="rv-files">
+        <p className="rv-diff-note">The files are not known yet.</p>
+        {notRecorded.onShow === undefined ? null : (
+          <Button onClick={notRecorded.onShow} size="sm" variant="link">
+            Show files
+          </Button>
+        )}
       </div>
     );
   }
@@ -585,7 +603,7 @@ export function ReviewFiles({
       {files.map((file) => {
         const expanded = open.has(file.path);
         const { dir, name } = changeFileParts(file.path);
-        const letter = changeFileLetter(file.status);
+        const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
         return (
           <FileRow
             diff={expanded ? diffOf(file.path) : undefined}
@@ -599,6 +617,7 @@ export function ReviewFiles({
             // A file the change deletes is in none of its commits any more.
             open={letter === "D" ? undefined : fileAt?.(file.path)}
             onToggle={() => {
+              if (!expanded) onOpen?.(file.path);
               setOpen((current) => {
                 const next = new Set(current);
                 if (next.has(file.path)) next.delete(file.path);
@@ -628,7 +647,7 @@ function FileRow({
   readonly open: GitLink | undefined;
   readonly dir: string;
   readonly name: string;
-  readonly letter: string;
+  readonly letter: string | undefined;
   readonly expanded: boolean;
   readonly diff: ReviewDiffState | undefined;
   readonly onToggle: () => void;

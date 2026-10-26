@@ -2,12 +2,19 @@ import { Atom } from "effect/reactivity";
 /** Review bodies and commits are demanded HQ facts keyed by the displayed head and main. */
 import {
   changeReadout,
+  changeReadoutOfRecord,
   type ChangeReadout,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import { changeReadOwner, hqChangeRead } from "@t3tools/client-runtime/data";
+import {
+  changeReadOwner,
+  hqChangeMetadata,
+  hqChangeRead,
+  type HqChangeMetadata,
+  type HqChangeRead,
+} from "@t3tools/client-runtime/data";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAccountDataOptional, useProjection, useDetailDemand } from "./ZeropsAccountData";
 
 export type ReadoutPart<T> =
@@ -28,10 +35,22 @@ export interface ZeropsChangeDetail {
   readonly readout: ReadoutPart<ChangeReadout>;
   /** Reads a read that failed again. */
   readonly retry: () => void;
+  /**
+   * For a change whose files HQ never recorded: reads them from its repository once, on the
+   * person's press. Absent where there is nothing to show.
+   */
+  readonly showFiles: (() => void) | undefined;
 }
 
 const READING = { kind: "reading" } as const;
-const UNREAD = Atom.make<import("@t3tools/client-runtime/data").HqChangeRead>(READING);
+const UNREAD = Atom.make<HqChangeRead>(READING);
+const UNRECORDED = Atom.make<HqChangeMetadata>(READING);
+
+/**
+ * A change's review: what HQ recorded when the change last moved (`/metadata`: files, sizes, merge
+ * base, verdict) — no repository is read to draw it. An HQ that records no review, or a person who
+ * asks for the files of a change that has none recorded, reads HQ's detail of it instead.
+ */
 export function useZeropsChangeDetail(
   request: ZeropsChangeDetailRequest | null,
 ): ZeropsChangeDetail {
@@ -46,32 +65,63 @@ export function useZeropsChangeDetail(
             ...(request.main === undefined ? {} : { expectedMain: request.main }),
           },
         });
-  useDetailDemand("hqChangeRead", undefined, owner);
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  useDetailDemand("hqChangeMetadata", undefined, owner);
   useDetailDemand("hqAppDetail", undefined, request?.link.appId ?? null);
-  const read = useProjection(
+  const orgId = account?.orgId ?? null;
+  const recorded = useProjection(
+    hqChangeMetadata,
+    owner === null || orgId === null ? null : { orgId, owner },
+    UNRECORDED,
+  );
+  const review = recorded.kind === "read" ? recorded.detail.review : undefined;
+  const filesAsked = owner !== null && shownFor === owner;
+  const fullWanted =
+    recorded.kind === "read" && (review === undefined || (review.files === null && filesAsked));
+  const fullOwner = fullWanted ? owner : null;
+  useDetailDemand("hqChangeRead", undefined, fullOwner);
+  const full = useProjection(
     hqChangeRead,
-    owner === null || account?.orgId == null ? null : { orgId: account.orgId, owner },
+    fullOwner === null || orgId === null ? null : { orgId, owner: fullOwner },
     UNREAD,
   );
-  const readout = useMemo<ReadoutPart<ChangeReadout>>(
-    () =>
-      owner === null
-        ? { kind: "none" }
-        : read.kind === "read"
-          ? { kind: "read", value: changeReadout(read.detail) }
-          : read.kind === "reading"
-            ? READING
-            : {
-                kind: "failed",
-                reason: read.kind === "gone" ? "This change is not there." : read.reason,
-              },
-    [owner, read],
-  );
+  const readout = useMemo<ReadoutPart<ChangeReadout>>(() => {
+    if (owner === null) return { kind: "none" };
+    const failed = (read: HqChangeRead | HqChangeMetadata): ReadoutPart<ChangeReadout> => ({
+      kind: "failed",
+      reason:
+        read.kind === "gone"
+          ? "This change is not there."
+          : read.kind === "refused" || read.kind === "unavailable"
+            ? read.reason
+            : "",
+    });
+    if (fullWanted) {
+      return full.kind === "read"
+        ? { kind: "read", value: changeReadout(full.detail) }
+        : full.kind === "reading"
+          ? READING
+          : failed(full);
+    }
+    if (recorded.kind === "read" && review !== undefined)
+      return { kind: "read", value: changeReadoutOfRecord(recorded.detail.change, review) };
+    return recorded.kind === "reading" ? READING : failed(recorded);
+  }, [owner, fullWanted, full, recorded, review]);
   const retry = useCallback(() => {
-    if (owner !== null && readout.kind === "failed")
-      account?.retryDetail({ family: "hqChangeRead", ownerId: owner });
-  }, [account, owner, readout.kind]);
-  return { readout, retry };
+    if (owner === null || readout.kind !== "failed") return;
+    account?.retryDetail({
+      family: fullWanted ? "hqChangeRead" : "hqChangeMetadata",
+      ownerId: owner,
+    });
+  }, [account, owner, readout.kind, fullWanted]);
+  const showFiles = useCallback(() => {
+    setShownFor(owner);
+  }, [owner]);
+  return {
+    readout,
+    retry,
+    showFiles: review !== undefined && review.files === null && !filesAsked ? showFiles : undefined,
+  };
 }
 
 /** The main commit of this repository, independent of merges in the application's other repos. */

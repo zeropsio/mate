@@ -5,6 +5,7 @@
  */
 import {
   changeReadout,
+  changeReadoutOfRecord,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -311,6 +312,100 @@ describe("ChangeReviewView: a change's conversation", () => {
       },
     });
     expect(markup.match(/<li aria-hidden="true"/gu)?.length).toBe(2);
+  });
+});
+
+describe("ChangeReviewView: a change review from what HQ recorded", () => {
+  const recorded = (
+    files: ReadonlyArray<{ path: string; status?: "A" | "M" | "D" | "T" }> | null,
+    commits?: ReadonlyArray<{ sha: string; subject: string; authorName: string; at: string }>,
+  ) =>
+    changeReadoutOfRecord(
+      {
+        mergeability: "clean",
+        behind: false,
+      } as HqChange,
+      {
+        mergeBase: MAIN,
+        files:
+          files?.map(({ path, status }) => ({
+            path,
+            added: 2,
+            deleted: 0,
+            binary: false,
+            ...(status === undefined ? {} : { status }),
+          })) ?? null,
+        filesTruncated: false,
+        conflictPaths: [],
+        commits: commits ?? null,
+        commitsTruncated: false,
+      },
+    );
+
+  it("Files not recorded yet read not known yet", () => {
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded(null) },
+      showFiles: noop,
+    });
+    expect(textOf(markup)).toContain("The files are not known yet.");
+    expect(textOf(markup)).toContain("Show files");
+  });
+
+  it("A file HQ recorded no status for draws no letter, never a guessed M", () => {
+    const markup = render(merged(), [], {
+      readout: {
+        kind: "read",
+        value: recorded([{ path: "src/a.ts", status: "A" }, { path: "src/b.ts" }]),
+      },
+    });
+    expect(markup.match(/class="rv-st"[^>]*>([^<]*)</gu)?.map((cell) => cell.slice(-2))).toEqual([
+      "A<",
+      "><",
+    ]);
+  });
+
+  it("A file's diff is read from the recorded merge base when the person unfolds it", () => {
+    const asked: Array<string> = [];
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
+      initiallyOpen: ["src/a.ts"],
+      fileDiffs: {
+        diffOf: () => ({ kind: "reading" }),
+        ask: (path) => asked.push(path),
+      },
+    });
+    expect(textOf(markup)).toContain("a.ts");
+    expect(textOf(markup)).toContain("Reading the diff");
+    expect(asked).toEqual([]);
+  });
+
+  it("Commits HQ recorded show at once", () => {
+    const markup = render(merged(), [], {
+      readout: {
+        kind: "read",
+        value: recorded(
+          [{ path: "src/a.ts" }],
+          [
+            {
+              sha: MAIN,
+              subject: "Add a status page",
+              authorName: "Nova",
+              at: "2026-10-02T09:00:00.000Z",
+            },
+          ],
+        ),
+      },
+    });
+    expect(textOf(markup)).toContain("Add a status page");
+  });
+
+  it("Commits not recorded yet read not known yet, and a press reads them", () => {
+    const markup = render(merged(), [], {
+      readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
+      showCommits: noop,
+    });
+    expect(textOf(markup)).toContain("The commits are not known yet.");
+    expect(textOf(markup)).toContain("Show commits");
   });
 });
 

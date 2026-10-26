@@ -1146,6 +1146,7 @@ function ZeropsProjectStopDetailPage({
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
     changeCount: flow.release.summary?.changeCount,
+    waitingUnread: flow.release.summaryRead === "pending",
     untold: production ? flow.release.untold : NO_UNTOLD,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
