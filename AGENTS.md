@@ -150,9 +150,10 @@ To answer a question, go to the home:
   platform fact our code relies on. One surface/flow/component belongs in tests (behaviour: title is
   the product sentence; one-line why when the owner decided against the obvious) or code (look).
   Reasons/reversals belong in the commit message.
-- Rewrites keep every test sentence: change input arrangement, never what its title says. Deleting
-  a sentence removes behaviour and needs the owner's word: `Drops-test: <exact title>` commit trailer,
-  enforced by `scripts/check-test-sentences.ts`.
+- Few tests, highest value, fast: a test earns its cost or goes. Delete one that pins gone behaviour,
+  duplicates another or checks trivia, with a `Drops-test: <exact title>` commit trailer
+  (`scripts/check-test-sentences.ts`) and a line why. Rewrites change input arrangement, never what a
+  kept title says; removing a behaviour itself is the owner's call.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.
