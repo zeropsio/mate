@@ -49,17 +49,12 @@ export function ZeropsReleaseVerb({
   readonly groupId: string;
   readonly label: string;
   /**
-   * The caller's flow offers the release already: the door is there from the first paint, while
-   * what goes out is still compared (the onboarding run's card grew 32 px when it came), and the
-   * review says what it finds.
+   * The caller's flow offers the release already: the door is there from the first paint,
+   * and opening the review reads what goes out.
    */
   readonly offered?: boolean;
 }) {
-  // What a release would put live is compared while the step is drawn.
-  const { flows } = useProjectFlows(
-    useMemo(() => [groupId], [groupId]),
-    { compare: true },
-  );
+  const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const release = useReleaseOffer(groupId, flows.get(groupId));
   if (!release.offered && !release.releasing && !offered) return null;
   // A card's own solid button, as a change's *Review* is beside it: one look for what waits on you.
