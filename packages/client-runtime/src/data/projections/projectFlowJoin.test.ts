@@ -126,6 +126,22 @@ describe("joinProjectFlows", () => {
     expect(flow?.release.entries).toEqual([]);
   });
 
+  it("carries that HQ has not read the release offer yet, so its zero summary is not a count", () => {
+    const offer = {
+      head: null,
+      suggestion: "v0.1.1",
+      gate: { allow: false, reason: "Reading what a release would carry…" },
+      inFlight: null,
+      summary: { total: 0, changeCount: 0, more: 0, subjects: [], atLeast: false },
+    } as const;
+    const read = (summaryRead?: "pending") =>
+      join({
+        navigationOffers: { g1: summaryRead === undefined ? offer : { ...offer, summaryRead } },
+        review: false,
+      }).get("g1")?.release.summaryRead;
+    expect([read("pending"), read()]).toEqual(["pending", undefined]);
+  });
+
   it("shows an omitted navigation release offer as unknown", () => {
     const flow = join({
       navigationOffers: { g1: undefined },

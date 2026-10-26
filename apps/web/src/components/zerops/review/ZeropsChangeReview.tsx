@@ -21,7 +21,6 @@ import {
   changeRemarks,
   changeReview,
   recipeReach,
-  releaseContentsCommits,
   waitingForProduction,
   type ChangeReadout,
   type ChangeReviewInput,
@@ -110,9 +109,6 @@ const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
-/** The review shows whether a release is offered: what it would put live is compared while drawn. */
-const COMPARED = { compare: true } as const;
-
 export function ZeropsChangeReview({
   frame = "dialog",
   target,
@@ -136,11 +132,8 @@ export function ZeropsChangeReview({
   const reviewOffers = useChangeOffers()(target.groupId);
   const denied = reviewOffers?.readRefused === true;
   const router = useRouter();
-  // The application's flow, what a release would put live compared while the review is drawn.
-  const flows = useProjectFlows(
-    useMemo(() => [target.groupId], [target.groupId]),
-    COMPARED,
-  );
+  // The application's flow, with the release offer HQ recorded: nothing is compared here.
+  const flows = useProjectFlows(useMemo(() => [target.groupId], [target.groupId]));
   // The dialog's way to the same review at the change's own address.
   const onOpenPage =
     frame === "page"
@@ -274,6 +267,11 @@ function ChangeReviewData({
   const verbs = useFlowVerbs();
   const mateNames = useMateNames();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  // The offer HQ sends right after a merge is not read yet; once it has gone pending and is read
+  // again, it counts the change this review merged, and the review stops adding it.
+  const offerPending = flow?.release.summaryRead === "pending";
+  const [offerMoved, setOfferMoved] = useState(false);
+  if (press.kind === "done" && offerPending && !offerMoved) setOfferMoved(true);
   const [closePress, setClosePress] = useState({
     head: pull.headSha,
     press: { kind: "idle" } as ReviewClose,
@@ -480,17 +478,11 @@ function ChangeReviewData({
       readout={detail.readout}
       run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
-      waitingForProduction={
-        flow === undefined || !flow.releasesKnown
-          ? undefined
-          : waitingForProduction({
-              listed: flow.release.contentsKnown
-                ? releaseContentsCommits(flow.release.contents)
-                : undefined,
-              change: pull,
-              liveSince: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
-            })
-      }
+      waitingForProduction={waitingForProduction({
+        summary: flow?.release.summary,
+        pending: offerPending,
+        mergedAhead: press.kind === "done" && !offerMoved,
+      })}
     />
   );
 }
@@ -541,7 +533,7 @@ export interface ChangeReviewViewProps {
    * change's merge reaches.
    */
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
-  /** How many changes wait for production, as the flow compared it; `undefined` until it has. */
+  /** How many changes wait for production, as HQ's release offer counts them; `undefined` until it has. */
   readonly waitingForProduction: number | undefined;
   /** Whether the application holds a production in any state (`ReviewQuestion`). */
   readonly productionHeld?: boolean | undefined;
@@ -613,11 +605,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     productionHeld: props.productionHeld,
     addable: props.addable,
     waiting: {
-      // Until HQ's stream brings it merged, the change just merged is not among what waits yet.
-      count:
-        press.kind === "done" && !pull.merged && props.waitingForProduction !== undefined
-          ? props.waitingForProduction + 1
-          : props.waitingForProduction,
+      count: props.waitingForProduction,
       live: props.live,
     },
     release: props.release,
