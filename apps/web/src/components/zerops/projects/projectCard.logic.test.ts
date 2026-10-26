@@ -3,6 +3,7 @@ import {
   canonicalEnvironmentRowInputsOf,
   groupFlow,
   placeAddresses,
+  PRODUCTION_DEPLOYING,
   type GroupFlowProduction,
   type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
@@ -677,6 +678,11 @@ describe("a release on its way", () => {
 describe("production's line while a release is on its way", () => {
   const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
   const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
+  const deploying = {
+    kind: "deploying",
+    stop: stop({ state: "deploying" }),
+    line: PRODUCTION_DEPLOYING,
+  } as const;
   it.each([
     { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
     {
@@ -684,6 +690,17 @@ describe("production's line while a release is on its way", () => {
       production: releasing,
       rollsBackTo: "v2.3.0",
       opens: { kind: "rollback", tag: "v2.3.0" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production, before HQ names it",
+      production: deploying,
+      chip: chip({ state: "releasing", next: "v2.4.1" }),
+      opens: { kind: "release" },
+    },
+    {
+      case: "opens what is on its way while the platform builds production it cannot name yet",
+      production: deploying,
+      opens: { kind: "release" },
     },
     { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
     {

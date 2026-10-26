@@ -99,14 +99,20 @@ function releasingWords(tag: string, rollsBackTo: string | undefined): string {
 /**
  * What production's line opens while it says a release on its way: that release's review, or a
  * roll back's by the release it goes back to — the door the card's "Putting v2.4.0 live" block
- * had. Nothing while none is on its way, or while the line says production's trouble instead.
+ * had. The platform's build is on its way before HQ names it, and its line opens the same review
+ * from that frame, its words only what the build or HQ reports. Nothing while none is on its way,
+ * or while the line says production's trouble instead.
  */
 export function releaseLineOpens(
   line: PlaceLine,
   production: GroupFlowProduction,
   rollsBackTo: string | undefined,
 ): { readonly kind: "release" } | { readonly kind: "rollback"; readonly tag: string } | undefined {
-  if (line.kind !== "production" || line.dot !== "releasing" || production.kind !== "releasing")
+  if (
+    line.kind !== "production" ||
+    line.dot !== "releasing" ||
+    (production.kind !== "releasing" && production.kind !== "deploying")
+  )
     return undefined;
   return rollsBackTo === undefined ? { kind: "release" } : { kind: "rollback", tag: rollsBackTo };
 }
