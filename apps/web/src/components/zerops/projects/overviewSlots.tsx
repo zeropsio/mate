@@ -56,10 +56,12 @@ import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
 import {
   broughtBy,
+  historyHeld,
   historyOffered,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
+  productionBuilding,
   releaseLineOpens,
   releaseProductionRuns,
   rollBackTarget,
@@ -159,8 +161,10 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     const chip = drawnChip(
       productionChip({
         production,
-        building:
+        building: productionBuilding(
+          production.kind,
           prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.projectId)),
+        ),
         waiting: entry.flow.main.notLive,
         waitingAtLeast: entry.flow.main.notLiveAtLeast,
         untold: read?.release.untold ?? NO_UNTOLD,
@@ -388,8 +392,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           >
             History
           </Button>
-        ) : entry.flow.production.kind === "releasing" ||
-          (line.dot === "running" && (chip?.version ?? stop?.version) !== undefined) ? (
+        ) : historyHeld({
+            kind: entry.flow.production.kind,
+            dot: line.dot,
+            runsNamed: (chip?.version ?? stop?.version) !== undefined,
+          }) ? (
           <ActionHeld>History</ActionHeld>
         ) : null}
       </>

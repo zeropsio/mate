@@ -459,6 +459,37 @@ export function historyOffered(input: {
 }
 
 /**
+ * Whether production's panel holds History's room where it does not offer it yet: while a release
+ * is on its way, whichever names it first (the platform's build says Deploying before HQ's accepted
+ * release says Releasing), and while it runs a version it can name. One release on its way keeps
+ * one height: CI's held card drew the build without the room and HQ's release with it, 44 px apart.
+ */
+export function historyHeld(input: {
+  readonly kind: GroupFlowProduction["kind"];
+  readonly dot: PlaceLine["dot"];
+  /** It runs a version it can name. */
+  readonly runsNamed: boolean;
+}): boolean {
+  return (
+    input.kind === "releasing" ||
+    input.kind === "deploying" ||
+    input.dot === "releasing" ||
+    (input.dot === "running" && input.runsNamed)
+  );
+}
+
+/**
+ * The platform's build as the card's chip reads it: only where the card's flow says production
+ * deploys, so the chip's Releasing and the ready block's leaving are one answer, never a frame apart.
+ */
+export function productionBuilding<Building>(
+  kind: GroupFlowProduction["kind"],
+  building: Building | undefined,
+): Building | undefined {
+  return kind === "deploying" ? building : undefined;
+}
+
+/**
  * The tag of the release production runs: one that has landed. A release on its way (`inFlight`)
  * has not, even once production's services name its commit; a first release on its way names none
  * and a second keeps the first.

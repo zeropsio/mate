@@ -28,7 +28,9 @@ import {
   mateChangeForReview,
   mateChangesForReview,
   panelAddresses,
+  historyHeld,
   historyOffered,
+  productionBuilding,
   releaseProductionRuns,
   placeLines,
   putLiveHasChange,
@@ -1111,6 +1113,56 @@ describe("production's actions", () => {
   ])("offers production's history only once it runs a release: $case", (input) => {
     expect(historyOffered(input)).toBe(input.offered);
   });
+});
+
+describe("production's room while a release is on its way", () => {
+  // CI's held card: the platform's build said Deploying with no History room at 248 px, then HQ's
+  // accepted release said Releasing with it at 292 px; one release on its way keeps one height.
+  it.each([
+    {
+      case: "the platform's build, before HQ names it",
+      kind: "deploying",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    {
+      case: "HQ's accepted release",
+      kind: "releasing",
+      dot: "releasing",
+      runsNamed: false,
+      held: true,
+    },
+    { case: "a version it runs", kind: "live", dot: "running", runsNamed: true, held: true },
+    {
+      case: "running nothing it can name",
+      kind: "live",
+      dot: "running",
+      runsNamed: false,
+      held: false,
+    },
+    { case: "nothing released yet", kind: "empty", dot: "none", runsNamed: false, held: false },
+  ] as const)("holds History's room whatever names the release first: $case", (input) => {
+    expect(historyHeld(input)).toBe(input.held);
+  });
+
+  const BUILD = { from: "v1.0.0", to: "v1.1.0" };
+  it.each([
+    { case: "the flow says production deploys", kind: "deploying", building: BUILD, read: BUILD },
+    {
+      case: "the flow still offers the release",
+      kind: "ready-to-release",
+      building: BUILD,
+      read: undefined,
+    },
+    { case: "the flow says it runs", kind: "live", building: BUILD, read: undefined },
+    { case: "no build", kind: "deploying", building: undefined, read: undefined },
+  ] as const)(
+    "the card's chip reads a build only where its flow says production deploys: $case",
+    (input) => {
+      expect(productionBuilding(input.kind, input.building)).toEqual(input.read);
+    },
+  );
 });
 
 describe("the version production runs", () => {
