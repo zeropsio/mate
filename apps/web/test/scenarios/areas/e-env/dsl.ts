@@ -139,7 +139,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
             [...document.querySelectorAll<HTMLElement>(selector)].some((element) =>
               element.innerText.includes(wanted),
             ),
-          { polling: "raf" },
+          { timeout: 30_000, polling: "raf" },
           wanted,
           selector,
         );
@@ -277,8 +277,26 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     const processId = zerops.writes.activate(previous.id);
     zerops.writes.transition(processId, "FINISHED");
   });
+  // The page has no default timeout, so a step that never finds its element is bounded here and
+  // dumps what the page showed, instead of waiting for the test's own timeout in silence.
+  const pressed = async (what: string, press: () => Promise<void>) => {
+    try {
+      await press();
+    } catch (cause) {
+      throw new Error(
+        `Could not press ${what}\n${await page.evaluate(() => document.body.innerText)}`,
+        {
+          cause,
+        },
+      );
+    }
+  };
   const click = (label: string) =>
-    Effect.promise(() => page.locator(`::-p-aria(${label}[role="button"])`).click());
+    Effect.promise(() =>
+      pressed(label, () =>
+        page.locator(`::-p-aria(${label}[role="button"])`).setTimeout(30_000).click(),
+      ),
+    );
   const rowShows = (tag: string, words: string, options: { within?: number } = {}) =>
     Effect.promise(async () => {
       try {
@@ -326,13 +344,16 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     await page.reload();
   });
   const rollBack = (tag: string) =>
-    Effect.promise(async () => {
-      await page
-        .locator(
-          `::-p-xpath(//*[@data-zerops-surface="environment-name" and normalize-space(.)="${tag}"]/ancestor::*[@data-zerops-environment-row][1]//button[normalize-space(.)="Roll back to this"])`,
-        )
-        .click();
-    });
+    Effect.promise(() =>
+      pressed(`Roll back to this on ${tag}`, () =>
+        page
+          .locator(
+            `::-p-xpath(//*[@data-zerops-surface="environment-name" and normalize-space(.)="${tag}"]/ancestor::*[@data-zerops-environment-row][1]//button[normalize-space(.)="Roll back to this"])`,
+          )
+          .setTimeout(30_000)
+          .click(),
+      ),
+    );
   const editVersion = (value: string) =>
     Effect.promise(() => page.locator('::-p-aria(Version[role="textbox"])').fill(value));
   const releaseDisabled = Effect.promise(async () => {
