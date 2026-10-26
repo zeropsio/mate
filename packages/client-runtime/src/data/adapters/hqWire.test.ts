@@ -47,9 +47,10 @@ describe("makeHqWire", () => {
             changeMetadata: fail,
             changeCommits: fail,
           });
-          const fault = yield* Effect.flip(
-            wire[purpose]!({ link: { appId: "app", repo: "web", number: 1 } }),
-          );
+          const request = { link: { appId: "app", repo: "web", number: 1 } };
+          const fault = yield* purpose === "metadata"
+            ? Effect.flip(wire.metadata!(request))
+            : Effect.flip(wire.commits!(request));
           expect(fault.code).toBe(code === "change_not_found" ? "not_found" : "http_404");
         }
       }),
