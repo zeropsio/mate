@@ -17,7 +17,7 @@ import {
   untilHealth,
   ticketFor,
 } from "../../../../hq/test/harness/runningCore.ts";
-import { mateInApp } from "../../../../hq/test/harness/mates.ts";
+import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
 import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
 import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsWorld.ts";
 import { ZeropsFake } from "../fakes/zerops.ts";
@@ -67,6 +67,10 @@ export interface ScenarioDrivers {
   routes: Record<string, string>;
   onMate: ((mate: MateFake) => void)[];
   links: Map<string, Effect.Success<ReturnType<ScenarioDrivers["core"]["socket"]>>>;
+  /** The authorization a Mate's HTTP call carries: an external HQ takes its project key. */
+  mateAuthorization: (credential: string) => string;
+  /** `git clone` arguments for a Mate's checkout of `repo`, at the path and with the authorization its HQ takes (an external HQ qualifies Git paths by organization). */
+  mateClone: (credential: string, appId: string, repo: string, dir: string) => string[];
   /**
    * A new link of the enrolled Mate `name` to HQ, the way its container opens one: an external
    * HQ takes the project key in the link's hello; the embedded Core a ticket for `credential`,
@@ -205,9 +209,23 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     })).body as { ticket: string };
     return yield* core.socket(`/api/mate/link?ticket=${ticket}`);
   });
+  const mateAuthorization = (credential: string) =>
+    external ? `Project ${credential}` : `Mate ${credential}`;
+  const mateClone = (credential: string, appId: string, repo: string, dir: string) =>
+    external
+      ? [
+          "clone",
+          "-c",
+          `http.extraHeader=Authorization: Project ${credential}`,
+          `${core.origin}/git/ORG/${appId}/${repo}.git`,
+          dir,
+        ]
+      : ["clone", remoteOf(core.origin, credential, appId, repo), dir];
   const drivers = {
     hq,
     linkMate,
+    mateAuthorization,
+    mateClone,
     owner,
     appIds,
     zerops,
