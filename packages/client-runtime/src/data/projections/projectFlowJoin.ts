@@ -56,6 +56,8 @@ export interface ZeropsReleaseOffer {
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
   readonly summary?: ReleaseContentsSummary | undefined;
+  /** "pending" while HQ has not read what a release would carry: `summary` then counts nothing. */
+  readonly summaryRead?: "pending" | undefined;
   readonly gate: ReleaseGate;
   /**
    * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
@@ -564,6 +566,8 @@ function projectFlow(
                 : offer.suggestion,
             summary:
               navigation != null && !("refused" in navigation) ? navigation.summary : undefined,
+            summaryRead:
+              navigation != null && !("refused" in navigation) ? navigation.summaryRead : undefined,
             comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
             groupHead:

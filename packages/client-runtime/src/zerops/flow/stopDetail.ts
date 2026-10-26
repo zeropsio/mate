@@ -138,6 +138,8 @@ export function stopVerdict(input: {
   /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
   readonly waitingAtLeast: boolean;
   readonly changeCount?: number | undefined;
+  /** HQ has not read what a release would carry (`summaryRead: "pending"`): `waiting` counts nothing. */
+  readonly waitingUnread?: boolean | undefined;
   /** Production's services whose commit cannot be told (`releaseReads`' `untold`). */
   readonly untold: ReadonlyArray<string>;
   readonly release: {
@@ -284,6 +286,14 @@ export function stopVerdict(input: {
       text: `${cannotTellWhatRuns(input.untold)}.`,
       detail: `Production runs ${label}`,
       verb: releaseVerb,
+    };
+  // A zero from an offer HQ has not read is no answer: never "nothing new on main".
+  if (input.waitingUnread === true)
+    return {
+      tone: "busy",
+      text: "Not known yet what a release would carry.",
+      detail: `Production runs ${label}`,
+      verb: null,
     };
   // Nothing waits: production runs what is merged — unless the release is not offered, whose gate
   // says why, and what is merged is not known to be what runs.

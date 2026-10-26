@@ -26,6 +26,8 @@ export function ReviewCommits({
   now,
   onRetry,
   fold,
+  notRecorded,
+  cut = false,
 }: {
   readonly commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>;
   /** The repository its commits open in, in the Git browser; absent, a hash is only words. */
@@ -34,8 +36,24 @@ export function ReviewCommits({
   readonly onRetry: (() => void) | undefined;
   /** Folded to its row, in the sheet: one click away. */
   readonly fold?: ReviewFoldState | undefined;
+  /** HQ has not recorded the commits: said as that, with a press that reads them where offered. */
+  readonly notRecorded?: { readonly onShow: (() => void) | undefined } | undefined;
+  /** HQ recorded only the newest commits. */
+  readonly cut?: boolean | undefined;
 }) {
   const [all, setAll] = useState(false);
+  if (notRecorded !== undefined) {
+    return (
+      <ReviewSection fold={fold} title="Commits">
+        <p className="rv-diff-note">The commits are not known yet.</p>
+        {notRecorded.onShow === undefined ? null : (
+          <Button onClick={notRecorded.onShow} size="sm" variant="link">
+            Show commits
+          </Button>
+        )}
+      </ReviewSection>
+    );
+  }
   if (commits.kind === "none") return null;
   if (commits.kind === "read" && commits.value.length === 0) return null;
   const count = commits.kind === "read" ? commits.value.length : undefined;
@@ -63,6 +81,7 @@ export function ReviewCommits({
       ) : (
         <CommitRows
           all={all}
+          cut={cut}
           at={at}
           commits={commits.value}
           now={now}
@@ -77,12 +96,14 @@ function CommitRows({
   commits,
   at,
   all,
+  cut,
   now,
   onShowAll,
 }: {
   readonly commits: ReadonlyArray<ChangeReadoutCommit>;
   readonly at: GitRepoAt | undefined;
   readonly all: boolean;
+  readonly cut: boolean;
   readonly now: number;
   readonly onShowAll: () => void;
 }) {
@@ -112,6 +133,7 @@ function CommitRows({
           </li>
         ))}
       </ol>
+      {cut && (all || rest === undefined) ? <p className="rv-diff-note">and more</p> : null}
       {rest === undefined ? null : (
         <Button className="mt-1 -ml-2" onClick={onShowAll} size="sm" variant="link">
           Show all {rest}

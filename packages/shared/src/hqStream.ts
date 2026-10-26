@@ -489,6 +489,12 @@ export const HqNavigationReleaseOffer = Schema.Struct({
     more: Schema.Int,
     atLeast: Schema.Boolean,
   }),
+  /**
+   * Present, as "pending", while `summary` is not known: the offer's inputs moved and HQ has not
+   * read the candidate again, or Git could not read it. `summary` then counts nothing. Absent where
+   * `summary` is the read count, and from older servers.
+   */
+  summaryRead: Schema.optionalKey(Schema.Literal("pending")),
   gate: HqDecision,
   releaseTarget: Schema.optionalKey(HqReleaseTarget),
   inFlight: Schema.NullOr(Schema.String),
