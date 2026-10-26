@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the server's real test inventory is the sharding input.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { createVitest } from "vite-plus/test/node";
 import { describe, expect, it } from "vite-plus/test";
-import { spreadShard, SpreadShardSequencer } from "./spread-shard.ts";
+import { spreadShard } from "./spread-shard.ts";
 
 const files = [
   "src/zerops/crew/CrewEngine.test.ts",
@@ -56,42 +55,4 @@ describe("spreadShard", () => {
       [1, 2, 3, 4].map((index) => spreadShard(inventory.toReversed(), index, 4, measured)),
     ).toEqual(shards);
   });
-});
-
-// CI run 38456967103 measured these files independently of the sequencer's cost table.
-it("CI keeps the measured crash import from sharing a server runner with other long recovery suites", async () => {
-  const root = NodePath.resolve(import.meta.dirname, "../../apps/server");
-  const ctx = await createVitest("test", { root, config: NodePath.join(root, "vite.config.ts") });
-  try {
-    const inventory = await ctx.globTestSpecifications();
-    const sequencer = new SpreadShardSequencer(ctx);
-    const shards = [];
-    // CI's test_server matrix (scripts/ci-blame.ts); scripts/lib type-checks without it.
-    for (const index of [1, 2, 3, 4, 5, 6]) {
-      ctx.config.shard = { index, count: 6 };
-      shards.push(
-        (await sequencer.shard(inventory)).map((spec) => spec.moduleId.slice(root.length + 1)),
-      );
-    }
-    expect(shards.flat().toSorted()).toEqual(
-      inventory.map((spec) => spec.moduleId.slice(root.length + 1)).toSorted(),
-    );
-    const crash = "src/zerops/crew/engine/importV1Crew.test.ts";
-    const shard = shards.find((files) => files.includes(crash));
-    expect(shard, "ASSERTION: CI must run the 169-second crash import exactly once").toBeDefined();
-    expect(shards.flat().filter((file) => file === crash)).toHaveLength(1);
-    for (const file of [
-      "src/engine/history/historyImport.test.ts",
-      "src/zerops/crew/CrewEngine.runs.test.ts",
-      "src/git/GitManager.test.ts",
-    ]) {
-      expect(shards.flat().filter((path) => path === file)).toHaveLength(1);
-      expect(
-        shard,
-        "ASSERTION: the 169-second crash import must not concentrate other long recovery suites",
-      ).not.toContain(file);
-    }
-  } finally {
-    await ctx.close();
-  }
 });

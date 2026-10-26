@@ -513,9 +513,11 @@ jobs:
   # Each State Smoke shard builds its scenario bundles; sign-in, fixed smoke
   # and the shared graph's affected scenarios all block CI. They run against
   # the test HQ of zeropsio/mate-hq (private), read with a deploy key.
+  # It needs only prepare, so the long shards take hosted runner slots in the
+  # first wave instead of queuing behind shorter jobs.
   state_smoke:
     name: State Smoke ${{ matrix.shard }}
-    needs: [prepare, changes]
+    needs: prepare
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 14

@@ -9,7 +9,7 @@ export const blameMatrices = {
   test_hq: [1].map((shard) => ({ shard, total: 1 })),
   test_client_runtime: [1].map((shard) => ({ shard, total: 1 })),
   test_web: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
-  test_server: [1, 2, 3, 4, 5, 6].map((shard) => ({ shard, total: 6 })),
+  test_server: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
   state_smoke: [1, 2, 3, 4, 5, 6, 7, 8].map((shard) => ({ shard, total: 8 })),
 };
 const jobNames = {
