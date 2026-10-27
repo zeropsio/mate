@@ -7,9 +7,12 @@
  * the person's acknowledgements), and whether that word is of now. Neither a clock nor which path
  * brought the word decides it: the store already holds the newest by the Mate's own revision. The
  * words a row shows — the task, the last reply, the step, the question — are the attention's chat's
- * own, found by its id: in the chat's shell where this page holds it, else in the engine's own row of
- * it where HQ relays an engine Mate's rows, else in HQ's overview of the Mate's main chat; a chat
- * HQ's overview does not name yet reads without words until it does.
+ * own, found by its id: in the chat's shell where this page follows it — the Mate's socket stands —,
+ * else in the engine's own row of it where HQ relays an engine Mate's rows, else in HQ's overview
+ * of the Mate's main chat, else in the shell this page held when it last followed it; a chat HQ's
+ * overview does not name yet reads without words until it does. A shell this page stopped
+ * following stays where the run was when the person left (a row read "Thinking" through a 49-step
+ * run): HQ's live word of the same chat outranks it.
  *
  * A Mate from before the attention value is read as it always was, off its socket's reading while
  * that socket stands, else off HQ's overview of it, live while HQ holds its link (`legacyActivity`);
@@ -193,6 +196,7 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
             environmentId,
             overview,
             shells,
+            followed: input.standing.has(environmentId),
             lastVisitedAtById,
             limits: input.limits,
           });
@@ -220,6 +224,11 @@ export function attentionActivity(input: {
   readonly environmentId: EnvironmentId;
   readonly overview: MateLiveView | undefined;
   readonly shells: ReadonlyArray<EnvironmentThreadShell>;
+  /**
+   * This page follows the Mate's chats now — its socket stands —, so a shell it holds is current;
+   * otherwise one it holds is where the chat was when this page last followed it.
+   */
+  readonly followed: boolean;
   readonly lastVisitedAtById: Readonly<Record<string, string>>;
 }): ZeropsAgentActivity | undefined {
   const { attention, environmentId } = input;
@@ -229,12 +238,17 @@ export function attentionActivity(input: {
   if (threadId === null) return undefined;
   const main = input.overview?.main ?? null;
   const visited = input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))];
-  const shell = input.shells.find((each) => each.id === threadId);
+  const held = input.shells.find((each) => each.id === threadId);
   // An engine Mate's own row of the chat, where HQ relays its rows; else its main chat's fields.
-  const row =
-    shell === undefined
-      ? input.overview?.conversations?.find((each) => (each.conversationId as string) === threadId)
+  const engineRow = input.overview?.conversations?.find(
+    (each) => (each.conversationId as string) === threadId,
+  );
+  // A shell this page no longer follows gives way to HQ's word of the same chat.
+  const shell =
+    held !== undefined && (input.followed || (engineRow === undefined && main?.id !== threadId))
+      ? held
       : undefined;
+  const row = shell === undefined ? engineRow : undefined;
   const words: AgentActivityThread | undefined =
     row !== undefined
       ? undefined

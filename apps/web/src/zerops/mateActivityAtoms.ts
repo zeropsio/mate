@@ -15,6 +15,7 @@ import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { environmentThreadShells } from "../state/threads";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
+import { MATE_AWAY_GRACE_MS } from "./lastKnownMate.logic";
 import { matesActivityOf, socketStands } from "./mateActivity";
 import { threadOnScreenAtom } from "./threadOnScreen";
 import type { ZeropsAgentActivity } from "./agentActivity";
@@ -81,8 +82,42 @@ export const threadActivityAtom = Atom.family((key: string | null) =>
   }).pipe(Atom.withEquality(sameActivity)),
 );
 
-export const mateActivityAtom = Atom.family((projectId: string) =>
-  Atom.make((get) => {
+/**
+ * How long a Mate's row keeps its live reading once its word stops being of now: a Mate relinking
+ * to HQ — every Mate at once, one by one, when HQ is deployed — is back within it, and its row
+ * never flashes what was last known meanwhile. A restart's grace (`MATE_AWAY_GRACE_MS`).
+ */
+export const MATE_RELINK_GRACE_MS = MATE_AWAY_GRACE_MS;
+
+/**
+ * A row's reading through a relink: one no longer of now (`remembered`) that follows a live one
+ * keeps the live one until `MATE_RELINK_GRACE_MS` after it was lost (`lostAt`), then gives way;
+ * a live one, or one never live here, is itself. `wakeAt` is when the held one gives way.
+ */
+export function throughRelink(input: {
+  readonly previous: ZeropsAgentActivity | undefined;
+  readonly next: ZeropsAgentActivity | undefined;
+  readonly lostAt: number | undefined;
+  readonly nowMs: number;
+}): {
+  readonly activity: ZeropsAgentActivity | undefined;
+  readonly lostAt: number | undefined;
+  readonly wakeAt: number | undefined;
+} {
+  const { previous, next, nowMs } = input;
+  if (next?.remembered !== true || previous === undefined || previous.remembered === true)
+    return { activity: next, lostAt: undefined, wakeAt: undefined };
+  const lostAt = input.lostAt ?? nowMs;
+  const wakeAt = lostAt + MATE_RELINK_GRACE_MS;
+  return nowMs < wakeAt
+    ? { activity: previous, lostAt, wakeAt }
+    : { activity: next, lostAt: undefined, wakeAt: undefined };
+}
+
+export const mateActivityAtom = Atom.family((projectId: string) => {
+  // Since when its reading has not been of now, while its row holds the live one.
+  let lostAt: number | undefined;
+  return Atom.make((get) => {
     const account = get(accountReadsAtom);
     if (account?.orgId == null) return undefined;
     const overview = get(hqMateOverviewAtom(projectId));
@@ -142,9 +177,15 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
       },
       before === undefined ? undefined : new Map([[projectId, before]]),
     ).get(projectId);
-    return activity;
-  }).pipe(Atom.withEquality(sameActivity)),
-);
+    const held = throughRelink({ previous: before, next: activity, lostAt, nowMs: Date.now() });
+    lostAt = held.lostAt;
+    if (held.wakeAt !== undefined) {
+      const timer = setTimeout(() => get.refreshSelf(), held.wakeAt - Date.now());
+      get.addFinalizer(() => clearTimeout(timer));
+    }
+    return held.activity;
+  }).pipe(Atom.withEquality(sameActivity));
+});
 
 /** The tree reads only state, order, quiet membership and counts; row text has its own demand. */
 export const mateMenuActivityAtom = Atom.family((projectId: string) =>
