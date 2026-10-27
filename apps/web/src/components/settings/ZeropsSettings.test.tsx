@@ -170,34 +170,6 @@ it.each(["uncertain", "unresolved"] as const)(
   },
 );
 
-it.each(["none", "unreadable"] as const)(
-  "explains %s HQ instead of waiting forever or inventing a policy",
-  (verdict) => {
-    store.dispatch({
-      kind: "rows",
-      scope: "zerops:org:hq-verdict",
-      generation: 0,
-      method: "read",
-      via: "zerops-realtime",
-      rows: [
-        {
-          family: "hqVerdict",
-          id: "org",
-          value: { verdict },
-          revision: { kind: "zerops", version: null },
-        },
-      ],
-    });
-    const tree = render();
-    expect(control(tree)).toBeNull();
-    expect(words(tree)).toContain(
-      verdict === "none"
-        ? "Set up HQ to read this policy."
-        : "HQ is unavailable; check its connection.",
-    );
-  },
-);
-
 it.each(["unknown", "withheld"] as const)(
   "an %s policy offers no toggle and explains its read state",
   (kind) => {

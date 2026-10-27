@@ -59,9 +59,5 @@ export function menuSourcesSettled(input: {
     hq.refusal !== null ||
     hq.capped ||
     (waitedOut && (hq.reconnecting || hq.slow));
-  const placed =
-    input.verdict === "none" ||
-    input.verdict === "unreadable" ||
-    (input.verdict === "official" && hqAnswered);
-  return listed && placed;
+  return listed && input.verdict === "official" && hqAnswered;
 }
