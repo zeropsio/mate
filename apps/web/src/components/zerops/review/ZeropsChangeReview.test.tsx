@@ -425,6 +425,47 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(textOf(markup)).toContain("Add a status page");
   });
 
+  it("A file of a change sharing no history with main reads its diff from HQ's detail when the person unfolds it", async () => {
+    const asked: Array<string> = [];
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const host = document.createElement("div") as unknown as TestNode;
+    const root = createRoot(host as unknown as Element);
+    // HQ recorded the files of a change into an empty main: there is no merge base to read from.
+    const unrelated = changeReadoutOfRecord({ mergeability: "clean", behind: false } as HqChange, {
+      mergeBase: null,
+      files: [{ path: "summary.txt", added: 1, deleted: 0, binary: false, status: "A" }],
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: [],
+      commitsTruncated: false,
+    });
+    await act(async () => {
+      root.render(
+        <ChangeReviewView
+          {...viewProps(merged({ merged: false, state: "open" }), [], {
+            readout: { kind: "read", value: unrelated },
+            readDiffs: () => {
+              asked.push("diffs");
+            },
+          })}
+        />,
+      );
+    });
+    const file = elementsOf(host, "button").find((button) =>
+      button.textContent.includes("summary.txt"),
+    );
+    expect(asked).toEqual([]);
+    await act(async () => {
+      press(file!);
+    });
+    expect(asked).toEqual(["diffs"]);
+    await act(async () => {
+      root.unmount();
+    });
+    vi.unstubAllGlobals();
+  });
+
   it("Commits not recorded yet read not known yet, and a press reads them", () => {
     const markup = render(merged(), [], {
       readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },

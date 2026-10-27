@@ -216,6 +216,32 @@ describe("useZeropsChangeDetail", () => {
     await probe.unmount();
   });
 
+  it("A change sharing no history with main reads its files' diffs from HQ's detail once a file is unfolded", async () => {
+    hq.answers = ["detail"];
+    // Into an empty main: HQ recorded the files and no merge base to read a file's diff from.
+    hq.review = {
+      mergeBase: null,
+      files: [{ path: "summary.txt", added: 1, deleted: 0, binary: false, status: "A" }],
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: [],
+      commitsTruncated: false,
+    };
+    const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
+    expect(probe.latest().readout).toMatchObject({
+      kind: "read",
+      value: { files: [{ path: "summary.txt" }], diffBase: null },
+    });
+    expect(hq.reads).toEqual([]);
+    await act(async () => {
+      probe.latest().readDiffs?.();
+    });
+    expect(hq.reads).toEqual(["g1/appdev#2"]);
+    expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: true } });
+    expect(probe.latest().readDiffs).toBeUndefined();
+    await probe.unmount();
+  });
+
   it("reads nothing of a change no push reached", async () => {
     const probe = await mount([{ link: LINK, head: undefined, main: MAIN }, null]);
     expect(probe.latest().readout).toEqual({ kind: "none" });
