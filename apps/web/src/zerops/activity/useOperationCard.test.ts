@@ -9,6 +9,7 @@ import type {
   ObservedPipeline,
   ObservedService,
 } from "@t3tools/client-runtime/zerops/activity/observe";
+import type { BatchServiceRow } from "../../components/zerops/operation/BatchServiceRows";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -598,6 +599,31 @@ describe("deriveObservedStepsRegion — secondary processes ride as compact rows
   });
 });
 
+describe("deriveObservedStepsRegion — a batch's services stand whatever its step source holds", () => {
+  // The batch follows a service whose version failed before it had a step:
+  // the other services' rows stay, never one strip of hostnames.
+  const services: ReadonlyArray<ObservedService> = [
+    { serviceIds: ["svc-geo"], outcome: "failed" },
+    { serviceIds: ["svc-web"], pipeline: BUILDING },
+  ];
+  it.each([
+    { name: "running", phase: "running" as const, kind: "observing" as const },
+    { name: "settled", phase: "done" as const, kind: "observing" as const },
+    { name: "settled, the feed catching up", phase: "done" as const, kind: "stale" as const },
+  ])("$name", ({ phase, kind }) => {
+    const held = observation({ services });
+    const state: ObservationState =
+      kind === "observing"
+        ? { kind, observation: held, elapsedMs: 2_000 }
+        : { kind, observation: held };
+    expect(
+      deriveObservedStepsRegion("deploy", phase, state, NOW)?.services?.map(
+        (service) => service.serviceIds,
+      ),
+    ).toEqual([["svc-geo"], ["svc-web"]]);
+  });
+});
+
 describe("deriveObservedStepsRegion — the build log rides on while the feed catches up", () => {
   it("a running deploy keeps its build log query", () => {
     const region = deriveObservedStepsRegion(
@@ -1113,51 +1139,149 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     { serviceIds: ["svc-webpool"] },
   ];
 
+  /** A row as the card draws it: its name, its state, each slot's word (`null`: a stage it has not). */
+  const read = (row: BatchServiceRow) => [
+    row.name,
+    row.state,
+    row.steps.map((step) => (step === null ? null : step.stateLabel)),
+  ];
+  const WAITING = ["Waiting", "Waiting", "Waiting", "Waiting", "Waiting"];
+
   it.each([
     {
       name: "running: each service by name, its own steps and state",
       operation: batch("running"),
-      topology: view,
       rows: [
-        ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
-        ["edgepool", "running", ["done", "done", "done", "done", "running"]],
-        ["embedderpool", "done", ["done", "done", "done"]],
-        ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
-        ["webpool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
-        ["sitepool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
+        ["apipool", "running", ["Done", "Running", null, null, "Waiting"]],
+        ["edgepool", "running", ["Done", "Done", null, null, "Running"]],
+        ["embedderpool", "done", ["Done", "Done", null, null, "Done"]],
+        ["geopool", "failed", ["Done", "Failed", null, null, "Cancelled"]],
+        ["webpool", "waiting", WAITING],
+        ["sitepool", "waiting", WAITING],
       ],
-    },
-    {
-      name: "before the topology names its services: still one named row each",
-      operation: batch("running"),
-      topology: undefined,
-      rows: HOSTS.map((host) => [
-        host,
-        "queued",
-        ["queued", "queued", "queued", "queued", "queued"],
-      ]),
     },
     {
       name: "settled with nothing read of a service: its row says how its call ended",
       operation: batch("done", "done"),
-      topology: view,
       rows: [
-        ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
-        ["edgepool", "running", ["done", "done", "done", "done", "running"]],
-        ["embedderpool", "done", ["done", "done", "done"]],
-        ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
+        ["apipool", "running", ["Done", "Running", null, null, "Waiting"]],
+        ["edgepool", "running", ["Done", "Done", null, null, "Running"]],
+        ["embedderpool", "done", ["Done", "Done", null, null, "Done"]],
+        ["geopool", "failed", ["Done", "Failed", null, null, "Cancelled"]],
         ["webpool", "done", []],
         ["sitepool", "done", []],
       ],
     },
-  ])("$name", ({ operation: op, topology: known, rows }) => {
-    const drawn = batchServiceRows(op, SERVICES, known, NOW);
-    expect(drawn?.map((row) => [row.name, row.state, row.steps.map((step) => step.state)])).toEqual(
-      rows,
-    );
+  ])("$name", ({ operation: op, rows }) => {
+    expect(batchServiceRows(op, SERVICES, view, NOW)?.map(read)).toEqual(rows);
+  });
+
+  // A service's row reads its version the way a single deploy's card does
+  // (`readPipeline`): a version refused or cancelled says so, never "Waiting".
+  it.each([
+    { status: "WAITING_TO_BUILD", when: "", build: undefined, state: "waiting", steps: WAITING },
+    {
+      status: "BUILD_VALIDATION_FAILED",
+      when: "",
+      build: undefined,
+      state: "failed",
+      steps: [],
+    },
+    {
+      status: "CANCELLED",
+      when: "before its build",
+      build: { pipelineStart: T(1), pipelineFailed: T(2) },
+      state: "cancelled",
+      steps: ["Cancelled", "Cancelled", null, null, "Cancelled"],
+    },
+    {
+      status: "CANCELLED",
+      when: "once its build ran",
+      build: { pipelineStart: T(1), startDate: T(4), pipelineFailed: T(9) },
+      state: "cancelled",
+      steps: [],
+    },
+    {
+      status: "BUILD_FAILED",
+      when: "in its build container",
+      build: { pipelineStart: T(1), pipelineFailed: T(2) },
+      state: "failed",
+      steps: ["Failed", "Cancelled", null, null, "Cancelled"],
+    },
+  ])("a service whose version is $status $when reads $state", ({ status, build, state, steps }) => {
+    const one = operation({
+      batch: true,
+      subject: "apipool",
+      steps: [{ id: "apipool", label: "apipool", state: "running", stateLabel: "Running" }],
+    });
+    const service: ObservedService = {
+      serviceIds: ["svc-apipool"],
+      pipeline: pipeline({ status, ...(build === undefined ? {} : { build }) }),
+    };
+    expect(batchServiceRows(one, [service], view, NOW)?.map(read)).toEqual([
+      ["apipool", state, steps],
+    ]);
+  });
+
+  it("a service whose kickoff failed reads failed, by its process", () => {
+    const one = operation({
+      batch: true,
+      subject: "apipool",
+      steps: [{ id: "apipool", label: "apipool", state: "running", stateLabel: "Running" }],
+    });
+    expect(
+      batchServiceRows(one, [{ serviceIds: ["svc-apipool"], outcome: "failed" }], view, NOW)?.map(
+        read,
+      ),
+    ).toEqual([["apipool", "failed", []]]);
   });
 
   it("a deploy of one service has no service rows", () => {
     expect(batchServiceRows(operation(), SERVICES, view, NOW)).toBeUndefined();
+  });
+});
+
+describe("useOperationCard — a batch's rows stand from its call's start (hook)", () => {
+  const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+  beforeEach(() => {
+    hooks.reset();
+    topologySpy.mockReset();
+    observationSpy.mockReset();
+    observationSpy.mockReturnValue({
+      state: { kind: "off", reason: "no-target" },
+      buildLog: { status: "idle", lines: [] },
+      settledRead: "pending",
+    });
+  });
+
+  it("before the topology names its services: still one named row each", () => {
+    topologySpy.mockReturnValue(undefined);
+    hooks.beginRender();
+    const regions = useOperationCard(
+      operation({
+        batch: true,
+        subject: "api, web",
+        steps: ["api", "web"].map((host) => ({
+          id: host,
+          label: host,
+          state: "running" as const,
+          stateLabel: "Running",
+        })),
+      }),
+      ENVIRONMENT_ID,
+    );
+    expect(
+      regions.observed?.services?.map((row) => [
+        row.name,
+        row.state,
+        row.steps.map((step) => step?.stateLabel ?? null),
+      ]),
+    ).toEqual(
+      ["api", "web"].map((host) => [
+        host,
+        "waiting",
+        ["Waiting", "Waiting", "Waiting", "Waiting", "Waiting"],
+      ]),
+    );
   });
 });

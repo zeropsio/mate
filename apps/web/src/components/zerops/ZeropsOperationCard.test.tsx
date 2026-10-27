@@ -1201,7 +1201,7 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
         },
         {
           name: "web",
-          state: "queued",
+          state: "waiting",
           stateLabel: "Waiting",
           steps: [step("Build container", "queued"), step("Build", "queued")],
         },
@@ -1223,6 +1223,50 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
       api: ["done", "running"],
       web: ["queued", "queued"],
     });
+  });
+
+  it("a service without a stage keeps its slot: every row's steps on one grid", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-grid",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const done = (id: string) => ({ id, label: id, state: "done" as const, stateLabel: "Done" });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: ["a", "b", "c", "d", "e"].map(done),
+        },
+        {
+          name: "web",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: [done("a"), done("b"), null, null, done("e")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const slots = (name: string) =>
+      (
+        html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.match(/data-zerops-segment="/g) ?? []
+      ).length;
+    expect({ api: slots("api"), web: slots("web") }).toEqual({ api: 5, web: 5 });
   });
 });
 
