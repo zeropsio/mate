@@ -2651,6 +2651,39 @@ describe("a group of Mates folded to its row", () => {
     expect(selected).toEqual(theirs.length === 1 ? theirs : []);
   });
 
+  it("a Mate's row stays put under the pointer while its list re-sorts", () => {
+    // HQ names Bo's owner a colleague while the pointer is over the list: Bo's row would drop
+    // below the viewer's Mates, under a pointer aimed at it.
+    const owners = (theirs: ReadonlyArray<string>) => (item: ZeropsCandidate) =>
+      theirs.includes(item.project.id)
+        ? { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false }
+        : { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true };
+    const rowOrder = (mounted: ReactTestRenderer) =>
+      mounted.root
+        .findAll(
+          (node) =>
+            typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+        )
+        .map((node) => node.props["data-zerops-mate-row"] as string);
+    const mounted = mount(tree({ getOwner: owners([]) }));
+    press(mounted, "sidebar-project");
+    const before = rowOrder(mounted);
+    expect(before).toHaveLength(2);
+    const pointer = (event: "onPointerEnter" | "onPointerLeave") => {
+      act(() => {
+        surface(mounted, "sidebar-environments").props[event]({ pointerType: "mouse" });
+      });
+    };
+    pointer("onPointerEnter");
+    act(() => {
+      mounted.update(tree({ getOwner: owners([before[0]!]) }));
+    });
+    expect(rowOrder(mounted)).toEqual(before);
+    // The pointer gone, the list takes its order.
+    pointer("onPointerLeave");
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
+  });
+
   it("draws only its row while folded: no Mate, no change row under it", () => {
     const html = renderToStaticMarkup(
       tree({

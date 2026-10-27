@@ -24,10 +24,16 @@ const TYPE_TO_FOCUS_INTERACTIVE_SELECTOR = [
   '[role="tab"]',
 ].join(",");
 // Popups match only while open or closing: some stay mounted when closed,
-// such as the chat header actions menu.
+// such as the chat header actions menu. A modal's own popup holds the focus
+// once a click lands on it outside its fields — the jump box's list or foot —
+// and the letters typed then are the dialog's, never the draft behind it.
 const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
   '[role="dialog"][aria-modal="true"]',
   '[data-slot="dialog"]',
+  '[data-slot="dialog-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="alert-dialog-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="sheet-popup"]:is([data-open],[data-ending-style])',
+  '[data-slot="command-dialog-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="menu-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="select-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="popover-popup"]:is([data-open],[data-ending-style])',
