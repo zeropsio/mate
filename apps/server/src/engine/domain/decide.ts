@@ -1928,7 +1928,12 @@ const leaseReleaseSettled = (b: StepBuilder, outcome: EffectOutcome): void => {
   if (Option.isSome(value)) {
     const { alias, branch, result } = value.value;
     b.emit({ _tag: "LeaseReleaseSettled", alias, branch, result });
-    if (result.outcome === "released" && b.state.lease?.alias === alias) {
+    // A release made only in part unbinds the conversation only when its own lease went.
+    const went =
+      result.outcome === "released" ||
+      (result.outcome === "failed" &&
+        result.released?.some((lease) => lease.lease === alias) === true);
+    if (went && b.state.lease?.alias === alias) {
       b.emit({ _tag: "LeaseUnbound", alias });
     }
     return;

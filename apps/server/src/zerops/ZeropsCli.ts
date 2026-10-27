@@ -68,10 +68,13 @@ export const zcpAtLeast = (version: string | undefined, since: string): boolean 
   return true;
 };
 
+const ReleasedLeases = Schema.Array(
+  Schema.Struct({ lease: Schema.String, outcome: Schema.String }),
+);
+// An error first: zcp's exit 1 may also list the leases it did release before it failed.
 const LeaseReleaseAnswer = Schema.Union([
-  Schema.Struct({
-    released: Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
-  }),
+  Schema.Struct({ error: Schema.String, released: Schema.optionalKey(ReleasedLeases) }),
+  Schema.Struct({ released: ReleasedLeases }),
   Schema.Struct({
     refused: Schema.Array(
       Schema.Struct({
@@ -86,7 +89,6 @@ const LeaseReleaseAnswer = Schema.Union([
       }),
     ),
   }),
-  Schema.Struct({ error: Schema.String }),
 ]);
 const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
   Schema.fromJsonString(LeaseReleaseAnswer),
@@ -371,7 +373,11 @@ export const make = (options: ZeropsCliOptions) =>
               if ("refused" in read && result.code === LEASE_RELEASE_REFUSED_EXIT) {
                 return { outcome: "refused", leases: read.refused };
               }
-              if ("error" in read) return releaseFailed(read.error);
+              if ("error" in read) {
+                return read.released === undefined || read.released.length === 0
+                  ? releaseFailed(read.error)
+                  : { outcome: "failed", reason: read.error, released: read.released };
+              }
             }
             return releaseFailed("zcp gave no answer to read");
           }),

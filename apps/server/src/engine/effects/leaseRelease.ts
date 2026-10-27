@@ -75,10 +75,16 @@ export const makeLeaseRelease = Effect.gen(function* () {
         const result = yield* Effect.interruptible(
           port.value.release(repo === undefined ? { branch } : { branch, repo }),
         );
-        if (result.outcome === "released") {
+        const went =
+          result.outcome === "released"
+            ? result.leases
+            : result.outcome === "failed"
+              ? (result.released ?? [])
+              : [];
+        if (went.length > 0) {
           yield* unbindOthers(
             row,
-            result.leases.map((lease) => lease.lease),
+            went.map((lease) => lease.lease),
           );
         }
         return ok({ alias, branch, result });

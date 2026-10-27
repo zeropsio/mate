@@ -1172,7 +1172,14 @@ export const LeaseReleaseResult = Schema.Union([
       }),
     ),
   }),
-  Schema.Struct({ outcome: Schema.Literal("failed"), reason: Schema.String }),
+  Schema.Struct({
+    outcome: Schema.Literal("failed"),
+    reason: Schema.String,
+    /** The leases zcp did release before it failed on another (exit 1 with `released`). */
+    released: Schema.optionalKey(
+      Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
+    ),
+  }),
   Schema.Struct({ outcome: Schema.Literal("withdrawn") }),
 ]);
 export type LeaseReleaseResult = typeof LeaseReleaseResult.Type;
