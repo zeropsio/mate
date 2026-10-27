@@ -12,9 +12,8 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { lifecycleLeases } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { ZeropsLease, ZeropsLifecycle } from "@t3tools/contracts";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { lifecycleLeases, lifecycleStageParts } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
@@ -28,17 +27,6 @@ export interface MateLeasesRead {
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
 export type MatesLeases = Readonly<Record<string, MateLeasesRead | undefined>>;
-
-/** The part each stage serves, as the envelope's pool pairs name it (`stages[].part`). */
-const stagePartsOf = (lifecycle: Known<ZeropsLifecycle> | undefined) =>
-  Object.fromEntries(
-    (lifecycle?.state === "known" ? (lifecycle.value.envelope?.services ?? []) : []).flatMap(
-      (service) =>
-        (service.stages ?? []).flatMap((stage) =>
-          stage.part === undefined ? [] : [[stage.hostname, stage.part] as const],
-        ),
-    ),
-  );
 
 const matesLeasesAtom = Atom.family((key: string) => {
   const threads = JSON.parse(key) as ReadonlyArray<readonly [projectId: string, threadKey: string]>;
@@ -55,7 +43,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
       );
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
-        stageParts: stagePartsOf(lifecycle),
+        stageParts: lifecycleStageParts(lifecycle),
       };
     }
     return read;
