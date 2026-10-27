@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import type { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
+import type { ChangeDetailResponse, ChangeReview } from "@t3tools/shared/hqChanges";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { changeReadOwner, changeReadScope } from "../families/hqChangeRead.ts";
 import { hqChangeMetadata } from "../projections/hqChangeMetadata.ts";
@@ -39,6 +39,14 @@ const DETAIL: ChangeDetailResponse = {
   mergeability: { kind: "clean" },
   files: [],
   filesTruncated: false,
+  commits: [],
+  commitsTruncated: false,
+};
+const REVIEW: ChangeReview = {
+  mergeBase: "a".repeat(40),
+  files: [],
+  filesTruncated: false,
+  conflictPaths: [],
   commits: [],
   commitsTruncated: false,
 };
@@ -133,7 +141,7 @@ describe("HQ review read on the account's shared link", () => {
         const requests: Array<unknown> = [];
         const answer =
           purpose === "metadata"
-            ? { change: DETAIL.change }
+            ? { change: DETAIL.change, review: REVIEW }
             : {
                 change: DETAIL.change,
                 mainHead: DETAIL.mainHead,
@@ -149,7 +157,7 @@ describe("HQ review read on the account's shared link", () => {
           },
           metadata: (request) => {
             requests.push(request);
-            return Effect.succeed({ change: DETAIL.change });
+            return Effect.succeed({ change: DETAIL.change, review: REVIEW });
           },
           commits: (request) => {
             requests.push(request);

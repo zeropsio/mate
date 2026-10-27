@@ -16,7 +16,7 @@ it("Change history waits for an explicit opening and publishes commits that arri
   vi.stubGlobal("document", window.document);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const review = vi.fn(async () => {
-    throw new Error("History must not load file patches.");
+    throw new Error("History must not read the change's record.");
   });
   let answer: ((value: ChangeCommitsResponse) => void) | undefined;
   const commits = vi.fn(
@@ -25,7 +25,7 @@ it("Change history waits for an explicit opening and publishes commits that arri
         answer = resolve;
       }),
   );
-  const account = reviewAccount(review, undefined, commits);
+  const account = reviewAccount(review, commits);
   const container = document.createElement("div");
   const root = createRoot(container);
   const head = "c".repeat(40);

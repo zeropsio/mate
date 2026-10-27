@@ -717,13 +717,10 @@ export const ChangeReview = Schema.Struct({
 });
 export type ChangeReview = typeof ChangeReview.Type;
 
-/**
- * Database metadata for a linked change; never requests repository contents. `review` is absent
- * from an HQ that does not record it.
- */
+/** Database metadata for a linked change; never requests repository contents. */
 export const ChangeMetadataResponse = Schema.Struct({
   change: HqChange,
-  review: Schema.optionalKey(ChangeReview),
+  review: ChangeReview,
 });
 export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
 

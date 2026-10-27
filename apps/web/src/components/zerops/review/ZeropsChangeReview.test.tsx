@@ -10,8 +10,8 @@ import {
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import type {
-  ChangeDetailResponse,
   ChangeFile,
+  ChangeMetadataResponse,
   ChangeReceiptPart,
   HqChange,
 } from "@t3tools/shared/hqChanges";
@@ -93,20 +93,11 @@ vi.mock("~/zerops/flowVerbs", () => ({
 const hq = vi.hoisted(() => ({
   address: "https://hq.example.test",
   api: {
-    change: async (link: { appId: string; repo: string; number: number }) => {
+    metadata: async (link: { appId: string; repo: string; number: number }) => {
       const key = `${link.appId}/${link.repo}#${String(link.number)}`;
       account.reads.push(key);
       if (account.readError !== null) throw account.readError;
-      return {
-        change: account.changes.get(key),
-        mainHead: null,
-        mergeBase: null,
-        mergeability: { kind: "clean" },
-        files: [],
-        filesTruncated: false,
-        commits: [],
-        commitsTruncated: false,
-      } as ChangeDetailResponse;
+      return { change: account.changes.get(key) } as ChangeMetadataResponse;
     },
   },
 }));
@@ -765,7 +756,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     const { createRoot } = await import("react-dom/client");
     const host = document.createElement("div") as unknown as TestNode;
     const root = createRoot(host as unknown as Element);
-    const data = reviewAccount(({ link }) => hq.api.change(link));
+    const data = reviewAccount(({ link }) => hq.api.metadata(link));
     const rerender = () =>
       act(async () => {
         root.render(

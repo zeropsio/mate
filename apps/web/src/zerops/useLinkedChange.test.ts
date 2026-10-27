@@ -1,5 +1,5 @@
-import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
-import type { ChangeDetailResponse, HqChange } from "@t3tools/shared/hqChanges";
+import { HqError } from "@t3tools/client-runtime/zerops/hq";
+import type { ChangeMetadataResponse, HqChange } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -16,7 +16,7 @@ const hq = vi.hoisted(() => ({
   official: false,
   answers: [] as Array<"change" | "unpushed" | "absent" | "unavailable" | "forbidden">,
   reads: 0,
-  detailReads: 0,
+  commitReads: 0,
 }));
 
 const HQ_ADDRESS = "https://hq.example.test";
@@ -45,8 +45,9 @@ const CHANGE: HqChange = {
 const refusal = (status: number, code: string, message: string) =>
   new HqError({ kind: "refused", code, status, message });
 
-const api: Pick<HqApi, "change"> = {
-  change: async () => {
+/** HQ's record of the change, as `/metadata` answers it. */
+const api = {
+  metadata: async (): Promise<ChangeMetadataResponse> => {
     const answer = hq.answers[Math.min(hq.reads, hq.answers.length - 1)];
     hq.reads += 1;
     if (answer === "absent") throw refusal(404, "not_found", "HQ has no such change.");
@@ -59,9 +60,9 @@ const api: Pick<HqApi, "change"> = {
       });
     }
     if (answer === "unpushed") {
-      return { change: { ...CHANGE, state: "open", head: null } } as ChangeDetailResponse;
+      return { change: { ...CHANGE, state: "open", head: null } } as ChangeMetadataResponse;
     }
-    return { change: CHANGE } as ChangeDetailResponse;
+    return { change: CHANGE } as ChangeMetadataResponse;
   },
 };
 const official = { address: HQ_ADDRESS, api };
@@ -141,7 +142,7 @@ describe("useLinkedChange", () => {
     hq.official = false;
     hq.answers = [];
     hq.reads = 0;
-    hq.detailReads = 0;
+    hq.commitReads = 0;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -161,13 +162,10 @@ describe("useLinkedChange", () => {
       seen.push(useLinkedChange(link));
       return null;
     }
-    const account = reviewAccount(
-      ({ link, snapshot }) => {
-        hq.detailReads += 1;
-        return api.change(link, undefined, snapshot);
-      },
-      ({ link }) => api.change(link),
-    );
+    const account = reviewAccount(api.metadata, () => {
+      hq.commitReads += 1;
+      return Promise.reject(new Error("A chip reads no commits."));
+    });
     const renderProbe = (render: number) =>
       createElement(
         RegistryContext.Provider,
@@ -203,7 +201,7 @@ describe("useLinkedChange", () => {
       kind: "read",
       pull: { number: 31, title: "Cache the link previews", state: "closed", merged: true },
     });
-    expect(hq.detailReads).toBe(0);
+    expect(hq.commitReads).toBe(0);
   });
 
   it("reads once when the official HQ becomes known", async () => {

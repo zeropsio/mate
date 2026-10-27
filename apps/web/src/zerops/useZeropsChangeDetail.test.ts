@@ -1,13 +1,9 @@
-import type {
-  ChangeDetailResponse,
-  ChangeLink,
-  ChangeMetadataResponse,
-} from "@t3tools/shared/hqChanges";
+import type { ChangeLink, ChangeMetadataResponse, ChangeReview } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
-import { AccountDataContext } from "./ZeropsAccountData";
+import { AccountDataContext, AccountStoreContext } from "./accountData";
 import { reviewAccount } from "./__fixtures__/reviewAccount";
 import { TestNode } from "./__fixtures__/testDom";
 import {
@@ -20,22 +16,19 @@ import {
 const HEAD = "c".repeat(40);
 const MAIN = "a".repeat(40);
 
-/** What HQ answers each read of the change's detail, in order — the last answer repeats. */
+/** What HQ answers each read of the change's record, in order — the last answer repeats. */
 const hq = vi.hoisted(() => ({
-  answers: [] as Array<"detail" | "failed">,
+  answers: [] as Array<"record" | "failed">,
   reads: [] as Array<string>,
-  snapshots: [] as Array<unknown>,
-  /** What HQ recorded of the change with its verdict; none: an HQ that records no review. */
-  review: undefined as unknown,
+  /** What the person asked the repository to compare. */
+  compares: [] as Array<unknown>,
 }));
 
-const DETAIL = {
-  change: { appId: "g1", repo: "appdev", number: 2 },
-  mainHead: MAIN,
+const REVIEW: ChangeReview = {
   mergeBase: MAIN,
-  mergeability: { kind: "clean" },
-  files: [],
+  files: [{ path: "src/a.ts", added: 3, deleted: 1, binary: false }],
   filesTruncated: false,
+  conflictPaths: [],
   commits: [
     {
       sha: HEAD,
@@ -45,22 +38,35 @@ const DETAIL = {
     },
   ],
   commitsTruncated: false,
-} as unknown as ChangeDetailResponse;
+};
+let review: ChangeReview = REVIEW;
 
 /** The organization's official HQ, the same one on every render, as `useOfficialHq` keeps it. */
 const official = vi.hoisted(() => ({
   address: "https://hq.example.test",
   api: {
-    change: async (
-      link: { appId: string; repo: string; number: number },
-      _signal?: AbortSignal,
-      snapshot?: unknown,
-    ) => {
-      hq.snapshots.push(snapshot);
-      hq.reads.push(`${link.appId}/${link.repo}#${String(link.number)}`);
-      const answer = hq.answers[Math.min(hq.reads.length - 1, hq.answers.length - 1)];
-      if (answer === "failed") throw new Error("HQ is not answering right now.");
-      return DETAIL;
+    gitBrowse: async (read: string, appId: string, repo: string, params: unknown) => {
+      hq.compares.push({ read, appId, repo, params });
+      return {
+        base: { sha: "a".repeat(40), ref: { name: "main", kind: "branch" } },
+        head: { sha: "c".repeat(40), ref: { name: "c".repeat(40), kind: "commit" } },
+        mergeBase: "b".repeat(40),
+        commits: [],
+        totalCommits: 1,
+        files: [
+          {
+            path: "src/b.ts",
+            status: "modified",
+            additions: 2,
+            deletions: 2,
+            binary: false,
+            hunks: null,
+            loadable: true,
+          },
+        ],
+        totalFiles: 1,
+        filesTruncated: false,
+      };
     },
   },
 }));
@@ -92,14 +98,12 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
     seen.push(useZeropsChangeDetail(request));
     return null;
   }
-  const account = reviewAccount(
-    ({ link, snapshot }) => official.api.change(link, undefined, snapshot),
-    async () =>
-      ({
-        change: DETAIL.change,
-        ...(hq.review === undefined ? {} : { review: hq.review }),
-      }) as ChangeMetadataResponse,
-  );
+  const account = reviewAccount(async ({ link }) => {
+    hq.reads.push(`${link.appId}/${link.repo}#${String(link.number)}`);
+    const answer = hq.answers[Math.min(hq.reads.length - 1, hq.answers.length - 1)];
+    if (answer === "failed") throw new Error("HQ is not answering right now.");
+    return { change: link, review } as unknown as ChangeMetadataResponse;
+  });
   const root = createRoot(document.createElement("div") as unknown as Element);
   for (const request of requests) {
     await act(async () => {
@@ -108,9 +112,13 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
           RegistryContext.Provider,
           { value: account.registry },
           createElement(
-            AccountDataContext.Provider,
-            { value: account.data },
-            createElement(Probe, { request }),
+            AccountStoreContext,
+            { value: account.store },
+            createElement(
+              AccountDataContext.Provider,
+              { value: account.data },
+              createElement(Probe, { request }),
+            ),
           ),
         ),
       );
@@ -129,21 +137,20 @@ describe("useZeropsChangeDetail", () => {
   afterEach(() => {
     hq.answers = [];
     hq.reads = [];
-    hq.snapshots = [];
-    hq.review = undefined;
+    hq.compares = [];
+    review = REVIEW;
     vi.unstubAllGlobals();
   });
 
   it("reads the change from HQ once, as its review reads it", async () => {
-    hq.answers = ["detail"];
+    hq.answers = ["record"];
     const request = { link: LINK, head: HEAD, main: MAIN };
     const probe = await mount([request, request]);
     expect(probe.latest().readout).toMatchObject({
       kind: "read",
-      value: { mergeability: "mergeable", commits: [{ sha: HEAD, subject: "Add a /status page" }] },
+      value: { commits: [{ sha: HEAD, subject: "Add a /status page" }] },
     });
     expect(hq.reads).toEqual(["g1/appdev#2"]);
-    expect(hq.snapshots).toEqual([{ expectedHead: HEAD, expectedMain: MAIN }]);
     await probe.unmount();
   });
 
@@ -151,14 +158,14 @@ describe("useZeropsChangeDetail", () => {
     ["a push moved its head", { link: LINK, head: "d".repeat(40), main: MAIN }],
     ["a merge moved main", { link: LINK, head: HEAD, main: "e".repeat(40) }],
   ])("reads it again once %s", async (_name, moved) => {
-    hq.answers = ["detail"];
+    hq.answers = ["record"];
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }, moved]);
     expect(hq.reads).toHaveLength(2);
     await probe.unmount();
   });
 
   it("reads one that failed again on Try again, and nothing that answered", async () => {
-    hq.answers = ["failed", "detail"];
+    hq.answers = ["failed", "record"];
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
     expect(probe.latest().readout).toEqual({
       kind: "failed",
@@ -176,43 +183,32 @@ describe("useZeropsChangeDetail", () => {
   });
 
   it("The change review opens without waiting for HQ's detail", async () => {
-    hq.review = {
-      mergeBase: MAIN,
-      files: [{ path: "src/a.ts", added: 3, deleted: 1, binary: false }],
-      filesTruncated: false,
-      conflictPaths: [],
-      commits: [],
-      commitsTruncated: false,
-    };
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
     expect(probe.latest().readout).toMatchObject({
       kind: "read",
       value: { files: [{ path: "src/a.ts", additions: 3, deletions: 1 }], diffBase: MAIN },
     });
     expect(probe.latest().showFiles).toBeUndefined();
-    expect(hq.reads).toEqual([]);
+    expect(hq.compares).toEqual([]);
     await probe.unmount();
   });
 
   it("Files not recorded yet read not known yet, and a press reads them once", async () => {
-    hq.answers = ["detail"];
-    hq.review = {
-      mergeBase: MAIN,
-      files: null,
-      filesTruncated: false,
-      conflictPaths: [],
-      commits: null,
-      commitsTruncated: false,
-    };
+    review = { ...REVIEW, mergeBase: null, files: null, commits: null };
     const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
     expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: false } });
-    expect(hq.reads).toEqual([]);
+    expect(hq.compares).toEqual([]);
     await act(async () => {
       probe.latest().showFiles?.();
     });
-    expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: true } });
+    expect(probe.latest().readout).toMatchObject({
+      kind: "read",
+      value: { filesKnown: true, files: [{ path: "src/b.ts" }], diffBase: "b".repeat(40) },
+    });
     expect(probe.latest().showFiles).toBeUndefined();
-    expect(hq.reads).toEqual(["g1/appdev#2"]);
+    expect(hq.compares).toEqual([
+      { read: "compare", appId: "g1", repo: "appdev", params: { base: MAIN, head: HEAD } },
+    ]);
     await probe.unmount();
   });
 
@@ -220,6 +216,7 @@ describe("useZeropsChangeDetail", () => {
     const probe = await mount([{ link: LINK, head: undefined, main: MAIN }, null]);
     expect(probe.latest().readout).toEqual({ kind: "none" });
     expect(hq.reads).toEqual([]);
+    expect(hq.compares).toEqual([]);
     await probe.unmount();
   });
 });

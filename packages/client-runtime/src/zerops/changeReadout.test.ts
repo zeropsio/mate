@@ -4,9 +4,10 @@ import type {
   ChangeReview,
   HqChange,
 } from "@t3tools/shared/hqChanges";
+import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeReadout, changeReadoutOfRecord } from "./changeReadout.ts";
+import { changeReadout, changeReadoutOfCompare, changeReadoutOfRecord } from "./changeReadout.ts";
 
 const MAIN = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -243,5 +244,49 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
   it("A change whose files are not recorded reads files not known yet", () => {
     const read = changeReadoutOfRecord(change, review({ files: null }));
     expect(read).toMatchObject({ files: [], filesKnown: false });
+  });
+});
+
+describe("changeReadoutOfCompare: files HQ never recorded, read on the person's press", () => {
+  const compare = (over: Partial<GitCompare> = {}): GitCompare => ({
+    base: { sha: MAIN, ref: { name: "main", kind: "branch" } },
+    head: { sha: HEAD, ref: { name: HEAD, kind: "commit" } },
+    mergeBase: BASE,
+    commits: [],
+    totalCommits: 1,
+    files: [
+      {
+        path: "src/a.ts",
+        status: "added",
+        additions: 4,
+        deletions: 0,
+        binary: false,
+        hunks: "diff --git a/src/a.ts b/src/a.ts",
+        loadable: false,
+      },
+    ],
+    totalFiles: 1,
+    filesTruncated: false,
+    ...over,
+  });
+  const unrecorded = changeReadoutOfRecord(change, {
+    mergeBase: null,
+    files: null,
+    filesTruncated: false,
+    conflictPaths: [],
+    commits: null,
+    commitsTruncated: false,
+  });
+
+  it("Showing the files of a change HQ never recorded lists them from main compared with its head, each diff read from where they split", () => {
+    const read = changeReadoutOfCompare(unrecorded, compare({ filesTruncated: true }));
+    expect(read).toMatchObject({
+      files: [{ path: "src/a.ts", status: "added", additions: 4, deletions: 0 }],
+      filesKnown: true,
+      filesCut: true,
+      diffBase: BASE,
+      // Its commits stay what HQ recorded: the Commits section reads them on its own press.
+      commitsKnown: false,
+    });
   });
 });

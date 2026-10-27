@@ -631,10 +631,6 @@ describe("hqChanges — a change's metadata", () => {
   });
   const decode = Schema.decodeUnknownSync(ChangeMetadataResponse);
 
-  it("reads from an HQ that records no review", () => {
-    expect(decode({ change: CHANGE }).review).toBeUndefined();
-  });
-
   it("carries the files, merge base and conflicts HQ recorded", () => {
     const review = {
       mergeBase: "b".repeat(40),

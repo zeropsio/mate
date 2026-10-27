@@ -17,6 +17,7 @@ import type {
   ChangeReview,
   HqChange,
 } from "@t3tools/shared/hqChanges";
+import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
@@ -127,5 +128,25 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     mergeability: mergeabilityKindOf(change.mergeability),
     conflict: review.conflictPaths,
     behind: change.behind,
+  };
+}
+
+/**
+ * The files of a change HQ never recorded, as the person asked for them: `main` compared with the
+ * change's head in its repository. A file's diff is read from where the two split once it is
+ * unfolded, as for recorded files; its commits stay as recorded, read on their own press.
+ */
+export function changeReadoutOfCompare(readout: ChangeReadout, compare: GitCompare): ChangeReadout {
+  return {
+    ...readout,
+    filesKnown: true,
+    diffBase: compare.mergeBase,
+    files: compare.files.map(({ path, status, additions, deletions }) => ({
+      path,
+      status,
+      additions,
+      deletions,
+    })),
+    filesCut: compare.filesTruncated,
   };
 }
