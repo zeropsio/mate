@@ -41,37 +41,158 @@ function curriedModifier(value: unknown): boolean {
   );
 }
 
+// Type assertions and parentheses do not change a table's literal rows.
+function unwrap(value: unknown): Record<string, unknown> | undefined {
+  const node = record(value);
+  return node &&
+    [
+      "TSAsExpression",
+      "TSSatisfiesExpression",
+      "TSNonNullExpression",
+      "ParenthesizedExpression",
+    ].includes(String(node.type))
+    ? unwrap(node.expression)
+    : node;
+}
+
+function stringValue(value: unknown): string | undefined {
+  const node = unwrap(value);
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (
+    node?.type !== "TemplateLiteral" ||
+    !Array.isArray(node.expressions) ||
+    node.expressions.length ||
+    !Array.isArray(node.quasis)
+  )
+    return undefined;
+  const text = record(record(node.quasis[0])?.value)?.cooked;
+  return typeof text === "string" ? text : undefined;
+}
+
+const unresolved = Symbol("unresolved");
+
+/** A row cell's source value, or `unresolved` when it is not written as a literal. */
+function literalValue(value: unknown): unknown {
+  const node = unwrap(value);
+  const text = stringValue(node);
+  if (text !== undefined) return text;
+  if (node?.type === "Literal" && node.regex === undefined) return node.value;
+  if (node?.type === "UnaryExpression" && node.operator === "-") {
+    const number = literalValue(node.argument);
+    return typeof number === "number" ? -number : unresolved;
+  }
+  if (node?.type === "ArrayExpression" && Array.isArray(node.elements)) {
+    const items = node.elements.map(literalValue);
+    return items.includes(unresolved) ? unresolved : items;
+  }
+  const fields = objectFields(node);
+  if (!fields) return unresolved;
+  const entries = [...fields].map(([key, field]) => [key, literalValue(field)] as const);
+  return entries.some(([, field]) => field === unresolved)
+    ? unresolved
+    : Object.fromEntries(entries);
+}
+
+function objectFields(node: Record<string, unknown> | undefined) {
+  if (node?.type !== "ObjectExpression" || !Array.isArray(node.properties)) return undefined;
+  const fields = new Map<string, unknown>();
+  for (const property of node.properties.map(record)) {
+    const key = record(property?.key);
+    const name = key?.type === "Identifier" ? key.name : key?.value;
+    if (property?.type !== "Property" || property.computed || typeof name !== "string")
+      return undefined;
+    fields.set(name, property.value);
+  }
+  return fields;
+}
+
+function display(value: unknown, json: boolean): string | typeof unresolved {
+  if (value === unresolved) return unresolved;
+  if (!json && (typeof value !== "object" || value === null)) return String(value);
+  return JSON.stringify(value);
+}
+
+/**
+ * The title one literal table row gives a parameterized test, following Vitest's `%` and `$`
+ * placeholders; rows that put no string into the title (indices, numbers) name no new sentence.
+ */
+function rowTitle(template: string, row: unknown, spread: boolean): string | undefined {
+  const node = unwrap(row);
+  const items =
+    spread && node?.type === "ArrayExpression" && Array.isArray(node.elements)
+      ? node.elements
+      : [row];
+  let sentence = false;
+  let failed = false;
+  const show = (value: unknown, json = false): string => {
+    if (typeof value === "string") sentence = true;
+    const text = display(value, json);
+    if (text === unresolved) failed = true;
+    return text === unresolved ? "" : text;
+  };
+  let next = 0;
+  let title = template.replace(/%[sdifjoO#$%]/g, (token) => {
+    if (token === "%%") return "%";
+    // Row numbers stay placeholders so deleting one row does not rename every later row.
+    if (token === "%#" || token === "%$") return token;
+    return show(literalValue(items[next++]), token === "%j");
+  });
+  const fields = objectFields(unwrap(items[0]));
+  if (fields)
+    title = title.replace(/\$([$\w]+(?:\.[$\w]+)*)/g, (_, path: string) => {
+      const [head, ...rest] = path.split(".");
+      let value = literalValue(fields.get(head!));
+      for (const key of rest)
+        value =
+          typeof value === "object" && value !== null && Object.hasOwn(value, key)
+            ? (value as Record<string, unknown>)[key]
+            : unresolved;
+      return show(value);
+    });
+  return sentence && !failed ? title : undefined;
+}
+
 export function collectTestTitles(source: string, file: string): Set<string> {
   const { program, errors } = parseSync(file, source);
   if (errors.length) throw new Error(`${file}: ${errors[0]!.message}`);
   const titles = new Set<string>();
-  const visit = (value: unknown): void => {
+  // Tables named once in the file resolve to their literal rows; a reused name stays ambiguous.
+  const tables = new Map<string, unknown>();
+  const walk = (value: unknown, enter: (node: Record<string, unknown>) => void): void => {
     if (Array.isArray(value)) {
-      for (const child of value) visit(child);
+      for (const child of value) walk(child, enter);
       return;
     }
     const node = record(value);
     if (!node) return;
-    if (
-      node.type === "CallExpression" &&
-      testCallee(node.callee) &&
-      !curriedModifier(node.callee)
-    ) {
-      const title = record(Array.isArray(node.arguments) ? node.arguments[0] : undefined);
-      if (title?.type === "Literal" && typeof title.value === "string") titles.add(title.value);
-      if (
-        title?.type === "TemplateLiteral" &&
-        Array.isArray(title.expressions) &&
-        title.expressions.length === 0 &&
-        Array.isArray(title.quasis)
-      ) {
-        const text = record(record(title.quasis[0])?.value)?.cooked;
-        if (typeof text === "string") titles.add(text);
-      }
-    }
-    for (const child of Object.values(node)) visit(child);
+    enter(node);
+    for (const child of Object.values(node)) walk(child, enter);
   };
-  visit(program);
+  walk(program, (node) => {
+    const id = record(node.id);
+    if (node.type !== "VariableDeclarator" || id?.type !== "Identifier") return;
+    const name = String(id.name);
+    tables.set(name, tables.has(name) ? undefined : unwrap(node.init));
+  });
+  const rows = (table: unknown): unknown[] => {
+    let node = unwrap(table);
+    if (node?.type === "Identifier") node = record(tables.get(String(node.name)));
+    return node?.type === "ArrayExpression" && Array.isArray(node.elements) ? node.elements : [];
+  };
+  walk(program, (node) => {
+    if (node.type !== "CallExpression" || !testCallee(node.callee) || curriedModifier(node.callee))
+      return;
+    const title = stringValue(Array.isArray(node.arguments) ? node.arguments[0] : undefined);
+    if (title === undefined) return;
+    titles.add(title);
+    const table = record(node.callee);
+    const kind = memberName(table?.callee);
+    if (table?.type !== "CallExpression" || (kind !== "each" && kind !== "for")) return;
+    for (const row of rows(Array.isArray(table.arguments) ? table.arguments[0] : undefined)) {
+      const text = rowTitle(title, row, kind === "each");
+      if (text !== undefined) titles.add(text);
+    }
+  });
   return titles;
 }
 
