@@ -1,9 +1,9 @@
-// @effect-diagnostics nodeBuiltinImport:off -- host subprocess fixture.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off -- host subprocess fixture.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { expect, it } from "vite-plus/test";
-import { failureSummary, runLogged } from "./gate-log.ts";
+import { expect, it, vi } from "vite-plus/test";
+import { failureSummary, gateLogDirectory, removeGateLogs, runLogged } from "./gate-log.ts";
 
 it("shows the first error, a short tail and the complete saved log", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-log-test-"));
@@ -85,4 +85,28 @@ it("failure excerpts retain each failed title, assertion and location without pa
   for (const omitted of ["runner banner", "PASS unrelated", "100 passed", "detail 99", "Duration"])
     expect(summary).not.toContain(omitted);
   expect(summary.split("\n").length).toBeLessThanOrEqual(48);
+});
+
+it("keeps a recent failed run's logs, prunes that gate's day-old ones and removes a passed run's", () => {
+  const parent = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-log-prune-"));
+  vi.stubEnv("TMPDIR", parent);
+  try {
+    const old = NodePath.join(parent, "mate-gate-changed-old");
+    const recent = NodePath.join(parent, "mate-gate-changed-recent");
+    const otherGate = NodePath.join(parent, "mate-ci-local-old");
+    for (const dir of [old, recent, otherGate]) NodeFS.mkdirSync(dir);
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    for (const dir of [old, otherGate]) NodeFS.utimesSync(dir, twoDaysAgo, twoDaysAgo);
+
+    const logs = gateLogDirectory("gate-changed");
+    expect(NodeFS.existsSync(old)).toBe(false);
+    expect(NodeFS.existsSync(recent)).toBe(true);
+    expect(NodeFS.existsSync(otherGate)).toBe(true);
+
+    removeGateLogs(logs);
+    expect(NodeFS.existsSync(logs)).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(parent, { recursive: true, force: true });
+  }
 });

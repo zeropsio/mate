@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off -- host check logs.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off -- host check logs.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -73,8 +73,32 @@ export function runLogged(
   }
 }
 
+const FAILED_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A fresh log directory. Only a failed or killed run leaves one behind (a green run calls
+ * `removeGateLogs`), so older ones of the same gate are pruned here.
+ */
 export function gateLogDirectory(name: string): string {
-  return NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), `mate-${name}-`));
+  const parent = NodeOS.tmpdir();
+  const prefix = `mate-${name}-`;
+  const cutoff = Date.now() - FAILED_LOG_RETENTION_MS;
+  for (const entry of NodeFS.readdirSync(parent)) {
+    if (!entry.startsWith(prefix)) continue;
+    const stale = NodePath.join(parent, entry);
+    try {
+      if (NodeFS.statSync(stale).mtimeMs < cutoff)
+        NodeFS.rmSync(stale, { recursive: true, force: true });
+    } catch {
+      // Another run removed it first.
+    }
+  }
+  return NodeFS.mkdtempSync(NodePath.join(parent, prefix));
+}
+
+/** A passed gate has nothing to show; its logs go with it. */
+export function removeGateLogs(logs: string): void {
+  NodeFS.rmSync(logs, { recursive: true, force: true });
 }
 
 /** Each stage owns its full log; verbose replays it without changing the command or verdict. */

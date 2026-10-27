@@ -10,7 +10,13 @@ import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
 export { stateOnlySmoke } from "./state-smoke-cases.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
-import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
+import {
+  failureSummary,
+  gateLogDirectory,
+  removeGateLogs,
+  runLogged,
+  stageSummary,
+} from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
 import { parseSync, Visitor } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
@@ -1746,5 +1752,6 @@ if (import.meta.main) {
     receipt.completed = true;
     receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
     writeReceipt(receiptPath, receipt);
+    removeGateLogs(logs);
   }
 }
