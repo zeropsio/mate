@@ -709,10 +709,10 @@ describe("ChangeReviewView: an open change", () => {
       const html = render(
         { ...open, pullRequest: { ...pullRequest, state: "open", checks: "passing" } },
         files,
-        { stage: "appstage" },
+        { stages: ["appstage"] },
       );
       expect(textOf(footOf(html))).toContain("Merge on GitHub");
-      expect(textOf(footOf(html))).not.toContain("Merge to appstage");
+      expect(textOf(footOf(html))).not.toContain("Merge to");
     });
 
     it("a merged pull request shows as merged on GitHub", () => {
@@ -726,9 +726,11 @@ describe("ChangeReviewView: an open change", () => {
     });
 
     it("a change mirrored to no pull request names none, and merges as ever", () => {
-      const html = render(open, files, { stage: "appstage" });
+      const html = render(open, files, { stages: ["appstage"] });
       expect(prLink(html)).toBeNull();
-      expect(textOf(footOf(html))).toContain("Merge to appstage");
+      expect(textOf(footOf(html))).toContain("Merge");
+      expect(textOf(footOf(html))).not.toContain("Merge to");
+      expect(textOf(footOf(html))).toContain("Lands on main; appstage deploys it.");
     });
   });
 
