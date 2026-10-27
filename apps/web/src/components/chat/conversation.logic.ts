@@ -2220,7 +2220,8 @@ export function checksVerdict(strip: BrowserStripModel): string | null {
   return settled === 1 ? null : `${settled} checks passed`;
 }
 
-export type IncidentTone = "attention" | "ok" | "failed";
+/** `rest`: not running where nothing is meant to run — said, never as a fault. */
+export type IncidentTone = "attention" | "ok" | "failed" | "rest";
 
 export interface IncidentModel {
   readonly key: string;
@@ -2350,6 +2351,32 @@ export function incidentsStanding(
   return incidents.some((incident) => transient.has(incident.hostname))
     ? incidents.filter((incident) => !transient.has(incident.hostname))
     : incidents;
+}
+
+/** What a service the platform holds nothing running on says instead of "not running", by its status. */
+const AT_REST_WORDS: Readonly<Record<string, string>> = {
+  READY_TO_DEPLOY: "nothing deployed yet",
+  STOPPED: "stopped",
+};
+
+/**
+ * A dev server found not running is a fault only where something is meant to
+ * run. On a service the platform says holds nothing — never deployed (a
+ * stand-in while services move, say) — or stopped, it reads at rest and says
+ * why. A start that failed stays a failure, and a service whose state is not
+ * known yet stays as it was found.
+ */
+export function incidentsAtRest(
+  incidents: ReadonlyArray<IncidentModel>,
+  services: ReadonlyArray<{ readonly hostname: string; readonly status: string }>,
+): ReadonlyArray<IncidentModel> {
+  return incidents.map((incident) => {
+    if (incident.tone !== "attention") return incident;
+    const status = services.find((service) => service.hostname === incident.hostname)?.status;
+    const words =
+      status === undefined ? undefined : AT_REST_WORDS[status.replace(/^SERVICE_/u, "")];
+    return words === undefined ? incident : { ...incident, tone: "rest", phases: [words] };
+  });
 }
 
 /**

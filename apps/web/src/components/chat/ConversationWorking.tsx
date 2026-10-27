@@ -38,6 +38,7 @@ import { Button, InlineButton } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import {
   formatWorkDuration,
+  incidentsAtRest,
   incidentsStanding,
   isGitPushOnly,
   type IncidentModel,
@@ -106,6 +107,7 @@ const INCIDENT_BAR: Record<IncidentModel["tone"], BarTone> = {
   attention: "attention",
   ok: "done",
   failed: "failed",
+  rest: "waiting",
 };
 
 /**
@@ -662,13 +664,16 @@ function Instruments({
   useLayoutEffect(() => onDrawn?.());
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
-  const standing = incidentsStanding(
-    incidents,
-    new Set(
-      (topology?.services ?? [])
-        .filter((service) => service.transient)
-        .map((service) => service.hostname),
+  const standing = incidentsAtRest(
+    incidentsStanding(
+      incidents,
+      new Set(
+        (topology?.services ?? [])
+          .filter((service) => service.transient)
+          .map((service) => service.hostname),
+      ),
     ),
+    topology?.services ?? [],
   );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
