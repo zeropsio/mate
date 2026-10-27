@@ -13,6 +13,8 @@ declare module "../model.ts" {
       readonly from: string;
       readonly bootId?: string | undefined;
       readonly to: string;
+      /** Only a container restart gets the Mate current: its next boot is the proof. */
+      readonly restart?: boolean | undefined;
     };
   }
 }
@@ -21,11 +23,23 @@ export interface UpdateServer {
   readonly bootId?: string | undefined;
 }
 export function updateOutcome(
-  pressed: { readonly from: string; readonly bootId?: string | undefined },
+  pressed: {
+    readonly from: string;
+    readonly bootId?: string | undefined;
+    readonly restart?: boolean | undefined;
+  },
   server: UpdateServer | null,
 ): Settlement | null {
   if (server === null) return null;
   if (server.serverVersion !== pressed.from) return { kind: "succeeded" };
+  // A restart for zcp keeps the mate version: the boot after the press is what it promised.
+  if (
+    pressed.restart === true &&
+    pressed.bootId !== undefined &&
+    server.bootId !== undefined &&
+    server.bootId !== pressed.bootId
+  )
+    return { kind: "succeeded" };
   if (
     pressed.bootId === undefined ||
     server.bootId === undefined ||

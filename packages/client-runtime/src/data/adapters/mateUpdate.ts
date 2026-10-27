@@ -70,6 +70,8 @@ export interface MateUpdateHost {
     server: UpdateServer,
     to: string,
     containerKey: string | null,
+    /** The press found that only a container restart gets the Mate current. */
+    restart?: boolean,
   ) => Promise<void>;
   readonly check: (
     environmentId: EnvironmentId,
@@ -182,7 +184,7 @@ export function makeMateUpdates(options: {
   const checks = new Map<EnvironmentId, Promise<ExecutionEnvironmentUpdate | null | undefined>>();
   return {
     observe,
-    async update(environmentId, server, to, containerKey) {
+    async update(environmentId, server, to, containerKey, restart) {
       if (!current()) return;
       const previous = readsOfState(store.state()).fact("mateUpdateRequest", environmentId);
       if (previous.kind === "known" && previous.value.requestId !== null) {
@@ -212,6 +214,7 @@ export function makeMateUpdates(options: {
             from: server.serverVersion,
             bootId: server.bootId,
             to,
+            ...(restart === true ? { restart: true } : {}),
           },
           requestId,
         ),

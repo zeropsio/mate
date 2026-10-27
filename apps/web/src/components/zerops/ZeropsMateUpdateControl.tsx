@@ -26,7 +26,7 @@
  */
 import { useCallback, type ReactNode } from "react";
 
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useEnvironment } from "../../state/environments";
@@ -37,9 +37,24 @@ import {
   NEWEST_MATE_VERSION,
 } from "../../zerops/mateUpdate";
 import { useMateUpdate } from "../../zerops/useMateUpdate";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+
+/** An update already under way: zcp's own, or the Mate's restart waiting on its work. */
+function busy(update: ExecutionEnvironmentUpdate): boolean {
+  return (
+    ["staging", "draining", "switching", "verifying"].includes(update.automatic?.phase ?? "") ||
+    update.restart?.phase === "draining" ||
+    update.restart?.phase === "restarting"
+  );
+}
+
+/** What a restart installs, for the question: zcp's version when zcp is what is behind. */
+function restartOf(update: ExecutionEnvironmentUpdate): { readonly zcp?: string | undefined } {
+  return update.zcp?.behind === true ? { zcp: update.zcp.latest } : {};
+}
 
 export interface ZeropsMateUpdateView {
   readonly line: ReactNode;
@@ -66,9 +81,13 @@ export function ZeropsMateUpdateControl({
   const canCheck = environment?.capabilities.mateUpdateCheck === true;
 
   const ask = useCallback(
-    (latest: string | null) => {
-      void requestConfirmDialog(mateUpdateQuestion(mateName, latest))?.then((yes) => {
-        if (yes) update(latest ?? NEWEST_MATE_VERSION);
+    (latest: string | null, restart?: { readonly zcp?: string | undefined }) => {
+      void requestConfirmDialog(mateUpdateQuestion(mateName, latest, restart))?.then((yes) => {
+        if (!yes) return;
+        // A restart for zcp alone says the zcp it installs while it runs.
+        const to =
+          latest ?? (restart?.zcp === undefined ? NEWEST_MATE_VERSION : `zcp ${restart.zcp}`);
+        update(to, restart !== undefined);
       });
     },
     [mateName, update],
@@ -83,11 +102,10 @@ export function ZeropsMateUpdateControl({
           if (pressed === "update") ask(null);
           return;
         }
-        if (
-          answer?.available === true &&
-          !["staging", "draining", "switching", "verifying"].includes(answer.automatic?.phase ?? "")
-        )
-          ask(answer.latest);
+        if (answer === null || busy(answer)) return;
+        if (answer.restart?.needed === true)
+          ask(answer.available ? answer.latest : null, restartOf(answer));
+        else if (answer.available) ask(answer.latest);
       });
     },
     [ask, capable, check],
@@ -105,9 +123,7 @@ export function ZeropsMateUpdateControl({
     mateUpdate.checked === undefined ? environment.update : mateUpdate.checked;
   const line = mateUpdateLine(effectiveUpdate ?? undefined, environment.serverVersion);
   const { state } = mateUpdate;
-  const automaticBusy = ["staging", "draining", "switching", "verifying"].includes(
-    effectiveUpdate?.automatic?.phase ?? "",
-  );
+  const automaticBusy = effectiveUpdate != null && busy(effectiveUpdate);
   const running = state.phase === "checking" || state.phase === "updating" || automaticBusy;
 
   // The check has its own capability: a server that offers `mateUpdate` but
@@ -129,26 +145,45 @@ export function ZeropsMateUpdateControl({
   }
 
   const latest = effectiveUpdate?.available === true ? effectiveUpdate.latest : null;
+  // Only a container restart gets this Mate current: the same verb, saying zcp's why on hover.
+  const restartWhy =
+    effectiveUpdate?.restart?.needed === true
+      ? (effectiveUpdate.restart.why ?? "Only a restart gets this Mate current")
+      : null;
+  const offered = latest !== null || restartWhy !== null;
   // What was asked is answered where the verb stands; a failure keeps the
   // verb, to try again, and says why under the line.
   const status = automaticBusy ? null : mateUpdateStatusBeside(line, state);
   const verb =
     status !== null && state.phase !== "failed" ? (
       <MateUpdateStatusText className="text-muted-foreground" status={status} />
-    ) : latest === null || automaticBusy ? undefined : (
+    ) : !offered || automaticBusy ? undefined : restartWhy === null ? (
       <ZeropsMateVerb label="Update" onClick={pressUpdate} />
+    ) : (
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+          <ZeropsMateVerb description={restartWhy} label="Update" onClick={pressUpdate} />
+        </TooltipTrigger>
+        <TooltipPopup side="top">{restartWhy}</TooltipPopup>
+      </Tooltip>
     );
   const updateAction: ZeropsMenuAction | null =
-    latest === null || running
+    !offered || running
       ? null
-      : { id: "update", label: `Update to ${latest}`, onSelect: pressUpdate };
+      : {
+          id: "update",
+          label: latest === null ? "Update" : `Update to ${latest}`,
+          onSelect: pressUpdate,
+        };
 
   return children({
     line: (
       <>
         <MateUpdateLine line={line} verb={verb} />
         {mateUpdate.notice && !automaticBusy ? <span>{mateUpdate.notice}</span> : null}
-        {state.phase === "failed" && effectiveUpdate?.automatic?.phase !== "postponed" ? (
+        {state.phase === "failed" &&
+        effectiveUpdate?.automatic?.phase !== "postponed" &&
+        effectiveUpdate?.restart?.phase !== "postponed" ? (
           <span
             className="text-[var(--zerops-status-failed-text,var(--foreground))]"
             data-zerops-surface="mate-update-error"

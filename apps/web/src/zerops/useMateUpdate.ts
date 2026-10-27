@@ -31,7 +31,8 @@ export interface MateUpdate {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   readonly notice?: string | undefined;
-  readonly update: (to: string) => void;
+  /** `restart`: the press found that only a container restart gets the Mate current. */
+  readonly update: (to: string, restart?: boolean) => void;
   readonly check: () => Promise<ExecutionEnvironmentUpdate | null | undefined>;
 }
 const registryAtom = connectionAtomRuntime.atom(
@@ -90,9 +91,9 @@ export function useMateUpdate(environmentId: EnvironmentId, server: MateServer |
   }, [host, environmentId, version, boot]);
   return {
     ...read,
-    update: (to) => {
+    update: (to, restart) => {
       if (host !== null && server !== null)
-        void host.update(environmentId, server, to, container.key);
+        void host.update(environmentId, server, to, container.key, restart);
     },
     check: () => host?.check(environmentId) ?? Promise.resolve(undefined),
   };

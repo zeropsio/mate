@@ -157,8 +157,12 @@ export const automaticUpdateFrom = (
   update: ExecutionEnvironmentUpdate | null | undefined,
 ): string | null => {
   const automatic = update?.automatic;
-  return automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase)
-    ? automatic.runningVersion
+  if (automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase))
+    return automatic.runningVersion;
+  // The Mate's own container restart (zcp behind): the server ends with the container.
+  const restart = update?.restart?.phase;
+  return update != null && (restart === "draining" || restart === "restarting")
+    ? update.installed
     : null;
 };
 
