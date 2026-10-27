@@ -53,25 +53,34 @@ export const engineLayer = (
   storeOptions: EngineStoreOptions = {},
   /** Owner kinds besides the conversation (a crew). */
   domains: ReadonlyArray<AnyDomain> = [],
+) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), storeOptions, domains);
+
+/**
+ * The same engine with handlers built inside it, as the server builds them: a handler that reads or
+ * tells the engine's own conversations.
+ */
+export const engineLayerWith = <E>(
+  filename: string,
+  handlers: Layer.Layer<EffectHandlers, E, Conversations | SqlClient.SqlClient>,
+  storeOptions: EngineStoreOptions = {},
+  domains: ReadonlyArray<AnyDomain> = [],
 ) =>
-  Layer.mergeAll(
-    ConversationsModule.layer(),
-    EffectOutboxModule.layer,
-    Layer.succeed(EffectHandlers, handlers),
-  ).pipe(
-    Layer.provideMerge(
-      Layer.mergeAll(
-        Layer.effect(EngineStore, makeEngineStore(storeOptions)),
-        EngineSignals.layer,
-        Layer.succeed(OwnerDomains, domains),
+  handlers
+    .pipe(Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)))
+    .pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Layer.effect(EngineStore, makeEngineStore(storeOptions)),
+          EngineSignals.layer,
+          Layer.succeed(OwnerDomains, domains),
+        ),
       ),
-    ),
-    Layer.provideMerge(
-      Layer.effectDiscard(runEngineMigrations()).pipe(
-        Layer.provideMerge(NodeSqliteClient.layer({ filename })),
+      Layer.provideMerge(
+        Layer.effectDiscard(runEngineMigrations()).pipe(
+          Layer.provideMerge(NodeSqliteClient.layer({ filename })),
+        ),
       ),
-    ),
-  );
+    );
 
 export type Engine =
   | Conversations
