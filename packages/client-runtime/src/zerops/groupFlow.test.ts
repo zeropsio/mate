@@ -277,7 +277,7 @@ describe("groupFlow", () => {
       mergeability: "conflicting",
     });
     const flow = groupFlow({ ...SM_FIXTURE, pullRequests: [proposal] });
-    expect(flow.nextStep).toEqual(groupFlow({ ...SM_FIXTURE, pullRequests: [] }).nextStep);
+    expect(flow.nextStep).toMatchObject({ kind: "none", text: "Nothing needs you here." });
   });
 
   it("asks for the merge first, and adds production once it has landed (sm-fixture)", () => {

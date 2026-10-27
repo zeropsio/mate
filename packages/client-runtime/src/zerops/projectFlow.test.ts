@@ -41,7 +41,7 @@ const FEN = "9lSt5lFxQ1mQ3v8b7c2d1e";
 
 /** Vera's open `appdev #4` as the flow carries it. */
 /** A code change, as the rules that read only a change's state are given it. */
-const CODE = { kind: "code", title: "Fix the cart" } as const;
+const CODE = { kind: "code", title: "Fix the cart", mergeability: "mergeable" } as const;
 
 function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
