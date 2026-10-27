@@ -3,8 +3,9 @@
 // MU-2), `studio console serve` (ZeropsDataConsole.ts, the Data Console
 // engine host), `lease release` (ZeropsCli.ts: an archived conversation
 // gives its workspace back; zcp refuses while work is unsaved) and `version`
-// (ZeropsCli.ts: whether this zcp can release yet). The agent sign-in flag is written through the API
-// (ZeropsAgentFlag.ts), not by spawning `zcp agent mark-oauth`.
+// (ZeropsCli.ts: whether this zcp can release yet). The agent sign-in flag is
+// written through the API (ZeropsAgentFlag.ts), not by spawning
+// `zcp agent mark-oauth`.
 // Everything else the product needs from the platform is read by the client
 // with the user's own token (rule 1), and zcp never grows a layer for mate
 // (rule 3). This is a source scan, not an AST: every `zcp` argv in the zone
