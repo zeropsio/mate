@@ -4,17 +4,17 @@ import { expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { WebSocket } from "ws";
-import { seedCoreWorld, ticketFor } from "../harness/coreSeed.ts";
-import { REAL_CORE_DEFAULTS } from "../harness/externalCore.ts";
+import { seedCoreWorld, ticketFor } from "../../harness/coreSeed.ts";
+import { REAL_CORE_DEFAULTS } from "../../harness/externalCore.ts";
 import {
   openScenarioNavigation,
   startScenarioCore,
   type HqTimings,
   type ScenarioCore,
-} from "../harness/hqCore.ts";
-import { serve } from "../harness/http.ts";
-import { personDoor } from "../harness/mateAccess.ts";
-import { ZeropsFake } from "./zerops.ts";
+} from "../../harness/hqCore.ts";
+import { serve } from "../../harness/http.ts";
+import { personDoor } from "../../harness/mateAccess.ts";
+import { ZeropsFake } from "../../fakes/zerops.ts";
 
 type Periods = Required<HqTimings>;
 

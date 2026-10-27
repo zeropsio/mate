@@ -1,18 +1,18 @@
 // @effect-diagnostics nodeBuiltinImport:off -- disposable fixture HTTP and Chrome contexts.
-import { scenarioSuite } from "../harness/suite.ts";
+import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import { seedCoreWorld } from "../harness/coreSeed.ts";
-import { openBrowser } from "../harness/browser.ts";
-import { startScenarioCore } from "../harness/hqCore.ts";
-import { serve } from "../harness/http.ts";
-import { personDoor, placeMate } from "../harness/mateAccess.ts";
-import { ZeropsFake } from "./zerops.ts";
-import { definePerson, projectRoles } from "./zeropsWorld.ts";
+import { seedCoreWorld } from "../../harness/coreSeed.ts";
+import { openBrowser } from "../../harness/browser.ts";
+import { startScenarioCore } from "../../harness/hqCore.ts";
+import { serve } from "../../harness/http.ts";
+import { personDoor, placeMate } from "../../harness/mateAccess.ts";
+import { ZeropsFake } from "../../fakes/zerops.ts";
+import { definePerson, projectRoles } from "../../fakes/zeropsWorld.ts";
 
 interface StructureApp {
   readonly id: string;
