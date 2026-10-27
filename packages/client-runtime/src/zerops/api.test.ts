@@ -2112,48 +2112,6 @@ describe("ZeropsApiClient.deleteService", () => {
   });
 });
 
-describe("ZeropsApiClient.listProjectProcesses", () => {
-  it("reads a project's newest processes, its app versions and fail reasons with them", async () => {
-    const stub = recordingFetch(async () =>
-      jsonResponse(200, {
-        list: [
-          {
-            id: "p2",
-            projectId: "hq-project",
-            serviceStackId: "svc-hq",
-            status: "FAILED",
-            actionName: "stack.build",
-            created: "2026-10-04T10:00:00Z",
-            appVersion: { id: "av-2", name: "hq-core.20261004T090000Z.0123456789ab" },
-            publicMeta: { failReason: "readiness check failed" },
-          },
-          { id: "broken" },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const processes = await client.listProjectProcesses("hq-project");
-
-    expect(
-      stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
-    ).toEqual(["GET /project/hq-project/process?limit=20"]);
-    expect(processes).toEqual([
-      {
-        id: "p2",
-        projectId: "hq-project",
-        serviceStackIds: ["svc-hq"],
-        status: "FAILED",
-        actionName: "stack.build",
-        created: "2026-10-04T10:00:00Z",
-        appVersion: { id: "av-2", name: "hq-core.20261004T090000Z.0123456789ab" },
-        failReason: "readiness check failed",
-      },
-    ]);
-  });
-});
-
 describe("a project write's admission", () => {
   it("that resolves after a sign-out and another sign-in sends nothing as the new session", async () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));

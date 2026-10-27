@@ -12,7 +12,6 @@
  * persisted server-side.
  */
 
-import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -2539,18 +2538,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The names of a service's own variables — never a value: whether a
-   * variable the app wrote is there, as HQ's birth reads its own token's
-   * (`hq/birth.ts`).
-   */
-  async listServiceVariableNames(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<string>> {
-    return (await this.#serviceEnv(serviceId, signal)).map((entry) => entry.key);
-  }
-
-  /**
    * `POST /service-stack/{id}/user-data`.
    *
    * A create the platform refuses is checked rather than swallowed: the only
@@ -3061,29 +3048,6 @@ export class ZeropsApiClient {
       },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `GET /project/{id}/process` — the project's newest twenty processes, each with its app version
-   * and why it failed: what HQ's update reads of its `hq` service's deploys (`hq/update.ts`).
-   */
-  async listProjectProcesses(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ActivityProcess>> {
-    const document = await this.#request<unknown>(
-      `/project/${projectId}/process?limit=20`,
-      { signal: signal ?? null },
-      { operationKind: "read" },
-    );
-    const processes = readProjectProcesses(document);
-    if (processes === undefined) {
-      throw new ZeropsApiError(
-        "Zerops answered the project's processes in an unknown shape.",
-        "unexpected",
-      );
-    }
-    return processes;
   }
 
   /**
