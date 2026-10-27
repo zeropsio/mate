@@ -287,22 +287,6 @@ export { linkedChanges, linksChange } from "./changeLinks.ts";
 export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
-  boundLeaseRead,
-  lifecycleLeases,
-  sendZeropsReleaseRequest,
-  workspaceActivity,
-  ZEROPS_RELEASE_QUESTION,
-  ZEROPS_RELEASE_REQUEST,
-  zeropsLeaseIdle,
-  zeropsReleaseAsk,
-  zeropsReleaseTurn,
-  ZEROPS_LEASE_IDLE_AFTER_MS,
-  type LastTurn,
-  type WorkspaceActivity,
-  type ZeropsReleaseAsk,
-  type ZeropsReleaseConversation,
-} from "./workspaceChip.ts";
-export {
   MATE_ARRIVAL_WINDOW_MS,
   mateArriving,
   mateArrivingUntil,

@@ -30,7 +30,12 @@
  * A folded stage row carries no position of its own — it is nested under
  * its dev partner and follows it automatically.
  */
-import type { ZeropsDevServer, ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
+import type {
+  ZeropsDevServer,
+  ZeropsLease,
+  ZeropsLifecycle,
+  ZeropsStateEnvelope,
+} from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
@@ -552,6 +557,16 @@ export const leaseDevServersOf = (
   lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
   lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
+
+/**
+ * The Mate's leases as one of its conversations' lifecycles last read them (`leases[]` on the
+ * lifecycle's envelope); `undefined` while it is not read, or before that conversation made a
+ * Zerops call: not read, never none.
+ */
+export const lifecycleLeases = (
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsLease> | undefined =>
+  lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
 
 /**
  * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its repository and

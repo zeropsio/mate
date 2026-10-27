@@ -292,11 +292,10 @@ const mate = (over: Partial<SitesMateFacts> & { readonly name: string }): SitesM
   ...over,
 });
 
-/** A lease of the pool its alias names, held for `main` unless said otherwise. */
+/** A lease of the pool its alias names, held unless said otherwise. */
 const lease = (alias: string, over: Partial<SitesLease> = {}): SitesLease => ({
   alias,
   pool: alias.slice(0, alias.lastIndexOf("-")),
-  branch: "main",
   state: "held",
   ...over,
 });
@@ -342,14 +341,12 @@ describe("a Mate's dev pools", () => {
       pools: ["embedderpool", "webpool"],
       leases: [
         lease("embedderpool-3", {
-          branch: "feat-x",
           devServers: [server("running", "https://embedderpool-c2e4-8101.prg1.zerops.app")],
         }),
         lease("webpool-3", {
-          branch: "feat-x",
           devServers: [server("crashed", "https://webpool-3001.example.app")],
         }),
-        lease("webpool-6", { branch: "old", state: "released" }),
+        lease("webpool-6", { state: "released" }),
       ],
     });
     expect(mateLinks(kara)?.map((link) => link.host)).toEqual(["appstage.example.app"]);
@@ -434,7 +431,6 @@ describe("a Mate's dev pools", () => {
       pools: undefined,
       leases: [
         lease("webpool-3", {
-          branch: "feat-x",
           devServers: [server("running", "https://webpool-3-1df2-3000.example.app")],
         }),
       ],
@@ -621,10 +617,9 @@ describe("the project's addresses", () => {
           pools: ["boxpool", "hqpool", "webpool"],
           leases: [
             lease("webpool-3", {
-              branch: "feat-x",
               devServers: [server("running", "https://webpool-3001.example.app")],
             }),
-            lease("hqpool-3", { branch: "feat-x" }),
+            lease("hqpool-3"),
           ],
         }),
       ],

@@ -450,7 +450,7 @@ const EMBEDDER_URL = "https://embedderpool-c2e4-8101.prg1.zerops.app";
  * parked, one with none yet, one ended — each with what a release would lose there.
  */
 const KARA_LEASES = [
-  held("embedderpool-3", "feat-x", {
+  held("embedderpool-7", "feat-x", {
     devServers: [
       {
         name: "web",
@@ -480,7 +480,7 @@ const karaSays = () =>
 /** What a person must never be shown of a workspace: zcp's lease, its container, its holder. */
 const WORKSPACE_WORDS = [
   "pool ·",
-  "embedderpool-3",
+  "embedderpool-7",
   "hqpool",
   "feat-x",
   "parked",
