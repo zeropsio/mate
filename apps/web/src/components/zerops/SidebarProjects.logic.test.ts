@@ -9,6 +9,7 @@ import {
   openMateReveal,
   slackAfterScroll,
   slackForFold,
+  unfoldScroll,
   type MateReveal,
 } from "./SidebarProjects.logic";
 
@@ -319,5 +320,43 @@ describe("menuDrawsLoadingRows — the list's loading rows, while it has nothing
     { case: "no listing on its way", input: { ...reading, reading: false }, drawn: false },
   ])("draws them for $case: $drawn", ({ input, drawn }) => {
     expect(menuDrawsLoadingRows(input)).toBe(drawn);
+  });
+});
+
+describe("unfoldScroll — a group opened at the list's end brings its Mates into view", () => {
+  const view = { top: 100, bottom: 700 };
+  it.each([
+    {
+      case: "its Mates stand wholly in view: the list stays",
+      unit: { top: 500, bottom: 650 },
+      by: 0,
+    },
+    {
+      case: "its Mates end exactly at the view's edge: the list stays",
+      unit: { top: 500, bottom: 700 },
+      by: 0,
+    },
+    {
+      case: "its Mates end below the view: it scrolls by what hangs below",
+      unit: { top: 600, bottom: 780 },
+      by: 80,
+    },
+    {
+      case: "its heading is the list's last row, its Mates wholly below: they come up under it",
+      unit: { top: 650, bottom: 830 },
+      by: 130,
+    },
+    {
+      case: "more Mates than the view holds: the heading stops at the view's top",
+      unit: { top: 450, bottom: 1250 },
+      by: 350,
+    },
+    {
+      case: "its heading already above the view: nothing scrolls it further up",
+      unit: { top: 40, bottom: 900 },
+      by: 0,
+    },
+  ])("$case", ({ unit, by }) => {
+    expect(unfoldScroll({ view, unit })).toBe(by);
   });
 });
