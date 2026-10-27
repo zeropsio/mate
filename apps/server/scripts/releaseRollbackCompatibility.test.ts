@@ -188,4 +188,104 @@ describe("a release may update automatically only inside its proved rollback ran
       rollbackCompatible: false,
     });
   });
+  it.each(
+    Array.from(
+      [
+        "apps/server/src/ws.ts",
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/textGeneration/CodexTextGeneration.ts",
+        "apps/server/src/engine/store/EngineStore.test.ts",
+        "packages/effect-acp/src/client.ts",
+        "packages/hq-git/src/index.ts",
+        "packages/shared/src/hqStream.ts",
+        "package.json",
+        "pnpm-workspace.yaml",
+      ],
+      (changedPath) => ({
+        title: `allows a release that changes ${changedPath} and no stored or seam state`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: true,
+      compatibleFrom: "0.15.0",
+    });
+  });
+  it.each(
+    Array.from(
+      [
+        "apps/server/src/persistence/Migrations/064_Next.ts",
+        "apps/server/src/persistence/Migrations.ts",
+        "apps/server/src/engine/store/Migrations/0014_Next.ts",
+        "packages/contracts/src/settings.ts",
+        "packages/contracts/src/orchestration.ts",
+        "apps/server/src/serverSettings.ts",
+        "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
+        "apps/server/src/environment/ServerEnvironment.ts",
+        "apps/server/src/cli/config.ts",
+      ],
+      (changedPath) => ({
+        title: `requires confirmation when ${changedPath} adds a migration, a stored schema or a seam change`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: false,
+    });
+  });
+  describe("a changed lockfile counts only when the server's runtime dependencies moved", () => {
+    const lock = (options: { readonly runtime: string; readonly dev: string }) => `
+lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      vitest:
+        specifier: ^1
+        version: ${options.dev}
+  apps/server:
+    dependencies:
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+    devDependencies:
+      vitest:
+        specifier: ^1
+        version: ${options.dev}
+snapshots:
+  effect@4.0.1:
+    dependencies:
+      leaf: ${options.runtime}
+  leaf@1.0.0: {}
+  leaf@1.0.1: {}
+  vitest@1.0.0: {}
+  vitest@1.0.1: {}
+`;
+    const base = lock({ runtime: "1.0.0", dev: "1.0.0" });
+    const changedLock = (current: string | undefined) => ({
+      ...evidence,
+      changedPaths: ["pnpm-lock.yaml"],
+      ...(current === undefined ? {} : { lockfiles: { previous: base, current } }),
+    });
+    it("allows a dev-only lockfile change", () => {
+      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.1" })))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
+      });
+    });
+    it("requires confirmation when a transitive runtime dependency changes", () => {
+      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" })))).toEqual({
+        rollbackCompatible: false,
+      });
+    });
+    it("requires confirmation when the lockfile cannot be read", () => {
+      expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({
+        rollbackCompatible: false,
+      });
+      expect(rollbackCompatibility(changedLock(undefined))).toEqual({
+        rollbackCompatible: false,
+      });
+    });
+  });
 });
