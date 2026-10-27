@@ -1,7 +1,7 @@
 /**
  * zcp's leases for each Mate a Sites list shows, as a conversation of that Mate last read them
- * (`leases[]` on its lifecycle's envelope), and the part each of its stages serves (its pool pairs'
- * `stages[].part`). zcp keeps one set for the whole Mate, and every conversation's lifecycle
+ * (`leases[]` on its lifecycle's envelope), and the pairs it keys by a dev pool (`poolPairsOf`: each
+ * pool's stages, with the part they serve). zcp keeps one set for the whole Mate, and every conversation's lifecycle
  * carries it as the latest Zerops call read it, whichever conversation made it — so the Mate's
  * conversation the person last visited (`threadKey`) is enough.
  *
@@ -12,17 +12,18 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { lifecycleLeases, lifecycleStageParts } from "@t3tools/client-runtime/zerops/serviceMap";
+import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
 import { zeropsFeeds } from "./feeds";
 
-/** A Mate's leases as read, and the part each of its stages serves by the stage's hostname. */
+/** A Mate's leases as read, and the pairs its envelope keys by a dev pool. */
 export interface MateLeasesRead {
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
-  readonly stageParts: Readonly<Record<string, string>>;
+  readonly poolPairs: ReadonlyArray<PoolPair>;
 }
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
@@ -43,7 +44,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
       );
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
-        stageParts: lifecycleStageParts(lifecycle),
+        poolPairs: poolPairsOf(lifecycle),
       };
     }
     return read;
