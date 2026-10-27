@@ -952,6 +952,27 @@ export function latestTurnStartFailureId(
   );
 }
 
+/**
+ * Whether a person's `/compact` is answered: the turn that would run it failed to start, or a
+ * condense landed for it — one recorded with its request, or any condense at or after it was
+ * sent. The engine's condense marker names no request, so a `/compact` sent while a turn runs is
+ * answered by the condense that follows it, never held open until the run ends.
+ */
+export function compactionAnswered(
+  activeThread: Thread | undefined,
+  request: Pick<ChatMessage, "id" | "createdAt">,
+): boolean {
+  if (latestTurnStartFailureId(activeThread, request.id) !== null) return true;
+  const sentAt = Date.parse(request.createdAt);
+  return (
+    activeThread?.activities.some((activity) => {
+      if (activity.kind !== "context-compaction") return false;
+      const payload = activity.payload as { readonly requestId?: unknown } | null | undefined;
+      return payload?.requestId === request.id || Date.parse(activity.createdAt) >= sentAt;
+    }) === true
+  );
+}
+
 export function createLocalDispatchSnapshot(
   activeThread: Thread | undefined,
   options?: {
