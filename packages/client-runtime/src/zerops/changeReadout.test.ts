@@ -7,6 +7,7 @@ import { changeReadoutOfCompare, changeReadoutOfRecord } from "./changeReadout.t
 const MAIN = "a".repeat(40);
 const BASE = "b".repeat(40);
 const HEAD = "c".repeat(40);
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 const change: HqChange = {
   appId: "g1",
@@ -129,6 +130,13 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
   it("A change whose files are not recorded reads files not known yet", () => {
     const read = changeReadoutOfRecord(change, review({ files: null }));
     expect(read).toMatchObject({ files: [], filesKnown: false });
+  });
+  it.each([
+    ["its recorded merge base", review(), BASE],
+    ["Git's empty tree into a main with no commit yet", review({ mergeBase: null }), EMPTY_TREE],
+    ["nothing while its files are not recorded", review({ mergeBase: null, files: null }), null],
+  ])("A file's diff is read from %s", (_case, recorded, base) => {
+    expect(changeReadoutOfRecord(change, recorded).diffBase).toBe(base);
   });
 });
 

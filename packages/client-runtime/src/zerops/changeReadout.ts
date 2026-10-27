@@ -32,7 +32,10 @@ export interface ChangeReadout {
   readonly files: ReadonlyArray<ChangeReadoutFile>;
   /** Whether `files` is the change's files: false where HQ has not recorded them yet. */
   readonly filesKnown: boolean;
-  /** The merge base a file's diff is read from when the person unfolds it; none, no diff is read. */
+  /**
+   * What a file's diff is read from when the person unfolds it: the merge base, or Git's empty tree
+   * for a change into a `main` with no commit yet; none, no diff is read.
+   */
   readonly diffBase: string | null;
   /** HQ read only so many of its files. */
   readonly filesCut: boolean;
@@ -49,6 +52,12 @@ export interface ChangeReadout {
   readonly behind: boolean;
 }
 
+/** Git's empty tree in a repository of SHA-1 and of SHA-256 object ids. */
+const EMPTY_TREE = {
+  40: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  64: "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321",
+} as const;
+
 const recordedStatus: Record<string, ChangeReadoutFile["status"]> = {
   A: "added",
   M: "modified",
@@ -62,7 +71,11 @@ const recordedStatus: Record<string, ChangeReadoutFile["status"]> = {
 export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): ChangeReadout {
   return {
     filesKnown: review.files !== null,
-    diffBase: review.mergeBase,
+    // Files recorded with no merge base went into a `main` with no commit: HQ measured them from
+    // Git's empty tree.
+    diffBase:
+      review.mergeBase ??
+      (review.files === null ? null : EMPTY_TREE[change.head?.length === 64 ? 64 : 40]),
     files: (review.files ?? []).map((file) => ({
       path: file.path,
       status: recordedStatus[file.status ?? "?"] ?? "unknown",
