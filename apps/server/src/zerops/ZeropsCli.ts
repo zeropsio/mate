@@ -47,6 +47,17 @@ const LEASE_RELEASE_REFUSED_EXIT = 3;
  * not know, so it is never asked: its version (`zcp version`) is read first.
  */
 export const ZCP_LEASE_RELEASE_SINCE = "9.223.0";
+/**
+ * The first zcp release with `self restart`. An older zcp is never asked (its version is read
+ * first): the lead corrects this when zcp tags the release.
+ */
+export const ZCP_SELF_RESTART_SINCE = "9.226.0";
+/** `self restart` answers as soon as the platform accepts; it never waits for the restart. */
+const SELF_RESTART_TIMEOUT = Duration.seconds(60);
+const SELF_RESTART_MAX_OUTPUT_BYTES = 16 * 1024;
+/** Said for a zcp that cannot restart its Mate: too old, or no verb by that name. */
+export const SELF_RESTART_TOO_OLD = "this zcp can't restart its Mate yet";
+
 /** `zcp version` prints one line and reads nothing. */
 const VERSION_TIMEOUT = Duration.seconds(15);
 const VERSION_MAX_OUTPUT_BYTES = 4 * 1024;
@@ -93,6 +104,22 @@ const LeaseReleaseAnswer = Schema.Union([
 const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
   Schema.fromJsonString(LeaseReleaseAnswer),
 );
+
+const SelfRestartAnswer = Schema.Union([
+  Schema.Struct({ error: Schema.String }),
+  Schema.Struct({ processId: Schema.optionalKey(Schema.String) }),
+]);
+const decodeSelfRestartAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(SelfRestartAnswer),
+);
+
+/**
+ * `zcp self restart`'s answer: the platform took the restart of this container's own zcp service
+ * (its process id when zcp names one), or refused it, in zcp's words or a fixed phrase.
+ */
+export type SelfRestartResult =
+  | { readonly outcome: "accepted"; readonly process?: string | undefined }
+  | { readonly outcome: "refused"; readonly reason: string };
 
 /** zcp's answer: the last line of its stdout that reads as one, past any notice printed before. */
 const lastAnswer = (stdout: string) => {
@@ -189,6 +216,14 @@ export class ZeropsCli extends Context.Service<
       readonly branch: string;
       readonly repo?: string;
     }) => Effect.Effect<LeaseReleaseResult>;
+    /**
+     * Runs `zcp self restart --json` with stdin closed: the platform restarts this container's own
+     * zcp service with the project's token. Answers once the platform accepts, never waiting for
+     * the restart, which ends this server. Always a result: a zcp that refuses, lacks the verb or
+     * does not answer reads `refused`. The caller reads the version first
+     * ({@link ZCP_SELF_RESTART_SINCE}).
+     */
+    readonly selfRestart: Effect.Effect<SelfRestartResult>;
   }
 >()("t3/zerops/ZeropsCli") {}
 
@@ -401,11 +436,47 @@ export const make = (options: ZeropsCliOptions) =>
     }): Effect.Effect<LeaseReleaseResult> =>
       Effect.flatMap(ableToRelease, (able) => (able ? release(input) : Effect.succeed(TOO_OLD)));
 
+    const selfRestart: Effect.Effect<SelfRestartResult> = processRunner
+      .run({
+        command,
+        args: [...baseArgs, "self", "restart", "--json"],
+        cwd,
+        stdin: "",
+        timeout: SELF_RESTART_TIMEOUT,
+        maxOutputBytes: SELF_RESTART_MAX_OUTPUT_BYTES,
+        outputMode: "truncate",
+      })
+      .pipe(
+        Effect.map((result): SelfRestartResult => {
+          const lines = result.stdout.split("\n");
+          for (let index = lines.length - 1; index >= 0; index--) {
+            const answer = decodeSelfRestartAnswer(lines[index]!.trim());
+            if (Option.isNone(answer)) continue;
+            if ("error" in answer.value) return { outcome: "refused", reason: answer.value.error };
+            if (result.code === 0)
+              return answer.value.processId === undefined
+                ? { outcome: "accepted" }
+                : { outcome: "accepted", process: answer.value.processId };
+          }
+          return { outcome: "refused", reason: SELF_RESTART_TOO_OLD };
+        }),
+        Effect.catch((cause) =>
+          Effect.succeed<SelfRestartResult>({
+            outcome: "refused",
+            reason:
+              cause._tag === "ProcessTimeoutError"
+                ? "zcp did not answer the restart in time"
+                : "zcp could not be run",
+          }),
+        ),
+      );
+
     return {
       mateStatus,
       mateUpdate,
       version,
       leaseRelease,
+      selfRestart,
     } satisfies ZeropsCli["Service"];
   });
 

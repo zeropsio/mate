@@ -2,8 +2,10 @@
 // closed list of verbs — `mate status`/`mate update` (ZeropsCli.ts, spec §2.9
 // MU-2), `studio console serve` (ZeropsDataConsole.ts, the Data Console
 // engine host), `lease release` (ZeropsCli.ts: an archived conversation
-// gives its workspace back; zcp refuses while work is unsaved) and `version`
-// (ZeropsCli.ts: whether this zcp can release yet). The agent sign-in flag is
+// gives its workspace back; zcp refuses while work is unsaved), `version`
+// (ZeropsCli.ts: whether this zcp can release or restart yet) and `self restart`
+// (ZeropsCli.ts: a Mate that only a container restart gets current restarts its
+// own zcp service once idle). The agent sign-in flag is
 // written through the API (ZeropsAgentFlag.ts), not by spawning
 // `zcp agent mark-oauth`.
 // Everything else the product needs from the platform is read by the client
@@ -26,6 +28,7 @@ const ALLOWED_ARGV = [
   "studio console serve",
   "lease release",
   "version",
+  "self restart",
 ];
 
 // The leading string literals of the argv; a trailing identifier (`agentId`) is not a verb.

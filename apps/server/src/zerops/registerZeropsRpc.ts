@@ -143,6 +143,13 @@ export const runZeropsMateUpdate = (
       });
     }
     const serverVersion = deps.serverVersion;
+    // Only a container restart gets this Mate current: the same verb restarts it once idle.
+    if ((yield* deps.zeropsMateUpdate.current)?.restart?.needed === true) {
+      const start = yield* deps.zeropsMateUpdate.restart;
+      return start.started
+        ? { action: "none" as const, restarted: false, started: true, serverVersion }
+        : { action: "none" as const, restarted: false, error: start.reason, serverVersion };
+    }
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
       Effect.catchTags({
         ZeropsCliNotFound: () =>
