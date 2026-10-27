@@ -104,6 +104,77 @@ describe("ZeropsCli.mateStatus", () => {
   );
 });
 
+describe("ZeropsCli.mateStatus reads zcp's own reading", () => {
+  it.effect.each([
+    {
+      name: "a status naming zcp behind and a restart carries both",
+      line: '{"installed":"0.15.200","latest":"0.15.200","contract":1,"updateAvailable":false,"checkedAt":"2026-10-27T00:00:00Z","zcp":{"installed":"9.225.0","latest":"9.226.0","behind":true},"restartNeeded":true,"why":"zcp 9.226.0 is out"}',
+      expected: {
+        zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+        restartNeeded: true,
+        why: "zcp 9.226.0 is out",
+      },
+    },
+    {
+      name: "a status from an older zcp carries none of them",
+      line: '{"installed":"0.15.200","latest":"0.15.200","contract":1,"updateAvailable":false,"checkedAt":"2026-10-27T00:00:00Z"}',
+      expected: { zcp: undefined, restartNeeded: undefined, why: undefined },
+    },
+  ])("$name", ({ line, expected }) =>
+    Effect.gen(function* () {
+      const result = yield* run(stub(`process.stdout.write(${JSON.stringify(line)})`), (cli) =>
+        cli.mateStatus(),
+      );
+      expect({ zcp: result.zcp, restartNeeded: result.restartNeeded, why: result.why }).toEqual(
+        expected,
+      );
+    }),
+  );
+});
+
+describe("ZeropsCli.selfRestart", () => {
+  const calls = () => NodePath.join(testTempDir("zcp-calls-"), "calls");
+  const restart = (script: string, file?: string): CliEffect =>
+    ZeropsCli.make({
+      command: process.execPath,
+      baseArgs: [
+        "-e",
+        `${file === undefined ? "" : `require("node:fs").appendFileSync(${JSON.stringify(file)}, process.argv.slice(1).join(" ") + "\\n");`} ${script}`,
+      ],
+      cwd: process.cwd(),
+    });
+
+  it.effect("asks zcp to restart its own service, and reads the platform's acceptance", () =>
+    Effect.gen(function* () {
+      const file = calls();
+      const result = yield* run(
+        restart(`process.stdout.write('{"processId":"proc-1"}')`, file),
+        (cli) => cli.selfRestart,
+      );
+      expect(result).toEqual({ outcome: "accepted", process: "proc-1" });
+      expect(NodeFS.readFileSync(file, "utf8").trim()).toBe("self restart --json");
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "a restart the platform refused reads refused, in zcp's words",
+      script: `process.stdout.write('{"error":"the project token may not restart zcp"}'); process.exit(1)`,
+      reason: "the project token may not restart zcp",
+    },
+    {
+      name: "a zcp without the verb reads refused, in a fixed phrase",
+      script: `process.stderr.write("unknown command \\"self\\"\\n"); process.exit(2)`,
+      reason: "this zcp can't restart its Mate yet",
+    },
+  ])("$name", ({ script, reason }) =>
+    Effect.gen(function* () {
+      const result = yield* run(restart(script), (cli) => cli.selfRestart);
+      expect(result).toEqual({ outcome: "refused", reason });
+    }),
+  );
+});
+
 describe("ZeropsCli.mateUpdate", () => {
   it.effect("parses the result the CLI prints on stdout", () =>
     Effect.gen(function* () {

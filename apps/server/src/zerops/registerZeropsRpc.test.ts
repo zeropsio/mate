@@ -30,16 +30,20 @@ const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCli
   mateUpdate: () => result,
   version: Effect.die("not used"),
   leaseRelease: () => Effect.die("not used"),
+  selfRestart: Effect.die("not used"),
 });
 
 const stubMateUpdateService = (
   refresh: Effect.Effect<void> = Effect.void,
   check: Effect.Effect<any> = Effect.die("not used"),
+  current: Effect.Effect<any> = Effect.succeed(undefined),
+  restart: Effect.Effect<any> = Effect.die("not used"),
 ) => ({
-  current: Effect.succeed(undefined),
+  current,
   changes: Stream.make(undefined),
   refresh,
   check,
+  restart,
 });
 
 describe("runZeropsMateUpdate", () => {
@@ -173,6 +177,57 @@ describe("runZeropsMateUpdate", () => {
         serverVersion: "0.8.0",
       });
       expect(refreshCount).toBe(1);
+    }),
+  );
+});
+
+describe("Update on a Mate that only a restart gets current", () => {
+  const NEEDS_RESTART = {
+    installed: "0.15.200",
+    latest: "0.15.200",
+    available: false,
+    checkedAt: "2026-10-27T00:00:00Z",
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restart: { needed: true, why: "zcp 9.226.0 is out" },
+  };
+
+  it.effect.each([
+    {
+      name: "starts the restart instead of a mate update",
+      restart: { started: true },
+      expected: { action: "none", restarted: false, started: true, serverVersion: "0.15.200" },
+    },
+    {
+      name: "answers why a restart cannot start",
+      restart: { started: false, reason: "this zcp can't restart its Mate yet" },
+      expected: {
+        action: "none",
+        restarted: false,
+        error: "this zcp can't restart its Mate yet",
+        serverVersion: "0.15.200",
+      },
+    },
+  ])("$name", ({ restart, expected }) =>
+    Effect.gen(function* () {
+      let mateUpdates = 0;
+      const result = yield* runZeropsMateUpdate({
+        zeropsCli: stubMateUpdate(
+          Effect.sync(() => {
+            mateUpdates += 1;
+            return { action: "none", restarted: false };
+          }),
+        ),
+        zeropsMateUpdate: stubMateUpdateService(
+          Effect.void,
+          Effect.die("not used"),
+          Effect.succeed(NEEDS_RESTART),
+          Effect.succeed(restart),
+        ),
+        isZeropsEnvironment: true,
+        serverVersion: "0.15.200",
+      });
+      expect(result).toEqual(expected);
+      expect(mateUpdates).toBe(0);
     }),
   );
 });

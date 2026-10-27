@@ -19,6 +19,8 @@ const environmentState = vi.hoisted(() => ({
           readonly latest: string;
           readonly available: boolean;
           readonly checkedAt: string;
+          readonly zcp?: { installed: string; latest: string; behind: boolean };
+          readonly restart?: { needed: boolean; why?: string };
         };
       },
 }));
@@ -238,6 +240,32 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to the newest version\?\n/);
     },
   );
+
+  it("a Mate only a restart gets current offers the same Update, saying zcp's why, and restarts once asked", async () => {
+    const needsRestart = {
+      installed: "0.8.0",
+      latest: "0.8.0",
+      available: false,
+      checkedAt: "now",
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+    };
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: needsRestart,
+    };
+    const html = render();
+    expect(html).toContain("zcp 9.226.0 available");
+    expect(html).toContain('aria-label="Update: zcp 9.226.0 is out; only a restart installs it"');
+    expect(menuAction("update").label).toBe("Update");
+    verbs.check.mockResolvedValue(needsRestart);
+    verbs.confirm.mockResolvedValue(true);
+    menuAction("update").onSelect();
+    await vi.waitFor(() => expect(verbs.update).toHaveBeenCalledTimes(1));
+    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to zcp 9\.226\.0\?\n/);
+    expect(verbs.update).toHaveBeenCalledWith("zcp 9.226.0", true);
+  });
 
   it("a check that finds nothing newer asks nothing: the Mate is up to date", async () => {
     environmentState.environment = {

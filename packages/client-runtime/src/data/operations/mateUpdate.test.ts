@@ -22,4 +22,11 @@ describe("Mate update evidence", () => {
   it("an absent original boot cannot prove a restart on the same version", () => {
     expect(updateOutcome({ from: "1" }, { serverVersion: "1", bootId: "new" })).toBeNull();
   });
+  it("a restart for zcp is proved by the Mate's next boot, on whatever mate version it runs", () => {
+    const restart = { ...pressed, restart: true };
+    expect(updateOutcome(restart, { serverVersion: "1", bootId: "old" })).toBeNull();
+    expect(updateOutcome(restart, { serverVersion: "1", bootId: "new" })).toEqual({
+      kind: "succeeded",
+    });
+  });
 });

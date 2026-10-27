@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { mayAutoUpdate } from "./mateAutoUpdate.logic.ts";
+import { mayAutoRestart, mayAutoUpdate, restartReading } from "./mateAutoUpdate.logic.ts";
 
 describe("automatic Mate updates", () => {
   it.each([
@@ -105,5 +105,60 @@ describe("automatic Mate updates", () => {
               },
       }),
     ).toBe(expected);
+  });
+});
+
+describe("automatic restarts for a Mate only a restart gets current", () => {
+  const reading = restartReading({
+    installed: "0.15.200",
+    zcp: { installed: "9.225.0", latest: "9.226.0" },
+  });
+  it.each([
+    {
+      name: "the organization allows it",
+      enabled: true,
+      restartedFor: undefined,
+      underWay: false,
+      expected: true,
+    },
+    {
+      name: "unknown HQ policy postpones",
+      enabled: undefined,
+      restartedFor: undefined,
+      underWay: false,
+      expected: false,
+    },
+    {
+      name: "an organization hold postpones",
+      enabled: false,
+      restartedFor: undefined,
+      underWay: false,
+      expected: false,
+    },
+    {
+      name: "a restart under way is not asked again",
+      enabled: true,
+      restartedFor: undefined,
+      underWay: true,
+      expected: false,
+    },
+    {
+      name: "a container already restarted for this reading is not restarted again",
+      enabled: true,
+      restartedFor: reading,
+      underWay: false,
+      expected: false,
+    },
+    {
+      name: "a restart for an older reading does not hold a newer one",
+      enabled: true,
+      restartedFor: "zcp 9.224.0 -> 9.225.0; mate 0.15.200",
+      underWay: false,
+      expected: true,
+    },
+  ])("$name", ({ enabled, restartedFor, underWay, expected }) => {
+    expect(mayAutoRestart({ enabled, restartNeeded: true, reading, restartedFor, underWay })).toBe(
+      expected,
+    );
   });
 });

@@ -233,3 +233,66 @@ describe("mateUpdateStatusBeside", () => {
     ]);
   });
 });
+
+describe("a Mate that only a restart gets current", () => {
+  const base = {
+    installed: "0.15.200",
+    latest: "0.15.200",
+    available: false,
+    checkedAt: "now",
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+  };
+
+  it.each([
+    {
+      name: "zcp behind alone",
+      update: base,
+      expected: { text: "Server 0.15.200 · zcp 9.226.0 available", tone: "attention" },
+    },
+    {
+      name: "zcp behind beside a newer mate",
+      update: { ...base, latest: "0.15.201", available: true },
+      expected: {
+        text: "Server 0.15.200 · 0.15.201 available · zcp 9.226.0 available",
+        tone: "attention",
+      },
+    },
+    {
+      name: "zcp current",
+      update: { ...base, zcp: { installed: "9.226.0", latest: "9.226.0", behind: false } },
+      expected: { text: "Server 0.15.200", tone: "default" },
+    },
+  ] as const)("the update line names the zcp version available: $name", ({ update, expected }) => {
+    expect(mateUpdateLine(update, "0.15.200")).toEqual(expected);
+  });
+
+  it.each([
+    ["draining", undefined, "Update ready; waiting for your work to finish"],
+    ["restarting", undefined, "Restarting to update zcp — your conversations are safe"],
+    [
+      "postponed",
+      "this zcp can't restart its Mate yet",
+      "Update postponed; this zcp can't restart its Mate yet",
+    ],
+  ] as const)("a restart %s says so on the line", (phase, reason, text) => {
+    expect(
+      mateUpdateLine(
+        {
+          ...base,
+          restart: { ...base.restart, phase, ...(reason === undefined ? {} : { reason }) },
+        },
+        "0.15.200",
+      ),
+    ).toEqual({ text, tone: "default" });
+  });
+
+  it("the question names zcp, and says the container restarts once the work is done", () => {
+    expect(mateUpdateQuestion("Nova", null, { zcp: "9.226.0" })).toBe(
+      "Update Nova to zcp 9.226.0?\nNova finishes the work it's doing first, its helpers' too, then its container restarts to install it, which takes a few minutes. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
+    );
+    expect(mateUpdateQuestion("Nova", "0.15.201", { zcp: "9.226.0" }).split("\n")[0]).toBe(
+      "Update Nova to 0.15.201 and zcp 9.226.0?",
+    );
+  });
+});
