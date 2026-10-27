@@ -80,6 +80,9 @@ export function makeMateUpdateExecutor<E>(options: {
                       ? {}
                       : { restartTarget: value.restartTarget }),
                     ...(value.bootId === undefined ? {} : { bootId: value.bootId }),
+                    ...(value.restartStartedAt === undefined
+                      ? {}
+                      : { restartStartedAt: value.restartStartedAt }),
                   },
                 }
               : { kind: "refused", reason: value.error },

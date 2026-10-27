@@ -257,6 +257,17 @@ export function makeMateUpdates(options: {
           return;
       }
       if (checks.has(environmentId)) return;
+      // The restart seen at the press: the later of the live line's and the store's reading of
+      // the Mate, since a lost answer is judged against either.
+      const seenRestart = [
+        server.update?.restart?.startedAt,
+        updateServer(readsOfState(store.state()), environmentId)?.update?.restart?.startedAt,
+      ]
+        .filter((startedAt): startedAt is string => startedAt !== undefined)
+        .reduce<string | undefined>(
+          (later, startedAt) => (later === undefined || startedAt > later ? startedAt : later),
+          undefined,
+        );
       const requestId = options.makeId();
       publish(updateRequestScope(environmentId), {
         family: "mateUpdateRequest",
@@ -275,9 +286,7 @@ export function makeMateUpdates(options: {
             bootId: server.bootId,
             to,
             ...(restart === undefined ? {} : { restart }),
-            ...(server.update?.restart?.startedAt === undefined
-              ? {}
-              : { seenRestart: server.update.restart.startedAt }),
+            ...(seenRestart === undefined ? {} : { seenRestart }),
           },
           requestId,
         ),

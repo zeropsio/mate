@@ -15,6 +15,8 @@ declare module "../model.ts" {
       readonly restartTarget?: MateRestartTarget | undefined;
       /** The boot that answered. */
       readonly bootId?: string | undefined;
+      /** When that restart started, by the server's clock. */
+      readonly restartStartedAt?: string | undefined;
     };
   }
   interface OperationIntents {
@@ -45,6 +47,8 @@ export interface MateUpdateAnswer {
   readonly target?: MateRestartTarget | undefined;
   /** The boot that answered: a reboot is judged against it. */
   readonly bootId?: string | undefined;
+  /** When that restart started, by the server's clock. */
+  readonly startedAt?: string | undefined;
 }
 export interface UpdateServer {
   readonly serverVersion: string;
@@ -124,7 +128,9 @@ function restartVerdict(
 
 /**
  * On the boot that answered: this press's restart postponed settles it. With the answer, its own
- * attempt; with the answer lost, any restart that started after the one on the line at the press.
+ * attempt, or that attempt gone from the line (no restart needed or asked any more, or a later one
+ * in its place); with the answer lost, any restart that started strictly after the one seen at the
+ * press.
  */
 function postponedVerdict(
   pressed: Pressed,
@@ -132,14 +138,26 @@ function postponedVerdict(
   answer: MateUpdateAnswer | undefined,
 ): UpdateVerdict {
   const progress = update?.restart;
-  if (progress?.phase !== "postponed") return null;
-  const mine =
-    answer?.attempt !== undefined
-      ? progress.attempt === answer.attempt
-      : answer === undefined &&
-        progress.startedAt !== undefined &&
-        (pressed.seenRestart === undefined || progress.startedAt > pressed.seenRestart);
-  return mine ? { kind: "failed", reason: POSTPONED_REASON(progress.reason) } : null;
+  if (answer?.attempt !== undefined) {
+    if (progress?.attempt === answer.attempt)
+      return progress.phase === "postponed"
+        ? { kind: "failed", reason: POSTPONED_REASON(progress.reason) }
+        : null;
+    const gone =
+      progress !== undefined &&
+      ((progress.phase === undefined && !progress.needed) ||
+        (progress.startedAt !== undefined &&
+          answer.startedAt !== undefined &&
+          progress.startedAt > answer.startedAt));
+    return gone
+      ? { kind: "failed", reason: "The restart didn't happen; Update to try again." }
+      : null;
+  }
+  if (answer !== undefined || progress?.phase !== "postponed") return null;
+  const later =
+    progress.startedAt !== undefined &&
+    (pressed.seenRestart === undefined || progress.startedAt > pressed.seenRestart);
+  return later ? { kind: "failed", reason: POSTPONED_REASON(progress.reason) } : null;
 }
 
 /**
@@ -197,6 +215,7 @@ export function updateAnswer(
     ...(result?.restartAttempt === undefined ? {} : { attempt: result.restartAttempt }),
     ...(result?.restartTarget === undefined ? {} : { target: result.restartTarget }),
     ...(result?.bootId === undefined ? {} : { bootId: result.bootId }),
+    ...(result?.restartStartedAt === undefined ? {} : { startedAt: result.restartStartedAt }),
   };
 }
 export const mateUpdate: OperationKind<"mate-update"> = {

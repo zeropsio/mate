@@ -451,7 +451,8 @@ describe("an Update that only a container restart answers", () => {
   it("a lost answer never settles on an older restart the store still holds", async () => {
     const { store, host, read } = setup({
       wire: {
-        update: () => Effect.fail(new Error("socket closed")),
+        update: () =>
+          Effect.fail(new ZeropsMateUpdateError({ reason: "timed-out", message: "Timed out" })),
         check: () => Effect.succeed(behind),
       },
     });

@@ -36,7 +36,7 @@ describe("Mate update evidence", () => {
       available: input.available ?? false,
       checkedAt: "now",
       ...(input.zcp === undefined ? {} : { zcp: input.zcp }),
-      restart: input.restart ?? { needed: false },
+      restart: input.restart ?? { needed: input.zcp?.behind === true },
     });
     const behind = { installed: "9.225.0", latest: "9.226.0", behind: true };
     const current = { installed: "9.226.0", latest: "9.226.0", behind: false };
