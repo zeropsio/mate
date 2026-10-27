@@ -195,6 +195,8 @@ describe("a release may update automatically only inside its proved rollback ran
         "apps/server/src/git/GitManager.ts",
         "apps/server/src/textGeneration/CodexTextGeneration.ts",
         "apps/server/src/engine/store/EngineStore.test.ts",
+        "apps/hq/src/main.ts",
+        "packages/hq-git/src/index.ts",
         "packages/shared/src/hqStream.ts",
         "package.json",
         "pnpm-workspace.yaml",
