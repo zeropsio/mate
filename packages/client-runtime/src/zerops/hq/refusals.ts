@@ -154,6 +154,13 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
   // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
   repo_not_found: "HQ has no such repository.",
+  // A repository HQ will not delete (`DELETE /api/apps/:appId/repos/:repo`).
+  group_repository: "This is the project's main repository, so it can't be deleted.",
+  "in_use:git_environment":
+    "A Git environment delivers this repository. Remove that environment first.",
+  "in_use:remote": "This repository mirrors to GitHub or GitLab. Disconnect the mirror first.",
+  "in_use:open_change": "This repository has an open change. Merge or close it first.",
+  "in_use:deploy": "A deploy of this repository is running. Try again when it finishes.",
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",

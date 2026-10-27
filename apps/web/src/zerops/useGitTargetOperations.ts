@@ -64,6 +64,12 @@ export function useGitTargetOperations(appId: string) {
                 options,
               );
             },
+            deleteRepository: async (repo: string) => {
+              await operations.run(
+                { kind: "delete-repository", orgId: scope.orgId, appId, repo },
+                options,
+              );
+            },
             updateAddress: async (repo: string, url: string) => {
               await operations.run(
                 { kind: "update-git-remote-address", ...scope, repo, url },

@@ -37,7 +37,7 @@ function rig(api: Partial<HqWrites>) {
   store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
   store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
   let revision = 0;
-  const publish = (remote: Record<string, unknown> | null, follows?: string) =>
+  const publishRepos = (repos: ReadonlyArray<Record<string, unknown>>) =>
     store.dispatch({
       kind: "delivery",
       via: "hq-stream",
@@ -50,22 +50,24 @@ function rig(api: Partial<HqWrites>) {
           revision: { kind: "hq", incarnation: "i", revision: ++revision },
           value: {
             kind: "repos",
-            value: [
-              {
-                name: "appdev",
-                mainHead: null,
-                updatedAt: null,
-                remote,
-                ...(follows === undefined ? {} : { follows }),
-              },
-            ],
+            value: repos,
           } as never,
         },
       ],
       removals: [],
     });
+  const publish = (remote: Record<string, unknown> | null, follows?: string) =>
+    publishRepos([
+      {
+        name: "appdev",
+        mainHead: null,
+        updatedAt: null,
+        remote,
+        ...(follows === undefined ? {} : { follows }),
+      },
+    ]);
   const stage = () => operationProgress.derive(readsOfState(store.state()), "request");
-  return { store, operations, publish, stage };
+  return { store, operations, publish, publishRepos, stage };
 }
 
 describe("mirroring a repository through the organization's GitHub app", () => {
@@ -210,6 +212,51 @@ describe("stopping a repository's GitHub follow", () => {
     Effect.gen(function* () {
       const r = rig(api);
       yield* r.operations.submit(stop);
+      expect(r.stage()).toMatchObject({ stage: "refused" });
+    }),
+  );
+});
+
+describe("deleting a repository", () => {
+  const del = { kind: "delete-repository", orgId, appId, repo: "appdev" } as const;
+
+  it.effect("a deleted repository leaves the list once HQ's record says it is gone", () =>
+    Effect.gen(function* () {
+      const sent: Array<unknown> = [];
+      const r = rig({
+        deleteRepo: async (...args) => {
+          sent.push(args);
+        },
+      });
+      r.publish(null);
+      yield* r.operations.submit(del);
+      expect(sent).toEqual([[appId, "appdev"]]);
+      expect(r.stage().stage).not.toBe("done");
+      r.publishRepos([]);
+      expect(r.stage()).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "HQ's refusal, said in HQ's words rather than taken as done already",
+      api: {
+        deleteRepo: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "conflict",
+            reason: "in_use:remote",
+            status: 409,
+            message: "This repository mirrors to GitHub or GitLab. Disconnect the mirror first.",
+          });
+        },
+      },
+    },
+    { name: "an HQ that cannot delete one", api: {} },
+  ])("is refused by $name", ({ api }) =>
+    Effect.gen(function* () {
+      const r = rig(api);
+      yield* r.operations.submit(del);
       expect(r.stage()).toMatchObject({ stage: "refused" });
     }),
   );

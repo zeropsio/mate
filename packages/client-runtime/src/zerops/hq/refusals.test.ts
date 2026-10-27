@@ -266,3 +266,18 @@ describe("hqOfferWords — what a control says beside a verb HQ does not offer",
     expect(hqOfferWords(state, { at, rolesAnsweredAt })).toBe(words);
   });
 });
+
+describe("hqRefusalWords — a repository HQ will not delete", () => {
+  it.each([
+    ["group_repository", "main repository"],
+    ["in_use:git_environment", "environment"],
+    ["in_use:remote", "mirror"],
+    ["in_use:open_change", "open change"],
+    ["in_use:deploy", "deploy"],
+  ])("says %s in plain words that name what holds it", (reason, holder) => {
+    const words = hqRefusalWords({ code: "conflict", reason });
+    expect(words).toContain(holder);
+    expect(words).not.toContain(reason);
+    expect(words).toMatch(/^[A-Z].*\.$/u);
+  });
+});

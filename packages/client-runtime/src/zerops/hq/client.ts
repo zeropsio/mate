@@ -520,6 +520,8 @@ export interface HqApi {
   ) => Promise<void>;
   /** Its Mates no longer fetch the followed GitHub repository (`DELETE …/upstream`). */
   readonly unfollowRepoUpstream?: (appId: string, repo: string) => Promise<void>;
+  /** The repository and its code are deleted from Mate (`DELETE /api/apps/:appId/repos/:repo`). */
+  readonly deleteRepo?: (appId: string, repo: string) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
@@ -1719,6 +1721,13 @@ export function makeHqApi(input: {
     unfollowRepoUpstream: async (appId, repo) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    deleteRepo: async (appId, repo) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}`,
         { method: "DELETE" },
         true,
       );

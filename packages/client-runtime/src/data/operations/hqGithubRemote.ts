@@ -3,7 +3,8 @@
  * answer starts it, and its repository record — the remote at that repository, reached through the
  * app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. And one
  * whose code HQ keeps while it follows a GitHub repository, with no token: HQ's answer ends it.
- * Stopping that follow ends once the repository's record no longer follows one.
+ * Stopping that follow ends once the repository's record no longer follows one. Deleting a
+ * repository ends once the application's repository list no longer names it.
  *
  * @module data/operations/hqGithubRemote
  */
@@ -29,6 +30,12 @@ declare module "../model.ts" {
       readonly url: string;
     };
     readonly "stop-following-github-repository": {
+      readonly orgId: string;
+      readonly appId: string;
+      /** HQ's repository: `appdev`. */
+      readonly repo: string;
+    };
+    readonly "delete-repository": {
       readonly orgId: string;
       readonly appId: string;
       /** HQ's repository: `appdev`. */
@@ -91,6 +98,23 @@ export const stopFollowingGithubRepository: OperationKind<"stop-following-github
         repos.kind === "known" &&
         repos.value.kind === "repos" &&
         repos.value.value.find((repo) => repo.name === intent.repo)?.follows === undefined
+      );
+    },
+  ),
+  observedIn: (intent) => ({ family: "hqAppDetail", ownerId: intent.appId }),
+};
+
+export const deleteRepository: OperationKind<"delete-repository"> = {
+  kind: "delete-repository",
+  executor: "hq",
+  ...shownInFacts(
+    (intent) => intent.appId,
+    (read, intent) => {
+      const repos = read.fact("hqAppDetail", `${intent.appId}/repos`);
+      return (
+        repos.kind === "known" &&
+        repos.value.kind === "repos" &&
+        !repos.value.value.some((repo) => repo.name === intent.repo)
       );
     },
   ),

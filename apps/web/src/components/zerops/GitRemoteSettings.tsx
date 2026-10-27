@@ -40,6 +40,8 @@ export interface GitRemoteActions {
   readonly viaApp?: (repo: string, repository: string) => Promise<void>;
   /** Its Mates no longer fetch the GitHub repository it follows; HQ alone keeps its code. */
   readonly unfollow?: (repo: string) => Promise<void>;
+  /** Deletes the repository and its code from Mate; the GitHub repository it mirrors to stays. */
+  readonly deleteRepository?: (repo: string) => Promise<void>;
   readonly addressReview?: {
     readonly repo: string;
     readonly verified: Extract<HqRemoteProbe, { readonly ok: true }>;
@@ -201,6 +203,7 @@ function Remote({
   const [answer, setAnswer] = useState<string | undefined>();
   const [disconnecting, setDisconnecting] = useState(false);
   const [unfollowing, setUnfollowing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const urlId = useId();
   const tokenId = useId();
   const repositoryId = useId();
@@ -264,6 +267,25 @@ function Remote({
     review.verified.remote.repositoryId === remote.repositoryId &&
     new URL(remote.url).host === "github.com" &&
     new URL(review.verified.remote.url).host === "github.com";
+  // HQ's own offer for this repository, answered per person; absent from an HQ that has none.
+  const deleteRepository = repo.canDelete?.allow === true ? actions?.deleteRepository : undefined;
+  const confirmDelete = async () => {
+    if (deleteRepository === undefined || busy) return;
+    setBusy(true);
+    setAnswer(undefined);
+    try {
+      await deleteRepository(repo.name);
+    } catch (cause) {
+      setDeleting(false);
+      setAnswer(
+        cause instanceof OperationStopped
+          ? cause.message
+          : "HQ couldn't confirm the deletion. Check the repository list before trying again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   const stopFollowing = async () => {
     if (unfollow === undefined || busy) return;
     setBusy(true);
@@ -673,6 +695,32 @@ function Remote({
           </div>
         </div>
       ) : null}
+      {deleteRepository === undefined ? null : deleting ? (
+        <div className="grid gap-2">
+          <p className="rv-note">
+            Delete {repo.name}? Its code is deleted from Mate. The GitHub repository, if any, stays.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void confirmDelete()}
+            >
+              {busy ? "Deleting…" : "Confirm delete"}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDeleting(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Button size="sm" variant="ghost" onClick={() => setDeleting(true)}>
+            Delete repository
+          </Button>
+        </div>
+      )}
       {answer === undefined ? null : (
         <p className="rv-note" role="status">
           {answer}

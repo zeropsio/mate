@@ -447,6 +447,16 @@ export const RepoListEntry = Schema.Struct({
   updatedAt: Instant,
   /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */
   url: Schema.optionalKey(Schema.String),
+  /**
+   * HQ's offer to this person to delete it, with the reason it does not (`group_repository`,
+   * `in_use:<holder>`, a permission's). Absent from an HQ that does not offer deletion.
+   */
+  canDelete: Schema.optionalKey(
+    Schema.Union([
+      Schema.Struct({ allow: Schema.Literal(true) }),
+      Schema.Struct({ allow: Schema.Literal(false), reason: Schema.String }),
+    ]),
+  ),
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
   releaseVersion: Schema.optionalKey(
     Schema.Struct({

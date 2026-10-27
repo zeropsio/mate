@@ -240,6 +240,29 @@ describe("hqChanges — the wire", () => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
   });
 
+  it("a repository listing keeps HQ's offer to delete it and its reason for not offering", () => {
+    const listed = Schema.decodeUnknownSync(RepoListResponse)({
+      repos: [
+        {
+          name: "appdev",
+          mainHead: null,
+          updatedAt: "2026-10-02T10:00:00.000Z",
+          canDelete: { allow: true },
+        },
+        {
+          name: "group",
+          mainHead: null,
+          updatedAt: "2026-10-02T09:00:00.000Z",
+          canDelete: { allow: false, reason: "group_repository" },
+        },
+      ],
+    });
+    expect(listed.repos.map((repo) => repo.canDelete)).toEqual([
+      { allow: true },
+      { allow: false, reason: "group_repository" },
+    ]);
+  });
+
   it.each([
     [
       "an application's repositories",

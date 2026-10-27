@@ -804,6 +804,105 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  it("a repository HQ offers for deletion shows Delete repository in the project's repository list; one HQ does not offer shows no such action", async () => {
+    const deleteRepository = vi.fn(async () => {});
+    const view = await mount({
+      actions: { ...actions, deleteRepository },
+      repos: [
+        { ...unmirrored[0]!, name: "appdev", canDelete: { allow: true } },
+        {
+          ...unmirrored[0]!,
+          name: "mailpit",
+          canDelete: { allow: false, reason: "in_use:remote" },
+        },
+        { ...unmirrored[0]!, name: "older" },
+      ],
+    });
+    try {
+      const sections = [...view.host.querySelectorAll("section")].map((section) => [
+        section.getAttribute("aria-label"),
+        [...section.querySelectorAll("button")]
+          .map((node) => node.textContent)
+          .includes("Delete repository"),
+      ]);
+      expect(sections).toEqual([
+        ["appdev", true],
+        ["mailpit", false],
+        ["older", false],
+      ]);
+      await view.render({
+        actions,
+        repos: [{ ...unmirrored[0]!, canDelete: { allow: true } }],
+      });
+      expect(view.buttons()).not.toContain("Delete repository");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("deleting asks for confirmation naming the repository and saying its code is deleted from Mate while the GitHub repository stays; nothing is sent before the confirm", async () => {
+    const deleteRepository = vi.fn(async () => {});
+    const view = await mount({
+      actions: { ...actions, deleteRepository },
+      repos: [{ ...unmirrored[0]!, canDelete: { allow: true } }],
+    });
+    try {
+      await view.click("Delete repository");
+      expect(deleteRepository).not.toHaveBeenCalled();
+      expect(view.host.textContent).toContain("Delete appdev?");
+      expect(view.host.textContent).toContain("Its code is deleted from Mate.");
+      expect(view.host.textContent).toContain("The GitHub repository, if any, stays.");
+      await view.click("Cancel");
+      expect(deleteRepository).not.toHaveBeenCalled();
+      expect(view.buttons()).toContain("Delete repository");
+      await view.click("Delete repository");
+      await view.click("Confirm delete");
+      expect(deleteRepository).toHaveBeenCalledExactlyOnceWith("appdev");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("when HQ refuses to delete a repository, the person reads why in plain words", async () => {
+    const reason = "in_use:open_change";
+    const deleteRepository = vi.fn(async () => {
+      throw new OperationStopped(hqRefusalWords({ code: "conflict", reason }), reason);
+    });
+    const view = await mount({
+      actions: { ...actions, deleteRepository },
+      repos: [{ ...unmirrored[0]!, canDelete: { allow: true } }],
+    });
+    try {
+      await view.click("Delete repository");
+      await view.click("Confirm delete");
+      expect(view.host.textContent).toContain(
+        "This repository has an open change. Merge or close it first.",
+      );
+      expect(view.buttons()).toContain("Delete repository");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a deleted repository stays in the list until HQ's record says it is gone", async () => {
+    const kept = { ...unmirrored[0]!, name: "other" };
+    const view = await mount({
+      actions: { ...actions, deleteRepository: vi.fn(async () => {}) },
+      repos: [{ ...unmirrored[0]!, canDelete: { allow: true } }, kept],
+    });
+    try {
+      await view.click("Delete repository");
+      await view.click("Confirm delete");
+      expect(view.host.textContent).toContain("appdev");
+      await view.render({ repos: [kept] });
+      expect(
+        [...view.host.querySelectorAll("section")].map((s) => s.getAttribute("aria-label")),
+      ).toEqual(["other"]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   // live gate 2026-10-21 (D2): a way in needs a way out.
   it("a repository mirrored through the app offers the way back to a token", async () => {
     const probe = { ok: true as const, remote };
