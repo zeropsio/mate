@@ -182,7 +182,15 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       Effect.gen(function* () {
         yield* setProgress({ phase: "draining" });
         if (!(yield* ports.drain({ automatic }))) {
-          yield* setProgress({ phase: "postponed", reason: RESTART_WORK_NOT_DONE });
+          // An automatic drain also stops when the organization pauses automatic updates.
+          const paused =
+            automatic &&
+            options.policy !== undefined &&
+            !Option.exists(yield* options.policy.verify, (policy) => policy.enabled);
+          yield* setProgress({
+            phase: "postponed",
+            reason: paused ? "automatic updates were paused" : RESTART_WORK_NOT_DONE,
+          });
           return;
         }
         // Written before the platform is asked: the restart it causes ends this process.
@@ -253,14 +261,15 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           yield* startRestart(status, true);
           return;
         }
-        // The container came back still behind: said once, never restarted again for it.
+        // Already tried for this reading (the container came back still behind, or the platform
+        // refused): said once, never tried again by itself; the person's Update tries again.
         if (enabled === true && !restartUnderWay && restartedFor === key && progress === undefined)
           yield* setProgress({
             phase: "postponed",
             reason:
               status.zcp?.behind === true
-                ? `the restart did not install zcp ${status.zcp.latest}`
-                : "the restart did not bring this Mate current",
+                ? `a restart was already tried for zcp ${status.zcp.latest}; Update to try again`
+                : "a restart was already tried; Update to try again",
           });
       });
 
