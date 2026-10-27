@@ -18,7 +18,9 @@
  */
 import type { MateRestart } from "@t3tools/contracts";
 import * as Cron from "effect/Cron";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import {
   effectId as deriveEffectId,
   itemId as deriveItemId,
@@ -50,6 +52,9 @@ import {
   type UserInputAttachments,
   isCardAsk,
   ItemId,
+  LeaseAlias,
+  LeaseReleaseResult,
+  TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
@@ -155,6 +160,8 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
+  // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
+  "lease.release": { lane: "workspace", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -306,8 +313,9 @@ const handle = (b: StepBuilder, command: Command): void => {
         },
       });
     case "Archive":
-      if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
-      return;
+      if (b.state.archived) return;
+      b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
+      return askLeaseRelease(b);
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
@@ -1357,6 +1365,36 @@ const cardOutcome = <Outcome extends string>(
     : null;
 };
 
+/** One repository's address however written: `https://github.com/A/b.git/` is `github.com/a/b`. */
+const originAddressKey = (url: string): string =>
+  url
+    .replace(/^https:\/\//iu, "")
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/iu, "")
+    .toLowerCase();
+
+const sameOriginAddress = (a: string, b: string): boolean =>
+  originAddressKey(a) === originAddressKey(b);
+
+/**
+ * Closes the open origin asks `settled` picks, none of them answered by the person: their card
+ * draws nothing and the conversation waits on them no more.
+ */
+const settleOrigins = (
+  b: StepBuilder,
+  settled: (asked: NonNullable<OpenRequest["origin"]>) => boolean,
+): void => {
+  for (const request of Object.values(b.state.requests)) {
+    if (request.origin === undefined || !settled(request.origin)) continue;
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "dismissed",
+    });
+  }
+};
+
 /** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
 const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
   `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
@@ -1843,6 +1881,79 @@ const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
 
 // ── effects ─────────────────────────────────────────────────────────────────────────────────
 
+// ── the workspace on archive ────────────────────────────────────────────────────────────────
+
+/**
+ * Archiving is the person's word that the conversation's work is done: the branch of the lease it
+ * is bound to goes back to its pool. zcp releases it only with nothing unsaved there (it never
+ * forces), so a refusal keeps the binding and nothing is lost. A lease of no branch is kept: zcp
+ * releases a branch, never one container.
+ */
+const askLeaseRelease = (b: StepBuilder): void => {
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  // One release at a time: archived again before it started, the one asked still runs.
+  if (Object.values(b.state.effects).some((effect) => effect.kind === "lease.release")) return;
+  b.effect(
+    "lease.release",
+    `${b.state.conversationId}/lease/${lease.alias}`,
+    b.state.headSeq,
+    null,
+    {
+      alias: lease.alias,
+      branch: lease.branch,
+      ...(lease.repo === undefined ? {} : { repo: lease.repo }),
+    } satisfies LeaseReleasePayload,
+  );
+};
+
+/** What a `lease.release` effect asks: the bound lease, and the branch (and repository) zcp releases. */
+export interface LeaseReleasePayload {
+  readonly alias: string;
+  readonly branch: string;
+  readonly repo?: string;
+}
+
+const decodeLeaseReleaseValue = Schema.decodeUnknownOption(
+  Schema.Struct({ alias: LeaseAlias, branch: TrimmedNonEmptyString, result: LeaseReleaseResult }),
+);
+
+/**
+ * The release's receipt; a release that went unbinds the conversation from the lease it named. An
+ * outcome the handler never gave (the worker gave up on it) is a release not made, of the lease the
+ * conversation is bound to; with none bound, the outcome alone records it.
+ */
+const leaseReleaseSettled = (b: StepBuilder, outcome: EffectOutcome): void => {
+  const value = outcome.kind === "ok" ? decodeLeaseReleaseValue(outcome.value) : Option.none();
+  if (Option.isSome(value)) {
+    const { alias, branch, result } = value.value;
+    b.emit({ _tag: "LeaseReleaseSettled", alias, branch, result });
+    // A release made only in part unbinds the conversation only when its own lease went.
+    const went =
+      result.outcome === "released" ||
+      (result.outcome === "failed" &&
+        result.released?.some((lease) => lease.lease === alias) === true);
+    if (went && b.state.lease?.alias === alias) {
+      b.emit({ _tag: "LeaseUnbound", alias });
+    }
+    return;
+  }
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  const reason =
+    outcome.kind === "failed" || outcome.kind === "cut"
+      ? outcome.reason
+      : outcome.kind === "timed-out"
+        ? `zcp did not answer the release within ${Math.round(outcome.after / 1000)} s`
+        : "the release's answer could not be read";
+  b.emit({
+    _tag: "LeaseReleaseSettled",
+    alias: lease.alias,
+    branch: lease.branch,
+    result: { outcome: "failed", reason },
+  });
+};
+
 const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");
@@ -1850,6 +1961,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
   if (effect.kind === "history.import") return historySettled(b, id, outcome);
+  if (effect.kind === "lease.release") return leaseReleaseSettled(b, outcome);
   const failure =
     outcome.kind === "ok"
       ? null
@@ -2277,6 +2389,12 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (owner === undefined) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
+      // An origin asked again for the same repository is the one question: the earlier ask
+      // needs the person no more.
+      if (signal.ask.kind === "origin") {
+        const { url, repo } = signal.ask;
+        settleOrigins(b, (asked) => asked.repo === repo && sameOriginAddress(asked.url, url));
+      }
       const live = isLive(run);
       // Asked by message: the agent does not wait on it, and a message answers it after its turn.
       // An ask on a card is not waited on either: the person answers it there after the turn.
@@ -2350,6 +2468,17 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           summary: `Saved to ${vaultPlace(vault)}`,
         });
       }
+      return;
+    }
+    case "origin-settled": {
+      // zcp found the asked address already an origin in HQ for the repository that call asked
+      // about, or the agent withdrew the ask of one repository, or of every repository asked
+      // about the address. The agent knows already: no word reaches it.
+      const { url, repo } = signal;
+      settleOrigins(
+        b,
+        (asked) => sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo),
+      );
       return;
     }
     case "turn-ended": {

@@ -803,6 +803,40 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     ),
   );
 
+  // zcp sends a lease's dev servers on a call that read its supervisor, and from its next release
+  // the last read of them on every call, stamped `devServersReadAt`: the newer read is the one
+  // shown, whichever call came last.
+  it.effect(
+    "keeps a lease's newer read of its dev servers over an older one a later call carries",
+    () =>
+      withLeases((lifecycle) =>
+        Effect.gen(function* () {
+          const held = { ...lease("webpool-3"), acquiredAt: "2026-10-27T08:00:00Z" };
+          const readOf = (url: string, devServersReadAt?: string) => ({
+            ...held,
+            devServers: [
+              { name: "web", port: 3000, url, status: "running", readAt: "2026-10-27T08:30:00Z" },
+            ],
+            ...(devServersReadAt === undefined ? {} : { devServersReadAt }),
+          });
+          const shown = Effect.map(lifecycle.get(OWNER), (state) =>
+            state.envelope?.leases
+              ?.find((one) => one.alias === "webpool-3")
+              ?.devServers?.map((one) => one.url),
+          );
+          yield* lifecycle.ingest(statusReading([readOf("https://b.app", "2026-10-27T10:00:00Z")]));
+          yield* lifecycle.ingest(statusReading([readOf("https://a.app", "2026-10-27T09:00:00Z")]));
+          expect(yield* shown, "an older read a later call carries").toEqual(["https://b.app"]);
+          yield* lifecycle.ingest(statusReading([readOf("https://c.app")]));
+          expect(yield* shown, "a read with no stamp is older than one with it").toEqual([
+            "https://b.app",
+          ]);
+          yield* lifecycle.ingest(statusReading([readOf("https://d.app", "2026-10-27T11:00:00Z")]));
+          expect(yield* shown, "a newer read replaces it").toEqual(["https://d.app"]);
+        }),
+      ),
+  );
+
   /** What a `zerops_lease action=status` call read of a lease's checkout (spec-mate §2.8a.3). */
   const read = (readAt: string, lastChangeAt: string) => ({
     lastChangeAt,

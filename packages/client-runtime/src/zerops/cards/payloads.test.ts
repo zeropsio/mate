@@ -467,6 +467,23 @@ describe("decodeZeropsCard — dev server", () => {
   it("has no card when the document is missing the required fields", () => {
     expect(card("zerops_dev_server", { hostname: "apidev" })).toBeUndefined();
   });
+
+  it("carries the stand-in zcp holds the service as", () => {
+    expect(
+      card("zerops_dev_server", {
+        action: "status",
+        hostname: "kiln",
+        running: false,
+        standIn: { for: "pool-migrate" },
+      }),
+    ).toEqual({
+      kind: "devServer",
+      action: "status",
+      hostname: "kiln",
+      running: false,
+      standIn: { for: "pool-migrate" },
+    });
+  });
 });
 
 describe("decodeZeropsCard — browser", () => {

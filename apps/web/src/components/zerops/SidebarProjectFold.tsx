@@ -7,6 +7,8 @@
  * is it gone. A press in the middle turns it round from wherever it stands. With reduced motion
  * it only fades in, and folds at once.
  *
+ * Once it has opened, the group's owner is told (`onOpened`) so it can bring the Mates into view.
+ *
  * A paint that nobody asked for — a reload, a group already open — moves nothing: only a
  * `motion` the row's press set animates.
  */
@@ -29,6 +31,7 @@ export function SidebarProjectFold({
   open,
   motion,
   onSettled,
+  onOpened,
   children,
 }: {
   readonly open: boolean;
@@ -36,6 +39,8 @@ export function SidebarProjectFold({
   readonly motion: ProjectFoldMotion | undefined;
   /** The movement ended: folded shut, or all the way open. */
   readonly onSettled: () => void;
+  /** An opening press's fold stands all the way open: its drawn rows. */
+  readonly onOpened: (rows: HTMLElement) => void;
   readonly children: ReactNode;
 }) {
   const fold = useRef<HTMLDivElement>(null);
@@ -43,6 +48,7 @@ export function SidebarProjectFold({
   const drawn = useRef(false);
   // The latest press's, read when the movement ends.
   const settled = useEffectEvent(onSettled);
+  const opened = useEffectEvent(onOpened);
   useLayoutEffect(() => {
     const firstPaint = !drawn.current;
     drawn.current = true;
@@ -50,6 +56,7 @@ export function SidebarProjectFold({
     const element = fold.current;
     const settle = () => {
       running.current = null;
+      if (open && element !== null) opened(element);
       settled();
     };
     // Nothing to move where there is nothing drawn (a test's renderer).

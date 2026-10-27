@@ -7,6 +7,7 @@ import {
   nameUnderApp,
   projectNameInApp,
   isRecipeProposal,
+  recipeProposalRedone,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -408,6 +409,8 @@ export interface NewMateDoorMate {
 export interface NewMateRecipeChange {
   readonly number: number;
   readonly mate: string | undefined;
+  /** It conflicts with main, and its Mate composes it again from main (`recipeProposalRedone`). */
+  readonly redone?: true;
 }
 
 /** The one thing to do while the project takes no Mate. */
@@ -466,6 +469,14 @@ export function newMateDoor(input: {
   if (mates.length === 0) return { kind: "open", recipe: "none" };
   if (change !== undefined) {
     const where = change.mate === undefined ? "a change" : `${crewPossessive(change.mate)} change`;
+    // Its Mate composes it again from main by itself: the person only looks.
+    if (change.redone === true) {
+      return {
+        kind: "closed",
+        reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}, which ${change.mate ?? "its Mate"} is redoing from main. New Mates can join once it lands.`,
+        action: { kind: "change", label: "See the change", number: change.number },
+      };
+    }
     return {
       kind: "closed",
       reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}. New Mates can join once it's merged.`,
@@ -582,7 +593,11 @@ export function newMateRecipeChange(input: {
     if (first === undefined || pull.number < first.number) first = pull;
   }
   if (first === undefined) return undefined;
-  return { number: first.number, mate: input.mateName(first.mateProjectId) };
+  return {
+    number: first.number,
+    mate: input.mateName(first.mateProjectId),
+    ...(recipeProposalRedone(first) ? { redone: true as const } : {}),
+  };
 }
 
 /** Where *Review the change* goes: the recipe's change in its recipe repository, on its own page. */

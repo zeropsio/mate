@@ -17,7 +17,8 @@
       "permissionMode": "bypassPermissions",
       "allowDangerouslySkipPermissions": true,
       "settings": {
-        "showThinkingSummaries": true
+        "showThinkingSummaries": true,
+        "autoCompactWindow": 200000
       },
       "sessionId": "session-0",
       "includePartialMessages": true,
@@ -27,7 +28,8 @@
       "env": {
         "PATH": "/usr/bin:/bin",
         "HOME": "/home/harness",
-        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1",
+        "MCP_CONNECTION_NONBLOCKING": "false"
       },
       "additionalDirectories": ["/tmp/userdata/attachments"],
       "extraArgs": {
@@ -62,7 +64,8 @@
       },
       "settings": {
         "showThinkingSummaries": true,
-        "fastMode": true
+        "fastMode": true,
+        "autoCompactWindow": 200000
       },
       "resume": "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
       "includePartialMessages": true,
@@ -72,7 +75,8 @@
       "env": {
         "PATH": "/usr/bin:/bin",
         "HOME": "/home/harness",
-        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1",
+        "MCP_CONNECTION_NONBLOCKING": "false"
       },
       "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
       "extraArgs": {
@@ -121,7 +125,8 @@
       "env": {
         "PATH": "/usr/bin:/bin",
         "HOME": "/home/harness",
-        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1",
+        "MCP_CONNECTION_NONBLOCKING": "false"
       },
       "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
       "extraArgs": {

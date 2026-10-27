@@ -629,15 +629,20 @@ export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
   return verdict.state !== "ready" || draft;
 }
 
+/** "a", "a and b", "a, b and c". */
+const listed = (names: ReadonlyArray<string>): string =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
 /**
- * What merging does, said under the buttons: where it lands and what production keeps — after the
- * receipt's warning, while the change waits on its press.
+ * What merging does, said under the buttons: a merge lands on `main`, each stage that follows it
+ * deploys it, and production keeps its release — after the receipt's warning, while the change
+ * waits on its press.
  */
 export function mergeFoot(input: {
   readonly state: ReviewState;
   readonly consequence: string;
-  /** The stage that follows `main`; `undefined` where there is none. */
-  readonly stage: string | undefined;
+  /** The stages that follow `main`, by name; none, one or several. */
+  readonly stages: ReadonlyArray<string>;
   /** The release production runs. */
   readonly live: string | undefined;
   /** {@link changeReceipt}'s warning: parts not tried at the change. */
@@ -647,7 +652,9 @@ export function mergeFoot(input: {
   const keeps =
     input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
   const foot =
-    input.stage === undefined ? input.consequence : `Merging puts it on ${input.stage}.${keeps}`;
+    input.stages.length === 0
+      ? input.consequence
+      : `Lands on main; ${listed(input.stages)} ${input.stages.length === 1 ? "deploys" : "deploy"} it.${keeps}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
 }
 

@@ -571,6 +571,20 @@ describe("ZeropsStateEnvelope leases", () => {
     expect(decodeEnvelope(envelope({ leases: [held] })).leases?.[0]).not.toHaveProperty("repo");
   });
 
+  it("a lease says when zcp last read its dev servers, the part it serves and that part's stage, and one zcp says none of reads without them", () => {
+    const named = {
+      ...held,
+      devServersReadAt: "2026-10-27T10:00:00Z",
+      part: "web",
+      stage: "webstage",
+    };
+    expect(decodeEnvelope(envelope({ leases: [named] })).leases).toEqual([named]);
+    const plain = decodeEnvelope(envelope({ leases: [held] })).leases?.[0];
+    for (const key of ["devServersReadAt", "part", "stage"]) {
+      expect(plain).not.toHaveProperty(key);
+    }
+  });
+
   it("a lease acquired for no branch reads without one", () => {
     const { branch: _branch, ...noBranch } = held;
     expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);

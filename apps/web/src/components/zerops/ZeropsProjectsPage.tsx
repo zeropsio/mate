@@ -2484,6 +2484,9 @@ export function ZeropsProjectsContent({
     );
     const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
     const mateWhy = addMateWhy(group.groupId);
+    const canonicalGroup = groupTree.groups.find(
+      (entry) => entry.group.groupId === group.groupId,
+    )?.group;
     return (
       <ZeropsProjectRenameMenu
         actions={[
@@ -2573,14 +2576,16 @@ export function ZeropsProjectsContent({
               ]
             : []),
           // A project with no Mate goes, at whoever writes the structure's word.
-          ...projectDeleteActions({
-            group,
-            offer: orgOffer("delete_app").kind,
-            contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
-            openEmpty: () => {
-              setRowDialog({ kind: "delete-group", group });
-            },
-          }),
+          ...(canonicalGroup === undefined
+            ? []
+            : projectDeleteActions({
+                group: canonicalGroup,
+                offer: orgOffer("delete_app").kind,
+                contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
+                openEmpty: () => {
+                  setRowDialog({ kind: "delete-group", group });
+                },
+              })),
         ]}
         group={group}
       />

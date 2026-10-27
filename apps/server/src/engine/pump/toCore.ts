@@ -42,7 +42,7 @@ import type {
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
-import { originAskOfCall } from "./originAsk.ts";
+import { originAskOfCall, originSettledOfCall } from "./originAsk.ts";
 import { vaultAskOfCall, vaultStoredOfCall } from "./vaultAsk.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */
@@ -371,6 +371,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           // A call that stored values answers the asks for them.
           const stored = vaultStoredOfCall(body);
           if (stored !== null) signals.push({ kind: "vault-stored", ...stored });
+          // A call that finds an asked origin already connected, or withdraws an ask, settles it.
+          const settled = originSettledOfCall(body);
+          if (settled !== null) signals.push({ kind: "origin-settled", ...settled });
           if (images !== undefined) pictures.push({ key: signal.item, images });
           live.push({ _tag: "Settle", key: signal.item });
           // The record holds it now: its text and state are let go.

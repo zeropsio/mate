@@ -11,7 +11,7 @@ import { useMateAddresses, type MateAddressesRead } from "./useMateAddresses";
 
 const STAGE_URL = "https://appstage-1df2-3000.prg1.zerops.app";
 
-const mate = vi.hoisted(() => ({ lifecycle: undefined as unknown }));
+const mate = vi.hoisted(() => ({ lifecycle: undefined as unknown, lease: null as unknown }));
 
 vi.mock("./useZeropsFeeds", () => ({
   useZeropsTopology: () => ({
@@ -33,7 +33,9 @@ vi.mock("./useZeropsFeeds", () => ({
   useZeropsLifecycle: () => mate.lifecycle,
   useEnvironmentProjectRef: () => null,
 }));
-vi.mock("../state/entities", () => ({ useThreadShell: () => null }));
+vi.mock("../state/entities", () => ({
+  useThreadShell: () => (mate.lease === null ? null : { lease: mate.lease }),
+}));
 vi.mock("./inventoryContext", () => ({ InventoryContext: createContext(null) }));
 vi.mock("./ZeropsAccountData", () => ({ useProjectsServiceValues: () => ({}) }));
 
@@ -55,6 +57,7 @@ const render = () =>
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mate.lifecycle = undefined;
+  mate.lease = null;
 });
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
@@ -89,4 +92,37 @@ it("a conversation that carries no envelope yet leaves a migrated part's stage o
   mate.lifecycle = { state: "unread", waitingFor: null };
   render();
   expect(roles()).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+});
+
+// The menu draws no Sites for a Mate in no project: its conversation's header lists these.
+it("an ungrouped Mate's conversation still shows its previews, each by its part's name", () => {
+  const url = "https://embedderpool-c2e4-8101.prg1.zerops.app";
+  mate.lease = { alias: "embedderpool-3", pool: "embedderpool", branch: "feat-x" };
+  mate.lifecycle = {
+    state: "known",
+    value: {
+      threadId: "thread-1",
+      recentTools: [],
+      envelope: {
+        services: [],
+        leases: [
+          {
+            alias: "embedderpool-3",
+            pool: "embedderpool",
+            branch: "feat-x",
+            state: "held",
+            devServers: [
+              { name: "web", port: 8101, url, status: "running", readAt: "2026-10-25T09:00:00Z" },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  render();
+  expect(
+    read.addresses
+      .filter((address) => address.url === url)
+      .map(({ name, host }) => ({ name, host })),
+  ).toEqual([{ name: "Embedder", host: "embedderpool-c2e4-8101.prg1.zerops.app" }]);
 });

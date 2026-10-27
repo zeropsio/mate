@@ -106,23 +106,34 @@ describe("a group with nothing in it", () => {
   });
 });
 
-// The lead, 2026-10-03: an empty application is deleted from its heading's menu — offered only on
-// one with nothing in it, and only to whoever writes the structure (`delete_app`).
+// The page offers Delete by the menu's rule (app-lifecycle.md): a project with no Mate in it, at
+// whoever writes the structure (`delete_app`), whatever stage or production it still holds.
 describe("Delete, on a project's menu", () => {
-  const group = (environments: number, pending: number) => ({
-    environments: Array.from({ length: environments }, () => ({}) as never),
-    pending: Array.from({ length: pending }, () => ({}) as never),
+  const group = (roles: ReadonlyArray<string>, pending: ReadonlyArray<string> = []) => ({
+    environments: roles.map((role) => ({ role })),
+    pending: pending.map((kind) => ({ kind })),
   });
   it.each([
-    { name: "empty, to a writer: offered", group: group(0, 0), mayDelete: true, offered: "empty" },
+    { name: "empty, to a writer: offered", group: group([]), mayDelete: true, offered: "empty" },
     {
       name: "empty, to anyone else: not",
-      group: group(0, 0),
+      group: group([]),
       mayDelete: false,
       offered: undefined,
     },
-    { name: "holding a Mate: not", group: group(1, 0), mayDelete: true, offered: undefined },
-    { name: "a Mate coming: not", group: group(0, 1), mayDelete: true, offered: undefined },
+    {
+      name: "a stage and a production alone, to a writer: offered",
+      group: group(["stage", "prod"]),
+      mayDelete: true,
+      offered: "empty",
+    },
+    { name: "holding a Mate: not", group: group(["dev"]), mayDelete: true, offered: undefined },
+    {
+      name: "a Mate coming: not",
+      group: group([], ["mate"]),
+      mayDelete: true,
+      offered: undefined,
+    },
   ])("$name", ({ group: given, mayDelete, offered }) => {
     expect(deleteOffered(given, mayDelete, { empty: true, deletingProjectIds: [] })).toBe(offered);
   });
@@ -133,7 +144,7 @@ describe("Delete, on a project's menu", () => {
     { name: "to a writer: offered with its code", mayDelete: true, offered: "with-code" },
     { name: "to anyone else: not", mayDelete: false, offered: undefined },
   ])("a project HQ says still holds code or changes, $name", ({ mayDelete, offered }) => {
-    expect(deleteOffered(group(0, 0), mayDelete, { empty: false, deletingProjectIds: [] })).toBe(
+    expect(deleteOffered(group([]), mayDelete, { empty: false, deletingProjectIds: [] })).toBe(
       offered,
     );
   });

@@ -176,6 +176,7 @@ const MateEngineLive = engineLayer.pipe(
     engineAdaptersLayer.pipe(
       Layer.provide(ZeropsTurnAdmissionLive),
       Layer.provide(ZeropsRestartReadModule.layer),
+      Layer.provide(ZeropsCliModule.layer),
     ),
   ),
   Layer.provide(CrewEngineHooksLive),
