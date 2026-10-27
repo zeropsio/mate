@@ -210,7 +210,12 @@ describe("archiving a conversation gives its workspace back", () => {
         leases: [{ lease: "webpool-3", unsaved: { files: ["src/app.ts"], commits: [] } }],
       },
     },
+    {
+      name: "refused because another session uses a lease of it",
+      result: { outcome: "refused", leases: [{ lease: "webpool-3", inUse: { sessions: 2 } }] },
+    },
     { name: "failed", result: { outcome: "failed", reason: "zcp did not answer within 180 s" } },
+    { name: "withdrew, unarchived before it started", result: { outcome: "withdrawn" } },
   ])("a release zcp $name keeps the binding and records only the receipt", ({ result }) => {
     const asked = play([bind(webpool3), archive]);
     const scene = playFrom(asked, settled(asked, { alias: "webpool-3", branch: "feat-x", result }));
@@ -222,6 +227,38 @@ describe("archiving a conversation gives its workspace back", () => {
       result,
     });
     expect(scene.state.lease).toEqual(webpool3);
+  });
+
+  it("a release that found nothing held of the branch unbinds the conversation", () => {
+    const asked = play([bind(webpool3), archive]);
+    const result = { outcome: "released", leases: [] };
+    const scene = playFrom(asked, settled(asked, { alias: "webpool-3", branch: "feat-x", result }));
+    expect(scene.events.map((event) => event._tag)).toEqual([
+      "EffectOutcomeRecorded",
+      "LeaseReleaseSettled",
+      "LeaseUnbound",
+    ]);
+    expect(scene.state.lease).toBeNull();
+  });
+
+  it("archiving again while a release is still outstanding asks for no second one", () => {
+    const unarchive: Command = { _tag: "Unarchive" };
+    let state = initialState(conversation);
+    const asked: Array<EffectDraft> = [];
+    for (const [index, command] of [bind(webpool3), archive, unarchive, archive].entries()) {
+      const envelope = {
+        commandId: CommandId.make(`again-${index}`),
+        conversationId: conversation,
+        principal: engine,
+        command,
+      };
+      const decision = decide(state, envelope, T0);
+      if (decision._tag !== "Accept") continue;
+      asked.push(...decision.step.effects.filter((effect) => effect.kind === "lease.release"));
+      state = fold(state, stampEvents(state.headSeq, envelope, decision.step.events, T0));
+    }
+    expect(state.archived).toBe(true);
+    expect(asked).toHaveLength(1);
   });
 
   it("a release the worker could not run keeps the binding and records it failed", () => {

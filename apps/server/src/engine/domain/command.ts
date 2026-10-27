@@ -382,7 +382,8 @@ export type ImportedRecord = Extract<
  * run's admission, a history import). Another owner kind names its own (the crew's `git/<handle>`,
  * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
-export type ConversationLane = "turn" | "control" | "close" | "side";
+/** `workspace`: work on the pool's side (`lease.release`), run by the Mate-wide fibers. */
+export type ConversationLane = "turn" | "control" | "close" | "side" | "workspace";
 export type EffectLane = ConversationLane | (string & {});
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";
