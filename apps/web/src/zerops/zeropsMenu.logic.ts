@@ -3,11 +3,7 @@
  * far — a project created a moment ago anywhere, ungrouped until somebody places it. A row never
  * waits on HQ; a project its owner proved deleted is drawn no more.
  */
-import type {
-  HqNavigationRead,
-  HqVerdict,
-  OrganizationProjects,
-} from "@t3tools/client-runtime/data";
+import type { HqNavigationRead, OrganizationProjects } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
 export function menuRows<Row extends CandidateRow>(input: {
@@ -43,7 +39,6 @@ export function menuRows<Row extends CandidateRow>(input: {
 export function menuSourcesSettled(input: {
   readonly projects: Pick<OrganizationProjects, "read" | "reconnecting" | "unavailableReason">;
   readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "reconnecting" | "slow">;
-  readonly verdict: HqVerdict;
   /** HQ answered for every Mate it places: each one's last words (`hqMatesAnswered`). */
   readonly matesAnswered: boolean;
   /** The menu waited its patience (`MENU_SOURCES_PATIENCE_MS`) for its sources' first answers. */
@@ -59,5 +54,5 @@ export function menuSourcesSettled(input: {
     hq.refusal !== null ||
     hq.capped ||
     (waitedOut && (hq.reconnecting || hq.slow));
-  return listed && input.verdict === "official" && hqAnswered;
+  return listed && hqAnswered;
 }

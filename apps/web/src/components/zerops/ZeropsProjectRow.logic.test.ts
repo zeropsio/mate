@@ -342,10 +342,6 @@ describe("deriveZeropsRowAction", () => {
       expect(offered(shop, PLAIN, evidence)).toBe("none");
     });
 
-    it("is not offered on a project named as the HQ is", () => {
-      expect(offered(plain("Headquarters", []))).toBe("none");
-    });
-
     it("is offered on a project made after the organization's HQ, or of no known age", () => {
       const late = { ...shop, project: { ...shop.project, created: "2026-10-04T10:00:00Z" } };
       const ageless = { ...shop, project: { ...shop.project, created: undefined } } as never;

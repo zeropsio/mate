@@ -54,9 +54,6 @@ import {
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
 
-/** The name the retired per-organization HQ gave its project: that project is no plain one. */
-const RETIRED_HQ_PROJECT_NAME = "Headquarters";
-
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
   /**
@@ -358,8 +355,8 @@ export interface PlainProjectEvidence {
 
 /**
  * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
- * structure): no Mate, no place in HQ and no record of it there at all, not the organization's HQ
- * by its name, and not one this tab is making. A project's tags and its age decide
+ * structure): no Mate, no place in HQ and no record of it there at all, and not one this tab is
+ * making. A project's tags and its age decide
  * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
  */
 export function plainZeropsProject(
@@ -369,7 +366,6 @@ export function plainZeropsProject(
   if (evidence === undefined) return false;
   return (
     project.hq === undefined &&
-    project.name !== RETIRED_HQ_PROJECT_NAME &&
     !evidence.hqRecords.has(project.id) &&
     !evidence.local.has(project.id)
   );

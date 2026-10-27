@@ -282,7 +282,6 @@ export {
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
-  shownHqVerdictAtom,
   mateOfEnvironmentAtom,
   NO_MATE_LINKS,
   shownMateLinksAtom,
@@ -300,7 +299,6 @@ export {
   type HqMateOwner,
   type HqProjectPeople,
 } from "./projections/hqProjectPeople.ts";
-export type { HqVerdict } from "./families/hqVerdict.ts";
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
 

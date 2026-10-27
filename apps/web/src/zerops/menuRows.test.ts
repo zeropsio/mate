@@ -3,9 +3,7 @@ import {
   makeAccountStore,
   projectsScope,
   type AccountStore,
-  type HqVerdict,
 } from "@t3tools/client-runtime/data";
-import { seedHqVerdict } from "@t3tools/client-runtime/data/fixtures";
 import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
@@ -71,7 +69,6 @@ describe("menuRowsAtom", () => {
     });
     const atom = menuRowsAtom(ORG, []);
     const frames: MenuRows[] = [registry.get(atom)];
-    seedHqVerdict(store, ORG, "official");
     frames.push(registry.get(atom));
     // The live order of a cold load: HQ's navigation answers first, the listing after it.
     mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
@@ -85,23 +82,6 @@ describe("menuRowsAtom", () => {
     for (const frame of frames.slice(0, -1)) {
       expect(frame).toEqual({ settled: false, rows: [] });
     }
-  });
-
-  it("on a first sign-in, waits for whether the organization has an HQ before it draws", () => {
-    const registry = AtomRegistry.make();
-    const atom = menuRowsAtom(ORG, []);
-    // The listing lands before the member list says whether there is an official HQ.
-    const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    const frames: MenuRows[] = [registry.get(atom)];
-    seedHqVerdict(store, ORG, "official");
-    hqLink(store, undefined);
-    frames.push(registry.get(atom));
-    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
-    const settled = registry.get(atom);
-
-    expect(settled.settled).toBe(true);
-    expect(settled.rows.map(({ project }) => project.hq !== undefined)).toEqual([true, true]);
-    for (const frame of frames) expect(frame).toEqual({ settled: false, rows: [] });
   });
 
   type Outcome = "transient" | "definitive-refusal" | "slow";
@@ -136,50 +116,43 @@ describe("menuRowsAtom", () => {
   };
 
   it.each([
-    { case: "the HQ verdict undecided", verdict: "pending", drawn: false },
+    { case: "HQ's link not yet demanded", drawn: false },
     {
       case: "an official HQ's first read under way",
-      verdict: "official",
       hq: "open",
       drawn: false,
     },
     {
       case: "an official HQ's first attempt failed, inside the wait",
-      verdict: "official",
       hq: "transient",
       drawn: false,
     },
     {
       case: "an official HQ's first attempt failed and the wait ran out",
-      verdict: "official",
       hq: "transient",
       waitedOut: true,
       drawn: true,
     },
     {
       case: "an official HQ slow to answer, inside the wait",
-      verdict: "official",
       hq: "slow",
       drawn: false,
     },
     {
       case: "an official HQ slow to answer and the wait ran out",
-      verdict: "official",
       hq: "slow",
       waitedOut: true,
       drawn: true,
     },
-    { case: "an official HQ refused", verdict: "official", hq: "definitive-refusal", drawn: true },
+    { case: "an official HQ refused", hq: "definitive-refusal", drawn: true },
   ] satisfies ReadonlyArray<{
     case: string;
-    verdict: HqVerdict;
     hq?: Outcome | "open";
     waitedOut?: boolean;
     drawn: boolean;
-  }>)("with the listing read, $case: drawn $drawn", ({ verdict, hq, waitedOut, drawn }) => {
+  }>)("with the listing read, $case: drawn $drawn", ({ hq, waitedOut, drawn }) => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    seedHqVerdict(store, ORG, verdict);
     if (hq !== undefined) hqLink(store, hq === "open" ? undefined : hq);
     const frame = registry.get(
       menuRowsAtom(ORG, [], { waitedOut: waitedOut === true, drawn: false }),
@@ -194,7 +167,6 @@ describe("menuRowsAtom", () => {
   it("A first HQ hiccup holds the menu instead of drawing the names alone", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    seedHqVerdict(store, ORG, "official");
     const atom = menuRowsAtom(ORG, []);
     hqLink(store, "transient");
     const frames: MenuRows[] = [registry.get(atom)];
@@ -217,7 +189,6 @@ describe("menuRowsAtom", () => {
       demandDetail: () => () => {},
       renewHeld: () => {},
     });
-    seedHqVerdict(store, ORG, "official");
     mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
     const link = `zerops:${ORG}` as const;
     for (const key of [link, projectsScope(ORG)])
@@ -237,7 +208,6 @@ describe("menuRowsAtom", () => {
   it("The menu paints its rows once each Mate's last words are read, not before", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    seedHqVerdict(store, ORG, "official");
     const atom = menuRowsAtom(ORG, []);
     mountHqNavigation(
       registry,
@@ -263,7 +233,6 @@ describe("menuRowsAtom", () => {
   it("A Mate whose last words have not come by the wait's end paints without them", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    seedHqVerdict(store, ORG, "official");
     mountHqNavigation(
       registry,
       ORG,
@@ -277,7 +246,6 @@ describe("menuRowsAtom", () => {
   it("Rows once drawn stay while HQ reads again", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [ADA, ZOE]);
-    seedHqVerdict(store, ORG, "official");
     hqLink(store, "transient");
     // HQ did not answer within the wait: the projects stand by their names alone.
     const fallback = registry.get(menuRowsAtom(ORG, [], { waitedOut: true, drawn: false }));
@@ -297,7 +265,6 @@ describe("menuRowsAtom", () => {
       demandDetail: () => () => {},
       renewHeld: () => {},
     });
-    seedHqVerdict(store, ORG, "official");
     mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
     expect(registry.get(menuRowsAtom(ORG, []))).toEqual({ settled: false, rows: [] });
   });
@@ -309,7 +276,6 @@ describe("personal Chiefs in the menu data", () => {
     const own = { ...ADA, id: "own-chief", name: "Chief · Ada", tagList: ["mate", "chief"] };
     const other = { ...ZOE, id: "other-chief", name: "Chief · Zoe", tagList: ["mate", "chief"] };
     const store = mountRoster(registry, ORG, [ADA, own, other]);
-    seedHqVerdict(store, ORG, "official");
     const atom = menuRowsAtom(ORG, []);
     expect(registry.get(atom).rows).toEqual([]);
     mountHqNavigation(
