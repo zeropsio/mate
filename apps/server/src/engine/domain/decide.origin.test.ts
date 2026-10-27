@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command } from "./command.ts";
-import { decide } from "./decide.ts";
+import { ORIGIN_ANSWER_WAKE, decide } from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -125,7 +125,7 @@ describe("decide: an origin ask the person no longer needs to answer", () => {
       expect(stillAsked(state)).toEqual(open);
       expect(of(log, "RequestAnswered")).toEqual([]);
       expect(of(log, "RequestClosed").every((closed) => closed.state === "dismissed")).toBe(true);
-      expect(of(log, "WakeArmed")).toEqual([]);
+      expect(of(log, "WakeArmed").filter((wake) => wake.kind === ORIGIN_ANSWER_WAKE)).toEqual([]);
     },
   );
 

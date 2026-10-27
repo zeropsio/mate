@@ -44,3 +44,34 @@ export function originAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "or
   const reason = typeof why === "string" ? why.trim().slice(0, REASON_MAX) : "";
   return { kind: "origin", url, repo, reason: reason === "" ? null : reason };
 }
+
+/**
+ * An origin the person was asked about that needs their pick no more, read off zcp's answer to
+ * `zerops_origin`: `connected`, the address already is the origin of a repository in HQ — `repo`
+ * names the one holding it, and every ask naming the address is settled, as zcp would ask none of
+ * them now; `withdrawn` (`action=withdraw`), the agent no longer needs the pick — of the one
+ * repository `repo` names, else of every repository asked about the address. `null` for every
+ * other call, or a malformed answer.
+ */
+export function originSettledOfCall(body: ItemBody): {
+  readonly url: string;
+  readonly how: "connected" | "withdrawn";
+  readonly repo?: string;
+} | null {
+  const answer = zcpAnswerOfCall(body, ORIGIN_REQUEST_TOOL);
+  if (answer === null || answer.requested !== undefined) return null;
+  const settled = isRecord(answer.connected)
+    ? { how: "connected" as const, said: answer.connected, repo: answer.connected.repo }
+    : isRecord(answer.withdrawn)
+      ? { how: "withdrawn" as const, said: answer.withdrawn, repo: undefined }
+      : null;
+  const origin = settled !== null && isRecord(settled.said.origin) ? settled.said.origin : null;
+  const url = originAddress(origin?.url);
+  if (settled === null || origin === null || url === null) return null;
+  const repo = settled.how === "connected" ? settled.repo : origin.repo;
+  return {
+    url,
+    how: settled.how,
+    ...(typeof repo === "string" && REPO_NAME.test(repo) ? { repo } : {}),
+  };
+}
