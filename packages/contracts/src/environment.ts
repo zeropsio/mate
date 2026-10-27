@@ -219,6 +219,8 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
       reason: Schema.optionalKey(Schema.String),
       /** Which restart the phase is about: a press settles on its own attempt, never an older one. */
       attempt: Schema.optionalKey(Schema.String),
+      /** When that restart was asked for, by the server's clock (ISO 8601). */
+      startedAt: Schema.optionalKey(Schema.String),
     }),
   ),
 });

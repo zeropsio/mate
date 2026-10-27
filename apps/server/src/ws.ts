@@ -442,7 +442,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
-      const { serverVersion } = yield* serverEnvironment.getDescriptor;
+      const { serverVersion, bootId } = yield* serverEnvironment.getDescriptor;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
       yield* Effect.addFinalizer(() =>
@@ -1305,6 +1305,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           zeropsMateUpdate,
           isZeropsEnvironment: isZeropsEnvironment(config),
           serverVersion,
+          bootId,
           zeropsDataConsole,
           zeropsGitRemoteProbe,
           zeropsCrewProposals,

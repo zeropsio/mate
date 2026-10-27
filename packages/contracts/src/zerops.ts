@@ -1049,6 +1049,12 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   error: Schema.optional(Schema.String),
   /** The container restart this press started or joined: its line's `update.restart.attempt`. */
   restartAttempt: Schema.optional(Schema.String),
+  /** What that restart installs: zcp's version, and the mate's when it moves too. */
+  restartTarget: Schema.optional(
+    Schema.Struct({ zcp: Schema.optional(Schema.String), mate: Schema.optional(Schema.String) }),
+  ),
+  /** The boot of the server that answered: a reboot is judged against it. */
+  bootId: Schema.optional(Schema.String),
   serverVersion: Schema.String,
 });
 export type ZeropsMateUpdateResult = typeof ZeropsMateUpdateResult.Type;

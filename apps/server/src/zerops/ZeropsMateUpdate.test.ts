@@ -524,7 +524,7 @@ describe("a Mate that only a restart gets current", () => {
       // attempt's postponed line as this one's.
       expect((yield* service.current)?.restart).toMatchObject({ phase: "draining", attempt });
       // Pressed again while it waits: the same restart, not a second one.
-      expect(yield* service.restart).toEqual({ started: true, attempt });
+      expect(yield* service.restart).toEqual(press);
       yield* Deferred.succeed(idle, true);
       yield* awaitPhase(service, "restarting");
       expect(drain.drains).toEqual([{ automatic: false }]);

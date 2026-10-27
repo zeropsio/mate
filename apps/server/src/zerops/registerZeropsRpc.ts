@@ -94,6 +94,8 @@ export interface RegisterZeropsRpcDeps {
   readonly isZeropsEnvironment: boolean;
   /** This server's own version, read before `zcp mate update` runs. */
   readonly serverVersion: string;
+  /** This server's boot: every answer to Update names it, so a reboot is judged against it. */
+  readonly bootId?: string | undefined;
   readonly zeropsDataConsole: ZeropsDataConsoleModule.ZeropsDataConsole["Service"];
   readonly zeropsGitRemoteProbe: ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"];
   /** *Let Fen suggest a crew*: a roster from the goal, on the Mate's own agent. */
@@ -132,7 +134,7 @@ const TIMEOUT_MESSAGE_MARKER = "timed out";
 export const runZeropsMateUpdate = (
   deps: Pick<
     RegisterZeropsRpcDeps,
-    "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion"
+    "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion" | "bootId"
   >,
 ) =>
   Effect.gen(function* () {
@@ -143,7 +145,10 @@ export const runZeropsMateUpdate = (
       });
     }
     const serverVersion = deps.serverVersion;
-    // Only a container restart gets this Mate current: the same verb restarts it once idle.
+    // Every answer names the boot that gave it, so the client judges a reboot against it.
+    const boot = deps.bootId === undefined ? {} : { bootId: deps.bootId };
+    // Only a container restart gets this Mate current: the same verb restarts it once idle, and
+    // the answer says so, whatever the client read before it pressed.
     if ((yield* deps.zeropsMateUpdate.current)?.restart?.needed === true) {
       const start = yield* deps.zeropsMateUpdate.restart;
       return start.started
@@ -152,9 +157,17 @@ export const runZeropsMateUpdate = (
             restarted: false,
             started: true,
             restartAttempt: start.attempt,
+            restartTarget: start.target,
+            ...boot,
             serverVersion,
           }
-        : { action: "none" as const, restarted: false, error: start.reason, serverVersion };
+        : {
+            action: "none" as const,
+            restarted: false,
+            error: start.reason,
+            ...boot,
+            serverVersion,
+          };
     }
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
       Effect.catchTags({
@@ -173,7 +186,7 @@ export const runZeropsMateUpdate = (
     if (result.action === "updated") {
       yield* deps.zeropsMateUpdate.refresh;
     }
-    return { ...result, serverVersion };
+    return { ...result, ...boot, serverVersion };
   });
 
 /**

@@ -107,7 +107,7 @@ const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
 );
 
 const SelfRestartAnswer = Schema.Union([
-  Schema.Struct({ error: Schema.String }),
+  Schema.Struct({ error: Schema.String, refused: Schema.optionalKey(Schema.Boolean) }),
   Schema.Struct({ processId: Schema.optionalKey(Schema.String) }),
 ]);
 const decodeSelfRestartAnswer = Schema.decodeUnknownOption(
@@ -122,8 +122,11 @@ const decodeSelfRestartAnswer = Schema.decodeUnknownOption(
 export type SelfRestartResult =
   | { readonly outcome: "accepted"; readonly process?: string | undefined }
   | { readonly outcome: "refused"; readonly reason: string }
-  /** No answer in words (a timeout, unreadable output): the platform may have taken it. */
-  | { readonly outcome: "uncertain" };
+  /**
+   * No refusal said (an `error` without `refused`, a timeout, unreadable output): the platform
+   * may have taken it. `reason` is zcp's line when it wrote one.
+   */
+  | { readonly outcome: "uncertain"; readonly reason?: string | undefined };
 
 /** zcp's answer: the last line of its stdout that reads as one, past any notice printed before. */
 const lastAnswer = (stdout: string) => {
@@ -223,9 +226,9 @@ export class ZeropsCli extends Context.Service<
     /**
      * Runs `zcp self restart --json` with stdin closed: the platform restarts this container's own
      * zcp service with the project's token. Answers once the platform accepts, never waiting for
-     * the restart, which ends this server. Always a result: a zcp that refuses, lacks the verb or
-     * does not answer reads `refused`. The caller reads the version first
-     * ({@link ZCP_SELF_RESTART_SINCE}).
+     * the restart, which ends this server. Always a result: only zcp's `error` marked `refused`,
+     * or a zcp that could not be run, reads `refused`; any other error, or no answer, reads
+     * `uncertain`. The caller reads the version first ({@link ZCP_SELF_RESTART_SINCE}).
      */
     readonly selfRestart: Effect.Effect<SelfRestartResult>;
   }
@@ -456,7 +459,12 @@ export const make = (options: ZeropsCliOptions) =>
           for (let index = lines.length - 1; index >= 0; index--) {
             const answer = decodeSelfRestartAnswer(lines[index]!.trim());
             if (Option.isNone(answer)) continue;
-            if ("error" in answer.value) return { outcome: "refused", reason: answer.value.error };
+            // zcp says `error` for any failure of its restart call, a timeout included: only
+            // `refused` says the platform will not restart this container.
+            if ("error" in answer.value)
+              return answer.value.refused === true
+                ? { outcome: "refused", reason: answer.value.error }
+                : { outcome: "uncertain", reason: answer.value.error };
             if (result.code === 0)
               return answer.value.processId === undefined
                 ? { outcome: "accepted" }
