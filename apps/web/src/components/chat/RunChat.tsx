@@ -4251,7 +4251,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     record: liveHeld.size === 0 ? recordKeys : recordKeys.filter((key) => !liveHeld.has(key)),
     final: !slotted,
     turnOver: row.status?.waitingOnHelpers === true,
-    syncing: ctx.syncing,
+    // Kept out of sight, nobody watches either: what arrives is history at once, so coming back
+    // shows it, never a backlog still playing one line at a time.
+    syncing: ctx.syncing || outOfSight,
     quietFrom,
     onChange: (from, to, redrawn) => {
       // Out of sight, nobody watches it land: what arrives is simply there.

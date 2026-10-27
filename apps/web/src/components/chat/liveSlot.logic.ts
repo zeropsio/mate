@@ -26,7 +26,8 @@
  *   and once said it stands its minimum against words — a call takes its
  *   place once it has stood the pace, so the call shows as it runs.
  * - What the record holds when the slot is first drawn is history at once,
- *   and so is everything once the run is over (`final`).
+ *   and so is what is read in before it (a live card paging back), and
+ *   everything once the run is over (`final`).
  *
  * The timing reuses the now line's calm (`nowLineCalm.logic`): one clock,
  * `due` and `settle`, driven by `useLiveSlot`.
@@ -334,13 +335,17 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
     );
   const fresh = offer.record.filter((key) => !slot.seen.has(key));
+  // What arrives before the first line the slot has seen is the run's earlier lines read in (a
+  // live card's scroll paging back): history at once, never played through the slot.
+  const firstSeen = offer.record.findIndex((key) => slot.seen.has(key));
+  const drawnIn = new Set(firstSeen <= 0 ? [] : offer.record.slice(0, firstSeen));
   const inSlot = new Set(entries.map((entry) => entry.key));
   const waitingAlready = new Set(slot.pending);
   // Never shown live — a note placed, a call that said nothing until it
   // returned, one that started and ended while another stood: it waits its
   // turn. The person's answer to a question standing rises in under it.
   let unseen = fresh.filter(
-    (key) => !inSlot.has(key) && !live.has(key) && !waitingAlready.has(key),
+    (key) => !drawnIn.has(key) && !inSlot.has(key) && !live.has(key) && !waitingAlready.has(key),
   );
   const asked = entries.findIndex(
     (entry) => standsAfterItsEnd(entry.key) && entry.answer === undefined,
