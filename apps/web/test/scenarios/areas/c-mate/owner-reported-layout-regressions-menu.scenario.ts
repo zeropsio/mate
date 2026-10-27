@@ -267,7 +267,7 @@ describe("owner-reported layout regressions", () => {
 
     describe("Decision: opening a menu row brings what it opened into view.", () => {
       describe("B: a project opened in a long list", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           it.effect(
             "the last project's Mates come into view when it opens; one already in view leaves the list where it is",
             () =>
