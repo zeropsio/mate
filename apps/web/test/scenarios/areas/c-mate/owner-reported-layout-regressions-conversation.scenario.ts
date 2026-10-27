@@ -960,6 +960,185 @@ describe("owner-reported layout regressions", () => {
             }),
         );
 
+        // k27, Aleš on mate.zerops.io: Mates that had worked a while opened onto their cards
+        // playing back every step since the turn began, one at a time. A page out of sight wakes
+        // its timers once a second at best, then once a minute: what arrived meanwhile waited its
+        // turn in the card's slot.
+        const workedOutOfSight = Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          const engine = chat.fixture().wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send("Run the long piece of work");
+          const run = [...engine.runs.values()].at(-1)!.id;
+          // The person reads another tab while the Mate works: its page is out of sight.
+          const tab = yield* Effect.promise(() => s.web.newPage(s.page.browserContext()));
+          yield* Effect.promise(() => tab.bringToFront());
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => document.visibilityState === "hidden"),
+          );
+          // Past a window's tail and a page after it: read back once the card is opened afresh,
+          // the card reads the second page as the reader nears its top.
+          const done = 2 * engine.liveTailItems + engine.runPageItems;
+          for (let step = 0; step < done; step++)
+            engine.item(run, {
+              kind: "call",
+              step: "command",
+              tool: { name: "Bash" },
+              words: `Command ${step}`,
+              state: "done",
+              endedAt: yield* Clock.currentTimeMillis,
+              input: `Bash: echo step-${step}`,
+            });
+          // Out of sight, nothing paints to wait on: the steps reach the page over its socket.
+          yield* Effect.sleep("2 seconds");
+          return { s, tab, engine, run, done };
+        });
+        /** Each frame the page paints, from now: the lines the live card's slot draws. */
+        const startSlotTrace = (page: Page) =>
+          page.evaluate(() => {
+            const frames: string[][] = [];
+            const state = { active: true, frames };
+            const tick = () => {
+              const slot = [...document.querySelectorAll<HTMLElement>("[data-run-now]")].at(-1);
+              frames.push(
+                [...(slot?.querySelectorAll<HTMLElement>("[data-run-key]") ?? [])].map(
+                  (line) => line.dataset.runKey!,
+                ),
+              );
+              if (state.active) requestAnimationFrame(tick);
+            };
+            (window as unknown as { slotTrace: typeof state }).slotTrace = state;
+            requestAnimationFrame(tick);
+          });
+        const stopSlotTrace = (page: Page) =>
+          page.evaluate(() => {
+            const state = (
+              window as unknown as { slotTrace: { active: boolean; frames: string[][] } }
+            ).slotTrace;
+            state.active = false;
+            return state.frames;
+          });
+        /** Waits until the Working card's scroll has stood still for `frames` painted frames. */
+        const scrollStands = (page: Page, frames: number) =>
+          page.evaluate(
+            (selector: string, wanted: number) =>
+              new Promise<void>((resolve) => {
+                let last = Number.NaN;
+                let still = 0;
+                const tick = () => {
+                  const top = [...document.querySelectorAll<HTMLElement>(selector)].at(
+                    -1,
+                  )!.scrollTop;
+                  still = Math.abs(top - last) < 0.5 ? still + 1 : 0;
+                  last = top;
+                  if (still >= wanted) resolve();
+                  else requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+              }),
+            INNER,
+            frames,
+          );
+
+        it.effect(
+          "a working Mate looked at again after a while out of sight shows the work it did meanwhile at once",
+          () =>
+            Effect.gen(function* () {
+              const { s, done } = yield* workedOutOfSight;
+              yield* Effect.promise(() => startSlotTrace(s.page));
+              yield* Effect.promise(() => s.page.bringToFront());
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+              const frames = yield* Effect.promise(() => stopSlotTrace(s.page));
+              expect(frames.length, "ASSERTION: the page was seen again").toBeGreaterThan(6);
+              const replayed = [...new Set(frames.flat())];
+              expect(
+                replayed,
+                `ASSERTION: none of the ${done} steps it did out of sight passes through the card's slot`,
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // k27, Aleš: reading up through the steps of a working conversation, each one landing
+        // threw the reader around. A window carries a live run's newest lines; the card reads the
+        // rest back a page at a time as the reader nears its top.
+        it.effect(
+          "reading up through a long Working card, its earlier lines read in above and its new ones below leave the reader's lines where they stand",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run, done } = yield* workedOutOfSight;
+              yield* Effect.promise(() => s.page.bringToFront());
+              // Opened afresh: the window holds the run's newest lines, the card the rest by page.
+              yield* mateChat(s).when.reload();
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (selector: string) => {
+                    const inner = document.querySelector<HTMLElement>(selector);
+                    return inner !== null && inner.scrollHeight > inner.clientHeight + 200;
+                  },
+                  { polling: "raf" },
+                  INNER,
+                ),
+              );
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+              // The reader goes up through the card toward its top: the page before is read in.
+              yield* Effect.promise(async () => {
+                const inner = (await s.page.$$(INNER)).at(-1)!;
+                const box = (await inner.boundingBox())!;
+                await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                for (let turn = 0; turn < 40; turn++) {
+                  const top = await s.page.evaluate(
+                    (selector: string) =>
+                      [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!.scrollTop,
+                    INNER,
+                  );
+                  if (top < 300) break;
+                  await s.page.mouse.wheel({ deltaY: -Math.min(2000, top - 200) });
+                  await scrollStands(s.page, 3);
+                }
+                await scrollStands(s.page, 6);
+              });
+              yield* Effect.promise(() => startScrollTrace(s.page));
+              // Steps keep arriving at its foot while the earlier ones are read in at its head.
+              for (let step = done; step < done + 6; step++) {
+                engine.item(run, {
+                  kind: "note",
+                  by: { kind: "mate" },
+                  text: `Step ${step} is under way, and the build log reads clean so far.`,
+                  streaming: false,
+                  answer: false,
+                });
+                yield* Effect.sleep("300 millis");
+              }
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 20 }));
+              const trace = yield* Effect.promise(() => stopScrollTrace(s.page));
+              const view = Object.entries(trace[0]!.innerLines)
+                .filter(([, top]) => top >= 0 && top < 400)
+                .map(([key]) => key);
+              const moved = view
+                .map((key) => {
+                  const tops = trace.flatMap((frame) => frame.innerLines[key] ?? []);
+                  return { key, travel: Math.max(...tops) - Math.min(...tops) };
+                })
+                .filter((line) => line.travel > 2)
+                .map((line) => `${line.key} ${Math.round(line.travel)} px`);
+              expect(view.length, "ASSERTION: the reader reads lines in the card").toBeGreaterThan(
+                3,
+              );
+              expect(
+                moved,
+                "ASSERTION: every line the reader reads stands where it is while lines arrive above and below",
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
         it.effect(
           "a wheel that carries the Working card past its top leaves the conversation where the reader took it",
           () =>
