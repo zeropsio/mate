@@ -141,7 +141,7 @@ describe("serveThreadTools", () => {
         const port = Number(server.env.find((variable) => variable.name.endsWith("PORT"))!.value);
         const closed = yield* Effect.promise(
           () =>
-            new Promise<string>((resolve) => {
+            new Promise<string>((resolve, reject) => {
               const socket = NodeNet.connect(port, "127.0.0.1", () => {
                 socket.write("not-the-token\n");
                 socket.write(
@@ -151,6 +151,11 @@ describe("serveThreadTools", () => {
               let received = "";
               socket.on("data", (chunk) => (received += chunk.toString()));
               socket.on("close", () => resolve(received));
+              // The server hanging up on the token may reset a write still in flight; `close`
+              // follows with what was received. Any other failure, a refused connect among them, stands.
+              socket.on("error", (error: NodeJS.ErrnoException) => {
+                if (error.code !== "ECONNRESET" && error.code !== "EPIPE") reject(error);
+              });
             }),
         );
         expect(closed).toBe("");
