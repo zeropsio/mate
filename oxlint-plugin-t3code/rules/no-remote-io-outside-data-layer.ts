@@ -273,6 +273,7 @@ export const HQ_CLIENT_VERBS = [
   "repoRemoteViaApp",
   "followRepoUpstream",
   "unfollowRepoUpstream",
+  "deleteRepo",
   "gitBrowse",
   "gitBrowseBytes",
   "gitCredentials",
