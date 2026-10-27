@@ -27,16 +27,11 @@ const card = (overrides: Partial<HqCardInput> = {}, open = false) =>
     <ZeropsHqCardView
       onOpenChange={() => undefined}
       open={open}
-      projectUrl="https://app.zerops.io/project/hq1"
-      update={<span data-test-update="true" />}
       view={hqCardView({
         admin: true,
         standing: { kind: "healthy", build: RUNS, parts: { quarantined: [] } },
-        services: undefined,
         structure: null,
         online: undefined,
-        update: undefined,
-        updating: false,
         time: (ms) => `t${String(ms)}`,
         ...overrides,
       })}
@@ -51,7 +46,7 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).not.toContain('data-dot=""');
   });
 
-  it("is healthy, with its Core's day, its last backup, what HQ holds and its update on the line", () => {
+  it("is healthy, with its Core's day, its last backup and what HQ holds on the line", () => {
     const html = card({
       standing: {
         kind: "healthy",
@@ -67,19 +62,7 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).toContain(">Version of 2026-10-03<");
     expect(html).toContain(">Last backup t42<");
     expect(html).toContain("1 project · 1 Mate · 1 online");
-    expect(html).toContain('data-test-update="true"');
     expect(html).not.toContain("data-hq-trouble");
-  });
-
-  it("reports a failed update separately from the serving HQ's health", () => {
-    const html = card({
-      update: {
-        kind: "read",
-        state: { kind: "failed", running: RUNS, carried: RUNS, reason: "Build failed." },
-      },
-    });
-    expect(html).toContain('data-hq-state="healthy"');
-    expect(html).toContain("HQ's last update failed: Build failed.");
   });
 
   const parts = (more: object) =>
@@ -119,11 +102,6 @@ describe("ZeropsHqCardView — its state", () => {
       parts({ keys: "other_secret" }),
       "Some deploy tokens are sealed under another key: HQ can't deploy with them.",
     ],
-    [
-      "a service Zerops does not run",
-      { services: [{ id: "s1", name: "db", status: "STOPPED" }] },
-      "db isn't active in Zerops: Stopped.",
-    ],
   ])("needs attention for %s, and says what in a line of its own", (_name, overrides, line) => {
     const html = card(overrides);
     expect(html).toContain('data-hq-state="degraded"');
@@ -132,23 +110,11 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).toContain(`data-hq-trouble="true">${line}</li>`);
   });
 
-  it("is down since HQ stopped answering, Zerops saying why", () => {
-    const html = card({
-      standing: { kind: "unavailable", since: 7 },
-      services: [{ id: "s1", name: "hq", status: "ACTION_FAILED" }],
-    });
+  it("is down since HQ stopped answering", () => {
+    const html = card({ standing: { kind: "unavailable", since: 7 } });
     expect(html).toContain('data-hq-state="down"');
     expect(html).toContain('data-tone="danger"');
     expect(html).toContain("Unavailable since t7");
-    expect(html).toContain(`data-hq-trouble="true">hq isn't active in Zerops: Action failed.</li>`);
-  });
-
-  it("is updating while an update runs, its dot stepping", () => {
-    const html = card({ updating: true });
-    expect(html).toContain('data-hq-state="updating"');
-    expect(html).toContain('data-tone="info"');
-
-    expect(html).toContain("Updating");
   });
 });
 
@@ -162,7 +128,6 @@ describe("ZeropsHqCardView — who reads what", () => {
     const html = card({
       admin: false,
       standing: { kind: "healthy", build: RUNS, parts: { db: "down", quarantined: [] } },
-      services: [{ id: "s1", name: "db", status: "STOPPED" }],
       structure: LINKS,
       online: 1,
     });
@@ -175,7 +140,7 @@ describe("ZeropsHqCardView — who reads what", () => {
 });
 
 describe("ZeropsHqCardView — opened", () => {
-  it("holds the Core HQ runs, its services and the way to it in Zerops; its backup stays on the line", () => {
+  it("holds the Core HQ runs; its backup stays on the line", () => {
     const html = card(
       {
         standing: {
@@ -183,38 +148,15 @@ describe("ZeropsHqCardView — opened", () => {
           build: RUNS,
           parts: { quarantined: [], backup: { state: "ok", takenAt: 42 } },
         },
-        services: [
-          { id: "s1", name: "hq", status: "ACTIVE" },
-          { id: "s2", name: "db", status: "ACTIVE" },
-        ],
       },
       true,
     );
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain("2026-10-03 08:05 UTC · ba9876543210");
     expect(html.split("Last backup t42")).toHaveLength(2);
-    expect(html).toContain("hq · Active");
-    expect(html).toContain("db · Active");
-    expect(html).toContain(
-      'href="https://app.zerops.io/project/hq1" rel="noreferrer" target="_blank"',
-    );
-    expect(html).toContain("Open in Zerops");
-  });
-
-  it("says where an update stands beside the Core", () => {
-    const html = card(
-      {
-        update: {
-          kind: "read",
-          state: { kind: "updating", target: "20261004T100000Z.0123456789ab" },
-        },
-      },
-      true,
-    );
-    expect(html).toContain("HQ is updating to the version from 2026-10-04 10:00 UTC.");
   });
 
   it("holds nothing more while closed", () => {
-    expect(card()).not.toContain("Open in Zerops");
+    expect(card()).not.toContain("ba9876543210");
   });
 });

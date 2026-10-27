@@ -135,20 +135,6 @@ describe("SidebarZeropsAccountMenu", () => {
     expect(html).toContain("Sign out");
   });
 
-  // The onboarding run, 2026-10-16: an owner looking for HQ's update opened this menu and found
-  // no hint of it; only Settings → Zerops said it, at the far end of a row.
-  it.each([
-    { waiting: true, says: true },
-    { waiting: false, says: false },
-  ])(
-    "says HQ's update is ready while one waits ($waiting), and opens where it is run",
-    ({ waiting, says }) => {
-      const html = renderMenu(waiting ? { hqUpdate: { onOpen: () => {} } } : {});
-      expect(html.includes("data-zerops-account-hq-update")).toBe(says);
-      expect(html.includes("HQ update ready")).toBe(says);
-    },
-  );
-
   it("names the page that is already open rather than lighting nothing", () => {
     expect(renderMenu({ destination: "usage" })).toContain(">Open<");
     expect(renderMenu({ destination: null })).not.toContain(">Open<");

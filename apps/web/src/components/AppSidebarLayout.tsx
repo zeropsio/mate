@@ -48,7 +48,6 @@ import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
-import { useHqGate } from "../zerops/hqGate";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { MenuSkeleton } from "./zerops/SidebarZeropsTree";
 
@@ -231,10 +230,6 @@ export function AppSidebarLayout({
   // Settings routes show the settings nav in place of the thread sidebar.
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  // Behind the organization's gate (ADR 0001) the menu holds the account alone: no Mate, no
-  // project, nothing to start.
-  const gate = useHqGate(pathname).gate;
-  const gated = gate.kind !== "open";
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -257,8 +252,8 @@ export function AppSidebarLayout({
       : false;
   });
   // Closed on a desktop, the menu is an 88 px rail of tiles (`SidebarRail`) the open menu docks
-  // from (`SidebarStage`); settings and the gate close away.
-  const rail = !isOnSettings && !gated;
+  // from (`SidebarStage`); settings closes it away.
+  const rail = !isOnSettings;
   // A menu its person left closed comes back closed: the rail, as the first frame drew it.
   const [leftOpen] = useState(readSidebarOpen);
   const sidebarProviderStyle = {
@@ -337,22 +332,6 @@ export function AppSidebarLayout({
             <>
               <SidebarChromeHeader isElectron={isElectron} />
               <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : gated ? (
-            // The open menu's own top, its mark where the menu and the first frame stand it (the
-            // Chief's place); while the members are read, its loading rows where the boot frame
-            // and the menu draw them: the gate opening into the menu moves nothing.
-            <>
-              <SidebarChromeHeader
-                brand={<SidebarChiefPlace waiting={undefined} />}
-                isElectron={isElectron}
-              />
-              <div className="relative min-h-0 flex-1">
-                {gate.kind === "reading" && !gate.failed ? (
-                  <MenuSkeleton className="absolute inset-x-0 top-0 ms-[calc(var(--sidebar-content-inset)+1px)] me-(--sidebar-content-inset)" />
-                ) : null}
-              </div>
-              <SidebarChromeFooter />
             </>
           ) : (
             <ThreadSidebar />

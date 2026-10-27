@@ -758,15 +758,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "creations and sent asks are kept by the app; the operations adapter feeds the store",
   },
   {
-    token: "sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
-    family: "operations",
-    reason: "the HQ update panel sleeps between its own polls; the operation's stream drives it",
-    paths: [
-      "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
-      "apps/web/src/zerops/accountHq.ts",
-    ],
-  },
-  {
     token: "zeropsAgentActivityOf(",
     family: "Mate attention/overview",
     reason: "Mate activity is picked by send time; the source decides, never the clock",
@@ -816,18 +807,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "member names and Mate owners come from the member list; HQ sends them finished",
   },
   {
-    token: "client.listOrganizationMembers(clientId)",
-    family: "permissions/members",
-    reason: "the client lists organization members for permissions; HQ computes them",
-    paths: ["apps/web/src/components/zerops/ZeropsHqGate.tsx"],
-  },
-  {
-    token: "bear(false)",
-    family: "permissions/members",
-    reason: "the client lists organization members for permissions; HQ computes them",
-    paths: ["apps/web/src/components/zerops/ZeropsHqGate.tsx"],
-  },
-  {
     token: "denialConfirmationDelayMs",
     family: "permissions/members",
     reason: "a 403 is confirmed after a delay; a definitive refusal stands",
@@ -849,11 +828,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   },
   {
     token: "useZeropsOrganizationMembers(",
-    family: "permissions/members",
-    reason: "the client reads organization members for owners and admins; HQ sends them finished",
-  },
-  {
-    token: "ownersAndAdmins(",
     family: "permissions/members",
     reason: "the client reads organization members for owners and admins; HQ sends them finished",
   },

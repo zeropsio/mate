@@ -80,37 +80,20 @@ export type ChiefPageView =
   /** Set up: its container comes up, and the page hands over to its conversation. */
   | { readonly kind: "coming"; readonly projectId: string };
 
-const HQ_READING = "Reaching your organization's HQ…";
-const NO_HQ = "Your organization has no HQ to record a Chief.";
-const HQ_BEHIND = "Your organization's HQ needs its update before it can record a Chief.";
 const MAY_NOT_CREATE = "Only someone who may create projects in this organization can set one up.";
 
 export function chiefPageView(input: {
   readonly own: OwnChief;
   readonly setup: ChiefSetup;
-  /**
-   * The organization's HQ: reached, still being reached, none, or reached but running an older
-   * Core than this app carries — one that cannot record a Chief, so a setup would stop half made.
-   */
-  readonly hq: "official" | "reading" | "none" | "behind";
   /** The person may make the project a Chief lives in (HQ's `create_app`). */
   readonly mayCreate: boolean;
 }): ChiefPageView {
   const { setup, own } = input;
   if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
   if (setup.phase === "done") return { kind: "coming", projectId: setup.projectId };
-  if (input.hq === "none") return { kind: "offer", blocked: NO_HQ };
   if (own === undefined) return { kind: "reading" };
   if (own !== null) return { kind: "coming", projectId: own };
-  const blocked =
-    input.hq === "reading"
-      ? HQ_READING
-      : input.hq === "behind"
-        ? HQ_BEHIND
-        : input.mayCreate
-          ? undefined
-          : MAY_NOT_CREATE;
-  return { kind: "offer", blocked };
+  return { kind: "offer", blocked: input.mayCreate ? undefined : MAY_NOT_CREATE };
 }
 
 /**

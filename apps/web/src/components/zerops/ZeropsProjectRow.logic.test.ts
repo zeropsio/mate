@@ -5,7 +5,6 @@ import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -305,7 +304,6 @@ describe("deriveZeropsRowAction", () => {
     /** Nothing at HQ of it. */
     const EVIDENCE: PlainProjectEvidence = {
       hqRecords: new Set(),
-      hqAnchors: new Set(["hq-1"]),
       local: new Set(),
     };
     const offered = (
@@ -333,15 +331,11 @@ describe("deriveZeropsRowAction", () => {
     });
 
     // Security review 1 and 11: plain needs positive evidence. A project HQ holds any record of, one
-    // this tab is making, the HQ itself — or one nothing can tell apart, HQ's structure not known —
+    // this tab is making — or one nothing can tell apart, HQ's structure not known —
     // is never offered it.
     const shop = plain("shop", []);
     it.each([
       { case: "HQ holds a record of it", evidence: { ...EVIDENCE, hqRecords: new Set(["bare"]) } },
-      {
-        case: "an HQ anchor names it, official or not",
-        evidence: { ...EVIDENCE, hqAnchors: new Set(["bare"]) },
-      },
       { case: "this tab is making it", evidence: { ...EVIDENCE, local: new Set(["bare"]) } },
       { case: "no evidence read at all", evidence: "none" as const },
     ])("is not offered where $case", ({ evidence }) => {
@@ -387,18 +381,10 @@ describe("deriveZeropsRowAction", () => {
 
     describe("plainEvidenceOf — the page's evidence", () => {
       const STRUCTURE = { ungrouped: [], apps: [] } as never;
-      const evidence = (
-        hq: OfficialHq = { kind: "official", projectId: "hq-1", address: "https://hq.test" },
-        hqKnown = true,
-      ) => plainEvidenceOf({ hqKnown, structure: STRUCTURE, presses: null, hq, local: [] });
-
-      it("names the official HQ's own project as its anchor", () => {
-        expect(evidence()?.hqAnchors).toEqual(new Set(["hq-1"]));
-      });
-
-      it("is none while HQ's structure is not known, or with no official HQ", () => {
-        expect(evidence({ kind: "none" }, false)).toBeUndefined();
-        expect(evidence({ kind: "unclear", projectIds: ["hq-1", "old-hq"] })).toBeUndefined();
+      it("is none while HQ's structure is not known", () => {
+        expect(
+          plainEvidenceOf({ hqKnown: false, structure: STRUCTURE, presses: null, local: [] }),
+        ).toBeUndefined();
       });
 
       // A press HQ holds a record of — at work in another browser, or stopped — is that Mate
@@ -413,7 +399,6 @@ describe("deriveZeropsRowAction", () => {
             hqKnown: true,
             structure: STRUCTURE,
             presses,
-            hq: { kind: "official", projectId: "hq-1", address: "https://hq.test" },
             local: [],
           })?.hqRecords,
         ).toEqual(new Set(["p-pressing", "p-stopped"]));

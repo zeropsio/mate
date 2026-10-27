@@ -173,7 +173,6 @@ import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
-import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
@@ -712,9 +711,6 @@ export function OpenCommandPaletteDialog(props: {
   readonly onLeaveCommands?: () => void;
 }) {
   const navigate = useNavigate();
-  // Behind the organization's gate (ADR 0001) nothing is offered to make.
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const gated = useHqGate(pathname).gate.kind !== "open";
   const roleOffered = useRoleOffers();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(props.initialQuery ?? "");
@@ -1778,7 +1774,7 @@ export function OpenCommandPaletteDialog(props: {
     },
   });
 
-  if (!gated && roleOffered.newProject) {
+  if (roleOffered.newProject) {
     actionItems.push({
       kind: "action",
       value: "action:add-project",

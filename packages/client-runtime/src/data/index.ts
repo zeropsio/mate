@@ -290,11 +290,6 @@ export {
 } from "./reads.ts";
 
 export {
-  hqBirthProgress,
-  hqBirthRequestId,
-  type HqBirthProgress,
-} from "./projections/hqBirthProgress.ts";
-export {
   mateRegistration,
   registrationRequestId,
   type MateRegistration,

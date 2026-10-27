@@ -16,11 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_ZEROPS_SIGN_IN?: string;
   /** Swaps the device login's consent page origin, e.g. a local HQ; the API's link when unset. */
   readonly VITE_ZEROPS_CONSENT_ORIGIN?: string;
-  /**
-   * The one HQ every organization signs in to (`zerops/accountHq.ts` `configuredHq`); unset, the
-   * legacy per-org path reads each organization's anchor.
-   */
-  readonly VITE_HQ_ORIGIN?: string;
+  /** The one HQ every organization signs in to (`zerops/accountHq.ts` `configuredHq`). */
+  readonly VITE_HQ_ORIGIN: string;
   /** The login app the consent page asks for; `mate` when unset. */
   readonly VITE_ZEROPS_LOGIN_APP_CODE?: string;
   readonly APP_VERSION: string;

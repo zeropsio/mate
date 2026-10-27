@@ -14,7 +14,7 @@
  */
 
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowUpCircleIcon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import { EllipsisIcon, LogOutIcon } from "lucide-react";
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
@@ -27,7 +27,6 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
-import { useHqUpdateWaiting } from "~/zerops/hqUpdateWaiting";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
 import {
@@ -89,8 +88,6 @@ export interface SidebarZeropsAccountProps {
    * what a press opens.
    */
   readonly chief?: { readonly icon: ReactNode; readonly onSetUp: () => void } | undefined;
-  /** While HQ's update waits for an owner or an admin (`useHqUpdateWaiting`): what a press opens. */
-  readonly hqUpdate?: { readonly onOpen: () => void } | undefined;
 }
 
 export function SidebarZeropsAccount({
@@ -106,7 +103,6 @@ export function SidebarZeropsAccount({
   signOutError = null,
   collapsed = false,
   chief,
-  hqUpdate,
 }: SidebarZeropsAccountProps) {
   const accountMenu = useContext(AccountMenuContext);
   const control = collapsed ? "rail" : "menu";
@@ -133,7 +129,6 @@ export function SidebarZeropsAccount({
         signingOut={signingOut}
         signOutError={signOutError}
         chief={chief}
-        hqUpdate={hqUpdate}
       />
     </MenuPopup>
   );
@@ -212,7 +207,6 @@ export function SidebarZeropsAccountMenu({
   signingOut = false,
   signOutError = null,
   chief,
-  hqUpdate,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
@@ -324,14 +318,6 @@ export function SidebarZeropsAccountMenu({
           <span className="text-xs text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
-      {/* HQ's update, while one waits: otherwise only Settings → Zerops says it. */}
-      {hqUpdate === undefined ? null : (
-        <MenuItem data-zerops-account-hq-update="" onClick={hqUpdate.onOpen}>
-          <ArrowUpCircleIcon />
-          <span className="min-w-0 flex-1 truncate">HQ update ready</span>
-          <span className="text-xs text-muted-foreground">Update</span>
-        </MenuItem>
-      )}
       {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
         <MenuItem
           data-zerops-account-destination={entry.id}
@@ -394,7 +380,6 @@ export function SidebarZeropsAccountRow({
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const chiefOffer = useChiefOffer();
-  const hqUpdateWaiting = useHqUpdateWaiting();
 
   if (session === null || session.status !== "signed-in") return null;
   const { user, organizations, activeOrganization, selectOrganization, signOut } = session;
@@ -446,16 +431,6 @@ export function SidebarZeropsAccountRow({
               onSetUp: () => {
                 closeMobile();
                 void navigate({ to: "/chief" });
-              },
-            }
-          : undefined
-      }
-      hqUpdate={
-        hqUpdateWaiting
-          ? {
-              onOpen: () => {
-                closeMobile();
-                void navigate({ to: "/settings/zerops" });
               },
             }
           : undefined

@@ -43,8 +43,6 @@ import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
-import * as accountHq from "~/zerops/accountHq";
-import * as hqUpdate from "./ZeropsHqUpdate";
 import {
   restingActivity,
   threadAgentActivity,
@@ -854,22 +852,6 @@ describe("SidebarZeropsTree", () => {
     const html = render(candidates);
     for (const text of shows) expect(html).toContain(text);
     for (const text of hides) expect(html).not.toContain(text);
-  });
-
-  it("says nothing at all when the organization holds only its HQ: HQ is no project to set a Mate up in", () => {
-    const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
-      status: "ready",
-      hq: { kind: "official", projectId: "unplaced", address: "https://hq.invalid" },
-      admins: [],
-      reread: () => {},
-    });
-    try {
-      const html = render([candidate("unplaced", {}, "ready", false)]);
-      expect(html).not.toContain("sidebar-environments-empty");
-      expect(html).not.toContain("Set up Mate");
-    } finally {
-      official.mockRestore();
-    }
   });
 
   it("marks the active Mate", () => {
@@ -4606,19 +4588,15 @@ it("the tree retains its order on a timestamp-only delivery and each row reads o
   expect(onSelect).toHaveBeenLastCalledWith(b);
 });
 
-it("HQ's outage header exposes its source time and service destination", () => {
+it("HQ's outage header exposes its source time", () => {
   const html = renderToStaticMarkup(
     <SidebarHqStatus
       kind="last-known"
       line="HQ is not reachable since 10:36 — showing what it last said."
-      serviceUrl="https://app.zerops.io/service-stack/hq-core"
       onAgain={() => {}}
     />,
   );
   expect(html).toContain("since 10:36");
-  expect(html).toContain('href="https://app.zerops.io/service-stack/hq-core"');
-  expect(html).toContain("Open in Zerops");
-  expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
 });
 
 it("a retained Mate line keeps its row clickable and offers Zerops separately", () => {
@@ -5018,17 +4996,6 @@ describe("menu liveness through HQ records", () => {
 it("a reader sees the protocol notice without an update action", () => {
   session.viewer = "reader";
   session.role = "READ_ONLY";
-  const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
-    status: "ready",
-    hq: { kind: "official", projectId: "hq1", address: "https://hq.invalid" },
-    admins: [],
-    reread: () => {},
-  });
-  const carried = vi.spyOn(accountHq, "useCarriedCoreBuild").mockReturnValue("current");
-  // This case owns the menu permission gate; the update dialog has its own render suite.
-  const update = vi
-    .spyOn(hqUpdate, "ZeropsHqUpdate")
-    .mockImplementation(({ trigger }) => <button>{trigger}</button>);
   const registry = AtomRegistry.make();
   const { store } = mountHqNavigation(registry, "org", {
     structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
@@ -5077,30 +5044,7 @@ it("a reader sees the protocol notice without an update action", () => {
     );
     expect(text(surface(tree, "sidebar-mate-name"))).toContain("Ada");
     expect(text(surface(tree, "sidebar-environments"))).not.toContain("Update HQ");
-    // The same notice offers its action to an admin: the reader role alone suppresses it.
-    session.role = "ADMIN";
-    act(() =>
-      tree.update(
-        <RegistryContext.Provider value={registry}>
-          <SidebarZeropsTree
-            candidates={[
-              candidate("Ada", {
-                tags: ["mate"],
-                hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
-              }),
-            ]}
-            complete
-            onSelect={() => {}}
-            onBrowseProjects={() => {}}
-          />
-        </RegistryContext.Provider>,
-      ),
-    );
-    expect(text(surface(tree, "sidebar-environments"))).toContain("Update HQ");
   } finally {
-    official.mockRestore();
-    carried.mockRestore();
-    update.mockRestore();
     registry.dispose();
   }
 });

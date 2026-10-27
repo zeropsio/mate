@@ -150,32 +150,12 @@ export default defineRule({
                   specifier.imported.name === "useZeropsRegistry",
               ),
           );
-        case "bear(false)":
-          // The old permission read has gone; dispatch and refusal live in hq-birth.
-          return (
-            path === "apps/web/src/components/zerops/ZeropsHqGate.tsx" &&
-            text.includes('kind:"hq-birth"') &&
-            text.includes("operations.submit(")
-          );
         case "useZeropsOrganizationMembersRead":
           return (
-            (path === "apps/web/src/zerops/useZeropsMateOwners.ts" &&
-              body(token).includes("useProjection(organizationMembers,") &&
-              body(token).includes('family:"organizationMembers"') &&
-              !hasWriter(body(token))) ||
-            (path === "apps/web/src/zerops/accountHq.ts" &&
-              text.includes("findOfficialHq(members)") &&
-              !/(?:isViewer|mayWrite|mine)(?::|=)/u.test(text))
-          );
-        case "ownersAndAdmins(":
-          return (
-            (path === "packages/client-runtime/src/zerops/hq/anchor.ts" &&
-              body("ownersAndAdmins").includes("members.filter(") &&
-              body("ownersAndAdmins").includes("!isTokenMember(member)") &&
-              !hasWriter(body("ownersAndAdmins"))) ||
-            (path === "apps/web/src/zerops/accountHq.ts" &&
-              text.includes("findOfficialHq(members)") &&
-              !/(?:isViewer|mayWrite|mine)(?::|=)/u.test(text))
+            path === "apps/web/src/zerops/useZeropsMateOwners.ts" &&
+            body(token).includes("useProjection(organizationMembers,") &&
+            body(token).includes('family:"organizationMembers"') &&
+            !hasWriter(body(token))
           );
         case "settleToIdleAfter": {
           const display = body(token);

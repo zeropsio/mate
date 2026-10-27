@@ -1,33 +1,21 @@
-import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqCardView, hqNavigationTrouble, type HqCardInput } from "./ZeropsHqCard.logic";
 
 const RUNS = "20261003T080500Z.ba9876543210";
-const CARRIED = "20261004T100000Z.0123456789ab";
 
 const LINKS: HqStructure = {
   ungrouped: [],
   apps: [{ id: "a1", name: "Links", projects: [] }],
 };
 
-const service = (name: string, status: string, isSystem = false): ZeropsService => ({
-  id: `s-${name}`,
-  name,
-  status,
-  isSystem,
-});
-
 /** An admin's view of a healthy HQ with nothing else read. */
 const input = (overrides: Partial<HqCardInput> = {}): HqCardInput => ({
   admin: true,
   standing: { kind: "healthy", build: RUNS, parts: { quarantined: [] } },
-  services: undefined,
   structure: null,
   online: undefined,
-  update: undefined,
-  updating: false,
   time: (ms) => `t${String(ms)}`,
   ...overrides,
 });
@@ -66,21 +54,6 @@ describe("hqCardView — the headline", () => {
         standing: { kind: "healthy", build: RUNS, parts: { db: "down", quarantined: [] } },
       },
       { kind: "healthy", tone: "ok", word: "Running" },
-    ],
-    [
-      "an update this tab runs",
-      { updating: true },
-      { kind: "updating", tone: "busy", word: "Updating" },
-    ],
-    [
-      "an update another started, as the opened card read it",
-      { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      { kind: "healthy", tone: "ok", word: "Running" },
-    ],
-    [
-      "an update while HQ does not answer",
-      { updating: true, standing: { kind: "unavailable", since: 7 } },
-      { kind: "down", tone: "failed", word: "Unavailable since t7" },
     ],
   ])("%s", (_name, overrides, state) => {
     expect(hqCardView(input(overrides)).state).toEqual(state);
@@ -185,43 +158,8 @@ describe("hqCardView — what an admin is told is wrong", () => {
       parts({ keys: "other_secret" }),
       ["Some deploy tokens are sealed under another key: HQ can't deploy with them."],
     ],
-    [
-      "a service of HQ's Zerops does not run",
-      {
-        services: [
-          service("hq", "ACTIVE"),
-          service("db", "STOPPED"),
-          service("core", "FAILED", true),
-        ],
-      },
-      ["db isn't active in Zerops: Stopped."],
-    ],
-    // Down, what Zerops says of HQ's services is what tells why.
-    [
-      "a service that does not run while HQ does not answer",
-      { standing: { kind: "unavailable", since: 7 }, services: [service("hq", "ACTION_FAILED")] },
-      ["hq isn't active in Zerops: Action failed."],
-    ],
   ])("%s", (_name, overrides, troubles) => {
     expect(hqCardView(input(overrides)).troubles).toEqual(troubles);
-  });
-});
-
-describe("hqCardView — HQ's services, as Zerops says them", () => {
-  const services = [
-    service("hq", "ACTIVE"),
-    service("db", "STOPPED"),
-    service("vol", "UPGRADING"),
-    service("backup", "ACTION_FAILED"),
-    service("core", "ACTIVE", true),
-  ];
-  it("to an admin, each with its dot and its word; the system's left out", () => {
-    expect(hqCardView(input({ services })).services).toEqual([
-      { name: "hq", tone: "ok", word: "Active" },
-      { name: "db", tone: "off", word: "Stopped" },
-      { name: "vol", tone: "busy", word: "Upgrading" },
-      { name: "backup", tone: "failed", word: "Action failed" },
-    ]);
   });
 });
 
@@ -320,59 +258,6 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
   ])("%s", (_name, overrides, rows) => {
     const view = hqCardView(input(overrides));
     expect({ core: view.core, backup: view.backup }).toEqual(rows);
-  });
-});
-
-describe("hqCardView — HQ's builds, as the opened card read them", () => {
-  it.each<
-    [string, Partial<HqCardInput>, Pick<ReturnType<typeof hqCardView>, "coreNote" | "troubles">]
-  >([
-    ["not read", {}, { coreNote: null, troubles: [] }],
-    [
-      "an update under way",
-      { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      {
-        coreNote: "HQ is updating to the version from 2026-10-04 10:00 UTC.",
-        troubles: [],
-      },
-    ],
-    [
-      "this tab's own update, before anything is read",
-      { updating: true },
-      { coreNote: "HQ is updating.", troubles: [] },
-    ],
-    // No hidden retry: the read failed, and says so.
-    [
-      "a read that failed",
-      { update: { kind: "failed", reason: "Zerops could not be reached." } },
-      {
-        coreNote: "Couldn't read HQ from Zerops: Zerops could not be reached.",
-        troubles: [],
-      },
-    ],
-    [
-      "HQ's last update failed",
-      {
-        update: {
-          kind: "read",
-          state: {
-            kind: "failed",
-            running: RUNS,
-            carried: CARRIED,
-            reason: "Readiness check failed.",
-          },
-        },
-      },
-      {
-        coreNote: null,
-        troubles: [
-          "HQ's last update failed: Readiness check failed. HQ still runs the version from 2026-10-03 08:05 UTC.",
-        ],
-      },
-    ],
-  ])("%s", (_name, overrides, rows) => {
-    const view = hqCardView(input(overrides));
-    expect({ coreNote: view.coreNote, troubles: view.troubles }).toEqual(rows);
   });
 });
 

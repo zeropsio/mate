@@ -40,7 +40,7 @@ import { useContext, useEffect, useMemo } from "react";
 import { hqNavigationAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
 import { useStatedVersions, useStopDeployments } from "./accountForge";
-import { useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import {
   findInventoryProjectRef,
   HeldInventoryContext,
@@ -105,11 +105,9 @@ const NO_APPS: ReadonlyArray<string> = [];
 /** The applications a surface draws: those named, or every one HQ's navigation lists. */
 export type FlowApps = ReadonlyArray<string> | "every";
 
-/** The organization's official HQ's address, once its anchor is resolved. */
-export function useHqAddress(): string | undefined {
-  const session = useZeropsSessionOptional();
-  const { hq } = useAccountHq(session?.activeOrganization?.id);
-  return hq.kind === "official" ? hq.address : undefined;
+/** The address of the HQ this build names. */
+export function useHqAddress(): string {
+  return configuredHq().address;
 }
 
 /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
@@ -280,23 +278,15 @@ const NO_FLOW_NAVIGATION = Atom.make({ ids: NO_APPS, read: false, unavailable: f
 
 /** Navigation status is shared with routes that must resolve a target before any project read. */
 export function useFlowNavigation(orgId: string | null) {
-  const accountHq = useAccountHq(orgId ?? undefined);
   const navigation = useProjection(projectApplications, orgId, NO_FLOW_NAVIGATION);
-  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
   return useMemo(
     () => ({
-      hqAddress,
-      readFailure: navigation.unavailable
-        ? HQ_CHANGES_UNANSWERED
-        : accountHq.status === "failed"
-          ? "The organization's HQ could not be read."
-          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
-            ? "This organization has no HQ."
-            : undefined,
+      hqAddress: configuredHq().address,
+      readFailure: navigation.unavailable ? HQ_CHANGES_UNANSWERED : undefined,
       groupsRead: navigation.read,
       knownGroups: new Set(navigation.ids),
     }),
-    [navigation, hqAddress, accountHq.status, accountHq.hq.kind],
+    [navigation],
   );
 }
 

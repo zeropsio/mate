@@ -1,28 +1,4 @@
-export {
-  findOfficialHq,
-  hqAnchorName,
-  hqOrgTokenName,
-  hqProjectsOf,
-  hqZeropsProject,
-  ownersAndAdmins,
-  SHARED_HQ_DOOR,
-  sharedHq,
-  type OfficialHq,
-} from "./anchor.ts";
-export {
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_START,
-  HQ_BIRTH_STEPS,
-  HQ_PROJECT_NAME,
-  HQ_SERVICE,
-  hqImportYaml,
-  runHqBirth,
-  type HqBirthDeps,
-  type HqBirthOutcome,
-  type HqBirthRecord,
-  type HqBirthStep,
-  type HqCoreArtifact,
-} from "./birth.ts";
+export { sharedHq } from "./anchor.ts";
 export {
   HQ_WRITE_UNCERTAIN,
   HqError,
@@ -66,7 +42,6 @@ export {
   inspectDeployLog,
   type DeployLogTarget,
 } from "./deployLog.ts";
-export { hqUpdateOffered, hqUpdateState, type HqUpdateState } from "./update.ts";
 export {
   birthFaceOf,
   birthIntentOf,

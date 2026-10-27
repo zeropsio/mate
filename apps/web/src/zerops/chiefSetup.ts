@@ -22,7 +22,7 @@ import {
   type ChiefSetup,
   type ChiefSetupEvent,
 } from "../components/zerops/chief/chiefSetup.logic";
-import { officialHq, useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs } from "./chief";
@@ -119,8 +119,6 @@ export function useChiefSetupRunner(): {
   readonly again: () => void;
 } {
   const { user, activeOrganization } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
-  const hqOpen = accountHq.hq.kind === "official";
   const operations = useAccountOperationsOptional();
   const runNewProject = useRunNewProject();
   const { setup, orgId } = useChiefSetupStore();
@@ -134,7 +132,7 @@ export function useChiefSetupRunner(): {
       : presses.find((entry) => entry.projectId === creation.projectId);
 
   const start = useCallback(() => {
-    if (activeOrganization === null || accountHq.hq.kind !== "official") return;
+    if (activeOrganization === null) return;
     if (useChiefSetupStore.getState().setup.phase !== "idle") return;
     const ask: NewProjectAsk = {
       organizationId: activeOrganization.id,
@@ -148,8 +146,8 @@ export function useChiefSetupRunner(): {
     };
     useChiefSetupStore.setState({ orgId: activeOrganization.id, startedAtMs: Date.now() });
     dispatch({ type: "start", birthId: ask.birthId });
-    beginCreation({ ask, hq: officialHq(accountHq), now: Date.now(), run: runNewProject });
-  }, [accountHq, activeOrganization, runNewProject, user]);
+    beginCreation({ ask, hq: configuredHq(), now: Date.now(), run: runNewProject });
+  }, [activeOrganization, runNewProject, user]);
 
   const again = useCallback(() => {
     if (setup.phase !== "failed") return;
@@ -177,7 +175,7 @@ export function useChiefSetupRunner(): {
   const finishing = useRef(false);
   const chiefProject = setup.phase === "running" && setup.step === "hq" ? setup.projectId : null;
   useEffect(() => {
-    if (chiefProject === null || !hqOpen || operations === null || orgId === null) return;
+    if (chiefProject === null || operations === null || orgId === null) return;
     if (finishing.current) return;
     finishing.current = true;
     void finishChiefSetup({
@@ -191,7 +189,7 @@ export function useChiefSetupRunner(): {
     }).finally(() => {
       finishing.current = false;
     });
-  }, [chiefProject, hqOpen, operations, orgId]);
+  }, [chiefProject, operations, orgId]);
 
   useEffect(() => {
     if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {

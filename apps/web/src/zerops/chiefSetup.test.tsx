@@ -12,7 +12,6 @@ const source = vi.hoisted(() => ({
 }));
 let completed: Promise<void>;
 const hq = { projectId: "hq", address: "https://hq.example" };
-const accountHq = { hq: { kind: "official", ...hq }, status: "ready" };
 const operations = { run: source.run, readCreation: () => UNSENT };
 vi.mock("./accountOperations", () => ({
   HQ_UNFOLLOWED: "HQ isn't answering.",
@@ -20,9 +19,7 @@ vi.mock("./accountOperations", () => ({
   useAccountOperationsOptional: () => operations,
 }));
 vi.mock("./accountHq", () => ({
-  useAccountHq: () => accountHq,
-  officialHq: () => hq,
-  useCarriedCoreBuild: () => undefined,
+  configuredHq: () => hq,
 }));
 vi.mock("./accountInvalidations", () => ({ invalidateZerops: vi.fn() }));
 vi.mock("./zeropsDataContext", () => ({ useZeropsData: () => ({ organizationRef: () => null }) }));
