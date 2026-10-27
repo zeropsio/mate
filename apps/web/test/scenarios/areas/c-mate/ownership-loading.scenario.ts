@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { ProviderDriverKind } from "@t3tools/contracts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { transportGate } from "../../harness/transportGate.ts";
@@ -19,7 +19,7 @@ interface OwnershipPaints {
 }
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a read-only Mate shows one honest line, no fake input area", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);

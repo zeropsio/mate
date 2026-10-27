@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HqNavigationApp } from "@t3tools/shared/hqStream";
-import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
 import { openAccountMenu } from "../../harness/browser.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";

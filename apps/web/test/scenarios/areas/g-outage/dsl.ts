@@ -1,8 +1,6 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
 import { STREAM_POLICY } from "../../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import type { Page } from "puppeteer-core";
-import { startCore, untilHealth } from "../../../../../hq/test/harness/runningCore.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   installArea,
@@ -28,8 +26,7 @@ export const givenOutage = Effect.fn("outage.given")(function* () {
   return s;
 });
 
-export const stopHq = (s: Scenario) =>
-  s.drivers.core.kind === "external" ? s.drivers.core.control("stop") : s.drivers.core.stop;
+export const stopHq = (s: Scenario) => s.drivers.core.control("stop");
 
 export const declareNewerProtocol = (s: Scenario) => Effect.sync(() => newerHqProtocol(s.drivers));
 /** Ends the tab's HQ session; returns how many HQ sockets had opened before it ended. */
@@ -83,24 +80,8 @@ export const hqRefusalShown = (s: Scenario) =>
 export const retryHq = (s: Scenario) =>
   Effect.promise(() => s.page.click('[data-zerops-surface="sidebar-hq-outage"]'));
 
-export const startHq = Effect.fn("outage.startHq")(function* (s: Scenario, build?: string) {
-  if (s.drivers.core.kind === "external") {
-    yield* s.drivers.core.control(build === undefined ? "start" : "start-new-build");
-    return;
-  }
-  const previous = inProcessCore(s.drivers.core);
-  const core = yield* startCore(true, {
-    zeropsHttp: { baseUrl: `${s.drivers.zerops.origin}/api/rest/public`, world: previous.fake },
-    url: previous.url,
-    gitRoot: previous.gitRoot,
-    storeDir: previous.storeDir,
-    stagingDir: previous.stagingDir,
-    ...(build === undefined ? {} : { build }),
-  });
-  yield* untilHealth(core.call, "active");
-  s.drivers.core = { ...core, kind: "in-process" };
-  s.drivers.hq.replaceCore(core.origin);
-});
+export const startHq = (s: Scenario, build?: string) =>
+  s.drivers.core.control(build === undefined ? "start" : "start-new-build");
 
 export const reportsWork = (s: Scenario, name: string, subject: string, question?: string) =>
   reportWork(s.drivers, name, subject, question);

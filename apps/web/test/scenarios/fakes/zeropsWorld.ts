@@ -1,5 +1,5 @@
 import type { ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
-import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import type { FakeWorld } from "../harness/fakeWorld.ts";
 
 export interface Organization {
   name: string;

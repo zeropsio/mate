@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- actual picture files in the isolated Mate workspace.
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
@@ -9,7 +10,6 @@ import {
   MATE_ENGINE_PROTOCOLS,
   type EngineConversationFrame,
 } from "@t3tools/contracts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
@@ -27,7 +27,7 @@ function readColumns() {
 }
 
 describe("C: image tables at the conversation end", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("picture decoding keeps columns stable and the conversation end settles", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });

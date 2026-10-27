@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea, reportContainer } from "./fake.ts";
@@ -25,7 +25,7 @@ const setup = () =>
   });
 
 describe("C: source failures keep the conversation", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a stopped container offers Start beside retained history",
       () =>

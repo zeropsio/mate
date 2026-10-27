@@ -1,3 +1,4 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
@@ -6,7 +7,6 @@ import { TurnId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
@@ -23,7 +23,7 @@ import {
 } from "./ownerReportedLayout.ts";
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a reload of the Chief's page keeps its split from the first frame, and nothing moves once its conversation shows",
       () =>
@@ -115,7 +115,7 @@ describe("owner-reported layout regressions", () => {
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: a mark between two names gives way whole; the Mate's name keeps its letters while a mark holds room.", () => {
       describe("B: marks between a project's name and its Mate's", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           it.effect(
             "a waiting release's mark is never cut, and never cuts the Mate's name, at any menu width",
             () =>
@@ -173,7 +173,7 @@ describe("owner-reported layout regressions", () => {
 
     describe("Decision: restore the expected end of the list; no other menu changes.", () => {
       describe("B: list end spacing", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           it.effect("the last project keeps one regular row gap above the list's foot", () =>
             Effect.gen(function* () {
               const s = yield* menuScenario();
@@ -267,7 +267,7 @@ describe("owner-reported layout regressions", () => {
 
     describe("Decision: an overview card is as tall as what it holds.", () => {
       describe("B: overview cards", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           // The owner (2026-10-12): "why the gap at bottom".
           it.effect("an overview card ends where what it holds ends, beside a taller one", () =>
             Effect.gen(function* () {
@@ -333,7 +333,7 @@ describe("owner-reported layout regressions", () => {
     };
 
     describe("B: running row refresh", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-11): the left side "jumps in height" with a Mate's step row, "then it
         // disappears and it jumps again".
         it.effect(
@@ -542,7 +542,7 @@ describe("owner-reported layout regressions", () => {
     // The owner, 2026-10-18, at a narrower window: the Mate's name was cut to "Mir" and the blue
     // Review pill stood over it, while the conversation's subject kept its length to its ellipsis.
     describe("Decision: the subject gives way in the header; the face, the name and the pill never do.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "at a narrow header the Mate's whole name shows, the pill stands clear of it, and the subject is what is cut",
           () =>
@@ -639,7 +639,7 @@ describe("owner-reported layout regressions", () => {
           };
           return { frame: box(frame), row: box(row), content: box(content) };
         });
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "an open site's page starts right under its address row and fills the panel to its bottom and sides, at the side, expanded and as a sheet",
           () =>
@@ -731,7 +731,7 @@ describe("owner-reported layout regressions", () => {
             ]),
           ),
         );
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("the Helpers surface's rows stay where they stand as helpers start and end", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([installArea]);
@@ -882,7 +882,7 @@ describe("owner-reported layout regressions", () => {
           await waitForStillFrames(page);
         });
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner's ask for a smooth peek did not trade away a click: resting on a face and
         // clicking it opened whatever row of the peek had slid under the pointer.
         it.effect("a rest on a rail face and a click opens that Mate, with no peek over it", () =>
@@ -1080,7 +1080,7 @@ describe("owner-reported layout regressions", () => {
               : `tag "${String(reading.tag.says)}" ${String(reading.tag.left)}–${String(reading.tag.right)} mid ${String(reading.tag.middle)}`,
           ].join(", ");
 
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           // Run 2, S15: a stage being set up put a spinner chip before the Mate's quote on its
           // project's row, which pushed the quote 30 px aside, and back when it went.
           it.effect("a stage building moves neither the project row's words nor its time", () =>

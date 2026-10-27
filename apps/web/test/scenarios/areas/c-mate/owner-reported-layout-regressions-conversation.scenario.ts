@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a picture file in the isolated Mate workspace.
+import { scenarioSuite } from "../../harness/suite.ts";
 import liveSlotSteps from "./live-slot-order.fixture.json";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
@@ -16,7 +17,6 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
@@ -24,7 +24,7 @@ import { journey, sampled } from "./pageJourney.ts";
 import { ownerMenu, quoted } from "./ownerReportedLayout.ts";
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "thoughts handing off to history keep source order and separate space from the next tool",
       () =>
@@ -165,7 +165,7 @@ describe("owner-reported layout regressions", () => {
 
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: a conversation opens in place; nothing it does overflows its column.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-12): "after mate is fully loaded (nad scrollbar is introduced I
         // think) there is layout / width shift that looks shit". The arrival's rise overflowed
         // the column for its frames: a scrollbar came and went, narrowing the column by its width.
@@ -243,7 +243,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: the end is where the list stops; a step short of it is the person's.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-12): "at this scroll (like 100px from bottom), a single tiny scroll to
         // bottom causes it to jump to bottom".
         it.effect(
@@ -287,7 +287,7 @@ describe("owner-reported layout regressions", () => {
     // 320 px short of its end and glided there: the page's row was first measured in its 240 px
     // first box, before its width was read.
     describe("Decision: product fix; the 2 px bound stays.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Found moving the chat journeys onto a real Mate: the list's own scroll up was glided
         // back on the follow curve, as an arriving row is, and real history's 1,471 px still
         // stood 5 px off the end a second later.
@@ -359,7 +359,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: product fix at the boundary; no witness weakening.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("a draft becoming its conversation never hides the chat area", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([], { mate: "real" });
@@ -433,7 +433,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: a reload paints nothing it takes back.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "a conversation ending in a full-height page, reloaded, is at its end from its first visible frame",
           () =>
@@ -785,7 +785,7 @@ describe("owner-reported layout regressions", () => {
         return longest;
       };
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("a conversation opened at its end stays at its end while its rows settle", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([], { mate: "real" });

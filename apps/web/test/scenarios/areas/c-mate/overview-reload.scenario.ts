@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { resizeMenu } from "../../harness/browser.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
@@ -120,7 +120,7 @@ function expectOnePaint(frames: ReadonlyArray<OverviewFrame>, cards: number) {
 }
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect.each([
       {
         title:

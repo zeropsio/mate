@@ -1,11 +1,11 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture } from "./fake.ts";
 import { environmentActions, environmentJobs } from "./dsl.ts";
 
 describe("E: deploy observation and the person's next action", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a pending build names the next action and Run again starts an explicit new operation",
       () =>

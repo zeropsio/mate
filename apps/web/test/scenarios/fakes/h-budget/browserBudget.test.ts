@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { emptyWorld } from "../../../../../hq/test/harness/zeropsFake.ts";
+import { emptyWorld } from "../../harness/fakeWorld.ts";
 import { ZeropsFake } from "../zerops.ts";
 import { observeBrowserBudget } from "./browserBudget.ts";
 import { serve } from "../../harness/http.ts";

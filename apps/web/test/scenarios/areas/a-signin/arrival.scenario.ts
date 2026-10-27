@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { beforeAll, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installSignIn } from "./fake.ts";
@@ -122,7 +122,7 @@ describe("owner-reported layout regressions", () => {
   beforeAll(async () => {
     dist = await deviceLoginDist();
   });
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Seen on an arrival from HQ's invitation (run 2): the mark jumped 12 px as the menu came,
     // and its loading rows went away and came back while the members were read.
     it.effect(

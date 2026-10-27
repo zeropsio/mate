@@ -4,7 +4,7 @@ import { ZeropsWrites } from "./zeropsWrites.ts";
 import { ZeropsDeviceLogin } from "./zeropsDeviceLogin.ts";
 import * as NodeEvents from "node:events";
 import { WebSocket } from "ws";
-import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import type { FakeWorld } from "../harness/fakeWorld.ts";
 import {
   deadline,
   type HttpHandler,

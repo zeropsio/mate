@@ -1,13 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off -- disposable fixture HTTP and Chrome contexts.
+import { scenarioSuite } from "../harness/suite.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../hq/test/harness/tempPostgres.ts";
-import type { StructureRead } from "../../../../hq/src/structure.ts";
-import { seedCoreWorld, untilHealth } from "../../../../hq/test/harness/runningCore.ts";
+import { seedCoreWorld } from "../harness/coreSeed.ts";
 import { openBrowser } from "../harness/browser.ts";
 import { startScenarioCore } from "../harness/hqCore.ts";
 import { serve } from "../harness/http.ts";
@@ -15,9 +14,15 @@ import { personDoor, placeMate } from "../harness/mateAccess.ts";
 import { ZeropsFake } from "./zerops.ts";
 import { definePerson, projectRoles } from "./zeropsWorld.ts";
 
+interface StructureApp {
+  readonly id: string;
+  readonly name: string;
+  readonly projects: ReadonlyArray<{ readonly projectId: string }>;
+}
+
 // The scenario's fixture owners are exercised directly, without rendering the Mate app.
 describe("harness extension APIs", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "several projects per application, separate applications and selected people in tabs/contexts",
       () =>
@@ -35,7 +40,6 @@ describe("harness extension APIs", () => {
             baseUrl: `${api.origin}/api/rest/public`,
             world: fake.world,
           });
-          if (core.kind === "in-process") yield* untilHealth(core.call, "active");
           // The first door keeps the organisation's key, which HQ then reads Zerops with.
           const owner = yield* personDoor(core, "owner", "hq");
           const appIds = new Map<string, string>();
@@ -68,7 +72,7 @@ describe("harness extension APIs", () => {
           expect(cara).not.toBe(shop);
           const structure = yield* core.call("GET", "/api/structure", { session: owner });
           expect(structure.status).toBe(200);
-          const apps = (structure.body as StructureRead).apps;
+          const apps = (structure.body as { readonly apps: ReadonlyArray<StructureApp> }).apps;
           expect(apps.map(({ name }) => name).sort()).toEqual(["Other", "Shop"]);
           expect(
             apps

@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- inspect the production assets the browser requests.
+import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it, inject } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { SETTLE_MS } from "../../../../src/lib/appChunks.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "../c-mate/fake.ts";
@@ -57,7 +57,7 @@ function requestsOf(page: Effect.Success<ReturnType<typeof createScenario>>["pag
 }
 
 describe("H: production surface demand", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The app warms every surface once the page has settled (`appChunks.ts`), so a tab open
     // across a deploy still opens them: until then, nothing unopened is downloaded.
     it.effect(

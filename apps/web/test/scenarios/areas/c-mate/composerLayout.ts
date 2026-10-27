@@ -144,11 +144,6 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       payload: { usage: { usedTokens: 180_000 } },
     });
     const core = s.drivers.core;
-    // The embedded Core sends the Mate no list to renew (an older access frame): one jump.
-    if (core.kind === "in-process") {
-      yield* Effect.promise(() => s.clock.advance(NOTICE_IDLE_MS, true));
-      return;
-    }
     for (let left = NOTICE_IDLE_MS; left > 0; left -= NOTICE_STEP_MS) {
       yield* Effect.promise(() => s.clock.advance(Math.min(left, NOTICE_STEP_MS), true));
       const at = s.drivers.zerops.clock.currentTimeMillis();

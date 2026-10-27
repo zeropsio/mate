@@ -1,3 +1,4 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import {
@@ -9,7 +10,6 @@ import {
 import * as Schema from "effect/Schema";
 import type { Page } from "puppeteer-core";
 import { reportConversation } from "../b-menu/fake.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
@@ -62,7 +62,7 @@ const agentUnsupported = (page: Page) =>
   });
 
 describe("C: agent admission", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "Decision: one voice. When the chat’s composer shows the sign-in explanation, the header shows no separate Sign in chip for the same occurrence.",
       () =>

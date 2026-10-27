@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Optional frame recording uses Node filesystem tools.
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import { RuntimeItemId, RuntimeRequestId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -8,7 +9,6 @@ import type {
   ScriptedEvent,
   ScriptedStep,
 } from "../../../../../server/integration/scriptedProviderDriver.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import * as NodeFSP from "node:fs/promises";
@@ -85,7 +85,7 @@ function expectBoxWithinHalfPixel(
   }
 }
 describe("C: conversation images", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a steering picture lands intact while the turn continues", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
